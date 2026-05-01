@@ -192,12 +192,72 @@ pub struct ActionsDashboard {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct ActionsWorkflowDetail {
+    pub repository: ActionsDashboardRepository,
+    pub viewer_permission: Option<String>,
+    pub workflow: ActionsWorkflowDetailWorkflow,
+    pub workflows: Vec<ActionsWorkflowRailItem>,
+    pub runs: ListEnvelope<ActionsRunListItem>,
+    pub filters: ActionsRunFilters,
+    pub filter_options: ActionsRunFilterOptions,
+    pub refs: Vec<ActionsWorkflowRef>,
+    pub empty_state: ActionsEmptyState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct ActionsDashboardRepository {
     pub id: Uuid,
     pub owner_login: String,
     pub name: String,
     pub visibility: RepositoryVisibility,
     pub default_branch: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsWorkflowDetailWorkflow {
+    pub id: Uuid,
+    pub name: String,
+    pub path: String,
+    pub state: WorkflowState,
+    pub trigger_events: Vec<String>,
+    pub source_branch: String,
+    pub source_sha: Option<String>,
+    pub source_blob_id: Option<Uuid>,
+    pub source_href: String,
+    pub dispatch: WorkflowDispatchSpec,
+    pub yaml_parse_error: Option<String>,
+    pub valid: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowDispatchSpec {
+    pub enabled: bool,
+    pub inputs: Vec<WorkflowDispatchInput>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowDispatchInput {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub input_type: String,
+    pub label: String,
+    pub description: Option<String>,
+    pub required: bool,
+    pub default: Option<String>,
+    pub options: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsWorkflowRef {
+    pub name: String,
+    pub short_name: String,
+    pub kind: String,
+    pub sha: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -326,6 +386,17 @@ pub struct ActionsEmptyState {
 pub struct ActionsDashboardQuery {
     pub q: Option<String>,
     pub workflow: Option<String>,
+    pub event: Option<String>,
+    pub status: Option<String>,
+    pub branch: Option<String>,
+    pub actor: Option<String>,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ActionsWorkflowDetailQuery {
+    pub q: Option<String>,
     pub event: Option<String>,
     pub status: Option<String>,
     pub branch: Option<String>,
@@ -575,6 +646,103 @@ pub async fn actions_dashboard_for_viewer(
                 "No workflow runs match the current filters.".to_owned()
             } else {
                 "This repository does not have any workflows yet.".to_owned()
+            },
+            new_workflow_href: format!(
+                "/{}/{}/new/{}/.github/workflows",
+                repository.owner_login, repository.name, repository.default_branch
+            ),
+        },
+    })
+}
+
+pub async fn actions_workflow_detail_for_viewer(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Option<Uuid>,
+    workflow_path: &str,
+    query: ActionsWorkflowDetailQuery,
+) -> Result<ActionsWorkflowDetail, AutomationError> {
+    let repository = require_repository_read_for_viewer(pool, repository_id, actor_user_id).await?;
+    let viewer_permission = viewer_permission(pool, &repository, actor_user_id).await?;
+    let workflow = actions_workflow_detail_workflow(pool, &repository, workflow_path).await?;
+    let page = query.page.max(1);
+    let page_size = query.page_size.clamp(1, 100);
+    let q = cleaned_filter(query.q);
+    let event = cleaned_filter(query.event);
+    let status = cleaned_filter(query.status).map(normalize_actions_status);
+    let branch = cleaned_filter(query.branch);
+    let actor = cleaned_filter(query.actor);
+    if let Some(status) = status.as_deref() {
+        if !ACTIONS_STATUS_OPTIONS.contains(&status) {
+            return Err(AutomationError::InvalidActionsFilter(format!(
+                "unsupported status `{status}`"
+            )));
+        }
+    }
+    let offset = (page - 1) * page_size;
+    let workflow_id_filter = workflow.id.to_string();
+    let run_filters = ActionsRunFilterRefs {
+        repository_id,
+        q: q.as_deref(),
+        workflow: Some(workflow_id_filter.as_str()),
+        event: event.as_deref(),
+        status: status.as_deref(),
+        branch: branch.as_deref(),
+        actor: actor.as_deref(),
+    };
+
+    let workflows = actions_workflow_rail(pool, repository_id).await?;
+    let total = actions_run_count(pool, run_filters).await?;
+    let mut runs = actions_run_items(pool, run_filters, page_size, offset).await?;
+    hydrate_job_summaries(pool, &mut runs).await?;
+    let mut filter_options =
+        actions_filter_options_for_workflow(pool, repository_id, workflow.id).await?;
+    filter_options.workflows = Vec::new();
+    let refs = actions_workflow_refs(pool, repository_id).await?;
+    let has_runs = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM workflow_runs WHERE repository_id = $1 AND workflow_id = $2)",
+    )
+    .bind(repository_id)
+    .bind(workflow.id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(ActionsWorkflowDetail {
+        repository: ActionsDashboardRepository {
+            id: repository.id,
+            owner_login: repository.owner_login.clone(),
+            name: repository.name.clone(),
+            visibility: repository.visibility.clone(),
+            default_branch: repository.default_branch.clone(),
+        },
+        viewer_permission,
+        workflow,
+        workflows,
+        runs: ListEnvelope {
+            items: runs,
+            total,
+            page,
+            page_size,
+        },
+        filters: ActionsRunFilters {
+            q,
+            workflow: None,
+            event,
+            status,
+            branch,
+            actor,
+            page,
+            page_size,
+        },
+        filter_options,
+        refs,
+        empty_state: ActionsEmptyState {
+            has_workflows: true,
+            has_runs,
+            message: if has_runs {
+                "No runs for this workflow match the current filters.".to_owned()
+            } else {
+                "This workflow has not run yet.".to_owned()
             },
             new_workflow_href: format!(
                 "/{}/{}/new/{}/.github/workflows",
@@ -1550,6 +1718,27 @@ async fn actions_filter_options(
     })
 }
 
+async fn actions_filter_options_for_workflow(
+    pool: &PgPool,
+    repository_id: Uuid,
+    workflow_id: Uuid,
+) -> Result<ActionsRunFilterOptions, AutomationError> {
+    Ok(ActionsRunFilterOptions {
+        workflows: Vec::new(),
+        events: distinct_run_options_for_workflow(pool, repository_id, workflow_id, "event")
+            .await?,
+        statuses: status_filter_options_for_workflow(pool, repository_id, workflow_id).await?,
+        branches: distinct_run_options_for_workflow(
+            pool,
+            repository_id,
+            workflow_id,
+            "head_branch",
+        )
+        .await?,
+        actors: actor_filter_options_for_workflow(pool, repository_id, workflow_id).await?,
+    })
+}
+
 async fn workflow_filter_options(
     pool: &PgPool,
     repository_id: Uuid,
@@ -1590,6 +1779,29 @@ async fn distinct_run_options(
     Ok(rows.into_iter().map(filter_option_from_row).collect())
 }
 
+async fn distinct_run_options_for_workflow(
+    pool: &PgPool,
+    repository_id: Uuid,
+    workflow_id: Uuid,
+    column: &str,
+) -> Result<Vec<ActionsFilterOption>, AutomationError> {
+    let sql = match column {
+        "event" => {
+            "SELECT event AS value, event AS label, count(*)::bigint AS count FROM workflow_runs WHERE repository_id = $1 AND workflow_id = $2 GROUP BY event ORDER BY lower(event)"
+        }
+        "head_branch" => {
+            "SELECT head_branch AS value, head_branch AS label, count(*)::bigint AS count FROM workflow_runs WHERE repository_id = $1 AND workflow_id = $2 GROUP BY head_branch ORDER BY lower(head_branch)"
+        }
+        _ => unreachable!("unsupported filter column"),
+    };
+    let rows = sqlx::query(sql)
+        .bind(repository_id)
+        .bind(workflow_id)
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.into_iter().map(filter_option_from_row).collect())
+}
+
 async fn status_filter_options(
     pool: &PgPool,
     repository_id: Uuid,
@@ -1609,6 +1821,44 @@ async fn status_filter_options(
         "#,
     )
     .bind(repository_id)
+    .fetch_all(pool)
+    .await?;
+    let mut counts = rows
+        .into_iter()
+        .map(|row| (row.get::<String, _>("value"), row.get::<i64, _>("count")))
+        .collect::<HashMap<_, _>>();
+
+    Ok(ACTIONS_STATUS_OPTIONS
+        .iter()
+        .map(|status| ActionsFilterOption {
+            value: (*status).to_owned(),
+            label: status.replace('_', " "),
+            count: counts.remove(*status).unwrap_or(0),
+        })
+        .collect())
+}
+
+async fn status_filter_options_for_workflow(
+    pool: &PgPool,
+    repository_id: Uuid,
+    workflow_id: Uuid,
+) -> Result<Vec<ActionsFilterOption>, AutomationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT category AS value, category AS label, count(*)::bigint AS count
+        FROM (
+            SELECT CASE
+                WHEN status = 'completed' AND conclusion IS NOT NULL THEN conclusion
+                ELSE status
+            END AS category
+            FROM workflow_runs
+            WHERE repository_id = $1 AND workflow_id = $2
+        ) categories
+        GROUP BY category
+        "#,
+    )
+    .bind(repository_id)
+    .bind(workflow_id)
     .fetch_all(pool)
     .await?;
     let mut counts = rows
@@ -1648,12 +1898,131 @@ async fn actor_filter_options(
     Ok(rows.into_iter().map(filter_option_from_row).collect())
 }
 
+async fn actor_filter_options_for_workflow(
+    pool: &PgPool,
+    repository_id: Uuid,
+    workflow_id: Uuid,
+) -> Result<Vec<ActionsFilterOption>, AutomationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT users.id::text AS value,
+               COALESCE(NULLIF(users.username, ''), users.email) AS label,
+               count(workflow_runs.id)::bigint AS count
+        FROM workflow_runs
+        JOIN users ON users.id = workflow_runs.actor_user_id
+        WHERE workflow_runs.repository_id = $1 AND workflow_runs.workflow_id = $2
+        GROUP BY users.id, users.username, users.email
+        ORDER BY lower(COALESCE(NULLIF(users.username, ''), users.email))
+        "#,
+    )
+    .bind(repository_id)
+    .bind(workflow_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(filter_option_from_row).collect())
+}
+
 fn filter_option_from_row(row: sqlx::postgres::PgRow) -> ActionsFilterOption {
     ActionsFilterOption {
         value: row.get("value"),
         label: row.get("label"),
         count: row.get("count"),
     }
+}
+
+async fn actions_workflow_detail_workflow(
+    pool: &PgPool,
+    repository: &Repository,
+    workflow_path: &str,
+) -> Result<ActionsWorkflowDetailWorkflow, AutomationError> {
+    let row = sqlx::query(
+        r#"
+        SELECT id, name, path, state, trigger_events, source_blob_id, source_sha,
+               source_branch, yaml_parse_error, dispatch_inputs, dispatch_enabled
+        FROM actions_workflows
+        WHERE repository_id = $1 AND lower(path) = lower($2)
+        "#,
+    )
+    .bind(repository.id)
+    .bind(workflow_path)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(AutomationError::WorkflowNotFound)?;
+
+    let state: String = row.get("state");
+    let path: String = row.get("path");
+    let source_branch = row
+        .get::<Option<String>, _>("source_branch")
+        .unwrap_or_else(|| repository.default_branch.clone());
+    let dispatch_inputs = workflow_dispatch_inputs_from_json(row.get("dispatch_inputs"))?;
+    let yaml_parse_error: Option<String> = row.get("yaml_parse_error");
+    Ok(ActionsWorkflowDetailWorkflow {
+        id: row.get("id"),
+        name: row.get("name"),
+        path: path.clone(),
+        state: WorkflowState::try_from(state.as_str())?,
+        trigger_events: row.get("trigger_events"),
+        source_branch: source_branch.clone(),
+        source_sha: row.get("source_sha"),
+        source_blob_id: row.get("source_blob_id"),
+        source_href: format!(
+            "/{}/{}/blob/{}/{}",
+            repository.owner_login, repository.name, source_branch, path
+        ),
+        dispatch: WorkflowDispatchSpec {
+            enabled: row.get("dispatch_enabled"),
+            inputs: dispatch_inputs,
+        },
+        valid: yaml_parse_error.is_none(),
+        yaml_parse_error,
+    })
+}
+
+fn workflow_dispatch_inputs_from_json(
+    value: Value,
+) -> Result<Vec<WorkflowDispatchInput>, AutomationError> {
+    serde_json::from_value(value).map_err(|error| {
+        AutomationError::InvalidActionsFilter(format!("invalid workflow dispatch inputs: {error}"))
+    })
+}
+
+async fn actions_workflow_refs(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<Vec<ActionsWorkflowRef>, AutomationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT repository_git_refs.name,
+               repository_git_refs.kind,
+               commits.oid AS sha
+        FROM repository_git_refs
+        LEFT JOIN commits ON commits.id = repository_git_refs.target_commit_id
+        WHERE repository_git_refs.repository_id = $1
+          AND repository_git_refs.kind IN ('branch', 'tag')
+        ORDER BY repository_git_refs.kind, lower(repository_git_refs.name)
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let name: String = row.get("name");
+            let short_name = name
+                .strip_prefix("refs/heads/")
+                .or_else(|| name.strip_prefix("refs/tags/"))
+                .unwrap_or(name.as_str())
+                .to_owned();
+            ActionsWorkflowRef {
+                name,
+                short_name,
+                kind: row.get("kind"),
+                sha: row.get("sha"),
+            }
+        })
+        .collect())
 }
 
 async fn get_workflow(

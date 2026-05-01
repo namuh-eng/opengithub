@@ -1562,3 +1562,13 @@
 - Added `.qrspi/actions-002/structure.md` with five independently verifiable vertical phases: workflow detail read contract, Editorial workflow page, manual dispatch contract/dialog, invalid YAML/options/API docs, and final guardrails/QA handoff.
 - Did not change `prd.json`; `build_pass` remains `false` until all implementation phases pass verification.
 - Tests not run because this iteration only created the required planning artifact.
+
+2026-05-02 - actions-002 phase 1 workflow detail read contract
+
+- Implemented Phase 1 from `.qrspi/actions-002/structure.md`: `GET /api/repos/{owner}/{repo}/actions/workflows/{workflow_path}/dashboard` now returns a permission-aware workflow-specific Actions dashboard contract.
+- Added additive migration columns on `actions_workflows` for workflow source metadata, invalid YAML state, dispatch enablement, and parsed dispatch input metadata.
+- Added Rust DTOs/helpers for selected workflow details, dispatch specs/inputs, branch/tag refs, workflow-scoped run rows, scoped filter options without the Workflow filter, and invalid-workflow state while reusing the existing Actions rail/run-row contract.
+- Added `crates/api/tests/api_repository_actions_workflow_detail_contract.rs` covering public/private permissions, no private metadata leakage, unknown workflow 404, source YAML payloads, dispatch inputs, invalid YAML, refs, job summaries, pagination, and no cross-workflow run leakage.
+- Verification passed: focused `api_repository_actions_workflow_detail_contract`, `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`, and same-env `make test` with Cargo tests plus 179 frontend tests.
+- Browser smoke and `make test-e2e` were not run because Phase 1 is API-only and the structure outline marks browser smoke optional for this phase.
+- Marked Phase 1 as done in `.qrspi/actions-002/structure.md`; `prd.json` remains `build_pass: false` because Phases 2-5 remain.

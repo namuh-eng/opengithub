@@ -6,7 +6,7 @@
 
 ## Phase 1: Workflow Detail Read Contract - one workflow can own its page
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Build the permission-aware backend contract for `/{owner}/{repo}/actions/workflows/{workflow_file}` before changing the UI. A repository reader can fetch the selected workflow, the shared Actions rail, workflow-scoped run rows, source-file metadata, default-branch dispatch capability, repository refs, filter options without the Workflow filter, and invalid-workflow state.
 

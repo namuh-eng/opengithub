@@ -2276,5 +2276,21 @@
       "Status options include future GitHub vocabulary values such as action_required, neutral, stale, and waiting even though the current workflow_runs table can only persist the MVP status/conclusion subset.",
       "Filter option searching is client-side over the dashboard response; revisit server-side option search if repositories accumulate large Actions histories."
     ]
+  },
+  {
+    "feature_id": "actions-002",
+    "tests_written": [
+      "Implemented Phase 1 workflow detail read contract for GET /api/repos/{owner}/{repo}/actions/workflows/{workflow_path}/dashboard.",
+      "Added workflow source metadata and dispatch-readiness migration columns: source blob id, source SHA, source branch, YAML parse error, dispatch enabled flag, and dispatch inputs JSON.",
+      "Added permission-aware workflow detail DTOs with selected workflow metadata, shared Actions rail, workflow-scoped run rows, scoped filter options without the Workflow filter, repository branch/tag refs, empty state, and invalid YAML state.",
+      "Added route coverage for public anonymous reads, private repository denial without metadata leakage, owner private access, unknown workflow 404, workflow-scoped run isolation, dispatch input serialization, source YAML href payloads, job summaries, refs, and invalid YAML dispatch-disabled payloads.",
+      "Verification passed: focused api_repository_actions_workflow_detail_contract, TEST_DATABASE_URL-backed make check, and TEST_DATABASE_URL-backed make test with Cargo tests plus 179 frontend tests."
+    ],
+    "needs_deeper_qa": [
+      "This phase is API-only; the Editorial workflow-specific page and browser smoke are intentionally deferred to Phase 2.",
+      "Manual workflow dispatch is read-shaped only in this phase; POST dispatch validation, queue side effects, check-suite/check-run seeding, and UI dialog behavior are deferred to Phase 3.",
+      "Dispatch inputs are currently trusted parsed JSON persisted on actions_workflows; YAML parsing edge cases and parser provenance need deeper QA when parsing is wired.",
+      "The route test uses percent-encoded workflow file paths against local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth."
+    ]
   }
 ]
