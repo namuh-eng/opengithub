@@ -585,6 +585,40 @@ pub struct DispatchWorkflowRun {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkflowRunRerunMode {
+    All,
+    Failed,
+    Job,
+}
+
+impl WorkflowRunRerunMode {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::All => "rerun_all",
+            Self::Failed => "rerun_failed",
+            Self::Job => "rerun_job",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RerunWorkflowRun {
+    pub repository_id: Uuid,
+    pub run_id: Uuid,
+    pub actor_user_id: Uuid,
+    pub mode: WorkflowRunRerunMode,
+    pub job_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MutateWorkflowRun {
+    pub repository_id: Uuid,
+    pub run_id: Uuid,
+    pub actor_user_id: Uuid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ActionsRecentView {
     pub repository_id: Uuid,
@@ -737,6 +771,8 @@ pub enum AutomationError {
     WorkflowDispatchDisabled(String),
     #[error("invalid workflow dispatch: {0}")]
     InvalidWorkflowDispatch(String),
+    #[error("workflow run action is unavailable: {0}")]
+    WorkflowRunActionUnavailable(String),
     #[error(transparent)]
     JobLease(#[from] JobLeaseError),
     #[error(transparent)]
@@ -1271,6 +1307,294 @@ pub async fn dispatch_workflow_run(
     runs.into_iter()
         .find(|run| run.id == run_id)
         .ok_or(AutomationError::WorkflowRunNotFound)
+}
+
+pub async fn rerun_workflow_run(
+    pool: &PgPool,
+    input: RerunWorkflowRun,
+) -> Result<ActionsRunDetail, AutomationError> {
+    require_repository_role(
+        pool,
+        input.repository_id,
+        input.actor_user_id,
+        RepositoryRole::Write,
+    )
+    .await?;
+    let run =
+        get_workflow_run_for_actor(pool, input.repository_id, input.run_id, input.actor_user_id)
+            .await?;
+    if !matches!(run.status, RunStatus::Completed | RunStatus::Cancelled) {
+        return Err(AutomationError::WorkflowRunActionUnavailable(
+            "only completed or cancelled runs can be re-run".to_owned(),
+        ));
+    }
+
+    let latest_attempt = latest_attempt_number(pool, input.run_id).await?;
+    if latest_attempt >= 10 {
+        return Err(AutomationError::WorkflowRunActionUnavailable(
+            "workflow run reached the re-run attempt limit".to_owned(),
+        ));
+    }
+    let source_jobs = rerun_source_jobs(
+        pool,
+        input.run_id,
+        latest_attempt,
+        &input.mode,
+        input.job_id,
+    )
+    .await?;
+    if source_jobs.is_empty() {
+        return Err(AutomationError::WorkflowRunActionUnavailable(
+            "no jobs are eligible for this re-run".to_owned(),
+        ));
+    }
+
+    let next_attempt = latest_attempt + 1;
+    let trigger_kind = input.mode.as_str();
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        r#"
+        INSERT INTO workflow_run_attempts (
+            run_id, attempt_number, status, triggered_by_user_id, trigger_kind
+        )
+        VALUES ($1, $2, 'queued', $3, $4)
+        "#,
+    )
+    .bind(input.run_id)
+    .bind(next_attempt)
+    .bind(input.actor_user_id)
+    .bind(trigger_kind)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        r#"
+        UPDATE workflow_runs
+        SET status = 'queued',
+            conclusion = NULL,
+            actor_user_id = $2,
+            started_at = NULL,
+            completed_at = NULL
+        WHERE id = $1
+        "#,
+    )
+    .bind(input.run_id)
+    .bind(input.actor_user_id)
+    .execute(&mut *tx)
+    .await?;
+
+    for source in &source_jobs {
+        let new_job_id = Uuid::new_v4();
+        sqlx::query(
+            r#"
+            INSERT INTO workflow_jobs (
+                id, run_id, name, status, conclusion, runner_label, attempt_number, group_name
+            )
+            VALUES ($1, $2, $3, 'queued', NULL, $4, $5, $6)
+            "#,
+        )
+        .bind(new_job_id)
+        .bind(input.run_id)
+        .bind(&source.name)
+        .bind(&source.runner_label)
+        .bind(next_attempt)
+        .bind(&source.group_name)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            r#"
+            INSERT INTO workflow_steps (job_id, number, name, status, conclusion)
+            SELECT $1, number, name, 'queued', NULL
+            FROM workflow_steps
+            WHERE job_id = $2
+            ORDER BY number
+            "#,
+        )
+        .bind(new_job_id)
+        .bind(source.id)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, 'workflow_run.rerun', 'workflow_run', $2, $3)
+        "#,
+    )
+    .bind(input.actor_user_id)
+    .bind(input.run_id.to_string())
+    .bind(json!({
+        "repositoryId": input.repository_id,
+        "attemptNumber": next_attempt,
+        "mode": trigger_kind,
+        "jobId": input.job_id,
+        "jobCount": source_jobs.len(),
+    }))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    enqueue_job(
+        pool,
+        "actions.workflow_rerun",
+        &format!("workflow-rerun:{}:{next_attempt}", input.run_id),
+        json!({
+            "repositoryId": input.repository_id,
+            "workflowId": run.workflow_id,
+            "runId": input.run_id,
+            "attemptNumber": next_attempt,
+            "actorUserId": input.actor_user_id,
+            "mode": trigger_kind,
+            "jobIds": source_jobs.iter().map(|job| job.id).collect::<Vec<_>>(),
+        }),
+    )
+    .await?;
+
+    actions_run_detail_for_viewer(
+        pool,
+        input.repository_id,
+        Some(input.actor_user_id),
+        input.run_id,
+    )
+    .await
+}
+
+pub async fn cancel_workflow_run(
+    pool: &PgPool,
+    input: MutateWorkflowRun,
+) -> Result<ActionsRunDetail, AutomationError> {
+    require_repository_role(
+        pool,
+        input.repository_id,
+        input.actor_user_id,
+        RepositoryRole::Write,
+    )
+    .await?;
+    let run =
+        get_workflow_run_for_actor(pool, input.repository_id, input.run_id, input.actor_user_id)
+            .await?;
+    if !matches!(run.status, RunStatus::Queued | RunStatus::InProgress) {
+        return Err(AutomationError::WorkflowRunActionUnavailable(
+            "only queued or in-progress runs can be cancelled".to_owned(),
+        ));
+    }
+
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        r#"
+        UPDATE workflow_runs
+        SET status = 'cancelled',
+            conclusion = 'cancelled',
+            completed_at = now()
+        WHERE id = $1
+        "#,
+    )
+    .bind(input.run_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        r#"
+        UPDATE workflow_jobs
+        SET status = 'cancelled',
+            conclusion = 'cancelled',
+            completed_at = COALESCE(completed_at, now())
+        WHERE run_id = $1 AND status IN ('queued', 'in_progress')
+        "#,
+    )
+    .bind(input.run_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        r#"
+        UPDATE workflow_run_attempts
+        SET status = 'cancelled',
+            conclusion = 'cancelled',
+            completed_at = COALESCE(completed_at, now())
+        WHERE run_id = $1 AND status IN ('queued', 'in_progress')
+        "#,
+    )
+    .bind(input.run_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, 'workflow_run.cancelled', 'workflow_run', $2, $3)
+        "#,
+    )
+    .bind(input.actor_user_id)
+    .bind(input.run_id.to_string())
+    .bind(json!({ "repositoryId": input.repository_id }))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    actions_run_detail_for_viewer(
+        pool,
+        input.repository_id,
+        Some(input.actor_user_id),
+        input.run_id,
+    )
+    .await
+}
+
+pub async fn delete_workflow_run_logs(
+    pool: &PgPool,
+    input: MutateWorkflowRun,
+) -> Result<ActionsRunDetail, AutomationError> {
+    require_repository_role(
+        pool,
+        input.repository_id,
+        input.actor_user_id,
+        RepositoryRole::Write,
+    )
+    .await?;
+    let run =
+        get_workflow_run_for_actor(pool, input.repository_id, input.run_id, input.actor_user_id)
+            .await?;
+    if !matches!(run.status, RunStatus::Completed | RunStatus::Cancelled) {
+        return Err(AutomationError::WorkflowRunActionUnavailable(
+            "logs can only be deleted after a run reaches a terminal state".to_owned(),
+        ));
+    }
+
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        "UPDATE workflow_jobs SET log_deleted_at = COALESCE(log_deleted_at, now()) WHERE run_id = $1",
+    )
+    .bind(input.run_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        r#"
+        DELETE FROM workflow_job_log_lines
+        WHERE job_id IN (SELECT id FROM workflow_jobs WHERE run_id = $1)
+        "#,
+    )
+    .bind(input.run_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, 'workflow_run.logs_deleted', 'workflow_run', $2, $3)
+        "#,
+    )
+    .bind(input.actor_user_id)
+    .bind(input.run_id.to_string())
+    .bind(json!({ "repositoryId": input.repository_id }))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    actions_run_detail_for_viewer(
+        pool,
+        input.repository_id,
+        Some(input.actor_user_id),
+        input.run_id,
+    )
+    .await
 }
 
 pub async fn list_workflow_runs(
@@ -2312,7 +2636,9 @@ pub async fn workflow_job_logs_for_viewer(
     let page_size = page_size.clamp(1, 500);
     let offset = (page - 1) * page_size;
     let query = cleaned_filter(query);
-    let like_query = query.as_ref().map(|value| format!("%{}%", escape_like(value)));
+    let like_query = query
+        .as_ref()
+        .map(|value| format!("%{}%", escape_like(value)));
     let total = sqlx::query_scalar::<_, i64>(
         r#"
         SELECT count(*)
@@ -2374,8 +2700,9 @@ pub async fn workflow_job_log_download_for_viewer(
     actor_user_id: Option<Uuid>,
     job_id: Uuid,
 ) -> Result<(String, String), AutomationError> {
-    let log = workflow_job_logs_for_viewer(pool, repository_id, actor_user_id, job_id, None, 1, 500)
-        .await?;
+    let log =
+        workflow_job_logs_for_viewer(pool, repository_id, actor_user_id, job_id, None, 1, 500)
+            .await?;
     if log.total > log.lines.len() as i64 {
         let rows = sqlx::query(
             r#"
@@ -2474,6 +2801,102 @@ async fn workflow_job_for_repository(
         conclusion: row.get("conclusion"),
         log_deleted_at: row.get("log_deleted_at"),
     })
+}
+
+#[derive(Debug, Clone)]
+struct RerunSourceJob {
+    id: Uuid,
+    name: String,
+    runner_label: Option<String>,
+    group_name: Option<String>,
+}
+
+async fn latest_attempt_number(pool: &PgPool, run_id: Uuid) -> Result<i32, AutomationError> {
+    let attempt = sqlx::query_scalar::<_, Option<i32>>(
+        "SELECT max(attempt_number) FROM workflow_run_attempts WHERE run_id = $1",
+    )
+    .bind(run_id)
+    .fetch_one(pool)
+    .await?;
+    if let Some(attempt) = attempt {
+        return Ok(attempt.max(1));
+    }
+    let job_attempt = sqlx::query_scalar::<_, Option<i32>>(
+        "SELECT max(attempt_number) FROM workflow_jobs WHERE run_id = $1",
+    )
+    .bind(run_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(job_attempt.unwrap_or(1).max(1))
+}
+
+async fn rerun_source_jobs(
+    pool: &PgPool,
+    run_id: Uuid,
+    latest_attempt: i32,
+    mode: &WorkflowRunRerunMode,
+    job_id: Option<Uuid>,
+) -> Result<Vec<RerunSourceJob>, AutomationError> {
+    let rows = match mode {
+        WorkflowRunRerunMode::All => {
+            sqlx::query(
+                r#"
+                SELECT id, name, runner_label, group_name
+                FROM workflow_jobs
+                WHERE run_id = $1 AND attempt_number = $2
+                ORDER BY created_at, name
+                "#,
+            )
+            .bind(run_id)
+            .bind(latest_attempt)
+            .fetch_all(pool)
+            .await?
+        }
+        WorkflowRunRerunMode::Failed => {
+            sqlx::query(
+                r#"
+                SELECT id, name, runner_label, group_name
+                FROM workflow_jobs
+                WHERE run_id = $1
+                  AND attempt_number = $2
+                  AND conclusion IN ('failure', 'timed_out')
+                ORDER BY created_at, name
+                "#,
+            )
+            .bind(run_id)
+            .bind(latest_attempt)
+            .fetch_all(pool)
+            .await?
+        }
+        WorkflowRunRerunMode::Job => {
+            let Some(job_id) = job_id else {
+                return Err(AutomationError::WorkflowRunActionUnavailable(
+                    "jobId is required for job-specific re-runs".to_owned(),
+                ));
+            };
+            sqlx::query(
+                r#"
+                SELECT id, name, runner_label, group_name
+                FROM workflow_jobs
+                WHERE run_id = $1 AND id = $2
+                "#,
+            )
+            .bind(run_id)
+            .bind(job_id)
+            .fetch_all(pool)
+            .await?
+        }
+    };
+
+    Ok(rows
+        .into_iter()
+        .map(|row| RerunSourceJob {
+            id: row.get("id"),
+            name: row.get("name"),
+            runner_label: row.get("runner_label"),
+            group_name: row.get("group_name"),
+        })
+        .collect())
 }
 
 fn escape_like(value: &str) -> String {

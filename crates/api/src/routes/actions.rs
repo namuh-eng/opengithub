@@ -3,7 +3,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{header, HeaderMap, StatusCode},
     response::Response,
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use serde::Deserialize;
@@ -19,15 +19,16 @@ use crate::{
     domain::{
         actions::{
             actions_dashboard_for_viewer, actions_run_detail_for_viewer,
-            actions_workflow_detail_for_viewer, create_workflow, create_workflow_run,
-            dispatch_workflow_run, get_workflow_for_actor, get_workflow_run_for_actor,
-            list_workflow_runs, list_workflows, record_actions_recent_view,
-            repository_for_actor_by_name, repository_for_optional_actor_by_name,
-            transition_workflow_run, workflow_artifact_download_for_viewer,
-            workflow_job_log_download_for_viewer, workflow_job_logs_for_viewer,
-            ActionsDashboardQuery, ActionsWorkflowDetailQuery, AutomationError, CreateWorkflow,
-            CreateWorkflowRun, DispatchWorkflowRun, RecordActionsRecentView, RunConclusion,
-            RunStatus, TransitionRun,
+            actions_workflow_detail_for_viewer, cancel_workflow_run, create_workflow,
+            create_workflow_run, delete_workflow_run_logs, dispatch_workflow_run,
+            get_workflow_for_actor, get_workflow_run_for_actor, list_workflow_runs, list_workflows,
+            record_actions_recent_view, repository_for_actor_by_name,
+            repository_for_optional_actor_by_name, rerun_workflow_run, transition_workflow_run,
+            workflow_artifact_download_for_viewer, workflow_job_log_download_for_viewer,
+            workflow_job_logs_for_viewer, ActionsDashboardQuery, ActionsWorkflowDetailQuery,
+            AutomationError, CreateWorkflow, CreateWorkflowRun, DispatchWorkflowRun,
+            MutateWorkflowRun, RecordActionsRecentView, RerunWorkflowRun, RunConclusion, RunStatus,
+            TransitionRun, WorkflowRunRerunMode,
         },
         permissions::RepositoryRole,
     },
@@ -67,6 +68,18 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/repos/:owner/:repo/actions/runs/:run_id/detail",
             get(read_workflow_run_detail_route),
+        )
+        .route(
+            "/api/repos/:owner/:repo/actions/runs/:run_id/rerun",
+            post(rerun_workflow_run_route),
+        )
+        .route(
+            "/api/repos/:owner/:repo/actions/runs/:run_id/cancel",
+            post(cancel_workflow_run_route),
+        )
+        .route(
+            "/api/repos/:owner/:repo/actions/runs/:run_id/logs",
+            delete(delete_workflow_run_logs_route),
         )
         .route(
             "/api/repos/:owner/:repo/actions/jobs/:job_id/logs",
@@ -157,6 +170,18 @@ struct DispatchWorkflowRequest {
     ref_name: String,
     #[serde(default)]
     inputs: HashMap<String, serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RerunWorkflowRunRequest {
+    #[serde(default = "default_rerun_mode")]
+    mode: WorkflowRunRerunMode,
+    job_id: Option<Uuid>,
+}
+
+fn default_rerun_mode() -> WorkflowRunRerunMode {
+    WorkflowRunRerunMode::All
 }
 
 #[derive(Debug, Deserialize)]
@@ -539,6 +564,84 @@ async fn read_workflow_run_detail_route(
     Ok(Json(json!(detail)))
 }
 
+async fn rerun_workflow_run_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, run_id)): Path<(String, String, Uuid)>,
+    RestJson(request): RestJson<RerunWorkflowRunRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id =
+        repository_for_actor_by_name(pool, &owner, &repo, actor.0.id, RepositoryRole::Write)
+            .await
+            .map_err(map_automation_error)?;
+    let detail = rerun_workflow_run(
+        pool,
+        RerunWorkflowRun {
+            repository_id,
+            run_id,
+            actor_user_id: actor.0.id,
+            mode: request.mode,
+            job_id: request.job_id,
+        },
+    )
+    .await
+    .map_err(map_automation_error)?;
+
+    Ok(Json(json!(detail)))
+}
+
+async fn cancel_workflow_run_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, run_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id =
+        repository_for_actor_by_name(pool, &owner, &repo, actor.0.id, RepositoryRole::Write)
+            .await
+            .map_err(map_automation_error)?;
+    let detail = cancel_workflow_run(
+        pool,
+        MutateWorkflowRun {
+            repository_id,
+            run_id,
+            actor_user_id: actor.0.id,
+        },
+    )
+    .await
+    .map_err(map_automation_error)?;
+
+    Ok(Json(json!(detail)))
+}
+
+async fn delete_workflow_run_logs_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, run_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id =
+        repository_for_actor_by_name(pool, &owner, &repo, actor.0.id, RepositoryRole::Write)
+            .await
+            .map_err(map_automation_error)?;
+    let detail = delete_workflow_run_logs(
+        pool,
+        MutateWorkflowRun {
+            repository_id,
+            run_id,
+            actor_user_id: actor.0.id,
+        },
+    )
+    .await
+    .map_err(map_automation_error)?;
+
+    Ok(Json(json!(detail)))
+}
+
 async fn read_workflow_job_logs_route(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -691,6 +794,9 @@ pub(crate) fn map_automation_error(error: AutomationError) -> (StatusCode, Json<
             "validation_failed",
             error.to_string(),
         ),
+        AutomationError::WorkflowRunActionUnavailable(_) => {
+            error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
         AutomationError::JobLease(_) => error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal_error",

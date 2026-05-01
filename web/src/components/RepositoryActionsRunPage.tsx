@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { RepositoryShell } from "@/components/RepositoryShell";
@@ -143,11 +144,20 @@ function artifactDownloadPath(
   return `${basePath}/actions/artifacts/${artifactId}/download${suffix}`;
 }
 
+function runMutationPath(
+  basePath: string,
+  runId: string,
+  action: "rerun" | "cancel" | "logs",
+) {
+  return `${basePath}/actions/runs/${runId}/${action}`;
+}
+
 export function RepositoryActionsRunPage({
   repository,
   detail,
   validationError,
 }: RepositoryActionsRunPageProps) {
+  const router = useRouter();
   const basePath = `/${repository.owner_login}/${repository.name}`;
   const [selectedJobId, setSelectedJobId] = useState(
     detail.jobs[0]?.id ?? "summary",
@@ -160,6 +170,9 @@ export function RepositoryActionsRunPage({
   );
   const [jobLogMessage, setJobLogMessage] = useState("");
   const [artifactMessage, setArtifactMessage] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [confirmDeleteLogs, setConfirmDeleteLogs] = useState(false);
   const selectedJob = detail.jobs.find((job) => job.id === selectedJobId);
   const groupedJobs = useMemo(() => {
     const groups = new Map<string, ActionsRunJobDetail[]>();
@@ -245,6 +258,62 @@ export function RepositoryActionsRunPage({
     }
   }
 
+  async function mutateRun(
+    action: "rerun" | "cancel" | "logs",
+    options: { mode?: "all" | "failed" | "job"; jobId?: string } = {},
+  ) {
+    const label =
+      action === "logs"
+        ? "delete logs"
+        : action === "cancel"
+          ? "cancel run"
+          : options.mode === "failed"
+            ? "re-run failed jobs"
+            : options.mode === "job"
+              ? "re-run job"
+              : "re-run all jobs";
+    setPendingAction(label);
+    setActionMessage("");
+    try {
+      const response = await fetch(
+        runMutationPath(basePath, detail.run.id, action),
+        {
+          method: action === "logs" ? "DELETE" : "POST",
+          headers:
+            action === "rerun" ? { "content-type": "application/json" } : {},
+          body:
+            action === "rerun"
+              ? JSON.stringify({
+                  mode: options.mode ?? "all",
+                  jobId: options.jobId ?? null,
+                })
+              : undefined,
+          cache: "no-store",
+        },
+      );
+      const body = (await response.json().catch(() => null)) as
+        | RepositoryActionsRunDetail
+        | ApiErrorEnvelope
+        | null;
+      if (!response.ok || !body || "error" in body) {
+        throw new Error(
+          body && "error" in body
+            ? body.error.message
+            : "Workflow run action failed.",
+        );
+      }
+      setConfirmDeleteLogs(false);
+      setActionMessage(`${titleCase(label)} queued.`);
+      router.refresh();
+    } catch (error) {
+      setActionMessage(
+        error instanceof Error ? error.message : "Workflow run action failed.",
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
   return (
     <RepositoryShell
       activePath={`${basePath}/actions/runs/${detail.run.id}`}
@@ -321,6 +390,7 @@ export function RepositoryActionsRunPage({
               <button
                 className="btn"
                 disabled={!detail.actionState.canRerun}
+                onClick={() => mutateRun("rerun", { mode: "all" })}
                 title={
                   !detail.actionState.canRerun
                     ? actionDisabledReason
@@ -332,7 +402,21 @@ export function RepositoryActionsRunPage({
               </button>
               <button
                 className="btn"
+                disabled={!detail.actionState.canRerunFailed}
+                onClick={() => mutateRun("rerun", { mode: "failed" })}
+                title={
+                  !detail.actionState.canRerunFailed
+                    ? actionDisabledReason
+                    : undefined
+                }
+                type="button"
+              >
+                Re-run failed
+              </button>
+              <button
+                className="btn"
                 disabled={!detail.actionState.canCancel}
+                onClick={() => mutateRun("cancel")}
                 title={
                   !detail.actionState.canCancel
                     ? actionDisabledReason
@@ -345,6 +429,7 @@ export function RepositoryActionsRunPage({
               <button
                 className="btn"
                 disabled={!detail.actionState.canDeleteLogs}
+                onClick={() => setConfirmDeleteLogs(true)}
                 title={
                   !detail.actionState.canDeleteLogs
                     ? actionDisabledReason
@@ -356,6 +441,36 @@ export function RepositoryActionsRunPage({
               </button>
             </div>
           </div>
+          {confirmDeleteLogs ? (
+            <div className="card flex flex-wrap items-center justify-between gap-3 p-4">
+              <p className="t-sm" style={{ color: "var(--ink-2)" }}>
+                Delete stored logs for this run? Log downloads will become
+                unavailable.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  className="btn sm"
+                  onClick={() => setConfirmDeleteLogs(false)}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn sm accent"
+                  disabled={pendingAction !== null}
+                  onClick={() => mutateRun("logs")}
+                  type="button"
+                >
+                  Confirm delete
+                </button>
+              </div>
+            </div>
+          ) : null}
+          {actionMessage || pendingAction ? (
+            <p className="t-sm" role="status" style={{ color: "var(--ink-2)" }}>
+              {pendingAction ? `${titleCase(pendingAction)}...` : actionMessage}
+            </p>
+          ) : null}
 
           <div className="grid gap-3 md:grid-cols-4">
             <SummaryCard
@@ -532,6 +647,10 @@ export function RepositoryActionsRunPage({
                     event.preventDefault();
                     setSubmittedLogQuery(logQuery);
                   }}
+                  onRerunJob={(jobId) =>
+                    mutateRun("rerun", { mode: "job", jobId })
+                  }
+                  rerunDisabled={!detail.actionState.canRerun}
                 />
               ) : (
                 <div className="p-5">
@@ -577,6 +696,8 @@ function JobDetail({
   logState,
   onLogQueryChange,
   onLogSearch,
+  onRerunJob,
+  rerunDisabled,
 }: {
   basePath: string;
   job: ActionsRunJobDetail;
@@ -586,6 +707,8 @@ function JobDetail({
   logState: "idle" | "loading" | "error";
   onLogQueryChange: (value: string) => void;
   onLogSearch: (event: FormEvent<HTMLFormElement>) => void;
+  onRerunJob: (jobId: string) => void;
+  rerunDisabled: boolean;
 }) {
   return (
     <div className="space-y-5 p-5">
@@ -606,6 +729,14 @@ function JobDetail({
             Download log
           </a>
         ) : null}
+        <button
+          className="btn sm"
+          disabled={rerunDisabled}
+          onClick={() => onRerunJob(job.id)}
+          type="button"
+        >
+          Re-run job
+        </button>
       </div>
       <div className="space-y-2">
         {job.steps.map((step) => (

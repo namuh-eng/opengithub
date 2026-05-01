@@ -110,6 +110,24 @@ test("signed-in workflow run detail renders jobs, annotations, and artifacts", a
     page.getByRole("link", { exact: true, name: "Download" }),
   ).toHaveAttribute("href", /\/actions\/artifacts\/.*\/download/);
 
+  await page.getByRole("button", { name: "Re-run failed" }).click();
+  await expect(page.getByRole("status")).toContainText(
+    "Re Run Failed Jobs queued.",
+  );
+  await expect(page.getByRole("button", { name: "Cancel run" })).toBeEnabled();
+  await page.getByRole("button", { name: "Cancel run" }).click();
+  await expect(page.getByRole("status")).toContainText("Cancel Run queued.");
+  await expect(page.getByRole("button", { name: "Delete logs" })).toBeEnabled();
+  await page.getByRole("button", { name: "Delete logs" }).click();
+  await expect(page.getByText(/Delete stored logs for this run/)).toBeVisible();
+  await page.getByRole("button", { name: "Confirm delete" }).click();
+  await expect(page.getByRole("status")).toContainText("Delete Logs queued.");
+  await expect(page.getByText("Logs deleted").first()).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/actions-003-phase4-run-actions.jpg",
+  });
+
   await page.getByRole("link", { name: /deploy preview/ }).click();
   await expect(
     page.getByRole("heading", { exact: true, name: "deploy preview" }),

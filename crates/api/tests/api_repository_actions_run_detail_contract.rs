@@ -120,6 +120,54 @@ async fn get_text(app: axum::Router, uri: &str, cookie: Option<&str>) -> (Status
     )
 }
 
+async fn post_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method(Method::POST)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let request = builder
+        .body(Body::from(body.to_string()))
+        .expect("request should build");
+    let response = app.oneshot(request).await.expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).expect("response should be json")
+    };
+    (status, value)
+}
+
+async fn delete_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (StatusCode, Value) {
+    let mut builder = Request::builder().method(Method::DELETE).uri(uri);
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let request = builder.body(Body::empty()).expect("request should build");
+    let response = app.oneshot(request).await.expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).expect("response should be json")
+    };
+    (status, value)
+}
+
 #[tokio::test]
 async fn run_detail_returns_attempts_jobs_annotations_artifacts_and_action_state() {
     let Some(pool) = database_pool().await else {
@@ -390,12 +438,10 @@ async fn run_detail_returns_attempts_jobs_annotations_artifacts_and_action_state
     let (artifact_status, artifact_body) = get_json(app, &artifact_uri, None).await;
     assert_eq!(artifact_status, StatusCode::OK);
     assert_eq!(artifact_body["filename"], "playwright-report.zip");
-    assert!(
-        artifact_body["downloadUrl"]
-            .as_str()
-            .expect("download url")
-            .contains(artifact_id)
-    );
+    assert!(artifact_body["downloadUrl"]
+        .as_str()
+        .expect("download url")
+        .contains(artifact_id));
 }
 
 #[tokio::test]
@@ -472,4 +518,219 @@ async fn run_detail_preserves_private_repository_permissions_and_missing_run_err
     let (missing_status, missing_body) = get_json(app, &missing_uri, Some(&owner_cookie)).await;
     assert_eq!(missing_status, StatusCode::NOT_FOUND);
     assert_eq!(missing_body["error"]["code"], "not_found");
+}
+
+#[tokio::test]
+async fn run_detail_mutations_rerun_cancel_and_delete_logs_are_stateful() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping actions run mutation scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "actions-run-mutate-owner").await;
+    let outsider = create_user(&pool, "actions-run-mutate-outsider").await;
+    let repo_name = format!("actions-run-mutate-{}", Uuid::new_v4().simple());
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: repo_name.clone(),
+            description: None,
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    let workflow = create_workflow(
+        &pool,
+        CreateWorkflow {
+            repository_id: repository.id,
+            actor_user_id: owner.id,
+            name: "Mutation CI".to_owned(),
+            path: ".github/workflows/mutate.yml".to_owned(),
+            trigger_events: vec!["push".to_owned()],
+        },
+    )
+    .await
+    .expect("workflow should create");
+    let run = create_workflow_run(
+        &pool,
+        CreateWorkflowRun {
+            workflow_id: workflow.id,
+            actor_user_id: Some(owner.id),
+            head_branch: "main".to_owned(),
+            head_sha: Some("mutate-sha".to_owned()),
+            event: "push".to_owned(),
+        },
+    )
+    .await
+    .expect("run should create");
+    transition_workflow_run(
+        &pool,
+        run.id,
+        TransitionRun {
+            status: RunStatus::Completed,
+            conclusion: Some(RunConclusion::Failure),
+        },
+    )
+    .await
+    .expect("run should complete");
+    sqlx::query(
+        r#"
+        INSERT INTO workflow_run_attempts (
+            run_id, attempt_number, status, conclusion, triggered_by_user_id, trigger_kind
+        )
+        VALUES ($1, 1, 'completed', 'failure', $2, 'initial')
+        "#,
+    )
+    .bind(run.id)
+    .bind(owner.id)
+    .execute(&pool)
+    .await
+    .expect("attempt should create");
+    let failed_job = create_workflow_job(
+        &pool,
+        CreateWorkflowJob {
+            run_id: run.id,
+            name: "unit".to_owned(),
+            runner_label: Some("ubuntu-latest".to_owned()),
+        },
+    )
+    .await
+    .expect("job should create");
+    let passing_job = create_workflow_job(
+        &pool,
+        CreateWorkflowJob {
+            run_id: run.id,
+            name: "lint".to_owned(),
+            runner_label: Some("ubuntu-latest".to_owned()),
+        },
+    )
+    .await
+    .expect("job should create");
+    sqlx::query(
+        r#"
+        UPDATE workflow_jobs
+        SET status = 'completed',
+            conclusion = CASE WHEN id = $2 THEN 'failure' ELSE 'success' END,
+            group_name = 'Checks',
+            log_storage_key = 'actions/logs/mutate.txt'
+        WHERE run_id = $1
+        "#,
+    )
+    .bind(run.id)
+    .bind(failed_job.id)
+    .execute(&pool)
+    .await
+    .expect("jobs should update");
+    create_workflow_step(
+        &pool,
+        CreateWorkflowStep {
+            job_id: failed_job.id,
+            number: 1,
+            name: "cargo test".to_owned(),
+        },
+    )
+    .await
+    .expect("step should create");
+    sqlx::query(
+        "INSERT INTO workflow_job_log_lines (job_id, line_number, content) VALUES ($1, 1, 'failure log'), ($2, 1, 'passing log')",
+    )
+    .bind(failed_job.id)
+    .bind(passing_job.id)
+    .execute(&pool)
+    .await
+    .expect("logs should create");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let outsider_cookie = cookie_header(&pool, &config, &outsider).await;
+    let rerun_uri = format!(
+        "/api/repos/{}/{}/actions/runs/{}/rerun",
+        owner.email, repo_name, run.id
+    );
+
+    let (forbidden_status, forbidden_body) =
+        post_json(app.clone(), &rerun_uri, Some(&outsider_cookie), json!({})).await;
+    assert_eq!(forbidden_status, StatusCode::FORBIDDEN);
+    assert_eq!(forbidden_body["error"]["code"], "forbidden");
+
+    let (rerun_status, rerun_body) = post_json(
+        app.clone(),
+        &rerun_uri,
+        Some(&owner_cookie),
+        json!({ "mode": "failed" }),
+    )
+    .await;
+    assert_eq!(rerun_status, StatusCode::OK);
+    assert_eq!(rerun_body["run"]["status"], "queued");
+    assert_eq!(rerun_body["attempts"][1]["attemptNumber"], 2);
+    assert_eq!(rerun_body["attempts"][1]["triggerKind"], "rerun_failed");
+    assert_eq!(
+        rerun_body["jobs"]
+            .as_array()
+            .expect("jobs")
+            .iter()
+            .filter(|job| job["attemptNumber"] == 2)
+            .count(),
+        1
+    );
+
+    let lease_count = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM job_leases WHERE queue = 'actions.workflow_rerun' AND lease_key = $1",
+    )
+    .bind(format!("workflow-rerun:{}:2", run.id))
+    .fetch_one(&pool)
+    .await
+    .expect("lease count should load");
+    assert_eq!(lease_count, 1);
+
+    let cancel_uri = format!(
+        "/api/repos/{}/{}/actions/runs/{}/cancel",
+        owner.email, repo_name, run.id
+    );
+    let (cancel_status, cancel_body) =
+        post_json(app.clone(), &cancel_uri, Some(&owner_cookie), json!({})).await;
+    assert_eq!(cancel_status, StatusCode::OK);
+    assert_eq!(cancel_body["run"]["status"], "cancelled");
+    assert_eq!(cancel_body["run"]["conclusion"], "cancelled");
+    assert_eq!(cancel_body["actionState"]["canDeleteLogs"], true);
+
+    let logs_uri = format!(
+        "/api/repos/{}/{}/actions/runs/{}/logs",
+        owner.email, repo_name, run.id
+    );
+    let (delete_status, delete_body) =
+        delete_json(app.clone(), &logs_uri, Some(&owner_cookie)).await;
+    assert_eq!(delete_status, StatusCode::OK);
+    assert!(delete_body["jobs"]
+        .as_array()
+        .expect("jobs")
+        .iter()
+        .all(|job| job["logAvailable"] == false));
+    let remaining_lines = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM workflow_job_log_lines WHERE job_id IN (SELECT id FROM workflow_jobs WHERE run_id = $1)",
+    )
+    .bind(run.id)
+    .fetch_one(&pool)
+    .await
+    .expect("line count should load");
+    assert_eq!(remaining_lines, 0);
+
+    let audit_count = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT count(*)
+        FROM audit_events
+        WHERE target_id = $1
+          AND event_type IN ('workflow_run.rerun', 'workflow_run.cancelled', 'workflow_run.logs_deleted')
+        "#,
+    )
+    .bind(run.id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("audit count should load");
+    assert_eq!(audit_count, 3);
 }

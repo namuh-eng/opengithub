@@ -2418,5 +2418,24 @@
       "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth.",
       "The fixture does not execute real Actions runners."
     ]
+  },
+  {
+    "feature_id": "actions-003",
+    "tests_written": [
+      "Implemented Phase 4 data-backed run mutations for POST /api/repos/{owner}/{repo}/actions/runs/{run_id}/rerun, POST /cancel, and DELETE /logs.",
+      "Added Rust domain behavior for rerun all, rerun failed jobs, specific-job rerun, queued run attempts/jobs, cancel state transitions, log deletion markers, audit events, and job lease enqueueing.",
+      "Added same-origin Next.js mutation proxies and replaced inert run action buttons with Editorial confirmation/status flows, including job-specific rerun controls.",
+      "Updated /docs/api with run detail, rerun, cancel, and delete-log endpoint contracts.",
+      "Extended Rust contract tests for unauthorized/forbidden writes, failed-only rerun, job lease creation, cancel, delete logs, log-line removal, and audit rows.",
+      "Extended Vitest and Playwright coverage for mutation buttons, docs anchors, dead-control checks, and browser smoke screenshot ralph/screenshots/build/actions-003-phase4-run-actions.jpg.",
+      "Verification passed: focused api_repository_actions_run_detail_contract, focused repository-actions-run/api-docs Vitest, make check, make test with Cargo tests plus 190 frontend tests, make test-e2e, same-env TEST_DATABASE_URL-backed repository-actions-run Playwright, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Rerun queues metadata in job_leases but no real Actions runner consumes the queued attempt yet; actual runner execution remains for actions-005 and worker hardening.",
+      "Cancel marks queued/in-progress run metadata and jobs locally; cancellation propagation to a real runner process is not yet exercised.",
+      "Delete logs removes DB-backed log lines and marks log metadata deleted; real S3/object storage deletion and retention race cases remain unverified.",
+      "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth.",
+      "Artifact signed URL behavior remains local-dev metadata until real S3 signed URL generation is wired."
+    ]
   }
 ]

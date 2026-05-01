@@ -1,7 +1,19 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RepositoryActionsRunPage } from "@/components/RepositoryActionsRunPage";
 import type { RepositoryActionsRunDetail, RepositoryOverview } from "@/lib/api";
+
+const refresh = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh }),
+}));
 
 function repositoryOverview(): RepositoryOverview {
   return {
@@ -243,6 +255,7 @@ function runDetail(
 describe("RepositoryActionsRunPage", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    refresh.mockClear();
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -417,6 +430,109 @@ describe("RepositoryActionsRunPage", () => {
       "/mona/octo-app/actions/artifacts/artifact-1/download?metadata=1",
       { cache: "no-store" },
     );
+  });
+
+  it("posts rerun, cancel, job rerun, and confirmed delete-log mutations", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockImplementation(async (input) => {
+      if (String(input).includes("/actions/jobs/")) {
+        return {
+          json: async () => ({
+            job: {
+              id: "job-1",
+              runId: "run-1",
+              name: "unit / web",
+              status: "completed",
+              conclusion: "failure",
+              logDeletedAt: null,
+            },
+            lines: [],
+            total: 0,
+            page: 1,
+            pageSize: 30,
+            query: null,
+            downloadHref:
+              "/api/repos/mona/octo-app/actions/jobs/job-1/logs/download",
+          }),
+          ok: true,
+        } as Response;
+      }
+      return {
+        json: async () => runDetail(),
+        ok: true,
+      } as Response;
+    });
+
+    render(
+      <RepositoryActionsRunPage
+        detail={runDetail({
+          actionState: {
+            canRerun: true,
+            canRerunFailed: true,
+            canCancel: true,
+            canDeleteLogs: true,
+            disabledReason: null,
+          },
+        })}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Re-run all" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mona/octo-app/actions/runs/run-1/rerun",
+        expect.objectContaining({
+          body: JSON.stringify({ mode: "all", jobId: null }),
+          method: "POST",
+        }),
+      ),
+    );
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Re-run failed" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mona/octo-app/actions/runs/run-1/rerun",
+        expect.objectContaining({
+          body: JSON.stringify({ mode: "failed", jobId: null }),
+          method: "POST",
+        }),
+      ),
+    );
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(screen.getByRole("button", { name: "Re-run job" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mona/octo-app/actions/runs/run-1/rerun",
+        expect.objectContaining({
+          body: JSON.stringify({ mode: "job", jobId: "job-1" }),
+          method: "POST",
+        }),
+      ),
+    );
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(3));
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel run" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mona/octo-app/actions/runs/run-1/cancel",
+        expect.objectContaining({ method: "POST" }),
+      ),
+    );
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(4));
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete logs" }));
+    expect(screen.getByText(/Delete stored logs for this run/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mona/octo-app/actions/runs/run-1/logs",
+        expect.objectContaining({ method: "DELETE" }),
+      ),
+    );
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(5));
   });
 
   it("does not render inert anchors or unnamed visible buttons", () => {

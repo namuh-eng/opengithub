@@ -491,6 +491,72 @@ Subject: [PATCH] Improve docs
     notes: ["Run detail pages link here until the full logs UI lands."],
   },
   {
+    id: "actions-runs-detail",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/actions/runs/{run_id}/detail",
+    title: "Read workflow run detail",
+    description:
+      "Returns the run header, attempts, jobs, steps, annotations, artifacts, log availability, and action eligibility for the run workspace.",
+    auth: "Optional signed opengithub session cookie; private repositories require read access",
+    response: `{
+  "run": { "id": "run_01", "status": "completed", "conclusion": "failure" },
+  "attempts": [{ "attemptNumber": 1, "triggerKind": "initial" }],
+  "jobs": [{ "id": "job_01", "name": "unit", "logAvailable": true }],
+  "actionState": { "canRerun": true, "canCancel": false }
+}`,
+    notes: [
+      "Writers receive mutation eligibility in actionState; readers can inspect public run data only.",
+    ],
+  },
+  {
+    id: "actions-runs-rerun",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/actions/runs/{run_id}/rerun",
+    title: "Re-run workflow jobs",
+    description:
+      "Queues a new run attempt for all jobs, failed jobs, or a specific job and returns the refreshed run detail.",
+    auth: "Signed opengithub session cookie with write access",
+    request: `{
+  "mode": "failed",
+  "jobId": null
+}`,
+    response: `{
+  "run": { "id": "run_01", "status": "queued", "conclusion": null },
+  "attempts": [{ "attemptNumber": 2, "triggerKind": "rerun_failed" }]
+}`,
+    notes: [
+      "mode may be all, failed, or job. job mode requires jobId. Non-terminal runs return 409 conflict.",
+    ],
+  },
+  {
+    id: "actions-runs-cancel",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/actions/runs/{run_id}/cancel",
+    title: "Cancel workflow run",
+    description:
+      "Cancels a queued or in-progress run, marks queued/in-progress jobs as cancelled, writes an audit event, and returns the refreshed detail.",
+    auth: "Signed opengithub session cookie with write access",
+    response: `{
+  "run": { "id": "run_01", "status": "cancelled", "conclusion": "cancelled" }
+}`,
+    notes: ["Completed runs return 409 conflict instead of mutating state."],
+  },
+  {
+    id: "actions-runs-delete-logs",
+    method: "DELETE",
+    path: "/api/repos/{owner}/{repo}/actions/runs/{run_id}/logs",
+    title: "Delete workflow run logs",
+    description:
+      "Marks every job log in a terminal run as deleted, removes stored log lines, writes an audit event, and returns the refreshed detail.",
+    auth: "Signed opengithub session cookie with write access",
+    response: `{
+  "jobs": [{ "id": "job_01", "logAvailable": false, "logDeletedAt": "2026-05-02T00:00:00Z" }]
+}`,
+    notes: [
+      "The operation is idempotent for jobs whose logs were already deleted.",
+    ],
+  },
+  {
     id: "actions-runs-update",
     method: "PATCH",
     path: "/api/repos/{owner}/{repo}/actions/runs/{run_id}",

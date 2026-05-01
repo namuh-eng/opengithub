@@ -12,7 +12,7 @@ describe("ApiDocsPage", () => {
         name: "Build against implemented opengithub APIs",
       }),
     ).toBeVisible();
-    expect(apiEndpointDocs.length).toBeGreaterThanOrEqual(23);
+    expect(apiEndpointDocs.length).toBeGreaterThanOrEqual(27);
 
     for (const endpoint of apiEndpointDocs) {
       const card = screen
@@ -93,6 +93,22 @@ describe("ApiDocsPage", () => {
     ).toBeVisible();
     expect(
       screen.getAllByText("/api/repos/{owner}/{repo}/actions/runs/{run_id}")[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/actions/runs/{run_id}/detail",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/actions/runs/{run_id}/rerun"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/actions/runs/{run_id}/cancel",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/actions/runs/{run_id}/logs"),
     ).toBeVisible();
     expect(
       screen.getByText("/api/repos/{owner}/{repo}/actions/recent-view"),

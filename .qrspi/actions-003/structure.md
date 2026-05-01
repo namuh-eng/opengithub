@@ -56,7 +56,7 @@
 
 ## Phase 4: Rerun, Cancel, Delete Logs, and API Docs - run actions mutate real state
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire every run action to a real backend mutation. Writers can rerun all jobs, rerun failed jobs, rerun a specific job, cancel queued/in-progress runs, and delete logs after confirmation; the UI updates from returned state and `/docs/api` documents the run detail and mutation endpoints.
 
