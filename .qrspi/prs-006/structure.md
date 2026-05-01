@@ -55,7 +55,7 @@
 
 ## Phase 4: Plaintext Diff/Patch and API Docs - developer affordances match clients
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add developer-facing raw `.diff` and `.patch` views plus docs for list/create/review/merge endpoints. The raw outputs are permission-aware, text/plain-compatible, bounded, and link from the Files changed and PR detail surfaces without replacing the Editorial UI.
 

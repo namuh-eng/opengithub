@@ -79,6 +79,7 @@ export function ApiDocsPage() {
             <section
               key={endpoint.id}
               className="card p-4"
+              id={endpoint.id}
               aria-labelledby={`${endpoint.id}-heading`}
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

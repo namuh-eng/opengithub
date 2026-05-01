@@ -12,7 +12,7 @@ describe("ApiDocsPage", () => {
         name: "Build against implemented opengithub APIs",
       }),
     ).toBeVisible();
-    expect(apiEndpointDocs).toHaveLength(9);
+    expect(apiEndpointDocs).toHaveLength(15);
 
     for (const endpoint of apiEndpointDocs) {
       const card = screen
@@ -33,6 +33,23 @@ describe("ApiDocsPage", () => {
     expect(screen.getByText("/api/user")).toBeVisible();
     expect(screen.getByText("/api/repos/{owner}/{repo}/issues")).toBeVisible();
     expect(screen.getByText("/api/repos/{owner}/{repo}/pulls")).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/pulls/{number}/files?view=unified&whitespace=show",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/pulls/{number}/reviews"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/pulls/{number}/merge"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/pulls/{number}.diff"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/pulls/{number}.patch"),
+    ).toBeVisible();
     expect(
       screen.getByText("/api/repos/{owner}/{repo}/actions/runs"),
     ).toBeVisible();

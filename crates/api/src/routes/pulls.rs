@@ -1,6 +1,7 @@
 use axum::{
+    body::Body,
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, Response, StatusCode},
     routing::{delete, get, patch, post},
     Json, Router,
 };
@@ -24,6 +25,7 @@ use crate::{
             create_pull_request_review_draft_comment, delete_pull_request_review_draft_comment,
             get_pull_request, merge_pull_request, pull_request_comment_timeline_item,
             pull_request_detail_view_for_viewer, pull_request_diff_review_for_viewer,
+            pull_request_patch_for_viewer, pull_request_plain_diff_for_viewer,
             pull_request_timeline_view, pull_sort_options, repository_for_actor_by_name,
             repository_pull_request_list_view_for_viewer, save_repository_pull_preferences,
             submit_pull_request_review, update_pull_request_draft_state,
@@ -351,6 +353,60 @@ async fn files(
     .map_err(map_collaboration_error)?;
 
     Ok(Json(json!(view)))
+}
+
+async fn raw_pull_text(
+    state: AppState,
+    headers: HeaderMap,
+    owner: String,
+    repo: String,
+    number: &str,
+    format: &str,
+) -> Result<Response<Body>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let number = number.parse::<i64>().map_err(|_| {
+        map_collaboration_error(crate::domain::issues::CollaborationError::InvalidIssueField {
+            field_key: "number".to_owned(),
+            message: "pull request number must be numeric".to_owned(),
+        })
+    })?;
+    let repository = get_repository_by_owner_name(pool, &owner, &repo)
+        .await
+        .map_err(repository_lookup_error)?
+        .ok_or_else(|| {
+            map_collaboration_error(crate::domain::issues::CollaborationError::RepositoryNotFound)
+        })?;
+    let body = match format {
+        "patch" => {
+            pull_request_patch_for_viewer(
+                pool,
+                repository.id,
+                number,
+                actor.as_ref().map(|user| user.id),
+            )
+            .await
+        }
+        _ => {
+            pull_request_plain_diff_for_viewer(
+                pool,
+                repository.id,
+                number,
+                actor.as_ref().map(|user| user.id),
+            )
+            .await
+        }
+    }
+    .map_err(map_collaboration_error)?;
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!("inline; filename=\"pull-{number}.{format}\""),
+        )
+        .body(Body::from(body))
+        .map_err(|_| database_unavailable())
 }
 
 async fn update_viewed_file(
@@ -1130,8 +1186,20 @@ async fn create(
 async fn read(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path((owner, repo, number)): Path<(String, String, i64)>,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    Path((owner, repo, number)): Path<(String, String, String)>,
+) -> Result<Response<Body>, (StatusCode, Json<ErrorEnvelope>)> {
+    if let Some(number) = number.strip_suffix(".diff") {
+        return raw_pull_text(state, headers, owner, repo, number, "diff").await;
+    }
+    if let Some(number) = number.strip_suffix(".patch") {
+        return raw_pull_text(state, headers, owner, repo, number, "patch").await;
+    }
+    let number = number.parse::<i64>().map_err(|_| {
+        map_collaboration_error(crate::domain::issues::CollaborationError::InvalidIssueField {
+            field_key: "number".to_owned(),
+            message: "pull request number must be numeric".to_owned(),
+        })
+    })?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
     let repository = get_repository_by_owner_name(pool, &owner, &repo)
@@ -1149,7 +1217,11 @@ async fn read(
     .await
     .map_err(map_collaboration_error)?;
 
-    Ok(Json(json!(detail)))
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json!(detail).to_string()))
+        .map_err(|_| database_unavailable())
 }
 
 async fn update_state(

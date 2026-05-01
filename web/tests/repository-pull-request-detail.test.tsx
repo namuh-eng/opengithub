@@ -8,6 +8,7 @@ import type {
   PullRequestTimelineItem,
   RepositoryOverview,
 } from "@/lib/api";
+import { apiEndpointDocs } from "@/lib/api-docs";
 
 function repositoryOverview(): RepositoryOverview {
   return {
@@ -416,6 +417,18 @@ describe("RepositoryPullRequestDetailPage", () => {
       "href",
       "/mona/octo-app/pull/42/files",
     );
+    expect(screen.getByRole("link", { name: ".diff" })).toHaveAttribute(
+      "href",
+      "/api/repos/mona/octo-app/pulls/42.diff",
+    );
+    expect(screen.getByRole("link", { name: ".patch" })).toHaveAttribute(
+      "href",
+      "/api/repos/mona/octo-app/pulls/42.patch",
+    );
+    expect(screen.getByRole("link", { name: "API docs" })).toHaveAttribute(
+      "href",
+      "/docs/api#pulls-raw-diff",
+    );
     expect(screen.getByText("Routes are split by resource.")).toBeVisible();
     expect(screen.getAllByText("ashley").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("mira")).toBeVisible();
@@ -621,6 +634,18 @@ describe("RepositoryPullRequestDetailPage", () => {
     expect(screen.getByRole("link", { name: "Split" })).toHaveAttribute(
       "href",
       "/mona/octo-app/pull/42/files?view=split",
+    );
+    expect(screen.getByRole("link", { name: ".diff" })).toHaveAttribute(
+      "href",
+      "/api/repos/mona/octo-app/pulls/42.diff",
+    );
+    expect(screen.getByRole("link", { name: ".patch" })).toHaveAttribute(
+      "href",
+      "/api/repos/mona/octo-app/pulls/42.patch",
+    );
+    expect(screen.getByRole("link", { name: "API docs" })).toHaveAttribute(
+      "href",
+      "/docs/api#pulls-raw-diff",
     );
     expect(screen.getByRole("textbox", { name: "File filter" })).toBeVisible();
     expect(
@@ -1305,5 +1330,29 @@ describe("RepositoryPullRequestDetailPage", () => {
     expect(
       screen.getByRole("button", { name: "Open merge confirmation" }),
     ).toBeDisabled();
+  });
+
+  it("documents pull request list, review, merge, diff, and patch endpoints", () => {
+    const pullDocIds = apiEndpointDocs.map((endpoint) => endpoint.id);
+    expect(pullDocIds).toEqual(
+      expect.arrayContaining([
+        "pulls-list",
+        "pulls-create",
+        "pulls-files",
+        "pulls-submit-review",
+        "pulls-merge",
+        "pulls-raw-diff",
+        "pulls-raw-patch",
+      ]),
+    );
+    expect(
+      apiEndpointDocs.find((endpoint) => endpoint.id === "pulls-raw-diff")
+        ?.path,
+    ).toBe("/api/repos/{owner}/{repo}/pulls/{number}.diff");
+    expect(
+      apiEndpointDocs.find((endpoint) => endpoint.id === "pulls-merge")?.notes,
+    ).toContain(
+      "Blocked merges return HTTP 409 with code merge_blocked and details.blockers.",
+    );
   });
 });

@@ -2153,5 +2153,24 @@
       "Delete-branch UI is inferred from same-repository head/base refs because the Rust detail DTO does not yet return an explicit canDeleteHeadBranch field.",
       "Real Google OAuth was not used; browser/E2E verification used deterministic Rust-signed Playwright sessions against the local Postgres test database."
     ]
+  },
+  {
+    "feature_id": "prs-006",
+    "tests_written": [
+      "Implemented Phase 4 plaintext diff/patch and API docs developer affordances for prs-006.",
+      "Added permission-aware Rust raw text helpers for GET /api/repos/{owner}/{repo}/pulls/{number}.diff and .patch, reusing the existing diff review contract and bounded to the first 100 files.",
+      "Added Next.js same-origin raw text proxy under /api/repos/{owner}/{repo}/pulls/{number}.diff and .patch so browser links do not intercept the normal PR detail route.",
+      "Added Editorial .diff, .patch, and API docs links to the PR detail and Files changed surfaces.",
+      "Expanded /docs/api with pull request list, create, files, submit-review, merge, raw diff, and raw patch endpoint documentation and stable anchors.",
+      "Extended Rust, Vitest, and Playwright coverage for raw content shape, docs entries, raw links, text/plain proxy responses, docs navigation, and no dead controls.",
+      "Browser smoke screenshot saved at ralph/screenshots/build/prs-006-phase4-raw-links.jpg.",
+      "Verification passed: focused api_pull_request_diff_review_contract, focused repository-pull-request-detail/api-docs Vitest, focused repository-pull-request-detail Playwright, TEST_DATABASE_URL-backed make check, TEST_DATABASE_URL-backed make test with Cargo tests plus 171 frontend tests, full TEST_DATABASE_URL-backed make test-e2e with 66 Playwright tests, and mandatory Editorial banned-value scan with zero matches using rg -n -e."
+    ],
+    "needs_deeper_qa": [
+      "Raw .diff/.patch output is sourced from stored pull_request_file_hunks and pull_request_hunk_lines snapshots; QA should revisit byte-for-byte Git patch fidelity when full Git object diff generation lands.",
+      "Raw output is intentionally bounded to the first 100 files; QA should check large PR messaging and client expectations in Phase 5.",
+      "Private repository raw text authorization is covered by the shared diff review permission path; QA should add browser-level private raw link checks when multi-user private fixtures are expanded.",
+      "Real Google OAuth was not used; browser/E2E verification used deterministic Rust-signed Playwright sessions against the local Postgres test database."
+    ]
   }
 ]

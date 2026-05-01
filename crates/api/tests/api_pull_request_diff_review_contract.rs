@@ -99,6 +99,21 @@ async fn get_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (Status
     (status, value)
 }
 
+async fn get_text(app: axum::Router, uri: &str, cookie: Option<&str>) -> (StatusCode, String) {
+    let mut builder = Request::builder().method(Method::GET).uri(uri);
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let request = builder.body(Body::empty()).expect("request should build");
+    let response = app.oneshot(request).await.expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let text = String::from_utf8(bytes.to_vec()).expect("response should be utf8");
+    (status, text)
+}
+
 async fn patch_json(
     app: axum::Router,
     uri: &str,
@@ -384,6 +399,29 @@ async fn pull_request_diff_review_contract_returns_files_hunks_and_viewer_state(
     assert_eq!(anonymous_body["files"][1]["viewed"], false);
     assert_eq!(anonymous_body["pendingReview"]["commentCount"], 0);
     assert_eq!(anonymous_body["commits"][0]["shortOid"], "abcdef1");
+
+    let raw_diff_uri = format!(
+        "/api/repos/{}/{}/pulls/{}.diff",
+        owner.email, repo_name, pull.pull_request.number
+    );
+    let (raw_diff_status, raw_diff_body) = get_text(app.clone(), &raw_diff_uri, None).await;
+    assert_eq!(raw_diff_status, StatusCode::OK, "raw diff: {raw_diff_body}");
+    assert!(raw_diff_body.contains("diff --opengithub a/main b/feature/diff-review"));
+    assert!(raw_diff_body.contains("diff --git a/src/review.rs b/src/review.rs"));
+    assert!(raw_diff_body.contains("@@ -10,3 +10,4 @@ fn review()"));
+    assert!(raw_diff_body.contains("-    old_review();"));
+    assert!(raw_diff_body.contains("+    new_review();"));
+
+    let raw_patch_uri = format!(
+        "/api/repos/{}/{}/pulls/{}.patch",
+        owner.email, repo_name, pull.pull_request.number
+    );
+    let (raw_patch_status, raw_patch_body) =
+        get_text(app.clone(), &raw_patch_uri, Some(&owner_cookie)).await;
+    assert_eq!(raw_patch_status, StatusCode::OK, "raw patch: {raw_patch_body}");
+    assert!(raw_patch_body.contains("From abcdef1234567890 Mon Sep 17 00:00:00 2001"));
+    assert!(raw_patch_body.contains("Subject: [PATCH] Add diff review screen"));
+    assert!(raw_patch_body.contains("2 files changed,"));
 
     let (owner_status, owner_body) = get_json(app.clone(), &uri, Some(&owner_cookie)).await;
     assert_eq!(owner_status, StatusCode::OK);

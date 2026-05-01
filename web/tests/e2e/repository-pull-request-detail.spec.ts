@@ -134,6 +134,35 @@ test("signed-in user opens the pull request detail conversation shell", async ({
     "href",
     `/${ownerLogin}/${repoName}/pull/${pullNumber}/files?view=split`,
   );
+  await expect(page.getByRole("link", { name: ".diff" })).toHaveAttribute(
+    "href",
+    `/api/repos/${ownerLogin}/${repoName}/pulls/${pullNumber}.diff`,
+  );
+  await expect(page.getByRole("link", { name: ".patch" })).toHaveAttribute(
+    "href",
+    `/api/repos/${ownerLogin}/${repoName}/pulls/${pullNumber}.patch`,
+  );
+  const rawDiff = await page.request.get(
+    `/api/repos/${ownerLogin}/${repoName}/pulls/${pullNumber}.diff`,
+  );
+  expect(rawDiff.status()).toBe(200);
+  expect(rawDiff.headers()["content-type"]).toContain("text/plain");
+  expect(await rawDiff.text()).toContain("diff --opengithub");
+  const rawPatch = await page.request.get(
+    `/api/repos/${ownerLogin}/${repoName}/pulls/${pullNumber}.patch`,
+  );
+  expect(rawPatch.status()).toBe(200);
+  expect(await rawPatch.text()).toContain("Subject: [PATCH]");
+  await page.getByRole("link", { name: "API docs" }).click();
+  await expect(page).toHaveURL(/\/docs\/api#pulls-raw-diff$/);
+  await expect(
+    page.getByRole("heading", { name: "Download raw pull request diff" }),
+  ).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/prs-006-phase4-raw-links.jpg",
+  });
+  await page.goto(`/${ownerLogin}/${repoName}/pull/${pullNumber}/files`);
   const inlineCommentButton = page
     .getByRole("button", { name: /Add comment at diff position/ })
     .first();

@@ -946,6 +946,8 @@ export function PullRequestFilesChangedPage({
   const basePath = `/${repository.owner_login}/${repository.name}`;
   const activePath = `${basePath}/pull/${pullRequest.number}/files`;
   const conversationHref = `${basePath}/pull/${pullRequest.number}`;
+  const rawDiffHref = `/api/repos/${encodeURIComponent(repository.owner_login)}/${encodeURIComponent(repository.name)}/pulls/${pullRequest.number}.diff`;
+  const rawPatchHref = `/api/repos/${encodeURIComponent(repository.owner_login)}/${encodeURIComponent(repository.name)}/pulls/${pullRequest.number}.patch`;
   const [files, setFiles] = useState(diffReview.files);
   const [fileTree, setFileTree] = useState(diffReview.fileTree);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -1041,6 +1043,15 @@ export function PullRequestFilesChangedPage({
                 Review changes
               </Link>
             )}
+            <Link className="btn ghost" href={rawDiffHref}>
+              .diff
+            </Link>
+            <Link className="btn ghost" href={rawPatchHref}>
+              .patch
+            </Link>
+            <Link className="btn ghost" href="/docs/api#pulls-raw-diff">
+              API docs
+            </Link>
           </div>
           <nav aria-label="Pull request sections" className="tabs mt-4">
             <Link

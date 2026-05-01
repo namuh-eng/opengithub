@@ -186,6 +186,8 @@ export function RepositoryPullRequestDetailPage({
   const bodyLabelId = `pull-request-${pullRequest.number}-body`;
   const basePath = `/${repository.owner_login}/${repository.name}`;
   const activePath = `${basePath}/pull/${pullRequest.number}`;
+  const rawDiffHref = `/api/repos/${encodeURIComponent(repository.owner_login)}/${encodeURIComponent(repository.name)}/pulls/${pullRequest.number}.diff`;
+  const rawPatchHref = `/api/repos/${encodeURIComponent(repository.owner_login)}/${encodeURIComponent(repository.name)}/pulls/${pullRequest.number}.patch`;
   const canEditMetadata =
     viewerAuthenticated && currentPullRequest.viewerPermission !== null;
   const canDeleteHeadBranch =
@@ -495,6 +497,15 @@ export function RepositoryPullRequestDetailPage({
             ) : null}
             <Link className="btn" href={pullRequest.filesHref}>
               View changes
+            </Link>
+            <Link className="btn ghost" href={rawDiffHref}>
+              .diff
+            </Link>
+            <Link className="btn ghost" href={rawPatchHref}>
+              .patch
+            </Link>
+            <Link className="btn ghost" href="/docs/api#pulls-raw-diff">
+              API docs
             </Link>
           </div>
         </div>

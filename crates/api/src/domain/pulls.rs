@@ -2094,6 +2094,54 @@ pub async fn pull_request_diff_review_for_viewer(
     })
 }
 
+pub async fn pull_request_plain_diff_for_viewer(
+    pool: &PgPool,
+    repository_id: Uuid,
+    number: i64,
+    actor_user_id: Option<Uuid>,
+) -> Result<String, CollaborationError> {
+    let review = pull_request_diff_review_for_viewer(
+        pool,
+        repository_id,
+        number,
+        actor_user_id,
+        PullRequestDiffReviewQuery {
+            view: "unified".to_owned(),
+            whitespace: "show".to_owned(),
+            commit: None,
+            filter: None,
+            page: 1,
+            page_size: 100,
+        },
+    )
+    .await?;
+    Ok(render_pull_request_diff(&review))
+}
+
+pub async fn pull_request_patch_for_viewer(
+    pool: &PgPool,
+    repository_id: Uuid,
+    number: i64,
+    actor_user_id: Option<Uuid>,
+) -> Result<String, CollaborationError> {
+    let review = pull_request_diff_review_for_viewer(
+        pool,
+        repository_id,
+        number,
+        actor_user_id,
+        PullRequestDiffReviewQuery {
+            view: "unified".to_owned(),
+            whitespace: "show".to_owned(),
+            commit: None,
+            filter: None,
+            page: 1,
+            page_size: 100,
+        },
+    )
+    .await?;
+    Ok(render_pull_request_patch(&review))
+}
+
 pub async fn update_pull_request_viewed_file(
     pool: &PgPool,
     pull_request_id: Uuid,
@@ -3670,6 +3718,117 @@ fn pull_request_file_version_key(blob_oid: Option<&str>, additions: i64, deletio
         additions.max(0),
         deletions.max(0)
     )
+}
+
+fn render_pull_request_diff(review: &PullRequestDiffReviewView) -> String {
+    let pr = &review.pull_request;
+    let mut out = String::new();
+    out.push_str(&format!(
+        "diff --opengithub a/{} b/{}\n",
+        pr.base_ref, pr.head_ref
+    ));
+    out.push_str(&format!(
+        "# Pull request #{}: {}\n",
+        pr.number,
+        pr.title.replace('\n', " ")
+    ));
+    out.push_str(&format!(
+        "# {} additions, {} deletions across {} files\n",
+        pr.stats.additions, pr.stats.deletions, review.total_files
+    ));
+    if review.has_more {
+        out.push_str("# Output truncated to the first 100 files.\n");
+    }
+    out.push('\n');
+
+    for file in &review.files {
+        out.push_str(&format!("diff --git a/{0} b/{0}\n", file.path));
+        out.push_str(&format!("--- {}\n", old_diff_path(file)));
+        out.push_str(&format!("+++ {}\n", new_diff_path(file)));
+        for hunk in &file.hunks {
+            out.push_str(&hunk.header);
+            out.push('\n');
+            for line in &hunk.lines {
+                out.push(diff_line_prefix(&line.kind));
+                out.push_str(&line.content);
+                out.push('\n');
+            }
+        }
+        out.push('\n');
+    }
+
+    out
+}
+
+fn render_pull_request_patch(review: &PullRequestDiffReviewView) -> String {
+    let pr = &review.pull_request;
+    let mut out = String::new();
+    for commit in &review.commits {
+        out.push_str(&format!("From {} Mon Sep 17 00:00:00 2001\n", commit.oid));
+        out.push_str(&format!(
+            "From: {}\n",
+            commit.author_login.as_deref().unwrap_or("unknown")
+        ));
+        out.push_str(&format!("Date: {}\n", commit.committed_at.to_rfc3339()));
+        out.push_str(&format!(
+            "Subject: [PATCH] {}\n\n",
+            first_commit_line(&commit.message)
+        ));
+        let body = commit.message.lines().skip(1).collect::<Vec<_>>().join("\n");
+        if !body.trim().is_empty() {
+            out.push_str(body.trim());
+            out.push_str("\n\n");
+        }
+    }
+    if review.commits.is_empty() {
+        out.push_str(&format!(
+            "Subject: [PATCH] Pull request #{}: {}\n\n",
+            pr.number,
+            pr.title.replace('\n', " ")
+        ));
+    }
+    out.push_str(&format!(
+        "---\n {} files changed, {} insertions(+), {} deletions(-)\n\n",
+        review.total_files, pr.stats.additions, pr.stats.deletions
+    ));
+    out.push_str(&render_pull_request_diff(review));
+    out.push_str("-- \nopengithub\n");
+    out
+}
+
+fn first_commit_line(message: &str) -> String {
+    message
+        .lines()
+        .next()
+        .unwrap_or("Pull request update")
+        .trim()
+        .chars()
+        .take(160)
+        .collect()
+}
+
+fn old_diff_path(file: &PullRequestDiffFile) -> String {
+    if file.status == "added" {
+        "/dev/null".to_owned()
+    } else {
+        format!("a/{}", file.path)
+    }
+}
+
+fn new_diff_path(file: &PullRequestDiffFile) -> String {
+    if file.status == "removed" {
+        "/dev/null".to_owned()
+    } else {
+        format!("b/{}", file.path)
+    }
+}
+
+fn diff_line_prefix(kind: &PullRequestDiffLineKind) -> char {
+    match kind {
+        PullRequestDiffLineKind::Added => '+',
+        PullRequestDiffLineKind::Removed => '-',
+        PullRequestDiffLineKind::Context => ' ',
+    }
 }
 
 fn diff_anchor_for_path(path: &str) -> String {
