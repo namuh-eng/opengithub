@@ -2437,5 +2437,23 @@
       "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth.",
       "Artifact signed URL behavior remains local-dev metadata until real S3 signed URL generation is wired."
     ]
+  },
+  {
+    "feature_id": "actions-003",
+    "tests_written": [
+      "Completed Phase 5 final run detail guardrails and set actions-003 build_pass=true after full verification.",
+      "Fixed unavailable artifacts so expired/non-downloadable artifacts render disabled Download and Copy URL controls instead of a live download link.",
+      "Added Vitest coverage for live run action state, unavailable artifact controls, and expired artifact presentation.",
+      "Added Playwright final guardrails for focusable job/action controls, no dead controls, desktop/mobile horizontal overflow, and screenshots ralph/screenshots/build/actions-003-phase5-final-desktop.jpg and ralph/screenshots/build/actions-003-phase5-final-mobile.jpg.",
+      "Verified focused Rust run-detail contract tests, focused repository-actions-run Vitest, focused repository-actions-run Playwright, make check, make test with Cargo tests plus 191 frontend tests, full make test-e2e with 69 Playwright tests, and the mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Real Actions runner execution is still not part of actions-003; rerun queues job_leases metadata but no worker consumes and executes the queued attempt yet.",
+      "S3/object-storage signed URL expiry, deletion, and retention behavior remains represented by local-dev metadata and DB-backed fixtures.",
+      "Cancel state changes are persisted locally, but propagation to an active runner process and race behavior during in-flight log writes need deeper QA in runner phases.",
+      "Log streaming/polling, very large logs, archive generation, and scroll-position race cases remain for actions-004.",
+      "Browser smoke uses deterministic Rust-signed sessions against local Postgres fixtures, not real Google OAuth.",
+      "Check-suite/check-run synchronization is seeded only enough for run detail presentation; full merge-gate integration needs later QA."
+    ]
   }
 ]

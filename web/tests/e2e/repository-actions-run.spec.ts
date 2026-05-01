@@ -109,6 +109,18 @@ test("signed-in workflow run detail renders jobs, annotations, and artifacts", a
   await expect(
     page.getByRole("link", { exact: true, name: "Download" }),
   ).toHaveAttribute("href", /\/actions\/artifacts\/.*\/download/);
+  await page.getByRole("link", { name: /unit \/ web/ }).focus();
+  await expect(page.getByRole("link", { name: /unit \/ web/ })).toBeFocused();
+  await page.getByRole("button", { name: "Re-run failed" }).focus();
+  await expect(
+    page.getByRole("button", { name: "Re-run failed" }),
+  ).toBeFocused();
+  await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/actions-003-phase5-final-desktop.jpg",
+  });
 
   await page.getByRole("button", { name: "Re-run failed" }).click();
   await expect(page.getByRole("status")).toContainText(
@@ -138,5 +150,17 @@ test("signed-in workflow run detail renders jobs, annotations, and artifacts", a
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/actions-003-phase3-logs-artifacts.jpg",
+  });
+
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: /Validate Editorial CI/ }),
+  ).toBeVisible();
+  await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/actions-003-phase5-final-mobile.jpg",
   });
 });

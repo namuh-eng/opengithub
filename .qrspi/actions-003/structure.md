@@ -74,7 +74,7 @@
 
 ## Phase 5: Final Run Detail Guardrails and QA Handoff - complete actions-003 safely
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Harden the full run detail surface before setting `actions-003.build_pass=true`. Validate permissions, run/action state matrices, job/sidebar navigation, log/artifact behavior, mobile layout, visual compliance, browser evidence, QA hints, and bookkeeping.
 

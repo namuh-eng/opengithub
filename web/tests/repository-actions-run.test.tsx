@@ -551,6 +551,49 @@ describe("RepositoryActionsRunPage", () => {
     }
   });
 
+  it("keeps unavailable artifacts non-downloadable and live runs cancelable", () => {
+    render(
+      <RepositoryActionsRunPage
+        detail={runDetail({
+          actionState: {
+            canRerun: false,
+            canRerunFailed: false,
+            canCancel: true,
+            canDeleteLogs: false,
+            disabledReason: "Run is still in progress.",
+          },
+          artifacts: [
+            {
+              id: "artifact-expired",
+              name: "coverage",
+              digest: "sha256:expired",
+              sizeBytes: 512,
+              expiredAt: "2026-05-01T00:16:00Z",
+              downloadAvailable: false,
+              createdAt: "2026-05-01T00:06:00Z",
+              updatedAt: "2026-05-01T00:06:00Z",
+            },
+          ],
+          run: {
+            ...runDetail().run,
+            conclusion: null,
+            isLive: true,
+            status: "in_progress",
+            statusCategory: "in_progress",
+          },
+        })}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Cancel run" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Re-run all" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^Download$/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Copy URL" })).toBeDisabled();
+    expect(screen.queryByRole("link", { name: "Download" })).toBeNull();
+    expect(screen.getByText("Expired")).toBeVisible();
+  });
+
   it("shows backend validation errors without losing the run workspace", () => {
     render(
       <RepositoryActionsRunPage

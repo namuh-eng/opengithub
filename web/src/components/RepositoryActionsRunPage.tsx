@@ -940,15 +940,21 @@ function ArtifactsTable({
                   </td>
                   <td className="px-5 py-3">
                     <div className="flex flex-wrap gap-2">
-                      <a
-                        className="btn sm"
-                        href={artifactDownloadPath(
-                          `/${detail.repository.ownerLogin}/${detail.repository.name}`,
-                          artifact.id,
-                        )}
-                      >
-                        Download
-                      </a>
+                      {artifact.downloadAvailable ? (
+                        <a
+                          className="btn sm"
+                          href={artifactDownloadPath(
+                            `/${detail.repository.ownerLogin}/${detail.repository.name}`,
+                            artifact.id,
+                          )}
+                        >
+                          Download
+                        </a>
+                      ) : (
+                        <button className="btn sm" disabled type="button">
+                          Download
+                        </button>
+                      )}
                       <button
                         className="btn sm"
                         disabled={!artifact.downloadAvailable}
