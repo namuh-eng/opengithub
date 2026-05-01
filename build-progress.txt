@@ -1554,3 +1554,11 @@
 - Browser smoke screenshots saved at `ralph/screenshots/build/actions-001-phase5-final-desktop.jpg` and `ralph/screenshots/build/actions-001-phase5-final-mobile.jpg`.
 - Verification passed: focused `api_repository_actions_dashboard_contract`, focused `web/tests/repository-actions.test.tsx`, `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`, same-env `make test` with Cargo tests plus 179 frontend tests, full `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false SESSION_SECRET=playwright-session-secret-with-enough-entropy SESSION_COOKIE_NAME=og_session make test-e2e` with 67 Playwright tests, and mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
 - Marked Phase 5 as done in `.qrspi/actions-001/structure.md` and set `actions-001.build_pass` to `true` in `prd.json`; `qa_pass` remains `false` for the QA agent.
+
+2026-05-02 - actions-002 structure planning
+
+- Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `web/AGENTS.md`, the first incomplete `prd.json` entry, `design/project/og-screens-4.jsx`, target docs for manually running workflows, current Actions domain/routes/migrations, API docs, and the completed `actions-001` structure.
+- Determined `actions-002` requires structure planning before implementation because `needs_structure: true` and `.qrspi/actions-002/structure.md` did not exist.
+- Added `.qrspi/actions-002/structure.md` with five independently verifiable vertical phases: workflow detail read contract, Editorial workflow page, manual dispatch contract/dialog, invalid YAML/options/API docs, and final guardrails/QA handoff.
+- Did not change `prd.json`; `build_pass` remains `false` until all implementation phases pass verification.
+- Tests not run because this iteration only created the required planning artifact.
