@@ -2115,5 +2115,24 @@
       "The full E2E suite passed, but this phase did not add a dedicated browser fixture that seeds protected branch policy in the UI.",
       "Real Google OAuth was not used; browser smoke used deterministic Rust-signed Playwright sessions against the local Postgres test database."
     ]
+  },
+  {
+    "feature_id": "prs-006",
+    "tests_written": [
+      "Implemented Phase 2 atomic merge execution for POST /api/repos/{owner}/{repo}/pulls/{number}/merge.",
+      "Added a dedicated Rust merge_pull_request operation that validates current mergeability, enforces enabled merge methods, locks the pull request, synthesizes a commit row, updates the base branch ref with an optimistic check, marks the PR merged, closes linked issues from closing keywords, writes timeline/audit/search/notification side effects, and optionally deletes the same-repository head branch.",
+      "Extended the Rust route and same-origin Next.js merge proxy to accept method, commitTitle, commitBody, and deleteBranch payload fields.",
+      "Changed blocked merge responses to HTTP 409 with code merge_blocked and a details.blockers array.",
+      "Extended the PR detail contract test to cover disabled method rejection, successful squash merge with custom commit message, commit/ref persistence, linked issue closure, timeline/audit side effects, same-repository head branch deletion, and duplicate merge idempotency.",
+      "Added .scratch/prs-006-merge-contract-scenario.sh for the focused Postgres-backed merge contract.",
+      "Verification passed: .scratch/prs-006-merge-contract-scenario.sh, TEST_DATABASE_URL-backed make check, TEST_DATABASE_URL-backed make test with Cargo tests plus 168 frontend tests, full TEST_DATABASE_URL-backed make test-e2e with 65 Playwright tests, and mandatory Editorial banned-value scan with zero matches using rg -n -e."
+    ],
+    "needs_deeper_qa": [
+      "Merge commit synthesis currently persists metadata commit rows and ref targets, not full Git object storage pack mutations; QA should revisit once raw Git object writes are expanded.",
+      "Conflict detection remains represented by existing mergeability blockers and stored diff/check metadata; QA should add real divergent-branch conflict scenarios when Git object diffing matures.",
+      "Required status checks are still evaluated from the aggregate pull_request_checks_summary row, not per-context check-run rows.",
+      "Browser merge confirmation fields and delete-branch checkbox are wired through the proxy now, but the richer Editorial confirmation UI is intentionally deferred to Phase 3.",
+      "Real Google OAuth was not used; browser/E2E verification used deterministic Rust-signed Playwright sessions against the local Postgres test database."
+    ]
   }
 ]

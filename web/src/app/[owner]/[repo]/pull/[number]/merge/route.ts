@@ -22,6 +22,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
     typeof body === "object" && body !== null
       ? requestedMethod(body.method)
       : "squash";
+  const commitTitle =
+    typeof body === "object" &&
+    body !== null &&
+    typeof body.commitTitle === "string"
+      ? body.commitTitle
+      : null;
+  const commitBody =
+    typeof body === "object" &&
+    body !== null &&
+    typeof body.commitBody === "string"
+      ? body.commitBody
+      : null;
+  const deleteBranch =
+    typeof body === "object" && body !== null && body.deleteBranch === true;
 
   try {
     const pullRequest = await mergeRepositoryPullRequestFromCookie(
@@ -29,7 +43,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       decodeURIComponent(owner),
       decodeURIComponent(repo),
       decodeURIComponent(number),
-      method,
+      { method, commitTitle, commitBody, deleteBranch },
     );
     return NextResponse.json(pullRequest);
   } catch (error) {

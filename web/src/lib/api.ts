@@ -2262,7 +2262,12 @@ export async function mergeRepositoryPullRequestFromCookie(
   owner: string,
   repo: string,
   number: number | string,
-  method: MergeMethod,
+  request: {
+    method: MergeMethod;
+    commitTitle?: string | null;
+    commitBody?: string | null;
+    deleteBranch?: boolean;
+  },
 ): Promise<PullRequestDetailView> {
   const response = await fetch(
     `${apiBaseUrl()}${repositoryPullRequestPath(owner, repo, number)}/merge`,
@@ -2272,7 +2277,7 @@ export async function mergeRepositoryPullRequestFromCookie(
         "content-type": "application/json",
         ...(cookie ? { cookie } : {}),
       },
-      body: JSON.stringify({ method }),
+      body: JSON.stringify(request),
       cache: "no-store",
     },
   );

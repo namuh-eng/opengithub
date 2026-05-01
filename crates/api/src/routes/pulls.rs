@@ -10,8 +10,8 @@ use uuid::Uuid;
 
 use crate::{
     api_types::{
-        database_unavailable as shared_database_unavailable, normalize_pagination, ErrorEnvelope,
-        RestJson,
+        database_unavailable as shared_database_unavailable, error_response_with_details,
+        normalize_pagination, ErrorEnvelope, RestJson,
     },
     auth::extractor::AuthenticatedUser,
     domain::{
@@ -22,7 +22,7 @@ use crate::{
             abandon_pull_request_review_draft, add_pull_request_comment,
             compare_pull_request_refs_for_viewer_with_head, create_pull_request,
             create_pull_request_review_draft_comment, delete_pull_request_review_draft_comment,
-            get_pull_request, pull_request_comment_timeline_item,
+            get_pull_request, merge_pull_request, pull_request_comment_timeline_item,
             pull_request_detail_view_for_viewer, pull_request_diff_review_for_viewer,
             pull_request_timeline_view, pull_sort_options, repository_for_actor_by_name,
             repository_pull_request_list_view_for_viewer, save_repository_pull_preferences,
@@ -31,8 +31,9 @@ use crate::{
             update_pull_request_review_requests, update_pull_request_state,
             update_pull_request_subscription, update_pull_request_viewed_file,
             ComparePullRequestRefsInput, CreatePullRequest, CreatePullRequestReviewDraftComment,
-            MergeMethod, PullRequestDiffReviewQuery, PullRequestListQuery, PullRequestState,
-            SubmitPullRequestReview, UpdatePullRequestDraftState, UpdatePullRequestMetadata,
+            MergeMethod, MergePullRequestError, MergePullRequestInput, PullRequestDiffReviewQuery,
+            PullRequestListQuery, PullRequestState, SubmitPullRequestReview,
+            UpdatePullRequestDraftState, UpdatePullRequestMetadata,
             UpdatePullRequestReviewDraftComment, UpdatePullRequestReviewRequests,
             UpdatePullRequestState, UpdatePullRequestSubscription,
         },
@@ -179,7 +180,9 @@ struct UpdatePullRequestStateRequest {
 #[serde(rename_all = "camelCase")]
 struct MergePullRequestRequest {
     method: Option<MergeMethod>,
-    merge_commit_id: Option<Uuid>,
+    commit_title: Option<String>,
+    commit_body: Option<String>,
+    delete_branch: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1203,19 +1206,20 @@ async fn merge(
     let detail = get_pull_request(pool, repository_id, number, actor.0.id)
         .await
         .map_err(map_collaboration_error)?;
-    let _method = request.method.unwrap_or_default();
-    let updated = update_pull_request_state(
+    let method = request.method.unwrap_or_default();
+    let updated = merge_pull_request(
         pool,
         detail.pull_request.id,
-        UpdatePullRequestState {
+        MergePullRequestInput {
             actor_user_id: actor.0.id,
-            state: PullRequestState::Merged,
-            merge_commit_id: request.merge_commit_id,
-            method: Some(_method),
+            method,
+            commit_title: request.commit_title,
+            commit_body: request.commit_body,
+            delete_branch: request.delete_branch.unwrap_or(false),
         },
     )
     .await
-    .map_err(map_collaboration_error)?;
+    .map_err(map_merge_error)?;
     let refreshed = pull_request_detail_view_for_viewer(
         pool,
         updated.repository_id,
@@ -1225,6 +1229,18 @@ async fn merge(
     .await
     .map_err(map_collaboration_error)?;
     Ok(Json(json!(refreshed)))
+}
+
+fn map_merge_error(error: MergePullRequestError) -> (StatusCode, Json<ErrorEnvelope>) {
+    match error {
+        MergePullRequestError::Collaboration(error) => map_collaboration_error(error),
+        MergePullRequestError::Blocked { summary, blockers } => error_response_with_details(
+            StatusCode::CONFLICT,
+            "merge_blocked",
+            summary,
+            json!({ "blockers": blockers }),
+        ),
+    }
 }
 
 async fn update_review_requests(

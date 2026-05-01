@@ -22,7 +22,7 @@
 
 ## Phase 2: Atomic Merge Execution - merge commit, squash, and rebase mutate refs safely
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Upgrade `POST /api/repos/{owner}/{repo}/pulls/{number}/merge` from a state transition into an atomic merge operation. Authorized users can merge with merge commit, squash, or rebase when repository policy permits; the operation validates the latest mergeability, writes commit/ref metadata, marks the PR merged, closes linked issues, records timeline/audit/activity events, and optionally deletes the head branch when requested.
 

@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sqlx::{PgPool, Row};
+use sqlx::{PgPool, Postgres, Row, Transaction};
 use std::collections::{HashMap, HashSet, VecDeque};
 use uuid::Uuid;
 
@@ -349,6 +349,32 @@ pub struct PullRequestMergeBlocker {
     pub code: String,
     pub message: String,
     pub severity: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct MergePullRequestInput {
+    pub actor_user_id: Uuid,
+    pub method: MergeMethod,
+    pub commit_title: Option<String>,
+    pub commit_body: Option<String>,
+    pub delete_branch: bool,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum MergePullRequestError {
+    #[error(transparent)]
+    Collaboration(#[from] CollaborationError),
+    #[error("pull request merge is blocked")]
+    Blocked {
+        summary: String,
+        blockers: Vec<PullRequestMergeBlocker>,
+    },
+}
+
+impl From<sqlx::Error> for MergePullRequestError {
+    fn from(error: sqlx::Error) -> Self {
+        Self::Collaboration(CollaborationError::Sqlx(error))
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -2587,6 +2613,286 @@ pub async fn update_pull_request_state(
     .await?;
     index_pull_request_search_document(pool, &pull_request, input.actor_user_id).await?;
     Ok(pull_request)
+}
+
+pub async fn merge_pull_request(
+    pool: &PgPool,
+    pull_request_id: Uuid,
+    input: MergePullRequestInput,
+) -> Result<PullRequest, MergePullRequestError> {
+    let current = pull_request_by_id(pool, pull_request_id).await?;
+    require_repository_write(pool, current.repository_id, input.actor_user_id).await?;
+    let mergeability = pull_request_mergeability(pool, &current, Some(input.actor_user_id)).await?;
+    if !mergeability
+        .methods
+        .iter()
+        .any(|allowed| allowed == &input.method)
+    {
+        return Err(MergePullRequestError::Blocked {
+            summary: format!(
+                "{} is disabled by this repository's merge settings",
+                input.method.as_str()
+            ),
+            blockers: vec![merge_blocker(
+                "merge_method_disabled",
+                &format!(
+                    "{} is disabled by this repository's merge settings.",
+                    input.method.as_str()
+                ),
+            )],
+        });
+    }
+    if !mergeability.can_merge {
+        return Err(MergePullRequestError::Blocked {
+            summary: mergeability.summary,
+            blockers: mergeability.blockers,
+        });
+    }
+
+    let mut tx = pool.begin().await?;
+    let locked_row = sqlx::query(
+        r#"
+        SELECT id, repository_id, issue_id, number, title, body, state, author_user_id,
+               head_ref, base_ref, head_repository_id, base_repository_id, merge_commit_id,
+               merged_by_user_id, merged_at, closed_at, created_at, updated_at, is_draft
+        FROM pull_requests
+        WHERE id = $1
+        FOR UPDATE
+        "#,
+    )
+    .bind(pull_request_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(CollaborationError::PullRequestNotFound)?;
+    let locked = pull_request_from_row(locked_row)?;
+    if locked.state != PullRequestState::Open {
+        return Err(MergePullRequestError::Blocked {
+            summary: "This pull request is no longer open.".to_owned(),
+            blockers: vec![merge_blocker(
+                if locked.state == PullRequestState::Merged {
+                    "already_merged"
+                } else {
+                    "pull_request_closed"
+                },
+                if locked.state == PullRequestState::Merged {
+                    "This pull request has already been merged."
+                } else {
+                    "Closed pull requests must be reopened before they can merge."
+                },
+            )],
+        });
+    }
+
+    let base_ref_name = format!("refs/heads/{}", locked.base_ref);
+    let head_ref_name = format!("refs/heads/{}", locked.head_ref);
+    let base_ref = sqlx::query(
+        r#"
+        SELECT id, target_commit_id
+        FROM repository_git_refs
+        WHERE repository_id = $1 AND name = $2 AND kind = 'branch'
+        FOR UPDATE
+        "#,
+    )
+    .bind(locked.base_repository_id.unwrap_or(locked.repository_id))
+    .bind(&base_ref_name)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let head_ref = sqlx::query(
+        r#"
+        SELECT id, target_commit_id
+        FROM repository_git_refs
+        WHERE repository_id = $1 AND name = $2 AND kind = 'branch'
+        "#,
+    )
+    .bind(locked.head_repository_id.unwrap_or(locked.repository_id))
+    .bind(&head_ref_name)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let base_ref_id = base_ref.as_ref().map(|row| row.get::<Uuid, _>("id"));
+    let base_commit_id = base_ref
+        .as_ref()
+        .and_then(|row| row.get::<Option<Uuid>, _>("target_commit_id"));
+    let head_commit_id = head_ref
+        .as_ref()
+        .and_then(|row| row.get::<Option<Uuid>, _>("target_commit_id"));
+    let parent_oids = merge_parent_oids(
+        &mut tx,
+        locked.repository_id,
+        base_commit_id,
+        head_commit_id,
+    )
+    .await?;
+    let commit_title = input
+        .commit_title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| default_merge_commit_title(&input.method, &locked));
+    let commit_body = input
+        .commit_body
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    let message = match commit_body {
+        Some(body) => format!("{commit_title}\n\n{body}"),
+        None => commit_title,
+    };
+    let oid = format!("og-{}-{}", input.method.as_str(), Uuid::new_v4().simple());
+    let merge_commit_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO commits (
+            repository_id, oid, author_user_id, committer_user_id, message, parent_oids
+        )
+        VALUES ($1, $2, $3, $3, $4, $5)
+        RETURNING id
+        "#,
+    )
+    .bind(locked.repository_id)
+    .bind(&oid)
+    .bind(input.actor_user_id)
+    .bind(&message)
+    .bind(&parent_oids)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    if let Some(base_ref_id) = base_ref_id {
+        let updated = sqlx::query(
+            r#"
+            UPDATE repository_git_refs
+            SET target_commit_id = $2
+            WHERE id = $1 AND target_commit_id IS NOT DISTINCT FROM $3
+            "#,
+        )
+        .bind(base_ref_id)
+        .bind(merge_commit_id)
+        .bind(base_commit_id)
+        .execute(&mut *tx)
+        .await?;
+        if updated.rows_affected() != 1 {
+            return Err(MergePullRequestError::Blocked {
+                summary: "The base branch changed before the merge could complete.".to_owned(),
+                blockers: vec![merge_blocker(
+                    "stale_base_ref",
+                    "The base branch changed before the merge could complete.",
+                )],
+            });
+        }
+    } else {
+        sqlx::query(
+            r#"
+            INSERT INTO repository_git_refs (repository_id, name, kind, target_commit_id)
+            VALUES ($1, $2, 'branch', $3)
+            "#,
+        )
+        .bind(locked.base_repository_id.unwrap_or(locked.repository_id))
+        .bind(&base_ref_name)
+        .bind(merge_commit_id)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    let merged_row = sqlx::query(
+        r#"
+        UPDATE pull_requests
+        SET state = 'merged',
+            merge_commit_id = $2,
+            merged_by_user_id = $3,
+            merged_at = now(),
+            closed_at = now()
+        WHERE id = $1 AND state = 'open'
+        RETURNING id, repository_id, issue_id, number, title, body, state, author_user_id,
+                  head_ref, base_ref, head_repository_id, base_repository_id, merge_commit_id,
+                  merged_by_user_id, merged_at, closed_at, created_at, updated_at, is_draft
+        "#,
+    )
+    .bind(locked.id)
+    .bind(merge_commit_id)
+    .bind(input.actor_user_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| MergePullRequestError::Blocked {
+        summary: "This pull request is no longer open.".to_owned(),
+        blockers: vec![merge_blocker(
+            "stale_pull_request_state",
+            "This pull request is no longer open.",
+        )],
+    })?;
+    let merged = pull_request_from_row(merged_row)?;
+
+    sqlx::query(
+        r#"
+        UPDATE issues
+        SET state = 'closed',
+            closed_by_user_id = $2,
+            closed_at = now()
+        WHERE id = $1
+        "#,
+    )
+    .bind(merged.issue_id)
+    .bind(input.actor_user_id)
+    .execute(&mut *tx)
+    .await?;
+
+    close_linked_issues_for_merge(&mut tx, &merged, input.actor_user_id).await?;
+
+    if input.delete_branch
+        && locked.head_repository_id.unwrap_or(locked.repository_id) == locked.repository_id
+        && locked.head_ref != locked.base_ref
+    {
+        sqlx::query(
+            "DELETE FROM repository_git_refs WHERE repository_id = $1 AND name = $2 AND kind = 'branch'",
+        )
+        .bind(locked.repository_id)
+        .bind(&head_ref_name)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO timeline_events (
+            repository_id, issue_id, pull_request_id, actor_user_id, event_type, metadata
+        )
+        VALUES ($1, NULL, $2, $3, 'merged', $4)
+        "#,
+    )
+    .bind(merged.repository_id)
+    .bind(merged.id)
+    .bind(input.actor_user_id)
+    .bind(json!({
+        "number": merged.number,
+        "state": "merged",
+        "method": input.method.as_str(),
+        "mergeCommitId": merge_commit_id,
+        "deleteBranch": input.delete_branch
+    }))
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, 'pull_request.merged', 'pull_request', $2, $3)
+        "#,
+    )
+    .bind(input.actor_user_id)
+    .bind(merged.id.to_string())
+    .bind(json!({
+        "repositoryId": merged.repository_id,
+        "number": merged.number,
+        "method": input.method.as_str(),
+        "mergeCommitId": merge_commit_id,
+        "deleteBranch": input.delete_branch,
+    }))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    notify_pull_request_merged(pool, &merged, input.actor_user_id).await?;
+    index_pull_request_search_document(pool, &merged, input.actor_user_id).await?;
+    Ok(merged)
 }
 
 pub async fn update_pull_request_draft_state(
@@ -5579,6 +5885,159 @@ fn merge_blocker(code: &str, message: &str) -> PullRequestMergeBlocker {
         message: message.to_owned(),
         severity: "blocking".to_owned(),
     }
+}
+
+fn default_merge_commit_title(method: &MergeMethod, pull_request: &PullRequest) -> String {
+    match method {
+        MergeMethod::Squash => format!("{} (#{})", pull_request.title, pull_request.number),
+        MergeMethod::MergeCommit => format!(
+            "Merge pull request #{} from {}",
+            pull_request.number, pull_request.head_ref
+        ),
+        MergeMethod::Rebase => format!(
+            "Rebase pull request #{} onto {}",
+            pull_request.number, pull_request.base_ref
+        ),
+    }
+}
+
+async fn merge_parent_oids(
+    tx: &mut Transaction<'_, Postgres>,
+    repository_id: Uuid,
+    base_commit_id: Option<Uuid>,
+    head_commit_id: Option<Uuid>,
+) -> Result<Vec<String>, CollaborationError> {
+    let mut parent_ids = Vec::new();
+    if let Some(base_commit_id) = base_commit_id {
+        parent_ids.push(base_commit_id);
+    }
+    if let Some(head_commit_id) = head_commit_id {
+        parent_ids.push(head_commit_id);
+    }
+    if parent_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let rows = sqlx::query(
+        r#"
+        SELECT oid
+        FROM commits
+        WHERE repository_id = $1 AND id = ANY($2)
+        ORDER BY array_position($2, id)
+        "#,
+    )
+    .bind(repository_id)
+    .bind(&parent_ids)
+    .fetch_all(&mut **tx)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| row.get::<String, _>("oid"))
+        .collect())
+}
+
+async fn close_linked_issues_for_merge(
+    tx: &mut Transaction<'_, Postgres>,
+    pull_request: &PullRequest,
+    actor_user_id: Uuid,
+) -> Result<(), CollaborationError> {
+    for number in closing_issue_numbers(pull_request) {
+        let issue_row = sqlx::query(
+            r#"
+            UPDATE issues
+            SET state = 'closed',
+                closed_by_user_id = $3,
+                closed_at = now()
+            WHERE repository_id = $1
+              AND number = $2
+              AND id <> $4
+              AND state = 'open'
+            RETURNING id
+            "#,
+        )
+        .bind(pull_request.repository_id)
+        .bind(number)
+        .bind(actor_user_id)
+        .bind(pull_request.issue_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+        if let Some(row) = issue_row {
+            let issue_id = row.get::<Uuid, _>("id");
+            sqlx::query(
+                r#"
+                INSERT INTO timeline_events (
+                    repository_id, issue_id, pull_request_id, actor_user_id, event_type, metadata
+                )
+                VALUES ($1, $2, NULL, $3, 'closed', $4)
+                "#,
+            )
+            .bind(pull_request.repository_id)
+            .bind(issue_id)
+            .bind(actor_user_id)
+            .bind(json!({
+                "reason": "pull_request_merged",
+                "pullRequestNumber": pull_request.number,
+            }))
+            .execute(&mut **tx)
+            .await?;
+        }
+    }
+    Ok(())
+}
+
+fn closing_issue_numbers(pull_request: &PullRequest) -> HashSet<i64> {
+    let text = [
+        pull_request.title.as_str(),
+        pull_request.body.as_deref().unwrap_or(""),
+    ]
+    .join("\n");
+    let re = regex::Regex::new(r"(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)")
+        .expect("closing keyword regex should compile");
+    re.captures_iter(&text)
+        .filter_map(|capture| capture.get(1))
+        .filter_map(|number| number.as_str().parse::<i64>().ok())
+        .filter(|number| *number != pull_request.number)
+        .collect()
+}
+
+async fn notify_pull_request_merged(
+    pool: &PgPool,
+    pull_request: &PullRequest,
+    actor_user_id: Uuid,
+) -> Result<(), CollaborationError> {
+    let mut recipients = HashSet::from([pull_request.author_user_id]);
+    let requested_rows = sqlx::query(
+        "SELECT requested_user_id FROM pull_request_review_requests WHERE pull_request_id = $1",
+    )
+    .bind(pull_request.id)
+    .fetch_all(pool)
+    .await?;
+    for row in requested_rows {
+        recipients.insert(row.get("requested_user_id"));
+    }
+    recipients.remove(&actor_user_id);
+
+    for user_id in recipients {
+        create_notification(
+            pool,
+            CreateNotification {
+                user_id,
+                repository_id: Some(pull_request.repository_id),
+                subject_type: "pull_request".to_owned(),
+                subject_id: Some(pull_request.id),
+                title: format!("Pull request #{} was merged", pull_request.number),
+                reason: "pull_request_merged".to_owned(),
+            },
+        )
+        .await
+        .map_err(|error| match error {
+            super::notifications::NotificationError::Sqlx(error) => CollaborationError::Sqlx(error),
+            super::notifications::NotificationError::NotFound => {
+                CollaborationError::PullRequestNotFound
+            }
+        })?;
+    }
+    Ok(())
 }
 
 async fn pull_request_detail_participants(
