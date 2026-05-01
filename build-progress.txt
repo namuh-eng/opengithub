@@ -1496,3 +1496,11 @@
 - Extended `web/tests/e2e/repository-pull-request-detail.spec.ts` to save `ralph/screenshots/build/prs-006-phase5-final-desktop.jpg` and `ralph/screenshots/build/prs-006-phase5-final-mobile.jpg`, verify raw links/docs after merge, check no dead anchors, and assert mobile has no document-level horizontal overflow.
 - Verification passed: focused `api_pull_request_detail_contract` policy test; focused `api_pull_request_diff_review_contract` private raw test; focused `web/tests/repository-pull-request-detail.test.tsx` with 14 tests; focused `web/tests/e2e/repository-pull-request-detail.spec.ts` with 4 Playwright tests; `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 171 frontend tests; full `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false SESSION_SECRET=playwright-session-secret-with-enough-entropy SESSION_COOKIE_NAME=og_session make test-e2e` with 66 Playwright tests; mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
 - Marked Phase 5 as done in `.qrspi/prs-006/structure.md` and set `prs-006.build_pass` to `true` in `prd.json`; `qa_pass` remains `false` for the QA agent.
+
+2026-05-02 - actions-001 structure planning
+
+- Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `web/AGENTS.md`, the first incomplete `prd.json` entry, `design/project/og-screens-4.jsx`, current Actions domain/routes/migration, current placeholder Actions pages, and adjacent QRSPI outlines.
+- Determined `actions-001` requires structure planning before implementation because `needs_structure: true` and `.qrspi/actions-001/structure.md` did not exist.
+- Added `.qrspi/actions-001/structure.md` with five independently verifiable vertical phases: Actions dashboard read contract, Editorial all-workflows UI, URL-backed filters/workflow scoping/recent telemetry, management navigation/API docs, and final guardrails/QA handoff.
+- Did not change `prd.json`; `build_pass` remains `false` until all implementation phases pass verification.
+- Tests not run because this iteration only created the required planning artifact.
