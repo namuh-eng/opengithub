@@ -2172,5 +2172,22 @@
       "Private repository raw text authorization is covered by the shared diff review permission path; QA should add browser-level private raw link checks when multi-user private fixtures are expanded.",
       "Real Google OAuth was not used; browser/E2E verification used deterministic Rust-signed Playwright sessions against the local Postgres test database."
     ]
+  },
+  {
+    "feature_id": "prs-006",
+    "tests_written": [
+      "Completed Phase 5 final merge guardrails and QA handoff for prs-006.",
+      "Extended Rust mergeability coverage for missing, failed, and pending required status-check blockers, required approvals, disabled merge methods, ready state, successful squash merge, issue closure, audit/timeline side effects, branch deletion, and duplicate merge idempotency.",
+      "Extended Rust diff-review coverage so private repository raw .diff and .patch requests deny anonymous readers without leaking raw text while owners can still fetch raw diff text.",
+      "Extended Playwright PR detail smoke to verify merged state, raw .diff/.patch links, API docs link, no dead anchors, mobile no-overflow, and final screenshots ralph/screenshots/build/prs-006-phase5-final-desktop.jpg and ralph/screenshots/build/prs-006-phase5-final-mobile.jpg.",
+      "Focused verification passed for api_pull_request_detail_contract policy test, api_pull_request_diff_review_contract private raw test, repository-pull-request-detail Vitest, and repository-pull-request-detail Playwright."
+    ],
+    "needs_deeper_qa": [
+      "Merge commit synthesis still persists metadata commit rows and ref targets rather than byte-for-byte Git object writes; QA should revisit when full Git object mutation lands.",
+      "Conflict simulation remains limited by stored diff/check metadata and branch refs; add true divergent Git object conflict scenarios after the Git storage layer matures.",
+      "Required status checks are evaluated from aggregate pull_request_checks_summary rows instead of per-context workflow/check-run rows.",
+      "Raw .diff/.patch output is bounded to the first 100 changed files and sourced from stored hunk snapshots, so large-PR behavior and exact Git patch fidelity need deeper QA.",
+      "Real Google OAuth was not used; browser/E2E verification used deterministic Rust-signed Playwright sessions against the local Postgres test database."
+    ]
   }
 ]

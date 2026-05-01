@@ -412,8 +412,37 @@ test("signed-in user confirms a ready pull request merge", async ({ page }) => {
     page.getByRole("button", { name: "Open merge confirmation" }),
   ).toBeDisabled();
   await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
+  await expect(page.getByRole("link", { name: ".diff" })).toHaveAttribute(
+    "href",
+    /\/api\/repos\/.+\/.+\/pulls\/1\.diff$/,
+  );
+  await expect(page.getByRole("link", { name: ".patch" })).toHaveAttribute(
+    "href",
+    /\/api\/repos\/.+\/.+\/pulls\/1\.patch$/,
+  );
+  await expect(page.getByRole("link", { name: "API docs" })).toHaveAttribute(
+    "href",
+    "/docs/api#pulls-raw-diff",
+  );
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/prs-006-phase3-merge-confirmation.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/prs-006-phase5-final-desktop.jpg",
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(mergeReady.pullRequestMergeHref);
+  await expect(page.getByText("Merged", { exact: true })).toBeVisible();
+  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth + 4,
+  );
+  expect(hasHorizontalOverflow).toBe(false);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/prs-006-phase5-final-mobile.jpg",
   });
 });

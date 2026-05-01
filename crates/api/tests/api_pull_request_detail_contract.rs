@@ -824,6 +824,59 @@ async fn pull_request_mergeability_uses_repository_policy_and_branch_rules() {
         .iter()
         .any(|item| item["code"] == "required_approvals"));
 
+    sqlx::query(
+        r#"
+        INSERT INTO pull_request_checks_summary (
+            pull_request_id, status, conclusion, total_count, completed_count, failed_count
+        )
+        VALUES ($1, 'completed', 'failure', 2, 2, 1)
+        ON CONFLICT (pull_request_id) DO UPDATE
+        SET status = EXCLUDED.status,
+            conclusion = EXCLUDED.conclusion,
+            total_count = EXCLUDED.total_count,
+            completed_count = EXCLUDED.completed_count,
+            failed_count = EXCLUDED.failed_count
+        "#,
+    )
+    .bind(pull.pull_request.id)
+    .execute(&pool)
+    .await
+    .expect("failed check summary should upsert");
+
+    let (failed_checks_status, failed_checks_body) =
+        get_json(app.clone(), &uri, Some(&owner_cookie)).await;
+    assert_eq!(failed_checks_status, StatusCode::OK);
+    assert!(failed_checks_body["mergeability"]["blockers"]
+        .as_array()
+        .expect("failed check blockers should be an array")
+        .iter()
+        .any(|item| item["code"] == "required_checks_failed"));
+
+    sqlx::query(
+        r#"
+        UPDATE pull_request_checks_summary
+        SET status = 'running',
+            conclusion = NULL,
+            total_count = 2,
+            completed_count = 1,
+            failed_count = 0
+        WHERE pull_request_id = $1
+        "#,
+    )
+    .bind(pull.pull_request.id)
+    .execute(&pool)
+    .await
+    .expect("pending check summary should update");
+
+    let (pending_checks_status, pending_checks_body) =
+        get_json(app.clone(), &uri, Some(&owner_cookie)).await;
+    assert_eq!(pending_checks_status, StatusCode::OK);
+    assert!(pending_checks_body["mergeability"]["blockers"]
+        .as_array()
+        .expect("pending check blockers should be an array")
+        .iter()
+        .any(|item| item["code"] == "required_checks_pending"));
+
     let (merge_status, merge_body) = post_json(
         app.clone(),
         &format!("{uri}/merge"),
@@ -856,16 +909,19 @@ async fn pull_request_mergeability_uses_repository_policy_and_branch_rules() {
     .expect("second review should create");
     sqlx::query(
         r#"
-        INSERT INTO pull_request_checks_summary (
-            pull_request_id, status, conclusion, total_count, completed_count, failed_count
-        )
-        VALUES ($1, 'completed', 'success', 2, 2, 0)
+        UPDATE pull_request_checks_summary
+        SET status = 'completed',
+            conclusion = 'success',
+            total_count = 2,
+            completed_count = 2,
+            failed_count = 0
+        WHERE pull_request_id = $1
         "#,
     )
     .bind(pull.pull_request.id)
     .execute(&pool)
     .await
-    .expect("check summary should create");
+    .expect("check summary should become successful");
 
     let (ready_status, ready_body) = get_json(app.clone(), &uri, Some(&owner_cookie)).await;
     assert_eq!(ready_status, StatusCode::OK);
@@ -913,6 +969,10 @@ async fn pull_request_mergeability_uses_repository_policy_and_branch_rules() {
     assert_eq!(merge_status, StatusCode::OK);
     assert_eq!(merge_body["state"], "merged");
     assert_eq!(merge_body["mergeability"]["state"], "merged");
+    assert_eq!(
+        merge_body["mergeability"]["blockers"][0]["code"],
+        "already_merged"
+    );
     let merge_commit_id = sqlx::query_scalar::<_, Option<Uuid>>(
         "SELECT merge_commit_id FROM pull_requests WHERE id = $1",
     )

@@ -418,7 +418,11 @@ async fn pull_request_diff_review_contract_returns_files_hunks_and_viewer_state(
     );
     let (raw_patch_status, raw_patch_body) =
         get_text(app.clone(), &raw_patch_uri, Some(&owner_cookie)).await;
-    assert_eq!(raw_patch_status, StatusCode::OK, "raw patch: {raw_patch_body}");
+    assert_eq!(
+        raw_patch_status,
+        StatusCode::OK,
+        "raw patch: {raw_patch_body}"
+    );
     assert!(raw_patch_body.contains("From abcdef1234567890 Mon Sep 17 00:00:00 2001"));
     assert!(raw_patch_body.contains("Subject: [PATCH] Add diff review screen"));
     assert!(raw_patch_body.contains("2 files changed,"));
@@ -803,7 +807,36 @@ async fn pull_request_diff_review_contract_denies_private_anonymous_reads() {
     assert_eq!(anonymous_status, StatusCode::FORBIDDEN);
     assert_eq!(anonymous_body["error"]["code"], "forbidden");
 
+    let raw_diff_uri = format!(
+        "/api/repos/{}/{}/pulls/{}.diff",
+        owner.email, repo_name, pull.pull_request.number
+    );
+    let (anonymous_raw_diff_status, anonymous_raw_diff_body) =
+        get_text(app.clone(), &raw_diff_uri, None).await;
+    assert_eq!(anonymous_raw_diff_status, StatusCode::FORBIDDEN);
+    assert!(
+        anonymous_raw_diff_body.contains("forbidden"),
+        "private raw diff should not leak text: {anonymous_raw_diff_body}"
+    );
+
+    let raw_patch_uri = format!(
+        "/api/repos/{}/{}/pulls/{}.patch",
+        owner.email, repo_name, pull.pull_request.number
+    );
+    let (anonymous_raw_patch_status, anonymous_raw_patch_body) =
+        get_text(app.clone(), &raw_patch_uri, None).await;
+    assert_eq!(anonymous_raw_patch_status, StatusCode::FORBIDDEN);
+    assert!(
+        anonymous_raw_patch_body.contains("forbidden"),
+        "private raw patch should not leak text: {anonymous_raw_patch_body}"
+    );
+
     let (owner_status, owner_body) = get_json(app.clone(), &uri, Some(&owner_cookie)).await;
     assert_eq!(owner_status, StatusCode::OK);
     assert_eq!(owner_body["pullRequest"]["viewerPermission"], "owner");
+
+    let (owner_raw_diff_status, owner_raw_diff_body) =
+        get_text(app.clone(), &raw_diff_uri, Some(&owner_cookie)).await;
+    assert_eq!(owner_raw_diff_status, StatusCode::OK);
+    assert!(owner_raw_diff_body.contains("diff --opengithub"));
 }

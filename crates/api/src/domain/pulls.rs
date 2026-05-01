@@ -3774,7 +3774,12 @@ fn render_pull_request_patch(review: &PullRequestDiffReviewView) -> String {
             "Subject: [PATCH] {}\n\n",
             first_commit_line(&commit.message)
         ));
-        let body = commit.message.lines().skip(1).collect::<Vec<_>>().join("\n");
+        let body = commit
+            .message
+            .lines()
+            .skip(1)
+            .collect::<Vec<_>>()
+            .join("\n");
         if !body.trim().is_empty() {
             out.push_str(body.trim());
             out.push_str("\n\n");

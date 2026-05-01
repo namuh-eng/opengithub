@@ -366,10 +366,12 @@ async fn raw_pull_text(
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
     let number = number.parse::<i64>().map_err(|_| {
-        map_collaboration_error(crate::domain::issues::CollaborationError::InvalidIssueField {
-            field_key: "number".to_owned(),
-            message: "pull request number must be numeric".to_owned(),
-        })
+        map_collaboration_error(
+            crate::domain::issues::CollaborationError::InvalidIssueField {
+                field_key: "number".to_owned(),
+                message: "pull request number must be numeric".to_owned(),
+            },
+        )
     })?;
     let repository = get_repository_by_owner_name(pool, &owner, &repo)
         .await
@@ -1195,10 +1197,12 @@ async fn read(
         return raw_pull_text(state, headers, owner, repo, number, "patch").await;
     }
     let number = number.parse::<i64>().map_err(|_| {
-        map_collaboration_error(crate::domain::issues::CollaborationError::InvalidIssueField {
-            field_key: "number".to_owned(),
-            message: "pull request number must be numeric".to_owned(),
-        })
+        map_collaboration_error(
+            crate::domain::issues::CollaborationError::InvalidIssueField {
+                field_key: "number".to_owned(),
+                message: "pull request number must be numeric".to_owned(),
+            },
+        )
     })?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;

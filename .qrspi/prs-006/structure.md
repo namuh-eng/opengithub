@@ -73,7 +73,7 @@
 
 ## Phase 5: Final Merge Guardrails and QA Handoff - complete prs-006 safely
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Harden the full feature before marking `prs-006` complete. Validate conflict/no-diff/stale-ref/check/review/ruleset behavior, all merge methods, raw diff/patch privacy, mobile layout, no dead controls, visual compliance, and QA hints.
 

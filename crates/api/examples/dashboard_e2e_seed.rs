@@ -319,13 +319,8 @@ async fn main() -> anyhow::Result<()> {
         )
         .await?;
         if seed_pull_request_merge() {
-            pull_request_merge_href = seed_merge_ready_pull_request(
-                &pool,
-                user.id,
-                &username,
-                &suffix,
-            )
-            .await?;
+            pull_request_merge_href =
+                seed_merge_ready_pull_request(&pool, user.id, &username, &suffix).await?;
         }
 
         sqlx::query(
