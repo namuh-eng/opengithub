@@ -1239,6 +1239,14 @@
       "exit_code": 0,
       "category": "timeout",
       "attempt": 86
+    },
+    {
+      "timestamp": "2026-05-01T21:02:27.948015",
+      "phase": "build",
+      "feature": "build_cycle_1",
+      "exit_code": 0,
+      "category": "test_failure",
+      "attempt": 87
     }
   ]
 }
