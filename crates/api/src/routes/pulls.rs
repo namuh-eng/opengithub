@@ -21,13 +21,14 @@ use crate::{
         pulls::{
             add_pull_request_comment, compare_pull_request_refs_for_viewer_with_head,
             create_pull_request, get_pull_request, pull_request_comment_timeline_item,
-            pull_request_detail_view_for_viewer, pull_request_timeline_view, pull_sort_options,
-            repository_for_actor_by_name, repository_pull_request_list_view_for_viewer,
-            save_repository_pull_preferences, update_pull_request_draft_state,
-            update_pull_request_metadata, update_pull_request_review_requests,
-            update_pull_request_state, update_pull_request_subscription,
-            ComparePullRequestRefsInput, CreatePullRequest, MergeMethod, PullRequestListQuery,
-            PullRequestState, UpdatePullRequestDraftState, UpdatePullRequestMetadata,
+            pull_request_detail_view_for_viewer, pull_request_diff_review_for_viewer,
+            pull_request_timeline_view, pull_sort_options, repository_for_actor_by_name,
+            repository_pull_request_list_view_for_viewer, save_repository_pull_preferences,
+            update_pull_request_draft_state, update_pull_request_metadata,
+            update_pull_request_review_requests, update_pull_request_state,
+            update_pull_request_subscription, ComparePullRequestRefsInput, CreatePullRequest,
+            MergeMethod, PullRequestDiffReviewQuery, PullRequestListQuery, PullRequestState,
+            UpdatePullRequestDraftState, UpdatePullRequestMetadata,
             UpdatePullRequestReviewRequests, UpdatePullRequestState, UpdatePullRequestSubscription,
         },
         repositories::{get_repository_by_owner_name, RepositoryError},
@@ -56,6 +57,7 @@ pub fn router() -> Router<AppState> {
             "/api/repos/:owner/:repo/pulls/:number/timeline",
             get(timeline),
         )
+        .route("/api/repos/:owner/:repo/pulls/:number/files", get(files))
         .route(
             "/api/repos/:owner/:repo/pulls/:number/review-requests",
             patch(update_review_requests),
@@ -107,6 +109,18 @@ struct CompareQuery {
     head_owner: Option<String>,
     #[serde(alias = "head_repo", alias = "headRepo")]
     head_repo: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FilesQuery {
+    view: Option<String>,
+    whitespace: Option<String>,
+    commit: Option<String>,
+    filter: Option<String>,
+    page: Option<i64>,
+    #[serde(alias = "page_size")]
+    page_size: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -237,6 +251,40 @@ async fn compare(
             head_repository_id,
             commit_limit: query.commits.unwrap_or(100),
             file_limit: query.files.unwrap_or(300),
+        },
+    )
+    .await
+    .map_err(map_collaboration_error)?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn files(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, number)): Path<(String, String, i64)>,
+    Query(query): Query<FilesQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let repository = get_repository_by_owner_name(pool, &owner, &repo)
+        .await
+        .map_err(repository_lookup_error)?
+        .ok_or_else(|| {
+            map_collaboration_error(crate::domain::issues::CollaborationError::RepositoryNotFound)
+        })?;
+    let view = pull_request_diff_review_for_viewer(
+        pool,
+        repository.id,
+        number,
+        actor.as_ref().map(|user| user.id),
+        PullRequestDiffReviewQuery {
+            view: query.view.unwrap_or_else(|| "unified".to_owned()),
+            whitespace: query.whitespace.unwrap_or_else(|| "show".to_owned()),
+            commit: query.commit,
+            filter: query.filter,
+            page: query.page.unwrap_or(1),
+            page_size: query.page_size.unwrap_or(50),
         },
     )
     .await

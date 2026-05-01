@@ -6,7 +6,7 @@
 
 ## Phase 1: Diff Review Read Contract - files, hunks, viewer state, and settings
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the current summary-only Files changed backing data with a permission-aware PR diff review contract. The Rust API returns PR header context, tabs/counts, file tree items, per-file diff hunks, old/new line positions, syntax metadata, viewed state for the signed-in viewer, pending review summary, published line comments, available commits, and current diff settings. Public repositories remain anonymously readable, but private repositories require read access and viewer-specific state is only returned for signed sessions.
 

@@ -945,6 +945,97 @@ export type PullRequestCompareView = {
   createOptions: PullRequestCreateOptions;
 };
 
+export type PullRequestDiffReviewSettings = {
+  view: "unified" | "split" | string;
+  whitespace: "show" | "hide" | string;
+  commit: string | null;
+  filter: string | null;
+  page: number;
+  pageSize: number;
+};
+
+export type PullRequestDiffFileTreeItem = {
+  id: string;
+  path: string;
+  status: "added" | "modified" | "removed" | "renamed" | string;
+  additions: number;
+  deletions: number;
+  viewed: boolean;
+  versionKey: string;
+  href: string;
+};
+
+export type PullRequestDiffLine = {
+  kind: "context" | "added" | "removed";
+  oldLine: number | null;
+  newLine: number | null;
+  content: string;
+  position: number;
+  commentCount: number;
+};
+
+export type PullRequestDiffHunk = {
+  id: string;
+  header: string;
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  lines: PullRequestDiffLine[];
+};
+
+export type PullRequestDiffReviewComment = {
+  id: string;
+  author: IssueListUser;
+  body: string;
+  bodyHtml: string;
+  path: string;
+  side: "left" | "right" | string;
+  oldLine: number | null;
+  newLine: number | null;
+  position: number | null;
+  state: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PullRequestDiffFile = {
+  id: string;
+  path: string;
+  status: "added" | "modified" | "removed" | "renamed" | string;
+  additions: number;
+  deletions: number;
+  byteSize: number;
+  blobOid: string | null;
+  language: string | null;
+  viewed: boolean;
+  viewedAt: string | null;
+  versionKey: string;
+  href: string;
+  hunks: PullRequestDiffHunk[];
+  comments: PullRequestDiffReviewComment[];
+};
+
+export type PullRequestDiffPendingReview = {
+  draftId: string | null;
+  commentCount: number;
+  summaryBody: string | null;
+  reviewState: "commented" | "approved" | "changes_requested" | string;
+};
+
+export type PullRequestDiffReviewView = {
+  pullRequest: PullRequestDetailView;
+  settings: PullRequestDiffReviewSettings;
+  totalFiles: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+  fileTree: PullRequestDiffFileTreeItem[];
+  files: PullRequestDiffFile[];
+  commits: PullRequestCompareCommit[];
+  pendingReview: PullRequestDiffPendingReview;
+};
+
 export type PullRequestDetailView = {
   id: string;
   issueId: string;
@@ -1160,6 +1251,15 @@ export type RepositoryPullRequestListQuery = {
   checks?: string;
   sort?: string;
   order?: "asc" | "desc";
+  page?: number;
+  pageSize?: number;
+};
+
+export type RepositoryPullRequestDiffQuery = {
+  view?: "unified" | "split" | string;
+  whitespace?: "show" | "hide" | string;
+  commit?: string;
+  filter?: string;
   page?: number;
   pageSize?: number;
 };
@@ -1795,6 +1895,82 @@ export async function getRepositoryPullRequestTimelineFromCookie(
   }
 
   return body as PullRequestTimelineItem[];
+}
+
+export function repositoryPullRequestFilesPath(
+  owner: string,
+  repo: string,
+  number: number | string,
+  query: RepositoryPullRequestDiffQuery = {},
+): string {
+  const params = new URLSearchParams();
+  if (query.view) {
+    params.set("view", query.view);
+  }
+  if (query.whitespace) {
+    params.set("whitespace", query.whitespace);
+  }
+  if (query.commit) {
+    params.set("commit", query.commit);
+  }
+  if (query.filter) {
+    params.set("filter", query.filter);
+  }
+  if (query.page) {
+    params.set("page", String(query.page));
+  }
+  if (query.pageSize) {
+    params.set("pageSize", String(query.pageSize));
+  }
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return `${repositoryPullRequestPath(owner, repo, number)}/files${suffix}`;
+}
+
+export async function getRepositoryPullRequestFilesFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  number: number | string,
+  query: RepositoryPullRequestDiffQuery = {},
+): Promise<PullRequestDiffReviewView | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}${repositoryPullRequestFilesPath(
+        owner,
+        repo,
+        number,
+        query,
+      )}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Pull request files are temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "pull_request_files_failed",
+          message: "Pull request files could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as PullRequestDiffReviewView;
 }
 
 export function repositoryPullRequestComparePath(

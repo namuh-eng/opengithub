@@ -2000,5 +2000,22 @@
       "Branch protection, rulesets, conflicts, and stacked PR blockers remain represented by explicit current-model blockers/placeholders until richer rule tables ship.",
       "Real Google OAuth was not used; browser smoke used deterministic Rust-signed Playwright sessions against the local Postgres test database."
     ]
+  },
+  {
+    "feature_id": "prs-005",
+    "tests_written": [
+      "Implemented Phase 1 diff review read contract for /api/repos/{owner}/{repo}/pulls/{number}/files.",
+      "Added Postgres tables for pull request file hunks, hunk lines, viewed-file state, review comments, and review drafts while preserving existing pull_request_files and pull_request_reviews contracts.",
+      "Rust API now returns the PR header context, diff settings, file tree, paginated files, hunk lines with old/new positions, published line comments, viewed state with version-key reset semantics, commits, and signed viewer pending-review summary.",
+      "Added typed Next.js API/server-session helpers for the diff review contract; no UI was changed in this backend-only phase.",
+      "Added api_pull_request_diff_review_contract covering public anonymous reads, private anonymous denial, split/whitespace settings, file filtering, hunk line data, published-vs-pending comments, viewed reset semantics, pending review summary, and validation envelopes.",
+      "Verification passed: focused Rust api_pull_request_diff_review_contract, .scratch/prs-005-diff-review-contract-scenario.sh, TEST_DATABASE_URL-backed make check, TEST_DATABASE_URL-backed make test with Cargo tests plus 163 frontend tests, and the mandatory Editorial banned-value scan with zero matches using the local rg -n -e form."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke was not run because Phase 1 is backend/API-only and the structure outline marks browser smoke optional for this phase.",
+      "The Files changed UI still uses the previous summary page until Phase 2 consumes the new diff review contract.",
+      "Viewed toggling, pending draft mutations, submit-review publishing, and abandon-review flows are intentionally deferred to Phases 2-4.",
+      "Diff hunk lines are served from stored snapshot rows; QA should revisit fidelity against real Git object storage once later phases wire full diff generation."
+    ]
   }
 ]

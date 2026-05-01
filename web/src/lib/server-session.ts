@@ -17,12 +17,14 @@ import {
   getRepositoryIssueTemplatesFromCookie,
   getRepositoryIssueTimelineFromCookie,
   getRepositoryPathFromCookie,
+  getRepositoryPullRequestFilesFromCookie,
   getRepositoryPullRequestFromCookie,
   getRepositoryPullRequestsFromCookie,
   getRepositoryPullRequestTimelineFromCookie,
   getRepositoryRefsFromCookie,
   getSessionFromHeaders,
   type RepositoryIssueListQuery,
+  type RepositoryPullRequestDiffQuery,
   type RepositoryPullRequestListQuery,
   searchGlobalFromCookie,
 } from "@/lib/api";
@@ -221,6 +223,22 @@ export async function getRepositoryPullRequestTimeline(
     owner,
     repo,
     number,
+  );
+}
+
+export async function getRepositoryPullRequestFiles(
+  owner: string,
+  repo: string,
+  number: number | string,
+  query: RepositoryPullRequestDiffQuery = {},
+) {
+  const requestHeaders = await headers();
+  return getRepositoryPullRequestFilesFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    number,
+    query,
   );
 }
 

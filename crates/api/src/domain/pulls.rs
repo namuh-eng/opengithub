@@ -546,6 +546,144 @@ pub struct PullRequestCompareRepositoryOption {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestDiffReviewSettings {
+    pub view: String,
+    pub whitespace: String,
+    pub commit: Option<String>,
+    pub filter: Option<String>,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PullRequestDiffReviewQuery {
+    pub view: String,
+    pub whitespace: String,
+    pub commit: Option<String>,
+    pub filter: Option<String>,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+impl Default for PullRequestDiffReviewQuery {
+    fn default() -> Self {
+        Self {
+            view: "unified".to_owned(),
+            whitespace: "show".to_owned(),
+            commit: None,
+            filter: None,
+            page: 1,
+            page_size: 50,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestDiffFileTreeItem {
+    pub id: Uuid,
+    pub path: String,
+    pub status: String,
+    pub additions: i64,
+    pub deletions: i64,
+    pub viewed: bool,
+    pub version_key: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PullRequestDiffLineKind {
+    Context,
+    Added,
+    Removed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestDiffLine {
+    pub kind: PullRequestDiffLineKind,
+    pub old_line: Option<i64>,
+    pub new_line: Option<i64>,
+    pub content: String,
+    pub position: i64,
+    pub comment_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestDiffHunk {
+    pub id: Uuid,
+    pub header: String,
+    pub old_start: i64,
+    pub old_lines: i64,
+    pub new_start: i64,
+    pub new_lines: i64,
+    pub lines: Vec<PullRequestDiffLine>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestDiffReviewComment {
+    pub id: Uuid,
+    pub author: IssueListUser,
+    pub body: String,
+    pub body_html: String,
+    pub path: String,
+    pub side: String,
+    pub old_line: Option<i64>,
+    pub new_line: Option<i64>,
+    pub position: Option<i64>,
+    pub state: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestDiffFile {
+    pub id: Uuid,
+    pub path: String,
+    pub status: String,
+    pub additions: i64,
+    pub deletions: i64,
+    pub byte_size: i64,
+    pub blob_oid: Option<String>,
+    pub language: Option<String>,
+    pub viewed: bool,
+    pub viewed_at: Option<DateTime<Utc>>,
+    pub version_key: String,
+    pub href: String,
+    pub hunks: Vec<PullRequestDiffHunk>,
+    pub comments: Vec<PullRequestDiffReviewComment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestDiffPendingReview {
+    pub draft_id: Option<Uuid>,
+    pub comment_count: i64,
+    pub summary_body: Option<String>,
+    pub review_state: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestDiffReviewView {
+    pub pull_request: PullRequestDetailView,
+    pub settings: PullRequestDiffReviewSettings,
+    pub total_files: i64,
+    pub page: i64,
+    pub page_size: i64,
+    pub has_more: bool,
+    pub file_tree: Vec<PullRequestDiffFileTreeItem>,
+    pub files: Vec<PullRequestDiffFile>,
+    pub commits: Vec<CompareCommit>,
+    pub pending_review: PullRequestDiffPendingReview,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PullRequestListQuery {
     pub query: Option<String>,
     pub state: PullRequestState,
@@ -1582,6 +1720,281 @@ pub async fn pull_request_detail_view_for_viewer(
     })
 }
 
+pub async fn pull_request_diff_review_for_viewer(
+    pool: &PgPool,
+    repository_id: Uuid,
+    number: i64,
+    actor_user_id: Option<Uuid>,
+    query: PullRequestDiffReviewQuery,
+) -> Result<PullRequestDiffReviewView, CollaborationError> {
+    let view = normalize_diff_view(&query.view)?;
+    let whitespace = normalize_diff_whitespace(&query.whitespace)?;
+    let page = query.page.max(1);
+    let page_size = query.page_size.clamp(1, 100);
+    let filter = query
+        .filter
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.chars().take(160).collect::<String>());
+    let commit = query
+        .commit
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.chars().take(120).collect::<String>());
+
+    let pull_request =
+        pull_request_detail_view_for_viewer(pool, repository_id, number, actor_user_id).await?;
+    let file_filter = filter
+        .as_deref()
+        .map(|value| format!("%{}%", value.to_lowercase()));
+    let offset = (page - 1) * page_size;
+    let total_files = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT count(*)
+        FROM pull_request_files
+        WHERE pull_request_id = $1
+          AND ($2::text IS NULL OR lower(path) LIKE $2)
+        "#,
+    )
+    .bind(pull_request.id)
+    .bind(file_filter.as_deref())
+    .fetch_one(pool)
+    .await?;
+    let file_rows = sqlx::query(
+        r#"
+        SELECT files.id, files.path, files.status, files.additions, files.deletions,
+               files.byte_size, files.blob_oid,
+               viewed.viewed, viewed.viewed_at, viewed.version_key AS viewed_version_key
+        FROM pull_request_files files
+        LEFT JOIN pull_request_viewed_files viewed
+          ON viewed.pull_request_file_id = files.id
+         AND viewed.user_id = $5
+        WHERE files.pull_request_id = $1
+          AND ($2::text IS NULL OR lower(files.path) LIKE $2)
+        ORDER BY lower(files.path)
+        LIMIT $3 OFFSET $4
+        "#,
+    )
+    .bind(pull_request.id)
+    .bind(file_filter.as_deref())
+    .bind(page_size)
+    .bind(offset)
+    .bind(actor_user_id)
+    .fetch_all(pool)
+    .await?;
+    let file_ids = file_rows
+        .iter()
+        .map(|row| row.get::<Uuid, _>("id"))
+        .collect::<Vec<_>>();
+    let hunk_rows = if file_ids.is_empty() {
+        Vec::new()
+    } else {
+        sqlx::query(
+            r#"
+            SELECT id, pull_request_file_id, old_start, old_lines, new_start, new_lines, header
+            FROM pull_request_file_hunks
+            WHERE pull_request_file_id = ANY($1)
+            ORDER BY pull_request_file_id, display_order, old_start, new_start
+            "#,
+        )
+        .bind(&file_ids)
+        .fetch_all(pool)
+        .await?
+    };
+    let hunk_ids = hunk_rows
+        .iter()
+        .map(|row| row.get::<Uuid, _>("id"))
+        .collect::<Vec<_>>();
+    let line_rows = if hunk_ids.is_empty() {
+        Vec::new()
+    } else {
+        sqlx::query(
+            r#"
+            SELECT lines.hunk_id, lines.kind, lines.old_line, lines.new_line, lines.content,
+                   lines.position,
+                   COALESCE((
+                       SELECT count(*)
+                       FROM pull_request_review_comments comments
+                       WHERE comments.pull_request_file_id = hunks.pull_request_file_id
+                         AND comments.state = 'published'
+                         AND (
+                            (lines.new_line IS NOT NULL AND comments.new_line = lines.new_line)
+                            OR (lines.old_line IS NOT NULL AND comments.old_line = lines.old_line)
+                         )
+                   ), 0)::bigint AS comment_count
+            FROM pull_request_hunk_lines lines
+            JOIN pull_request_file_hunks hunks ON hunks.id = lines.hunk_id
+            WHERE lines.hunk_id = ANY($1)
+            ORDER BY lines.hunk_id, lines.position
+            "#,
+        )
+        .bind(&hunk_ids)
+        .fetch_all(pool)
+        .await?
+    };
+    let comment_rows = if file_ids.is_empty() {
+        Vec::new()
+    } else {
+        sqlx::query(
+            r#"
+            SELECT comments.id, comments.pull_request_file_id, comments.author_user_id,
+                   comments.body, comments.body_html, comments.path, comments.side,
+                   comments.old_line, comments.new_line, comments.position, comments.state,
+                   comments.created_at, comments.updated_at,
+                   COALESCE(users.username, users.email) AS login,
+                   users.display_name, users.avatar_url
+            FROM pull_request_review_comments comments
+            JOIN users ON users.id = comments.author_user_id
+            WHERE comments.pull_request_id = $1
+              AND comments.pull_request_file_id = ANY($2)
+              AND comments.state = 'published'
+            ORDER BY comments.path, comments.created_at
+            "#,
+        )
+        .bind(pull_request.id)
+        .bind(&file_ids)
+        .fetch_all(pool)
+        .await?
+    };
+
+    let mut lines_by_hunk: HashMap<Uuid, Vec<PullRequestDiffLine>> = HashMap::new();
+    for row in line_rows {
+        let kind = match row.get::<String, _>("kind").as_str() {
+            "added" => PullRequestDiffLineKind::Added,
+            "removed" => PullRequestDiffLineKind::Removed,
+            _ => PullRequestDiffLineKind::Context,
+        };
+        lines_by_hunk
+            .entry(row.get("hunk_id"))
+            .or_default()
+            .push(PullRequestDiffLine {
+                kind,
+                old_line: row.get("old_line"),
+                new_line: row.get("new_line"),
+                content: row.get("content"),
+                position: row.get("position"),
+                comment_count: row.get("comment_count"),
+            });
+    }
+
+    let mut hunks_by_file: HashMap<Uuid, Vec<PullRequestDiffHunk>> = HashMap::new();
+    for row in hunk_rows {
+        let hunk_id = row.get("id");
+        hunks_by_file
+            .entry(row.get("pull_request_file_id"))
+            .or_default()
+            .push(PullRequestDiffHunk {
+                id: hunk_id,
+                header: row.get("header"),
+                old_start: row.get("old_start"),
+                old_lines: row.get("old_lines"),
+                new_start: row.get("new_start"),
+                new_lines: row.get("new_lines"),
+                lines: lines_by_hunk.remove(&hunk_id).unwrap_or_default(),
+            });
+    }
+
+    let mut comments_by_file: HashMap<Uuid, Vec<PullRequestDiffReviewComment>> = HashMap::new();
+    for row in comment_rows {
+        comments_by_file
+            .entry(row.get("pull_request_file_id"))
+            .or_default()
+            .push(PullRequestDiffReviewComment {
+                id: row.get("id"),
+                author: IssueListUser {
+                    id: row.get("author_user_id"),
+                    login: row.get("login"),
+                    display_name: row.get("display_name"),
+                    avatar_url: row.get("avatar_url"),
+                },
+                body: row.get("body"),
+                body_html: row.get("body_html"),
+                path: row.get("path"),
+                side: row.get("side"),
+                old_line: row.get("old_line"),
+                new_line: row.get("new_line"),
+                position: row.get("position"),
+                state: row.get("state"),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+            });
+    }
+
+    let mut file_tree = Vec::new();
+    let mut files = Vec::new();
+    for row in file_rows {
+        let file_id = row.get("id");
+        let path: String = row.get("path");
+        let additions = row.get("additions");
+        let deletions = row.get("deletions");
+        let blob_oid: Option<String> = row.get("blob_oid");
+        let version_key = pull_request_file_version_key(blob_oid.as_deref(), additions, deletions);
+        let viewed = actor_user_id.is_some()
+            && row
+                .get::<Option<String>, _>("viewed_version_key")
+                .as_deref()
+                .is_some_and(|stored| stored == version_key)
+            && row.get::<Option<bool>, _>("viewed").unwrap_or(false);
+        let href = format!(
+            "{}#diff-{}",
+            pull_request.files_href,
+            diff_anchor_for_path(&path)
+        );
+        let tree_item = PullRequestDiffFileTreeItem {
+            id: file_id,
+            path: path.clone(),
+            status: row.get("status"),
+            additions,
+            deletions,
+            viewed,
+            version_key: version_key.clone(),
+            href: href.clone(),
+        };
+        file_tree.push(tree_item.clone());
+        files.push(PullRequestDiffFile {
+            id: file_id,
+            path: path.clone(),
+            status: tree_item.status,
+            additions,
+            deletions,
+            byte_size: row.get("byte_size"),
+            blob_oid,
+            language: language_for_path(&path),
+            viewed,
+            viewed_at: row.get("viewed_at"),
+            version_key,
+            href,
+            hunks: hunks_by_file.remove(&file_id).unwrap_or_default(),
+            comments: comments_by_file.remove(&file_id).unwrap_or_default(),
+        });
+    }
+
+    let commits = pull_request_diff_commits(pool, &pull_request).await?;
+    let pending_review = pull_request_pending_review(pool, pull_request.id, actor_user_id).await?;
+
+    Ok(PullRequestDiffReviewView {
+        pull_request,
+        settings: PullRequestDiffReviewSettings {
+            view,
+            whitespace,
+            commit,
+            filter,
+            page,
+            page_size,
+        },
+        total_files,
+        page,
+        page_size,
+        has_more: offset + page_size < total_files,
+        file_tree,
+        files,
+        commits,
+        pending_review,
+    })
+}
+
 pub async fn update_pull_request_state(
     pool: &PgPool,
     pull_request_id: Uuid,
@@ -2423,6 +2836,164 @@ async fn repository_viewer_permission(
     } else {
         Err(CollaborationError::RepositoryAccessDenied)
     }
+}
+
+fn normalize_diff_view(value: &str) -> Result<String, CollaborationError> {
+    let value = value.trim().to_lowercase();
+    match value.as_str() {
+        "" | "unified" => Ok("unified".to_owned()),
+        "split" => Ok("split".to_owned()),
+        _ => Err(CollaborationError::InvalidIssueFilter(
+            "diff view must be unified or split".to_owned(),
+        )),
+    }
+}
+
+fn normalize_diff_whitespace(value: &str) -> Result<String, CollaborationError> {
+    let value = value.trim().to_lowercase();
+    match value.as_str() {
+        "" | "show" => Ok("show".to_owned()),
+        "hide" | "ignore" | "ignore-all" => Ok("hide".to_owned()),
+        _ => Err(CollaborationError::InvalidIssueFilter(
+            "whitespace must be show or hide".to_owned(),
+        )),
+    }
+}
+
+fn pull_request_file_version_key(blob_oid: Option<&str>, additions: i64, deletions: i64) -> String {
+    format!(
+        "{}:{}:{}",
+        blob_oid.unwrap_or("no-blob"),
+        additions.max(0),
+        deletions.max(0)
+    )
+}
+
+fn diff_anchor_for_path(path: &str) -> String {
+    path.chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_owned()
+}
+
+fn language_for_path(path: &str) -> Option<String> {
+    let extension = path.rsplit_once('.').map(|(_, ext)| ext.to_lowercase())?;
+    let language = match extension.as_str() {
+        "rs" => "Rust",
+        "ts" | "tsx" => "TypeScript",
+        "js" | "jsx" => "JavaScript",
+        "json" => "JSON",
+        "md" | "mdx" => "Markdown",
+        "css" => "CSS",
+        "html" => "HTML",
+        "sql" => "SQL",
+        "yml" | "yaml" => "YAML",
+        "toml" => "TOML",
+        _ => return None,
+    };
+    Some(language.to_owned())
+}
+
+async fn pull_request_diff_commits(
+    pool: &PgPool,
+    pull_request: &PullRequestDetailView,
+) -> Result<Vec<CompareCommit>, CollaborationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT commits.id, commits.oid, commits.message,
+               COALESCE(users.username, users.email) AS author_login,
+               commits.committed_at
+        FROM pull_request_commits snapshots
+        JOIN commits ON commits.id = snapshots.commit_id
+        LEFT JOIN users ON users.id = commits.author_user_id
+        WHERE snapshots.pull_request_id = $1
+        ORDER BY snapshots.position, commits.committed_at, commits.oid
+        LIMIT 250
+        "#,
+    )
+    .bind(pull_request.id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let oid: String = row.get("oid");
+            CompareCommit {
+                id: row.get("id"),
+                short_oid: oid.chars().take(7).collect(),
+                oid,
+                message: row.get("message"),
+                author_login: row.get("author_login"),
+                committed_at: row.get("committed_at"),
+                href: format!(
+                    "/{}/{}/commit/{}",
+                    pull_request.repository.owner_login,
+                    pull_request.repository.name,
+                    row.get::<String, _>("oid")
+                ),
+            }
+        })
+        .collect())
+}
+
+async fn pull_request_pending_review(
+    pool: &PgPool,
+    pull_request_id: Uuid,
+    actor_user_id: Option<Uuid>,
+) -> Result<PullRequestDiffPendingReview, CollaborationError> {
+    let Some(actor_user_id) = actor_user_id else {
+        return Ok(PullRequestDiffPendingReview {
+            draft_id: None,
+            comment_count: 0,
+            summary_body: None,
+            review_state: "commented".to_owned(),
+        });
+    };
+    let draft = sqlx::query(
+        r#"
+        SELECT id, summary_body, review_state
+        FROM pull_request_review_drafts
+        WHERE pull_request_id = $1 AND author_user_id = $2
+        "#,
+    )
+    .bind(pull_request_id)
+    .bind(actor_user_id)
+    .fetch_optional(pool)
+    .await?;
+    let comment_count = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT count(*)
+        FROM pull_request_review_comments
+        WHERE pull_request_id = $1
+          AND author_user_id = $2
+          AND state = 'pending'
+        "#,
+    )
+    .bind(pull_request_id)
+    .bind(actor_user_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(match draft {
+        Some(row) => PullRequestDiffPendingReview {
+            draft_id: row.get("id"),
+            comment_count,
+            summary_body: row.get("summary_body"),
+            review_state: row.get("review_state"),
+        },
+        None => PullRequestDiffPendingReview {
+            draft_id: None,
+            comment_count,
+            summary_body: None,
+            review_state: "commented".to_owned(),
+        },
+    })
 }
 
 fn pull_request_from_row(row: sqlx::postgres::PgRow) -> Result<PullRequest, CollaborationError> {
