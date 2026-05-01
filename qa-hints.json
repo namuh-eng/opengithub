@@ -2017,5 +2017,25 @@
       "Viewed toggling, pending draft mutations, submit-review publishing, and abandon-review flows are intentionally deferred to Phases 2-4.",
       "Diff hunk lines are served from stored snapshot rows; QA should revisit fidelity against real Git object storage once later phases wire full diff generation."
     ]
+  },
+  {
+    "feature_id": "prs-005",
+    "tests_written": [
+      "Implemented Phase 2 Editorial Files changed page for /{owner}/{repo}/pull/{number}/files using the Phase 1 diff review contract.",
+      "Added PATCH /api/repos/{owner}/{repo}/pulls/{number}/files/viewed with signed-session read authorization, file ownership validation, version-key stale protection, and idempotent viewed state persistence.",
+      "Added same-origin Next.js /files/viewed route and typed API helper for cookie-forwarded viewed toggles.",
+      "Files changed UI now renders sticky PR toolbar, Conversation/Commits/Checks/Files changed tabs, file filter, split/unified and whitespace links, commit selector, file tree, per-file diff hunks, published comments, and viewed toggle feedback using Editorial tokens/primitives.",
+      "Rust contract covers anonymous rejection for viewed writes, successful signed viewed update, reload persistence, and stale version-key validation.",
+      "Vitest covers the diff page controls, file tree/diff row rendering, published comments, viewed controls, and no dead hrefs.",
+      "Playwright focused PR detail/files smoke passed and saved ralph/screenshots/build/prs-005-phase2-files-viewed.jpg.",
+      "Verification passed: focused api_pull_request_diff_review_contract, focused repository-pull-request-detail Vitest, TEST_DATABASE_URL-backed make check, TEST_DATABASE_URL-backed make test with Cargo tests plus 163 frontend tests, focused Playwright PR detail smoke, full TEST_DATABASE_URL-backed make test-e2e with 65 Playwright tests, and the mandatory Editorial banned-value scan with zero matches using rg -n -e."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke verifies the files route and toolbar controls; viewed-toggle persistence is covered by Rust contract and Vitest because browser-created PRs in the existing smoke do not seed expanded diff files.",
+      "Review changes is intentionally disabled with an honest unavailable state until Phase 4 wires submit-review publishing.",
+      "Inline comment buttons are intentionally disabled with an honest unavailable state until Phase 3 wires pending drafts.",
+      "Diff hunks come from stored snapshot rows; QA should revisit fidelity against real Git object storage once full diff generation is wired.",
+      "Real Google OAuth was not used; browser smoke used deterministic Rust-signed Playwright sessions against the local Postgres test database."
+    ]
   }
 ]

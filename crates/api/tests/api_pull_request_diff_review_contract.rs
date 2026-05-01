@@ -99,6 +99,35 @@ async fn get_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (Status
     (status, value)
 }
 
+async fn patch_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method(Method::PATCH)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let request = builder
+        .body(Body::from(body.to_string()))
+        .expect("request should build");
+    let response = app.oneshot(request).await.expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).expect("response should be json")
+    };
+    (status, value)
+}
+
 #[tokio::test]
 async fn pull_request_diff_review_contract_returns_files_hunks_and_viewer_state() {
     let Some(pool) = database_pool().await else {
@@ -318,6 +347,59 @@ async fn pull_request_diff_review_contract_returns_files_hunks_and_viewer_state(
         owner_body["pendingReview"]["summaryBody"],
         "Pending summary"
     );
+
+    let viewed_uri = format!(
+        "/api/repos/{}/{}/pulls/{}/files/viewed",
+        owner.email, repo_name, pull.pull_request.number
+    );
+    let (anonymous_viewed_status, anonymous_viewed_body) = patch_json(
+        app.clone(),
+        &viewed_uri,
+        None,
+        json!({
+            "fileId": second_file_id,
+            "versionKey": "docs-blob:5:0",
+            "viewed": true
+        }),
+    )
+    .await;
+    assert_eq!(anonymous_viewed_status, StatusCode::UNAUTHORIZED);
+    assert_eq!(anonymous_viewed_body["error"]["code"], "not_authenticated");
+
+    let (viewed_status, viewed_body) = patch_json(
+        app.clone(),
+        &viewed_uri,
+        Some(&owner_cookie),
+        json!({
+            "fileId": second_file_id,
+            "versionKey": "docs-blob:5:0",
+            "viewed": true
+        }),
+    )
+    .await;
+    assert_eq!(viewed_status, StatusCode::OK, "viewed body: {viewed_body}");
+    assert_eq!(viewed_body["fileId"], second_file_id.to_string());
+    assert_eq!(viewed_body["path"], "docs/review.md");
+    assert_eq!(viewed_body["viewed"], true);
+
+    let (updated_owner_status, updated_owner_body) =
+        get_json(app.clone(), &uri, Some(&owner_cookie)).await;
+    assert_eq!(updated_owner_status, StatusCode::OK);
+    assert_eq!(updated_owner_body["files"][0]["viewed"], true);
+
+    let (stale_status, stale_body) = patch_json(
+        app.clone(),
+        &viewed_uri,
+        Some(&owner_cookie),
+        json!({
+            "fileId": second_file_id,
+            "versionKey": "stale-version",
+            "viewed": false
+        }),
+    )
+    .await;
+    assert_eq!(stale_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(stale_body["error"]["code"], "validation_failed");
 
     let filter_uri = format!(
         "/api/repos/{}/{}/pulls/{}/files?filter=src&pageSize=1",

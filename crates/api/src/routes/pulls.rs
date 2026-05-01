@@ -26,8 +26,9 @@ use crate::{
             repository_pull_request_list_view_for_viewer, save_repository_pull_preferences,
             update_pull_request_draft_state, update_pull_request_metadata,
             update_pull_request_review_requests, update_pull_request_state,
-            update_pull_request_subscription, ComparePullRequestRefsInput, CreatePullRequest,
-            MergeMethod, PullRequestDiffReviewQuery, PullRequestListQuery, PullRequestState,
+            update_pull_request_subscription, update_pull_request_viewed_file,
+            ComparePullRequestRefsInput, CreatePullRequest, MergeMethod,
+            PullRequestDiffReviewQuery, PullRequestListQuery, PullRequestState,
             UpdatePullRequestDraftState, UpdatePullRequestMetadata,
             UpdatePullRequestReviewRequests, UpdatePullRequestState, UpdatePullRequestSubscription,
         },
@@ -58,6 +59,10 @@ pub fn router() -> Router<AppState> {
             get(timeline),
         )
         .route("/api/repos/:owner/:repo/pulls/:number/files", get(files))
+        .route(
+            "/api/repos/:owner/:repo/pulls/:number/files/viewed",
+            patch(update_viewed_file),
+        )
         .route(
             "/api/repos/:owner/:repo/pulls/:number/review-requests",
             patch(update_review_requests),
@@ -195,6 +200,14 @@ struct UpdatePullSubscriptionRequest {
     subscribed: bool,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdatePullViewedFileRequest {
+    file_id: Uuid,
+    version_key: String,
+    viewed: bool,
+}
+
 async fn list(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -291,6 +304,35 @@ async fn files(
     .map_err(map_collaboration_error)?;
 
     Ok(Json(json!(view)))
+}
+
+async fn update_viewed_file(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, number)): Path<(String, String, i64)>,
+    RestJson(request): RestJson<UpdatePullViewedFileRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id =
+        repository_for_actor_by_name(pool, &owner, &repo, actor.0.id, RepositoryRole::Read)
+            .await
+            .map_err(map_collaboration_error)?;
+    let detail = get_pull_request(pool, repository_id, number, actor.0.id)
+        .await
+        .map_err(map_collaboration_error)?;
+    let viewed = update_pull_request_viewed_file(
+        pool,
+        detail.pull_request.id,
+        actor.0.id,
+        request.file_id,
+        request.version_key,
+        request.viewed,
+    )
+    .await
+    .map_err(map_collaboration_error)?;
+
+    Ok(Json(json!(viewed)))
 }
 
 async fn update_preferences(

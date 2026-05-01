@@ -670,6 +670,16 @@ pub struct PullRequestDiffPendingReview {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct PullRequestViewedFileState {
+    pub file_id: Uuid,
+    pub path: String,
+    pub viewed: bool,
+    pub viewed_at: Option<DateTime<Utc>>,
+    pub version_key: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct PullRequestDiffReviewView {
     pub pull_request: PullRequestDetailView,
     pub settings: PullRequestDiffReviewSettings,
@@ -1992,6 +2002,89 @@ pub async fn pull_request_diff_review_for_viewer(
         files,
         commits,
         pending_review,
+    })
+}
+
+pub async fn update_pull_request_viewed_file(
+    pool: &PgPool,
+    pull_request_id: Uuid,
+    actor_user_id: Uuid,
+    file_id: Uuid,
+    version_key: String,
+    viewed: bool,
+) -> Result<PullRequestViewedFileState, CollaborationError> {
+    let version_key = version_key.trim().to_owned();
+    if version_key.is_empty() {
+        return Err(CollaborationError::InvalidIssueField {
+            field_key: "versionKey".to_owned(),
+            message: "file version key is required".to_owned(),
+        });
+    }
+
+    let row = sqlx::query(
+        r#"
+        SELECT files.id, files.path, files.additions, files.deletions, files.blob_oid,
+               pulls.repository_id
+        FROM pull_request_files files
+        JOIN pull_requests pulls ON pulls.id = files.pull_request_id
+        WHERE files.id = $1
+          AND files.pull_request_id = $2
+        "#,
+    )
+    .bind(file_id)
+    .bind(pull_request_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(CollaborationError::InvalidIssueField {
+        field_key: "fileId".to_owned(),
+        message: "changed file was not found for this pull request".to_owned(),
+    })?;
+
+    let repository_id = row.get("repository_id");
+    require_repository_read(pool, repository_id, actor_user_id).await?;
+
+    let expected_version = pull_request_file_version_key(
+        row.get::<Option<String>, _>("blob_oid").as_deref(),
+        row.get("additions"),
+        row.get("deletions"),
+    );
+    if version_key != expected_version {
+        return Err(CollaborationError::InvalidIssueField {
+            field_key: "versionKey".to_owned(),
+            message: "file changed since this viewed state was loaded".to_owned(),
+        });
+    }
+
+    let updated = sqlx::query(
+        r#"
+        INSERT INTO pull_request_viewed_files (
+            pull_request_file_id,
+            user_id,
+            version_key,
+            viewed,
+            viewed_at
+        )
+        VALUES ($1, $2, $3, $4, now())
+        ON CONFLICT (pull_request_file_id, user_id) DO UPDATE
+        SET version_key = EXCLUDED.version_key,
+            viewed = EXCLUDED.viewed,
+            viewed_at = now()
+        RETURNING viewed, viewed_at, version_key
+        "#,
+    )
+    .bind(file_id)
+    .bind(actor_user_id)
+    .bind(&version_key)
+    .bind(viewed)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(PullRequestViewedFileState {
+        file_id,
+        path: row.get("path"),
+        viewed: updated.get("viewed"),
+        viewed_at: updated.get("viewed_at"),
+        version_key: updated.get("version_key"),
     })
 }
 

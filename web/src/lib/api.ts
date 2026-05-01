@@ -1023,6 +1023,14 @@ export type PullRequestDiffPendingReview = {
   reviewState: "commented" | "approved" | "changes_requested" | string;
 };
 
+export type PullRequestViewedFileState = {
+  fileId: string;
+  path: string;
+  viewed: boolean;
+  viewedAt: string | null;
+  versionKey: string;
+};
+
 export type PullRequestDiffReviewView = {
   pullRequest: PullRequestDetailView;
   settings: PullRequestDiffReviewSettings;
@@ -2305,6 +2313,41 @@ export async function updateRepositoryPullRequestSubscriptionFromCookie(
     );
   }
   return (await response.json()) as PullRequestSubscriptionState;
+}
+
+export async function updateRepositoryPullRequestViewedFileFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  number: number | string,
+  request: {
+    fileId: string;
+    versionKey: string;
+    viewed: boolean;
+  },
+): Promise<PullRequestViewedFileState> {
+  const response = await fetch(
+    `${apiBaseUrl()}${repositoryPullRequestPath(owner, repo, number)}/files/viewed`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  if (!response.ok) {
+    const envelope = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Viewed file state could not be updated",
+      { cause: envelope },
+    );
+  }
+  return (await response.json()) as PullRequestViewedFileState;
 }
 
 export async function saveRepositoryPullPreferences(

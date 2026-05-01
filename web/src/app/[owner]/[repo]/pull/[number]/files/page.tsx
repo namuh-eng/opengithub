@@ -3,14 +3,21 @@ import { PullRequestFilesChangedPage } from "@/components/PullRequestFilesChange
 import { RepositoryUnavailablePage } from "@/components/RepositoryUnavailablePage";
 import type { ApiErrorEnvelope } from "@/lib/api";
 import {
-  getPullRequestCompare,
   getRepository,
-  getRepositoryPullRequest,
+  getRepositoryPullRequestFiles,
   getSessionAndShellContext,
 } from "@/lib/server-session";
 
 type PullRequestFilesPageProps = {
   params: Promise<{ owner: string; repo: string; number: string }>;
+  searchParams: Promise<{
+    view?: string;
+    whitespace?: string;
+    commit?: string;
+    filter?: string;
+    page?: string;
+    pageSize?: string;
+  }>;
 };
 
 function isApiError(value: unknown): value is ApiErrorEnvelope {
@@ -19,36 +26,36 @@ function isApiError(value: unknown): value is ApiErrorEnvelope {
 
 export default async function PullRequestFilesPage({
   params,
+  searchParams,
 }: PullRequestFilesPageProps) {
-  const [{ owner, repo, number }, { session, shellContext }] =
-    await Promise.all([params, getSessionAndShellContext()]);
+  const [{ owner, repo, number }, query, { session, shellContext }] =
+    await Promise.all([params, searchParams, getSessionAndShellContext()]);
   const ownerLogin = decodeURIComponent(owner);
   const repositoryName = decodeURIComponent(repo);
   const pullNumber = Number.parseInt(decodeURIComponent(number), 10);
-  const [repository, pullRequest] = await Promise.all([
+  const [repository, diffReview] = await Promise.all([
     getRepository(ownerLogin, repositoryName),
     Number.isFinite(pullNumber)
-      ? getRepositoryPullRequest(ownerLogin, repositoryName, pullNumber)
+      ? getRepositoryPullRequestFiles(ownerLogin, repositoryName, pullNumber, {
+          view: query.view,
+          whitespace: query.whitespace,
+          commit: query.commit,
+          filter: query.filter,
+          page: query.page ? Number.parseInt(query.page, 10) : undefined,
+          pageSize: query.pageSize
+            ? Number.parseInt(query.pageSize, 10)
+            : undefined,
+        })
       : Promise.resolve(null),
   ]);
-  const compare =
-    repository && pullRequest && !isApiError(pullRequest)
-      ? await getPullRequestCompare(
-          ownerLogin,
-          repositoryName,
-          pullRequest.baseRef,
-          pullRequest.headRef,
-          { commits: 25, files: 100 },
-        )
-      : null;
 
   return (
     <AppShell session={session} shellContext={shellContext}>
-      {repository && pullRequest && !isApiError(pullRequest) ? (
+      {repository && diffReview && !isApiError(diffReview) ? (
         <PullRequestFilesChangedPage
-          compare={compare && !isApiError(compare) ? compare : null}
-          pullRequest={pullRequest}
+          diffReview={diffReview}
           repository={repository}
+          viewerAuthenticated={Boolean(session?.user)}
         />
       ) : (
         <RepositoryUnavailablePage owner={ownerLogin} repo={repositoryName} />

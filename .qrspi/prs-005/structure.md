@@ -24,7 +24,7 @@
 
 ## Phase 2: Editorial Files Changed Page - sticky toolbar, file tree, diff controls, and viewed tracking
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Upgrade `/{owner}/{repo}/pull/{number}/files` from a summary page into the Editorial diff review surface. The page renders the sticky PR toolbar, Conversation/Commits/Checks/Files changed tabs, additions/deletions totals, Review changes button, file filter input, commit selector, diff settings, split/unified and whitespace controls, resizable or responsive file tree, per-file headers, viewed checkboxes, expand controls, and diff rows with line numbers. Every visible control has a live action or an honest unavailable state.
 

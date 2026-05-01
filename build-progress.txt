@@ -1395,3 +1395,13 @@
 - Verification: focused `api_pull_request_diff_review_contract` passed; `.scratch/prs-005-diff-review-contract-scenario.sh` passed; `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check` passed; same-env `make test` passed with Cargo tests and 163 frontend tests; mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
 - Browser smoke and `make test-e2e` were not run because Phase 1 is backend/API-only and the structure outline marks browser smoke optional for this phase.
 - Marked Phase 1 as done in `.qrspi/prs-005/structure.md`; `prd.json` remains `build_pass: false` because Phases 2-5 remain.
+
+2026-05-02 - prs-005 phase 2 Editorial files changed UI and viewed tracking
+
+- Implemented Phase 2 from `.qrspi/prs-005/structure.md`: `/{owner}/{repo}/pull/{number}/files` now consumes the Phase 1 diff review contract and renders the Editorial diff review surface instead of the old compare-summary page.
+- Added `PATCH /api/repos/{owner}/{repo}/pulls/{number}/files/viewed` with signed-session read authorization, file ownership validation, version-key stale protection, and idempotent persistence in `pull_request_viewed_files`.
+- Added the same-origin Next.js viewed toggle route plus typed API helper, and upgraded `PullRequestFilesChangedPage` with sticky PR toolbar, PR tabs, file filter, split/unified and whitespace links, commit selector, file tree, per-file hunk rows, published comments, viewed toggle feedback, and honest unavailable states for later inline-comment/submit-review phases.
+- Extended Rust and Vitest coverage for viewed writes, stale version validation, diff controls, file tree/diff rendering, published comments, accessible controls, and no dead hrefs.
+- Browser smoke: focused Playwright PR detail/files suite passed and saved `ralph/screenshots/build/prs-005-phase2-files-viewed.jpg`.
+- Verification passed: focused `api_pull_request_diff_review_contract`, focused `web/tests/repository-pull-request-detail.test.tsx`, `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`, same-env `make test` with Cargo tests plus 163 frontend tests, focused `web/tests/e2e/repository-pull-request-detail.spec.ts`, full same-env `make test-e2e` with 65 Playwright tests, and mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
+- Marked Phase 2 as done in `.qrspi/prs-005/structure.md`; `prd.json` remains `build_pass: false` because Phases 3-5 remain.

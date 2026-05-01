@@ -124,18 +124,19 @@ test("signed-in user opens the pull request detail conversation shell", async ({
     page.getByRole("heading", { name: /Files changed/ }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Changed files summary" }),
+    page.getByRole("textbox", { name: "File filter" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Open compare" }),
-  ).toHaveAttribute(
+    page.getByRole("button", { name: "Review changes" }),
+  ).toBeDisabled();
+  await expect(page.getByRole("link", { name: "Split" })).toHaveAttribute(
     "href",
-    `/${ownerLogin}/${repoName}/compare/main...feature%2Fdetail-read`,
+    `/${ownerLogin}/${repoName}/pull/${pullNumber}/files?view=split`,
   );
   await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/prs-004-phase5-files-tab.jpg",
+    path: "../ralph/screenshots/build/prs-005-phase2-files-viewed.jpg",
   });
 
   await page.goto(`/${ownerLogin}/${repoName}/pull/${pullNumber}`);
