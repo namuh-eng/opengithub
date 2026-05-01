@@ -1031,6 +1031,21 @@ export type PullRequestViewedFileState = {
   versionKey: string;
 };
 
+export type SubmitPullRequestReviewRequest = {
+  body: string | null;
+  state: "commented" | "approved" | "changes_requested";
+};
+
+export type PullRequestSubmittedReview = {
+  id: string;
+  reviewer: IssueListUser;
+  state: string;
+  body: string | null;
+  submittedAt: string;
+  publishedCommentCount: number;
+  pendingReview: PullRequestDiffPendingReview;
+};
+
 export type CreatePullRequestReviewDraftCommentRequest = {
   fileId: string;
   body: string;
@@ -2456,6 +2471,71 @@ export async function deleteRepositoryPullRequestReviewDraftCommentFromCookie(
     throw new Error(
       envelope?.error.message ?? "Review comment draft could not be deleted",
       { cause: envelope },
+    );
+  }
+  return (await response.json()) as PullRequestDiffPendingReview;
+}
+
+export async function submitRepositoryPullRequestReviewFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  number: number | string,
+  request: SubmitPullRequestReviewRequest,
+): Promise<PullRequestSubmittedReview> {
+  const response = await fetch(
+    `${apiBaseUrl()}${repositoryPullRequestPath(owner, repo, number)}/reviews`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  if (!response.ok) {
+    const envelope = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Review could not be submitted",
+      {
+        cause: envelope,
+      },
+    );
+  }
+  return (await response.json()) as PullRequestSubmittedReview;
+}
+
+export async function abandonRepositoryPullRequestReviewDraftFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  number: number | string,
+): Promise<PullRequestDiffPendingReview> {
+  const response = await fetch(
+    `${apiBaseUrl()}${repositoryPullRequestPath(
+      owner,
+      repo,
+      number,
+    )}/reviews/draft`,
+    {
+      method: "DELETE",
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+  if (!response.ok) {
+    const envelope = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Review draft could not be abandoned",
+      {
+        cause: envelope,
+      },
     );
   }
   return (await response.json()) as PullRequestDiffPendingReview;

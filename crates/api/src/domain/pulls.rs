@@ -664,6 +664,27 @@ pub struct UpdatePullRequestReviewDraftComment {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct SubmitPullRequestReview {
+    pub pull_request_id: Uuid,
+    pub actor_user_id: Uuid,
+    pub body: Option<String>,
+    pub state: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestSubmittedReview {
+    pub id: Uuid,
+    pub reviewer: IssueListUser,
+    pub state: String,
+    pub body: Option<String>,
+    pub submitted_at: DateTime<Utc>,
+    pub published_comment_count: i64,
+    pub pending_review: PullRequestDiffPendingReview,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct PullRequestDiffFile {
     pub id: Uuid,
     pub path: String,
@@ -2141,7 +2162,8 @@ pub async fn create_pull_request_review_draft_comment(
     )
     .await?;
     require_repository_read(pool, file.repository_id, input.actor_user_id).await?;
-    let rendered = render_pull_request_review_comment_markdown(pool, file.repository_id, &body).await?;
+    let rendered =
+        render_pull_request_review_comment_markdown(pool, file.repository_id, &body).await?;
 
     sqlx::query(
         r#"
@@ -2282,6 +2304,169 @@ pub async fn delete_pull_request_review_draft_comment(
         return pull_request_pending_review(pool, pull_request_id, Some(actor_user_id)).await;
     }
     Ok(remaining)
+}
+
+pub async fn submit_pull_request_review(
+    pool: &PgPool,
+    input: SubmitPullRequestReview,
+) -> Result<PullRequestSubmittedReview, CollaborationError> {
+    let state = normalize_submitted_review_state(&input.state)?;
+    let body = input
+        .body
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    let pull_request = pull_request_by_id(pool, input.pull_request_id).await?;
+    require_repository_read(pool, pull_request.repository_id, input.actor_user_id).await?;
+    if pull_request.author_user_id == input.actor_user_id
+        && matches!(state.as_str(), "approved" | "changes_requested")
+    {
+        return Err(CollaborationError::InvalidIssueField {
+            field_key: "state".to_owned(),
+            message: "authors can only leave comment reviews on their own pull requests".to_owned(),
+        });
+    }
+
+    let pending_count = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT count(*)
+        FROM pull_request_review_comments
+        WHERE pull_request_id = $1
+          AND author_user_id = $2
+          AND state = 'pending'
+        "#,
+    )
+    .bind(input.pull_request_id)
+    .bind(input.actor_user_id)
+    .fetch_one(pool)
+    .await?;
+    if pending_count == 0 && body.is_none() {
+        return Err(CollaborationError::InvalidIssueField {
+            field_key: "body".to_owned(),
+            message: "write a review summary or add pending comments before submitting".to_owned(),
+        });
+    }
+
+    let mut tx = pool.begin().await?;
+    let review_row = sqlx::query(
+        r#"
+        INSERT INTO pull_request_reviews (pull_request_id, reviewer_user_id, state, body)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, state, body, submitted_at
+        "#,
+    )
+    .bind(input.pull_request_id)
+    .bind(input.actor_user_id)
+    .bind(&state)
+    .bind(&body)
+    .fetch_one(&mut *tx)
+    .await?;
+    let review_id: Uuid = review_row.get("id");
+    let published_comment_count = sqlx::query_scalar::<_, i64>(
+        r#"
+        WITH published AS (
+            UPDATE pull_request_review_comments
+            SET state = 'published', review_id = $3, updated_at = now()
+            WHERE pull_request_id = $1
+              AND author_user_id = $2
+              AND state = 'pending'
+            RETURNING id
+        )
+        SELECT count(*)::bigint FROM published
+        "#,
+    )
+    .bind(input.pull_request_id)
+    .bind(input.actor_user_id)
+    .bind(review_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    sqlx::query(
+        "DELETE FROM pull_request_review_drafts WHERE pull_request_id = $1 AND author_user_id = $2",
+    )
+    .bind(input.pull_request_id)
+    .bind(input.actor_user_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO timeline_events (
+            repository_id, issue_id, pull_request_id, actor_user_id, event_type, metadata
+        )
+        VALUES ($1, NULL, $2, $3, 'reviewed', $4)
+        "#,
+    )
+    .bind(pull_request.repository_id)
+    .bind(input.pull_request_id)
+    .bind(input.actor_user_id)
+    .bind(json!({
+        "reviewId": review_id,
+        "state": state,
+        "commentCount": published_comment_count
+    }))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    notify_pull_request_review_submitted(pool, &pull_request, input.actor_user_id, &state).await?;
+    insert_pull_request_action_audit_event(
+        pool,
+        &pull_request,
+        input.actor_user_id,
+        "pull_request.review_submitted",
+        json!({
+            "reviewId": review_id,
+            "state": state,
+            "commentCount": published_comment_count
+        }),
+    )
+    .await?;
+
+    Ok(PullRequestSubmittedReview {
+        id: review_id,
+        reviewer: user_for_review_comment(pool, input.actor_user_id).await?,
+        state: review_row.get("state"),
+        body: review_row.get("body"),
+        submitted_at: review_row.get("submitted_at"),
+        published_comment_count,
+        pending_review: pull_request_pending_review(
+            pool,
+            input.pull_request_id,
+            Some(input.actor_user_id),
+        )
+        .await?,
+    })
+}
+
+pub async fn abandon_pull_request_review_draft(
+    pool: &PgPool,
+    pull_request_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<PullRequestDiffPendingReview, CollaborationError> {
+    let pull_request = pull_request_by_id(pool, pull_request_id).await?;
+    require_repository_read(pool, pull_request.repository_id, actor_user_id).await?;
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        r#"
+        DELETE FROM pull_request_review_comments
+        WHERE pull_request_id = $1
+          AND author_user_id = $2
+          AND state = 'pending'
+        "#,
+    )
+    .bind(pull_request_id)
+    .bind(actor_user_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "DELETE FROM pull_request_review_drafts WHERE pull_request_id = $1 AND author_user_id = $2",
+    )
+    .bind(pull_request_id)
+    .bind(actor_user_id)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    pull_request_pending_review(pool, pull_request_id, Some(actor_user_id)).await
 }
 
 pub async fn update_pull_request_state(
@@ -3364,6 +3549,20 @@ fn normalize_review_comment_side(value: &str) -> Result<String, CollaborationErr
     }
 }
 
+fn normalize_submitted_review_state(value: &str) -> Result<String, CollaborationError> {
+    match value.trim().to_lowercase().as_str() {
+        "comment" | "commented" => Ok("commented".to_owned()),
+        "approve" | "approved" => Ok("approved".to_owned()),
+        "request_changes" | "request-changes" | "changes_requested" => {
+            Ok("changes_requested".to_owned())
+        }
+        _ => Err(CollaborationError::InvalidIssueField {
+            field_key: "state".to_owned(),
+            message: "review state must be commented, approved, or changes_requested".to_owned(),
+        }),
+    }
+}
+
 async fn render_pull_request_review_comment_markdown(
     pool: &PgPool,
     repository_id: Uuid,
@@ -4097,6 +4296,51 @@ async fn notify_pull_request_participants(
                     pull_request.number, pull_request.title
                 ),
                 reason: "review_requested".to_owned(),
+            },
+        )
+        .await
+        .map_err(|error| match error {
+            super::notifications::NotificationError::Sqlx(error) => CollaborationError::Sqlx(error),
+            super::notifications::NotificationError::NotFound => {
+                CollaborationError::PullRequestNotFound
+            }
+        })?;
+    }
+    Ok(())
+}
+
+async fn notify_pull_request_review_submitted(
+    pool: &PgPool,
+    pull_request: &PullRequest,
+    actor_user_id: Uuid,
+    state: &str,
+) -> Result<(), CollaborationError> {
+    let mut recipients = HashSet::from([pull_request.author_user_id]);
+    let requested_rows = sqlx::query(
+        "SELECT requested_user_id FROM pull_request_review_requests WHERE pull_request_id = $1",
+    )
+    .bind(pull_request.id)
+    .fetch_all(pool)
+    .await?;
+    for row in requested_rows {
+        recipients.insert(row.get("requested_user_id"));
+    }
+    recipients.remove(&actor_user_id);
+
+    for user_id in recipients {
+        create_notification(
+            pool,
+            CreateNotification {
+                user_id,
+                repository_id: Some(pull_request.repository_id),
+                subject_type: "pull_request".to_owned(),
+                subject_id: Some(pull_request.id),
+                title: format!(
+                    "Pull request #{} review submitted: {}",
+                    pull_request.number,
+                    state.replace('_', " ")
+                ),
+                reason: "review_submitted".to_owned(),
             },
         )
         .await

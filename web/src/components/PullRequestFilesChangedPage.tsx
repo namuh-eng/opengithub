@@ -1,15 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { RepositoryShell } from "@/components/RepositoryShell";
 import type {
   PullRequestDiffFile,
   PullRequestDiffLine,
+  PullRequestDiffPendingReview,
   PullRequestDiffReviewComment,
   PullRequestDiffReviewView,
+  PullRequestSubmittedReview,
   RepositoryOverview,
+  SubmitPullRequestReviewRequest,
 } from "@/lib/api";
 
 type PullRequestFilesChangedPageProps = {
@@ -247,6 +250,11 @@ function ReviewCommentThread({
         setFeedback("Pending comment could not be deleted.");
         return;
       }
+      window.dispatchEvent(
+        new CustomEvent("pull-request-pending-review-change", {
+          detail: { delta: -1 },
+        }),
+      );
       onDelete(comment.id);
     } catch {
       setFeedback("Pending comment could not be deleted.");
@@ -400,6 +408,11 @@ function InlineCommentComposer({
       }
       const comment = (await response.json()) as PullRequestDiffReviewComment;
       onSaved(comment);
+      window.dispatchEvent(
+        new CustomEvent("pull-request-pending-review-change", {
+          detail: { delta: 1 },
+        }),
+      );
       setBody("");
       onCancel();
     } catch {
@@ -679,6 +692,242 @@ function DiffFile({
   );
 }
 
+function SubmitReviewDialog({
+  activePath,
+  conversationHref,
+  onClose,
+  onSubmitted,
+  pendingReview,
+}: {
+  activePath: string;
+  conversationHref: string;
+  onClose: () => void;
+  onSubmitted: (review: PullRequestSubmittedReview) => void;
+  pendingReview: PullRequestDiffPendingReview;
+}) {
+  const [body, setBody] = useState(pendingReview.summaryBody ?? "");
+  const [reviewState, setReviewState] = useState<
+    SubmitPullRequestReviewRequest["state"]
+  >(
+    pendingReview.reviewState === "approved" ||
+      pendingReview.reviewState === "changes_requested"
+      ? pendingReview.reviewState
+      : "commented",
+  );
+  const [tab, setTab] = useState<"write" | "preview">("write");
+  const [previewHtml, setPreviewHtml] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  async function preview() {
+    setTab("preview");
+    if (!body.trim()) {
+      setPreviewHtml("");
+      return;
+    }
+    const response = await fetch("/markdown/preview", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ markdown: body, enableTaskToggles: false }),
+    });
+    if (response.ok) {
+      const rendered = (await response.json()) as { html: string };
+      setPreviewHtml(rendered.html);
+    }
+  }
+
+  async function submitReview() {
+    if (!body.trim() && pendingReview.commentCount === 0) {
+      setFeedback("Write a summary or add pending comments before submitting.");
+      return;
+    }
+    setSaving(true);
+    setFeedback(null);
+    try {
+      const response = await fetch(`${activePath}/reviews`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ body, state: reviewState }),
+      });
+      if (!response.ok) {
+        const envelope = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        setFeedback(
+          envelope?.error?.message ?? "Review could not be submitted.",
+        );
+        return;
+      }
+      const submitted = (await response.json()) as PullRequestSubmittedReview;
+      onSubmitted(submitted);
+      setFeedback("Review submitted. Conversation will show it after reload.");
+    } catch {
+      setFeedback("Review could not be submitted.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function abandonReview() {
+    setSaving(true);
+    setFeedback(null);
+    try {
+      const response = await fetch(`${activePath}/reviews`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        setFeedback("Review draft could not be abandoned.");
+        return;
+      }
+      window.dispatchEvent(
+        new CustomEvent("pull-request-pending-review-change", {
+          detail: { delta: -pendingReview.commentCount },
+        }),
+      );
+      onClose();
+    } catch {
+      setFeedback("Review draft could not be abandoned.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      aria-modal="true"
+      aria-labelledby="submit-review-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      role="dialog"
+      style={{
+        background: "color-mix(in oklab, var(--ink-1) 36%, transparent)",
+      }}
+    >
+      <div className="card max-h-[90vh] w-full max-w-2xl overflow-auto bg-[var(--surface)]">
+        <div
+          className="flex items-center gap-3 border-b px-5 py-4"
+          style={{ borderColor: "var(--line)" }}
+        >
+          <div className="min-w-0 flex-1">
+            <p className="t-label">Submit review</p>
+            <h2 className="t-h3" id="submit-review-title">
+              Review changes
+            </h2>
+          </div>
+          <button className="btn ghost sm" onClick={onClose} type="button">
+            Cancel
+          </button>
+        </div>
+        <div className="p-5">
+          <div className="tabs mb-3">
+            <button
+              aria-selected={tab === "write"}
+              className={`tab${tab === "write" ? " active" : ""}`}
+              onClick={() => setTab("write")}
+              role="tab"
+              type="button"
+            >
+              Write
+            </button>
+            <button
+              aria-selected={tab === "preview"}
+              className={`tab${tab === "preview" ? " active" : ""}`}
+              onClick={preview}
+              role="tab"
+              type="button"
+            >
+              Preview
+            </button>
+          </div>
+          {tab === "write" ? (
+            <textarea
+              aria-label="Review summary"
+              className="input min-h-36 w-full p-3"
+              onKeyDown={(event) => {
+                if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                  event.preventDefault();
+                  void submitReview();
+                }
+              }}
+              onChange={(event) => setBody(event.currentTarget.value)}
+              placeholder="Leave a summary comment"
+              value={body}
+            />
+          ) : previewHtml ? (
+            <div className="card p-3">
+              <MarkdownBody html={previewHtml} />
+            </div>
+          ) : (
+            <p className="t-sm muted">Nothing to preview.</p>
+          )}
+
+          <fieldset className="mt-4 space-y-2">
+            <legend className="t-label mb-2">Review decision</legend>
+            {[
+              [
+                "commented",
+                "Comment",
+                "Submit general feedback without approving.",
+              ],
+              ["approved", "Approve", "Approve these changes."],
+              [
+                "changes_requested",
+                "Request changes",
+                "Block merging until changes are made.",
+              ],
+            ].map(([value, label, description]) => (
+              <label className="flex gap-3" key={value}>
+                <input
+                  checked={reviewState === value}
+                  name="review-state"
+                  onChange={() =>
+                    setReviewState(
+                      value as SubmitPullRequestReviewRequest["state"],
+                    )
+                  }
+                  type="radio"
+                />
+                <span>
+                  <span className="t-sm block font-medium">{label}</span>
+                  <span className="t-xs">{description}</span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+
+          <div className="mt-5 flex flex-wrap items-center gap-2">
+            <button
+              className="btn primary"
+              disabled={saving}
+              onClick={submitReview}
+              type="button"
+            >
+              Submit review
+            </button>
+            {pendingReview.commentCount > 0 ? (
+              <button
+                className="btn ghost"
+                disabled={saving}
+                onClick={abandonReview}
+                type="button"
+              >
+                Abandon review
+              </button>
+            ) : null}
+            <Link className="btn ghost" href={conversationHref}>
+              Conversation
+            </Link>
+            <span className="kbd">Command+Enter</span>
+            <span className="t-xs t-num">
+              {pendingReview.commentCount} pending comments
+            </span>
+          </div>
+          {feedback ? <p className="t-sm mt-3">{feedback}</p> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function PullRequestFilesChangedPage({
   diffReview,
   repository,
@@ -689,6 +938,31 @@ export function PullRequestFilesChangedPage({
   const activePath = `${basePath}/pull/${pullRequest.number}/files`;
   const conversationHref = `${basePath}/pull/${pullRequest.number}`;
   const files = diffReview.files;
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [pendingReview, setPendingReview] = useState(diffReview.pendingReview);
+  useEffect(() => {
+    function updatePendingReview(event: Event) {
+      const detail = (event as CustomEvent<{ delta?: number }>).detail;
+      const delta = detail?.delta ?? 0;
+      if (!delta) {
+        return;
+      }
+      setPendingReview((current) => ({
+        ...current,
+        commentCount: Math.max(0, current.commentCount + delta),
+      }));
+    }
+    window.addEventListener(
+      "pull-request-pending-review-change",
+      updatePendingReview,
+    );
+    return () => {
+      window.removeEventListener(
+        "pull-request-pending-review-change",
+        updatePendingReview,
+      );
+    };
+  }, []);
   const viewedCount = useMemo(
     () => diffReview.fileTree.filter((file) => file.viewed).length,
     [diffReview.fileTree],
@@ -729,14 +1003,22 @@ export function PullRequestFilesChangedPage({
                 -{pullRequest.stats.deletions}
               </span>
             </span>
-            <button
-              className="btn primary"
-              disabled
-              title="Submit review ships in the next phase"
-              type="button"
-            >
-              Review changes
-            </button>
+            {viewerAuthenticated ? (
+              <button
+                className="btn primary"
+                onClick={() => setDialogOpen(true)}
+                type="button"
+              >
+                Review changes
+              </button>
+            ) : (
+              <Link
+                className="btn primary"
+                href={`/login?next=${encodeURIComponent(activePath)}`}
+              >
+                Review changes
+              </Link>
+            )}
           </div>
           <nav aria-label="Pull request sections" className="tabs mt-4">
             <Link
@@ -859,9 +1141,7 @@ export function PullRequestFilesChangedPage({
               <span className="t-num">{viewedCount}</span> viewed
             </span>
             <span className="chip soft">
-              <span className="t-num">
-                {diffReview.pendingReview.commentCount}
-              </span>{" "}
+              <span className="t-num">{pendingReview.commentCount}</span>{" "}
               pending comments
             </span>
             {diffReview.settings.filter ? (
@@ -959,6 +1239,17 @@ export function PullRequestFilesChangedPage({
           </div>
         </div>
       </main>
+      {dialogOpen ? (
+        <SubmitReviewDialog
+          activePath={activePath}
+          conversationHref={conversationHref}
+          onClose={() => setDialogOpen(false)}
+          onSubmitted={(review) => {
+            setPendingReview(review.pendingReview);
+          }}
+          pendingReview={pendingReview}
+        />
+      ) : null}
     </RepositoryShell>
   );
 }

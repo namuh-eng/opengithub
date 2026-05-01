@@ -128,7 +128,7 @@ test("signed-in user opens the pull request detail conversation shell", async ({
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Review changes" }),
-  ).toBeDisabled();
+  ).toBeEnabled();
   await expect(page.getByRole("link", { name: "Split" })).toHaveAttribute(
     "href",
     `/${ownerLogin}/${repoName}/pull/${pullNumber}/files?view=split`,
@@ -144,25 +144,30 @@ test("signed-in user opens the pull request detail conversation shell", async ({
     await page.getByRole("tab", { name: "Preview" }).click();
     await expect(page.getByText("Phase 3 pending")).toBeVisible();
     await page.getByRole("button", { name: "Save pending comment" }).click();
-    await expect(
-      page.getByText("left a pending review comment"),
-    ).toBeVisible();
+    await expect(page.getByText("left a pending review comment")).toBeVisible();
     await page.reload();
-    await expect(
-      page.getByText("left a pending review comment"),
-    ).toBeVisible();
+    await expect(page.getByText("left a pending review comment")).toBeVisible();
   }
+  await page.getByRole("button", { name: "Review changes" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Review changes" }),
+  ).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Review summary" })
+    .fill("Phase 4 review summary from the files tab.");
+  await page.getByRole("radio", { name: /Comment/ }).check();
+  await page.getByRole("button", { name: "Submit review" }).click();
+  await expect(page.getByText(/Review submitted/)).toBeVisible();
   await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/prs-005-phase3-pending-comment.jpg",
+    path: "../ralph/screenshots/build/prs-005-phase4-submit-review.jpg",
   });
 
   await page.goto(`/${ownerLogin}/${repoName}/pull/${pullNumber}`);
   await expect(
     page.getByRole("heading", { name: "Merge readiness" }),
   ).toBeVisible();
-  await expect(page.getByText("No review requests")).toBeVisible();
   await expect(
     page.getByText(new RegExp(`${ownerLogin} opened this pull request`)),
   ).toBeVisible();

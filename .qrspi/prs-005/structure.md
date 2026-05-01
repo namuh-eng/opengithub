@@ -60,7 +60,7 @@
 
 ## Phase 4: Submit Review Dialog - publish comments, approvals, and requested changes
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire the Review changes dialog end to end. Signed-in users can open the dialog, write a review summary, preview Markdown, choose Comment, Approve, or Request changes, submit with Command+Enter, or abandon/cancel without publishing drafts. Submission creates a `pull_request_reviews` row, publishes pending review comments, emits timeline events, updates review summaries and mergeability, sends notifications, writes audit/search side effects, and returns updated diff/review state.
 

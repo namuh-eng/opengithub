@@ -2058,5 +2058,25 @@
       "Diff hunks still come from stored snapshot rows; QA should revisit fidelity against real Git object storage once full diff generation is wired.",
       "Real Google OAuth was not used; browser smoke used deterministic Rust-signed Playwright sessions against the local Postgres test database."
     ]
+  },
+  {
+    "feature_id": "prs-005",
+    "tests_written": [
+      "Implemented Phase 4 Submit Review dialog for /{owner}/{repo}/pull/{number}/files.",
+      "Added POST /api/repos/{owner}/{repo}/pulls/{number}/reviews to publish pending review comments, create pull_request_reviews rows, insert reviewed timeline events, notify participants/requested reviewers, and write audit events.",
+      "Added DELETE /api/repos/{owner}/{repo}/pulls/{number}/reviews/draft plus same-origin Next.js routes for abandoning private pending review drafts.",
+      "Files changed UI now enables Review changes for signed-in users, renders a Write/Preview Markdown dialog, supports Comment/Approve/Request changes radio choices, Command+Enter submit, Abandon review, and success/error feedback.",
+      "Rust contract covers self-approval rejection, submit-review publishing, pending count reset, timeline event, notification, audit side effect, and abandon-review cleanup.",
+      "Vitest covers dialog preview, submit payload, and abandon request wiring.",
+      "Playwright PR detail/files smoke passed and saved ralph/screenshots/build/prs-005-phase4-submit-review.jpg.",
+      "Verification passed: focused api_pull_request_diff_review_contract, TEST_DATABASE_URL-backed make check, TEST_DATABASE_URL-backed make test with Cargo tests plus 165 frontend tests, focused repository-pull-request-detail Playwright spec, full TEST_DATABASE_URL-backed make test-e2e with 65 Playwright tests, and mandatory Editorial banned-value scan with zero matches using rg -n -e."
+    ],
+    "needs_deeper_qa": [
+      "Approve and Request changes are covered by API validation and dialog controls, but the browser smoke submits the Comment state to avoid self-approval rules on the seeded author-owned PR.",
+      "Conversation-tab rendering of the reviewed timeline event is verified by reload/navigation in the existing PR detail smoke; richer dedicated review timeline rendering remains a Phase 5 guardrail.",
+      "Notifications are asserted at the Rust contract level against seeded requested reviewers; multi-user browser notification inbox verification remains for QA.",
+      "Diff hunks still come from stored snapshot rows; QA should revisit fidelity against real Git object storage once full diff generation is wired.",
+      "Real Google OAuth was not used; browser smoke used deterministic Rust-signed Playwright sessions against the local Postgres test database."
+    ]
   }
 ]

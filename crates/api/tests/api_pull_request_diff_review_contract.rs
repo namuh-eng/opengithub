@@ -538,12 +538,10 @@ async fn pull_request_diff_review_contract_returns_files_hunks_and_viewer_state(
     let draft_id = draft_body["id"].as_str().expect("draft id should exist");
     assert_eq!(draft_body["state"], "pending");
     assert_eq!(draft_body["path"], "src/review.rs");
-    assert!(
-        draft_body["bodyHtml"]
-            .as_str()
-            .expect("rendered body")
-            .contains("<strong>pending</strong>")
-    );
+    assert!(draft_body["bodyHtml"]
+        .as_str()
+        .expect("rendered body")
+        .contains("<strong>pending</strong>"));
 
     let (anonymous_after_draft_status, anonymous_after_draft_body) =
         get_json(app.clone(), &uri, None).await;
@@ -586,17 +584,130 @@ async fn pull_request_diff_review_contract_returns_files_hunks_and_viewer_state(
     assert_eq!(delete_status, StatusCode::OK, "delete body: {delete_body}");
     assert_eq!(delete_body["commentCount"], 1);
 
-    let notification_count = sqlx::query_scalar::<_, i64>(
-        "SELECT count(*) FROM notifications WHERE repository_id = $1",
-    )
-    .bind(repository.id)
-    .fetch_one(&pool)
-    .await
-    .expect("notification count should load");
+    let notification_count =
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM notifications WHERE repository_id = $1")
+            .bind(repository.id)
+            .fetch_one(&pool)
+            .await
+            .expect("notification count should load");
     assert_eq!(
         notification_count, 0,
         "pending drafts should not emit notifications before submit"
     );
+
+    sqlx::query(
+        r#"
+        INSERT INTO pull_request_review_requests (
+            pull_request_id, requested_user_id, requested_by_user_id
+        )
+        VALUES ($1, $2, $3)
+        ON CONFLICT DO NOTHING
+        "#,
+    )
+    .bind(pull.pull_request.id)
+    .bind(reviewer.id)
+    .bind(owner.id)
+    .execute(&pool)
+    .await
+    .expect("review request should insert");
+    let reviews_uri = format!(
+        "/api/repos/{}/{}/pulls/{}/reviews",
+        owner.email, repo_name, pull.pull_request.number
+    );
+    let (self_approve_status, self_approve_body) = post_json(
+        app.clone(),
+        &reviews_uri,
+        Some(&owner_cookie),
+        json!({
+            "body": "Looks ready",
+            "state": "approved"
+        }),
+    )
+    .await;
+    assert_eq!(self_approve_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(self_approve_body["error"]["code"], "validation_failed");
+
+    let (submit_status, submit_body) = post_json(
+        app.clone(),
+        &reviews_uri,
+        Some(&owner_cookie),
+        json!({
+            "body": "Publishing my pending review.",
+            "state": "commented"
+        }),
+    )
+    .await;
+    assert_eq!(submit_status, StatusCode::OK, "submit body: {submit_body}");
+    assert_eq!(submit_body["state"], "commented");
+    assert_eq!(submit_body["publishedCommentCount"], 1);
+    assert_eq!(submit_body["pendingReview"]["commentCount"], 0);
+
+    let published_pending_count = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT count(*)
+        FROM pull_request_review_comments
+        WHERE pull_request_id = $1
+          AND author_user_id = $2
+          AND state = 'published'
+        "#,
+    )
+    .bind(pull.pull_request.id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("published comment count should load");
+    assert_eq!(published_pending_count, 1);
+    let review_event_count = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM timeline_events WHERE pull_request_id = $1 AND event_type = 'reviewed'",
+    )
+    .bind(pull.pull_request.id)
+    .fetch_one(&pool)
+    .await
+    .expect("review event count should load");
+    assert_eq!(review_event_count, 1);
+    let review_notification_count = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM notifications WHERE repository_id = $1 AND reason = 'review_submitted'",
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("review notification count should load");
+    assert_eq!(review_notification_count, 1);
+    let audit_count = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM audit_events WHERE event_type = 'pull_request.review_submitted'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("audit count should load");
+    assert!(audit_count >= 1);
+
+    let (draft_for_abandon_status, draft_for_abandon_body) = post_json(
+        app.clone(),
+        &draft_uri,
+        Some(&owner_cookie),
+        json!({
+            "fileId": file_id,
+            "body": "Abandon this pending note",
+            "side": "right",
+            "newLine": 11,
+            "position": 2
+        }),
+    )
+    .await;
+    assert_eq!(
+        draft_for_abandon_status,
+        StatusCode::OK,
+        "draft for abandon body: {draft_for_abandon_body}"
+    );
+    let abandon_uri = format!("{reviews_uri}/draft");
+    let (abandon_status, abandon_body) =
+        delete_json(app.clone(), &abandon_uri, Some(&owner_cookie)).await;
+    assert_eq!(
+        abandon_status,
+        StatusCode::OK,
+        "abandon body: {abandon_body}"
+    );
+    assert_eq!(abandon_body["commentCount"], 0);
 }
 
 #[tokio::test]

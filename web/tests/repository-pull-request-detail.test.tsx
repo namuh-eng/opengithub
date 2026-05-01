@@ -467,7 +467,7 @@ describe("RepositoryPullRequestDetailPage", () => {
     );
     expect(
       screen.getByRole("button", { name: "Review changes" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
     expect(screen.getByRole("link", { name: "Unified" })).toHaveAttribute(
       "href",
       "/mona/octo-app/pull/42/files",
@@ -496,6 +496,103 @@ describe("RepositoryPullRequestDetailPage", () => {
     expect(
       container.querySelectorAll('a[href="#"], a:not([href])'),
     ).toHaveLength(0);
+  });
+
+  it("submits and abandons pull request reviews from the files changed dialog", async () => {
+    const submittedReview = {
+      id: "review-1",
+      reviewer: {
+        id: "user-1",
+        login: "mona",
+        displayName: "Mona",
+        avatarUrl: null,
+      },
+      state: "commented",
+      body: "Ready for a maintainer pass.",
+      submittedAt: "2026-05-01T00:20:00Z",
+      publishedCommentCount: 1,
+      pendingReview: {
+        draftId: null,
+        commentCount: 0,
+        summaryBody: null,
+        reviewState: "commented",
+      },
+    };
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/markdown/preview") {
+          return {
+            ok: true,
+            json: async () => ({
+              html: "<p>Ready for a maintainer pass.</p>",
+            }),
+          };
+        }
+        if (url.endsWith("/files/reviews") && init?.method === "POST") {
+          return { ok: true, json: async () => submittedReview };
+        }
+        if (url.endsWith("/files/reviews") && init?.method === "DELETE") {
+          return {
+            ok: true,
+            json: async () => ({
+              draftId: null,
+              commentCount: 0,
+              summaryBody: null,
+              reviewState: "commented",
+            }),
+          };
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <PullRequestFilesChangedPage
+        diffReview={pullRequestDiffReview()}
+        repository={repositoryOverview()}
+        viewerAuthenticated={true}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
+    expect(
+      screen.getByRole("dialog", { name: /Review changes/ }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Abandon review" }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mona/octo-app/pull/42/files/reviews",
+        expect.objectContaining({ method: "DELETE" }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Review changes" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Review summary" }), {
+      target: { value: "Ready for a maintainer pass." },
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    expect(
+      await screen.findByText("Ready for a maintainer pass."),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("tab", { name: "Write" }));
+    fireEvent.click(screen.getByRole("radio", { name: /Comment/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit review" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mona/octo-app/pull/42/files/reviews",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            body: "Ready for a maintainer pass.",
+            state: "commented",
+          }),
+        }),
+      );
+    });
+    expect(await screen.findByText(/Review submitted/)).toBeVisible();
   });
 
   it("creates, edits, previews, and deletes pending inline review comments", async () => {
