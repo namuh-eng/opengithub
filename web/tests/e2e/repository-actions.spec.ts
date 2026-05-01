@@ -196,7 +196,10 @@ test("signed-in repository Actions tab renders workflows, runs, and empty templa
     .click();
   await expect(page).toHaveURL(new RegExp(`/actions/runs/${run.id}`));
   await expect(
-    page.getByRole("heading", { name: "Workflow run" }),
+    page.getByRole("heading", { name: /Editorial CI/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Workflow run jobs" }),
   ).toBeVisible();
   await page.goto(`/${ownerLogin}/${repoName}/actions`);
   await expectNoDeadControls(page);

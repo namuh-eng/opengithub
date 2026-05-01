@@ -22,7 +22,7 @@
 
 ## Phase 2: Editorial Run Detail Page - placeholder becomes the real run workspace
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the placeholder `/{owner}/{repo}/actions/runs/{run_id}` page with an Editorial run detail workspace. The page shows workflow breadcrumb, large status/conclusion, run title/number, attempt selector, trigger metadata, summary cards, annotations, artifacts, and a left job sidebar that routes/focuses to job logs.
 

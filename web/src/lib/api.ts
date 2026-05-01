@@ -545,6 +545,108 @@ export type RepositoryActionsWorkflowDetail = Omit<
   refs: ActionsWorkflowRef[];
 };
 
+export type ActionsRunDetailWorkflow = {
+  id: string;
+  name: string;
+  path: string;
+  state: string;
+  sourceBranch: string;
+  sourceSha: string | null;
+  sourceHref: string;
+};
+
+export type ActionsRunAttempt = {
+  id: string | null;
+  attemptNumber: number;
+  status: string;
+  conclusion: string | null;
+  triggerKind: string;
+  actor: ActionsActor | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+};
+
+export type ActionsRunStepDetail = {
+  id: string;
+  number: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  durationSeconds: number | null;
+  startedAt: string | null;
+  completedAt: string | null;
+};
+
+export type ActionsRunJobDetail = {
+  id: string;
+  name: string;
+  groupName: string | null;
+  attemptNumber: number;
+  status: string;
+  conclusion: string | null;
+  runnerLabel: string | null;
+  durationSeconds: number | null;
+  logAvailable: boolean;
+  logDeletedAt: string | null;
+  steps: ActionsRunStepDetail[];
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ActionsRunAnnotation = {
+  id: string;
+  jobId: string | null;
+  stepId: string | null;
+  level: string;
+  path: string | null;
+  startLine: number | null;
+  endLine: number | null;
+  title: string | null;
+  message: string;
+  rawDetails: string | null;
+  createdAt: string;
+};
+
+export type ActionsRunArtifact = {
+  id: string;
+  name: string;
+  digest: string | null;
+  sizeBytes: number;
+  expiredAt: string | null;
+  downloadAvailable: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ActionsRunActionState = {
+  canRerun: boolean;
+  canRerunFailed: boolean;
+  canCancel: boolean;
+  canDeleteLogs: boolean;
+  disabledReason: string | null;
+};
+
+export type RepositoryActionsRunDetail = {
+  repository: {
+    id: string;
+    ownerLogin: string;
+    name: string;
+    visibility: RepositoryVisibility;
+    defaultBranch: string;
+  };
+  viewerPermission: string | null;
+  workflow: ActionsRunDetailWorkflow;
+  run: ActionsRunListItem;
+  attempts: ActionsRunAttempt[];
+  jobs: ActionsRunJobDetail[];
+  annotations: ActionsRunAnnotation[];
+  artifacts: ActionsRunArtifact[];
+  actionState: ActionsRunActionState;
+};
+
 export type DashboardTopRepository = {
   ownerLogin: string;
   name: string;
@@ -2073,6 +2175,16 @@ export function repositoryActionsWorkflowDashboardPath(
   )}/actions/workflows/${encodeURIComponent(workflowFile)}/dashboard${suffix}`;
 }
 
+export function repositoryActionsRunDetailPath(
+  owner: string,
+  repo: string,
+  runId: string,
+): string {
+  return `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
+    repo,
+  )}/actions/runs/${encodeURIComponent(runId)}/detail`;
+}
+
 export async function getRepositoryActionsDashboardFromCookie(
   cookie: string | null | undefined,
   owner: string,
@@ -2159,6 +2271,47 @@ export async function getRepositoryActionsWorkflowDashboardFromCookie(
   }
 
   return body as RepositoryActionsWorkflowDetail;
+}
+
+export async function getRepositoryActionsRunDetailFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  runId: string,
+): Promise<RepositoryActionsRunDetail | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}${repositoryActionsRunDetailPath(owner, repo, runId)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Workflow run details are temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "actions_run_detail_failed",
+          message: "Workflow run details could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as RepositoryActionsRunDetail;
 }
 
 export function repositoryPullRequestPath(

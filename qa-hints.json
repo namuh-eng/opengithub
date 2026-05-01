@@ -2380,5 +2380,24 @@
       "The contract exposes artifact availability from storage keys and expiration metadata but does not contact real S3 in this phase.",
       "The route tests use local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth or real runner execution."
     ]
+  },
+  {
+    "feature_id": "actions-003",
+    "tests_written": [
+      "Implemented Phase 2 Editorial workflow run detail page backed by GET /api/repos/{owner}/{repo}/actions/runs/{run_id}/detail.",
+      "Added typed run-detail DTOs and cookie-forwarded server fetch helpers for the Next.js route.",
+      "Replaced the placeholder /{owner}/{repo}/actions/runs/{run_id} page with repository shell rendering for workflow breadcrumb, run status/title/metadata, attempts, job sidebar, selected job steps, annotations, artifacts, and run metadata.",
+      "Extended the dashboard_e2e_seed helper with ACTIONS_RUN_DETAIL_E2E to create a real repository, workflow, run, attempts, jobs, steps, annotation, artifact, and deterministic signed session for browser smoke.",
+      "Added Vitest coverage for run header metadata, attempt links, job focus, deleted-log unavailable state, annotations, artifacts, no inert anchors, and backend error display.",
+      "Added Playwright coverage for signed-in run detail navigation, job sidebar selection, annotations/artifacts, no dead controls, horizontal overflow, and screenshot ralph/screenshots/build/actions-003-phase2-run-detail.jpg.",
+      "Verification passed: focused repository-actions-run Vitest, TEST_DATABASE_URL-backed make check, same-env make test with Cargo tests plus 188 frontend tests, focused repository-actions-run Playwright, focused repository-actions Playwright regression, full same-env make test-e2e with 69 Playwright tests, and mandatory Editorial banned-value scan with zero matches using rg -n -e."
+    ],
+    "needs_deeper_qa": [
+      "Run actions are visible as disabled or non-mutating controls in Phase 2; rerun all, rerun failed, specific-job rerun, cancel, delete logs, audit rows, and queue side effects are Phase 4.",
+      "Artifact rows show availability metadata only; signed URL download, copy feedback, and artifact proxy behavior are Phase 3.",
+      "Job log content, log search, line anchors, raw/download log actions, and streaming/polling behavior are Phase 3 and actions-004.",
+      "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth.",
+      "The fixture uses local metadata/storage keys and does not contact real S3 or execute real Actions runners."
+    ]
   }
 ]

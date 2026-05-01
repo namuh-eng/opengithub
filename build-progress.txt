@@ -1631,3 +1631,13 @@
 - Verification passed: focused `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false cargo test --test api_repository_actions_run_detail_contract -- --nocapture`; `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 184 frontend tests.
 - Browser smoke and `make test-e2e` were not run because Phase 1 is API-only and the structure outline marks browser smoke optional for this phase.
 - Marked Phase 1 as done in `.qrspi/actions-003/structure.md`; `prd.json` remains `build_pass: false` because Phases 2-5 remain.
+
+2026-05-02 - actions-003 phase 2 Editorial run detail page
+
+- Implemented Phase 2 from `.qrspi/actions-003/structure.md`: `/{owner}/{repo}/actions/runs/{run_id}` now renders a real Editorial workflow run detail workspace backed by the Phase 1 Rust contract instead of the placeholder feature page.
+- Added typed run-detail DTOs and cookie-forwarded fetch helpers in `web/src/lib/api.ts` and `web/src/lib/server-session.ts`, plus `RepositoryActionsRunPage` for workflow breadcrumb, run title/status, attempt links, trigger metadata, summary cards, job sidebar selection, selected job steps, annotations, artifacts, and run metadata.
+- Extended `crates/api/examples/dashboard_e2e_seed.rs` with `ACTIONS_RUN_DETAIL_E2E=1` so Playwright can seed a real repository, workflow, run attempts, jobs, steps, annotation, artifact, and deterministic signed session.
+- Added focused Vitest and Playwright coverage in `web/tests/repository-actions-run.test.tsx` and `web/tests/e2e/repository-actions-run.spec.ts`; updated the existing Actions list E2E to assert navigation reaches the real run detail page.
+- Browser smoke screenshot saved at `ralph/screenshots/build/actions-003-phase2-run-detail.jpg`.
+- Verification passed: focused `cd web && npx vitest run tests/repository-actions-run.test.tsx`, `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`, same-env `make test` with Cargo tests plus 188 frontend tests, focused same-env `web/tests/e2e/repository-actions-run.spec.ts`, focused same-env `web/tests/e2e/repository-actions.spec.ts`, full same-env `make test-e2e` with 69 Playwright tests, and mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
+- Marked Phase 2 as done in `.qrspi/actions-003/structure.md`; `prd.json` remains `build_pass: false` because Phases 3-5 remain.

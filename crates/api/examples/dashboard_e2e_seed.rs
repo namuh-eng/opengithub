@@ -3,6 +3,11 @@ use opengithub_api::{
     auth::session,
     config::{AppConfig, AuthConfig},
     domain::{
+        actions::{
+            create_workflow, create_workflow_job, create_workflow_run, create_workflow_step,
+            transition_workflow_run, CreateWorkflow, CreateWorkflowJob, CreateWorkflowRun,
+            CreateWorkflowStep, RunConclusion, RunStatus, TransitionRun,
+        },
         identity::{upsert_session, upsert_user_by_email},
         issues::{create_issue, ensure_default_labels, CreateIssue},
         permissions::RepositoryRole,
@@ -34,6 +39,7 @@ struct SeedOutput {
     tree_repository_href: String,
     fork_compare_href: String,
     pull_request_merge_href: String,
+    actions_run_detail_href: String,
 }
 
 fn seed_empty_dashboard() -> bool {
@@ -67,6 +73,13 @@ fn seed_blob_edge_files() -> bool {
 fn seed_pull_request_merge() -> bool {
     matches!(
         std::env::var("PULL_REQUEST_MERGE_E2E").as_deref(),
+        Ok("1" | "true" | "yes")
+    )
+}
+
+fn seed_actions_run_detail() -> bool {
+    matches!(
+        std::env::var("ACTIONS_RUN_DETAIL_E2E").as_deref(),
         Ok("1" | "true" | "yes")
     )
 }
@@ -396,6 +409,11 @@ async fn main() -> anyhow::Result<()> {
     if let Some(marker) = search_e2e_marker() {
         seed_search_documents(&pool, user.id, &username, &marker).await?;
     }
+    let actions_run_detail_href = if seed_actions_run_detail() {
+        seed_actions_run_detail_repository(&pool, user.id, &username, &suffix).await?
+    } else {
+        String::new()
+    };
 
     let session_id = Uuid::new_v4().to_string();
     let expires_at = Utc::now() + Duration::hours(1);
@@ -423,6 +441,7 @@ async fn main() -> anyhow::Result<()> {
         tree_repository_href,
         fork_compare_href,
         pull_request_merge_href,
+        actions_run_detail_href,
     };
     println!("{}", serde_json::to_string(&output)?);
     Ok(())
@@ -592,6 +611,220 @@ async fn seed_search_documents(
     .await?;
 
     Ok(())
+}
+
+async fn seed_actions_run_detail_repository(
+    pool: &PgPool,
+    user_id: Uuid,
+    username: &str,
+    suffix: &str,
+) -> anyhow::Result<String> {
+    let repository_name = format!("actions-run-{}", &suffix[..12]);
+    let repository = create_repository_with_bootstrap(
+        pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: user_id },
+            name: repository_name.clone(),
+            description: Some("Workflow run detail smoke seed".to_owned()),
+            visibility: RepositoryVisibility::Public,
+            default_branch: None,
+            created_by_user_id: user_id,
+        },
+        RepositoryBootstrapRequest {
+            initialize_readme: true,
+            template_slug: Some("rust-axum".to_owned()),
+            ..RepositoryBootstrapRequest::default()
+        },
+    )
+    .await?;
+
+    let commit = insert_commit(
+        pool,
+        repository.id,
+        CreateCommit {
+            oid: format!("{}abcdef012345", &suffix[..16]),
+            author_user_id: Some(user_id),
+            committer_user_id: Some(user_id),
+            message: "Add workflow run detail fixture".to_owned(),
+            tree_oid: Some(format!("tree-actions-{}", &suffix[..12])),
+            parent_oids: vec![],
+            committed_at: Utc::now(),
+        },
+    )
+    .await?;
+    let workflow = create_workflow(
+        pool,
+        CreateWorkflow {
+            repository_id: repository.id,
+            actor_user_id: user_id,
+            name: "Editorial CI".to_owned(),
+            path: ".github/workflows/editorial-ci.yml".to_owned(),
+            trigger_events: vec!["push".to_owned(), "workflow_dispatch".to_owned()],
+        },
+    )
+    .await?;
+    sqlx::query(
+        "UPDATE actions_workflows SET source_branch = 'main', source_sha = $2 WHERE id = $1",
+    )
+    .bind(workflow.id)
+    .bind(format!("workflow-sha-{}", &suffix[..12]))
+    .execute(pool)
+    .await?;
+
+    let run = create_workflow_run(
+        pool,
+        CreateWorkflowRun {
+            workflow_id: workflow.id,
+            actor_user_id: Some(user_id),
+            head_branch: "main".to_owned(),
+            head_sha: Some(format!("{}abcdef012345", &suffix[..16])),
+            event: "workflow_dispatch".to_owned(),
+        },
+    )
+    .await?;
+    transition_workflow_run(
+        pool,
+        run.id,
+        TransitionRun {
+            status: RunStatus::Completed,
+            conclusion: Some(RunConclusion::Failure),
+        },
+    )
+    .await?;
+    sqlx::query(
+        "UPDATE workflow_runs SET display_title = 'Validate Editorial CI', commit_id = $2 WHERE id = $1",
+    )
+    .bind(run.id)
+    .bind(commit.id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO workflow_run_attempts (
+            run_id, attempt_number, status, conclusion, triggered_by_user_id, trigger_kind,
+            started_at, completed_at
+        )
+        VALUES
+            ($1, 1, 'completed', 'failure', $2, 'initial', now() - interval '8 minutes', now() - interval '6 minutes'),
+            ($1, 2, 'completed', 'failure', $2, 'rerun_failed', now() - interval '4 minutes', now() - interval '1 minute')
+        "#,
+    )
+    .bind(run.id)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+
+    let web_job = create_workflow_job(
+        pool,
+        CreateWorkflowJob {
+            run_id: run.id,
+            name: "unit / web".to_owned(),
+            runner_label: Some("ubuntu-latest".to_owned()),
+        },
+    )
+    .await?;
+    sqlx::query(
+        r#"
+        UPDATE workflow_jobs
+        SET status = 'completed',
+            conclusion = 'failure',
+            group_name = 'Checks',
+            attempt_number = 2,
+            log_storage_key = 'actions/logs/unit-web.txt',
+            started_at = now() - interval '4 minutes',
+            completed_at = now() - interval '1 minute'
+        WHERE id = $1
+        "#,
+    )
+    .bind(web_job.id)
+    .execute(pool)
+    .await?;
+    let step = create_workflow_step(
+        pool,
+        CreateWorkflowStep {
+            job_id: web_job.id,
+            number: 1,
+            name: "Run tests".to_owned(),
+        },
+    )
+    .await?;
+    sqlx::query(
+        r#"
+        UPDATE workflow_steps
+        SET status = 'completed',
+            conclusion = 'failure',
+            started_at = now() - interval '3 minutes',
+            completed_at = now() - interval '1 minute'
+        WHERE id = $1
+        "#,
+    )
+    .bind(step.id)
+    .execute(pool)
+    .await?;
+
+    let deploy_job = create_workflow_job(
+        pool,
+        CreateWorkflowJob {
+            run_id: run.id,
+            name: "deploy preview".to_owned(),
+            runner_label: Some("ubuntu-latest".to_owned()),
+        },
+    )
+    .await?;
+    sqlx::query(
+        r#"
+        UPDATE workflow_jobs
+        SET status = 'completed',
+            conclusion = 'success',
+            group_name = 'Deploy',
+            attempt_number = 2,
+            log_storage_key = 'actions/logs/deploy-preview.txt',
+            log_deleted_at = now(),
+            started_at = now() - interval '4 minutes',
+            completed_at = now() - interval '2 minutes'
+        WHERE id = $1
+        "#,
+    )
+    .bind(deploy_job.id)
+    .execute(pool)
+    .await?;
+    create_workflow_step(
+        pool,
+        CreateWorkflowStep {
+            job_id: deploy_job.id,
+            number: 1,
+            name: "Publish preview".to_owned(),
+        },
+    )
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO workflow_annotations (
+            run_id, job_id, step_id, annotation_level, path, start_line, end_line, title, message, raw_details
+        )
+        VALUES ($1, $2, $3, 'failure', 'web/src/app/page.tsx', 42, 42, 'Type error', 'Expected string, found number', 'tsc failed')
+        "#,
+    )
+    .bind(run.id)
+    .bind(web_job.id)
+    .bind(step.id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO workflow_artifacts (run_id, name, digest, size_bytes, storage_key, expired_at)
+        VALUES ($1, 'playwright-report', 'sha256:abc123', 2048, 'actions/artifacts/report.zip', now() + interval '1 day')
+        "#,
+    )
+    .bind(run.id)
+    .execute(pool)
+    .await?;
+
+    Ok(format!(
+        "/{username}/{repository_name}/actions/runs/{}",
+        run.id
+    ))
 }
 
 async fn seed_merge_ready_pull_request(

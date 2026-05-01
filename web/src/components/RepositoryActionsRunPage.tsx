@@ -1,0 +1,617 @@
+"use client";
+
+import Link from "next/link";
+import { useMemo, useState } from "react";
+import { RepositoryShell } from "@/components/RepositoryShell";
+import type {
+  ActionsRunJobDetail,
+  ApiErrorEnvelope,
+  RepositoryActionsRunDetail,
+  RepositoryOverview,
+} from "@/lib/api";
+
+type RepositoryActionsRunPageProps = {
+  repository: RepositoryOverview;
+  detail: RepositoryActionsRunDetail;
+  validationError?: ApiErrorEnvelope | null;
+};
+
+function titleCase(value: string | null | undefined) {
+  if (!value) {
+    return "Unknown";
+  }
+  return value
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function durationLabel(seconds: number | null) {
+  if (seconds === null) {
+    return "waiting";
+  }
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  if (minutes < 60) {
+    return remainder ? `${minutes}m ${remainder}s` : `${minutes}m`;
+  }
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}m`;
+}
+
+function dateTimeLabel(value: string | null | undefined) {
+  if (!value) {
+    return "Not recorded";
+  }
+  const timestamp = new Date(value);
+  if (!Number.isFinite(timestamp.getTime())) {
+    return "Not recorded";
+  }
+  return timestamp.toLocaleString("en", {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function bytesLabel(value: number) {
+  if (value < 1024) {
+    return `${value} B`;
+  }
+  const kib = value / 1024;
+  if (kib < 1024) {
+    return `${kib.toFixed(kib >= 10 ? 0 : 1)} KB`;
+  }
+  const mib = kib / 1024;
+  return `${mib.toFixed(mib >= 10 ? 0 : 1)} MB`;
+}
+
+function statusTone(status: string | null | undefined) {
+  const normalized = status ?? "";
+  if (["success", "completed"].includes(normalized)) {
+    return "ok";
+  }
+  if (
+    ["failure", "timed_out", "cancelled", "action_required"].includes(
+      normalized,
+    )
+  ) {
+    return "err";
+  }
+  if (["in_progress", "queued", "waiting"].includes(normalized)) {
+    return "accent";
+  }
+  if (["skipped", "neutral", "stale"].includes(normalized)) {
+    return "warn";
+  }
+  return "soft";
+}
+
+function statusLabel(status: string | null, conclusion: string | null) {
+  return titleCase(conclusion ?? status);
+}
+
+function statusGlyph(status: string | null, conclusion: string | null) {
+  const tone = statusTone(conclusion ?? status);
+  if (tone === "ok") {
+    return "✓";
+  }
+  if (tone === "err") {
+    return "!";
+  }
+  if (tone === "accent") {
+    return "•";
+  }
+  return "○";
+}
+
+function jobHref(basePath: string, runId: string, jobId: string) {
+  return `${basePath}/actions/runs/${runId}#job-${jobId}`;
+}
+
+function jobState(job: ActionsRunJobDetail) {
+  return statusLabel(job.status, job.conclusion);
+}
+
+export function RepositoryActionsRunPage({
+  repository,
+  detail,
+  validationError,
+}: RepositoryActionsRunPageProps) {
+  const basePath = `/${repository.owner_login}/${repository.name}`;
+  const [selectedJobId, setSelectedJobId] = useState(
+    detail.jobs[0]?.id ?? "summary",
+  );
+  const selectedJob = detail.jobs.find((job) => job.id === selectedJobId);
+  const groupedJobs = useMemo(() => {
+    const groups = new Map<string, ActionsRunJobDetail[]>();
+    for (const job of detail.jobs) {
+      const group = job.groupName ?? "All jobs";
+      groups.set(group, [...(groups.get(group) ?? []), job]);
+    }
+    return [...groups.entries()];
+  }, [detail.jobs]);
+  const actionDisabledReason =
+    detail.actionState.disabledReason ?? "This action lands in the next phase.";
+
+  return (
+    <RepositoryShell
+      activePath={`${basePath}/actions/runs/${detail.run.id}`}
+      frameClassName="max-w-7xl"
+      repository={repository}
+    >
+      <div className="space-y-6">
+        {validationError ? (
+          <div className="card p-4" role="status">
+            <p className="t-label" style={{ color: "var(--err)" }}>
+              Actions unavailable
+            </p>
+            <p className="t-sm mt-2" style={{ color: "var(--ink-2)" }}>
+              {validationError.error.message}
+            </p>
+          </div>
+        ) : null}
+
+        <section className="space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <Link
+                  className="t-sm hover:underline"
+                  href={`${basePath}/actions`}
+                >
+                  Actions
+                </Link>
+                <span className="t-xs">/</span>
+                <Link
+                  className="t-sm hover:underline"
+                  href={`${basePath}/actions/workflows/${detail.workflow.path}`}
+                >
+                  {detail.workflow.name}
+                </Link>
+              </div>
+              <div className="flex items-start gap-3">
+                <span
+                  aria-label={`${statusLabel(detail.run.status, detail.run.conclusion)} run`}
+                  className={`chip ${statusTone(detail.run.conclusion ?? detail.run.status)}`}
+                  role="img"
+                >
+                  {statusGlyph(detail.run.status, detail.run.conclusion)}
+                </span>
+                <div className="min-w-0">
+                  <h1 className="t-h1 break-words">
+                    {detail.run.displayTitle}
+                    <span
+                      className="ml-2 font-normal"
+                      style={{ color: "var(--ink-4)" }}
+                    >
+                      #{detail.run.runNumber}
+                    </span>
+                  </h1>
+                  <p className="t-sm mt-2" style={{ color: "var(--ink-3)" }}>
+                    {titleCase(detail.run.event)} on{" "}
+                    <span className="t-mono-sm">{detail.run.headBranch}</span>
+                    {detail.run.shortSha ? (
+                      <>
+                        {" "}
+                        at{" "}
+                        <span className="t-mono-sm">{detail.run.shortSha}</span>
+                      </>
+                    ) : null}
+                    {detail.run.actor ? ` by ${detail.run.actor.login}` : ""}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link className="btn" href={detail.workflow.sourceHref}>
+                Workflow file
+              </Link>
+              <button
+                className="btn"
+                disabled={!detail.actionState.canRerun}
+                title={
+                  !detail.actionState.canRerun
+                    ? actionDisabledReason
+                    : undefined
+                }
+                type="button"
+              >
+                Re-run all
+              </button>
+              <button
+                className="btn"
+                disabled={!detail.actionState.canCancel}
+                title={
+                  !detail.actionState.canCancel
+                    ? actionDisabledReason
+                    : undefined
+                }
+                type="button"
+              >
+                Cancel run
+              </button>
+              <button
+                className="btn"
+                disabled={!detail.actionState.canDeleteLogs}
+                title={
+                  !detail.actionState.canDeleteLogs
+                    ? actionDisabledReason
+                    : undefined
+                }
+                type="button"
+              >
+                Delete logs
+              </button>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-4">
+            <SummaryCard
+              label="Status"
+              value={statusLabel(detail.run.status, detail.run.conclusion)}
+            />
+            <SummaryCard
+              label="Duration"
+              value={durationLabel(detail.run.durationSeconds)}
+            />
+            <SummaryCard
+              label="Jobs"
+              value={`${detail.run.jobSummary.completed}/${detail.run.jobSummary.total} complete`}
+            />
+            <SummaryCard
+              label="Started"
+              value={dateTimeLabel(detail.run.startedAt)}
+            />
+          </div>
+        </section>
+
+        <div className="grid grid-cols-[300px_minmax(0,1fr)] gap-6 max-lg:grid-cols-1">
+          <aside className="space-y-4">
+            <div className="card p-3">
+              <p className="t-label mb-2">Attempts</p>
+              <div className="space-y-1">
+                {detail.attempts.map((attempt) => (
+                  <Link
+                    className="list-row rounded-[var(--radius)] px-3 py-2"
+                    href={`${basePath}/actions/runs/${detail.run.id}?attempt=${attempt.attemptNumber}`}
+                    key={`${attempt.id ?? "initial"}-${attempt.attemptNumber}`}
+                  >
+                    <span className="t-sm font-medium">
+                      Attempt {attempt.attemptNumber}
+                    </span>
+                    <span
+                      className={`chip ${statusTone(attempt.conclusion ?? attempt.status)}`}
+                    >
+                      {titleCase(attempt.triggerKind)}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+
+            <nav aria-label="Workflow run jobs" className="card p-3">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="t-label">Jobs</p>
+                <span className="chip soft t-num">{detail.jobs.length}</span>
+              </div>
+              <button
+                className="list-row w-full rounded-[var(--radius)] px-3 py-2 text-left"
+                onClick={() => setSelectedJobId("summary")}
+                style={{
+                  background:
+                    selectedJobId === "summary"
+                      ? "var(--accent-soft)"
+                      : "transparent",
+                }}
+                type="button"
+              >
+                <span className="t-sm font-medium">Summary</span>
+              </button>
+              {groupedJobs.map(([group, jobs]) => (
+                <div key={group} className="mt-3">
+                  <p className="t-xs mb-1 px-3">{group}</p>
+                  <div className="space-y-1">
+                    {jobs.map((job) => (
+                      <a
+                        aria-current={
+                          selectedJobId === job.id ? "true" : undefined
+                        }
+                        className="flex w-full items-center gap-2 rounded-[var(--radius)] px-3 py-2 text-left text-sm hover:bg-[var(--hover)]"
+                        href={jobHref(basePath, detail.run.id, job.id)}
+                        key={job.id}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          setSelectedJobId(job.id);
+                          document
+                            .getElementById(`job-${job.id}`)
+                            ?.scrollIntoView({ block: "start" });
+                        }}
+                        style={{
+                          background:
+                            selectedJobId === job.id
+                              ? "var(--accent-soft)"
+                              : "transparent",
+                        }}
+                      >
+                        <span
+                          className={`chip ${statusTone(job.conclusion ?? job.status)} h-6 w-6 justify-center px-0`}
+                        >
+                          {statusGlyph(job.status, job.conclusion)}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">
+                          {job.name}
+                        </span>
+                        <span className="t-xs t-num">
+                          {durationLabel(job.durationSeconds)}
+                        </span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </nav>
+          </aside>
+
+          <main className="min-w-0 space-y-4">
+            <section className="card p-5">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="t-label">Run summary</p>
+                  <h2 className="t-h2 mt-1">Checks and artifacts</h2>
+                </div>
+                <span className="chip soft">
+                  {detail.annotations.length} annotations
+                </span>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <SummaryCard
+                  label="Succeeded"
+                  value={String(detail.run.jobSummary.success)}
+                />
+                <SummaryCard
+                  label="Failed"
+                  value={String(detail.run.jobSummary.failure)}
+                />
+                <SummaryCard
+                  label="Queued"
+                  value={String(detail.run.jobSummary.queued)}
+                />
+                <SummaryCard
+                  label="Artifacts"
+                  value={String(detail.artifacts.length)}
+                />
+              </div>
+            </section>
+
+            <section
+              className="card scroll-mt-6 overflow-hidden"
+              id={selectedJob ? `job-${selectedJob.id}` : "run-summary"}
+            >
+              <div
+                className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4"
+                style={{ borderColor: "var(--line)" }}
+              >
+                <div>
+                  <p className="t-label">
+                    {selectedJob ? "Selected job" : "Summary"}
+                  </p>
+                  <h2 className="t-h2 mt-1">
+                    {selectedJob?.name ?? "All jobs"}
+                  </h2>
+                </div>
+                {selectedJob ? (
+                  <span
+                    className={`chip ${statusTone(selectedJob.conclusion ?? selectedJob.status)}`}
+                  >
+                    {jobState(selectedJob)}
+                  </span>
+                ) : null}
+              </div>
+              {selectedJob ? (
+                <JobDetail job={selectedJob} />
+              ) : (
+                <div className="p-5">
+                  <p className="t-sm" style={{ color: "var(--ink-3)" }}>
+                    Select a job to inspect its steps, runner metadata, and log
+                    availability.
+                  </p>
+                </div>
+              )}
+            </section>
+
+            <AnnotationsList detail={detail} />
+            <ArtifactsTable detail={detail} />
+            <RunMetadata detail={detail} />
+          </main>
+        </div>
+      </div>
+    </RepositoryShell>
+  );
+}
+
+function SummaryCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="card p-4">
+      <p className="t-label">{label}</p>
+      <p className="t-sm mt-2 font-medium" style={{ color: "var(--ink-1)" }}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function JobDetail({ job }: { job: ActionsRunJobDetail }) {
+  return (
+    <div className="p-5">
+      <div className="mb-4 flex flex-wrap gap-2">
+        <span className="chip soft">Attempt {job.attemptNumber}</span>
+        {job.runnerLabel ? (
+          <span className="chip soft">{job.runnerLabel}</span>
+        ) : null}
+        <span className={job.logAvailable ? "chip ok" : "chip warn"}>
+          {job.logDeletedAt
+            ? "Logs deleted"
+            : job.logAvailable
+              ? "Logs available"
+              : "Logs unavailable"}
+        </span>
+      </div>
+      <div className="space-y-2">
+        {job.steps.map((step) => (
+          <div
+            className="list-row rounded-[var(--radius)] px-3 py-3"
+            key={step.id}
+          >
+            <span
+              className={`chip ${statusTone(step.conclusion ?? step.status)} h-6 w-6 justify-center px-0`}
+            >
+              {statusGlyph(step.status, step.conclusion)}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="t-sm font-medium">{step.name}</p>
+              <p className="t-xs">Step {step.number}</p>
+            </div>
+            <span className="t-xs t-num">
+              {durationLabel(step.durationSeconds)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AnnotationsList({ detail }: { detail: RepositoryActionsRunDetail }) {
+  return (
+    <section className="card overflow-hidden">
+      <div
+        className="border-b px-5 py-4"
+        style={{ borderColor: "var(--line)" }}
+      >
+        <p className="t-label">Annotations</p>
+        <h2 className="t-h2 mt-1">Problems found in this run</h2>
+      </div>
+      {detail.annotations.length ? (
+        <div className="divide-y" style={{ borderColor: "var(--line-soft)" }}>
+          {detail.annotations.map((annotation) => (
+            <div className="list-row px-5 py-4" key={annotation.id}>
+              <span className={`chip ${statusTone(annotation.level)}`}>
+                {titleCase(annotation.level)}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="t-sm font-medium">
+                  {annotation.title ?? annotation.message}
+                </p>
+                <p className="t-xs mt-1">
+                  {annotation.path ?? "Workflow"}{" "}
+                  {annotation.startLine ? `line ${annotation.startLine}` : ""}
+                </p>
+                {annotation.title ? (
+                  <p className="t-sm mt-2" style={{ color: "var(--ink-3)" }}>
+                    {annotation.message}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="t-sm p-5" style={{ color: "var(--ink-3)" }}>
+          No annotations were emitted for this run.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function ArtifactsTable({ detail }: { detail: RepositoryActionsRunDetail }) {
+  return (
+    <section className="card overflow-hidden">
+      <div
+        className="border-b px-5 py-4"
+        style={{ borderColor: "var(--line)" }}
+      >
+        <p className="t-label">Artifacts</p>
+        <h2 className="t-h2 mt-1">Generated files</h2>
+      </div>
+      {detail.artifacts.length ? (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[620px] text-left text-sm">
+            <thead>
+              <tr style={{ color: "var(--ink-3)" }}>
+                <th className="px-5 py-3 font-medium">Name</th>
+                <th className="px-5 py-3 font-medium">Digest</th>
+                <th className="px-5 py-3 font-medium">Size</th>
+                <th className="px-5 py-3 font-medium">State</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detail.artifacts.map((artifact) => (
+                <tr
+                  className="border-t"
+                  key={artifact.id}
+                  style={{ borderColor: "var(--line-soft)" }}
+                >
+                  <td className="px-5 py-3 font-medium">{artifact.name}</td>
+                  <td className="px-5 py-3">
+                    <span className="t-mono-sm">
+                      {artifact.digest ?? "none"}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3 t-num">
+                    {bytesLabel(artifact.sizeBytes)}
+                  </td>
+                  <td className="px-5 py-3">
+                    <span
+                      className={
+                        artifact.downloadAvailable ? "chip ok" : "chip warn"
+                      }
+                    >
+                      {artifact.downloadAvailable ? "Available" : "Expired"}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="t-sm p-5" style={{ color: "var(--ink-3)" }}>
+          This run did not upload artifacts.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function RunMetadata({ detail }: { detail: RepositoryActionsRunDetail }) {
+  return (
+    <section className="card p-5">
+      <p className="t-label">Metadata</p>
+      <dl className="mt-4 grid gap-4 sm:grid-cols-2">
+        <div>
+          <dt className="t-xs">Workflow path</dt>
+          <dd className="t-mono-sm mt-1">{detail.workflow.path}</dd>
+        </div>
+        <div>
+          <dt className="t-xs">Source branch</dt>
+          <dd className="t-mono-sm mt-1">{detail.workflow.sourceBranch}</dd>
+        </div>
+        <div>
+          <dt className="t-xs">Created</dt>
+          <dd className="t-sm mt-1">{dateTimeLabel(detail.run.createdAt)}</dd>
+        </div>
+        <div>
+          <dt className="t-xs">Completed</dt>
+          <dd className="t-sm mt-1">{dateTimeLabel(detail.run.completedAt)}</dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
