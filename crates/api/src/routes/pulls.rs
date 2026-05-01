@@ -20,17 +20,20 @@ use crate::{
         permissions::RepositoryRole,
         pulls::{
             add_pull_request_comment, compare_pull_request_refs_for_viewer_with_head,
-            create_pull_request, get_pull_request, pull_request_comment_timeline_item,
-            pull_request_detail_view_for_viewer, pull_request_diff_review_for_viewer,
-            pull_request_timeline_view, pull_sort_options, repository_for_actor_by_name,
-            repository_pull_request_list_view_for_viewer, save_repository_pull_preferences,
-            update_pull_request_draft_state, update_pull_request_metadata,
+            create_pull_request, create_pull_request_review_draft_comment,
+            delete_pull_request_review_draft_comment, get_pull_request,
+            pull_request_comment_timeline_item, pull_request_detail_view_for_viewer,
+            pull_request_diff_review_for_viewer, pull_request_timeline_view, pull_sort_options,
+            repository_for_actor_by_name, repository_pull_request_list_view_for_viewer,
+            save_repository_pull_preferences, update_pull_request_draft_state,
+            update_pull_request_metadata, update_pull_request_review_draft_comment,
             update_pull_request_review_requests, update_pull_request_state,
             update_pull_request_subscription, update_pull_request_viewed_file,
-            ComparePullRequestRefsInput, CreatePullRequest, MergeMethod,
-            PullRequestDiffReviewQuery, PullRequestListQuery, PullRequestState,
+            ComparePullRequestRefsInput, CreatePullRequest, CreatePullRequestReviewDraftComment,
+            MergeMethod, PullRequestDiffReviewQuery, PullRequestListQuery, PullRequestState,
             UpdatePullRequestDraftState, UpdatePullRequestMetadata,
-            UpdatePullRequestReviewRequests, UpdatePullRequestState, UpdatePullRequestSubscription,
+            UpdatePullRequestReviewDraftComment, UpdatePullRequestReviewRequests,
+            UpdatePullRequestState, UpdatePullRequestSubscription,
         },
         repositories::{get_repository_by_owner_name, RepositoryError},
     },
@@ -62,6 +65,14 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/repos/:owner/:repo/pulls/:number/files/viewed",
             patch(update_viewed_file),
+        )
+        .route(
+            "/api/repos/:owner/:repo/pulls/:number/review-comments/drafts",
+            post(create_review_draft_comment),
+        )
+        .route(
+            "/api/repos/:owner/:repo/pulls/:number/review-comments/drafts/:draft_id",
+            patch(update_review_draft_comment).delete(delete_review_draft_comment),
         )
         .route(
             "/api/repos/:owner/:repo/pulls/:number/review-requests",
@@ -208,6 +219,23 @@ struct UpdatePullViewedFileRequest {
     viewed: bool,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateReviewDraftCommentRequest {
+    file_id: Uuid,
+    body: String,
+    side: String,
+    old_line: Option<i64>,
+    new_line: Option<i64>,
+    position: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateReviewDraftCommentRequest {
+    body: String,
+}
+
 async fn list(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -333,6 +361,96 @@ async fn update_viewed_file(
     .map_err(map_collaboration_error)?;
 
     Ok(Json(json!(viewed)))
+}
+
+async fn create_review_draft_comment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, number)): Path<(String, String, i64)>,
+    RestJson(request): RestJson<CreateReviewDraftCommentRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id =
+        repository_for_actor_by_name(pool, &owner, &repo, actor.0.id, RepositoryRole::Read)
+            .await
+            .map_err(map_collaboration_error)?;
+    let detail = get_pull_request(pool, repository_id, number, actor.0.id)
+        .await
+        .map_err(map_collaboration_error)?;
+    let draft = create_pull_request_review_draft_comment(
+        pool,
+        CreatePullRequestReviewDraftComment {
+            pull_request_id: detail.pull_request.id,
+            actor_user_id: actor.0.id,
+            file_id: request.file_id,
+            body: request.body,
+            side: request.side,
+            old_line: request.old_line,
+            new_line: request.new_line,
+            position: request.position,
+        },
+    )
+    .await
+    .map_err(map_collaboration_error)?;
+
+    Ok(Json(json!(draft)))
+}
+
+async fn update_review_draft_comment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, number, draft_id)): Path<(String, String, i64, Uuid)>,
+    RestJson(request): RestJson<UpdateReviewDraftCommentRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id =
+        repository_for_actor_by_name(pool, &owner, &repo, actor.0.id, RepositoryRole::Read)
+            .await
+            .map_err(map_collaboration_error)?;
+    let detail = get_pull_request(pool, repository_id, number, actor.0.id)
+        .await
+        .map_err(map_collaboration_error)?;
+    let draft = update_pull_request_review_draft_comment(
+        pool,
+        UpdatePullRequestReviewDraftComment {
+            pull_request_id: detail.pull_request.id,
+            actor_user_id: actor.0.id,
+            draft_comment_id: draft_id,
+            body: request.body,
+        },
+    )
+    .await
+    .map_err(map_collaboration_error)?;
+
+    Ok(Json(json!(draft)))
+}
+
+async fn delete_review_draft_comment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, number, draft_id)): Path<(String, String, i64, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id =
+        repository_for_actor_by_name(pool, &owner, &repo, actor.0.id, RepositoryRole::Read)
+            .await
+            .map_err(map_collaboration_error)?;
+    let detail = get_pull_request(pool, repository_id, number, actor.0.id)
+        .await
+        .map_err(map_collaboration_error)?;
+    let pending = delete_pull_request_review_draft_comment(
+        pool,
+        detail.pull_request.id,
+        actor.0.id,
+        draft_id,
+    )
+    .await
+    .map_err(map_collaboration_error)?;
+
+    Ok(Json(json!(pending)))
 }
 
 async fn update_preferences(

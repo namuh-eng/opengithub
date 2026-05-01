@@ -133,10 +133,29 @@ test("signed-in user opens the pull request detail conversation shell", async ({
     "href",
     `/${ownerLogin}/${repoName}/pull/${pullNumber}/files?view=split`,
   );
+  const inlineCommentButton = page
+    .getByRole("button", { name: /Add comment at diff position/ })
+    .first();
+  if (await inlineCommentButton.isVisible()) {
+    await inlineCommentButton.click();
+    await page
+      .getByRole("textbox", { name: /Pending review comment/ })
+      .fill("Phase 3 pending **review** draft.");
+    await page.getByRole("tab", { name: "Preview" }).click();
+    await expect(page.getByText("Phase 3 pending")).toBeVisible();
+    await page.getByRole("button", { name: "Save pending comment" }).click();
+    await expect(
+      page.getByText("left a pending review comment"),
+    ).toBeVisible();
+    await page.reload();
+    await expect(
+      page.getByText("left a pending review comment"),
+    ).toBeVisible();
+  }
   await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/prs-005-phase2-files-viewed.jpg",
+    path: "../ralph/screenshots/build/prs-005-phase3-pending-comment.jpg",
   });
 
   await page.goto(`/${ownerLogin}/${repoName}/pull/${pullNumber}`);

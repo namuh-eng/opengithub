@@ -42,7 +42,7 @@
 
 ## Phase 3: Inline Pending Comments - line/file comment composer and draft persistence
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make inline review commenting real without publishing comments immediately. Signed-in users can open a line or file comment composer, use Write/Preview Markdown tabs, save a pending review comment, edit/delete pending comments, and see pending comments remain private through reload until review submission. Anonymous public readers can read published comments but see a concrete sign-in CTA for adding review comments.
 

@@ -1031,6 +1031,19 @@ export type PullRequestViewedFileState = {
   versionKey: string;
 };
 
+export type CreatePullRequestReviewDraftCommentRequest = {
+  fileId: string;
+  body: string;
+  side: "left" | "right" | string;
+  oldLine: number | null;
+  newLine: number | null;
+  position: number;
+};
+
+export type UpdatePullRequestReviewDraftCommentRequest = {
+  body: string;
+};
+
 export type PullRequestDiffReviewView = {
   pullRequest: PullRequestDetailView;
   settings: PullRequestDiffReviewSettings;
@@ -2348,6 +2361,104 @@ export async function updateRepositoryPullRequestViewedFileFromCookie(
     );
   }
   return (await response.json()) as PullRequestViewedFileState;
+}
+
+export async function createRepositoryPullRequestReviewDraftCommentFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  number: number | string,
+  request: CreatePullRequestReviewDraftCommentRequest,
+): Promise<PullRequestDiffReviewComment> {
+  const response = await fetch(
+    `${apiBaseUrl()}${repositoryPullRequestPath(owner, repo, number)}/review-comments/drafts`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  if (!response.ok) {
+    const envelope = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Review comment draft could not be saved",
+      { cause: envelope },
+    );
+  }
+  return (await response.json()) as PullRequestDiffReviewComment;
+}
+
+export async function updateRepositoryPullRequestReviewDraftCommentFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  number: number | string,
+  draftId: string,
+  request: UpdatePullRequestReviewDraftCommentRequest,
+): Promise<PullRequestDiffReviewComment> {
+  const response = await fetch(
+    `${apiBaseUrl()}${repositoryPullRequestPath(
+      owner,
+      repo,
+      number,
+    )}/review-comments/drafts/${encodeURIComponent(draftId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  if (!response.ok) {
+    const envelope = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Review comment draft could not be updated",
+      { cause: envelope },
+    );
+  }
+  return (await response.json()) as PullRequestDiffReviewComment;
+}
+
+export async function deleteRepositoryPullRequestReviewDraftCommentFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  number: number | string,
+  draftId: string,
+): Promise<PullRequestDiffPendingReview> {
+  const response = await fetch(
+    `${apiBaseUrl()}${repositoryPullRequestPath(
+      owner,
+      repo,
+      number,
+    )}/review-comments/drafts/${encodeURIComponent(draftId)}`,
+    {
+      method: "DELETE",
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+  if (!response.ok) {
+    const envelope = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Review comment draft could not be deleted",
+      { cause: envelope },
+    );
+  }
+  return (await response.json()) as PullRequestDiffPendingReview;
 }
 
 export async function saveRepositoryPullPreferences(

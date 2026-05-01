@@ -642,6 +642,28 @@ pub struct PullRequestDiffReviewComment {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct CreatePullRequestReviewDraftComment {
+    pub pull_request_id: Uuid,
+    pub actor_user_id: Uuid,
+    pub file_id: Uuid,
+    pub body: String,
+    pub side: String,
+    pub old_line: Option<i64>,
+    pub new_line: Option<i64>,
+    pub position: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdatePullRequestReviewDraftComment {
+    pub pull_request_id: Uuid,
+    pub actor_user_id: Uuid,
+    pub draft_comment_id: Uuid,
+    pub body: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct PullRequestDiffFile {
     pub id: Uuid,
     pub path: String,
@@ -1828,7 +1850,10 @@ pub async fn pull_request_diff_review_for_viewer(
                        SELECT count(*)
                        FROM pull_request_review_comments comments
                        WHERE comments.pull_request_file_id = hunks.pull_request_file_id
-                         AND comments.state = 'published'
+                         AND (
+                            comments.state = 'published'
+                            OR (comments.state = 'pending' AND comments.author_user_id = $2)
+                         )
                          AND (
                             (lines.new_line IS NOT NULL AND comments.new_line = lines.new_line)
                             OR (lines.old_line IS NOT NULL AND comments.old_line = lines.old_line)
@@ -1841,6 +1866,7 @@ pub async fn pull_request_diff_review_for_viewer(
             "#,
         )
         .bind(&hunk_ids)
+        .bind(actor_user_id)
         .fetch_all(pool)
         .await?
     };
@@ -1859,12 +1885,16 @@ pub async fn pull_request_diff_review_for_viewer(
             JOIN users ON users.id = comments.author_user_id
             WHERE comments.pull_request_id = $1
               AND comments.pull_request_file_id = ANY($2)
-              AND comments.state = 'published'
+              AND (
+                comments.state = 'published'
+                OR (comments.state = 'pending' AND comments.author_user_id = $3)
+              )
             ORDER BY comments.path, comments.created_at
             "#,
         )
         .bind(pull_request.id)
         .bind(&file_ids)
+        .bind(actor_user_id)
         .fetch_all(pool)
         .await?
     };
@@ -2086,6 +2116,172 @@ pub async fn update_pull_request_viewed_file(
         viewed_at: updated.get("viewed_at"),
         version_key: updated.get("version_key"),
     })
+}
+
+pub async fn create_pull_request_review_draft_comment(
+    pool: &PgPool,
+    input: CreatePullRequestReviewDraftComment,
+) -> Result<PullRequestDiffReviewComment, CollaborationError> {
+    let body = input.body.trim().to_owned();
+    if body.is_empty() {
+        return Err(CollaborationError::InvalidIssueField {
+            field_key: "body".to_owned(),
+            message: "review comment body is required".to_owned(),
+        });
+    }
+    let side = normalize_review_comment_side(&input.side)?;
+    let file = validate_pull_request_diff_line(
+        pool,
+        input.pull_request_id,
+        input.file_id,
+        &side,
+        input.old_line,
+        input.new_line,
+        input.position,
+    )
+    .await?;
+    require_repository_read(pool, file.repository_id, input.actor_user_id).await?;
+    let rendered = render_pull_request_review_comment_markdown(pool, file.repository_id, &body).await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO pull_request_review_drafts (pull_request_id, author_user_id)
+        VALUES ($1, $2)
+        ON CONFLICT (pull_request_id, author_user_id) DO UPDATE
+        SET updated_at = now()
+        "#,
+    )
+    .bind(input.pull_request_id)
+    .bind(input.actor_user_id)
+    .execute(pool)
+    .await?;
+
+    let row = sqlx::query(
+        r#"
+        INSERT INTO pull_request_review_comments (
+            pull_request_id, pull_request_file_id, author_user_id, body, body_html,
+            path, side, old_line, new_line, position, state
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending')
+        RETURNING id, pull_request_file_id, author_user_id, body, body_html, path, side,
+                  old_line, new_line, position, state, created_at, updated_at
+        "#,
+    )
+    .bind(input.pull_request_id)
+    .bind(input.file_id)
+    .bind(input.actor_user_id)
+    .bind(&body)
+    .bind(&rendered)
+    .bind(&file.path)
+    .bind(&side)
+    .bind(input.old_line)
+    .bind(input.new_line)
+    .bind(input.position)
+    .fetch_one(pool)
+    .await?;
+
+    pull_request_review_comment_from_row(pool, row).await
+}
+
+pub async fn update_pull_request_review_draft_comment(
+    pool: &PgPool,
+    input: UpdatePullRequestReviewDraftComment,
+) -> Result<PullRequestDiffReviewComment, CollaborationError> {
+    let body = input.body.trim().to_owned();
+    if body.is_empty() {
+        return Err(CollaborationError::InvalidIssueField {
+            field_key: "body".to_owned(),
+            message: "review comment body is required".to_owned(),
+        });
+    }
+    let current = sqlx::query(
+        r#"
+        SELECT comments.id, pulls.repository_id
+        FROM pull_request_review_comments comments
+        JOIN pull_requests pulls ON pulls.id = comments.pull_request_id
+        WHERE comments.id = $1
+          AND comments.pull_request_id = $2
+          AND comments.author_user_id = $3
+          AND comments.state = 'pending'
+        "#,
+    )
+    .bind(input.draft_comment_id)
+    .bind(input.pull_request_id)
+    .bind(input.actor_user_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(CollaborationError::InvalidIssueField {
+        field_key: "draftId".to_owned(),
+        message: "pending review comment was not found".to_owned(),
+    })?;
+    let repository_id = current.get("repository_id");
+    require_repository_read(pool, repository_id, input.actor_user_id).await?;
+    let rendered = render_pull_request_review_comment_markdown(pool, repository_id, &body).await?;
+    let row = sqlx::query(
+        r#"
+        UPDATE pull_request_review_comments
+        SET body = $4, body_html = $5, updated_at = now()
+        WHERE id = $1
+          AND pull_request_id = $2
+          AND author_user_id = $3
+          AND state = 'pending'
+        RETURNING id, pull_request_file_id, author_user_id, body, body_html, path, side,
+                  old_line, new_line, position, state, created_at, updated_at
+        "#,
+    )
+    .bind(input.draft_comment_id)
+    .bind(input.pull_request_id)
+    .bind(input.actor_user_id)
+    .bind(&body)
+    .bind(&rendered)
+    .fetch_one(pool)
+    .await?;
+
+    pull_request_review_comment_from_row(pool, row).await
+}
+
+pub async fn delete_pull_request_review_draft_comment(
+    pool: &PgPool,
+    pull_request_id: Uuid,
+    actor_user_id: Uuid,
+    draft_comment_id: Uuid,
+) -> Result<PullRequestDiffPendingReview, CollaborationError> {
+    let deleted = sqlx::query_scalar::<_, Option<Uuid>>(
+        r#"
+        DELETE FROM pull_request_review_comments
+        WHERE id = $1
+          AND pull_request_id = $2
+          AND author_user_id = $3
+          AND state = 'pending'
+        RETURNING id
+        "#,
+    )
+    .bind(draft_comment_id)
+    .bind(pull_request_id)
+    .bind(actor_user_id)
+    .fetch_optional(pool)
+    .await?;
+    if deleted.flatten().is_none() {
+        return Err(CollaborationError::InvalidIssueField {
+            field_key: "draftId".to_owned(),
+            message: "pending review comment was not found".to_owned(),
+        });
+    }
+    let remaining = pull_request_pending_review(pool, pull_request_id, Some(actor_user_id)).await?;
+    if remaining.comment_count == 0 && remaining.summary_body.is_none() {
+        sqlx::query(
+            r#"
+            DELETE FROM pull_request_review_drafts
+            WHERE pull_request_id = $1 AND author_user_id = $2
+            "#,
+        )
+        .bind(pull_request_id)
+        .bind(actor_user_id)
+        .execute(pool)
+        .await?;
+        return pull_request_pending_review(pool, pull_request_id, Some(actor_user_id)).await;
+    }
+    Ok(remaining)
 }
 
 pub async fn update_pull_request_state(
@@ -3086,6 +3282,157 @@ async fn pull_request_pending_review(
             summary_body: None,
             review_state: "commented".to_owned(),
         },
+    })
+}
+
+struct ValidatedDiffFileLine {
+    repository_id: Uuid,
+    path: String,
+}
+
+async fn validate_pull_request_diff_line(
+    pool: &PgPool,
+    pull_request_id: Uuid,
+    file_id: Uuid,
+    side: &str,
+    old_line: Option<i64>,
+    new_line: Option<i64>,
+    position: i64,
+) -> Result<ValidatedDiffFileLine, CollaborationError> {
+    if position < 0 {
+        return Err(CollaborationError::InvalidIssueField {
+            field_key: "position".to_owned(),
+            message: "diff position must be zero or greater".to_owned(),
+        });
+    }
+    if side == "left" && old_line.is_none() {
+        return Err(CollaborationError::InvalidIssueField {
+            field_key: "oldLine".to_owned(),
+            message: "left-side review comments require an old line".to_owned(),
+        });
+    }
+    if side == "right" && new_line.is_none() {
+        return Err(CollaborationError::InvalidIssueField {
+            field_key: "newLine".to_owned(),
+            message: "right-side review comments require a new line".to_owned(),
+        });
+    }
+    let row = sqlx::query(
+        r#"
+        SELECT files.path, pulls.repository_id
+        FROM pull_request_files files
+        JOIN pull_requests pulls ON pulls.id = files.pull_request_id
+        WHERE files.id = $1
+          AND files.pull_request_id = $2
+          AND EXISTS (
+            SELECT 1
+            FROM pull_request_file_hunks hunks
+            JOIN pull_request_hunk_lines lines ON lines.hunk_id = hunks.id
+            WHERE hunks.pull_request_file_id = files.id
+              AND lines.position = $3
+              AND ($4::bigint IS NULL OR lines.old_line = $4)
+              AND ($5::bigint IS NULL OR lines.new_line = $5)
+          )
+        "#,
+    )
+    .bind(file_id)
+    .bind(pull_request_id)
+    .bind(position)
+    .bind(old_line)
+    .bind(new_line)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(CollaborationError::InvalidIssueField {
+        field_key: "position".to_owned(),
+        message: "review comment position is not part of this pull request diff".to_owned(),
+    })?;
+
+    Ok(ValidatedDiffFileLine {
+        repository_id: row.get("repository_id"),
+        path: row.get("path"),
+    })
+}
+
+fn normalize_review_comment_side(value: &str) -> Result<String, CollaborationError> {
+    match value.trim().to_lowercase().as_str() {
+        "left" => Ok("left".to_owned()),
+        "right" | "" => Ok("right".to_owned()),
+        _ => Err(CollaborationError::InvalidIssueField {
+            field_key: "side".to_owned(),
+            message: "review comment side must be left or right".to_owned(),
+        }),
+    }
+}
+
+async fn render_pull_request_review_comment_markdown(
+    pool: &PgPool,
+    repository_id: Uuid,
+    body: &str,
+) -> Result<String, CollaborationError> {
+    let rendered = render_markdown(
+        Some(pool),
+        RenderMarkdownInput {
+            markdown: body.to_owned(),
+            repository_id: Some(repository_id),
+            owner: None,
+            repo: None,
+            ref_name: None,
+            enable_task_toggles: Some(false),
+        },
+    )
+    .await
+    .map_err(|error| match error {
+        super::markdown::MarkdownError::Sqlx(error) => CollaborationError::Sqlx(error),
+        super::markdown::MarkdownError::TooLarge | super::markdown::MarkdownError::TaskNotFound => {
+            CollaborationError::InvalidIssueField {
+                field_key: "body".to_owned(),
+                message: "review comment body could not be rendered".to_owned(),
+            }
+        }
+    })?;
+    Ok(rendered.html)
+}
+
+async fn pull_request_review_comment_from_row(
+    pool: &PgPool,
+    row: sqlx::postgres::PgRow,
+) -> Result<PullRequestDiffReviewComment, CollaborationError> {
+    let author_user_id = row.get("author_user_id");
+    Ok(PullRequestDiffReviewComment {
+        id: row.get("id"),
+        author: user_for_review_comment(pool, author_user_id).await?,
+        body: row.get("body"),
+        body_html: row.get("body_html"),
+        path: row.get("path"),
+        side: row.get("side"),
+        old_line: row.get("old_line"),
+        new_line: row.get("new_line"),
+        position: row.get("position"),
+        state: row.get("state"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    })
+}
+
+async fn user_for_review_comment(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<IssueListUser, CollaborationError> {
+    let row = sqlx::query(
+        r#"
+        SELECT id, COALESCE(username, email) AS login, display_name, avatar_url
+        FROM users
+        WHERE id = $1
+        "#,
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(IssueListUser {
+        id: row.get("id"),
+        login: row.get("login"),
+        display_name: row.get("display_name"),
+        avatar_url: row.get("avatar_url"),
     })
 }
 

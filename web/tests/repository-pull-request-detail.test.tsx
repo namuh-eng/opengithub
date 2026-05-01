@@ -498,6 +498,126 @@ describe("RepositoryPullRequestDetailPage", () => {
     ).toHaveLength(0);
   });
 
+  it("creates, edits, previews, and deletes pending inline review comments", async () => {
+    const savedDraft = {
+      id: "draft-comment-2",
+      author: {
+        id: "user-1",
+        login: "mona",
+        displayName: "Mona",
+        avatarUrl: null,
+      },
+      body: "Pending **line** note",
+      bodyHtml: "<p>Pending <strong>line</strong> note</p>",
+      path: "crates/api/src/routes/pulls.rs",
+      side: "right",
+      oldLine: null,
+      newLine: 2,
+      position: 2,
+      state: "pending",
+      createdAt: "2026-05-01T00:14:00Z",
+      updatedAt: "2026-05-01T00:14:00Z",
+    };
+    const updatedDraft = {
+      ...savedDraft,
+      body: "Edited pending note",
+      bodyHtml: "<p>Edited pending note</p>",
+      updatedAt: "2026-05-01T00:15:00Z",
+    };
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/markdown/preview") {
+          return {
+            ok: true,
+            json: async () => ({
+              html: "<p>Pending <strong>line</strong> note</p>",
+            }),
+          };
+        }
+        if (
+          url.endsWith("/review-comments/drafts") &&
+          init?.method === "POST"
+        ) {
+          return { ok: true, json: async () => savedDraft };
+        }
+        if (
+          url.endsWith("/review-comments/drafts/draft-comment-2") &&
+          init?.method === "PATCH"
+        ) {
+          return { ok: true, json: async () => updatedDraft };
+        }
+        if (
+          url.endsWith("/review-comments/drafts/draft-comment-2") &&
+          init?.method === "DELETE"
+        ) {
+          return {
+            ok: true,
+            json: async () => ({
+              draftId: "draft-1",
+              commentCount: 0,
+              summaryBody: null,
+              reviewState: "commented",
+            }),
+          };
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <PullRequestFilesChangedPage
+        diffReview={pullRequestDiffReview()}
+        repository={repositoryOverview()}
+        viewerAuthenticated={true}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add comment at diff position 2" }),
+    );
+    fireEvent.change(
+      screen.getByRole("textbox", {
+        name: /Pending review comment for crates\/api\/src\/routes\/pulls.rs line 2/,
+      }),
+      { target: { value: "Pending **line** note" } },
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/markdown/preview",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save pending comment" }),
+    );
+    expect(
+      await screen.findByText("left a pending review comment"),
+    ).toBeVisible();
+    expect(screen.getByText("pending", { exact: true })).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Edit pending review comment" }),
+      { target: { value: "Edited pending note" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("textbox", { name: "Edit pending review comment" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("Edited pending note")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await waitFor(() => {
+      expect(screen.queryByText("Edited pending note")).not.toBeInTheDocument();
+    });
+  });
+
   it("previews markdown and posts pull request comments", async () => {
     const createdComment: PullRequestTimelineItem = {
       id: "event-comment-2",

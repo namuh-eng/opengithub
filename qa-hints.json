@@ -2037,5 +2037,26 @@
       "Diff hunks come from stored snapshot rows; QA should revisit fidelity against real Git object storage once full diff generation is wired.",
       "Real Google OAuth was not used; browser smoke used deterministic Rust-signed Playwright sessions against the local Postgres test database."
     ]
+  },
+  {
+    "feature_id": "prs-005",
+    "tests_written": [
+      "Implemented Phase 3 inline pending review comments for /{owner}/{repo}/pull/{number}/files.",
+      "Added signed-only Rust API endpoints for creating, updating, and deleting pending review comment drafts without publishing them.",
+      "Draft comments validate body, file ownership, side, line, and diff position against stored hunk rows; pending comments remain visible only to the draft author.",
+      "Files changed UI now has live line comment affordances, Write/Preview composer, pending badges, edit/delete controls, and anonymous sign-in CTAs for comment actions.",
+      "Added same-origin Next.js route handlers and typed API helpers for cookie-forwarded pending draft mutations.",
+      "Rust contract covers anonymous rejection, blank-body validation, invalid line validation, draft create/edit/delete, private draft visibility, pending count updates, and no notification side effects before submit.",
+      "Vitest covers inline composer preview/save/edit/delete behavior.",
+      "Playwright PR detail/files smoke passed and saved ralph/screenshots/build/prs-005-phase3-pending-comment.jpg.",
+      "Verification passed: focused api_pull_request_diff_review_contract, focused repository-pull-request-detail Vitest, TEST_DATABASE_URL-backed make check, TEST_DATABASE_URL-backed make test with Cargo tests plus 164 frontend tests, focused Playwright PR detail smoke, full TEST_DATABASE_URL-backed make test-e2e with 65 Playwright tests, and the mandatory Editorial banned-value scan with zero matches using rg -n -e."
+    ],
+    "needs_deeper_qa": [
+      "Submit Review and Abandon Review are still intentionally deferred to Phase 4, so pending drafts are not yet publishable from the Review changes dialog.",
+      "Browser-created PRs may not always have expanded stored hunk rows; the full pending-comment browser flow runs when hunk rows are present, while Rust contract tests prove the persisted hunk-backed mutation path.",
+      "Pending draft privacy was verified through API contract coverage; QA should re-check with two simultaneous signed users once richer multi-user browser fixtures exist.",
+      "Diff hunks still come from stored snapshot rows; QA should revisit fidelity against real Git object storage once full diff generation is wired.",
+      "Real Google OAuth was not used; browser smoke used deterministic Rust-signed Playwright sessions against the local Postgres test database."
+    ]
   }
 ]

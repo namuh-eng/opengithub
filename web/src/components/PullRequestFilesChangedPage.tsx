@@ -7,6 +7,7 @@ import { RepositoryShell } from "@/components/RepositoryShell";
 import type {
   PullRequestDiffFile,
   PullRequestDiffLine,
+  PullRequestDiffReviewComment,
   PullRequestDiffReviewView,
   RepositoryOverview,
 } from "@/lib/api";
@@ -172,47 +173,394 @@ function ViewedToggle({
   );
 }
 
-function DiffLine({ line }: { line: PullRequestDiffLine }) {
-  const styles = lineStyles(line.kind);
+function commentMatchesLine(
+  comment: PullRequestDiffReviewComment,
+  line: PullRequestDiffLine,
+) {
+  return (
+    (line.newLine !== null && comment.newLine === line.newLine) ||
+    (line.oldLine !== null && comment.oldLine === line.oldLine) ||
+    comment.position === line.position
+  );
+}
+
+function commentSideForLine(line: PullRequestDiffLine) {
+  return line.kind === "removed" ? "left" : "right";
+}
+
+function ReviewCommentThread({
+  activePath,
+  comment,
+  onDelete,
+  onUpdate,
+}: {
+  activePath: string;
+  comment: PullRequestDiffReviewComment;
+  onDelete: (commentId: string) => void;
+  onUpdate: (comment: PullRequestDiffReviewComment) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [body, setBody] = useState(comment.body);
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  async function updateDraft() {
+    if (!body.trim()) {
+      setFeedback("Write a comment before saving.");
+      return;
+    }
+    setSaving(true);
+    setFeedback(null);
+    try {
+      const response = await fetch(
+        `${activePath}/review-comments/drafts/${comment.id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ body }),
+        },
+      );
+      if (!response.ok) {
+        setFeedback("Pending comment could not be updated.");
+        return;
+      }
+      const updated = (await response.json()) as PullRequestDiffReviewComment;
+      onUpdate(updated);
+      setEditing(false);
+      setFeedback("Pending comment updated.");
+    } catch {
+      setFeedback("Pending comment could not be updated.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteDraft() {
+    setSaving(true);
+    setFeedback(null);
+    try {
+      const response = await fetch(
+        `${activePath}/review-comments/drafts/${comment.id}`,
+        { method: "DELETE" },
+      );
+      if (!response.ok) {
+        setFeedback("Pending comment could not be deleted.");
+        return;
+      }
+      onDelete(comment.id);
+    } catch {
+      setFeedback("Pending comment could not be deleted.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div
-      className="group grid min-w-[760px] grid-cols-[56px_56px_28px_minmax(0,1fr)_44px] font-mono text-[12.5px] leading-[22px]"
-      style={{ background: styles.background, fontFamily: "var(--mono)" }}
+      className="border-t px-4 py-3"
+      style={{ borderColor: "var(--line-soft)" }}
     >
-      <span
-        className="select-none pr-2 text-right"
-        style={{ background: styles.numberBackground, color: "var(--ink-4)" }}
+      <div className="flex gap-3">
+        <div className="av sm">{comment.author.login[0]?.toUpperCase()}</div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="t-sm">
+              <strong>{comment.author.login}</strong>{" "}
+              <span className="muted">
+                {comment.state === "pending"
+                  ? "left a pending review comment"
+                  : "commented"}
+              </span>
+            </p>
+            {comment.state === "pending" ? (
+              <span className="chip warn">pending</span>
+            ) : null}
+          </div>
+          {editing ? (
+            <div className="mt-2">
+              <textarea
+                aria-label="Edit pending review comment"
+                className="input min-h-24 w-full p-3"
+                onChange={(event) => setBody(event.currentTarget.value)}
+                value={body}
+              />
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  className="btn primary sm"
+                  disabled={saving}
+                  onClick={updateDraft}
+                  type="button"
+                >
+                  Save
+                </button>
+                <button
+                  className="btn ghost sm"
+                  disabled={saving}
+                  onClick={() => {
+                    setBody(comment.body);
+                    setEditing(false);
+                  }}
+                  type="button"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="t-sm mt-1">
+              <MarkdownBody html={comment.bodyHtml} />
+            </div>
+          )}
+          {comment.state === "pending" && !editing ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                className="btn ghost sm"
+                disabled={saving}
+                onClick={() => setEditing(true)}
+                type="button"
+              >
+                Edit
+              </button>
+              <button
+                className="btn ghost sm"
+                disabled={saving}
+                onClick={deleteDraft}
+                type="button"
+              >
+                Delete
+              </button>
+            </div>
+          ) : null}
+          {feedback ? <p className="t-xs mt-2">{feedback}</p> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InlineCommentComposer({
+  activePath,
+  file,
+  line,
+  onCancel,
+  onSaved,
+}: {
+  activePath: string;
+  file: PullRequestDiffFile;
+  line: PullRequestDiffLine;
+  onCancel: () => void;
+  onSaved: (comment: PullRequestDiffReviewComment) => void;
+}) {
+  const [body, setBody] = useState("");
+  const [tab, setTab] = useState<"write" | "preview">("write");
+  const [previewHtml, setPreviewHtml] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  async function preview() {
+    setTab("preview");
+    if (!body.trim()) {
+      setPreviewHtml("");
+      return;
+    }
+    const response = await fetch("/markdown/preview", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ markdown: body, enableTaskToggles: false }),
+    });
+    if (response.ok) {
+      const rendered = (await response.json()) as { html: string };
+      setPreviewHtml(rendered.html);
+    }
+  }
+
+  async function saveDraft() {
+    if (!body.trim()) {
+      setFeedback("Write a comment before saving.");
+      return;
+    }
+    setSaving(true);
+    setFeedback(null);
+    try {
+      const response = await fetch(`${activePath}/review-comments/drafts`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          fileId: file.id,
+          body,
+          side: commentSideForLine(line),
+          oldLine: line.oldLine,
+          newLine: line.newLine,
+          position: line.position,
+        }),
+      });
+      if (!response.ok) {
+        setFeedback("Pending comment could not be saved.");
+        return;
+      }
+      const comment = (await response.json()) as PullRequestDiffReviewComment;
+      onSaved(comment);
+      setBody("");
+      onCancel();
+    } catch {
+      setFeedback("Pending comment could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="border-t px-4 py-3"
+      style={{ borderColor: "var(--line-soft)" }}
+    >
+      <div className="tabs mb-3">
+        <button
+          aria-selected={tab === "write"}
+          className={`tab${tab === "write" ? " active" : ""}`}
+          onClick={() => setTab("write")}
+          role="tab"
+          type="button"
+        >
+          Write
+        </button>
+        <button
+          aria-selected={tab === "preview"}
+          className={`tab${tab === "preview" ? " active" : ""}`}
+          onClick={preview}
+          role="tab"
+          type="button"
+        >
+          Preview
+        </button>
+      </div>
+      {tab === "write" ? (
+        <textarea
+          aria-label={`Pending review comment for ${file.path} line ${line.newLine ?? line.oldLine}`}
+          className="input min-h-28 w-full p-3"
+          onChange={(event) => setBody(event.currentTarget.value)}
+          placeholder="Leave a pending review comment"
+          value={body}
+        />
+      ) : previewHtml ? (
+        <div className="card p-3">
+          <MarkdownBody html={previewHtml} />
+        </div>
+      ) : (
+        <p className="t-sm muted">Nothing to preview.</p>
+      )}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          className="btn primary sm"
+          disabled={saving}
+          onClick={saveDraft}
+          type="button"
+        >
+          Save pending comment
+        </button>
+        <button
+          className="btn ghost sm"
+          disabled={saving}
+          onClick={onCancel}
+          type="button"
+        >
+          Cancel
+        </button>
+        {feedback ? <span className="t-xs">{feedback}</span> : null}
+      </div>
+    </div>
+  );
+}
+
+function DiffLine({
+  activePath,
+  comments,
+  file,
+  line,
+  onDeleteComment,
+  onSaveComment,
+  onUpdateComment,
+  viewerAuthenticated,
+}: {
+  activePath: string;
+  comments: PullRequestDiffReviewComment[];
+  file: PullRequestDiffFile;
+  line: PullRequestDiffLine;
+  onDeleteComment: (commentId: string) => void;
+  onSaveComment: (comment: PullRequestDiffReviewComment) => void;
+  onUpdateComment: (comment: PullRequestDiffReviewComment) => void;
+  viewerAuthenticated: boolean;
+}) {
+  const [composerOpen, setComposerOpen] = useState(false);
+  const styles = lineStyles(line.kind);
+  return (
+    <div>
+      <div
+        className="group grid min-w-[760px] grid-cols-[56px_56px_28px_minmax(0,1fr)_44px] font-mono text-[12.5px] leading-[22px]"
+        style={{ background: styles.background, fontFamily: "var(--mono)" }}
       >
-        {visibleLineNumber(line.oldLine)}
-      </span>
-      <span
-        className="select-none border-r pr-2 text-right"
-        style={{
-          background: styles.numberBackground,
-          borderColor: "var(--line-soft)",
-          color: "var(--ink-4)",
-        }}
-      >
-        {visibleLineNumber(line.newLine)}
-      </span>
-      <span
-        className="select-none text-center"
-        style={{ color: "var(--ink-4)" }}
-      >
-        {lineSign(line.kind)}
-      </span>
-      <code className="min-w-0 overflow-x-auto whitespace-pre pr-4">
-        {line.content || " "}
-      </code>
-      <button
-        aria-label={`Add comment at diff position ${line.position}`}
-        className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
-        disabled
-        title="Inline comments ship in the next phase"
-        type="button"
-      >
-        +
-      </button>
+        <span
+          className="select-none pr-2 text-right"
+          style={{ background: styles.numberBackground, color: "var(--ink-4)" }}
+        >
+          {visibleLineNumber(line.oldLine)}
+        </span>
+        <span
+          className="select-none border-r pr-2 text-right"
+          style={{
+            background: styles.numberBackground,
+            borderColor: "var(--line-soft)",
+            color: "var(--ink-4)",
+          }}
+        >
+          {visibleLineNumber(line.newLine)}
+        </span>
+        <span
+          className="select-none text-center"
+          style={{ color: "var(--ink-4)" }}
+        >
+          {lineSign(line.kind)}
+        </span>
+        <code className="min-w-0 overflow-x-auto whitespace-pre pr-4">
+          {line.content || " "}
+        </code>
+        {viewerAuthenticated ? (
+          <button
+            aria-label={`Add comment at diff position ${line.position}`}
+            className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+            onClick={() => setComposerOpen(true)}
+            type="button"
+          >
+            +
+          </button>
+        ) : (
+          <Link
+            aria-label={`Sign in to comment at diff position ${line.position}`}
+            className="text-center"
+            href={`/login?next=${encodeURIComponent(file.href)}`}
+          >
+            +
+          </Link>
+        )}
+      </div>
+      {comments.map((comment) => (
+        <ReviewCommentThread
+          activePath={activePath}
+          comment={comment}
+          key={comment.id}
+          onDelete={onDeleteComment}
+          onUpdate={onUpdateComment}
+        />
+      ))}
+      {composerOpen ? (
+        <InlineCommentComposer
+          activePath={activePath}
+          file={file}
+          line={line}
+          onCancel={() => setComposerOpen(false)}
+          onSaved={onSaveComment}
+        />
+      ) : null}
     </div>
   );
 }
@@ -226,7 +574,18 @@ function DiffFile({
   file: PullRequestDiffFile;
   viewerAuthenticated: boolean;
 }) {
+  const [comments, setComments] = useState(file.comments);
   const anchor = file.href.split("#")[1] ?? file.id;
+  const updateComment = (updated: PullRequestDiffReviewComment) => {
+    setComments((current) =>
+      current.map((comment) => (comment.id === updated.id ? updated : comment)),
+    );
+  };
+  const deleteComment = (commentId: string) => {
+    setComments((current) =>
+      current.filter((comment) => comment.id !== commentId),
+    );
+  };
   return (
     <article className="card mb-4 overflow-hidden" id={anchor}>
       <div
@@ -268,7 +627,21 @@ function DiffFile({
                 {hunk.header}
               </div>
               {hunk.lines.map((line) => (
-                <DiffLine key={`${hunk.id}-${line.position}`} line={line} />
+                <DiffLine
+                  activePath={activePath}
+                  comments={comments.filter((comment) =>
+                    commentMatchesLine(comment, line),
+                  )}
+                  file={file}
+                  key={`${hunk.id}-${line.position}`}
+                  line={line}
+                  onDeleteComment={deleteComment}
+                  onSaveComment={(comment) =>
+                    setComments((current) => [...current, comment])
+                  }
+                  onUpdateComment={updateComment}
+                  viewerAuthenticated={viewerAuthenticated}
+                />
               ))}
             </div>
           ))}
@@ -281,29 +654,24 @@ function DiffFile({
           </p>
         </div>
       )}
-      {file.comments.length ? (
+      {comments.filter((comment) => comment.position === null).length ? (
         <div
           className="border-t p-4"
           style={{ borderColor: "var(--line-soft)" }}
         >
-          <p className="t-label mb-3">Published comments</p>
+          <p className="t-label mb-3">File comments</p>
           <div className="space-y-3">
-            {file.comments.map((comment) => (
-              <div className="flex gap-3" key={comment.id}>
-                <div className="av sm">
-                  {comment.author.login[0]?.toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="t-sm">
-                    <strong>{comment.author.login}</strong>{" "}
-                    <span className="muted">commented on this file</span>
-                  </p>
-                  <div className="t-sm mt-1">
-                    <MarkdownBody html={comment.bodyHtml} />
-                  </div>
-                </div>
-              </div>
-            ))}
+            {comments
+              .filter((comment) => comment.position === null)
+              .map((comment) => (
+                <ReviewCommentThread
+                  activePath={activePath}
+                  comment={comment}
+                  key={comment.id}
+                  onDelete={deleteComment}
+                  onUpdate={updateComment}
+                />
+              ))}
           </div>
         </div>
       ) : null}

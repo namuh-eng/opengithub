@@ -128,6 +128,54 @@ async fn patch_json(
     (status, value)
 }
 
+async fn post_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method(Method::POST)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let request = builder
+        .body(Body::from(body.to_string()))
+        .expect("request should build");
+    let response = app.oneshot(request).await.expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).expect("response should be json")
+    };
+    (status, value)
+}
+
+async fn delete_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (StatusCode, Value) {
+    let mut builder = Request::builder().method(Method::DELETE).uri(uri);
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let request = builder.body(Body::empty()).expect("request should build");
+    let response = app.oneshot(request).await.expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).expect("response should be json")
+    };
+    (status, value)
+}
+
 #[tokio::test]
 async fn pull_request_diff_review_contract_returns_files_hunks_and_viewer_state() {
     let Some(pool) = database_pool().await else {
@@ -420,6 +468,135 @@ async fn pull_request_diff_review_contract_returns_files_hunks_and_viewer_state(
         get_json(app.clone(), &invalid_uri, Some(&owner_cookie)).await;
     assert_eq!(invalid_status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(invalid_body["error"]["code"], "validation_failed");
+
+    let draft_uri = format!(
+        "/api/repos/{}/{}/pulls/{}/review-comments/drafts",
+        owner.email, repo_name, pull.pull_request.number
+    );
+    let (anonymous_draft_status, anonymous_draft_body) = post_json(
+        app.clone(),
+        &draft_uri,
+        None,
+        json!({
+            "fileId": file_id,
+            "body": "Anonymous should not save",
+            "side": "right",
+            "newLine": 11,
+            "position": 2
+        }),
+    )
+    .await;
+    assert_eq!(anonymous_draft_status, StatusCode::UNAUTHORIZED);
+    assert_eq!(anonymous_draft_body["error"]["code"], "not_authenticated");
+
+    let (blank_status, blank_body) = post_json(
+        app.clone(),
+        &draft_uri,
+        Some(&owner_cookie),
+        json!({
+            "fileId": file_id,
+            "body": "   ",
+            "side": "right",
+            "newLine": 11,
+            "position": 2
+        }),
+    )
+    .await;
+    assert_eq!(blank_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(blank_body["error"]["code"], "validation_failed");
+
+    let (invalid_line_status, invalid_line_body) = post_json(
+        app.clone(),
+        &draft_uri,
+        Some(&owner_cookie),
+        json!({
+            "fileId": file_id,
+            "body": "Wrong line",
+            "side": "right",
+            "newLine": 99,
+            "position": 2
+        }),
+    )
+    .await;
+    assert_eq!(invalid_line_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(invalid_line_body["error"]["code"], "validation_failed");
+
+    let (draft_status, draft_body) = post_json(
+        app.clone(),
+        &draft_uri,
+        Some(&owner_cookie),
+        json!({
+            "fileId": file_id,
+            "body": "New **pending** review note",
+            "side": "right",
+            "newLine": 11,
+            "position": 2
+        }),
+    )
+    .await;
+    assert_eq!(draft_status, StatusCode::OK, "draft body: {draft_body}");
+    let draft_id = draft_body["id"].as_str().expect("draft id should exist");
+    assert_eq!(draft_body["state"], "pending");
+    assert_eq!(draft_body["path"], "src/review.rs");
+    assert!(
+        draft_body["bodyHtml"]
+            .as_str()
+            .expect("rendered body")
+            .contains("<strong>pending</strong>")
+    );
+
+    let (anonymous_after_draft_status, anonymous_after_draft_body) =
+        get_json(app.clone(), &uri, None).await;
+    assert_eq!(anonymous_after_draft_status, StatusCode::OK);
+    assert_eq!(
+        anonymous_after_draft_body["files"][1]["comments"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1,
+        "anonymous readers should only see the published comment"
+    );
+
+    let (owner_after_draft_status, owner_after_draft_body) =
+        get_json(app.clone(), &uri, Some(&owner_cookie)).await;
+    assert_eq!(owner_after_draft_status, StatusCode::OK);
+    assert_eq!(
+        owner_after_draft_body["files"][1]["comments"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3,
+        "draft author should see the seeded and newly saved pending comments"
+    );
+    assert_eq!(owner_after_draft_body["pendingReview"]["commentCount"], 2);
+
+    let draft_item_uri = format!("{draft_uri}/{draft_id}");
+    let (update_status, update_body) = patch_json(
+        app.clone(),
+        &draft_item_uri,
+        Some(&owner_cookie),
+        json!({ "body": "Edited pending note" }),
+    )
+    .await;
+    assert_eq!(update_status, StatusCode::OK, "update body: {update_body}");
+    assert_eq!(update_body["body"], "Edited pending note");
+
+    let (delete_status, delete_body) =
+        delete_json(app.clone(), &draft_item_uri, Some(&owner_cookie)).await;
+    assert_eq!(delete_status, StatusCode::OK, "delete body: {delete_body}");
+    assert_eq!(delete_body["commentCount"], 1);
+
+    let notification_count = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM notifications WHERE repository_id = $1",
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("notification count should load");
+    assert_eq!(
+        notification_count, 0,
+        "pending drafts should not emit notifications before submit"
+    );
 }
 
 #[tokio::test]
