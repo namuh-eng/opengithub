@@ -166,6 +166,13 @@ function pullRequestDetail(
       canMarkReady: false,
       defaultMethod: "squash",
       methods: ["squash", "merge_commit", "rebase"],
+      branchProtection: {
+        protected: false,
+        pattern: null,
+        requiredApprovingReviewCount: 0,
+        requiresUpToDateBranch: false,
+        requiredStatusChecks: [],
+      },
       blockers: [],
       summary:
         "Ready to merge: approved review state, 4 of 4 checks complete, 6 changed files.",
@@ -996,6 +1003,7 @@ describe("RepositoryPullRequestDetailPage", () => {
     const closed = pullRequestDetail({
       state: "closed",
       mergeability: {
+        ...pullRequestDetail().mergeability,
         state: "closed",
         canMerge: false,
         canClose: false,
@@ -1087,5 +1095,66 @@ describe("RepositoryPullRequestDetailPage", () => {
     });
     expect(await screen.findByText("Pull request merged.")).toBeVisible();
     expect(screen.getByText("Merged")).toBeVisible();
+  });
+
+  it("renders repository merge policy methods and branch rule blockers", () => {
+    render(
+      <RepositoryPullRequestDetailPage
+        pullRequest={pullRequestDetail({
+          mergeability: {
+            ...pullRequestDetail().mergeability,
+            canMerge: false,
+            defaultMethod: "squash",
+            methods: ["squash"],
+            branchProtection: {
+              protected: true,
+              pattern: "main",
+              requiredApprovingReviewCount: 2,
+              requiresUpToDateBranch: true,
+              requiredStatusChecks: ["ci/test", "lint"],
+            },
+            blockers: [
+              {
+                code: "required_approvals",
+                message:
+                  "2 approving reviews are required by branch protection.",
+                severity: "blocking",
+              },
+              {
+                code: "required_checks_missing",
+                message:
+                  "Required status checks have not reported yet: ci/test, lint.",
+                severity: "blocking",
+              },
+            ],
+            summary: "This pull request is blocked by branch protection.",
+          },
+        })}
+        repository={repositoryOverview()}
+        timeline={pullRequestTimeline()}
+        viewerAuthenticated={true}
+      />,
+    );
+
+    expect(screen.getByText("Protected branch")).toBeVisible();
+    expect(screen.getAllByText("main").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/approving review required/)).toBeVisible();
+    expect(screen.getByText(/Required checks:/)).toBeVisible();
+    expect(screen.getAllByText(/ci\/test, lint/).length).toBeGreaterThanOrEqual(
+      1,
+    );
+    expect(screen.getByText("Up-to-date branch required")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Squash and merge" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Create a merge commit" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Rebase and merge" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Merge pull request" }),
+    ).toBeDisabled();
   });
 });

@@ -333,6 +333,7 @@ async fn pull_requests_share_issue_numbers_and_timeline_state() {
             actor_user_id: owner.id,
             state: PullRequestState::Merged,
             merge_commit_id: None,
+            method: None,
         },
     )
     .await

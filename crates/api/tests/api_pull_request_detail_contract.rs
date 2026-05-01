@@ -645,3 +645,184 @@ async fn pull_request_detail_contract_returns_screen_ready_metadata() {
         "forbidden"
     );
 }
+
+#[tokio::test]
+async fn pull_request_mergeability_uses_repository_policy_and_branch_rules() {
+    let Some(pool) = database_pool().await else {
+        eprintln!(
+            "skipping pull request merge policy scenario; set TEST_DATABASE_URL or DATABASE_URL"
+        );
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "pull-policy-owner").await;
+    let reviewer = create_user(&pool, "pull-policy-reviewer").await;
+    let repo_name = format!("pull-policy-{}", Uuid::new_v4().simple());
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: repo_name.clone(),
+            description: None,
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    let pull = create_pull_request(
+        &pool,
+        CreatePullRequest {
+            repository_id: repository.id,
+            actor_user_id: owner.id,
+            title: "Apply merge policy".to_owned(),
+            body: Some("Policy-driven mergeability.".to_owned()),
+            head_ref: "feature/policy".to_owned(),
+            base_ref: "main".to_owned(),
+            head_repository_id: None,
+            is_draft: false,
+            label_ids: vec![],
+            milestone_id: None,
+            assignee_user_ids: vec![],
+            reviewer_user_ids: vec![],
+            template_slug: None,
+        },
+    )
+    .await
+    .expect("pull should create");
+    sqlx::query(
+        r#"
+        INSERT INTO repository_merge_settings (
+            repository_id, allow_squash, allow_merge_commit, allow_rebase, default_method
+        )
+        VALUES ($1, true, false, false, 'squash')
+        "#,
+    )
+    .bind(repository.id)
+    .execute(&pool)
+    .await
+    .expect("merge settings should create");
+    let rule_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO repository_branch_protection_rules (
+            repository_id, pattern, required_approving_review_count
+        )
+        VALUES ($1, 'main', 2)
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("branch rule should create");
+    sqlx::query(
+        r#"
+        INSERT INTO repository_required_status_checks (branch_protection_rule_id, context)
+        VALUES ($1, 'ci/test'), ($1, 'lint')
+        "#,
+    )
+    .bind(rule_id)
+    .execute(&pool)
+    .await
+    .expect("required checks should create");
+    sqlx::query(
+        r#"
+        INSERT INTO pull_request_reviews (pull_request_id, reviewer_user_id, state, body)
+        VALUES ($1, $2, 'approved', 'One approval')
+        "#,
+    )
+    .bind(pull.pull_request.id)
+    .bind(reviewer.id)
+    .execute(&pool)
+    .await
+    .expect("review should create");
+    sqlx::query(
+        r#"
+        INSERT INTO pull_request_files (pull_request_id, path, status, additions, deletions, byte_size)
+        VALUES ($1, 'src/policy.rs', 'modified', 10, 1, 512)
+        "#,
+    )
+    .bind(pull.pull_request.id)
+    .execute(&pool)
+    .await
+    .expect("file snapshots should create");
+
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let uri = format!(
+        "/api/repos/{}/{}/pulls/{}",
+        owner.email, repo_name, pull.pull_request.number
+    );
+
+    let (status, body) = get_json(app.clone(), &uri, Some(&owner_cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["mergeability"]["canMerge"], false);
+    assert_eq!(body["mergeability"]["defaultMethod"], "squash");
+    assert_eq!(body["mergeability"]["methods"], json!(["squash"]));
+    assert_eq!(body["mergeability"]["branchProtection"]["protected"], true);
+    assert_eq!(body["mergeability"]["branchProtection"]["pattern"], "main");
+    assert_eq!(
+        body["mergeability"]["branchProtection"]["requiredApprovingReviewCount"],
+        2
+    );
+    assert_eq!(
+        body["mergeability"]["branchProtection"]["requiredStatusChecks"],
+        json!(["ci/test", "lint"])
+    );
+    let blockers = body["mergeability"]["blockers"]
+        .as_array()
+        .expect("blockers should be an array");
+    assert!(blockers
+        .iter()
+        .any(|item| item["code"] == "required_checks_missing"));
+    assert!(blockers
+        .iter()
+        .any(|item| item["code"] == "required_approvals"));
+
+    let (merge_status, merge_body) = post_json(
+        app.clone(),
+        &format!("{uri}/merge"),
+        Some(&owner_cookie),
+        json!({ "method": "rebase" }),
+    )
+    .await;
+    assert_eq!(merge_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(merge_body["error"]["code"], "validation_failed");
+    assert!(merge_body["error"]["message"]
+        .as_str()
+        .expect("error message should be text")
+        .contains("disabled by this repository"));
+
+    let second_reviewer = create_user(&pool, "pull-policy-second-reviewer").await;
+    sqlx::query(
+        r#"
+        INSERT INTO pull_request_reviews (pull_request_id, reviewer_user_id, state, body)
+        VALUES ($1, $2, 'approved', 'Second approval')
+        "#,
+    )
+    .bind(pull.pull_request.id)
+    .bind(second_reviewer.id)
+    .execute(&pool)
+    .await
+    .expect("second review should create");
+    sqlx::query(
+        r#"
+        INSERT INTO pull_request_checks_summary (
+            pull_request_id, status, conclusion, total_count, completed_count, failed_count
+        )
+        VALUES ($1, 'completed', 'success', 2, 2, 0)
+        "#,
+    )
+    .bind(pull.pull_request.id)
+    .execute(&pool)
+    .await
+    .expect("check summary should create");
+
+    let (ready_status, ready_body) = get_json(app.clone(), &uri, Some(&owner_cookie)).await;
+    assert_eq!(ready_status, StatusCode::OK);
+    assert_eq!(ready_body["mergeability"]["state"], "ready");
+    assert_eq!(ready_body["mergeability"]["canMerge"], true);
+    assert_eq!(ready_body["mergeability"]["blockers"], json!([]));
+}

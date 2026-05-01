@@ -1119,6 +1119,13 @@ export type PullRequestDetailView = {
     canMarkReady: boolean;
     defaultMethod: MergeMethod;
     methods: MergeMethod[];
+    branchProtection: {
+      protected: boolean;
+      pattern: string | null;
+      requiredApprovingReviewCount: number;
+      requiresUpToDateBranch: boolean;
+      requiredStatusChecks: string[];
+    };
     blockers: Array<{
       code: string;
       message: string;

@@ -2095,5 +2095,25 @@
       "Diff hunks still come from stored snapshot rows; QA should revisit fidelity against real Git object storage once full diff generation is wired.",
       "Real Google OAuth was not used; browser smoke used deterministic Rust-signed Playwright sessions against the local Postgres test database."
     ]
+  },
+  {
+    "feature_id": "prs-006",
+    "tests_written": [
+      "Implemented Phase 1 merge settings and branch rules for pull request mergeability.",
+      "Added repository_merge_settings, repository_branch_protection_rules, and repository_required_status_checks migrations.",
+      "Mergeability now returns enabled merge methods, default method, branch protection summary, required status checks, and policy-driven blockers.",
+      "POST /api/repos/{owner}/{repo}/pulls/{number}/merge now rejects disabled merge methods before attempting the existing merge state transition.",
+      "PR detail UI renders protected-branch policy chips and hides disabled merge methods using Editorial primitives.",
+      "Rust contract covers disabled method rejection, required approvals, missing required checks, branch protection response shape, and ready state after requirements pass.",
+      "Vitest covers policy-driven merge method rendering, branch rule blockers, disabled merge button behavior, and legacy merge action behavior.",
+      "Verification passed: focused api_pull_request_detail_contract policy test, focused repository-pull-request-detail Vitest, TEST_DATABASE_URL-backed make check, TEST_DATABASE_URL-backed make test with Cargo tests plus 168 frontend tests, full TEST_DATABASE_URL-backed make test-e2e with 65 Playwright tests, and mandatory Editorial banned-value scan with zero matches using rg -n -e."
+    ],
+    "needs_deeper_qa": [
+      "Phase 1 still uses the existing merge state transition; atomic Git object/ref mutation is intentionally deferred to Phase 2.",
+      "Required status checks are currently evaluated from the aggregate pull_request_checks_summary row, not per-context check-run rows.",
+      "Branch rule pattern matching supports exact names and a simple wildcard, which should be revisited when full rulesets land.",
+      "The full E2E suite passed, but this phase did not add a dedicated browser fixture that seeds protected branch policy in the UI.",
+      "Real Google OAuth was not used; browser smoke used deterministic Rust-signed Playwright sessions against the local Postgres test database."
+    ]
   }
 ]

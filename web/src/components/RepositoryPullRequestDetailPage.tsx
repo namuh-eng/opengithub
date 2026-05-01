@@ -123,6 +123,13 @@ export function RepositoryPullRequestDetailPage({
     initialPullRequest.mergeability.defaultMethod,
   );
   const pullRequest = currentPullRequest;
+  const branchProtection = pullRequest.mergeability.branchProtection ?? {
+    protected: false,
+    pattern: null,
+    requiredApprovingReviewCount: 0,
+    requiresUpToDateBranch: false,
+    requiredStatusChecks: [],
+  };
   const bodyLabelId = `pull-request-${pullRequest.number}-body`;
   const basePath = `/${repository.owner_login}/${repository.name}`;
   const activePath = `${basePath}/pull/${pullRequest.number}`;
@@ -521,7 +528,44 @@ export function RepositoryPullRequestDetailPage({
                   <span className="t-num">{pullRequest.stats.deletions}</span>{" "}
                   deletions
                 </span>
+                {branchProtection.protected ? (
+                  <span className="chip warn">
+                    Protected branch{" "}
+                    <span className="t-mono-sm">
+                      {branchProtection.pattern}
+                    </span>
+                  </span>
+                ) : null}
               </div>
+              {branchProtection.protected ? (
+                <div
+                  className="border-t px-5 py-4"
+                  style={{ borderColor: "var(--line-soft)" }}
+                >
+                  <h3 className="t-label mb-2">Branch rules</h3>
+                  <div className="flex flex-wrap gap-2">
+                    {branchProtection.requiredApprovingReviewCount ? (
+                      <span className="chip soft">
+                        <span className="t-num">
+                          {branchProtection.requiredApprovingReviewCount}
+                        </span>{" "}
+                        approving review required
+                      </span>
+                    ) : null}
+                    {branchProtection.requiredStatusChecks.length ? (
+                      <span className="chip soft">
+                        Required checks:{" "}
+                        {branchProtection.requiredStatusChecks.join(", ")}
+                      </span>
+                    ) : null}
+                    {branchProtection.requiresUpToDateBranch ? (
+                      <span className="chip soft">
+                        Up-to-date branch required
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
               {pullRequest.mergeability.blockers.length ? (
                 <div
                   className="border-t px-5 py-4"

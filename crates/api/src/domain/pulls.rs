@@ -101,6 +101,7 @@ pub struct UpdatePullRequestState {
     pub actor_user_id: Uuid,
     pub state: PullRequestState,
     pub merge_commit_id: Option<Uuid>,
+    pub method: Option<MergeMethod>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -352,6 +353,16 @@ pub struct PullRequestMergeBlocker {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct BranchProtectionSummary {
+    pub protected: bool,
+    pub pattern: Option<String>,
+    pub required_approving_review_count: i64,
+    pub requires_up_to_date_branch: bool,
+    pub required_status_checks: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct PullRequestMergeability {
     pub state: String,
     pub can_merge: bool,
@@ -360,6 +371,7 @@ pub struct PullRequestMergeability {
     pub can_mark_ready: bool,
     pub default_method: MergeMethod,
     pub methods: Vec<MergeMethod>,
+    pub branch_protection: BranchProtectionSummary,
     pub blockers: Vec<PullRequestMergeBlocker>,
     pub summary: String,
 }
@@ -2485,6 +2497,17 @@ pub async fn update_pull_request_state(
     if input.state == PullRequestState::Merged {
         let mergeability =
             pull_request_mergeability(pool, &current, Some(input.actor_user_id)).await?;
+        if let Some(method) = &input.method {
+            if !mergeability.methods.iter().any(|allowed| allowed == method) {
+                return Err(CollaborationError::InvalidIssueField {
+                    field_key: "method".to_owned(),
+                    message: format!(
+                        "{} is disabled by this repository's merge settings",
+                        method.as_str()
+                    ),
+                });
+            }
+        }
         if !mergeability.can_merge {
             return Err(CollaborationError::InvalidIssueField {
                 field_key: "merge".to_owned(),
@@ -5267,6 +5290,10 @@ async fn pull_request_mergeability(
         .await?
         .remove(&pull_request.id)
         .unwrap_or_else(default_review_summary);
+    let merge_settings = repository_merge_settings(pool, pull_request.repository_id).await?;
+    let branch_protection =
+        branch_protection_summary(pool, pull_request.repository_id, &pull_request.base_ref).await?;
+    let approving_review_count = pull_request_approval_count(pool, pull_request.id).await?;
     let mut blockers = Vec::new();
 
     if !can_write {
@@ -5298,26 +5325,47 @@ async fn pull_request_mergeability(
             "There are no changed files or commits to merge.",
         ));
     }
-    if checks.failed_count > 0
+    if !branch_protection.required_status_checks.is_empty() && checks.total_count == 0 {
+        blockers.push(merge_blocker(
+            "required_checks_missing",
+            &format!(
+                "Required status checks have not reported yet: {}.",
+                branch_protection.required_status_checks.join(", ")
+            ),
+        ));
+    } else if checks.failed_count > 0
         || checks
             .conclusion
             .as_deref()
             .is_some_and(|conclusion| !matches!(conclusion, "success" | "skipped"))
     {
         blockers.push(merge_blocker(
-            "checks_failed",
-            "Required checks have failed.",
+            "required_checks_failed",
+            "Required status checks have failed.",
         ));
     } else if checks.total_count > 0 && checks.completed_count < checks.total_count {
         blockers.push(merge_blocker(
-            "checks_pending",
-            "Required checks are still running.",
+            "required_checks_pending",
+            "Required status checks are still running.",
         ));
     }
     if review.state == "changes_requested" {
         blockers.push(merge_blocker(
             "changes_requested",
             "A reviewer requested changes.",
+        ));
+    } else if branch_protection.required_approving_review_count > approving_review_count {
+        blockers.push(merge_blocker(
+            "required_approvals",
+            &format!(
+                "{} approving review{} required by branch protection.",
+                branch_protection.required_approving_review_count,
+                if branch_protection.required_approving_review_count == 1 {
+                    " is"
+                } else {
+                    "s are"
+                }
+            ),
         ));
     } else if review.required && review.reviewer_count == 0 {
         blockers.push(merge_blocker(
@@ -5373,15 +5421,156 @@ async fn pull_request_mergeability(
         can_mark_ready: can_write
             && pull_request.state == PullRequestState::Open
             && pull_request.is_draft,
-        default_method: MergeMethod::Squash,
-        methods: vec![
-            MergeMethod::Squash,
-            MergeMethod::MergeCommit,
-            MergeMethod::Rebase,
-        ],
+        default_method: merge_settings.default_method,
+        methods: merge_settings.methods,
+        branch_protection,
         blockers,
         summary,
     })
+}
+
+#[derive(Debug, Clone)]
+struct RepositoryMergeSettings {
+    default_method: MergeMethod,
+    methods: Vec<MergeMethod>,
+}
+
+async fn repository_merge_settings(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<RepositoryMergeSettings, CollaborationError> {
+    let row = sqlx::query(
+        r#"
+        SELECT allow_squash, allow_merge_commit, allow_rebase, default_method
+        FROM repository_merge_settings
+        WHERE repository_id = $1
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some(row) = row else {
+        return Ok(RepositoryMergeSettings {
+            default_method: MergeMethod::Squash,
+            methods: vec![
+                MergeMethod::Squash,
+                MergeMethod::MergeCommit,
+                MergeMethod::Rebase,
+            ],
+        });
+    };
+
+    let mut methods = Vec::new();
+    if row.get("allow_squash") {
+        methods.push(MergeMethod::Squash);
+    }
+    if row.get("allow_merge_commit") {
+        methods.push(MergeMethod::MergeCommit);
+    }
+    if row.get("allow_rebase") {
+        methods.push(MergeMethod::Rebase);
+    }
+    if methods.is_empty() {
+        methods.push(MergeMethod::Squash);
+    }
+    let configured_default = merge_method_from_str(row.get::<String, _>("default_method").as_str());
+    let default_method = methods
+        .iter()
+        .find(|method| **method == configured_default)
+        .cloned()
+        .unwrap_or_else(|| methods[0].clone());
+    Ok(RepositoryMergeSettings {
+        default_method,
+        methods,
+    })
+}
+
+async fn branch_protection_summary(
+    pool: &PgPool,
+    repository_id: Uuid,
+    base_ref: &str,
+) -> Result<BranchProtectionSummary, CollaborationError> {
+    let rules = sqlx::query(
+        r#"
+        SELECT id, pattern, required_approving_review_count, requires_up_to_date_branch
+        FROM repository_branch_protection_rules
+        WHERE repository_id = $1
+        ORDER BY
+            CASE WHEN pattern = $2 THEN 0 WHEN position('*' in pattern) > 0 THEN 1 ELSE 2 END,
+            length(pattern) DESC,
+            created_at ASC
+        "#,
+    )
+    .bind(repository_id)
+    .bind(base_ref)
+    .fetch_all(pool)
+    .await?;
+    for row in rules {
+        let pattern: String = row.get("pattern");
+        if !branch_pattern_matches(&pattern, base_ref) {
+            continue;
+        }
+        let rule_id: Uuid = row.get("id");
+        let required_status_checks = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT context
+            FROM repository_required_status_checks
+            WHERE branch_protection_rule_id = $1
+            ORDER BY lower(context)
+            "#,
+        )
+        .bind(rule_id)
+        .fetch_all(pool)
+        .await?;
+        return Ok(BranchProtectionSummary {
+            protected: true,
+            pattern: Some(pattern),
+            required_approving_review_count: row.get("required_approving_review_count"),
+            requires_up_to_date_branch: row.get("requires_up_to_date_branch"),
+            required_status_checks,
+        });
+    }
+    Ok(BranchProtectionSummary {
+        protected: false,
+        pattern: None,
+        required_approving_review_count: 0,
+        requires_up_to_date_branch: false,
+        required_status_checks: Vec::new(),
+    })
+}
+
+fn branch_pattern_matches(pattern: &str, branch: &str) -> bool {
+    if pattern == branch {
+        return true;
+    }
+    let Some((prefix, suffix)) = pattern.split_once('*') else {
+        return false;
+    };
+    branch.starts_with(prefix) && branch.ends_with(suffix)
+}
+
+async fn pull_request_approval_count(
+    pool: &PgPool,
+    pull_request_id: Uuid,
+) -> Result<i64, CollaborationError> {
+    Ok(sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT count(DISTINCT reviewer_user_id)
+        FROM pull_request_reviews
+        WHERE pull_request_id = $1 AND state = 'approved'
+        "#,
+    )
+    .bind(pull_request_id)
+    .fetch_one(pool)
+    .await?)
+}
+
+fn merge_method_from_str(value: &str) -> MergeMethod {
+    match value {
+        "merge_commit" => MergeMethod::MergeCommit,
+        "rebase" => MergeMethod::Rebase,
+        _ => MergeMethod::Squash,
+    }
 }
 
 fn merge_blocker(code: &str, message: &str) -> PullRequestMergeBlocker {

@@ -338,6 +338,7 @@ async fn pull_list_contract_returns_screen_ready_rows_counts_and_filters() {
             actor_user_id: owner.id,
             state: PullRequestState::Closed,
             merge_commit_id: None,
+            method: None,
         },
     )
     .await
@@ -379,6 +380,7 @@ async fn pull_list_contract_returns_screen_ready_rows_counts_and_filters() {
             actor_user_id: owner.id,
             state: PullRequestState::Merged,
             merge_commit_id: None,
+            method: None,
         },
     )
     .await

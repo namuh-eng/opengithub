@@ -692,6 +692,7 @@ async fn search_rest_route_indexes_issue_pull_request_and_discussion_tabs() {
             actor_user_id: owner.id,
             state: PullRequestState::Merged,
             merge_commit_id: None,
+            method: None,
         },
     )
     .await

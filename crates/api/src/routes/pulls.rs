@@ -1171,6 +1171,7 @@ async fn update_state(
             actor_user_id: actor.0.id,
             state: request.state,
             merge_commit_id: request.merge_commit_id,
+            method: None,
         },
     )
     .await
@@ -1210,6 +1211,7 @@ async fn merge(
             actor_user_id: actor.0.id,
             state: PullRequestState::Merged,
             merge_commit_id: request.merge_commit_id,
+            method: Some(_method),
         },
     )
     .await

@@ -6,7 +6,7 @@
 
 ## Phase 1: Merge Settings and Branch Rules - repository policy drives mergeability
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace hardcoded merge methods and placeholder rule checks with repository-owned merge settings plus narrow branch protection/ruleset inputs. The existing PR detail merge box remains live, but its enabled methods, default method, required review/check blockers, and protected-branch messages now come from real persisted policy.
 

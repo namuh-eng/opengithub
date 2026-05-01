@@ -1445,3 +1445,13 @@
 - Added `.qrspi/prs-006/structure.md` with five independently verifiable vertical phases: merge settings and branch rules, atomic merge execution, Editorial merge confirmation UI, plaintext diff/patch plus API docs, and final guardrails/QA handoff.
 - Did not change `prd.json`; `build_pass` remains `false` until all implementation phases pass verification.
 - Tests not run because this iteration only created the required planning artifact.
+
+2026-05-02 - prs-006 phase 1 merge settings and branch rules
+
+- Implemented Phase 1 from `.qrspi/prs-006/structure.md`: repository-owned merge settings and branch protection rules now drive pull request mergeability.
+- Added migrations for `repository_merge_settings`, `repository_branch_protection_rules`, and `repository_required_status_checks`.
+- Extended Rust mergeability to return enabled merge methods, default method, protected-branch summary, required status-check names, required-approval blockers, and required-check blockers; disabled merge methods are rejected by the existing merge route before state transition.
+- Updated the PR detail merge box to render protected-branch/rule chips with Editorial primitives and hide disabled merge methods.
+- Extended Rust and Vitest coverage for policy response shape, disabled-method rejection, required approvals, required checks, ready-state recovery, branch-rule rendering, and disabled merge controls.
+- Verification passed: focused `api_pull_request_detail_contract` policy test, focused `web/tests/repository-pull-request-detail.test.tsx`, `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`, same-env `make test` with Cargo tests plus 168 frontend tests, full same-env `make test-e2e` with 65 Playwright tests, and mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
+- Marked Phase 1 as done in `.qrspi/prs-006/structure.md`; `prd.json` remains `build_pass: false` because Phases 2-5 remain.
