@@ -16,13 +16,14 @@ use crate::{
     auth::extractor::AuthenticatedUser,
     domain::{
         actions::{
-            actions_dashboard_for_viewer, actions_workflow_detail_for_viewer, create_workflow,
-            create_workflow_run, dispatch_workflow_run, get_workflow_for_actor,
-            get_workflow_run_for_actor, list_workflow_runs, list_workflows,
-            record_actions_recent_view, repository_for_actor_by_name,
-            repository_for_optional_actor_by_name, transition_workflow_run, ActionsDashboardQuery,
-            ActionsWorkflowDetailQuery, AutomationError, CreateWorkflow, CreateWorkflowRun,
-            DispatchWorkflowRun, RecordActionsRecentView, RunConclusion, RunStatus, TransitionRun,
+            actions_dashboard_for_viewer, actions_run_detail_for_viewer,
+            actions_workflow_detail_for_viewer, create_workflow, create_workflow_run,
+            dispatch_workflow_run, get_workflow_for_actor, get_workflow_run_for_actor,
+            list_workflow_runs, list_workflows, record_actions_recent_view,
+            repository_for_actor_by_name, repository_for_optional_actor_by_name,
+            transition_workflow_run, ActionsDashboardQuery, ActionsWorkflowDetailQuery,
+            AutomationError, CreateWorkflow, CreateWorkflowRun, DispatchWorkflowRun,
+            RecordActionsRecentView, RunConclusion, RunStatus, TransitionRun,
         },
         permissions::RepositoryRole,
     },
@@ -58,6 +59,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/repos/:owner/:repo/actions/runs",
             get(list_all_runs_route),
+        )
+        .route(
+            "/api/repos/:owner/:repo/actions/runs/:run_id/detail",
+            get(read_workflow_run_detail_route),
         )
         .route(
             "/api/repos/:owner/:repo/actions/recent-view",
@@ -480,6 +485,33 @@ async fn read_workflow_run_route(
         .map_err(map_automation_error)?;
 
     Ok(Json(json!(run)))
+}
+
+async fn read_workflow_run_detail_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, run_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let repository = repository_for_optional_actor_by_name(
+        pool,
+        &owner,
+        &repo,
+        actor.as_ref().map(|user| user.id),
+    )
+    .await
+    .map_err(map_automation_error)?;
+    let detail = actions_run_detail_for_viewer(
+        pool,
+        repository.id,
+        actor.as_ref().map(|user| user.id),
+        run_id,
+    )
+    .await
+    .map_err(map_automation_error)?;
+
+    Ok(Json(json!(detail)))
 }
 
 async fn update_workflow_run_route(

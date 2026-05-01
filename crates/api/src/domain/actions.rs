@@ -207,6 +207,118 @@ pub struct ActionsWorkflowDetail {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct ActionsRunDetail {
+    pub repository: ActionsDashboardRepository,
+    pub viewer_permission: Option<String>,
+    pub workflow: ActionsRunDetailWorkflow,
+    pub run: ActionsRunListItem,
+    pub attempts: Vec<ActionsRunAttempt>,
+    pub jobs: Vec<ActionsRunJobDetail>,
+    pub annotations: Vec<ActionsRunAnnotation>,
+    pub artifacts: Vec<ActionsRunArtifact>,
+    pub action_state: ActionsRunActionState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsRunDetailWorkflow {
+    pub id: Uuid,
+    pub name: String,
+    pub path: String,
+    pub state: WorkflowState,
+    pub source_branch: String,
+    pub source_sha: Option<String>,
+    pub source_href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsRunAttempt {
+    pub id: Option<Uuid>,
+    pub attempt_number: i32,
+    pub status: String,
+    pub conclusion: Option<String>,
+    pub trigger_kind: String,
+    pub actor: Option<ActionsActor>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsRunJobDetail {
+    pub id: Uuid,
+    pub name: String,
+    pub group_name: Option<String>,
+    pub attempt_number: i32,
+    pub status: String,
+    pub conclusion: Option<String>,
+    pub runner_label: Option<String>,
+    pub duration_seconds: Option<i64>,
+    pub log_available: bool,
+    pub log_deleted_at: Option<DateTime<Utc>>,
+    pub steps: Vec<ActionsRunStepDetail>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsRunStepDetail {
+    pub id: Uuid,
+    pub number: i32,
+    pub name: String,
+    pub status: String,
+    pub conclusion: Option<String>,
+    pub duration_seconds: Option<i64>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsRunAnnotation {
+    pub id: Uuid,
+    pub job_id: Option<Uuid>,
+    pub step_id: Option<Uuid>,
+    pub level: String,
+    pub path: Option<String>,
+    pub start_line: Option<i32>,
+    pub end_line: Option<i32>,
+    pub title: Option<String>,
+    pub message: String,
+    pub raw_details: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsRunArtifact {
+    pub id: Uuid,
+    pub name: String,
+    pub digest: Option<String>,
+    pub size_bytes: i64,
+    pub expired_at: Option<DateTime<Utc>>,
+    pub download_available: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsRunActionState {
+    pub can_rerun: bool,
+    pub can_rerun_failed: bool,
+    pub can_cancel: bool,
+    pub can_delete_logs: bool,
+    pub disabled_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct ActionsDashboardRepository {
     pub id: Uuid,
     pub owner_login: String,
@@ -766,6 +878,51 @@ pub async fn actions_workflow_detail_for_viewer(
                 repository.owner_login, repository.name, repository.default_branch
             ),
         },
+    })
+}
+
+pub async fn actions_run_detail_for_viewer(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Option<Uuid>,
+    run_id: Uuid,
+) -> Result<ActionsRunDetail, AutomationError> {
+    let repository = require_repository_read_for_viewer(pool, repository_id, actor_user_id).await?;
+    let viewer_permission = viewer_permission(pool, &repository, actor_user_id).await?;
+    let mut runs = actions_run_items_by_run(pool, repository_id, run_id).await?;
+    hydrate_job_summaries(pool, &mut runs).await?;
+    let run = runs
+        .into_iter()
+        .next()
+        .ok_or(AutomationError::WorkflowRunNotFound)?;
+    let workflow = actions_run_detail_workflow(pool, &repository, run.workflow_id).await?;
+    let attempts = actions_run_attempts(pool, &run).await?;
+    let jobs = actions_run_jobs(pool, run.id).await?;
+    let annotations = actions_run_annotations(pool, run.id).await?;
+    let artifacts = actions_run_artifacts(pool, run.id).await?;
+    let action_state = actions_run_action_state(
+        &run,
+        &run.job_summary,
+        viewer_permission.as_deref(),
+        repository.is_archived,
+    );
+
+    Ok(ActionsRunDetail {
+        repository: ActionsDashboardRepository {
+            id: repository.id,
+            owner_login: repository.owner_login.clone(),
+            name: repository.name.clone(),
+            visibility: repository.visibility.clone(),
+            default_branch: repository.default_branch.clone(),
+        },
+        viewer_permission,
+        workflow,
+        run,
+        attempts,
+        jobs,
+        annotations,
+        artifacts,
+        action_state,
     })
 }
 
@@ -1682,6 +1839,54 @@ async fn actions_run_items(
         .collect()
 }
 
+async fn actions_run_items_by_run(
+    pool: &PgPool,
+    repository_id: Uuid,
+    run_id: Uuid,
+) -> Result<Vec<ActionsRunListItem>, AutomationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT workflow_runs.id,
+               workflow_runs.workflow_id,
+               actions_workflows.name AS workflow_name,
+               actions_workflows.path AS workflow_path,
+               workflow_runs.run_number,
+               COALESCE(workflow_runs.display_title, commits.message, actions_workflows.name) AS display_title,
+               workflow_runs.status,
+               workflow_runs.conclusion,
+               workflow_runs.event,
+               workflow_runs.actor_user_id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS actor_login,
+               users.display_name AS actor_display_name,
+               users.avatar_url AS actor_avatar_url,
+               workflow_runs.head_branch,
+               workflow_runs.head_sha,
+               pull_requests.id AS pull_request_id,
+               pull_requests.number AS pull_request_number,
+               pull_requests.title AS pull_request_title,
+               commits.message AS commit_message,
+               workflow_runs.started_at,
+               workflow_runs.completed_at,
+               workflow_runs.created_at,
+               workflow_runs.updated_at
+        FROM workflow_runs
+        JOIN actions_workflows ON actions_workflows.id = workflow_runs.workflow_id
+        LEFT JOIN users ON users.id = workflow_runs.actor_user_id
+        LEFT JOIN pull_requests ON pull_requests.id = workflow_runs.pull_request_id
+        LEFT JOIN commits ON commits.id = workflow_runs.commit_id
+        WHERE workflow_runs.repository_id = $1 AND workflow_runs.id = $2
+        "#
+    )
+    .bind(repository_id)
+    .bind(run_id)
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(actions_run_list_item_from_row)
+        .collect()
+}
+
 const ACTIONS_RUN_FILTER_PREDICATE: &str = r#"
         workflow_runs.repository_id = $1
         AND (
@@ -1780,6 +1985,299 @@ fn status_category(status: &str, conclusion: Option<&str>) -> String {
         ("cancelled", _) => "cancelled".to_owned(),
         ("completed", None) => "completed".to_owned(),
         (status, _) => status.to_owned(),
+    }
+}
+
+async fn actions_run_detail_workflow(
+    pool: &PgPool,
+    repository: &Repository,
+    workflow_id: Uuid,
+) -> Result<ActionsRunDetailWorkflow, AutomationError> {
+    let row = sqlx::query(
+        r#"
+        SELECT id, name, path, state, source_branch, source_sha
+        FROM actions_workflows
+        WHERE id = $1 AND repository_id = $2
+        "#,
+    )
+    .bind(workflow_id)
+    .bind(repository.id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(AutomationError::WorkflowNotFound)?;
+    let state: String = row.get("state");
+    let path: String = row.get("path");
+    let source_branch = row
+        .get::<Option<String>, _>("source_branch")
+        .unwrap_or_else(|| repository.default_branch.clone());
+
+    Ok(ActionsRunDetailWorkflow {
+        id: row.get("id"),
+        name: row.get("name"),
+        path: path.clone(),
+        state: WorkflowState::try_from(state.as_str())?,
+        source_branch: source_branch.clone(),
+        source_sha: row.get("source_sha"),
+        source_href: format!(
+            "/{}/{}/blob/{}/{}",
+            repository.owner_login, repository.name, source_branch, path
+        ),
+    })
+}
+
+async fn actions_run_attempts(
+    pool: &PgPool,
+    run: &ActionsRunListItem,
+) -> Result<Vec<ActionsRunAttempt>, AutomationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT workflow_run_attempts.id,
+               workflow_run_attempts.attempt_number,
+               workflow_run_attempts.status,
+               workflow_run_attempts.conclusion,
+               workflow_run_attempts.trigger_kind,
+               workflow_run_attempts.triggered_by_user_id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS actor_login,
+               users.display_name AS actor_display_name,
+               users.avatar_url AS actor_avatar_url,
+               workflow_run_attempts.started_at,
+               workflow_run_attempts.completed_at,
+               workflow_run_attempts.created_at
+        FROM workflow_run_attempts
+        LEFT JOIN users ON users.id = workflow_run_attempts.triggered_by_user_id
+        WHERE workflow_run_attempts.run_id = $1
+        ORDER BY workflow_run_attempts.attempt_number
+        "#,
+    )
+    .bind(run.id)
+    .fetch_all(pool)
+    .await?;
+
+    if rows.is_empty() {
+        return Ok(vec![ActionsRunAttempt {
+            id: None,
+            attempt_number: 1,
+            status: run.status.clone(),
+            conclusion: run.conclusion.clone(),
+            trigger_kind: "initial".to_owned(),
+            actor: run.actor.clone(),
+            started_at: run.started_at,
+            completed_at: run.completed_at,
+            created_at: run.created_at,
+        }]);
+    }
+
+    rows.into_iter()
+        .map(|row| {
+            let actor_user_id: Option<Uuid> = row.get("triggered_by_user_id");
+            Ok(ActionsRunAttempt {
+                id: row.get("id"),
+                attempt_number: row.get("attempt_number"),
+                status: row.get("status"),
+                conclusion: row.get("conclusion"),
+                trigger_kind: row.get("trigger_kind"),
+                actor: actor_user_id.map(|id| ActionsActor {
+                    id,
+                    login: row.get("actor_login"),
+                    display_name: row.get("actor_display_name"),
+                    avatar_url: row.get("actor_avatar_url"),
+                }),
+                started_at: row.get("started_at"),
+                completed_at: row.get("completed_at"),
+                created_at: row.get("created_at"),
+            })
+        })
+        .collect()
+}
+
+async fn actions_run_jobs(
+    pool: &PgPool,
+    run_id: Uuid,
+) -> Result<Vec<ActionsRunJobDetail>, AutomationError> {
+    let job_rows = sqlx::query(
+        r#"
+        SELECT id, name, group_name, attempt_number, status, conclusion, runner_label,
+               log_storage_key, log_deleted_at, started_at, completed_at, created_at, updated_at
+        FROM workflow_jobs
+        WHERE run_id = $1
+        ORDER BY attempt_number, COALESCE(group_name, ''), created_at, name
+        "#,
+    )
+    .bind(run_id)
+    .fetch_all(pool)
+    .await?;
+    let job_ids = job_rows
+        .iter()
+        .map(|row| row.get::<Uuid, _>("id"))
+        .collect::<Vec<_>>();
+    let mut steps_by_job: HashMap<Uuid, Vec<ActionsRunStepDetail>> = HashMap::new();
+    if !job_ids.is_empty() {
+        let step_rows = sqlx::query(
+            r#"
+            SELECT id, job_id, number, name, status, conclusion, started_at, completed_at
+            FROM workflow_steps
+            WHERE job_id = ANY($1)
+            ORDER BY job_id, number
+            "#,
+        )
+        .bind(&job_ids)
+        .fetch_all(pool)
+        .await?;
+        for row in step_rows {
+            let job_id = row.get::<Uuid, _>("job_id");
+            let started_at: Option<DateTime<Utc>> = row.get("started_at");
+            let completed_at: Option<DateTime<Utc>> = row.get("completed_at");
+            steps_by_job
+                .entry(job_id)
+                .or_default()
+                .push(ActionsRunStepDetail {
+                    id: row.get("id"),
+                    number: row.get("number"),
+                    name: row.get("name"),
+                    status: row.get("status"),
+                    conclusion: row.get("conclusion"),
+                    duration_seconds: duration_seconds(started_at, completed_at),
+                    started_at,
+                    completed_at,
+                });
+        }
+    }
+
+    Ok(job_rows
+        .into_iter()
+        .map(|row| {
+            let id: Uuid = row.get("id");
+            let started_at: Option<DateTime<Utc>> = row.get("started_at");
+            let completed_at: Option<DateTime<Utc>> = row.get("completed_at");
+            let log_deleted_at: Option<DateTime<Utc>> = row.get("log_deleted_at");
+            let log_storage_key: Option<String> = row.get("log_storage_key");
+            ActionsRunJobDetail {
+                id,
+                name: row.get("name"),
+                group_name: row.get("group_name"),
+                attempt_number: row.get("attempt_number"),
+                status: row.get("status"),
+                conclusion: row.get("conclusion"),
+                runner_label: row.get("runner_label"),
+                duration_seconds: duration_seconds(started_at, completed_at),
+                log_available: log_storage_key.is_some() && log_deleted_at.is_none(),
+                log_deleted_at,
+                steps: steps_by_job.remove(&id).unwrap_or_default(),
+                started_at,
+                completed_at,
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+            }
+        })
+        .collect())
+}
+
+async fn actions_run_annotations(
+    pool: &PgPool,
+    run_id: Uuid,
+) -> Result<Vec<ActionsRunAnnotation>, AutomationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, job_id, step_id, annotation_level, path, start_line, end_line,
+               title, message, raw_details, created_at
+        FROM workflow_annotations
+        WHERE run_id = $1
+        ORDER BY created_at, path, start_line
+        "#,
+    )
+    .bind(run_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| ActionsRunAnnotation {
+            id: row.get("id"),
+            job_id: row.get("job_id"),
+            step_id: row.get("step_id"),
+            level: row.get("annotation_level"),
+            path: row.get("path"),
+            start_line: row.get("start_line"),
+            end_line: row.get("end_line"),
+            title: row.get("title"),
+            message: row.get("message"),
+            raw_details: row.get("raw_details"),
+            created_at: row.get("created_at"),
+        })
+        .collect())
+}
+
+async fn actions_run_artifacts(
+    pool: &PgPool,
+    run_id: Uuid,
+) -> Result<Vec<ActionsRunArtifact>, AutomationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, name, digest, size_bytes, storage_key, expired_at, created_at, updated_at
+        FROM workflow_artifacts
+        WHERE run_id = $1
+        ORDER BY lower(name)
+        "#,
+    )
+    .bind(run_id)
+    .fetch_all(pool)
+    .await?;
+    let now = Utc::now();
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let storage_key: Option<String> = row.get("storage_key");
+            let expired_at: Option<DateTime<Utc>> = row.get("expired_at");
+            ActionsRunArtifact {
+                id: row.get("id"),
+                name: row.get("name"),
+                digest: row.get("digest"),
+                size_bytes: row.get("size_bytes"),
+                expired_at,
+                download_available: storage_key.is_some()
+                    && expired_at.map(|value| value > now).unwrap_or(true),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+            }
+        })
+        .collect())
+}
+
+fn actions_run_action_state(
+    run: &ActionsRunListItem,
+    job_summary: &ActionsJobSummary,
+    viewer_permission: Option<&str>,
+    repository_archived: bool,
+) -> ActionsRunActionState {
+    let can_write = matches!(viewer_permission, Some("owner" | "admin" | "write"));
+    let disabled_reason = if !can_write {
+        Some("write permission is required for workflow run actions".to_owned())
+    } else if repository_archived {
+        Some("archived repositories cannot mutate workflow runs".to_owned())
+    } else {
+        None
+    };
+    let can_mutate = disabled_reason.is_none();
+    let is_live = matches!(run.status.as_str(), "queued" | "in_progress");
+    let is_terminal = matches!(run.status.as_str(), "completed" | "cancelled");
+
+    ActionsRunActionState {
+        can_rerun: can_mutate && is_terminal,
+        can_rerun_failed: can_mutate && is_terminal && job_summary.failure > 0,
+        can_cancel: can_mutate && is_live,
+        can_delete_logs: can_mutate && is_terminal,
+        disabled_reason,
+    }
+}
+
+fn duration_seconds(
+    started_at: Option<DateTime<Utc>>,
+    completed_at: Option<DateTime<Utc>>,
+) -> Option<i64> {
+    match (started_at, completed_at) {
+        (Some(started), Some(completed)) => Some((completed - started).num_seconds().max(0)),
+        _ => None,
     }
 }
 

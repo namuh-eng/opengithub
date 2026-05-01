@@ -6,7 +6,7 @@
 
 ## Phase 1: Run Detail Read Contract - one run exposes jobs, attempts, annotations, and artifacts
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Build the permission-aware backend contract for `/{owner}/{repo}/actions/runs/{run_id}` before replacing the placeholder UI. A repository reader can fetch the selected run, workflow breadcrumb, attempt list, job/sidebar summary, steps, annotations, artifacts, log availability, metadata, and action eligibility without leaking private repository data.
 

@@ -1,0 +1,410 @@
+use axum::{
+    body::{to_bytes, Body},
+    http::{header, Method, Request, StatusCode},
+};
+use chrono::{Duration, Utc};
+use opengithub_api::{
+    auth::session,
+    config::{AppConfig, AuthConfig},
+    domain::{
+        actions::{
+            create_workflow, create_workflow_job, create_workflow_run, create_workflow_step,
+            transition_workflow_run, CreateWorkflow, CreateWorkflowJob, CreateWorkflowRun,
+            CreateWorkflowStep, RunConclusion, RunStatus, TransitionRun,
+        },
+        identity::{upsert_session, upsert_user_by_email, User},
+        repositories::{
+            create_repository, CreateRepository, RepositoryOwner, RepositoryVisibility,
+        },
+    },
+};
+use serde_json::{json, Value};
+use sqlx::{PgPool, Row};
+use tower::ServiceExt;
+use url::Url;
+use uuid::Uuid;
+
+static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+
+async fn database_pool() -> Option<PgPool> {
+    let database_url = std::env::var("TEST_DATABASE_URL")
+        .or_else(|_| std::env::var("DATABASE_URL"))
+        .ok()
+        .filter(|value| !value.trim().is_empty())?;
+
+    let pool = opengithub_api::db::test_pool_options()
+        .connect(&database_url)
+        .await
+        .ok()?;
+    MIGRATOR.run(&pool).await.ok()?;
+    Some(pool)
+}
+
+fn app_config() -> AppConfig {
+    AppConfig {
+        app_url: Url::parse("http://localhost:3015").expect("app URL"),
+        api_url: Url::parse("http://localhost:3016").expect("api URL"),
+        auth: Some(AuthConfig {
+            google_client_id: "google-client-id.apps.googleusercontent.com".to_owned(),
+            google_client_secret: "google-client-secret".to_owned(),
+            session_secret: "test-session-secret-with-enough-entropy".to_owned(),
+        }),
+        session_cookie_name: "__Host-session".to_owned(),
+        session_cookie_secure: false,
+    }
+}
+
+async fn create_user(pool: &PgPool, label: &str) -> User {
+    upsert_user_by_email(
+        pool,
+        &format!("{label}-{}@opengithub.local", Uuid::new_v4()),
+        Some(label),
+        None,
+    )
+    .await
+    .expect("user should upsert")
+}
+
+async fn cookie_header(pool: &PgPool, config: &AppConfig, user: &User) -> String {
+    let session_id = Uuid::new_v4().to_string();
+    let expires_at = Utc::now() + Duration::hours(1);
+    upsert_session(
+        pool,
+        &session_id,
+        Some(user.id),
+        json!({ "provider": "google" }),
+        expires_at,
+    )
+    .await
+    .expect("session should persist");
+    let set_cookie =
+        session::set_cookie_header(config, &session_id, expires_at).expect("cookie should sign");
+    let cookie_value =
+        session::cookie_value_from_set_cookie(&set_cookie).expect("cookie value should exist");
+    format!("{}={cookie_value}", config.session_cookie_name)
+}
+
+async fn get_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (StatusCode, Value) {
+    let mut builder = Request::builder().method(Method::GET).uri(uri);
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let request = builder.body(Body::empty()).expect("request should build");
+    let response = app.oneshot(request).await.expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).expect("response should be json")
+    };
+    (status, value)
+}
+
+#[tokio::test]
+async fn run_detail_returns_attempts_jobs_annotations_artifacts_and_action_state() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping actions run detail scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "actions-run-owner").await;
+    let repo_name = format!("actions-run-detail-{}", Uuid::new_v4().simple());
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: repo_name.clone(),
+            description: None,
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+
+    let commit_id = sqlx::query(
+        r#"
+        INSERT INTO commits (repository_id, oid, author_user_id, committer_user_id, message)
+        VALUES ($1, 'abcdef0123456789', $2, $2, 'Add run detail fixture')
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("commit should create")
+    .get::<Uuid, _>("id");
+
+    let workflow = create_workflow(
+        &pool,
+        CreateWorkflow {
+            repository_id: repository.id,
+            actor_user_id: owner.id,
+            name: "CI".to_owned(),
+            path: ".github/workflows/ci.yml".to_owned(),
+            trigger_events: vec!["push".to_owned(), "pull_request".to_owned()],
+        },
+    )
+    .await
+    .expect("workflow should create");
+    sqlx::query("UPDATE actions_workflows SET source_branch = 'main', source_sha = 'workflow-sha' WHERE id = $1")
+        .bind(workflow.id)
+        .execute(&pool)
+        .await
+        .expect("workflow source metadata should update");
+
+    let run = create_workflow_run(
+        &pool,
+        CreateWorkflowRun {
+            workflow_id: workflow.id,
+            actor_user_id: Some(owner.id),
+            head_branch: "feature/actions".to_owned(),
+            head_sha: Some("abcdef0123456789".to_owned()),
+            event: "pull_request".to_owned(),
+        },
+    )
+    .await
+    .expect("run should create");
+    transition_workflow_run(
+        &pool,
+        run.id,
+        TransitionRun {
+            status: RunStatus::Completed,
+            conclusion: Some(RunConclusion::Failure),
+        },
+    )
+    .await
+    .expect("run should complete");
+    sqlx::query(
+        "UPDATE workflow_runs SET display_title = 'Validate run detail', commit_id = $2 WHERE id = $1",
+    )
+    .bind(run.id)
+    .bind(commit_id)
+    .execute(&pool)
+    .await
+    .expect("run metadata should update");
+    sqlx::query(
+        r#"
+        INSERT INTO workflow_run_attempts (
+            run_id, attempt_number, status, conclusion, triggered_by_user_id, trigger_kind,
+            started_at, completed_at
+        )
+        VALUES
+            ($1, 1, 'completed', 'failure', $2, 'initial', now() - interval '10 minutes', now() - interval '8 minutes'),
+            ($1, 2, 'completed', 'failure', $2, 'rerun_failed', now() - interval '4 minutes', now() - interval '1 minute')
+        "#,
+    )
+    .bind(run.id)
+    .bind(owner.id)
+    .execute(&pool)
+    .await
+    .expect("attempts should create");
+
+    let job = create_workflow_job(
+        &pool,
+        CreateWorkflowJob {
+            run_id: run.id,
+            name: "unit / web".to_owned(),
+            runner_label: Some("ubuntu-latest".to_owned()),
+        },
+    )
+    .await
+    .expect("job should create");
+    sqlx::query(
+        r#"
+        UPDATE workflow_jobs
+        SET status = 'completed',
+            conclusion = 'failure',
+            group_name = 'Checks',
+            attempt_number = 2,
+            log_storage_key = 'actions/logs/unit-web.txt',
+            started_at = now() - interval '4 minutes',
+            completed_at = now() - interval '1 minute'
+        WHERE id = $1
+        "#,
+    )
+    .bind(job.id)
+    .execute(&pool)
+    .await
+    .expect("job should update");
+    let step = create_workflow_step(
+        &pool,
+        CreateWorkflowStep {
+            job_id: job.id,
+            number: 1,
+            name: "Run tests".to_owned(),
+        },
+    )
+    .await
+    .expect("step should create");
+    sqlx::query(
+        r#"
+        UPDATE workflow_steps
+        SET status = 'completed',
+            conclusion = 'failure',
+            started_at = now() - interval '3 minutes',
+            completed_at = now() - interval '1 minute'
+        WHERE id = $1
+        "#,
+    )
+    .bind(step.id)
+    .execute(&pool)
+    .await
+    .expect("step should update");
+    sqlx::query(
+        r#"
+        INSERT INTO workflow_annotations (
+            run_id, job_id, step_id, annotation_level, path, start_line, end_line, title, message, raw_details
+        )
+        VALUES ($1, $2, $3, 'failure', 'web/src/app/page.tsx', 42, 42, 'Type error', 'Expected string, found number', 'tsc failed')
+        "#,
+    )
+    .bind(run.id)
+    .bind(job.id)
+    .bind(step.id)
+    .execute(&pool)
+    .await
+    .expect("annotation should create");
+    sqlx::query(
+        r#"
+        INSERT INTO workflow_artifacts (run_id, name, digest, size_bytes, storage_key, expired_at)
+        VALUES ($1, 'playwright-report', 'sha256:abc123', 2048, 'actions/artifacts/report.zip', now() + interval '1 day')
+        "#,
+    )
+    .bind(run.id)
+    .execute(&pool)
+    .await
+    .expect("artifact should create");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+    let uri = format!(
+        "/api/repos/{}/{}/actions/runs/{}/detail",
+        owner.email, repo_name, run.id
+    );
+    let (public_status, public_body) = get_json(app.clone(), &uri, None).await;
+    assert_eq!(public_status, StatusCode::OK);
+    assert_eq!(public_body["repository"]["name"], repo_name);
+    assert_eq!(public_body["viewerPermission"], "read");
+    assert_eq!(public_body["workflow"]["name"], "CI");
+    assert_eq!(
+        public_body["workflow"]["sourceHref"],
+        format!(
+            "/{}/{}/blob/main/.github/workflows/ci.yml",
+            owner.email, repo_name
+        )
+    );
+    assert_eq!(public_body["run"]["displayTitle"], "Validate run detail");
+    assert_eq!(public_body["run"]["statusCategory"], "failure");
+    assert_eq!(public_body["run"]["shortSha"], "abcdef0");
+    assert_eq!(public_body["run"]["jobSummary"]["failure"], 1);
+    assert_eq!(
+        public_body["attempts"].as_array().expect("attempts").len(),
+        2
+    );
+    assert_eq!(public_body["attempts"][1]["triggerKind"], "rerun_failed");
+    assert_eq!(public_body["jobs"][0]["groupName"], "Checks");
+    assert_eq!(public_body["jobs"][0]["attemptNumber"], 2);
+    assert_eq!(public_body["jobs"][0]["logAvailable"], true);
+    assert_eq!(public_body["jobs"][0]["steps"][0]["name"], "Run tests");
+    assert_eq!(public_body["annotations"][0]["level"], "failure");
+    assert_eq!(
+        public_body["annotations"][0]["message"],
+        "Expected string, found number"
+    );
+    assert_eq!(public_body["artifacts"][0]["name"], "playwright-report");
+    assert_eq!(public_body["artifacts"][0]["downloadAvailable"], true);
+    assert_eq!(public_body["actionState"]["canRerun"], false);
+    assert_eq!(public_body["actionState"]["canRerunFailed"], false);
+    assert_eq!(public_body["actionState"]["canDeleteLogs"], false);
+
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let (owner_status, owner_body) = get_json(app, &uri, Some(&owner_cookie)).await;
+    assert_eq!(owner_status, StatusCode::OK);
+    assert_eq!(owner_body["viewerPermission"], "owner");
+    assert_eq!(owner_body["actionState"]["canRerun"], true);
+    assert_eq!(owner_body["actionState"]["canRerunFailed"], true);
+    assert_eq!(owner_body["actionState"]["canDeleteLogs"], true);
+    assert_eq!(owner_body["actionState"]["canCancel"], false);
+}
+
+#[tokio::test]
+async fn run_detail_preserves_private_repository_permissions_and_missing_run_errors() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping actions run detail authz scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "actions-run-private-owner").await;
+    let outsider = create_user(&pool, "actions-run-private-outsider").await;
+    let repo_name = format!("actions-run-private-{}", Uuid::new_v4().simple());
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: repo_name.clone(),
+            description: None,
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    let workflow = create_workflow(
+        &pool,
+        CreateWorkflow {
+            repository_id: repository.id,
+            actor_user_id: owner.id,
+            name: "Private CI".to_owned(),
+            path: ".github/workflows/private.yml".to_owned(),
+            trigger_events: vec!["push".to_owned()],
+        },
+    )
+    .await
+    .expect("workflow should create");
+    let run = create_workflow_run(
+        &pool,
+        CreateWorkflowRun {
+            workflow_id: workflow.id,
+            actor_user_id: Some(owner.id),
+            head_branch: "main".to_owned(),
+            head_sha: Some("private-sha".to_owned()),
+            event: "push".to_owned(),
+        },
+    )
+    .await
+    .expect("run should create");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+    let uri = format!(
+        "/api/repos/{}/{}/actions/runs/{}/detail",
+        owner.email, repo_name, run.id
+    );
+    let (anon_status, anon_body) = get_json(app.clone(), &uri, None).await;
+    assert_eq!(anon_status, StatusCode::FORBIDDEN);
+    assert_eq!(anon_body["error"]["code"], "forbidden");
+
+    let outsider_cookie = cookie_header(&pool, &config, &outsider).await;
+    let (outsider_status, outsider_body) =
+        get_json(app.clone(), &uri, Some(&outsider_cookie)).await;
+    assert_eq!(outsider_status, StatusCode::FORBIDDEN);
+    assert_eq!(outsider_body["error"]["code"], "forbidden");
+
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let missing_uri = format!(
+        "/api/repos/{}/{}/actions/runs/{}/detail",
+        owner.email,
+        repo_name,
+        Uuid::new_v4()
+    );
+    let (missing_status, missing_body) = get_json(app, &missing_uri, Some(&owner_cookie)).await;
+    assert_eq!(missing_status, StatusCode::NOT_FOUND);
+    assert_eq!(missing_body["error"]["code"], "not_found");
+}

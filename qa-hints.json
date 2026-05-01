@@ -2363,5 +2363,22 @@
       "Branch/ref race conditions between dialog load and dispatch submit should be revisited after branch mutation APIs and live workflow discovery are richer.",
       "Workflow options route to the existing Actions settings page; workflow-specific settings controls remain a later feature."
     ]
+  },
+  {
+    "feature_id": "actions-003",
+    "tests_written": [
+      "Implemented Phase 1 run-detail read contract for GET /api/repos/{owner}/{repo}/actions/runs/{run_id}/detail.",
+      "Added additive Actions schema for workflow run attempts, job attempt/log metadata, workflow annotations, and workflow artifacts.",
+      "Added ActionsRunDetail DTOs and backend helpers for workflow breadcrumb, selected run metadata, attempt ordering, job/step details, annotations, artifact metadata, log availability, and write-action eligibility.",
+      "Added Rust contract coverage for public anonymous reads, owner write-action eligibility, private repository denial, missing-run 404 envelopes, attempt ordering, job grouping, step hydration, annotation metadata, artifact download availability, and log metadata.",
+      "Verification passed: focused api_repository_actions_run_detail_contract, TEST_DATABASE_URL-backed make check, same-env make test with Cargo tests plus 184 frontend tests, and mandatory Editorial banned-value scan with zero matches using rg -n -e."
+    ],
+    "needs_deeper_qa": [
+      "This phase is API-only; the Editorial run detail page and browser smoke are intentionally deferred to Phase 2.",
+      "Log content streaming, line anchors, log search, artifact signed URLs, and download/copy browser behavior are deferred to Phase 3.",
+      "Rerun, rerun failed jobs, specific-job rerun, cancel, delete logs, audit rows, and queue side effects are deferred to Phase 4.",
+      "The contract exposes artifact availability from storage keys and expiration metadata but does not contact real S3 in this phase.",
+      "The route tests use local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth or real runner execution."
+    ]
   }
 ]
