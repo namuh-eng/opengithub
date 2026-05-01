@@ -33,6 +33,7 @@ struct SeedOutput {
     social_source_repository_href: String,
     tree_repository_href: String,
     fork_compare_href: String,
+    pull_request_merge_href: String,
 }
 
 fn seed_empty_dashboard() -> bool {
@@ -59,6 +60,13 @@ fn seed_fork_compare_repository() -> bool {
 fn seed_blob_edge_files() -> bool {
     matches!(
         std::env::var("DASHBOARD_E2E_BLOB_EDGE").as_deref(),
+        Ok("1" | "true" | "yes")
+    )
+}
+
+fn seed_pull_request_merge() -> bool {
+    matches!(
+        std::env::var("PULL_REQUEST_MERGE_E2E").as_deref(),
         Ok("1" | "true" | "yes")
     )
 }
@@ -193,6 +201,7 @@ async fn main() -> anyhow::Result<()> {
     } else {
         (String::new(), String::new())
     };
+    let mut pull_request_merge_href = String::new();
     let (first_repository_href, second_repository_href) = if seed_empty_dashboard() {
         (String::new(), String::new())
     } else {
@@ -309,6 +318,15 @@ async fn main() -> anyhow::Result<()> {
             },
         )
         .await?;
+        if seed_pull_request_merge() {
+            pull_request_merge_href = seed_merge_ready_pull_request(
+                &pool,
+                user.id,
+                &username,
+                &suffix,
+            )
+            .await?;
+        }
 
         sqlx::query(
             r#"
@@ -409,6 +427,7 @@ async fn main() -> anyhow::Result<()> {
         ),
         tree_repository_href,
         fork_compare_href,
+        pull_request_merge_href,
     };
     println!("{}", serde_json::to_string(&output)?);
     Ok(())
@@ -578,6 +597,92 @@ async fn seed_search_documents(
     .await?;
 
     Ok(())
+}
+
+async fn seed_merge_ready_pull_request(
+    pool: &PgPool,
+    user_id: Uuid,
+    username: &str,
+    suffix: &str,
+) -> anyhow::Result<String> {
+    let repository_name = format!("merge-ready-{}", &suffix[..12]);
+    let repository = create_repository_with_bootstrap(
+        pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: user_id },
+            name: repository_name.clone(),
+            description: Some("Pull request merge confirmation seed".to_owned()),
+            visibility: RepositoryVisibility::Public,
+            default_branch: None,
+            created_by_user_id: user_id,
+        },
+        RepositoryBootstrapRequest {
+            initialize_readme: true,
+            template_slug: Some("rust-axum".to_owned()),
+            ..RepositoryBootstrapRequest::default()
+        },
+    )
+    .await?;
+
+    let head_commit = insert_commit(
+        pool,
+        repository.id,
+        CreateCommit {
+            oid: format!("merge-head-{}", Uuid::new_v4().simple()),
+            author_user_id: Some(user_id),
+            committer_user_id: Some(user_id),
+            message: "Prepare merge confirmation fixture".to_owned(),
+            tree_oid: Some(format!("merge-tree-{}", Uuid::new_v4().simple())),
+            parent_oids: Vec::new(),
+            committed_at: Utc::now(),
+        },
+    )
+    .await?;
+    upsert_git_ref(
+        pool,
+        repository.id,
+        "refs/heads/feature/merge-confirmation",
+        "branch",
+        Some(head_commit.id),
+    )
+    .await?;
+
+    let pull_request = create_pull_request(
+        pool,
+        CreatePullRequest {
+            repository_id: repository.id,
+            actor_user_id: user_id,
+            title: "Confirm merge workflow".to_owned(),
+            body: Some("Exercises method selection, commit fields, and branch cleanup.".to_owned()),
+            head_ref: "feature/merge-confirmation".to_owned(),
+            base_ref: "main".to_owned(),
+            head_repository_id: None,
+            is_draft: false,
+            label_ids: vec![],
+            milestone_id: None,
+            assignee_user_ids: vec![],
+            reviewer_user_ids: vec![],
+            template_slug: None,
+        },
+    )
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO pull_request_files (
+            pull_request_id, path, status, additions, deletions, byte_size
+        )
+        VALUES ($1, 'web/src/components/MergeConfirmation.tsx', 'added', 42, 3, 2400)
+        "#,
+    )
+    .bind(pull_request.pull_request.id)
+    .execute(pool)
+    .await?;
+
+    Ok(format!(
+        "/{username}/{repository_name}/pull/{}",
+        pull_request.pull_request.number
+    ))
 }
 
 async fn seed_issue_templates(

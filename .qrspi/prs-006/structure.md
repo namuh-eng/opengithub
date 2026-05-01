@@ -39,7 +39,7 @@
 
 ## Phase 3: Editorial Merge Confirmation UI - commit fields, method menu, and branch delete are live
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Expand the PR detail merge box into the full Editorial merge workflow. Users can select an allowed method, edit commit title/body, see branch protection/check/review status, choose delete-head-branch when allowed, submit merge, and receive success or structured blocked feedback without dead buttons.
 

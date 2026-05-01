@@ -1119,6 +1119,9 @@ export type PullRequestDetailView = {
     canMarkReady: boolean;
     defaultMethod: MergeMethod;
     methods: MergeMethod[];
+    canDeleteHeadBranch?: boolean;
+    defaultCommitTitle?: string | null;
+    defaultCommitBody?: string | null;
     branchProtection: {
       protected: boolean;
       pattern: string | null;

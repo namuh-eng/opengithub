@@ -88,6 +88,49 @@ function mergeMethodLabel(method: MergeMethod) {
   return "Squash and merge";
 }
 
+function mergeMethodHelp(method: MergeMethod) {
+  if (method === "merge_commit") {
+    return "Preserves the branch history and adds one merge commit to the base branch.";
+  }
+  if (method === "rebase") {
+    return "Replays each head commit onto the base branch without a merge commit.";
+  }
+  return "Combines the pull request into one commit on the base branch.";
+}
+
+function defaultCommitTitle(
+  method: MergeMethod,
+  pullRequest: PullRequestDetailView,
+) {
+  if (method === "merge_commit") {
+    return `Merge pull request #${pullRequest.number} from ${pullRequest.headRef}`;
+  }
+  if (method === "rebase") {
+    return `Rebase pull request #${pullRequest.number} onto ${pullRequest.baseRef}`;
+  }
+  return `${pullRequest.title} (#${pullRequest.number})`;
+}
+
+function blockerDetails(envelope: ApiErrorEnvelope | null) {
+  const blockers = envelope?.details?.blockers;
+  if (!Array.isArray(blockers)) {
+    return [];
+  }
+  return blockers
+    .map((blocker) => {
+      if (
+        blocker !== null &&
+        typeof blocker === "object" &&
+        "message" in blocker &&
+        typeof blocker.message === "string"
+      ) {
+        return blocker.message;
+      }
+      return null;
+    })
+    .filter((message): message is string => message !== null);
+}
+
 function SidebarSection({
   children,
   title,
@@ -122,6 +165,16 @@ export function RepositoryPullRequestDetailPage({
   const [mergeMethod, setMergeMethod] = useState<MergeMethod>(
     initialPullRequest.mergeability.defaultMethod,
   );
+  const [commitTitle, setCommitTitle] = useState(() =>
+    defaultCommitTitle(
+      initialPullRequest.mergeability.defaultMethod,
+      initialPullRequest,
+    ),
+  );
+  const [commitBody, setCommitBody] = useState("");
+  const [deleteBranch, setDeleteBranch] = useState(false);
+  const [mergeConfirmOpen, setMergeConfirmOpen] = useState(false);
+  const [mergeBlockers, setMergeBlockers] = useState<string[]>([]);
   const pullRequest = currentPullRequest;
   const branchProtection = pullRequest.mergeability.branchProtection ?? {
     protected: false,
@@ -135,6 +188,10 @@ export function RepositoryPullRequestDetailPage({
   const activePath = `${basePath}/pull/${pullRequest.number}`;
   const canEditMetadata =
     viewerAuthenticated && currentPullRequest.viewerPermission !== null;
+  const canDeleteHeadBranch =
+    pullRequest.mergeability.canMerge &&
+    pullRequest.headRef !== pullRequest.baseRef &&
+    !pullRequest.headRef.startsWith(`${repository.owner_login}:`);
   const tabItems = [
     {
       href: activePath,
@@ -214,6 +271,13 @@ export function RepositoryPullRequestDetailPage({
       setCurrentPullRequest(updated);
       setSubscription(updated.subscription);
       setMergeMethod(updated.mergeability.defaultMethod);
+      setCommitTitle(
+        defaultCommitTitle(updated.mergeability.defaultMethod, updated),
+      );
+      setCommitBody("");
+      setDeleteBranch(false);
+      setMergeConfirmOpen(false);
+      setMergeBlockers([]);
       setMessage(success);
     } catch (error) {
       setMessage(
@@ -228,16 +292,30 @@ export function RepositoryPullRequestDetailPage({
 
   async function mergePullRequest() {
     setMessage(null);
+    setMergeBlockers([]);
+    if (!commitTitle.trim()) {
+      setMergeBlockers(["Commit title is required before merging."]);
+      return;
+    }
     setIsMutating(true);
     try {
       const response = await fetch(`${activePath}/merge`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ method: mergeMethod }),
+        body: JSON.stringify({
+          method: mergeMethod,
+          commitTitle: commitTitle.trim(),
+          commitBody: commitBody.trim() || null,
+          deleteBranch: canDeleteHeadBranch && deleteBranch,
+        }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
         const envelope = payload as ApiErrorEnvelope | null;
+        const details = blockerDetails(envelope);
+        if (details.length) {
+          setMergeBlockers(details);
+        }
         throw new Error(
           envelope?.error.message ?? "Pull request could not merge.",
         );
@@ -245,6 +323,9 @@ export function RepositoryPullRequestDetailPage({
       const updated = payload as PullRequestDetailView;
       setCurrentPullRequest(updated);
       setSubscription(updated.subscription);
+      setMergeConfirmOpen(false);
+      setDeleteBranch(false);
+      setMergeBlockers([]);
       setMessage("Pull request merged.");
     } catch (error) {
       setMessage(
@@ -255,6 +336,12 @@ export function RepositoryPullRequestDetailPage({
     } finally {
       setIsMutating(false);
     }
+  }
+
+  function selectMergeMethod(method: MergeMethod) {
+    setMergeMethod(method);
+    setCommitTitle(defaultCommitTitle(method, pullRequest));
+    setMergeBlockers([]);
   }
 
   function saveMetadata(next: {
@@ -582,68 +669,188 @@ export function RepositoryPullRequestDetailPage({
                 </div>
               ) : null}
               {viewerAuthenticated ? (
-                <div
-                  className="flex flex-wrap items-center gap-2 border-t px-5 py-4"
-                  style={{ borderColor: "var(--line-soft)" }}
-                >
-                  {pullRequest.mergeability.methods.map((method) => (
+                <>
+                  <div
+                    className="flex flex-wrap items-center gap-2 border-t px-5 py-4"
+                    style={{ borderColor: "var(--line-soft)" }}
+                  >
+                    {pullRequest.mergeability.methods.map((method) => (
+                      <button
+                        aria-pressed={mergeMethod === method}
+                        className={`chip soft ${mergeMethod === method ? "active" : ""}`}
+                        disabled={
+                          isMutating || !pullRequest.mergeability.canMerge
+                        }
+                        key={method}
+                        onClick={() => selectMergeMethod(method)}
+                        type="button"
+                      >
+                        {mergeMethodLabel(method)}
+                      </button>
+                    ))}
+                    <span className="flex-1" />
+                    {pullRequest.mergeability.canMarkReady ? (
+                      <button
+                        className="btn"
+                        disabled={isMutating}
+                        onClick={() => toggleDraft()}
+                        type="button"
+                      >
+                        Mark ready
+                      </button>
+                    ) : null}
+                    {pullRequest.mergeability.canReopen ? (
+                      <button
+                        className="btn"
+                        disabled={isMutating}
+                        onClick={() =>
+                          void saveState("open", "Pull request reopened.")
+                        }
+                        type="button"
+                      >
+                        Reopen pull request
+                      </button>
+                    ) : null}
+                    {pullRequest.mergeability.canClose ? (
+                      <button
+                        className="btn"
+                        disabled={isMutating}
+                        onClick={() =>
+                          void saveState("closed", "Pull request closed.")
+                        }
+                        type="button"
+                      >
+                        Close pull request
+                      </button>
+                    ) : null}
                     <button
-                      aria-pressed={mergeMethod === method}
-                      className={`chip soft ${mergeMethod === method ? "active" : ""}`}
+                      aria-expanded={mergeConfirmOpen}
+                      aria-label="Open merge confirmation"
+                      className="btn accent"
                       disabled={
                         isMutating || !pullRequest.mergeability.canMerge
                       }
-                      key={method}
-                      onClick={() => setMergeMethod(method)}
+                      onClick={() => {
+                        setMergeConfirmOpen(true);
+                        setMergeBlockers([]);
+                      }}
                       type="button"
                     >
-                      {mergeMethodLabel(method)}
+                      {mergeMethodLabel(mergeMethod)}
                     </button>
-                  ))}
-                  <span className="flex-1" />
-                  {pullRequest.mergeability.canMarkReady ? (
-                    <button
-                      className="btn"
-                      disabled={isMutating}
-                      onClick={() => toggleDraft()}
-                      type="button"
+                  </div>
+                  {mergeConfirmOpen ? (
+                    <div
+                      className="border-t px-5 py-5"
+                      style={{
+                        background: "var(--surface-2)",
+                        borderColor: "var(--line-soft)",
+                      }}
                     >
-                      Mark ready
-                    </button>
+                      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h3 className="t-h3">Confirm merge</h3>
+                          <p
+                            className="t-sm mt-1"
+                            style={{ color: "var(--ink-3)" }}
+                          >
+                            {mergeMethodHelp(mergeMethod)}
+                          </p>
+                        </div>
+                        <span className="chip ok">
+                          {pullRequest.checks.completedCount} /{" "}
+                          {pullRequest.checks.totalCount} checks complete
+                        </span>
+                      </div>
+                      <div className="grid gap-4">
+                        <label className="block" htmlFor="merge-commit-title">
+                          <span className="t-label">Commit title</span>
+                          <input
+                            className="input mt-2 h-10 w-full px-3 t-sm"
+                            disabled={isMutating}
+                            id="merge-commit-title"
+                            onChange={(event) =>
+                              setCommitTitle(event.target.value)
+                            }
+                            value={commitTitle}
+                          />
+                        </label>
+                        <label className="block" htmlFor="merge-commit-body">
+                          <span className="t-label">Commit body</span>
+                          <textarea
+                            className="input mt-2 min-h-24 w-full resize-y p-3 t-sm"
+                            disabled={isMutating}
+                            id="merge-commit-body"
+                            onChange={(event) =>
+                              setCommitBody(event.target.value)
+                            }
+                            placeholder="Optional context for the merge commit"
+                            value={commitBody}
+                          />
+                        </label>
+                        <label className="flex items-start gap-3 t-sm">
+                          <input
+                            checked={deleteBranch}
+                            className="mt-1"
+                            disabled={isMutating || !canDeleteHeadBranch}
+                            onChange={(event) =>
+                              setDeleteBranch(event.target.checked)
+                            }
+                            type="checkbox"
+                          />
+                          <span>
+                            Delete head branch after merge
+                            <span
+                              className="block t-xs"
+                              style={{ color: "var(--ink-3)" }}
+                            >
+                              {canDeleteHeadBranch
+                                ? `Removes ${pullRequest.headRef} after the base ref updates.`
+                                : "Branch deletion is unavailable for this pull request."}
+                            </span>
+                          </span>
+                        </label>
+                      </div>
+                      {mergeBlockers.length ? (
+                        <div
+                          aria-live="polite"
+                          className="card mt-4 p-3"
+                          style={{ background: "var(--err-soft)" }}
+                        >
+                          <h4 className="t-label mb-2">Merge blocked</h4>
+                          <ul className="grid gap-1">
+                            {mergeBlockers.map((blocker) => (
+                              <li className="t-sm" key={blocker}>
+                                {blocker}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      <div className="mt-4 flex flex-wrap justify-end gap-2">
+                        <button
+                          className="btn"
+                          disabled={isMutating}
+                          onClick={() => {
+                            setMergeConfirmOpen(false);
+                            setMergeBlockers([]);
+                          }}
+                          type="button"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="btn accent"
+                          disabled={isMutating || !commitTitle.trim()}
+                          onClick={() => void mergePullRequest()}
+                          type="button"
+                        >
+                          Confirm {mergeMethodLabel(mergeMethod)}
+                        </button>
+                      </div>
+                    </div>
                   ) : null}
-                  {pullRequest.mergeability.canReopen ? (
-                    <button
-                      className="btn"
-                      disabled={isMutating}
-                      onClick={() =>
-                        void saveState("open", "Pull request reopened.")
-                      }
-                      type="button"
-                    >
-                      Reopen pull request
-                    </button>
-                  ) : null}
-                  {pullRequest.mergeability.canClose ? (
-                    <button
-                      className="btn"
-                      disabled={isMutating}
-                      onClick={() =>
-                        void saveState("closed", "Pull request closed.")
-                      }
-                      type="button"
-                    >
-                      Close pull request
-                    </button>
-                  ) : null}
-                  <button
-                    className="btn accent"
-                    disabled={isMutating || !pullRequest.mergeability.canMerge}
-                    onClick={() => void mergePullRequest()}
-                    type="button"
-                  >
-                    Merge pull request
-                  </button>
-                </div>
+                </>
               ) : null}
             </section>
 

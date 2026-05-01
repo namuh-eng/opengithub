@@ -7,6 +7,7 @@ type SeededSession = {
   cookieName: string;
   cookieValue: string;
   firstRepositoryHref?: string;
+  pullRequestMergeHref?: string;
 };
 
 type CreatedPullRequest = {
@@ -278,7 +279,7 @@ test("signed-in user updates pull request sidebar metadata and notifications", a
     page.getByText("There are no changed files or commits to merge.").first(),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Merge pull request" }),
+    page.getByRole("button", { name: "Open merge confirmation" }),
   ).toBeDisabled();
   await page.getByRole("button", { name: "Close pull request" }).click();
   await expect(page.getByText("Pull request closed.")).toBeVisible();
@@ -313,5 +314,77 @@ test("signed-in user updates pull request sidebar metadata and notifications", a
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/prs-004-phase4-mergeability.jpg",
+  });
+});
+
+test("signed-in user confirms a ready pull request merge", async ({ page }) => {
+  const mergeSeed = execFileSync(
+    "cargo",
+    [
+      "run",
+      "--quiet",
+      "-p",
+      "opengithub-api",
+      "--example",
+      "dashboard_e2e_seed",
+    ],
+    {
+      cwd: "..",
+      env: {
+        ...process.env,
+        DASHBOARD_E2E_EMPTY: "0",
+        PULL_REQUEST_MERGE_E2E: "1",
+        SESSION_COOKIE_NAME: "og_session",
+      },
+    },
+  ).toString();
+  const mergeReady = JSON.parse(mergeSeed) as SeededSession;
+  if (!mergeReady.pullRequestMergeHref) {
+    throw new Error("merge-ready seed did not return a pull request href");
+  }
+  await signIn(page, {
+    cookieName: mergeReady.cookieName,
+    cookieValue: mergeReady.cookieValue,
+  });
+
+  await page.goto(mergeReady.pullRequestMergeHref);
+  await expect(
+    page.getByRole("heading", { name: /Confirm merge workflow/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open merge confirmation" }),
+  ).toBeEnabled();
+  await page.getByRole("button", { name: "Open merge confirmation" }).click();
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Confirm merge" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Commit title")).toHaveValue(
+    "Confirm merge workflow (#1)",
+  );
+
+  await page.getByRole("button", { name: "Create a merge commit" }).click();
+  await expect(page.getByLabel("Commit title")).toHaveValue(
+    /Merge pull request #1 from feature\/merge-confirmation/,
+  );
+  await page.getByLabel("Commit title").fill("Ship merge confirmation");
+  await page
+    .getByLabel("Commit body")
+    .fill("Verified by Playwright against the Rust merge endpoint.");
+  await page
+    .getByRole("checkbox", { name: /Delete head branch after merge/ })
+    .check();
+  await page
+    .getByRole("button", { name: "Confirm Create a merge commit" })
+    .click();
+
+  await expect(page.getByText("Pull request merged.")).toBeVisible();
+  await expect(page.getByText("Merged", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Open merge confirmation" }),
+  ).toBeDisabled();
+  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/prs-006-phase3-merge-confirmation.jpg",
   });
 });

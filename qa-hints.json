@@ -2134,5 +2134,24 @@
       "Browser merge confirmation fields and delete-branch checkbox are wired through the proxy now, but the richer Editorial confirmation UI is intentionally deferred to Phase 3.",
       "Real Google OAuth was not used; browser/E2E verification used deterministic Rust-signed Playwright sessions against the local Postgres test database."
     ]
+  },
+  {
+    "feature_id": "prs-006",
+    "tests_written": [
+      "Implemented Phase 3 Editorial merge confirmation UI for /{owner}/{repo}/pull/{number}.",
+      "Replaced the one-click merge action with a live confirmation panel that supports enabled method selection, method-specific commit title defaults, optional commit body, delete-head-branch checkbox, cancel/recovery actions, and success feedback.",
+      "The merge form posts method, commitTitle, commitBody, and deleteBranch through the existing same-origin merge route to the Rust API.",
+      "Structured 409 merge_blocked responses now render blocker details inside the confirmation panel instead of only showing a generic message.",
+      "Extended the Playwright seed fixture with an opt-in merge-ready pull request so browser smoke can exercise a real successful merge through the Rust endpoint.",
+      "Vitest covers method switching, commit field validation/payloads, delete-branch payloads, structured blocked envelopes, and disabled merge controls.",
+      "Playwright covers a ready merge confirmation flow with method switching, custom commit title/body, delete branch, merged success state, no dead anchors, and screenshot ralph/screenshots/build/prs-006-phase3-merge-confirmation.jpg.",
+      "Verification passed: focused repository-pull-request-detail Vitest, TEST_DATABASE_URL-backed make check, TEST_DATABASE_URL-backed make test with Cargo tests plus 170 frontend tests, focused repository-pull-request-detail Playwright spec, and full TEST_DATABASE_URL-backed make test-e2e with 66 Playwright tests."
+    ],
+    "needs_deeper_qa": [
+      "The browser merge-ready fixture seeds stored PR diff metadata and refs directly; QA should revisit against full Git object diff generation once that matures.",
+      "Conflict, stale-ref, required-check, and required-review browser matrices remain Phase 5 guardrails; this phase covers structured blocked rendering in Vitest and successful browser merge.",
+      "Delete-branch UI is inferred from same-repository head/base refs because the Rust detail DTO does not yet return an explicit canDeleteHeadBranch field.",
+      "Real Google OAuth was not used; browser/E2E verification used deterministic Rust-signed Playwright sessions against the local Postgres test database."
+    ]
   }
 ]

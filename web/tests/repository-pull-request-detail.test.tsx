@@ -428,13 +428,152 @@ describe("RepositoryPullRequestDetailPage", () => {
     expect(screen.getByText(/Looks/)).toBeVisible();
     expect(screen.getAllByText("ready").length).toBeGreaterThanOrEqual(1);
     expect(
-      screen.getByRole("button", { name: "Merge pull request" }),
+      screen.getByRole("button", { name: "Open merge confirmation" }),
     ).toBeEnabled();
     expect(
       screen.getByRole("button", { name: "Close pull request" }),
     ).toBeEnabled();
     expect(screen.getByRole("textbox", { name: "Comment body" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Comment" })).toBeDisabled();
+  });
+
+  it("opens merge confirmation, switches methods, and submits commit details", async () => {
+    const mergedPullRequest = pullRequestDetail({
+      state: "merged",
+      mergedAt: "2026-05-01T00:20:00Z",
+      mergeability: {
+        ...pullRequestDetail().mergeability,
+        state: "merged",
+        canMerge: false,
+        canClose: false,
+        defaultMethod: "merge_commit",
+        summary: "This pull request has been merged.",
+        blockers: [
+          {
+            code: "already_merged",
+            message: "This pull request has already been merged.",
+            severity: "blocking",
+          },
+        ],
+      },
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/merge")) {
+        return { ok: true, json: async () => mergedPullRequest };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryPullRequestDetailPage
+        pullRequest={pullRequestDetail()}
+        repository={repositoryOverview()}
+        timeline={pullRequestTimeline()}
+        viewerAuthenticated={true}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open merge confirmation" }),
+    );
+    expect(
+      screen.getByRole("heading", { name: "Confirm merge" }),
+    ).toBeVisible();
+    expect(screen.getByLabelText("Commit title")).toHaveValue(
+      "Split repository routes (#42)",
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create a merge commit" }),
+    );
+    expect(screen.getByLabelText("Commit title")).toHaveValue(
+      "Merge pull request #42 from hubot/split-routes",
+    );
+    fireEvent.change(screen.getByLabelText("Commit title"), {
+      target: { value: "Ship merge workflow" },
+    });
+    fireEvent.change(screen.getByLabelText("Commit body"), {
+      target: { value: "Keeps the merge audit trail." },
+    });
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: /Delete head branch after merge/,
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Confirm Create a merge commit",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mona/octo-app/pull/42/merge",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            method: "merge_commit",
+            commitTitle: "Ship merge workflow",
+            commitBody: "Keeps the merge audit trail.",
+            deleteBranch: true,
+          }),
+        }),
+      );
+    });
+    expect(await screen.findByText("Pull request merged.")).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "Confirm merge" })).toBeNull();
+  });
+
+  it("renders structured merge blockers returned by the API", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/merge")) {
+        return {
+          ok: false,
+          json: async () => ({
+            error: {
+              code: "merge_blocked",
+              message: "Pull request cannot merge.",
+            },
+            status: 409,
+            details: {
+              blockers: [
+                {
+                  code: "required_checks_failed",
+                  message: "Required status checks have failed.",
+                  severity: "blocking",
+                },
+              ],
+            },
+          }),
+        };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryPullRequestDetailPage
+        pullRequest={pullRequestDetail()}
+        repository={repositoryOverview()}
+        timeline={pullRequestTimeline()}
+        viewerAuthenticated={true}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open merge confirmation" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirm Squash and merge" }),
+    );
+
+    expect(await screen.findByText("Pull request cannot merge.")).toBeVisible();
+    expect(
+      await screen.findByText("Required status checks have failed."),
+    ).toBeVisible();
   });
 
   it("shows a concrete sign-in CTA for anonymous public readers", () => {
@@ -1083,13 +1222,23 @@ describe("RepositoryPullRequestDetailPage", () => {
     expect(await screen.findByText("Pull request reopened.")).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: "Rebase and merge" }));
-    fireEvent.click(screen.getByRole("button", { name: "Merge pull request" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open merge confirmation" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirm Rebase and merge" }),
+    );
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         "/mona/octo-app/pull/42/merge",
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({ method: "rebase" }),
+          body: JSON.stringify({
+            method: "rebase",
+            commitTitle: "Rebase pull request #42 onto main",
+            commitBody: null,
+            deleteBranch: false,
+          }),
         }),
       );
     });
@@ -1154,7 +1303,7 @@ describe("RepositoryPullRequestDetailPage", () => {
       screen.queryByRole("button", { name: "Rebase and merge" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Merge pull request" }),
+      screen.getByRole("button", { name: "Open merge confirmation" }),
     ).toBeDisabled();
   });
 });

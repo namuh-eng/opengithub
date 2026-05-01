@@ -218,6 +218,7 @@
 - Added `web/tests/dashboard-onboarding.test.tsx` covering empty-state rendering, CTA hrefs, no inert `href="#"` or placeholder buttons, and the non-empty repository row fallback without first-run welcome copy.
 - Verification: `make check` passed; `make test` passed with 12 frontend tests plus cargo tests; `make test-e2e` passed with 8 Playwright tests.
 - Browser smoke: started `make dev` against `postgresql://postgres:postgres@localhost:5432/opengithub_identity_test`, seeded a real Rust-signed Postgres session for a zero-repository user, verified `/dashboard`, clicked `/new`, `/new/import`, and `/docs/get-started` with Ever, and saved `ralph/screenshots/build/onboarding-001-phase3-dashboard.jpg`.
+
 - Marked Phase 3 as done in `.qrspi/onboarding-001/structure.md`; `prd.json` remains `build_pass: false` because Phases 4-5 remain.
 
 2026-04-30 - onboarding-001 phase 4 dismissible hints and non-empty dashboard state
@@ -1465,3 +1466,14 @@
 - Verification passed: `.scratch/prs-006-merge-contract-scenario.sh`, `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`, same-env `make test` with Cargo tests plus 168 frontend tests, `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false SESSION_SECRET=playwright-session-secret-with-enough-entropy SESSION_COOKIE_NAME=og_session make test-e2e` with 65 Playwright tests, and mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
 - Browser smoke used the existing Playwright PR detail suite; no new screenshot was required because Phase 2 is backend/proxy behavior and the full confirmation UI is Phase 3.
 - Marked Phase 2 as done in `.qrspi/prs-006/structure.md`; `prd.json` remains `build_pass: false` because Phases 3-5 remain.
+
+2026-05-02 - prs-006 phase 3 Editorial merge confirmation UI
+
+- Implemented Phase 3 from `.qrspi/prs-006/structure.md`: the PR detail merge box now opens a live Editorial confirmation panel instead of doing a one-click merge.
+- Added method switching, method-specific default commit titles, editable commit title/body fields, delete-head-branch option, cancel/recovery actions, success state, and structured merge blocker rendering.
+- The UI posts `method`, `commitTitle`, `commitBody`, and `deleteBranch` through the existing same-origin merge route to the Rust API.
+- Extended `crates/api/examples/dashboard_e2e_seed.rs` with an opt-in merge-ready PR fixture so Playwright can exercise a real successful merge against the Rust endpoint and local Postgres.
+- Added/updated Vitest and Playwright coverage for method switching, commit payloads, delete-branch payloads, blocked envelopes, disabled controls, no dead anchors, and the browser merge success path.
+- Verification: focused `cd web && npx vitest run tests/repository-pull-request-detail.test.tsx` passed; `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check` passed; same-env `make test` passed with Cargo tests plus 170 frontend tests; focused Playwright PR detail spec passed; full same-env `make test-e2e` passed with 66 Playwright tests.
+- Browser smoke screenshot saved to `ralph/screenshots/build/prs-006-phase3-merge-confirmation.jpg`.
+- Marked Phase 3 as done in `.qrspi/prs-006/structure.md`; `prd.json` remains `build_pass: false` because Phases 4-5 remain.
