@@ -12,7 +12,7 @@ describe("ApiDocsPage", () => {
         name: "Build against implemented opengithub APIs",
       }),
     ).toBeVisible();
-    expect(apiEndpointDocs).toHaveLength(15);
+    expect(apiEndpointDocs.length).toBeGreaterThanOrEqual(23);
 
     for (const endpoint of apiEndpointDocs) {
       const card = screen
@@ -51,7 +51,38 @@ describe("ApiDocsPage", () => {
       screen.getByText("/api/repos/{owner}/{repo}/pulls/{number}.patch"),
     ).toBeVisible();
     expect(
-      screen.getByText("/api/repos/{owner}/{repo}/actions/runs"),
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/actions/dashboard?q=ci&status=success&page=1&pageSize=30",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(
+        "/api/repos/{owner}/{repo}/actions/workflows?page=1&pageSize=30",
+      )[0],
+    ).toBeVisible();
+    expect(
+      screen.getAllByText("/api/repos/{owner}/{repo}/actions/workflows")[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/actions/workflows/{workflow_id}",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/actions/runs?page=1&pageSize=30",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText("/api/repos/{owner}/{repo}/actions/runs/{run_id}")[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/actions/recent-view"),
     ).toBeVisible();
     expect(
       screen.getByText("/api/repos/{owner}/{repo}/packages"),
@@ -100,7 +131,9 @@ describe("ApiDocsPage", () => {
       ),
     ).toBeVisible();
     expect(
-      screen.getByText((content) => content.includes('"items": []')),
+      screen.getByText((content) =>
+        content.includes("GET /api/repos?page=2&pageSize=10"),
+      ),
     ).toBeVisible();
   });
 

@@ -248,6 +248,10 @@ describe("RepositoryActionsPage", () => {
       within(workflowNav).getByRole("link", { name: /CI/ }),
     ).toHaveAttribute("href", "/mona/octo-app/actions?workflow=workflow-1");
     expect(screen.getByLabelText("Pinned workflow")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "API docs" })).toHaveAttribute(
+      "href",
+      "/docs/api#actions-dashboard",
+    );
 
     const runLink = screen.getByRole("link", {
       name: "Build Editorial Actions page",
@@ -256,11 +260,74 @@ describe("RepositoryActionsPage", () => {
       "href",
       "/mona/octo-app/actions/runs/run-1",
     );
+    expect(
+      screen.getByRole("link", { name: "Open run 42 details and options" }),
+    ).toHaveAttribute(
+      "href",
+      "/mona/octo-app/actions/runs/run-1?panel=options",
+    );
     expect(screen.getByText("3/3 jobs passed")).toBeVisible();
     expect(screen.getByLabelText("Success run")).toBeVisible();
     for (const filter of ["Workflow", "Event", "Status", "Branch", "Actor"]) {
       expect(screen.getByRole("button", { name: filter })).toBeVisible();
     }
+  });
+
+  it("wires management navigation and expanded workflow rail links", () => {
+    const manyWorkflows = Array.from({ length: 10 }, (_, index) =>
+      workflow({
+        id: `workflow-${index + 1}`,
+        name: `Workflow ${index + 1}`,
+        path: `.github/workflows/workflow-${index + 1}.yml`,
+        pinned: index === 0,
+      }),
+    );
+
+    renderActions(dashboard({ workflows: manyWorkflows }), {});
+
+    const managementNav = screen.getByRole("navigation", {
+      name: "Actions management",
+    });
+    expect(
+      within(managementNav).getByRole("link", { name: "Caches" }),
+    ).toHaveAttribute("href", "/mona/octo-app/actions/caches");
+    expect(
+      within(managementNav).getByRole("link", { name: "Deployments" }),
+    ).toHaveAttribute("href", "/mona/octo-app/actions/deployments");
+    expect(
+      within(managementNav).getByRole("link", { name: "Attestations" }),
+    ).toHaveAttribute("href", "/mona/octo-app/actions/attestations");
+    expect(
+      within(managementNav).getByRole("link", { name: "Usage metrics" }),
+    ).toHaveAttribute("href", "/mona/octo-app/actions/usage");
+    expect(
+      within(managementNav).getByRole("link", { name: "Performance metrics" }),
+    ).toHaveAttribute("href", "/mona/octo-app/actions/performance");
+
+    expect(
+      screen.getByRole("link", { name: "Show more workflows" }),
+    ).toHaveAttribute("href", "/mona/octo-app/actions?showWorkflows=all");
+    expect(screen.queryByRole("link", { name: /Workflow 10/ })).toBeNull();
+  });
+
+  it("renders all workflows when the rail expansion query is active", () => {
+    const manyWorkflows = Array.from({ length: 10 }, (_, index) =>
+      workflow({
+        id: `workflow-${index + 1}`,
+        name: `Workflow ${index + 1}`,
+        path: `.github/workflows/workflow-${index + 1}.yml`,
+        pinned: index === 0,
+      }),
+    );
+
+    renderActions(dashboard({ workflows: manyWorkflows }), {
+      showWorkflows: "all",
+    });
+
+    expect(screen.getByRole("link", { name: /Workflow 10/ })).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Show fewer workflows" }),
+    ).toHaveAttribute("href", "/mona/octo-app/actions");
   });
 
   it("updates the URL from search, filter panels, selected chips, and workflow scoping", () => {

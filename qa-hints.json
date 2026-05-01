@@ -2241,5 +2241,23 @@
       "Runner execution, live log streaming, artifacts, check-suite/check-run integration, and manual dispatch remain outside this all-workflows filter phase.",
       "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth."
     ]
+  },
+  {
+    "feature_id": "actions-001",
+    "tests_written": [
+      "Implemented Phase 4 Actions management navigation and API docs.",
+      "Added concrete repository workspace pages for Actions caches, deployments, attestations, usage metrics, and performance metrics with back-links and honest unavailable states.",
+      "Wired Actions management links, run options links, API docs link, and URL-backed Show more/Show fewer workflow rail behavior.",
+      "Expanded /docs/api to document Actions dashboard, workflows list/create/read, workflow runs list/create/read/update, and recent-view telemetry contracts with filter params, status vocabulary, permissions, and error envelopes.",
+      "Extended Vitest coverage for Actions management links, expanded workflow rail state, API docs entries, navigation route existence, no dead controls, and exact Actions docs paths.",
+      "Extended Playwright coverage for Actions management navigation, API docs navigation, run options navigation, and screenshot ralph/screenshots/build/actions-001-phase4-management-docs.jpg.",
+      "Verification passed: focused repository-actions/api-docs/navigation Vitest, focused repository-actions Playwright, focused api-docs Playwright, TEST_DATABASE_URL-backed make check, TEST_DATABASE_URL-backed make test with Cargo tests plus 178 frontend tests, full TEST_DATABASE_URL-backed make test-e2e with 67 Playwright tests, and mandatory Editorial banned-value scan with zero matches using rg -n -e."
+    ],
+    "needs_deeper_qa": [
+      "Management pages are intentionally thin navigation destinations for this phase; cache deletion, deployment records, attestations, usage aggregation, and performance telemetry need deeper QA when backend runner data exists.",
+      "Actions API docs describe the implemented dashboard/workflow/run/telemetry endpoints, but live runner execution, logs, artifacts, check-suite/check-run integration, and manual dispatch remain outside this feature phase.",
+      "Show more workflows is URL-backed UI state only and does not alter the backend dashboard page size.",
+      "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth."
+    ]
   }
 ]

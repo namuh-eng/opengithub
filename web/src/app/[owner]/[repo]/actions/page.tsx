@@ -64,6 +64,7 @@ function normalizeActionsQuery(
     page: firstParam(searchParams.page),
     pageSize: firstParam(searchParams.pageSize),
     q: firstParam(searchParams.q),
+    showWorkflows: firstParam(searchParams.showWorkflows),
     status: firstParam(searchParams.status),
     workflow: firstParam(searchParams.workflow),
   };

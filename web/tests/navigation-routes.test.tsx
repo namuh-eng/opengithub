@@ -115,6 +115,9 @@ describe("navigation route registry", () => {
     expect(activeRepositoryTab("/namuh/opengithub/actions/runs/123")).toBe(
       "actions",
     );
+    expect(activeRepositoryTab("/namuh/opengithub/actions/caches")).toBe(
+      "actions",
+    );
     expect(activeRepositoryTab("/namuh/opengithub/issues/42")).toBe("issues");
   });
 
@@ -184,6 +187,27 @@ describe("navigation route registry", () => {
   it("keeps phase 4 skeleton routes concrete without colliding with repository pages", () => {
     expect(hasRouteFile(["[owner]", "page.tsx"])).toBe(true);
     expect(hasRouteFile(["[owner]", "[repo]", "page.tsx"])).toBe(true);
+    expect(
+      hasRouteFile(["[owner]", "[repo]", "actions", "caches", "page.tsx"]),
+    ).toBe(true);
+    expect(
+      hasRouteFile(["[owner]", "[repo]", "actions", "deployments", "page.tsx"]),
+    ).toBe(true);
+    expect(
+      hasRouteFile([
+        "[owner]",
+        "[repo]",
+        "actions",
+        "attestations",
+        "page.tsx",
+      ]),
+    ).toBe(true);
+    expect(
+      hasRouteFile(["[owner]", "[repo]", "actions", "usage", "page.tsx"]),
+    ).toBe(true);
+    expect(
+      hasRouteFile(["[owner]", "[repo]", "actions", "performance", "page.tsx"]),
+    ).toBe(true);
     expect(hasRouteFile(["orgs", "[org]", "page.tsx"])).toBe(true);
     expect(hasRouteFile(["orgs", "[org]", "projects", "page.tsx"])).toBe(true);
     expect(hasRouteFile(["orgs", "[org]", "settings", "page.tsx"])).toBe(true);

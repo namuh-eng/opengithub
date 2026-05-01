@@ -56,7 +56,7 @@
 
 ## Phase 4: Management Navigation and API Docs - every Actions link has a real destination
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish the all-workflows page navigation contract. Management links for Caches, Deployments, Attestations, Usage metrics, and Performance metrics resolve to real repository workspace pages or documented not-yet-implemented states, and API docs describe the Actions dashboard/run-list contract.
 

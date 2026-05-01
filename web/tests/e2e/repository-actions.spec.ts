@@ -172,7 +172,38 @@ test("signed-in repository Actions tab renders workflows, runs, and empty templa
     },
   );
   expect(recentView.status()).toBe(200);
+  await page.getByRole("link", { name: "Caches" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Actions caches" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "All workflows" }),
+  ).toHaveAttribute("href", `/${ownerLogin}/${repoName}/actions`);
+  await page.goto(`/${ownerLogin}/${repoName}/actions`);
+  await page.getByRole("link", { name: "Deployments" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Actions deployments" }),
+  ).toBeVisible();
+  await page.goto(`/${ownerLogin}/${repoName}/actions`);
+  await page.getByRole("link", { name: "API docs" }).click();
+  await expect(page).toHaveURL(/\/docs\/api#actions-dashboard$/);
+  await expect(
+    page.getByRole("heading", { name: "Read Actions dashboard" }),
+  ).toBeVisible();
+  await page.goto(`/${ownerLogin}/${repoName}/actions`);
+  await page
+    .getByRole("link", { name: "Open run 1 details and options" })
+    .click();
+  await expect(page).toHaveURL(new RegExp(`/actions/runs/${run.id}`));
+  await expect(
+    page.getByRole("heading", { name: "Workflow run" }),
+  ).toBeVisible();
+  await page.goto(`/${ownerLogin}/${repoName}/actions`);
   await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/actions-001-phase4-management-docs.jpg",
+  });
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/actions-001-phase3-filters.jpg",

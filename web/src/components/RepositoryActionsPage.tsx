@@ -23,6 +23,39 @@ type RepositoryActionsPageProps = {
 const FILTERS = ["workflow", "event", "status", "branch", "actor"] as const;
 type FilterKey = (typeof FILTERS)[number];
 
+const MANAGEMENT_LINKS = [
+  {
+    description:
+      "Caches created by workflow jobs will be listed here once runner execution lands.",
+    href: "caches",
+    label: "Caches",
+  },
+  {
+    description:
+      "Deployment records connected to workflow environments will appear here.",
+    href: "deployments",
+    label: "Deployments",
+  },
+  {
+    description:
+      "Artifact attestations and provenance checks will be reviewed from this surface.",
+    href: "attestations",
+    label: "Attestations",
+  },
+  {
+    description:
+      "Usage metrics will summarize minutes, storage, and retention by workflow.",
+    href: "usage",
+    label: "Usage metrics",
+  },
+  {
+    description:
+      "Performance metrics will highlight slow jobs, queue time, and flake signals.",
+    href: "performance",
+    label: "Performance metrics",
+  },
+] as const;
+
 const FILTER_LABELS: Record<FilterKey, string> = {
   actor: "Actor",
   branch: "Branch",
@@ -218,7 +251,10 @@ function WorkflowRail({
   query: Record<string, string | undefined>;
 }) {
   const activeWorkflow = dashboard.filters.workflow;
-  const visibleWorkflows = dashboard.workflows.slice(0, 8);
+  const showAllWorkflows = query.showWorkflows === "all";
+  const visibleWorkflows = showAllWorkflows
+    ? dashboard.workflows
+    : dashboard.workflows.slice(0, 8);
   return (
     <aside className="min-w-0">
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -250,9 +286,17 @@ function WorkflowRail({
       {dashboard.workflows.length > visibleWorkflows.length ? (
         <Link
           className="btn ghost mt-3 w-full justify-center"
-          href={actionsHref(basePath, query)}
+          href={actionsHref(basePath, query, { showWorkflows: "all" })}
         >
           Show more workflows
+        </Link>
+      ) : null}
+      {showAllWorkflows && dashboard.workflows.length > 8 ? (
+        <Link
+          className="btn ghost mt-3 w-full justify-center"
+          href={actionsHref(basePath, query, { showWorkflows: null })}
+        >
+          Show fewer workflows
         </Link>
       ) : null}
       <div
@@ -261,19 +305,14 @@ function WorkflowRail({
       >
         <p className="t-label mb-3">Management</p>
         <nav aria-label="Actions management" className="space-y-1">
-          {[
-            "Caches",
-            "Deployments",
-            "Attestations",
-            "Usage metrics",
-            "Performance metrics",
-          ].map((label) => (
+          {MANAGEMENT_LINKS.map((item) => (
             <Link
               className="block rounded-[var(--radius)] px-3 py-2 text-sm hover:bg-[var(--hover)]"
-              href={`${basePath}/actions/${label.toLowerCase().replaceAll(" ", "-")}`}
-              key={label}
+              href={`${basePath}/actions/${item.href}`}
+              key={item.href}
+              title={item.description}
             >
-              {label}
+              {item.label}
             </Link>
           ))}
         </nav>
@@ -549,9 +588,9 @@ function RunRow({
           <p className="t-xs mt-1">{relativeTime(run.createdAt)}</p>
         </div>
         <Link
-          aria-label={`Open options for run ${run.runNumber}`}
+          aria-label={`Open run ${run.runNumber} details and options`}
           className="btn sm"
-          href={runHref}
+          href={`${runHref}?panel=options`}
         >
           ⋯
         </Link>
@@ -661,6 +700,9 @@ export function RepositoryActionsPage({
             href={dashboard.emptyState.newWorkflowHref}
           >
             New workflow
+          </Link>
+          <Link className="btn ghost" href="/docs/api#actions-dashboard">
+            API docs
           </Link>
         </div>
         {validationError ? (

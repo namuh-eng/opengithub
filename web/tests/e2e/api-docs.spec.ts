@@ -35,8 +35,26 @@ test("api docs expose implemented REST surfaces and working examples", async ({
     }),
   ).toBeVisible();
   await expect(
-    page.getByText("/api/repos/{owner}/{repo}/actions/runs"),
+    page.locator("code").filter({
+      hasText:
+        "/api/repos/{owner}/{repo}/actions/dashboard?q=ci&status=success&page=1&pageSize=30",
+    }),
   ).toBeVisible();
+  await expect(
+    page.locator("code").filter({
+      hasText: "/api/repos/{owner}/{repo}/actions/runs?page=1&pageSize=30",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.locator("code").filter({
+      hasText: "/api/repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.locator("code").filter({
+      hasText: "/api/repos/{owner}/{repo}/actions/runs/{run_id}",
+    }),
+  ).toHaveCount(2);
   await expect(
     page
       .locator("code")

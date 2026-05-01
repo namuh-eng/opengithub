@@ -292,16 +292,122 @@ Subject: [PATCH] Improve docs
     ],
   },
   {
-    id: "actions-runs",
+    id: "actions-dashboard",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/actions/dashboard?q=ci&status=success&page=1&pageSize=30",
+    title: "Read Actions dashboard",
+    description:
+      "Returns the repository Actions all-workflows page contract, including workflow rail items, filtered run rows, filter options, and the no-workflows empty state.",
+    auth: "Public repositories are readable; private repositories require read permission",
+    response: `{
+  "repository": { "ownerLogin": "mona", "name": "octo-app" },
+  "workflows": [{ "id": "workflow_01", "name": "CI", "runCount": 2 }],
+  "runs": { "items": [], "total": 0, "page": 1, "pageSize": 30 },
+  "filters": { "q": "ci", "status": "success" },
+  "filterOptions": { "statuses": [{ "value": "success", "count": 2 }] }
+}`,
+    notes: [
+      "Filter params are q, workflow, event, status, branch, actor, page, and pageSize.",
+      "Status values include action_required, cancelled, completed, failure, in_progress, neutral, queued, skipped, stale, success, timed_out, and waiting.",
+      "Signed-in reads may be followed by recent-view telemetry writes.",
+    ],
+  },
+  {
+    id: "actions-workflows-list",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/actions/workflows?page=1&pageSize=30",
+    title: "List Actions workflows",
+    description:
+      "Lists workflow files registered for a repository with bounded pagination.",
+    auth: "Signed opengithub session cookie with read access",
+    response: `{
+  "items": [
+    {
+      "id": "workflow_01",
+      "name": "CI",
+      "path": ".github/workflows/ci.yml",
+      "state": "active"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "pageSize": 30
+}`,
+    notes: ["The dashboard endpoint exposes public-read workflow summaries."],
+  },
+  {
+    id: "actions-workflows-create",
     method: "POST",
-    path: "/api/repos/{owner}/{repo}/actions/runs",
+    path: "/api/repos/{owner}/{repo}/actions/workflows",
+    title: "Create Actions workflow",
+    description:
+      "Registers a workflow file for a repository before runner execution is available.",
+    auth: "Signed opengithub session cookie with write access",
+    request: `{
+  "name": "CI",
+  "path": ".github/workflows/ci.yml",
+  "triggerEvents": ["push", "pull_request"]
+}`,
+    response: `{
+  "id": "workflow_01",
+  "name": "CI",
+  "path": ".github/workflows/ci.yml",
+  "state": "active"
+}`,
+    notes: ["Blank workflow names or paths return 422 validation errors."],
+  },
+  {
+    id: "actions-workflows-read",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/actions/workflows/{workflow_id}",
+    title: "Read Actions workflow",
+    description:
+      "Reads one workflow file registration after repository read authorization.",
+    auth: "Signed opengithub session cookie with read access",
+    response: `{
+  "id": "workflow_01",
+  "name": "CI",
+  "path": ".github/workflows/ci.yml",
+  "triggerEvents": ["push", "pull_request"]
+}`,
+    notes: ["Unknown workflow ids return the standard 404 envelope."],
+  },
+  {
+    id: "actions-runs-list",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/actions/runs?page=1&pageSize=30",
+    title: "List workflow runs",
+    description:
+      "Lists workflow runs across the repository or under a specific workflow route.",
+    auth: "Signed opengithub session cookie with read access",
+    response: `{
+  "items": [
+    {
+      "id": "run_01",
+      "workflowId": "workflow_01",
+      "status": "completed",
+      "conclusion": "success"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "pageSize": 30
+}`,
+    notes: [
+      "Use /actions/workflows/{workflow_id}/runs to list runs for one workflow.",
+    ],
+  },
+  {
+    id: "actions-runs-create",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs",
     title: "Create workflow run",
     description:
       "Records a workflow run for an existing workflow. Runner execution is handled by later Actions features.",
-    auth: "Signed opengithub session cookie",
+    auth: "Signed opengithub session cookie with write access",
     request: `{
-  "workflowId": "workflow_01",
-  "ref": "main",
+  "headBranch": "main",
+  "headSha": "abcdef1234567890",
   "event": "workflow_dispatch"
 }`,
     response: `{
@@ -311,6 +417,64 @@ Subject: [PATCH] Improve docs
   "conclusion": null
 }`,
     notes: ["Status transitions use the same envelope and auth contract."],
+  },
+  {
+    id: "actions-runs-read",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/actions/runs/{run_id}",
+    title: "Read workflow run",
+    description: "Reads one workflow run after repository read authorization.",
+    auth: "Signed opengithub session cookie with read access",
+    response: `{
+  "id": "run_01",
+  "workflowId": "workflow_01",
+  "status": "completed",
+  "conclusion": "success",
+  "headBranch": "main"
+}`,
+    notes: ["Run detail pages link here until the full logs UI lands."],
+  },
+  {
+    id: "actions-runs-update",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/actions/runs/{run_id}",
+    title: "Update workflow run status",
+    description:
+      "Transitions a workflow run status and optional conclusion for the repository-owned Actions MVP.",
+    auth: "Signed opengithub session cookie with write access",
+    request: `{
+  "status": "completed",
+  "conclusion": "success"
+}`,
+    response: `{
+  "id": "run_01",
+  "status": "completed",
+  "conclusion": "success"
+}`,
+    notes: [
+      "Invalid status and conclusion combinations return 422 validation errors.",
+    ],
+  },
+  {
+    id: "actions-recent-view",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/actions/recent-view",
+    title: "Record recent Actions view",
+    description:
+      "Persists the signed-in user's latest Actions workflow/filter telemetry for non-blocking UI recall.",
+    auth: "Signed opengithub session cookie with read access",
+    request: `{
+  "q": "deploy",
+  "workflow": "workflow_01",
+  "status": "success",
+  "branch": "main"
+}`,
+    response: `{
+  "repositoryId": "repo_01",
+  "userId": "user_01",
+  "filters": { "q": "deploy", "status": "success", "branch": "main" }
+}`,
+    notes: ["The browser treats telemetry failures as non-fatal."],
   },
   {
     id: "packages",
