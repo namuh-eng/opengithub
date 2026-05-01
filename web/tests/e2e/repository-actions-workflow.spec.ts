@@ -61,6 +61,7 @@ async function createRepository(page: Page, name: string) {
   await page.goto("/new");
   await page.getByLabel("Repository name *").fill(name);
   await page.getByLabel(/Description/).fill("Workflow detail smoke testing");
+  await page.getByRole("button", { name: "Off" }).click();
   await page.getByRole("button", { name: "Create repository" }).click();
   await expect(page).toHaveURL(new RegExp(`/${name.replaceAll(/\s+/g, "-")}$`));
   const [, ownerLogin, repoName] = new URL(page.url()).pathname.split("/");
@@ -97,6 +98,27 @@ test("signed-in workflow Actions page renders scoped runs and filters", async ({
         name: "Editorial CI",
         path: workflowPath,
         triggerEvents: ["push", "workflow_dispatch"],
+        dispatchEnabled: true,
+        dispatchInputs: [
+          {
+            name: "environment",
+            type: "choice",
+            label: "Environment",
+            description: "Deployment target",
+            required: true,
+            default: "staging",
+            options: ["staging", "production"],
+          },
+          {
+            name: "dryRun",
+            type: "boolean",
+            label: "Dry run",
+            description: null,
+            required: false,
+            default: "true",
+            options: [],
+          },
+        ],
       },
     },
   );
@@ -139,14 +161,16 @@ test("signed-in workflow Actions page renders scoped runs and filters", async ({
   await expect(
     workflowNav.getByRole("link", { name: /Editorial CI/ }),
   ).toHaveAttribute("aria-current", "page");
-  await expect(page.getByRole("button", { name: "Run workflow" })).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByRole("button", { name: "Run workflow" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("link", { exact: true, name: "Editorial CI" }).last(),
   ).toHaveAttribute("href", new RegExp(`/actions/runs/${run.id}`));
   await expect(page.getByLabel("Success run")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Workflow" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { exact: true, name: "Workflow" }),
+  ).toHaveCount(0);
   for (const filter of ["Event", "Status", "Branch", "Actor"]) {
     await expect(page.getByRole("button", { name: filter })).toBeVisible();
   }
@@ -162,6 +186,24 @@ test("signed-in workflow Actions page renders scoped runs and filters", async ({
   await expect(page).toHaveURL(/branch=main/);
   await expectNoDeadControls(page);
 
+  await page.getByRole("button", { name: "Run workflow" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Run workflow" }),
+  ).toBeVisible();
+  await page.getByLabel("Environment *").selectOption("production");
+  await page.getByLabel("Dry run").uncheck();
+  await page
+    .getByRole("dialog", { name: "Run workflow" })
+    .getByRole("button", { exact: true, name: "Run workflow" })
+    .click();
+  await expect(page.getByRole("dialog", { name: "Run workflow" })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole("link", { exact: true, name: "Run Editorial CI manually" }),
+  ).toBeVisible();
+  await expect(page.getByText("Queued")).toBeVisible();
+
   const desktopOverflow = await page.evaluate(
     () =>
       document.documentElement.scrollWidth >
@@ -170,6 +212,6 @@ test("signed-in workflow Actions page renders scoped runs and filters", async ({
   expect(desktopOverflow).toBe(false);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/actions-002-phase2-workflow-page.jpg",
+    path: "../ralph/screenshots/build/actions-002-phase3-run-workflow.jpg",
   });
 });

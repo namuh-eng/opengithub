@@ -1,11 +1,12 @@
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use serde::Deserialize;
 use serde_json::json;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::{
@@ -16,12 +17,12 @@ use crate::{
     domain::{
         actions::{
             actions_dashboard_for_viewer, actions_workflow_detail_for_viewer, create_workflow,
-            create_workflow_run, get_workflow_for_actor, get_workflow_run_for_actor,
-            list_workflow_runs, list_workflows, record_actions_recent_view,
-            repository_for_actor_by_name, repository_for_optional_actor_by_name,
-            transition_workflow_run, ActionsDashboardQuery, ActionsWorkflowDetailQuery,
-            AutomationError, CreateWorkflow, CreateWorkflowRun, RecordActionsRecentView,
-            RunConclusion, RunStatus, TransitionRun,
+            create_workflow_run, dispatch_workflow_run, get_workflow_for_actor,
+            get_workflow_run_for_actor, list_workflow_runs, list_workflows,
+            record_actions_recent_view, repository_for_actor_by_name,
+            repository_for_optional_actor_by_name, transition_workflow_run, ActionsDashboardQuery,
+            ActionsWorkflowDetailQuery, AutomationError, CreateWorkflow, CreateWorkflowRun,
+            DispatchWorkflowRun, RecordActionsRecentView, RunConclusion, RunStatus, TransitionRun,
         },
         permissions::RepositoryRole,
     },
@@ -41,6 +42,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/repos/:owner/:repo/actions/workflows/:workflow_path/dashboard",
             get(actions_workflow_detail_route),
+        )
+        .route(
+            "/api/repos/:owner/:repo/actions/workflows/:workflow_path/dispatches",
+            post(dispatch_workflow_route),
         )
         .route(
             "/api/repos/:owner/:repo/actions/workflows/:workflow_id",
@@ -103,6 +108,8 @@ struct CreateWorkflowRequest {
     name: String,
     path: String,
     trigger_events: Option<Vec<String>>,
+    dispatch_enabled: Option<bool>,
+    dispatch_inputs: Option<Vec<crate::domain::actions::WorkflowDispatchInput>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -111,6 +118,15 @@ struct CreateWorkflowRunRequest {
     head_branch: String,
     head_sha: Option<String>,
     event: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DispatchWorkflowRequest {
+    #[serde(rename = "ref")]
+    ref_name: String,
+    #[serde(default)]
+    inputs: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -253,6 +269,30 @@ async fn create_workflow_route(
     )
     .await
     .map_err(map_automation_error)?;
+    if request.dispatch_enabled.is_some() || request.dispatch_inputs.is_some() {
+        sqlx::query(
+            r#"
+            UPDATE actions_workflows
+            SET dispatch_enabled = COALESCE($2, dispatch_enabled),
+                dispatch_inputs = COALESCE($3, dispatch_inputs),
+                source_branch = COALESCE(source_branch, (
+                    SELECT default_branch FROM repositories WHERE id = actions_workflows.repository_id
+                ))
+            WHERE id = $1
+            "#,
+        )
+        .bind(workflow.id)
+        .bind(request.dispatch_enabled)
+        .bind(
+            request
+                .dispatch_inputs
+                .map(|inputs| json!(inputs)),
+        )
+        .execute(pool)
+        .await
+        .map_err(AutomationError::Sqlx)
+        .map_err(map_automation_error)?;
+    }
 
     Ok((StatusCode::CREATED, Json(json!(workflow))))
 }
@@ -396,6 +436,34 @@ async fn create_workflow_run_route(
     Ok((StatusCode::CREATED, Json(json!(run))))
 }
 
+async fn dispatch_workflow_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, workflow_path)): Path<(String, String, String)>,
+    RestJson(request): RestJson<DispatchWorkflowRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id =
+        repository_for_actor_by_name(pool, &owner, &repo, actor.0.id, RepositoryRole::Write)
+            .await
+            .map_err(map_automation_error)?;
+    let run = dispatch_workflow_run(
+        pool,
+        DispatchWorkflowRun {
+            repository_id,
+            workflow_path,
+            actor_user_id: actor.0.id,
+            ref_name: request.ref_name,
+            inputs: request.inputs,
+        },
+    )
+    .await
+    .map_err(map_automation_error)?;
+
+    Ok((StatusCode::CREATED, Json(json!(run))))
+}
+
 async fn read_workflow_run_route(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -461,10 +529,17 @@ pub(crate) fn map_automation_error(error: AutomationError) -> (StatusCode, Json<
         | AutomationError::InvalidRunStatus(_)
         | AutomationError::InvalidRunConclusion(_)
         | AutomationError::InvalidPackageType(_)
-        | AutomationError::InvalidActionsFilter(_) => error_response(
+        | AutomationError::InvalidActionsFilter(_)
+        | AutomationError::WorkflowDispatchDisabled(_)
+        | AutomationError::InvalidWorkflowDispatch(_) => error_response(
             StatusCode::UNPROCESSABLE_ENTITY,
             "validation_failed",
             error.to_string(),
+        ),
+        AutomationError::JobLease(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "automation operation failed",
         ),
         AutomationError::Sqlx(sqlx::Error::Database(database_error))
             if database_error.is_unique_violation() =>

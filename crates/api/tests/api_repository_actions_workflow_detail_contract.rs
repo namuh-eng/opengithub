@@ -103,6 +103,35 @@ async fn get_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (Status
     (status, value)
 }
 
+async fn post_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method(Method::POST)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let request = builder
+        .body(Body::from(body.to_string()))
+        .expect("request should build");
+    let response = app.oneshot(request).await.expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).expect("response should be json")
+    };
+    (status, value)
+}
+
 fn encoded_workflow_path(path: &str) -> String {
     path.replace('/', "%2F")
 }
@@ -205,6 +234,15 @@ async fn workflow_detail_returns_scoped_runs_dispatch_metadata_refs_and_filters(
             "required": true,
             "default": "staging",
             "options": ["staging", "production"]
+        },
+        {
+            "name": "reason",
+            "type": "string",
+            "label": "Reason",
+            "description": null,
+            "required": true,
+            "default": null,
+            "options": []
         },
         {
             "name": "dryRun",
@@ -351,6 +389,216 @@ async fn workflow_detail_returns_scoped_runs_dispatch_metadata_refs_and_filters(
     let (missing_status, missing_body) = get_json(app, &missing_uri, None).await;
     assert_eq!(missing_status, StatusCode::NOT_FOUND);
     assert_eq!(missing_body["error"]["code"], "not_found");
+}
+
+#[tokio::test]
+async fn workflow_dispatch_validates_inputs_permissions_refs_and_queues_run() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping actions workflow dispatch scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "actions-dispatch-owner").await;
+    let outsider = create_user(&pool, "actions-dispatch-outsider").await;
+    let repo_name = format!("actions-dispatch-{}", Uuid::new_v4().simple());
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: repo_name.clone(),
+            description: None,
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    let commit = sqlx::query(
+        r#"
+        INSERT INTO commits (repository_id, oid, author_user_id, committer_user_id, message)
+        VALUES ($1, $2, $3, $3, 'Dispatch workflow fixture')
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(format!("dispatch-sha-{}", Uuid::new_v4().simple()))
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("commit should create");
+    let commit_id = commit.get::<Uuid, _>("id");
+    sqlx::query(
+        r#"
+        INSERT INTO repository_git_refs (repository_id, name, kind, target_commit_id)
+        VALUES ($1, 'refs/heads/main', 'branch', $2),
+               ($1, 'refs/heads/release', 'branch', $2)
+        "#,
+    )
+    .bind(repository.id)
+    .bind(commit_id)
+    .execute(&pool)
+    .await
+    .expect("refs should create");
+
+    let workflow = create_workflow(
+        &pool,
+        CreateWorkflow {
+            repository_id: repository.id,
+            actor_user_id: owner.id,
+            name: "Release".to_owned(),
+            path: ".github/workflows/release.yml".to_owned(),
+            trigger_events: vec!["workflow_dispatch".to_owned()],
+        },
+    )
+    .await
+    .expect("workflow should create");
+    sqlx::query(
+        r#"
+        UPDATE actions_workflows
+        SET source_branch = 'main',
+            dispatch_enabled = true,
+            dispatch_inputs = $2
+        WHERE id = $1
+        "#,
+    )
+    .bind(workflow.id)
+    .bind(json!([
+        {
+            "name": "environment",
+            "type": "choice",
+            "label": "Environment",
+            "description": "Deployment target",
+            "required": true,
+            "default": "staging",
+            "options": ["staging", "production"]
+        },
+        {
+            "name": "reason",
+            "type": "string",
+            "label": "Reason",
+            "description": null,
+            "required": true,
+            "default": null,
+            "options": []
+        },
+        {
+            "name": "dryRun",
+            "type": "boolean",
+            "label": "Dry run",
+            "description": null,
+            "required": false,
+            "default": "true",
+            "options": []
+        }
+    ]))
+    .execute(&pool)
+    .await
+    .expect("workflow dispatch metadata should update");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+    let uri = format!(
+        "/api/repos/{}/{}/actions/workflows/{}/dispatches",
+        owner.email,
+        repo_name,
+        encoded_workflow_path(".github/workflows/release.yml")
+    );
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let outsider_cookie = cookie_header(&pool, &config, &outsider).await;
+
+    let (outsider_status, outsider_body) = post_json(
+        app.clone(),
+        &uri,
+        Some(&outsider_cookie),
+        json!({ "ref": "main", "inputs": { "environment": "staging" } }),
+    )
+    .await;
+    assert_eq!(outsider_status, StatusCode::FORBIDDEN);
+    assert_eq!(outsider_body["error"]["code"], "forbidden");
+
+    let (missing_input_status, missing_input_body) = post_json(
+        app.clone(),
+        &uri,
+        Some(&owner_cookie),
+        json!({ "ref": "main", "inputs": { "dryRun": true } }),
+    )
+    .await;
+    assert_eq!(missing_input_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(missing_input_body["error"]["message"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("reason"));
+
+    let (choice_status, choice_body) = post_json(
+        app.clone(),
+        &uri,
+        Some(&owner_cookie),
+        json!({ "ref": "main", "inputs": { "reason": "ship", "environment": "qa" } }),
+    )
+    .await;
+    assert_eq!(choice_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(choice_body["error"]["message"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("staging, production"));
+
+    let (bad_ref_status, bad_ref_body) = post_json(
+        app.clone(),
+        &uri,
+        Some(&owner_cookie),
+        json!({ "ref": "missing", "inputs": { "reason": "ship", "environment": "staging" } }),
+    )
+    .await;
+    assert_eq!(bad_ref_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(bad_ref_body["error"]["message"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("unknown ref"));
+
+    let (created_status, created_body) = post_json(
+        app.clone(),
+        &uri,
+        Some(&owner_cookie),
+        json!({
+            "ref": "release",
+            "inputs": { "reason": "ship", "environment": "production", "dryRun": false }
+        }),
+    )
+    .await;
+    assert_eq!(created_status, StatusCode::CREATED);
+    assert_eq!(created_body["workflowId"], workflow.id.to_string());
+    assert_eq!(created_body["runNumber"], 1);
+    assert_eq!(created_body["event"], "workflow_dispatch");
+    assert_eq!(created_body["headBranch"], "release");
+    assert_eq!(created_body["displayTitle"], "Run Release manually");
+    assert_eq!(created_body["statusCategory"], "queued");
+    assert_eq!(created_body["jobSummary"]["queued"], 1);
+
+    let run_id =
+        Uuid::parse_str(created_body["id"].as_str().expect("run id")).expect("valid run id");
+    let job_payload = sqlx::query(
+        r#"
+        SELECT job_leases.payload, workflow_jobs.name AS job_name
+        FROM job_leases
+        JOIN workflow_runs ON workflow_runs.id = (job_leases.payload->>'runId')::uuid
+        JOIN workflow_jobs ON workflow_jobs.run_id = workflow_runs.id
+        WHERE job_leases.queue = 'actions.workflow_dispatch'
+          AND workflow_runs.id = $1
+        "#,
+    )
+    .bind(run_id)
+    .fetch_one(&pool)
+    .await
+    .expect("dispatch job lease and workflow job should exist");
+    let payload = job_payload.get::<Value, _>("payload");
+    assert_eq!(payload["inputs"]["environment"], "production");
+    assert_eq!(payload["inputs"]["reason"], "ship");
+    assert_eq!(payload["inputs"]["dryRun"], false);
+    assert_eq!(
+        job_payload.get::<String, _>("job_name"),
+        "workflow dispatch"
+    );
 }
 
 #[tokio::test]

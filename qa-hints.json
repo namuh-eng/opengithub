@@ -2309,5 +2309,24 @@
       "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth.",
       "The E2E fixture creates workflow/run records through the current Rust API and does not exercise real runner execution, log streaming, artifacts, or YAML parser provenance."
     ]
+  },
+  {
+    "feature_id": "actions-002",
+    "tests_written": [
+      "Implemented Phase 3 manual workflow dispatch contract and Editorial dialog.",
+      "Added POST /api/repos/{owner}/{repo}/actions/workflows/{workflow_path}/dispatches with write-permission checks, dispatch-enabled/default-branch checks, ref resolution, bounded input validation, queued workflow_run creation, seeded workflow_job creation, and actions.workflow_dispatch job lease payloads.",
+      "Added a same-origin Next.js dispatch proxy at /{owner}/{repo}/actions/workflows/dispatches that forwards cookies and backend envelopes.",
+      "Added Run workflow dialog controls for branch/tag selection plus dynamic choice/boolean/text/number inputs, validation error display, pending state, and queued-run insertion after success.",
+      "Extended Rust contract coverage for forbidden dispatch, missing required inputs, invalid choices, invalid refs, successful queue side effects, job payload inputs, and seeded workflow jobs.",
+      "Extended Vitest and Playwright coverage for dialog payloads, dynamic inputs, queued-row insertion, no Workflow filter regression, browser success flow, and screenshot ralph/screenshots/build/actions-002-phase3-run-workflow.jpg.",
+      "Verification passed: focused dispatch Rust contract, focused repository-actions-workflow Vitest, TEST_DATABASE_URL-backed make check, TEST_DATABASE_URL-backed make test with Cargo tests plus 184 frontend tests, full TEST_DATABASE_URL-backed make test-e2e with 68 Playwright tests, and mandatory Editorial banned-value scan with zero matches using rg -n -e."
+    ],
+    "needs_deeper_qa": [
+      "This phase queues workflow runs and job leases but does not execute real runners, stream logs, upload artifacts, or complete jobs.",
+      "The schema does not currently include check_suites/check_runs tables, so Phase 3 validates existing workflow_run, workflow_job, and job_leases side effects only.",
+      "Dispatch inputs are still persisted as parsed JSON on actions_workflows; YAML parser edge cases, dispatch input provenance, and live workflow file edits need deeper QA in later phases.",
+      "Branch/ref race conditions between dialog load and dispatch submit should be revisited when branch mutation APIs are richer.",
+      "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth."
+    ]
   }
 ]

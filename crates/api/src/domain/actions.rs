@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::api_types::ListEnvelope;
+use crate::jobs::{enqueue_job, JobLeaseError};
 
 use super::{
     permissions::RepositoryRole,
@@ -418,6 +419,15 @@ pub struct RecordActionsRecentView {
     pub actor: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DispatchWorkflowRun {
+    pub repository_id: Uuid,
+    pub workflow_path: String,
+    pub actor_user_id: Uuid,
+    pub ref_name: String,
+    pub inputs: HashMap<String, Value>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ActionsRecentView {
@@ -561,6 +571,12 @@ pub enum AutomationError {
     InvalidPackageType(String),
     #[error("invalid actions filter `{0}`")]
     InvalidActionsFilter(String),
+    #[error("workflow dispatch is not available: {0}")]
+    WorkflowDispatchDisabled(String),
+    #[error("invalid workflow dispatch: {0}")]
+    InvalidWorkflowDispatch(String),
+    #[error(transparent)]
+    JobLease(#[from] JobLeaseError),
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
 }
@@ -934,6 +950,120 @@ pub async fn create_workflow_run(
     .await?;
 
     workflow_run_from_row(row)
+}
+
+pub async fn dispatch_workflow_run(
+    pool: &PgPool,
+    input: DispatchWorkflowRun,
+) -> Result<ActionsRunListItem, AutomationError> {
+    let repository = require_repository(
+        pool,
+        input.repository_id,
+        input.actor_user_id,
+        RepositoryRole::Write,
+    )
+    .await?;
+    let workflow =
+        actions_workflow_detail_workflow(pool, &repository, &input.workflow_path).await?;
+    if !workflow.valid {
+        return Err(AutomationError::WorkflowDispatchDisabled(
+            "the workflow YAML is invalid".to_owned(),
+        ));
+    }
+    if workflow.state != WorkflowState::Active {
+        return Err(AutomationError::WorkflowDispatchDisabled(
+            "the workflow is disabled".to_owned(),
+        ));
+    }
+    if !workflow.dispatch.enabled {
+        return Err(AutomationError::WorkflowDispatchDisabled(
+            "workflow_dispatch is not configured".to_owned(),
+        ));
+    }
+    if workflow.source_branch != repository.default_branch {
+        return Err(AutomationError::WorkflowDispatchDisabled(format!(
+            "workflow_dispatch is only available from the default branch `{}`",
+            repository.default_branch
+        )));
+    }
+
+    let dispatch_inputs = validate_dispatch_inputs(&workflow.dispatch.inputs, input.inputs)?;
+    let resolved_ref = resolve_workflow_dispatch_ref(pool, repository.id, &input.ref_name).await?;
+    let run_number = next_run_number(pool, workflow.id).await?;
+    let display_title = format!("Run {} manually", workflow.name);
+
+    let mut transaction = pool.begin().await?;
+    let row = sqlx::query(
+        r#"
+        INSERT INTO workflow_runs (
+            repository_id, workflow_id, actor_user_id, run_number, head_branch,
+            head_sha, event, display_title
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, 'workflow_dispatch', $7)
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(workflow.id)
+    .bind(input.actor_user_id)
+    .bind(run_number)
+    .bind(&resolved_ref.short_name)
+    .bind(&resolved_ref.sha)
+    .bind(&display_title)
+    .fetch_one(&mut *transaction)
+    .await?;
+    let run_id: Uuid = row.get("id");
+
+    sqlx::query(
+        r#"
+        INSERT INTO workflow_jobs (run_id, name, runner_label)
+        VALUES ($1, 'workflow dispatch', 'ubuntu-latest')
+        "#,
+    )
+    .bind(run_id)
+    .execute(&mut *transaction)
+    .await?;
+    transaction.commit().await?;
+
+    enqueue_job(
+        pool,
+        "actions.workflow_dispatch",
+        &format!("workflow-dispatch:{run_id}"),
+        json!({
+            "repositoryId": repository.id,
+            "workflowId": workflow.id,
+            "workflowPath": workflow.path,
+            "runId": run_id,
+            "runNumber": run_number,
+            "actorUserId": input.actor_user_id,
+            "ref": resolved_ref.name,
+            "headBranch": resolved_ref.short_name,
+            "headSha": resolved_ref.sha,
+            "inputs": dispatch_inputs,
+        }),
+    )
+    .await?;
+
+    let workflow_id_filter = workflow.id.to_string();
+    let mut runs = actions_run_items(
+        pool,
+        ActionsRunFilterRefs {
+            repository_id: repository.id,
+            q: None,
+            workflow: Some(workflow_id_filter.as_str()),
+            event: None,
+            status: None,
+            branch: None,
+            actor: None,
+        },
+        1,
+        0,
+    )
+    .await?;
+    hydrate_job_summaries(pool, &mut runs).await?;
+    runs.into_iter()
+        .find(|run| run.id == run_id)
+        .ok_or(AutomationError::WorkflowRunNotFound)
 }
 
 pub async fn list_workflow_runs(
@@ -2023,6 +2153,118 @@ async fn actions_workflow_refs(
             }
         })
         .collect())
+}
+
+fn validate_dispatch_inputs(
+    specs: &[WorkflowDispatchInput],
+    raw_inputs: HashMap<String, Value>,
+) -> Result<Value, AutomationError> {
+    if raw_inputs.len() > 25 {
+        return Err(AutomationError::InvalidWorkflowDispatch(
+            "workflow_dispatch supports at most 25 inputs".to_owned(),
+        ));
+    }
+
+    let mut normalized = serde_json::Map::new();
+    for spec in specs {
+        let value = raw_inputs
+            .get(&spec.name)
+            .cloned()
+            .or_else(|| spec.default.clone().map(Value::String));
+        let Some(value) = value else {
+            if spec.required {
+                return Err(AutomationError::InvalidWorkflowDispatch(format!(
+                    "input `{}` is required",
+                    spec.name
+                )));
+            }
+            continue;
+        };
+
+        let normalized_value = match spec.input_type.as_str() {
+            "boolean" => match value {
+                Value::Bool(value) => Value::Bool(value),
+                Value::String(value) if value.eq_ignore_ascii_case("true") => Value::Bool(true),
+                Value::String(value) if value.eq_ignore_ascii_case("false") => Value::Bool(false),
+                _ => {
+                    return Err(AutomationError::InvalidWorkflowDispatch(format!(
+                        "input `{}` must be a boolean",
+                        spec.name
+                    )));
+                }
+            },
+            "choice" => {
+                let value = string_dispatch_input(&spec.name, value)?;
+                if !spec.options.iter().any(|option| option == &value) {
+                    return Err(AutomationError::InvalidWorkflowDispatch(format!(
+                        "input `{}` must be one of: {}",
+                        spec.name,
+                        spec.options.join(", ")
+                    )));
+                }
+                Value::String(value)
+            }
+            "number" => {
+                let value = string_dispatch_input(&spec.name, value)?;
+                if value.parse::<f64>().is_err() {
+                    return Err(AutomationError::InvalidWorkflowDispatch(format!(
+                        "input `{}` must be numeric",
+                        spec.name
+                    )));
+                }
+                Value::String(value)
+            }
+            _ => Value::String(string_dispatch_input(&spec.name, value)?),
+        };
+
+        if normalized_value.to_string().len() > 2048 {
+            return Err(AutomationError::InvalidWorkflowDispatch(format!(
+                "input `{}` is too large",
+                spec.name
+            )));
+        }
+        normalized.insert(spec.name.clone(), normalized_value);
+    }
+
+    for key in raw_inputs.keys() {
+        if !specs.iter().any(|spec| spec.name == *key) {
+            return Err(AutomationError::InvalidWorkflowDispatch(format!(
+                "input `{key}` is not defined for this workflow"
+            )));
+        }
+    }
+
+    Ok(Value::Object(normalized))
+}
+
+fn string_dispatch_input(name: &str, value: Value) -> Result<String, AutomationError> {
+    match value {
+        Value::String(value) => Ok(value),
+        Value::Number(value) => Ok(value.to_string()),
+        Value::Bool(value) => Ok(value.to_string()),
+        _ => Err(AutomationError::InvalidWorkflowDispatch(format!(
+            "input `{name}` must be a scalar value"
+        ))),
+    }
+}
+
+async fn resolve_workflow_dispatch_ref(
+    pool: &PgPool,
+    repository_id: Uuid,
+    ref_name: &str,
+) -> Result<ActionsWorkflowRef, AutomationError> {
+    let cleaned = ref_name.trim();
+    if cleaned.is_empty() {
+        return Err(AutomationError::InvalidWorkflowDispatch(
+            "ref is required".to_owned(),
+        ));
+    }
+    let rows = actions_workflow_refs(pool, repository_id).await?;
+    rows.into_iter()
+        .find(|item| {
+            item.name.eq_ignore_ascii_case(cleaned) || item.short_name.eq_ignore_ascii_case(cleaned)
+        })
+        .ok_or_else(|| AutomationError::InvalidWorkflowDispatch(format!("unknown ref `{cleaned}`")))
 }
 
 async fn get_workflow(

@@ -8,9 +8,11 @@ import type {
   ActionsFilterOption,
   ActionsRunListItem,
   ActionsWorkflowRailItem,
+  ActionsWorkflowRef,
   ApiErrorEnvelope,
   RepositoryActionsWorkflowDetail,
   RepositoryOverview,
+  WorkflowDispatchInput,
 } from "@/lib/api";
 
 type RepositoryActionsWorkflowPageProps = {
@@ -567,6 +569,207 @@ function EmptyWorkflowState({
   );
 }
 
+function defaultInputValue(input: WorkflowDispatchInput) {
+  if (input.type === "boolean") {
+    return input.default ?? "false";
+  }
+  return input.default ?? "";
+}
+
+function DispatchField({
+  input,
+  value,
+  onChange,
+}: {
+  input: WorkflowDispatchInput;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const id = `dispatch-input-${input.name}`;
+  return (
+    <label className="block" htmlFor={id}>
+      <span className="t-sm font-medium">
+        {input.label}
+        {input.required ? " *" : ""}
+      </span>
+      {input.description ? (
+        <span className="t-xs mt-1 block">{input.description}</span>
+      ) : null}
+      {input.type === "choice" ? (
+        <select
+          className="input mt-2 w-full"
+          id={id}
+          onChange={(event) => onChange(event.target.value)}
+          value={value}
+        >
+          {input.options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      ) : input.type === "boolean" ? (
+        <span className="mt-2 flex items-center gap-2">
+          <input
+            checked={value === "true"}
+            id={id}
+            onChange={(event) =>
+              onChange(event.target.checked ? "true" : "false")
+            }
+            type="checkbox"
+          />
+          <span className="t-sm">Enabled</span>
+        </span>
+      ) : (
+        <input
+          className="input mt-2 w-full"
+          id={id}
+          onChange={(event) => onChange(event.target.value)}
+          type={input.type === "number" ? "number" : "text"}
+          value={value}
+        />
+      )}
+    </label>
+  );
+}
+
+function DispatchDialog({
+  basePath,
+  detail,
+  onCancel,
+  onDispatched,
+}: {
+  basePath: string;
+  detail: RepositoryActionsWorkflowDetail;
+  onCancel: () => void;
+  onDispatched: (run: ActionsRunListItem) => void;
+}) {
+  const defaultRef =
+    detail.refs.find(
+      (ref) =>
+        ref.kind === "branch" &&
+        ref.shortName === detail.repository.defaultBranch,
+    ) ??
+    detail.refs.find((ref) => ref.kind === "branch") ??
+    detail.refs[0];
+  const [selectedRef, setSelectedRef] = useState(defaultRef?.shortName ?? "");
+  const [inputs, setInputs] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      detail.workflow.dispatch.inputs.map((input) => [
+        input.name,
+        defaultInputValue(input),
+      ]),
+    ),
+  );
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const response = await fetch(`${basePath}/actions/workflows/dispatches`, {
+        body: JSON.stringify({
+          workflowFile: detail.workflow.path,
+          ref: selectedRef,
+          inputs,
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          body?.error?.message ?? "Workflow dispatch could not be queued.",
+        );
+      }
+      onDispatched(body as ActionsRunListItem);
+    } catch (dispatchError) {
+      setError(
+        dispatchError instanceof Error
+          ? dispatchError.message
+          : "Workflow dispatch could not be queued.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div
+      aria-label="Run workflow"
+      aria-modal="true"
+      className="fixed inset-0 z-40 flex items-start justify-center px-4 py-16"
+      role="dialog"
+      style={{
+        background: "color-mix(in oklch, var(--ink-1) 24%, transparent)",
+      }}
+    >
+      <div className="card w-full max-w-xl p-5 shadow-[var(--shadow-lg)]">
+        <div className="between gap-4">
+          <div>
+            <p className="t-label">Manual dispatch</p>
+            <h2 className="t-h2 mt-1">Run {detail.workflow.name}</h2>
+          </div>
+          <button
+            aria-label="Close run workflow dialog"
+            className="btn sm"
+            onClick={onCancel}
+            type="button"
+          >
+            ×
+          </button>
+        </div>
+        <div className="mt-4 space-y-4">
+          <label className="block" htmlFor="dispatch-ref">
+            <span className="t-sm font-medium">Branch or tag</span>
+            <select
+              className="input mt-2 w-full"
+              id="dispatch-ref"
+              onChange={(event) => setSelectedRef(event.target.value)}
+              value={selectedRef}
+            >
+              {detail.refs.map((ref: ActionsWorkflowRef) => (
+                <option key={ref.name} value={ref.shortName}>
+                  {ref.shortName} · {ref.kind}
+                </option>
+              ))}
+            </select>
+          </label>
+          {detail.workflow.dispatch.inputs.map((input) => (
+            <DispatchField
+              input={input}
+              key={input.name}
+              onChange={(value) =>
+                setInputs((current) => ({ ...current, [input.name]: value }))
+              }
+              value={inputs[input.name] ?? ""}
+            />
+          ))}
+        </div>
+        {error ? (
+          <div className="chip err mt-4" role="alert">
+            {error}
+          </div>
+        ) : null}
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <button className="btn" onClick={onCancel} type="button">
+            Cancel
+          </button>
+          <button
+            className="btn accent"
+            disabled={submitting || !selectedRef}
+            onClick={submit}
+            type="button"
+          >
+            {submitting ? "Queuing..." : "Run workflow"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function RepositoryActionsWorkflowPage({
   repository,
   detail,
@@ -575,6 +778,9 @@ export function RepositoryActionsWorkflowPage({
 }: RepositoryActionsWorkflowPageProps) {
   const basePath = `/${repository.owner_login}/${repository.name}`;
   const latestRef = detail.refs[0];
+  const [dispatchOpen, setDispatchOpen] = useState(false);
+  const [queuedRuns, setQueuedRuns] = useState<ActionsRunListItem[]>([]);
+  const runs = [...queuedRuns, ...detail.runs.items];
   return (
     <RepositoryShell
       activePath={`${basePath}/actions`}
@@ -600,7 +806,11 @@ export function RepositoryActionsWorkflowPage({
               Options
             </Link>
             {detail.workflow.dispatch.enabled ? (
-              <button className="btn accent" disabled type="button">
+              <button
+                className="btn accent"
+                onClick={() => setDispatchOpen(true)}
+                type="button"
+              >
                 Run workflow
               </button>
             ) : null}
@@ -673,10 +883,12 @@ export function RepositoryActionsWorkflowPage({
             style={{ borderColor: "var(--line)" }}
           >
             <h2 className="t-h3">Recent runs</h2>
-            <span className="chip soft t-num">{detail.runs.total}</span>
+            <span className="chip soft t-num">
+              {detail.runs.total + queuedRuns.length}
+            </span>
           </div>
-          {detail.runs.items.length ? (
-            detail.runs.items.map((run) => (
+          {runs.length ? (
+            runs.map((run) => (
               <RunRow basePath={basePath} key={run.id} run={run} />
             ))
           ) : (
@@ -685,6 +897,17 @@ export function RepositoryActionsWorkflowPage({
             </div>
           )}
         </section>
+        {dispatchOpen ? (
+          <DispatchDialog
+            basePath={basePath}
+            detail={detail}
+            onCancel={() => setDispatchOpen(false)}
+            onDispatched={(run) => {
+              setQueuedRuns((current) => [run, ...current]);
+              setDispatchOpen(false);
+            }}
+          />
+        ) : null}
       </main>
     </RepositoryShell>
   );

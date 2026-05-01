@@ -39,7 +39,7 @@
 
 ## Phase 3: Manual Dispatch Contract and Dialog - workflow_dispatch creates a queued run
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make the Run workflow affordance real for workflows whose default-branch YAML defines `workflow_dispatch`. A writer can open the dialog, choose a branch/ref, fill dynamic inputs, submit, and see the newly queued run inserted at the top.
 

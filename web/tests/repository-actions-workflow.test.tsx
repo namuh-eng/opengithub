@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RepositoryActionsWorkflowPage } from "@/components/RepositoryActionsWorkflowPage";
 import type {
@@ -16,6 +22,7 @@ vi.mock("next/navigation", () => ({
 
 beforeEach(() => {
   pushMock.mockClear();
+  vi.unstubAllGlobals();
 });
 
 function repositoryOverview(): RepositoryOverview {
@@ -165,7 +172,26 @@ function detail(
       sourceHref: "/mona/octo-app/blob/main/.github/workflows/ci.yml",
       dispatch: {
         enabled: true,
-        inputs: [],
+        inputs: [
+          {
+            name: "environment",
+            type: "choice",
+            label: "Environment",
+            description: "Deployment target",
+            required: true,
+            default: "staging",
+            options: ["staging", "production"],
+          },
+          {
+            name: "dryRun",
+            type: "boolean",
+            label: "Dry run",
+            description: null,
+            required: false,
+            default: "true",
+            options: [],
+          },
+        ],
       },
       yamlParseError: null,
       valid: true,
@@ -236,7 +262,7 @@ describe("RepositoryActionsWorkflowPage", () => {
       "href",
       "/mona/octo-app/blob/main/.github/workflows/ci.yml",
     );
-    expect(screen.getByRole("button", { name: "Run workflow" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Run workflow" })).toBeEnabled();
     expect(
       screen.getByRole("navigation", { name: "Actions workflows" }),
     ).toBeVisible();
@@ -259,6 +285,91 @@ describe("RepositoryActionsWorkflowPage", () => {
     for (const filter of ["Event", "Status", "Branch", "Actor"]) {
       expect(screen.getByRole("button", { name: filter })).toBeVisible();
     }
+  });
+
+  it("opens Run workflow dialog, submits dynamic inputs, and inserts the queued run", async () => {
+    const queuedRun = run({
+      id: "run-queued",
+      runNumber: 8,
+      displayTitle: "Run CI manually",
+      status: "queued",
+      conclusion: null,
+      statusCategory: "queued",
+      headBranch: "release",
+      jobSummary: {
+        total: 1,
+        queued: 1,
+        inProgress: 0,
+        completed: 0,
+        cancelled: 0,
+        success: 0,
+        failure: 0,
+        skipped: 0,
+        timedOut: 0,
+      },
+      durationSeconds: null,
+      isLive: true,
+      startedAt: null,
+      completedAt: null,
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve(queuedRun),
+      ok: true,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderWorkflow(
+      detail({
+        refs: [
+          {
+            name: "refs/heads/main",
+            shortName: "main",
+            kind: "branch",
+            sha: "abcdef",
+          },
+          {
+            name: "refs/heads/release",
+            shortName: "release",
+            kind: "branch",
+            sha: "fedcba",
+          },
+        ],
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Run workflow" }));
+    const dialog = screen.getByRole("dialog", { name: "Run workflow" });
+    expect(
+      within(dialog).getByRole("heading", { name: "Run CI" }),
+    ).toBeVisible();
+    fireEvent.change(within(dialog).getByLabelText("Branch or tag"), {
+      target: { value: "release" },
+    });
+    fireEvent.change(within(dialog).getByLabelText(/Environment/), {
+      target: { value: "production" },
+    });
+    fireEvent.click(within(dialog).getByLabelText(/Dry run/));
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Run workflow" }),
+    );
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mona/octo-app/actions/workflows/dispatches",
+        expect.objectContaining({
+          body: JSON.stringify({
+            workflowFile: ".github/workflows/ci.yml",
+            ref: "release",
+            inputs: { environment: "production", dryRun: "false" },
+          }),
+          method: "POST",
+        }),
+      ),
+    );
+    expect(screen.queryByRole("dialog", { name: "Run workflow" })).toBeNull();
+    expect(
+      screen.getAllByRole("link", { name: "Run CI manually" })[0],
+    ).toHaveAttribute("href", "/mona/octo-app/actions/runs/run-queued");
+    expect(screen.getByText("Queued")).toBeVisible();
   });
 
   it("updates workflow page query params from search, filters, and selected chips", () => {
