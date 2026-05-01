@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { PullRequestFilesChangedPage } from "@/components/PullRequestFilesChangedPage";
 import { RepositoryPullRequestDetailPage } from "@/components/RepositoryPullRequestDetailPage";
 import type {
+  PullRequestCompareView,
   PullRequestDetailView,
   PullRequestTimelineItem,
   RepositoryOverview,
@@ -255,6 +257,79 @@ function pullRequestTimeline(): PullRequestTimelineItem[] {
   ];
 }
 
+function pullRequestCompare(): PullRequestCompareView {
+  const repository = {
+    id: "repo-1",
+    ownerLogin: "mona",
+    name: "octo-app",
+    visibility: "public" as const,
+    defaultBranch: "main",
+  };
+
+  return {
+    repository,
+    viewerPermission: "owner",
+    base: {
+      repository,
+      name: "refs/heads/main",
+      shortName: "main",
+      kind: "branch",
+      oid: "base-oid",
+      commitId: "commit-base",
+      href: "/mona/octo-app/tree/main",
+    },
+    head: {
+      repository,
+      name: "refs/heads/hubot/split-routes",
+      shortName: "hubot/split-routes",
+      kind: "branch",
+      oid: "head-oid",
+      commitId: "commit-head",
+      href: "/mona/octo-app/tree/hubot%2Fsplit-routes",
+    },
+    status: "ahead",
+    aheadBy: 2,
+    behindBy: 0,
+    totalCommits: 2,
+    totalFiles: 2,
+    commits: [],
+    files: [
+      {
+        path: "crates/api/src/routes/pulls.rs",
+        status: "modified",
+        additions: 80,
+        deletions: 12,
+        byteSize: 4000,
+        blobOid: "blob-1",
+        href: "/mona/octo-app/blob/hubot%2Fsplit-routes/crates/api/src/routes/pulls.rs",
+      },
+      {
+        path: "web/src/components/RepositoryPullRequestDetailPage.tsx",
+        status: "added",
+        additions: 40,
+        deletions: 20,
+        byteSize: 8000,
+        blobOid: "blob-2",
+        href: "/mona/octo-app/blob/hubot%2Fsplit-routes/web/src/components/RepositoryPullRequestDetailPage.tsx",
+      },
+    ],
+    additions: 120,
+    deletions: 32,
+    defaultBranchHref: "/mona/octo-app",
+    pullListHref: "/mona/octo-app/pulls",
+    compareHref: "/mona/octo-app/compare/main...hubot%2Fsplit-routes",
+    swapHref: "/mona/octo-app/compare/hubot%2Fsplit-routes...main",
+    createOptions: {
+      canCreate: true,
+      templates: [],
+      labels: [],
+      users: [],
+      milestones: [],
+      forkRepositories: [],
+    },
+  };
+}
+
 describe("RepositoryPullRequestDetailPage", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -317,6 +392,37 @@ describe("RepositoryPullRequestDetailPage", () => {
       "href",
       "/login?next=%2Fmona%2Focto-app%2Fpull%2F42",
     );
+  });
+
+  it("renders the files changed tab as a live comparison surface", () => {
+    const { container } = render(
+      <PullRequestFilesChangedPage
+        compare={pullRequestCompare()}
+        pullRequest={pullRequestDetail()}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: /Files changed/ }),
+    ).toBeVisible();
+    expect(screen.getByRole("link", { name: "Conversation" })).toHaveAttribute(
+      "href",
+      "/mona/octo-app/pull/42",
+    );
+    expect(screen.getByRole("link", { name: "Open compare" })).toHaveAttribute(
+      "href",
+      "/mona/octo-app/compare/main...hubot%2Fsplit-routes",
+    );
+    expect(screen.getByText("crates/api/src/routes/pulls.rs")).toBeVisible();
+    expect(
+      screen.getByText(
+        "web/src/components/RepositoryPullRequestDetailPage.tsx",
+      ),
+    ).toBeVisible();
+    expect(
+      container.querySelectorAll('a[href="#"], a:not([href])'),
+    ).toHaveLength(0);
   });
 
   it("previews markdown and posts pull request comments", async () => {

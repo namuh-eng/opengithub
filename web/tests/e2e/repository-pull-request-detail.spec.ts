@@ -119,6 +119,26 @@ test("signed-in user opens the pull request detail conversation shell", async ({
     "href",
     `/${ownerLogin}/${repoName}/pull/${pullNumber}/files`,
   );
+  await page.getByRole("link", { name: "Files changed" }).click();
+  await expect(
+    page.getByRole("heading", { name: /Files changed/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Changed files summary" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Open compare" }),
+  ).toHaveAttribute(
+    "href",
+    `/${ownerLogin}/${repoName}/compare/main...feature%2Fdetail-read`,
+  );
+  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/prs-004-phase5-files-tab.jpg",
+  });
+
+  await page.goto(`/${ownerLogin}/${repoName}/pull/${pullNumber}`);
   await expect(
     page.getByRole("heading", { name: "Merge readiness" }),
   ).toBeVisible();
@@ -143,6 +163,19 @@ test("signed-in user opens the pull request detail conversation shell", async ({
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/prs-004-phase2-comment.jpg",
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/${ownerLogin}/${repoName}/pull/${pullNumber}`);
+  await expect(
+    page.getByRole("heading", { name: new RegExp(pullTitle) }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Merge readiness" }),
+  ).toBeVisible();
+  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/prs-004-phase5-mobile-detail.jpg",
   });
 });
 

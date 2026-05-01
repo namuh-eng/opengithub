@@ -78,7 +78,7 @@
 
 ## Phase 5: Detail Guardrails and QA Handoff - finish prs-004
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Harden the full PR conversation feature and mark `prs-004` complete only when the detail read model, timeline/comments, review requests, notifications, supported metadata actions, close/reopen/ready/merge actions, tabs, mobile layout, and browser evidence are all verified.
 

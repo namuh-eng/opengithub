@@ -1984,5 +1984,21 @@
       "Merge commit bytes are not written to Git storage yet; this phase records metadata state and audit/timeline/search effects.",
       "Real Google OAuth was not used; browser smoke used deterministic Rust-signed Playwright sessions against the local Postgres test database."
     ]
+  },
+  {
+    "feature_id": "prs-004",
+    "tests_written": [
+      "Completed Phase 5 guardrails for the pull request conversation detail feature and set prs-004 build_pass true.",
+      "Replaced the placeholder /{owner}/{repo}/pull/{number}/files route with a live Editorial files-changed page that loads the PR detail read model, shows real changed-file counts, lists compare files when available, and links to the existing compare route for base...head.",
+      "Extended Vitest coverage for the Files changed tab, compare link, rendered file rows, and no dead hrefs.",
+      "Extended Playwright PR detail smoke to visit the Files changed tab, verify the live compare link, prove no href=\"#\"/missing href controls, verify mobile detail layout, and save prs-004 phase 5 screenshots.",
+      "Verification passed: focused repository-pull-request-detail Vitest, TEST_DATABASE_URL-backed make check, TEST_DATABASE_URL-backed make test with Cargo tests plus 163 frontend tests, TEST_DATABASE_URL-backed make test-e2e with 65 Playwright tests, and the mandatory Editorial banned-value scan with zero matches using the local rg -n -e form."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke proves blocked merge and close/reopen flows; merge-success remains covered at Rust API contract level with seeded diff/check/review data rather than through a browser-created changed-file PR.",
+      "Files changed can list compare files only when the base/head refs resolve through the compare API; otherwise it intentionally shows the stored PR summary and a concrete compare-context link.",
+      "Branch protection, rulesets, conflicts, and stacked PR blockers remain represented by explicit current-model blockers/placeholders until richer rule tables ship.",
+      "Real Google OAuth was not used; browser smoke used deterministic Rust-signed Playwright sessions against the local Postgres test database."
+    ]
   }
 ]
