@@ -200,6 +200,47 @@ test("signed-in repository Actions tab renders workflows, runs, and empty templa
   ).toBeVisible();
   await page.goto(`/${ownerLogin}/${repoName}/actions`);
   await expectNoDeadControls(page);
+  await page.getByPlaceholder("Filter workflow runs").focus();
+  await page.keyboard.press(
+    process.platform === "darwin" ? "Meta+A" : "Control+A",
+  );
+  await page.keyboard.type("Editorial");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/q=Editorial/);
+  await page.getByRole("button", { name: "Workflow" }).focus();
+  await expect(page.getByRole("button", { name: "Workflow" })).toBeFocused();
+  await page.getByRole("button", { name: "Workflow" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Workflow filter options" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.goto(`/${ownerLogin}/${repoName}/actions`);
+  const desktopOverflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth >
+      document.documentElement.clientWidth,
+  );
+  expect(desktopOverflow).toBe(false);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/actions-001-phase5-final-desktop.jpg",
+  });
+  await page.setViewportSize({ height: 900, width: 390 });
+  await page.goto(`/${ownerLogin}/${repoName}/actions`);
+  await expect(
+    page.getByRole("heading", { name: "All workflows" }),
+  ).toBeVisible();
+  const mobileOverflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth >
+      document.documentElement.clientWidth,
+  );
+  expect(mobileOverflow).toBe(false);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/actions-001-phase5-final-mobile.jpg",
+  });
+  await page.setViewportSize({ height: 720, width: 1280 });
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/actions-001-phase4-management-docs.jpg",

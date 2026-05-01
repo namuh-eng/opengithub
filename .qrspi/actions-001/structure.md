@@ -73,7 +73,7 @@
 
 ## Phase 5: Final Actions Guardrails and QA Handoff - complete actions-001 safely
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Harden the full Actions list surface before setting `actions-001.build_pass=true`. Validate permissions, empty states, filter combinations, mobile layout, visual compliance, browser evidence, QA hints, and bookkeeping.
 

@@ -2259,5 +2259,22 @@
       "Show more workflows is URL-backed UI state only and does not alter the backend dashboard page size.",
       "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth."
     ]
+  },
+  {
+    "feature_id": "actions-001",
+    "tests_written": [
+      "Completed Phase 5 final Actions guardrails and set actions-001 build_pass=true.",
+      "Extended Rust contract coverage for Actions status/conclusion filters, normalized status query variants, pagination clamping, private repository redaction, empty repositories, disabled workflows, and anonymous/public/private permission behavior.",
+      "Extended Vitest coverage for combined filter chips, searchable status panel behavior, URL recovery after clearing filters, keyboard-focusable controls, no inert anchors, and named visible buttons.",
+      "Extended Playwright smoke coverage for search submission, workflow filter focus/dialog behavior, run/options/docs/management navigation, no desktop or mobile horizontal overflow, no dead controls, and final screenshots ralph/screenshots/build/actions-001-phase5-final-desktop.jpg and ralph/screenshots/build/actions-001-phase5-final-mobile.jpg.",
+      "Verification passed: focused api_repository_actions_dashboard_contract, focused repository-actions Vitest, TEST_DATABASE_URL-backed make check, TEST_DATABASE_URL-backed make test with Cargo tests plus 179 frontend tests, TEST_DATABASE_URL-backed make test-e2e with 67 Playwright tests, and mandatory Editorial banned-value scan with zero matches using rg -n -e."
+    ],
+    "needs_deeper_qa": [
+      "Live runner execution, streaming logs, artifacts, check-suite/check-run synchronization, manual dispatch, rerun/cancel/delete-log actions, and real cache/deployment/attestation/usage/performance data remain outside actions-001.",
+      "The all-workflows page uses seeded local workflow/run rows and deterministic Rust-signed sessions; QA should repeat with real Google OAuth and production-like runner data when those surfaces exist.",
+      "Management pages are intentionally thin destinations until later backend features provide real cache, deployment, attestation, usage, and performance records.",
+      "Status options include future GitHub vocabulary values such as action_required, neutral, stale, and waiting even though the current workflow_runs table can only persist the MVP status/conclusion subset.",
+      "Filter option searching is client-side over the dashboard response; revisit server-side option search if repositories accumulate large Actions histories."
+    ]
   }
 ]

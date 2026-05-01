@@ -420,6 +420,72 @@ describe("RepositoryActionsPage", () => {
     expect(screen.getByLabelText("Failure run")).toBeVisible();
   });
 
+  it("keeps filter controls keyboard reachable and recoverable after combined filters", () => {
+    renderActions(
+      dashboard({
+        filters: {
+          actor: "user-1",
+          branch: "feature/actions",
+          event: "pull_request",
+          page: 1,
+          pageSize: 30,
+          q: "release",
+          status: "timed_out",
+          workflow: "workflow-1",
+        },
+      }),
+      {
+        actor: "user-1",
+        branch: "feature/actions",
+        event: "pull_request",
+        q: "release",
+        status: "timed_out",
+        workflow: "workflow-1",
+      },
+    );
+
+    for (const chipName of [
+      /Workflow: CI/,
+      /Event: pull_request/,
+      /Status: timed out/i,
+      /Branch: feature\/actions/,
+      /Actor: mona/,
+      /Search: release/,
+    ]) {
+      expect(screen.getByRole("button", { name: chipName })).toBeVisible();
+    }
+
+    const statusButton = screen.getByRole("button", { name: "Status" });
+    statusButton.focus();
+    expect(statusButton).toHaveFocus();
+    fireEvent.click(statusButton);
+    const statusDialog = screen.getByRole("dialog", {
+      name: "Status filter options",
+    });
+    expect(
+      within(statusDialog).getByPlaceholderText("Search status"),
+    ).toBeVisible();
+    fireEvent.change(
+      within(statusDialog).getByPlaceholderText("Search status"),
+      {
+        target: { value: "progress" },
+      },
+    );
+    fireEvent.click(
+      within(statusDialog).getByRole("menuitemradio", {
+        name: /in progress/i,
+      }),
+    );
+    expect(pushMock).toHaveBeenLastCalledWith(
+      "/mona/octo-app/actions?actor=user-1&branch=feature%2Factions&event=pull_request&q=release&status=in_progress&workflow=workflow-1",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Branch:/ }));
+    expect(pushMock).toHaveBeenLastCalledWith(
+      "/mona/octo-app/actions?actor=user-1&event=pull_request&q=release&status=timed_out&workflow=workflow-1",
+    );
+  });
+
   it("renders empty workflow templates and a working New workflow CTA", () => {
     renderActions(
       dashboard({

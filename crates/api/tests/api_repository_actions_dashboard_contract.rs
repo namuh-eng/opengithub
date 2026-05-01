@@ -457,6 +457,154 @@ async fn actions_recent_view_persists_signed_in_filter_telemetry() {
 }
 
 #[tokio::test]
+async fn actions_dashboard_filters_supported_status_matrix_and_clamps_pagination() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping actions status matrix scenario; set TEST_DATABASE_URL or DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "actions-status-owner").await;
+    let repo_name = format!("actions-status-{}", Uuid::new_v4().simple());
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: repo_name.clone(),
+            description: None,
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    let workflow = create_workflow(
+        &pool,
+        CreateWorkflow {
+            repository_id: repository.id,
+            actor_user_id: owner.id,
+            name: "Matrix".to_owned(),
+            path: ".github/workflows/matrix.yml".to_owned(),
+            trigger_events: vec!["push".to_owned(), "workflow_dispatch".to_owned()],
+        },
+    )
+    .await
+    .expect("workflow should create");
+
+    let scenarios = [
+        ("Queued", RunStatus::Queued, None, "queued"),
+        ("In progress", RunStatus::InProgress, None, "in_progress"),
+        (
+            "Success",
+            RunStatus::Completed,
+            Some(RunConclusion::Success),
+            "success",
+        ),
+        (
+            "Failure",
+            RunStatus::Completed,
+            Some(RunConclusion::Failure),
+            "failure",
+        ),
+        (
+            "Skipped",
+            RunStatus::Completed,
+            Some(RunConclusion::Skipped),
+            "skipped",
+        ),
+        (
+            "Timed out",
+            RunStatus::Completed,
+            Some(RunConclusion::TimedOut),
+            "timed_out",
+        ),
+        (
+            "Cancelled",
+            RunStatus::Cancelled,
+            Some(RunConclusion::Cancelled),
+            "cancelled",
+        ),
+    ];
+
+    for (title, status, conclusion, branch) in scenarios {
+        let run = create_workflow_run(
+            &pool,
+            CreateWorkflowRun {
+                workflow_id: workflow.id,
+                actor_user_id: Some(owner.id),
+                head_branch: branch.to_owned(),
+                head_sha: Some(format!("{:016x}", branch.len())),
+                event: "push".to_owned(),
+            },
+        )
+        .await
+        .expect("matrix run should create");
+        transition_workflow_run(&pool, run.id, TransitionRun { status, conclusion })
+            .await
+            .expect("matrix run should transition");
+        sqlx::query("UPDATE workflow_runs SET display_title = $2 WHERE id = $1")
+            .bind(run.id)
+            .bind(title)
+            .execute(&pool)
+            .await
+            .expect("display title should update");
+    }
+
+    let app = opengithub_api::build_app_with_config(Some(pool), config);
+    let clamped_uri = format!(
+        "/api/repos/{}/{}/actions/dashboard?page=0&pageSize=500",
+        owner.email, repo_name
+    );
+    let (clamped_status, clamped_body) = get_json(app.clone(), &clamped_uri, None).await;
+    assert_eq!(clamped_status, StatusCode::OK);
+    assert_eq!(clamped_body["runs"]["page"], 1);
+    assert_eq!(clamped_body["runs"]["pageSize"], 100);
+    assert_eq!(clamped_body["runs"]["total"], 7);
+
+    for (status_filter, expected_normalized, expected_total, expected_category) in [
+        ("queued", "queued", 1, "queued"),
+        ("in%20progress", "in_progress", 1, "in_progress"),
+        ("completed", "completed", 4, "success"),
+        ("success", "success", 1, "success"),
+        ("failure", "failure", 1, "failure"),
+        ("skipped", "skipped", 1, "skipped"),
+        ("timed-out", "timed_out", 1, "timed_out"),
+        ("cancelled", "cancelled", 1, "cancelled"),
+    ] {
+        let uri = format!(
+            "/api/repos/{}/{}/actions/dashboard?status={status_filter}",
+            owner.email, repo_name
+        );
+        let (status, body) = get_json(app.clone(), &uri, None).await;
+        assert_eq!(status, StatusCode::OK, "status filter {status_filter}");
+        assert_eq!(body["filters"]["status"], expected_normalized);
+        assert_eq!(
+            body["runs"]["total"], expected_total,
+            "total for {status_filter}"
+        );
+        if status_filter == "completed" {
+            let mut categories = body["runs"]["items"]
+                .as_array()
+                .expect("completed items")
+                .iter()
+                .map(|item| item["statusCategory"].as_str().unwrap_or_default())
+                .collect::<Vec<_>>();
+            categories.sort_unstable();
+            assert_eq!(
+                categories,
+                vec!["failure", "skipped", "success", "timed_out"]
+            );
+        } else {
+            assert_eq!(
+                body["runs"]["items"][0]["statusCategory"], expected_category,
+                "category for {status_filter}"
+            );
+        }
+    }
+}
+
+#[tokio::test]
 async fn actions_dashboard_preserves_empty_state_and_private_permissions() {
     let Some(pool) = database_pool().await else {
         eprintln!(
