@@ -1572,3 +1572,13 @@
 - Verification passed: focused `api_repository_actions_workflow_detail_contract`, `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`, and same-env `make test` with Cargo tests plus 179 frontend tests.
 - Browser smoke and `make test-e2e` were not run because Phase 1 is API-only and the structure outline marks browser smoke optional for this phase.
 - Marked Phase 1 as done in `.qrspi/actions-002/structure.md`; `prd.json` remains `build_pass: false` because Phases 2-5 remain.
+
+2026-05-02 - actions-002 phase 2 Editorial workflow page
+
+- Implemented Phase 2 from `.qrspi/actions-002/structure.md`: `/{owner}/{repo}/actions/workflows/{workflow_file}` now renders a workflow-specific Editorial Actions page backed by the Phase 1 workflow detail contract.
+- Added typed Next.js API and server-session helpers for safe encoded workflow file paths, plus a catch-all App Router page for nested workflow YAML paths such as `.github/workflows/ci.yml`.
+- Added `RepositoryActionsWorkflowPage` with the shared repository shell, selected workflow rail state, workflow metadata/source/ref cards, scoped Event/Status/Branch/Actor filters, scoped run rows, invalid-YAML callout, empty-state recovery links, and no Workflow filter.
+- Added focused Vitest coverage for selected rail state, source YAML links, scoped run navigation, query updates, invalid workflow state, no inert anchors, and accessible visible buttons.
+- Added focused Playwright smoke that signs in with a Rust deterministic session, creates a repository through the UI, creates workflow/run records through the Rust API, verifies scoped workflow filtering and no dead controls, and saves `ralph/screenshots/build/actions-002-phase2-workflow-page.jpg`.
+- Verification passed: focused `web/tests/repository-actions-workflow.test.tsx`; focused `web/tests/e2e/repository-actions-workflow.spec.ts`; `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 183 frontend tests; full `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false SESSION_SECRET=playwright-session-secret-with-enough-entropy SESSION_COOKIE_NAME=og_session make test-e2e` with 68 Playwright tests; mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
+- Marked Phase 2 as done in `.qrspi/actions-002/structure.md`; `prd.json` remains `build_pass: false` because Phases 3-5 remain.

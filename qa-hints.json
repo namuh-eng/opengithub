@@ -2292,5 +2292,22 @@
       "Dispatch inputs are currently trusted parsed JSON persisted on actions_workflows; YAML parsing edge cases and parser provenance need deeper QA when parsing is wired.",
       "The route test uses percent-encoded workflow file paths against local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth."
     ]
+  },
+  {
+    "feature_id": "actions-002",
+    "tests_written": [
+      "Implemented Phase 2 Editorial workflow-specific Actions page for /{owner}/{repo}/actions/workflows/{workflow_file}.",
+      "Added typed Next.js API/server-session helpers for the workflow detail dashboard contract with safe whole-path workflow file encoding.",
+      "Added RepositoryActionsWorkflowPage with selected workflow rail state, source workflow file link, workflow metadata cards, scoped Event/Status/Branch/Actor filters, scoped run rows, invalid-YAML callout, and empty-state recovery links.",
+      "Added Vitest coverage for selected rail state, source link, absence of the Workflow filter, scoped run navigation, URL query updates, invalid workflow state, no inert anchors, and named visible buttons.",
+      "Added Playwright smoke that signs in with a deterministic Rust session, creates a repository through the UI, creates workflow/run records through the Rust API, verifies scoped workflow UI/filtering, checks no dead controls, and saves ralph/screenshots/build/actions-002-phase2-workflow-page.jpg.",
+      "Verification passed: focused repository-actions-workflow Vitest, focused repository-actions-workflow Playwright, TEST_DATABASE_URL-backed make check, TEST_DATABASE_URL-backed make test with Cargo tests plus 183 frontend tests, TEST_DATABASE_URL-backed make test-e2e with 68 Playwright tests, and mandatory Editorial banned-value scan with zero matches using rg -n -e."
+    ],
+    "needs_deeper_qa": [
+      "Run workflow is intentionally not interactive in Phase 2; manual dispatch POST validation, queued run insertion, dynamic input controls, and check-suite/check-run side effects are Phase 3.",
+      "Workflow options currently route to existing Actions policy/settings rather than a workflow-specific settings page; concrete workflow options and API docs expansion are Phase 4.",
+      "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth.",
+      "The E2E fixture creates workflow/run records through the current Rust API and does not exercise real runner execution, log streaming, artifacts, or YAML parser provenance."
+    ]
   }
 ]

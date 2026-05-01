@@ -6,6 +6,7 @@ import {
   getDashboardSummaryFromCookie,
   getPullRequestCompareFromCookie,
   getRepositoryActionsDashboardFromCookie,
+  getRepositoryActionsWorkflowDashboardFromCookie,
   getRepositoryBlameFromCookie,
   getRepositoryBlobFromCookie,
   getRepositoryCommitHistoryFromCookie,
@@ -210,6 +211,22 @@ export async function getRepositoryActionsDashboard(
     requestHeaders.get("cookie"),
     owner,
     repo,
+    query,
+  );
+}
+
+export async function getRepositoryActionsWorkflowDashboard(
+  owner: string,
+  repo: string,
+  workflowFile: string,
+  query: RepositoryActionsDashboardQuery = {},
+) {
+  const requestHeaders = await headers();
+  return getRepositoryActionsWorkflowDashboardFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    workflowFile,
     query,
   );
 }

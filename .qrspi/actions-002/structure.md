@@ -22,7 +22,7 @@
 
 ## Phase 2: Editorial Workflow Page - selected workflow run history replaces the generic list
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Build `/{owner}/{repo}/actions/workflows/{workflow_file}` as an Editorial workflow-specific page. The left Actions rail stays visible with the selected workflow highlighted; the main pane shows workflow name, source workflow file link, workflow options, filter search, Event/Status/Branch/Actor filters, and scoped run rows.
 

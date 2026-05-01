@@ -496,6 +496,54 @@ export type RepositoryActionsDashboardQuery = {
   pageSize?: number | string | null;
 };
 
+export type WorkflowDispatchInput = {
+  name: string;
+  type: string;
+  label: string;
+  description: string | null;
+  required: boolean;
+  default: string | null;
+  options: string[];
+};
+
+export type WorkflowDispatchSpec = {
+  enabled: boolean;
+  inputs: WorkflowDispatchInput[];
+};
+
+export type ActionsWorkflowDetailWorkflow = {
+  id: string;
+  name: string;
+  path: string;
+  state: string;
+  triggerEvents: string[];
+  sourceBranch: string;
+  sourceSha: string | null;
+  sourceBlobId: string | null;
+  sourceHref: string;
+  dispatch: WorkflowDispatchSpec;
+  yamlParseError: string | null;
+  valid: boolean;
+};
+
+export type ActionsWorkflowRef = {
+  name: string;
+  shortName: string;
+  kind: string;
+  sha: string | null;
+};
+
+export type RepositoryActionsWorkflowDetail = Omit<
+  RepositoryActionsDashboard,
+  "filterOptions"
+> & {
+  workflow: ActionsWorkflowDetailWorkflow;
+  filterOptions: Omit<ActionsRunFilterOptions, "workflows"> & {
+    workflows: [];
+  };
+  refs: ActionsWorkflowRef[];
+};
+
 export type DashboardTopRepository = {
   ownerLogin: string;
   name: string;
@@ -2000,6 +2048,30 @@ export function repositoryActionsDashboardPath(
   )}/actions/dashboard${suffix}`;
 }
 
+export function repositoryActionsWorkflowDashboardPath(
+  owner: string,
+  repo: string,
+  workflowFile: string,
+  query: RepositoryActionsDashboardQuery = {},
+): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (
+      key === "workflow" ||
+      value === undefined ||
+      value === null ||
+      value === ""
+    ) {
+      continue;
+    }
+    params.set(key, String(value));
+  }
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
+    repo,
+  )}/actions/workflows/${encodeURIComponent(workflowFile)}/dashboard${suffix}`;
+}
+
 export async function getRepositoryActionsDashboardFromCookie(
   cookie: string | null | undefined,
   owner: string,
@@ -2039,6 +2111,53 @@ export async function getRepositoryActionsDashboardFromCookie(
   }
 
   return body as RepositoryActionsDashboard;
+}
+
+export async function getRepositoryActionsWorkflowDashboardFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  workflowFile: string,
+  query: RepositoryActionsDashboardQuery = {},
+): Promise<RepositoryActionsWorkflowDetail | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}${repositoryActionsWorkflowDashboardPath(
+        owner,
+        repo,
+        workflowFile,
+        query,
+      )}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Workflow Actions are temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "actions_workflow_failed",
+          message: "Workflow Actions could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as RepositoryActionsWorkflowDetail;
 }
 
 export function repositoryPullRequestPath(
