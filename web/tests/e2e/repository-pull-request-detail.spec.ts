@@ -161,7 +161,22 @@ test("signed-in user opens the pull request detail conversation shell", async ({
   await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/prs-005-phase4-submit-review.jpg",
+    path: "../ralph/screenshots/build/prs-005-phase5-final-desktop.jpg",
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/${ownerLogin}/${repoName}/pull/${pullNumber}/files`);
+  await expect(
+    page.getByRole("heading", { name: /Files changed/ }),
+  ).toBeVisible();
+  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
+  const hasHorizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth + 4,
+  );
+  expect(hasHorizontalOverflow).toBe(false);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/prs-005-phase5-final-mobile.jpg",
   });
 
   await page.goto(`/${ownerLogin}/${repoName}/pull/${pullNumber}`);

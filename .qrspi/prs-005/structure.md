@@ -78,7 +78,7 @@
 
 ## Phase 5: Diff Review Guardrails and QA Handoff - finish prs-005
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Harden the full Files changed review feature and mark `prs-005` complete only when the diff read model, file navigation, viewed tracking, split/unified and whitespace settings, pending comments, submit/abandon review, published threads, privacy, mobile layout, and visual compliance are verified.
 

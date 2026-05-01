@@ -1427,3 +1427,13 @@
 - Browser smoke screenshot saved at `ralph/screenshots/build/prs-005-phase4-submit-review.jpg`.
 - Verification passed: focused `api_pull_request_diff_review_contract`, `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`, same-env `make test` with Cargo tests plus 165 frontend tests, focused `web/tests/e2e/repository-pull-request-detail.spec.ts`, full same-env `make test-e2e` with 65 Playwright tests, and mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
 - Marked Phase 4 as done in `.qrspi/prs-005/structure.md`; `prd.json` remains `build_pass: false` because Phase 5 remains.
+
+2026-05-02 - prs-005 phase 5 diff review guardrails and QA handoff
+
+- Completed Phase 5 from `.qrspi/prs-005/structure.md`: final Files changed review guardrails, mobile/browser evidence, visual compliance, QA handoff, and `prs-005.build_pass=true`.
+- Fixed `PullRequestFilesChangedPage` viewed-toggle state synchronization so the toolbar viewed count, file tree viewed badge, and file button update together after the persisted PATCH succeeds.
+- Extended `web/tests/repository-pull-request-detail.test.tsx` for viewed progress updates, file-tree state, filtered empty-state recovery links, anonymous Review changes sign-in CTA, and no inert anchors.
+- Extended `web/tests/e2e/repository-pull-request-detail.spec.ts` to save final Files changed desktop and mobile smoke screenshots and assert no dead anchors or document-level mobile horizontal overflow.
+- Browser smoke screenshots saved at `ralph/screenshots/build/prs-005-phase5-final-desktop.jpg` and `ralph/screenshots/build/prs-005-phase5-final-mobile.jpg`.
+- Verification passed: focused `api_pull_request_diff_review_contract`, `.scratch/prs-005-diff-review-contract-scenario.sh`, focused `web/tests/repository-pull-request-detail.test.tsx`, focused `web/tests/e2e/repository-pull-request-detail.spec.ts`, `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`, same-env `make test` with Cargo tests plus 167 frontend tests, `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false SESSION_SECRET=playwright-session-secret-with-enough-entropy SESSION_COOKIE_NAME=og_session make test-e2e` with 65 Playwright tests, and mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
+- Marked Phase 5 as done in `.qrspi/prs-005/structure.md` and set `prs-005.build_pass` to `true` in `prd.json`; `qa_pass` remains `false` for the QA agent.

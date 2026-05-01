@@ -2078,5 +2078,22 @@
       "Diff hunks still come from stored snapshot rows; QA should revisit fidelity against real Git object storage once full diff generation is wired.",
       "Real Google OAuth was not used; browser smoke used deterministic Rust-signed Playwright sessions against the local Postgres test database."
     ]
+  },
+  {
+    "feature_id": "prs-005",
+    "tests_written": [
+      "Completed Phase 5 guardrails for the pull request Files changed review feature and set prs-005 build_pass true.",
+      "Fixed viewed-toggle state synchronization so the Files changed toolbar viewed count, file-tree viewed badge, and per-file Viewed button update together after the persisted PATCH succeeds.",
+      "Extended Vitest coverage for viewed progress updates, file-tree state, filtered empty-state recovery links, anonymous Review changes sign-in CTA, and no href=\"#\" or missing-href anchors.",
+      "Extended Playwright PR detail/files smoke to save final desktop and mobile Files changed screenshots and assert no dead anchors or document-level mobile horizontal overflow.",
+      "Verification passed: focused api_pull_request_diff_review_contract, .scratch/prs-005-diff-review-contract-scenario.sh, focused repository-pull-request-detail Vitest, focused repository-pull-request-detail Playwright spec, TEST_DATABASE_URL-backed make check, TEST_DATABASE_URL-backed make test with Cargo tests plus 167 frontend tests, full TEST_DATABASE_URL-backed make test-e2e with 65 Playwright tests, and mandatory Editorial banned-value scan with zero matches using rg -n -e."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke submits the Comment review state; Approve and Request changes remain covered through API validation and dialog wiring because the seeded browser PR is author-owned and self-approval is correctly rejected.",
+      "Pending draft privacy is covered by API contract tests; QA should revisit simultaneous multi-user browser behavior once richer multi-user fixtures exist.",
+      "Notifications and audit events are asserted at the Rust contract level; notification inbox UI verification belongs to the later notifications features.",
+      "Diff hunks still come from stored snapshot rows; QA should revisit fidelity against real Git object storage once full diff generation is wired.",
+      "Real Google OAuth was not used; browser smoke used deterministic Rust-signed Playwright sessions against the local Postgres test database."
+    ]
   }
 ]

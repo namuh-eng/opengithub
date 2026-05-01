@@ -112,15 +112,20 @@ function fileViewedLabel(file: PullRequestDiffFile) {
 function ViewedToggle({
   activePath,
   file,
+  onViewedChange,
   viewerAuthenticated,
 }: {
   activePath: string;
   file: PullRequestDiffFile;
+  onViewedChange: (fileId: string, viewed: boolean) => void;
   viewerAuthenticated: boolean;
 }) {
   const [viewed, setViewed] = useState(file.viewed);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  useEffect(() => {
+    setViewed(file.viewed);
+  }, [file.viewed]);
 
   async function toggleViewed() {
     if (!viewerAuthenticated) {
@@ -146,6 +151,7 @@ function ViewedToggle({
         setFeedback("Viewed state could not be saved.");
         return;
       }
+      onViewedChange(file.id, nextViewed);
       setFeedback(
         nextViewed ? "File marked as viewed." : "File marked as not viewed.",
       );
@@ -581,10 +587,12 @@ function DiffLine({
 function DiffFile({
   activePath,
   file,
+  onViewedChange,
   viewerAuthenticated,
 }: {
   activePath: string;
   file: PullRequestDiffFile;
+  onViewedChange: (fileId: string, viewed: boolean) => void;
   viewerAuthenticated: boolean;
 }) {
   const [comments, setComments] = useState(file.comments);
@@ -619,6 +627,7 @@ function DiffFile({
         <ViewedToggle
           activePath={activePath}
           file={file}
+          onViewedChange={onViewedChange}
           viewerAuthenticated={viewerAuthenticated}
         />
         <Link className="btn ghost sm" href={file.href}>
@@ -937,9 +946,14 @@ export function PullRequestFilesChangedPage({
   const basePath = `/${repository.owner_login}/${repository.name}`;
   const activePath = `${basePath}/pull/${pullRequest.number}/files`;
   const conversationHref = `${basePath}/pull/${pullRequest.number}`;
-  const files = diffReview.files;
+  const [files, setFiles] = useState(diffReview.files);
+  const [fileTree, setFileTree] = useState(diffReview.fileTree);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [pendingReview, setPendingReview] = useState(diffReview.pendingReview);
+  useEffect(() => {
+    setFiles(diffReview.files);
+    setFileTree(diffReview.fileTree);
+  }, [diffReview.files, diffReview.fileTree]);
   useEffect(() => {
     function updatePendingReview(event: Event) {
       const detail = (event as CustomEvent<{ delta?: number }>).detail;
@@ -964,9 +978,17 @@ export function PullRequestFilesChangedPage({
     };
   }, []);
   const viewedCount = useMemo(
-    () => diffReview.fileTree.filter((file) => file.viewed).length,
-    [diffReview.fileTree],
+    () => fileTree.filter((file) => file.viewed).length,
+    [fileTree],
   );
+  function updateViewedState(fileId: string, viewed: boolean) {
+    setFiles((current) =>
+      current.map((file) => (file.id === fileId ? { ...file, viewed } : file)),
+    );
+    setFileTree((current) =>
+      current.map((file) => (file.id === fileId ? { ...file, viewed } : file)),
+    );
+  }
 
   return (
     <RepositoryShell
@@ -1161,7 +1183,7 @@ export function PullRequestFilesChangedPage({
           <aside className="max-lg:order-2">
             <div className="card sticky top-[150px] p-2">
               <p className="t-label px-2 py-2">Files in this PR</p>
-              {diffReview.fileTree.map((file) => (
+              {fileTree.map((file) => (
                 <Link
                   className="flex w-full items-start gap-2 rounded-md px-2 py-2 text-left hover:no-underline"
                   href={file.href}
@@ -1209,6 +1231,7 @@ export function PullRequestFilesChangedPage({
                   activePath={activePath}
                   file={file}
                   key={file.id}
+                  onViewedChange={updateViewedState}
                   viewerAuthenticated={viewerAuthenticated}
                 />
               ))

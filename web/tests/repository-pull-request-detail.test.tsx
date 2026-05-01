@@ -498,6 +498,86 @@ describe("RepositoryPullRequestDetailPage", () => {
     ).toHaveLength(0);
   });
 
+  it("updates viewed progress and file tree state after a viewed toggle persists", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/files/viewed")) {
+        return { ok: true, json: async () => ({}) };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { container } = render(
+      <PullRequestFilesChangedPage
+        diffReview={pullRequestDiffReview()}
+        repository={repositoryOverview()}
+        viewerAuthenticated={true}
+      />,
+    );
+
+    expect(container.textContent).toContain("1 viewed");
+    fireEvent.click(screen.getByRole("button", { name: "Viewed?" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mona/octo-app/pull/42/files/viewed",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({
+            fileId: "file-1",
+            versionKey: "blob-1:80:12",
+            viewed: true,
+          }),
+        }),
+      );
+    });
+    expect(await screen.findByText("File marked as viewed.")).toBeVisible();
+    expect(container.textContent).toContain("2 viewed");
+    expect(screen.getAllByText("viewed").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("renders empty filter recovery and auth-gated review actions without inert controls", () => {
+    const filteredReview = {
+      ...pullRequestDiffReview(),
+      settings: {
+        ...pullRequestDiffReview().settings,
+        filter: "missing",
+      },
+      totalFiles: 0,
+      fileTree: [],
+      files: [],
+    };
+    const { container } = render(
+      <PullRequestFilesChangedPage
+        diffReview={filteredReview}
+        repository={repositoryOverview()}
+        viewerAuthenticated={false}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", {
+        name: "No changed files match this filter.",
+      }),
+    ).toBeVisible();
+    expect(screen.getByRole("link", { name: "Clear filter" })).toHaveAttribute(
+      "href",
+      "/mona/octo-app/pull/42/files",
+    );
+    expect(
+      screen.getByRole("link", { name: "Clear file filter" }),
+    ).toHaveAttribute("href", "/mona/octo-app/pull/42/files");
+    expect(
+      screen.getByRole("link", { name: "Review changes" }),
+    ).toHaveAttribute(
+      "href",
+      "/login?next=%2Fmona%2Focto-app%2Fpull%2F42%2Ffiles",
+    );
+    expect(
+      container.querySelectorAll('a[href="#"], a:not([href])'),
+    ).toHaveLength(0);
+  });
+
   it("submits and abandons pull request reviews from the files changed dialog", async () => {
     const submittedReview = {
       id: "review-1",
