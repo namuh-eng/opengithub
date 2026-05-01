@@ -362,6 +362,16 @@ async fn pull_list_contract_returns_screen_ready_rows_counts_and_filters() {
     )
     .await
     .expect("merged pull should create");
+    sqlx::query(
+        r#"
+        INSERT INTO pull_request_files (pull_request_id, path, status, additions, deletions, byte_size)
+        VALUES ($1, 'src/merged.rs', 'added', 12, 0, 256)
+        "#,
+    )
+    .bind(merged_pr.pull_request.id)
+    .execute(&pool)
+    .await
+    .expect("merged pull should have a diff snapshot");
     update_pull_request_state(
         &pool,
         merged_pr.pull_request.id,

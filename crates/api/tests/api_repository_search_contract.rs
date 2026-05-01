@@ -675,6 +675,16 @@ async fn search_rest_route_indexes_issue_pull_request_and_discussion_tabs() {
     .await
     .expect("pull request should create and index")
     .pull_request;
+    sqlx::query(
+        r#"
+        INSERT INTO pull_request_files (pull_request_id, path, status, additions, deletions, byte_size)
+        VALUES ($1, 'src/search.rs', 'modified', 8, 2, 512)
+        "#,
+    )
+    .bind(pull_request.id)
+    .execute(&pool)
+    .await
+    .expect("pull request should have diff metadata before merge");
     update_pull_request_state(
         &pool,
         pull_request.id,

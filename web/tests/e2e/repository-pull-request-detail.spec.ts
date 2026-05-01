@@ -185,7 +185,7 @@ test("signed-in user updates pull request sidebar metadata and notifications", a
   await page.getByRole("button", { name: "Edit" }).first().click();
   await page.getByRole("button", { name: /^Request reviewer-/ }).click();
   await expect(page.getByText("Review requests updated.")).toBeVisible();
-  await expect(page.getByText("requested")).toBeVisible();
+  await expect(page.getByText("requested", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Edit" }).nth(2).click();
   await page.getByRole("button", { name: /Add bug/ }).click();
@@ -197,6 +197,22 @@ test("signed-in user updates pull request sidebar metadata and notifications", a
     page.getByText("Pull request converted to draft."),
   ).toBeVisible();
   await expect(page.getByText("Draft", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Mark ready" }).first().click();
+  await expect(
+    page.getByText("Pull request marked ready for review."),
+  ).toBeVisible();
+  await expect(
+    page.getByText("There are no changed files or commits to merge.").first(),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Merge pull request" }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Close pull request" }).click();
+  await expect(page.getByText("Pull request closed.")).toBeVisible();
+  await expect(page.getByText("Closed", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Reopen pull request" }).click();
+  await expect(page.getByText("Pull request reopened.")).toBeVisible();
+  await expect(page.getByText("Open", { exact: true })).toBeVisible();
 
   const unsubscribeButton = page.getByRole("button", {
     exact: true,
@@ -212,7 +228,7 @@ test("signed-in user updates pull request sidebar metadata and notifications", a
   await expect(page.getByText("Subscribed: subscribed")).toBeVisible();
 
   await page.reload();
-  await expect(page.getByText("Draft", { exact: true })).toBeVisible();
+  await expect(page.getByText("Open", { exact: true })).toBeVisible();
   await expect(page.getByText("bug")).toBeVisible();
   await expect(page.getByText("Subscribed: subscribed")).toBeVisible();
   await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
@@ -220,5 +236,9 @@ test("signed-in user updates pull request sidebar metadata and notifications", a
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/prs-004-phase3-sidebar-actions.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/prs-004-phase4-mergeability.jpg",
   });
 });

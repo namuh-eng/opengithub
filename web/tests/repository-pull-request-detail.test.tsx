@@ -156,6 +156,18 @@ function pullRequestDetail(
       comments: 3,
     },
     subscription: { subscribed: true, reason: "participating" },
+    mergeability: {
+      state: "ready",
+      canMerge: true,
+      canClose: true,
+      canReopen: false,
+      canMarkReady: false,
+      defaultMethod: "squash",
+      methods: ["squash", "merge_commit", "rebase"],
+      blockers: [],
+      summary:
+        "Ready to merge: approved review state, 4 of 4 checks complete, 6 changed files.",
+    },
     metadataOptions: {
       labels: [
         {
@@ -277,7 +289,13 @@ describe("RepositoryPullRequestDetailPage", () => {
     );
     expect(screen.getByText(/hubot opened this pull request/)).toBeVisible();
     expect(screen.getByText(/Looks/)).toBeVisible();
-    expect(screen.getByText("ready")).toBeVisible();
+    expect(screen.getAllByText("ready").length).toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getByRole("button", { name: "Merge pull request" }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Close pull request" }),
+    ).toBeEnabled();
     expect(screen.getByRole("textbox", { name: "Comment body" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Comment" })).toBeDisabled();
   });
@@ -496,5 +514,102 @@ describe("RepositoryPullRequestDetailPage", () => {
     });
     expect(await screen.findByText("Unsubscribed.")).toBeVisible();
     expect(screen.getByText("Not subscribed")).toBeVisible();
+  });
+
+  it("renders merge blockers and posts state and merge actions", async () => {
+    const closed = pullRequestDetail({
+      state: "closed",
+      mergeability: {
+        state: "closed",
+        canMerge: false,
+        canClose: false,
+        canReopen: true,
+        canMarkReady: false,
+        defaultMethod: "squash",
+        methods: ["squash", "merge_commit", "rebase"],
+        blockers: [
+          {
+            code: "pull_request_closed",
+            message:
+              "Closed pull requests must be reopened before they can merge.",
+            severity: "blocking",
+          },
+        ],
+        summary: "Closed pull requests must be reopened before they can merge.",
+      },
+    });
+    const reopened = pullRequestDetail();
+    const merged = pullRequestDetail({
+      state: "merged",
+      mergeability: {
+        ...pullRequestDetail().mergeability,
+        state: "merged",
+        canMerge: false,
+        canClose: false,
+        blockers: [
+          {
+            code: "already_merged",
+            message: "This pull request has already been merged.",
+            severity: "blocking",
+          },
+        ],
+        summary: "This pull request has already been merged.",
+      },
+    });
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/state")) {
+          return { ok: true, json: async () => reopened };
+        }
+        if (url.endsWith("/merge")) {
+          return { ok: true, json: async () => merged };
+        }
+        throw new Error(`unexpected fetch ${url} ${init?.method ?? "GET"}`);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryPullRequestDetailPage
+        pullRequest={closed}
+        repository={repositoryOverview()}
+        timeline={pullRequestTimeline()}
+        viewerAuthenticated={true}
+      />,
+    );
+
+    expect(
+      screen.getAllByText(
+        "Closed pull requests must be reopened before they can merge.",
+      ).length,
+    ).toBeGreaterThanOrEqual(1);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Reopen pull request" }),
+    );
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mona/octo-app/pull/42/state",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ state: "open" }),
+        }),
+      );
+    });
+    expect(await screen.findByText("Pull request reopened.")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Rebase and merge" }));
+    fireEvent.click(screen.getByRole("button", { name: "Merge pull request" }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mona/octo-app/pull/42/merge",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ method: "rebase" }),
+        }),
+      );
+    });
+    expect(await screen.findByText("Pull request merged.")).toBeVisible();
+    expect(screen.getByText("Merged")).toBeVisible();
   });
 });

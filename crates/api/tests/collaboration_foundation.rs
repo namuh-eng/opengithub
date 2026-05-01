@@ -315,6 +315,17 @@ async fn pull_requests_share_issue_numbers_and_timeline_state() {
         .expect("pull request should fetch by number");
     assert_eq!(fetched.pull_request.head_ref, "feature/collaboration");
 
+    sqlx::query(
+        r#"
+        INSERT INTO pull_request_files (pull_request_id, path, status, additions, deletions, byte_size)
+        VALUES ($1, 'src/collaboration.rs', 'modified', 6, 1, 128)
+        "#,
+    )
+    .bind(detail.pull_request.id)
+    .execute(&pool)
+    .await
+    .expect("pull request should have diff metadata before merge");
+
     let merged = update_pull_request_state(
         &pool,
         detail.pull_request.id,

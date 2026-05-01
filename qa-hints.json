@@ -1966,5 +1966,23 @@
       "Review request UI currently lists repository-readable users through the same metadata option pool as assignees; QA should revisit richer reviewer search/team semantics in later reviewer phases.",
       "Real Google OAuth was not used; browser smoke used deterministic Rust-signed Playwright sessions against the local Postgres test database."
     ]
+  },
+  {
+    "feature_id": "prs-004",
+    "tests_written": [
+      "Implemented Phase 4 pull request mergeability and state actions for /{owner}/{repo}/pull/{number}.",
+      "Rust detail responses now include mergeability state, blockers, available merge methods, and close/reopen/ready capabilities; merge requests validate write permission, draft state, closed/merged state, no-diff snapshots, checks, and review blockers before mutating state.",
+      "Added POST /api/repos/{owner}/{repo}/pulls/{number}/merge plus same-origin Next.js /merge and /state routes; PATCH state now returns the refreshed detail read model.",
+      "The Editorial PR detail page now renders a real merge box with blocker list, merge method selector, close/reopen/ready actions, disabled merge button for blocked cases, and live success/error feedback.",
+      "Vitest covers ready merge controls, blocked merge copy, close/reopen payloads, merge payloads, and rerendered merged state.",
+      "Playwright signed-session smoke covers draft-to-ready, no-diff merge blocker, disabled merge button, close/reopen, persisted notification/sidebar behavior, no dead links, and saves ralph/screenshots/build/prs-004-phase4-mergeability.jpg.",
+      "Verification passed: focused api_pull_request_detail_contract, focused repository-pull-request-detail Vitest, focused repository-pull-request-detail Playwright, TEST_DATABASE_URL-backed make check, make test with Cargo tests plus 162 frontend tests, make test-e2e with 65 Playwright tests, and Editorial banned-value scan with zero matches using rg -n -e."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke proves blocked merge and close/reopen flows; merge-success is covered at Rust API contract level with seeded diff/check/review data but not through a browser-created diff because the browser create flow in this phase does not seed changed-file snapshots.",
+      "Branch protection, rulesets, conflicts, and stacked PR blockers are represented as explicit placeholders through the current checks/review/no-diff model; richer rule tables remain future phases.",
+      "Merge commit bytes are not written to Git storage yet; this phase records metadata state and audit/timeline/search effects.",
+      "Real Google OAuth was not used; browser smoke used deterministic Rust-signed Playwright sessions against the local Postgres test database."
+    ]
   }
 ]

@@ -60,7 +60,7 @@
 
 ## Phase 4: Mergeability Box and State Actions - close, reopen, ready, and merge rules
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make the merge box real. The page computes mergeability from draft state, open/closed/merged state, compare status, conflicts/no-diff, checks summary, review requirements, branch protection/ruleset placeholders, stacked-PR blockers where modeled, and viewer permission. Authorized users can close/reopen, mark ready for review, and merge only when the rules allow; blocked cases show explicit reasons.
 

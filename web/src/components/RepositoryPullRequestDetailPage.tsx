@@ -11,6 +11,7 @@ import type {
   IssueListLabel,
   IssueListMilestone,
   IssueListUser,
+  MergeMethod,
   PullRequestDetailView,
   PullRequestSubscriptionState,
   PullRequestTimelineItem,
@@ -77,6 +78,16 @@ function stateClass(pullRequest: PullRequestDetailView) {
   return pullRequest.isDraft ? "warn" : "ok";
 }
 
+function mergeMethodLabel(method: MergeMethod) {
+  if (method === "merge_commit") {
+    return "Create a merge commit";
+  }
+  if (method === "rebase") {
+    return "Rebase and merge";
+  }
+  return "Squash and merge";
+}
+
 function SidebarSection({
   children,
   title,
@@ -108,6 +119,9 @@ export function RepositoryPullRequestDetailPage({
   const [openMetadataMenu, setOpenMetadataMenu] = useState<
     "reviewers" | "assignees" | "labels" | "milestone" | null
   >(null);
+  const [mergeMethod, setMergeMethod] = useState<MergeMethod>(
+    initialPullRequest.mergeability.defaultMethod,
+  );
   const pullRequest = currentPullRequest;
   const bodyLabelId = `pull-request-${pullRequest.number}-body`;
   const basePath = `/${repository.owner_login}/${repository.name}`;
@@ -167,6 +181,69 @@ export function RepositoryPullRequestDetailPage({
         error instanceof Error
           ? error.message
           : "Pull request could not be updated.",
+      );
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
+  async function saveState(state: "open" | "closed", success: string) {
+    setMessage(null);
+    setIsMutating(true);
+    try {
+      const response = await fetch(`${activePath}/state`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ state }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const envelope = payload as ApiErrorEnvelope | null;
+        throw new Error(
+          envelope?.error.message ?? "Pull request state could not be updated.",
+        );
+      }
+      const updated = payload as PullRequestDetailView;
+      setCurrentPullRequest(updated);
+      setSubscription(updated.subscription);
+      setMergeMethod(updated.mergeability.defaultMethod);
+      setMessage(success);
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Pull request state could not be updated.",
+      );
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
+  async function mergePullRequest() {
+    setMessage(null);
+    setIsMutating(true);
+    try {
+      const response = await fetch(`${activePath}/merge`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ method: mergeMethod }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const envelope = payload as ApiErrorEnvelope | null;
+        throw new Error(
+          envelope?.error.message ?? "Pull request could not merge.",
+        );
+      }
+      const updated = payload as PullRequestDetailView;
+      setCurrentPullRequest(updated);
+      setSubscription(updated.subscription);
+      setMessage("Pull request merged.");
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Pull request could not merge.",
       );
     } finally {
       setIsMutating(false);
@@ -402,17 +479,28 @@ export function RepositoryPullRequestDetailPage({
 
             <section className="card mt-6 overflow-hidden">
               <div
-                className="border-b px-5 py-4"
+                className="flex flex-wrap items-start gap-4 border-b px-5 py-4"
                 style={{ borderColor: "var(--line)" }}
               >
-                <h2 className="t-h3">Merge readiness</h2>
-                <p className="t-sm mt-1" style={{ color: "var(--ink-3)" }}>
-                  {pullRequest.isDraft
-                    ? "Draft pull requests cannot be merged until they are marked ready."
-                    : pullRequest.checks.totalCount
-                      ? `${pullRequest.checks.completedCount} of ${pullRequest.checks.totalCount} checks completed.`
-                      : "Checks are not configured for this pull request yet."}
-                </p>
+                <div className="min-w-0 flex-1">
+                  <h2 className="t-h3">Merge readiness</h2>
+                  <p className="t-sm mt-1" style={{ color: "var(--ink-3)" }}>
+                    {pullRequest.mergeability.summary}
+                  </p>
+                </div>
+                <span
+                  className={`chip ${
+                    pullRequest.mergeability.canMerge
+                      ? "ok"
+                      : pullRequest.state === "closed"
+                        ? "err"
+                        : pullRequest.state === "merged"
+                          ? "accent"
+                          : "warn"
+                  }`}
+                >
+                  {pullRequest.mergeability.state.replaceAll("_", " ")}
+                </span>
               </div>
               <div className="flex flex-wrap items-center gap-3 px-5 py-4">
                 <span
@@ -434,6 +522,85 @@ export function RepositoryPullRequestDetailPage({
                   deletions
                 </span>
               </div>
+              {pullRequest.mergeability.blockers.length ? (
+                <div
+                  className="border-t px-5 py-4"
+                  style={{ borderColor: "var(--line-soft)" }}
+                >
+                  <h3 className="t-label mb-2">Blocking reasons</h3>
+                  <ul className="grid gap-2">
+                    {pullRequest.mergeability.blockers.map((blocker) => (
+                      <li className="t-sm" key={blocker.code}>
+                        {blocker.message}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {viewerAuthenticated ? (
+                <div
+                  className="flex flex-wrap items-center gap-2 border-t px-5 py-4"
+                  style={{ borderColor: "var(--line-soft)" }}
+                >
+                  {pullRequest.mergeability.methods.map((method) => (
+                    <button
+                      aria-pressed={mergeMethod === method}
+                      className={`chip soft ${mergeMethod === method ? "active" : ""}`}
+                      disabled={
+                        isMutating || !pullRequest.mergeability.canMerge
+                      }
+                      key={method}
+                      onClick={() => setMergeMethod(method)}
+                      type="button"
+                    >
+                      {mergeMethodLabel(method)}
+                    </button>
+                  ))}
+                  <span className="flex-1" />
+                  {pullRequest.mergeability.canMarkReady ? (
+                    <button
+                      className="btn"
+                      disabled={isMutating}
+                      onClick={() => toggleDraft()}
+                      type="button"
+                    >
+                      Mark ready
+                    </button>
+                  ) : null}
+                  {pullRequest.mergeability.canReopen ? (
+                    <button
+                      className="btn"
+                      disabled={isMutating}
+                      onClick={() =>
+                        void saveState("open", "Pull request reopened.")
+                      }
+                      type="button"
+                    >
+                      Reopen pull request
+                    </button>
+                  ) : null}
+                  {pullRequest.mergeability.canClose ? (
+                    <button
+                      className="btn"
+                      disabled={isMutating}
+                      onClick={() =>
+                        void saveState("closed", "Pull request closed.")
+                      }
+                      type="button"
+                    >
+                      Close pull request
+                    </button>
+                  ) : null}
+                  <button
+                    className="btn accent"
+                    disabled={isMutating || !pullRequest.mergeability.canMerge}
+                    onClick={() => void mergePullRequest()}
+                    type="button"
+                  >
+                    Merge pull request
+                  </button>
+                </div>
+              ) : null}
             </section>
 
             {!viewerAuthenticated ? (

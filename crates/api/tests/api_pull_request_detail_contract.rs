@@ -377,6 +377,18 @@ async fn pull_request_detail_contract_returns_screen_ready_metadata() {
         linked_issue.number
     );
     assert_eq!(anonymous_body["checks"]["totalCount"], 4);
+    assert_eq!(anonymous_body["mergeability"]["state"], "blocked");
+    assert_eq!(anonymous_body["mergeability"]["canMerge"], false);
+    assert!(anonymous_body["mergeability"]["blockers"]
+        .as_array()
+        .expect("merge blockers should be an array")
+        .iter()
+        .any(|item| item["code"] == "missing_write_permission"));
+    assert!(anonymous_body["mergeability"]["blockers"]
+        .as_array()
+        .expect("merge blockers should be an array")
+        .iter()
+        .any(|item| item["code"] == "draft"));
     assert_eq!(anonymous_body["stats"]["files"], 2);
     assert_eq!(anonymous_body["stats"]["additions"], 120);
     assert_eq!(anonymous_body["stats"]["deletions"], 32);
@@ -495,6 +507,53 @@ async fn pull_request_detail_contract_returns_screen_ready_metadata() {
     .await;
     assert_eq!(draft_status, StatusCode::OK);
     assert_eq!(draft_body["isDraft"], false);
+    assert_eq!(draft_body["mergeability"]["state"], "ready");
+    assert_eq!(draft_body["mergeability"]["canMerge"], true);
+
+    let (close_status, close_body) = patch_json(
+        app.clone(),
+        &uri,
+        Some(&owner_cookie),
+        json!({ "state": "closed" }),
+    )
+    .await;
+    assert_eq!(close_status, StatusCode::OK);
+    assert_eq!(close_body["state"], "closed");
+    assert_eq!(close_body["mergeability"]["canReopen"], true);
+    assert_eq!(close_body["mergeability"]["canMerge"], false);
+
+    let (reopen_status, reopen_body) = patch_json(
+        app.clone(),
+        &uri,
+        Some(&owner_cookie),
+        json!({ "state": "open" }),
+    )
+    .await;
+    assert_eq!(reopen_status, StatusCode::OK);
+    assert_eq!(reopen_body["state"], "open");
+    assert_eq!(reopen_body["mergeability"]["canMerge"], true);
+
+    let (merge_status, merge_body) = post_json(
+        app.clone(),
+        &format!("{uri}/merge"),
+        Some(&owner_cookie),
+        json!({ "method": "squash" }),
+    )
+    .await;
+    assert_eq!(merge_status, StatusCode::OK);
+    assert_eq!(merge_body["state"], "merged");
+    assert_eq!(merge_body["mergeability"]["state"], "merged");
+    assert_eq!(merge_body["mergeability"]["canMerge"], false);
+
+    let (merge_again_status, merge_again_body) = post_json(
+        app.clone(),
+        &format!("{uri}/merge"),
+        Some(&owner_cookie),
+        json!({ "method": "squash" }),
+    )
+    .await;
+    assert_eq!(merge_again_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(merge_again_body["error"]["code"], "validation_failed");
 
     let (unsubscribe_status, unsubscribe_body) = patch_json(
         app.clone(),

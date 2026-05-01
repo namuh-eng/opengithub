@@ -984,6 +984,21 @@ export type PullRequestDetailView = {
     subscribed: boolean;
     reason: string;
   };
+  mergeability: {
+    state: "ready" | "blocked" | "closed" | "merged" | string;
+    canMerge: boolean;
+    canClose: boolean;
+    canReopen: boolean;
+    canMarkReady: boolean;
+    defaultMethod: MergeMethod;
+    methods: MergeMethod[];
+    blockers: Array<{
+      code: string;
+      message: string;
+      severity: string;
+    }>;
+    summary: string;
+  };
   metadataOptions: {
     labels: IssueListLabel[];
     assignees: IssueListUser[];
@@ -999,6 +1014,8 @@ export type PullRequestDetailView = {
   mergedAt: string | null;
   viewerPermission: string | null;
 };
+
+export type MergeMethod = "squash" | "merge_commit" | "rebase";
 
 export type UpdatePullRequestMetadataRequest = {
   labelIds: string[];
@@ -1986,6 +2003,67 @@ export async function updateRepositoryPullRequestDraftFromCookie(
       envelope?.error.message ?? "Draft state could not be updated",
       { cause: envelope },
     );
+  }
+  return (await response.json()) as PullRequestDetailView;
+}
+
+export async function updateRepositoryPullRequestStateFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  number: number | string,
+  state: PullRequestState,
+): Promise<PullRequestDetailView> {
+  const response = await fetch(
+    `${apiBaseUrl()}${repositoryPullRequestPath(owner, repo, number)}`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify({ state }),
+      cache: "no-store",
+    },
+  );
+  if (!response.ok) {
+    const envelope = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Pull request state could not be updated",
+      { cause: envelope },
+    );
+  }
+  return (await response.json()) as PullRequestDetailView;
+}
+
+export async function mergeRepositoryPullRequestFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  number: number | string,
+  method: MergeMethod,
+): Promise<PullRequestDetailView> {
+  const response = await fetch(
+    `${apiBaseUrl()}${repositoryPullRequestPath(owner, repo, number)}/merge`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify({ method }),
+      cache: "no-store",
+    },
+  );
+  if (!response.ok) {
+    const envelope = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(envelope?.error.message ?? "Pull request could not merge", {
+      cause: envelope,
+    });
   }
   return (await response.json()) as PullRequestDetailView;
 }

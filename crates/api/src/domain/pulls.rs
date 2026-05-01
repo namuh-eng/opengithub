@@ -323,6 +323,47 @@ pub struct PullRequestSubscriptionState {
     pub reason: String,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MergeMethod {
+    #[default]
+    Squash,
+    MergeCommit,
+    Rebase,
+}
+
+impl MergeMethod {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Squash => "squash",
+            Self::MergeCommit => "merge_commit",
+            Self::Rebase => "rebase",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestMergeBlocker {
+    pub code: String,
+    pub message: String,
+    pub severity: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestMergeability {
+    pub state: String,
+    pub can_merge: bool,
+    pub can_close: bool,
+    pub can_reopen: bool,
+    pub can_mark_ready: bool,
+    pub default_method: MergeMethod,
+    pub methods: Vec<MergeMethod>,
+    pub blockers: Vec<PullRequestMergeBlocker>,
+    pub summary: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PullRequestDetailMetadataOptions {
@@ -359,6 +400,7 @@ pub struct PullRequestDetailView {
     pub task_progress: PullRequestTaskProgress,
     pub stats: PullRequestDetailStats,
     pub subscription: PullRequestSubscriptionState,
+    pub mergeability: PullRequestMergeability,
     pub metadata_options: PullRequestDetailMetadataOptions,
     pub href: String,
     pub commits_href: String,
@@ -1458,6 +1500,7 @@ pub async fn pull_request_detail_view_for_viewer(
         repository.owner_login, repository.name, pull_request.number
     );
     let subscription = pull_request_subscription_state(pool, &pull_request, actor_user_id).await?;
+    let mergeability = pull_request_mergeability(pool, &pull_request, actor_user_id).await?;
 
     Ok(PullRequestDetailView {
         id: pull_request.id,
@@ -1521,6 +1564,7 @@ pub async fn pull_request_detail_view_for_viewer(
             }),
         stats,
         subscription,
+        mergeability,
         metadata_options: PullRequestDetailMetadataOptions {
             labels: pull_list_label_options(pool, repository_id).await?,
             assignees: pull_list_user_options(pool, repository_id).await?,
@@ -1543,13 +1587,24 @@ pub async fn update_pull_request_state(
     pull_request_id: Uuid,
     input: UpdatePullRequestState,
 ) -> Result<PullRequest, CollaborationError> {
-    let repository_id =
-        sqlx::query_scalar::<_, Uuid>("SELECT repository_id FROM pull_requests WHERE id = $1")
-            .bind(pull_request_id)
-            .fetch_optional(pool)
-            .await?
-            .ok_or(CollaborationError::PullRequestNotFound)?;
-    require_repository_write(pool, repository_id, input.actor_user_id).await?;
+    let current = pull_request_by_id(pool, pull_request_id).await?;
+    require_repository_write(pool, current.repository_id, input.actor_user_id).await?;
+    if current.state == PullRequestState::Merged {
+        return Err(CollaborationError::InvalidIssueField {
+            field_key: "state".to_owned(),
+            message: "merged pull requests cannot be reopened or closed".to_owned(),
+        });
+    }
+    if input.state == PullRequestState::Merged {
+        let mergeability =
+            pull_request_mergeability(pool, &current, Some(input.actor_user_id)).await?;
+        if !mergeability.can_merge {
+            return Err(CollaborationError::InvalidIssueField {
+                field_key: "merge".to_owned(),
+                message: mergeability.summary,
+            });
+        }
+    }
     let issue_state = if input.state == PullRequestState::Open {
         IssueState::Open
     } else {
@@ -1593,14 +1648,31 @@ pub async fn update_pull_request_state(
     .execute(pool)
     .await?;
 
+    let event_type = match input.state {
+        PullRequestState::Open => "reopened",
+        PullRequestState::Closed => "closed",
+        PullRequestState::Merged => "merged",
+    };
     append_timeline_event(
         pool,
-        repository_id,
+        current.repository_id,
         None,
         Some(pull_request.id),
         Some(input.actor_user_id),
-        input.state.as_str(),
-        json!({ "number": pull_request.number }),
+        event_type,
+        json!({ "number": pull_request.number, "state": input.state.as_str() }),
+    )
+    .await?;
+    insert_pull_request_action_audit_event(
+        pool,
+        &pull_request,
+        input.actor_user_id,
+        match input.state {
+            PullRequestState::Open => "pull_request.reopened",
+            PullRequestState::Closed => "pull_request.closed",
+            PullRequestState::Merged => "pull_request.merged",
+        },
+        json!({ "state": input.state.as_str() }),
     )
     .await?;
     index_pull_request_search_document(pool, &pull_request, input.actor_user_id).await?;
@@ -3920,6 +3992,149 @@ async fn pull_request_subscription_state(
             "not_subscribed".to_owned()
         },
     })
+}
+
+async fn pull_request_mergeability(
+    pool: &PgPool,
+    pull_request: &PullRequest,
+    actor_user_id: Option<Uuid>,
+) -> Result<PullRequestMergeability, CollaborationError> {
+    let can_write = match actor_user_id {
+        Some(user_id) => can_write_repository_id(pool, pull_request.repository_id, user_id).await?,
+        None => false,
+    };
+    let stats = pull_request_detail_stats(pool, pull_request.id, 0).await?;
+    let checks = pull_check_summaries(pool, &[pull_request.id])
+        .await?
+        .remove(&pull_request.id)
+        .unwrap_or_else(default_checks_summary);
+    let review = pull_review_summaries(pool, &[pull_request.id])
+        .await?
+        .remove(&pull_request.id)
+        .unwrap_or_else(default_review_summary);
+    let mut blockers = Vec::new();
+
+    if !can_write {
+        blockers.push(merge_blocker(
+            "missing_write_permission",
+            "You need write access to change this pull request.",
+        ));
+    }
+    match pull_request.state {
+        PullRequestState::Closed => blockers.push(merge_blocker(
+            "pull_request_closed",
+            "Closed pull requests must be reopened before they can merge.",
+        )),
+        PullRequestState::Merged => blockers.push(merge_blocker(
+            "already_merged",
+            "This pull request has already been merged.",
+        )),
+        PullRequestState::Open => {}
+    }
+    if pull_request.is_draft {
+        blockers.push(merge_blocker(
+            "draft",
+            "Draft pull requests must be marked ready for review before merging.",
+        ));
+    }
+    if stats.files == 0 {
+        blockers.push(merge_blocker(
+            "no_diff",
+            "There are no changed files or commits to merge.",
+        ));
+    }
+    if checks.failed_count > 0
+        || checks
+            .conclusion
+            .as_deref()
+            .is_some_and(|conclusion| !matches!(conclusion, "success" | "skipped"))
+    {
+        blockers.push(merge_blocker(
+            "checks_failed",
+            "Required checks have failed.",
+        ));
+    } else if checks.total_count > 0 && checks.completed_count < checks.total_count {
+        blockers.push(merge_blocker(
+            "checks_pending",
+            "Required checks are still running.",
+        ));
+    }
+    if review.state == "changes_requested" {
+        blockers.push(merge_blocker(
+            "changes_requested",
+            "A reviewer requested changes.",
+        ));
+    } else if review.required && review.reviewer_count == 0 {
+        blockers.push(merge_blocker(
+            "review_required",
+            "At least one requested review is still required.",
+        ));
+    }
+
+    let terminal = matches!(
+        pull_request.state,
+        PullRequestState::Closed | PullRequestState::Merged
+    );
+    let can_merge = can_write && !terminal && blockers.is_empty();
+    let state = if pull_request.state == PullRequestState::Merged {
+        "merged"
+    } else if pull_request.state == PullRequestState::Closed {
+        "closed"
+    } else if can_merge {
+        "ready"
+    } else {
+        "blocked"
+    };
+    let summary = if can_merge {
+        let checks_summary = if checks.total_count > 0 {
+            format!(
+                "{} of {} checks complete",
+                checks.completed_count, checks.total_count
+            )
+        } else {
+            "checks not configured".to_owned()
+        };
+        format!(
+            "Ready to merge: {} review state, {}, {} changed files.",
+            review.state.replace('_', " "),
+            checks_summary,
+            stats.files
+        )
+    } else if blockers.is_empty() {
+        "This pull request is not mergeable yet.".to_owned()
+    } else {
+        blockers
+            .iter()
+            .map(|blocker| blocker.message.as_str())
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+
+    Ok(PullRequestMergeability {
+        state: state.to_owned(),
+        can_merge,
+        can_close: can_write && pull_request.state == PullRequestState::Open,
+        can_reopen: can_write && pull_request.state == PullRequestState::Closed,
+        can_mark_ready: can_write
+            && pull_request.state == PullRequestState::Open
+            && pull_request.is_draft,
+        default_method: MergeMethod::Squash,
+        methods: vec![
+            MergeMethod::Squash,
+            MergeMethod::MergeCommit,
+            MergeMethod::Rebase,
+        ],
+        blockers,
+        summary,
+    })
+}
+
+fn merge_blocker(code: &str, message: &str) -> PullRequestMergeBlocker {
+    PullRequestMergeBlocker {
+        code: code.to_owned(),
+        message: message.to_owned(),
+        severity: "blocking".to_owned(),
+    }
 }
 
 async fn pull_request_detail_participants(

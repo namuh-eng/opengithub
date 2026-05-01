@@ -1,7 +1,7 @@
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    routing::{get, patch},
+    routing::{get, patch, post},
     Json, Router,
 };
 use serde::Deserialize;
@@ -26,8 +26,8 @@ use crate::{
             save_repository_pull_preferences, update_pull_request_draft_state,
             update_pull_request_metadata, update_pull_request_review_requests,
             update_pull_request_state, update_pull_request_subscription,
-            ComparePullRequestRefsInput, CreatePullRequest, PullRequestListQuery, PullRequestState,
-            UpdatePullRequestDraftState, UpdatePullRequestMetadata,
+            ComparePullRequestRefsInput, CreatePullRequest, MergeMethod, PullRequestListQuery,
+            PullRequestState, UpdatePullRequestDraftState, UpdatePullRequestMetadata,
             UpdatePullRequestReviewRequests, UpdatePullRequestState, UpdatePullRequestSubscription,
         },
         repositories::{get_repository_by_owner_name, RepositoryError},
@@ -72,6 +72,7 @@ pub fn router() -> Router<AppState> {
             "/api/repos/:owner/:repo/pulls/:number/subscription",
             patch(update_subscription),
         )
+        .route("/api/repos/:owner/:repo/pulls/:number/merge", post(merge))
 }
 
 #[derive(Debug, Deserialize)]
@@ -132,6 +133,13 @@ struct CreatePullRequestRequest {
 #[serde(rename_all = "camelCase")]
 struct UpdatePullRequestStateRequest {
     state: PullRequestState,
+    merge_commit_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MergePullRequestRequest {
+    method: Option<MergeMethod>,
     merge_commit_id: Option<Uuid>,
 }
 
@@ -893,7 +901,53 @@ async fn update_state(
     .await
     .map_err(map_collaboration_error)?;
 
-    Ok(Json(json!(updated)))
+    let refreshed = pull_request_detail_view_for_viewer(
+        pool,
+        updated.repository_id,
+        updated.number,
+        Some(actor.0.id),
+    )
+    .await
+    .map_err(map_collaboration_error)?;
+    Ok(Json(json!(refreshed)))
+}
+
+async fn merge(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, number)): Path<(String, String, i64)>,
+    RestJson(request): RestJson<MergePullRequestRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id =
+        repository_for_actor_by_name(pool, &owner, &repo, actor.0.id, RepositoryRole::Write)
+            .await
+            .map_err(map_collaboration_error)?;
+    let detail = get_pull_request(pool, repository_id, number, actor.0.id)
+        .await
+        .map_err(map_collaboration_error)?;
+    let _method = request.method.unwrap_or_default();
+    let updated = update_pull_request_state(
+        pool,
+        detail.pull_request.id,
+        UpdatePullRequestState {
+            actor_user_id: actor.0.id,
+            state: PullRequestState::Merged,
+            merge_commit_id: request.merge_commit_id,
+        },
+    )
+    .await
+    .map_err(map_collaboration_error)?;
+    let refreshed = pull_request_detail_view_for_viewer(
+        pool,
+        updated.repository_id,
+        updated.number,
+        Some(actor.0.id),
+    )
+    .await
+    .map_err(map_collaboration_error)?;
+    Ok(Json(json!(refreshed)))
 }
 
 async fn update_review_requests(
