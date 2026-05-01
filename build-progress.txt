@@ -1613,3 +1613,11 @@
 - Browser smoke screenshots saved at `ralph/screenshots/build/actions-002-phase5-final-desktop.jpg` and `ralph/screenshots/build/actions-002-phase5-final-mobile.jpg`.
 - Verification passed: focused `api_repository_actions_workflow_detail_contract`, focused `web/tests/repository-actions-workflow.test.tsx`, focused TEST_DATABASE_URL-backed `web/tests/e2e/repository-actions-workflow.spec.ts`, `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`, same-env `make test`, full `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false SESSION_SECRET=playwright-session-secret-with-enough-entropy SESSION_COOKIE_NAME=og_session make test-e2e`, and mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
 - Marked Phase 5 as done in `.qrspi/actions-002/structure.md` and set `actions-002.build_pass` to `true` in `prd.json`; `qa_pass` remains `false` for the QA agent.
+
+2026-05-02 - actions-003 structure planning
+
+- Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `web/AGENTS.md`, the first incomplete `prd.json` entry, `design/project/og-screens-4.jsx`, target docs for workflow run logs/reruns/cancel, current Actions domain/routes/migrations, the completed `actions-001` and `actions-002` structures, and the current placeholder run detail page.
+- Determined `actions-003` requires structure planning before implementation because `needs_structure: true` and `.qrspi/actions-003/structure.md` did not exist.
+- Added `.qrspi/actions-003/structure.md` with five independently verifiable vertical phases: run detail read contract, Editorial run detail page, job logs/artifact downloads, rerun/cancel/delete-log actions plus API docs, and final guardrails/QA handoff.
+- Did not change `prd.json`; `build_pass` remains `false` until all implementation phases pass verification.
+- Tests not run because this iteration only created the required planning artifact.
