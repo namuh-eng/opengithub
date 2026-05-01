@@ -15,9 +15,10 @@ use crate::{
     auth::extractor::AuthenticatedUser,
     domain::{
         actions::{
-            create_workflow, create_workflow_run, get_workflow_for_actor,
-            get_workflow_run_for_actor, list_workflow_runs, list_workflows,
-            repository_for_actor_by_name, transition_workflow_run, AutomationError, CreateWorkflow,
+            actions_dashboard_for_viewer, create_workflow, create_workflow_run,
+            get_workflow_for_actor, get_workflow_run_for_actor, list_workflow_runs, list_workflows,
+            repository_for_actor_by_name, repository_for_optional_actor_by_name,
+            transition_workflow_run, ActionsDashboardQuery, AutomationError, CreateWorkflow,
             CreateWorkflowRun, RunConclusion, RunStatus, TransitionRun,
         },
         permissions::RepositoryRole,
@@ -27,6 +28,10 @@ use crate::{
 
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route(
+            "/api/repos/:owner/:repo/actions/dashboard",
+            get(actions_dashboard_route),
+        )
         .route(
             "/api/repos/:owner/:repo/actions/workflows",
             get(list_workflows_route).post(create_workflow_route),
@@ -59,6 +64,20 @@ struct ListQuery {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct DashboardQuery {
+    q: Option<String>,
+    workflow: Option<String>,
+    event: Option<String>,
+    status: Option<String>,
+    branch: Option<String>,
+    actor: Option<String>,
+    page: Option<i64>,
+    #[serde(alias = "page_size")]
+    page_size: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CreateWorkflowRequest {
     name: String,
     path: String,
@@ -78,6 +97,44 @@ struct CreateWorkflowRunRequest {
 struct UpdateWorkflowRunRequest {
     status: RunStatus,
     conclusion: Option<RunConclusion>,
+}
+
+async fn actions_dashboard_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<DashboardQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let repository = repository_for_optional_actor_by_name(
+        pool,
+        &owner,
+        &repo,
+        actor.as_ref().map(|user| user.id),
+    )
+    .await
+    .map_err(map_automation_error)?;
+    let pagination = normalize_pagination(query.page, query.page_size);
+    let dashboard = actions_dashboard_for_viewer(
+        pool,
+        repository.id,
+        actor.as_ref().map(|user| user.id),
+        ActionsDashboardQuery {
+            q: query.q,
+            workflow: query.workflow,
+            event: query.event,
+            status: query.status,
+            branch: query.branch,
+            actor: query.actor,
+            page: pagination.page,
+            page_size: pagination.page_size,
+        },
+    )
+    .await
+    .map_err(map_automation_error)?;
+
+    Ok(Json(json!(dashboard)))
 }
 
 async fn list_workflows_route(
@@ -313,7 +370,8 @@ pub(crate) fn map_automation_error(error: AutomationError) -> (StatusCode, Json<
         AutomationError::InvalidWorkflowState(_)
         | AutomationError::InvalidRunStatus(_)
         | AutomationError::InvalidRunConclusion(_)
-        | AutomationError::InvalidPackageType(_) => error_response(
+        | AutomationError::InvalidPackageType(_)
+        | AutomationError::InvalidActionsFilter(_) => error_response(
             StatusCode::UNPROCESSABLE_ENTITY,
             "validation_failed",
             error.to_string(),

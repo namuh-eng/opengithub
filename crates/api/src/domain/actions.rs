@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{PgPool, Row};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::api_types::ListEnvelope;
@@ -10,7 +11,7 @@ use super::{
     permissions::RepositoryRole,
     repositories::{
         get_repository, get_repository_by_owner_name, repository_permission_for_user, Repository,
-        RepositoryError,
+        RepositoryError, RepositoryVisibility,
     },
 };
 
@@ -178,6 +179,162 @@ pub struct WorkflowRun {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsDashboard {
+    pub repository: ActionsDashboardRepository,
+    pub viewer_permission: Option<String>,
+    pub workflows: Vec<ActionsWorkflowRailItem>,
+    pub runs: ListEnvelope<ActionsRunListItem>,
+    pub filters: ActionsRunFilters,
+    pub filter_options: ActionsRunFilterOptions,
+    pub empty_state: ActionsEmptyState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsDashboardRepository {
+    pub id: Uuid,
+    pub owner_login: String,
+    pub name: String,
+    pub visibility: RepositoryVisibility,
+    pub default_branch: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsWorkflowRailItem {
+    pub id: Uuid,
+    pub name: String,
+    pub path: String,
+    pub state: WorkflowState,
+    pub trigger_events: Vec<String>,
+    pub pinned: bool,
+    pub run_count: i64,
+    pub latest_run: Option<ActionsWorkflowLatestRun>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsWorkflowLatestRun {
+    pub id: Uuid,
+    pub run_number: i64,
+    pub status: String,
+    pub conclusion: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsRunListItem {
+    pub id: Uuid,
+    pub workflow_id: Uuid,
+    pub workflow_name: String,
+    pub workflow_path: String,
+    pub run_number: i64,
+    pub display_title: String,
+    pub status: String,
+    pub conclusion: Option<String>,
+    pub status_category: String,
+    pub event: String,
+    pub actor: Option<ActionsActor>,
+    pub head_branch: String,
+    pub head_sha: Option<String>,
+    pub short_sha: Option<String>,
+    pub pull_request: Option<ActionsRunPullRequest>,
+    pub commit_message: Option<String>,
+    pub job_summary: ActionsJobSummary,
+    pub duration_seconds: Option<i64>,
+    pub is_live: bool,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsActor {
+    pub id: Uuid,
+    pub login: String,
+    pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsRunPullRequest {
+    pub id: Uuid,
+    pub number: i64,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsJobSummary {
+    pub total: i64,
+    pub queued: i64,
+    pub in_progress: i64,
+    pub completed: i64,
+    pub cancelled: i64,
+    pub success: i64,
+    pub failure: i64,
+    pub skipped: i64,
+    pub timed_out: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsRunFilters {
+    pub q: Option<String>,
+    pub workflow: Option<String>,
+    pub event: Option<String>,
+    pub status: Option<String>,
+    pub branch: Option<String>,
+    pub actor: Option<String>,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsRunFilterOptions {
+    pub workflows: Vec<ActionsFilterOption>,
+    pub events: Vec<ActionsFilterOption>,
+    pub statuses: Vec<ActionsFilterOption>,
+    pub branches: Vec<ActionsFilterOption>,
+    pub actors: Vec<ActionsFilterOption>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsFilterOption {
+    pub value: String,
+    pub label: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsEmptyState {
+    pub has_workflows: bool,
+    pub has_runs: bool,
+    pub message: String,
+    pub new_workflow_href: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ActionsDashboardQuery {
+    pub q: Option<String>,
+    pub workflow: Option<String>,
+    pub event: Option<String>,
+    pub status: Option<String>,
+    pub branch: Option<String>,
+    pub actor: Option<String>,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WorkflowJob {
     pub id: Uuid,
     pub run_id: Uuid,
@@ -308,8 +465,100 @@ pub enum AutomationError {
     InvalidRunConclusion(String),
     #[error("invalid package type `{0}`")]
     InvalidPackageType(String),
+    #[error("invalid actions filter `{0}`")]
+    InvalidActionsFilter(String),
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
+}
+
+pub async fn actions_dashboard_for_viewer(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Option<Uuid>,
+    query: ActionsDashboardQuery,
+) -> Result<ActionsDashboard, AutomationError> {
+    let repository = require_repository_read_for_viewer(pool, repository_id, actor_user_id).await?;
+    let viewer_permission = viewer_permission(pool, &repository, actor_user_id).await?;
+    let page = query.page.max(1);
+    let page_size = query.page_size.clamp(1, 100);
+    let q = cleaned_filter(query.q);
+    let workflow = cleaned_filter(query.workflow);
+    let event = cleaned_filter(query.event);
+    let status = cleaned_filter(query.status);
+    let branch = cleaned_filter(query.branch);
+    let actor = cleaned_filter(query.actor);
+    if let Some(status) = status.as_deref() {
+        if !ACTIONS_STATUS_OPTIONS.contains(&status) {
+            return Err(AutomationError::InvalidActionsFilter(format!(
+                "unsupported status `{status}`"
+            )));
+        }
+    }
+    let offset = (page - 1) * page_size;
+    let run_filters = ActionsRunFilterRefs {
+        repository_id,
+        q: q.as_deref(),
+        workflow: workflow.as_deref(),
+        event: event.as_deref(),
+        status: status.as_deref(),
+        branch: branch.as_deref(),
+        actor: actor.as_deref(),
+    };
+
+    let workflows = actions_workflow_rail(pool, repository_id).await?;
+    let total = actions_run_count(pool, run_filters).await?;
+    let mut runs = actions_run_items(pool, run_filters, page_size, offset).await?;
+    hydrate_job_summaries(pool, &mut runs).await?;
+    let filter_options = actions_filter_options(pool, repository_id).await?;
+    let has_workflows = !workflows.is_empty();
+    let has_runs = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM workflow_runs WHERE repository_id = $1)",
+    )
+    .bind(repository_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(ActionsDashboard {
+        repository: ActionsDashboardRepository {
+            id: repository.id,
+            owner_login: repository.owner_login.clone(),
+            name: repository.name.clone(),
+            visibility: repository.visibility.clone(),
+            default_branch: repository.default_branch.clone(),
+        },
+        viewer_permission,
+        workflows,
+        runs: ListEnvelope {
+            items: runs,
+            total,
+            page,
+            page_size,
+        },
+        filters: ActionsRunFilters {
+            q,
+            workflow,
+            event,
+            status,
+            branch,
+            actor,
+            page,
+            page_size,
+        },
+        filter_options,
+        empty_state: ActionsEmptyState {
+            has_workflows,
+            has_runs,
+            message: if has_workflows {
+                "No workflow runs match the current filters.".to_owned()
+            } else {
+                "This repository does not have any workflows yet.".to_owned()
+            },
+            new_workflow_href: format!(
+                "/{}/{}/new/{}/.github/workflows",
+                repository.owner_login, repository.name, repository.default_branch
+            ),
+        },
+    })
 }
 
 pub async fn create_workflow(
@@ -774,6 +1023,523 @@ pub async fn repository_for_actor_by_name(
         .ok_or(AutomationError::RepositoryNotFound)?;
     require_repository_role(pool, repository.id, actor_user_id, required_role).await?;
     Ok(repository.id)
+}
+
+pub async fn repository_for_optional_actor_by_name(
+    pool: &PgPool,
+    owner_login: &str,
+    repo_name: &str,
+    actor_user_id: Option<Uuid>,
+) -> Result<Repository, AutomationError> {
+    let repository = get_repository_by_owner_name(pool, owner_login, repo_name)
+        .await
+        .map_err(map_repository_error)?
+        .ok_or(AutomationError::RepositoryNotFound)?;
+    require_repository_read_for_viewer(pool, repository.id, actor_user_id).await
+}
+
+const ACTIONS_STATUS_OPTIONS: &[&str] = &[
+    "action_required",
+    "cancelled",
+    "completed",
+    "failure",
+    "in_progress",
+    "neutral",
+    "queued",
+    "skipped",
+    "stale",
+    "success",
+    "timed_out",
+    "waiting",
+];
+
+fn cleaned_filter(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+}
+
+async fn require_repository_read_for_viewer(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Option<Uuid>,
+) -> Result<Repository, AutomationError> {
+    let repository = get_repository(pool, repository_id)
+        .await
+        .map_err(map_repository_error)?
+        .ok_or(AutomationError::RepositoryNotFound)?;
+
+    match actor_user_id {
+        Some(user_id) => {
+            if repository.visibility == RepositoryVisibility::Public {
+                Ok(repository)
+            } else {
+                require_repository_role(pool, repository_id, user_id, RepositoryRole::Read).await?;
+                Ok(repository)
+            }
+        }
+        None if repository.visibility == RepositoryVisibility::Public => Ok(repository),
+        None => Err(AutomationError::RepositoryAccessDenied),
+    }
+}
+
+async fn viewer_permission(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Option<Uuid>,
+) -> Result<Option<String>, AutomationError> {
+    let Some(user_id) = actor_user_id else {
+        return Ok(
+            (repository.visibility == RepositoryVisibility::Public).then(|| "read".to_owned())
+        );
+    };
+    if repository.owner_user_id == Some(user_id) {
+        return Ok(Some("owner".to_owned()));
+    }
+    if repository.visibility == RepositoryVisibility::Public {
+        return Ok(Some("read".to_owned()));
+    }
+    Ok(repository_permission_for_user(pool, repository.id, user_id)
+        .await
+        .map_err(map_repository_error)?
+        .map(|permission| permission.role.as_str().to_owned()))
+}
+
+async fn actions_workflow_rail(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<Vec<ActionsWorkflowRailItem>, AutomationError> {
+    let rows = sqlx::query(
+        r#"
+        WITH latest_runs AS (
+            SELECT DISTINCT ON (workflow_id)
+                   workflow_id, id, run_number, status, conclusion, created_at
+            FROM workflow_runs
+            WHERE repository_id = $1
+            ORDER BY workflow_id, created_at DESC, run_number DESC
+        )
+        SELECT actions_workflows.id,
+               actions_workflows.name,
+               actions_workflows.path,
+               actions_workflows.state,
+               actions_workflows.trigger_events,
+               actions_workflows.pinned_order,
+               COALESCE(run_counts.run_count, 0)::bigint AS run_count,
+               latest_runs.id AS latest_run_id,
+               latest_runs.run_number AS latest_run_number,
+               latest_runs.status AS latest_run_status,
+               latest_runs.conclusion AS latest_run_conclusion,
+               latest_runs.created_at AS latest_run_created_at
+        FROM actions_workflows
+        LEFT JOIN (
+            SELECT workflow_id, count(*)::bigint AS run_count
+            FROM workflow_runs
+            WHERE repository_id = $1
+            GROUP BY workflow_id
+        ) run_counts ON run_counts.workflow_id = actions_workflows.id
+        LEFT JOIN latest_runs ON latest_runs.workflow_id = actions_workflows.id
+        WHERE actions_workflows.repository_id = $1
+        ORDER BY actions_workflows.pinned_order NULLS LAST, lower(actions_workflows.name), actions_workflows.path
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            let state: String = row.get("state");
+            let latest_run_id: Option<Uuid> = row.get("latest_run_id");
+            Ok(ActionsWorkflowRailItem {
+                id: row.get("id"),
+                name: row.get("name"),
+                path: row.get("path"),
+                state: WorkflowState::try_from(state.as_str())?,
+                trigger_events: row.get("trigger_events"),
+                pinned: row.get::<Option<i32>, _>("pinned_order").is_some(),
+                run_count: row.get("run_count"),
+                latest_run: latest_run_id.map(|id| ActionsWorkflowLatestRun {
+                    id,
+                    run_number: row.get("latest_run_number"),
+                    status: row.get("latest_run_status"),
+                    conclusion: row.get("latest_run_conclusion"),
+                    created_at: row.get("latest_run_created_at"),
+                }),
+            })
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ActionsRunFilterRefs<'a> {
+    repository_id: Uuid,
+    q: Option<&'a str>,
+    workflow: Option<&'a str>,
+    event: Option<&'a str>,
+    status: Option<&'a str>,
+    branch: Option<&'a str>,
+    actor: Option<&'a str>,
+}
+
+async fn actions_run_count(
+    pool: &PgPool,
+    filters: ActionsRunFilterRefs<'_>,
+) -> Result<i64, AutomationError> {
+    let sql = format!(
+        r#"
+        SELECT count(*)::bigint
+        FROM workflow_runs
+        JOIN actions_workflows ON actions_workflows.id = workflow_runs.workflow_id
+        LEFT JOIN users ON users.id = workflow_runs.actor_user_id
+        LEFT JOIN commits ON commits.id = workflow_runs.commit_id
+        WHERE
+        {ACTIONS_RUN_FILTER_PREDICATE}
+        "#
+    );
+    sqlx::query_scalar::<_, i64>(&sql)
+        .bind(filters.repository_id)
+        .bind(filters.q)
+        .bind(filters.workflow)
+        .bind(filters.event)
+        .bind(filters.status)
+        .bind(filters.branch)
+        .bind(filters.actor)
+        .fetch_one(pool)
+        .await
+        .map_err(AutomationError::Sqlx)
+}
+
+async fn actions_run_items(
+    pool: &PgPool,
+    filters: ActionsRunFilterRefs<'_>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<ActionsRunListItem>, AutomationError> {
+    let sql = format!(
+        r#"
+        SELECT workflow_runs.id,
+               workflow_runs.workflow_id,
+               actions_workflows.name AS workflow_name,
+               actions_workflows.path AS workflow_path,
+               workflow_runs.run_number,
+               COALESCE(workflow_runs.display_title, commits.message, actions_workflows.name) AS display_title,
+               workflow_runs.status,
+               workflow_runs.conclusion,
+               workflow_runs.event,
+               workflow_runs.actor_user_id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS actor_login,
+               users.display_name AS actor_display_name,
+               users.avatar_url AS actor_avatar_url,
+               workflow_runs.head_branch,
+               workflow_runs.head_sha,
+               pull_requests.id AS pull_request_id,
+               pull_requests.number AS pull_request_number,
+               pull_requests.title AS pull_request_title,
+               commits.message AS commit_message,
+               workflow_runs.started_at,
+               workflow_runs.completed_at,
+               workflow_runs.created_at,
+               workflow_runs.updated_at
+        FROM workflow_runs
+        JOIN actions_workflows ON actions_workflows.id = workflow_runs.workflow_id
+        LEFT JOIN users ON users.id = workflow_runs.actor_user_id
+        LEFT JOIN pull_requests ON pull_requests.id = workflow_runs.pull_request_id
+        LEFT JOIN commits ON commits.id = workflow_runs.commit_id
+        WHERE
+        {ACTIONS_RUN_FILTER_PREDICATE}
+        ORDER BY workflow_runs.created_at DESC, workflow_runs.run_number DESC
+        LIMIT $8 OFFSET $9
+        "#
+    );
+    let rows = sqlx::query(&sql)
+        .bind(filters.repository_id)
+        .bind(filters.q)
+        .bind(filters.workflow)
+        .bind(filters.event)
+        .bind(filters.status)
+        .bind(filters.branch)
+        .bind(filters.actor)
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(pool)
+        .await?;
+
+    rows.into_iter()
+        .map(actions_run_list_item_from_row)
+        .collect()
+}
+
+const ACTIONS_RUN_FILTER_PREDICATE: &str = r#"
+        workflow_runs.repository_id = $1
+        AND (
+            $2::text IS NULL
+            OR workflow_runs.display_title ILIKE '%' || $2 || '%'
+            OR actions_workflows.name ILIKE '%' || $2 || '%'
+            OR actions_workflows.path ILIKE '%' || $2 || '%'
+            OR workflow_runs.head_branch ILIKE '%' || $2 || '%'
+            OR workflow_runs.head_sha ILIKE '%' || $2 || '%'
+            OR workflow_runs.run_number::text = $2
+            OR commits.message ILIKE '%' || $2 || '%'
+        )
+        AND (
+            $3::text IS NULL
+            OR actions_workflows.id::text = $3
+            OR lower(actions_workflows.name) = lower($3)
+            OR lower(actions_workflows.path) = lower($3)
+        )
+        AND ($4::text IS NULL OR lower(workflow_runs.event) = lower($4))
+        AND (
+            $5::text IS NULL
+            OR workflow_runs.status = $5
+            OR workflow_runs.conclusion = $5
+            OR (
+                $5 = 'completed'
+                AND workflow_runs.status = 'completed'
+            )
+        )
+        AND ($6::text IS NULL OR lower(workflow_runs.head_branch) = lower($6))
+        AND (
+            $7::text IS NULL
+            OR users.id::text = $7
+            OR lower(COALESCE(NULLIF(users.username, ''), users.email)) = lower($7)
+            OR users.email ILIKE '%' || $7 || '%'
+            OR users.display_name ILIKE '%' || $7 || '%'
+        )
+"#;
+
+fn actions_run_list_item_from_row(
+    row: sqlx::postgres::PgRow,
+) -> Result<ActionsRunListItem, AutomationError> {
+    let status: String = row.get("status");
+    let conclusion: Option<String> = row.get("conclusion");
+    let actor_user_id: Option<Uuid> = row.get("actor_user_id");
+    let pull_request_id: Option<Uuid> = row.get("pull_request_id");
+    let head_sha: Option<String> = row.get("head_sha");
+    let started_at: Option<DateTime<Utc>> = row.get("started_at");
+    let completed_at: Option<DateTime<Utc>> = row.get("completed_at");
+    Ok(ActionsRunListItem {
+        id: row.get("id"),
+        workflow_id: row.get("workflow_id"),
+        workflow_name: row.get("workflow_name"),
+        workflow_path: row.get("workflow_path"),
+        run_number: row.get("run_number"),
+        display_title: row.get("display_title"),
+        status_category: status_category(&status, conclusion.as_deref()),
+        status,
+        conclusion,
+        event: row.get("event"),
+        actor: actor_user_id.map(|id| ActionsActor {
+            id,
+            login: row.get("actor_login"),
+            display_name: row.get("actor_display_name"),
+            avatar_url: row.get("actor_avatar_url"),
+        }),
+        head_branch: row.get("head_branch"),
+        short_sha: head_sha
+            .as_deref()
+            .map(|sha| sha.chars().take(7).collect::<String>()),
+        head_sha,
+        pull_request: pull_request_id.map(|id| ActionsRunPullRequest {
+            id,
+            number: row.get("pull_request_number"),
+            title: row.get("pull_request_title"),
+        }),
+        commit_message: row.get("commit_message"),
+        job_summary: ActionsJobSummary::default(),
+        duration_seconds: match (started_at, completed_at) {
+            (Some(started), Some(completed)) => Some((completed - started).num_seconds().max(0)),
+            _ => None,
+        },
+        is_live: matches!(
+            row.get::<String, _>("status").as_str(),
+            "queued" | "in_progress"
+        ),
+        started_at,
+        completed_at,
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    })
+}
+
+fn status_category(status: &str, conclusion: Option<&str>) -> String {
+    match (status, conclusion) {
+        ("completed", Some(conclusion)) => conclusion.to_owned(),
+        ("cancelled", _) => "cancelled".to_owned(),
+        ("completed", None) => "completed".to_owned(),
+        (status, _) => status.to_owned(),
+    }
+}
+
+async fn hydrate_job_summaries(
+    pool: &PgPool,
+    runs: &mut [ActionsRunListItem],
+) -> Result<(), AutomationError> {
+    if runs.is_empty() {
+        return Ok(());
+    }
+    let run_ids = runs.iter().map(|run| run.id).collect::<Vec<_>>();
+    let rows = sqlx::query(
+        r#"
+        SELECT run_id,
+               count(*)::bigint AS total,
+               count(*) FILTER (WHERE status = 'queued')::bigint AS queued,
+               count(*) FILTER (WHERE status = 'in_progress')::bigint AS in_progress,
+               count(*) FILTER (WHERE status = 'completed')::bigint AS completed,
+               count(*) FILTER (WHERE status = 'cancelled')::bigint AS cancelled,
+               count(*) FILTER (WHERE conclusion = 'success')::bigint AS success,
+               count(*) FILTER (WHERE conclusion = 'failure')::bigint AS failure,
+               count(*) FILTER (WHERE conclusion = 'skipped')::bigint AS skipped,
+               count(*) FILTER (WHERE conclusion = 'timed_out')::bigint AS timed_out
+        FROM workflow_jobs
+        WHERE run_id = ANY($1)
+        GROUP BY run_id
+        "#,
+    )
+    .bind(&run_ids)
+    .fetch_all(pool)
+    .await?;
+    let mut summaries = HashMap::new();
+    for row in rows {
+        summaries.insert(
+            row.get::<Uuid, _>("run_id"),
+            ActionsJobSummary {
+                total: row.get("total"),
+                queued: row.get("queued"),
+                in_progress: row.get("in_progress"),
+                completed: row.get("completed"),
+                cancelled: row.get("cancelled"),
+                success: row.get("success"),
+                failure: row.get("failure"),
+                skipped: row.get("skipped"),
+                timed_out: row.get("timed_out"),
+            },
+        );
+    }
+    for run in runs {
+        if let Some(summary) = summaries.remove(&run.id) {
+            run.job_summary = summary;
+        }
+    }
+    Ok(())
+}
+
+async fn actions_filter_options(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<ActionsRunFilterOptions, AutomationError> {
+    Ok(ActionsRunFilterOptions {
+        workflows: workflow_filter_options(pool, repository_id).await?,
+        events: distinct_run_options(pool, repository_id, "event").await?,
+        statuses: status_filter_options(pool, repository_id).await?,
+        branches: distinct_run_options(pool, repository_id, "head_branch").await?,
+        actors: actor_filter_options(pool, repository_id).await?,
+    })
+}
+
+async fn workflow_filter_options(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<Vec<ActionsFilterOption>, AutomationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT actions_workflows.id::text AS value,
+               actions_workflows.name AS label,
+               count(workflow_runs.id)::bigint AS count
+        FROM actions_workflows
+        LEFT JOIN workflow_runs ON workflow_runs.workflow_id = actions_workflows.id
+        WHERE actions_workflows.repository_id = $1
+        GROUP BY actions_workflows.id, actions_workflows.name, actions_workflows.pinned_order
+        ORDER BY actions_workflows.pinned_order NULLS LAST, lower(actions_workflows.name)
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(filter_option_from_row).collect())
+}
+
+async fn distinct_run_options(
+    pool: &PgPool,
+    repository_id: Uuid,
+    column: &str,
+) -> Result<Vec<ActionsFilterOption>, AutomationError> {
+    let sql = match column {
+        "event" => {
+            "SELECT event AS value, event AS label, count(*)::bigint AS count FROM workflow_runs WHERE repository_id = $1 GROUP BY event ORDER BY lower(event)"
+        }
+        "head_branch" => {
+            "SELECT head_branch AS value, head_branch AS label, count(*)::bigint AS count FROM workflow_runs WHERE repository_id = $1 GROUP BY head_branch ORDER BY lower(head_branch)"
+        }
+        _ => unreachable!("unsupported filter column"),
+    };
+    let rows = sqlx::query(sql).bind(repository_id).fetch_all(pool).await?;
+    Ok(rows.into_iter().map(filter_option_from_row).collect())
+}
+
+async fn status_filter_options(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<Vec<ActionsFilterOption>, AutomationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT category AS value, category AS label, count(*)::bigint AS count
+        FROM (
+            SELECT CASE
+                WHEN status = 'completed' AND conclusion IS NOT NULL THEN conclusion
+                ELSE status
+            END AS category
+            FROM workflow_runs
+            WHERE repository_id = $1
+        ) categories
+        GROUP BY category
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_all(pool)
+    .await?;
+    let mut counts = rows
+        .into_iter()
+        .map(|row| (row.get::<String, _>("value"), row.get::<i64, _>("count")))
+        .collect::<HashMap<_, _>>();
+
+    Ok(ACTIONS_STATUS_OPTIONS
+        .iter()
+        .map(|status| ActionsFilterOption {
+            value: (*status).to_owned(),
+            label: status.replace('_', " "),
+            count: counts.remove(*status).unwrap_or(0),
+        })
+        .collect())
+}
+
+async fn actor_filter_options(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<Vec<ActionsFilterOption>, AutomationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT users.id::text AS value,
+               COALESCE(NULLIF(users.username, ''), users.email) AS label,
+               count(workflow_runs.id)::bigint AS count
+        FROM workflow_runs
+        JOIN users ON users.id = workflow_runs.actor_user_id
+        WHERE workflow_runs.repository_id = $1
+        GROUP BY users.id, users.username, users.email
+        ORDER BY lower(COALESCE(NULLIF(users.username, ''), users.email))
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(filter_option_from_row).collect())
+}
+
+fn filter_option_from_row(row: sqlx::postgres::PgRow) -> ActionsFilterOption {
+    ActionsFilterOption {
+        value: row.get("value"),
+        label: row.get("label"),
+        count: row.get("count"),
+    }
 }
 
 async fn get_workflow(

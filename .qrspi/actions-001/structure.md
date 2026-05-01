@@ -6,7 +6,7 @@
 
 ## Phase 1: Actions Dashboard Read Contract - workflows, runs, and summaries are queryable
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Build the permission-aware backend contract that the `/actions` page needs before replacing the placeholder UI. A repository reader can fetch the Actions rail, recent runs, available filter options, run/job summary counts, and empty-workflow state from real tables.
 

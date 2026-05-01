@@ -1504,3 +1504,13 @@
 - Added `.qrspi/actions-001/structure.md` with five independently verifiable vertical phases: Actions dashboard read contract, Editorial all-workflows UI, URL-backed filters/workflow scoping/recent telemetry, management navigation/API docs, and final guardrails/QA handoff.
 - Did not change `prd.json`; `build_pass` remains `false` until all implementation phases pass verification.
 - Tests not run because this iteration only created the required planning artifact.
+
+2026-05-02 - actions-001 phase 1 Actions dashboard read contract
+
+- Implemented Phase 1 from `.qrspi/actions-001/structure.md`: `GET /api/repos/{owner}/{repo}/actions/dashboard` now returns a permission-aware Actions dashboard contract for workflows, recent runs, filters, job summaries, and no-workflows empty state.
+- Added additive schema support for workflow pinned order, run display titles, optional pull request/commit references, run filter indexes, and per-user recent Actions view telemetry.
+- Added `ActionsDashboard`, workflow rail, run row, actor, job summary, filter, filter option, and empty-state DTOs backed by real `actions_workflows`, `workflow_runs`, `workflow_jobs`, users, commits, pull requests, and repository visibility/permission checks.
+- Added `crates/api/tests/api_repository_actions_dashboard_contract.rs` covering public anonymous reads, private denial without metadata leakage, owner private access, active/disabled workflows, pinned ordering, pagination, query/workflow/status/event/branch/actor filters, status vocabulary, job summaries, live state, short SHA, and empty repositories.
+- Verification passed: focused `api_repository_actions_dashboard_contract`, `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`, and same-env `make test` with Cargo tests plus 171 frontend tests.
+- Browser smoke and `make test-e2e` were not run because Phase 1 is backend/API-only and the structure outline marks browser smoke optional for this phase.
+- Marked Phase 1 as done in `.qrspi/actions-001/structure.md`; `prd.json` remains `build_pass: false` because Phases 2-5 remain.

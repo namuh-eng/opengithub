@@ -2189,5 +2189,21 @@
       "Raw .diff/.patch output is bounded to the first 100 changed files and sourced from stored hunk snapshots, so large-PR behavior and exact Git patch fidelity need deeper QA.",
       "Real Google OAuth was not used; browser/E2E verification used deterministic Rust-signed Playwright sessions against the local Postgres test database."
     ]
+  },
+  {
+    "feature_id": "actions-001",
+    "tests_written": [
+      "Implemented Phase 1 Actions dashboard read contract for GET /api/repos/{owner}/{repo}/actions/dashboard.",
+      "Added additive Actions dashboard schema support for workflow pinned order, run display titles, optional pull request/commit references, and per-user recent view telemetry.",
+      "Added Rust DTO/query helpers for repository metadata, viewer permission, workflow rail items, run rows, job summaries, filters, filter options, and no-workflows empty state.",
+      "Added focused Rust contract coverage for public anonymous reads, private repository denial without metadata leakage, owner private access, active/disabled workflows, pinned workflow order, run pagination, query/workflow/event/status/branch/actor filters, status vocabulary, job summaries, live state, short SHA, and empty repository response.",
+      "Verification passed: focused api_repository_actions_dashboard_contract, TEST_DATABASE_URL-backed make check, and TEST_DATABASE_URL-backed make test with Cargo tests plus 171 frontend tests."
+    ],
+    "needs_deeper_qa": [
+      "This phase is API-only; the /{owner}/{repo}/actions Editorial UI and browser smoke are intentionally deferred to Phase 2.",
+      "Recent view telemetry schema exists for later phases, but telemetry writes are deferred to the URL-backed filter phase.",
+      "Runner execution, logs, artifacts, real check-run integration, and workflow dispatch are outside this all-workflows dashboard read-contract phase.",
+      "Real Google OAuth was not used; API verification used deterministic Rust-signed test sessions against the local Postgres test database."
+    ]
   }
 ]
