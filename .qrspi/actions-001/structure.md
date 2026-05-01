@@ -39,7 +39,7 @@
 
 ## Phase 3: Filters, Workflow Scoping, and Recent View Telemetry - URL-backed controls work
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make every filter control interactive and data-backed. Typing in the run filter updates the URL and result list; Workflow/Event/Status/Branch/Actor controls open searchable select panels; selecting a rail workflow scopes the list; recent filter/view telemetry is persisted for signed-in users without blocking the page.
 

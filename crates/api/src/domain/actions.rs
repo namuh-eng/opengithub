@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use sqlx::{PgPool, Row};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -335,6 +335,29 @@ pub struct ActionsDashboardQuery {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordActionsRecentView {
+    pub repository_id: Uuid,
+    pub actor_user_id: Uuid,
+    pub workflow: Option<String>,
+    pub q: Option<String>,
+    pub event: Option<String>,
+    pub status: Option<String>,
+    pub branch: Option<String>,
+    pub actor: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsRecentView {
+    pub repository_id: Uuid,
+    pub user_id: Uuid,
+    pub workflow_id: Option<Uuid>,
+    pub filters: Value,
+    pub viewed_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WorkflowJob {
     pub id: Uuid,
     pub run_id: Uuid,
@@ -484,7 +507,7 @@ pub async fn actions_dashboard_for_viewer(
     let q = cleaned_filter(query.q);
     let workflow = cleaned_filter(query.workflow);
     let event = cleaned_filter(query.event);
-    let status = cleaned_filter(query.status);
+    let status = cleaned_filter(query.status).map(normalize_actions_status);
     let branch = cleaned_filter(query.branch);
     let actor = cleaned_filter(query.actor);
     if let Some(status) = status.as_deref() {
@@ -558,6 +581,66 @@ pub async fn actions_dashboard_for_viewer(
                 repository.owner_login, repository.name, repository.default_branch
             ),
         },
+    })
+}
+
+pub async fn record_actions_recent_view(
+    pool: &PgPool,
+    input: RecordActionsRecentView,
+) -> Result<ActionsRecentView, AutomationError> {
+    require_repository_role(
+        pool,
+        input.repository_id,
+        input.actor_user_id,
+        RepositoryRole::Read,
+    )
+    .await?;
+    let workflow_id = match cleaned_filter(input.workflow) {
+        Some(workflow) => {
+            Some(resolve_workflow_filter(pool, input.repository_id, &workflow).await?)
+        }
+        None => None,
+    };
+    let status = cleaned_filter(input.status).map(normalize_actions_status);
+    if let Some(status) = status.as_deref() {
+        if !ACTIONS_STATUS_OPTIONS.contains(&status) {
+            return Err(AutomationError::InvalidActionsFilter(format!(
+                "unsupported status `{status}`"
+            )));
+        }
+    }
+    let filters = json!({
+        "q": cleaned_filter(input.q),
+        "workflow": workflow_id.map(|id| id.to_string()),
+        "event": cleaned_filter(input.event),
+        "status": status,
+        "branch": cleaned_filter(input.branch),
+        "actor": cleaned_filter(input.actor),
+    });
+    let row = sqlx::query(
+        r#"
+        INSERT INTO actions_recent_views (repository_id, user_id, workflow_id, filters)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (repository_id, user_id)
+        DO UPDATE SET workflow_id = EXCLUDED.workflow_id,
+                      filters = EXCLUDED.filters,
+                      viewed_at = now()
+        RETURNING repository_id, user_id, workflow_id, filters, viewed_at
+        "#,
+    )
+    .bind(input.repository_id)
+    .bind(input.actor_user_id)
+    .bind(workflow_id)
+    .bind(filters)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(ActionsRecentView {
+        repository_id: row.get("repository_id"),
+        user_id: row.get("user_id"),
+        workflow_id: row.get("workflow_id"),
+        filters: row.get("filters"),
+        viewed_at: row.get("viewed_at"),
     })
 }
 
@@ -1057,6 +1140,37 @@ fn cleaned_filter(value: Option<String>) -> Option<String> {
     value
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty())
+}
+
+fn normalize_actions_status(value: String) -> String {
+    value.trim().to_lowercase().replace([' ', '-'], "_")
+}
+
+async fn resolve_workflow_filter(
+    pool: &PgPool,
+    repository_id: Uuid,
+    workflow: &str,
+) -> Result<Uuid, AutomationError> {
+    let row = sqlx::query(
+        r#"
+        SELECT id
+        FROM actions_workflows
+        WHERE repository_id = $1
+          AND (
+              id::text = $2
+              OR lower(name) = lower($2)
+              OR lower(path) = lower($2)
+          )
+        "#,
+    )
+    .bind(repository_id)
+    .bind(workflow)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| {
+        AutomationError::InvalidActionsFilter(format!("unknown workflow `{workflow}`"))
+    })?;
+    Ok(row.get("id"))
 }
 
 async fn require_repository_read_for_viewer(

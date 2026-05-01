@@ -17,9 +17,10 @@ use crate::{
         actions::{
             actions_dashboard_for_viewer, create_workflow, create_workflow_run,
             get_workflow_for_actor, get_workflow_run_for_actor, list_workflow_runs, list_workflows,
-            repository_for_actor_by_name, repository_for_optional_actor_by_name,
-            transition_workflow_run, ActionsDashboardQuery, AutomationError, CreateWorkflow,
-            CreateWorkflowRun, RunConclusion, RunStatus, TransitionRun,
+            record_actions_recent_view, repository_for_actor_by_name,
+            repository_for_optional_actor_by_name, transition_workflow_run, ActionsDashboardQuery,
+            AutomationError, CreateWorkflow, CreateWorkflowRun, RecordActionsRecentView,
+            RunConclusion, RunStatus, TransitionRun,
         },
         permissions::RepositoryRole,
     },
@@ -49,6 +50,10 @@ pub fn router() -> Router<AppState> {
             get(list_all_runs_route),
         )
         .route(
+            "/api/repos/:owner/:repo/actions/recent-view",
+            axum::routing::post(record_recent_view_route),
+        )
+        .route(
             "/api/repos/:owner/:repo/actions/runs/:run_id",
             get(read_workflow_run_route).patch(update_workflow_run_route),
         )
@@ -74,6 +79,17 @@ struct DashboardQuery {
     page: Option<i64>,
     #[serde(alias = "page_size")]
     page_size: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RecentViewRequest {
+    q: Option<String>,
+    workflow: Option<String>,
+    event: Option<String>,
+    status: Option<String>,
+    branch: Option<String>,
+    actor: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -232,6 +248,37 @@ async fn list_all_runs_route(
     Query(query): Query<ListQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     list_runs_for_workflow(&state, &headers, owner, repo, None, query).await
+}
+
+async fn record_recent_view_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<RecentViewRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id =
+        repository_for_actor_by_name(pool, &owner, &repo, actor.0.id, RepositoryRole::Read)
+            .await
+            .map_err(map_automation_error)?;
+    let recent_view = record_actions_recent_view(
+        pool,
+        RecordActionsRecentView {
+            repository_id,
+            actor_user_id: actor.0.id,
+            workflow: request.workflow,
+            q: request.q,
+            event: request.event,
+            status: request.status,
+            branch: request.branch,
+            actor: request.actor,
+        },
+    )
+    .await
+    .map_err(map_automation_error)?;
+
+    Ok(Json(json!(recent_view)))
 }
 
 async fn list_runs_for_workflow(

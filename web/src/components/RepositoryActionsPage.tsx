@@ -1,6 +1,11 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { RepositoryShell } from "@/components/RepositoryShell";
 import type {
+  ActionsFilterOption,
   ActionsRunListItem,
   ActionsWorkflowRailItem,
   ApiErrorEnvelope,
@@ -15,7 +20,16 @@ type RepositoryActionsPageProps = {
   validationError?: ApiErrorEnvelope | null;
 };
 
-const FILTERS = ["Workflow", "Event", "Status", "Branch", "Actor"] as const;
+const FILTERS = ["workflow", "event", "status", "branch", "actor"] as const;
+type FilterKey = (typeof FILTERS)[number];
+
+const FILTER_LABELS: Record<FilterKey, string> = {
+  actor: "Actor",
+  branch: "Branch",
+  event: "Event",
+  status: "Status",
+  workflow: "Workflow",
+};
 
 function relativeTime(value: string | null) {
   if (!value) {
@@ -130,12 +144,17 @@ function WorkflowRailItem({
   workflow,
   active,
   basePath,
+  query,
 }: {
   workflow: ActionsWorkflowRailItem;
   active: boolean;
   basePath: string;
+  query: Record<string, string | undefined>;
 }) {
-  const href = `${basePath}/actions?workflow=${encodeURIComponent(workflow.id)}`;
+  const href = actionsHref(basePath, query, {
+    page: null,
+    workflow: workflow.id,
+  });
   return (
     <Link
       aria-current={active ? "page" : undefined}
@@ -162,12 +181,41 @@ function WorkflowRailItem({
   );
 }
 
+function actionsHref(
+  basePath: string,
+  query: Record<string, string | number | null | undefined>,
+  updates: Record<string, string | number | null | undefined> = {},
+) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries({ ...query, ...updates })) {
+    if (value === undefined || value === null || value === "") {
+      continue;
+    }
+    params.set(key, String(value));
+  }
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return `${basePath}/actions${suffix}`;
+}
+
+function displayFilterValue(
+  key: FilterKey,
+  value: string,
+  dashboard: RepositoryActionsDashboard,
+) {
+  const options = filterOptions(key, dashboard);
+  return (
+    options.find((option) => option.value === value)?.label ?? titleCase(value)
+  );
+}
+
 function WorkflowRail({
   dashboard,
   basePath,
+  query,
 }: {
   dashboard: RepositoryActionsDashboard;
   basePath: string;
+  query: Record<string, string | undefined>;
 }) {
   const activeWorkflow = dashboard.filters.workflow;
   const visibleWorkflows = dashboard.workflows.slice(0, 8);
@@ -181,7 +229,7 @@ function WorkflowRail({
         <Link
           aria-current={!activeWorkflow ? "page" : undefined}
           className="flex items-center justify-between rounded-[var(--radius)] px-3 py-2 text-sm font-medium transition hover:bg-[var(--hover)]"
-          href={`${basePath}/actions`}
+          href={actionsHref(basePath, query, { page: null, workflow: null })}
           style={{
             background: !activeWorkflow ? "var(--accent-soft)" : "transparent",
           }}
@@ -194,6 +242,7 @@ function WorkflowRail({
             active={activeWorkflow === workflow.id}
             basePath={basePath}
             key={workflow.id}
+            query={query}
             workflow={workflow}
           />
         ))}
@@ -201,7 +250,7 @@ function WorkflowRail({
       {dashboard.workflows.length > visibleWorkflows.length ? (
         <Link
           className="btn ghost mt-3 w-full justify-center"
-          href={`${basePath}/actions`}
+          href={actionsHref(basePath, query)}
         >
           Show more workflows
         </Link>
@@ -233,6 +282,98 @@ function WorkflowRail({
   );
 }
 
+function filterOptions(
+  key: FilterKey,
+  dashboard: RepositoryActionsDashboard,
+): ActionsFilterOption[] {
+  if (key === "workflow") {
+    return dashboard.filterOptions.workflows;
+  }
+  if (key === "event") {
+    return dashboard.filterOptions.events;
+  }
+  if (key === "status") {
+    return dashboard.filterOptions.statuses;
+  }
+  if (key === "branch") {
+    return dashboard.filterOptions.branches;
+  }
+  return dashboard.filterOptions.actors;
+}
+
+function FilterPanel({
+  active,
+  dashboard,
+  filterKey,
+  onClose,
+  onSelect,
+}: {
+  active: string | null;
+  dashboard: RepositoryActionsDashboard;
+  filterKey: FilterKey;
+  onClose: () => void;
+  onSelect: (key: FilterKey, value: string) => void;
+}) {
+  const [needle, setNeedle] = useState("");
+  const options = filterOptions(filterKey, dashboard).filter((option) =>
+    `${option.label} ${option.value}`
+      .toLowerCase()
+      .includes(needle.toLowerCase()),
+  );
+
+  return (
+    <div
+      aria-label={`${FILTER_LABELS[filterKey]} filter options`}
+      className="card absolute z-20 mt-2 w-72 p-3 shadow-[var(--shadow-md)]"
+      role="dialog"
+    >
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="t-label">{FILTER_LABELS[filterKey]}</p>
+        <button
+          aria-label={`Close ${FILTER_LABELS[filterKey]} filter`}
+          className="btn sm"
+          onClick={onClose}
+          type="button"
+        >
+          ×
+        </button>
+      </div>
+      <label className="input mb-2" htmlFor={`actions-${filterKey}-search`}>
+        <span aria-hidden="true">⌕</span>
+        <input
+          id={`actions-${filterKey}-search`}
+          onChange={(event) => setNeedle(event.target.value)}
+          placeholder={`Search ${FILTER_LABELS[filterKey].toLowerCase()}`}
+          value={needle}
+        />
+      </label>
+      <div className="max-h-64 overflow-auto" role="menu">
+        {options.length ? (
+          options.map((option) => (
+            <button
+              aria-checked={active === option.value}
+              className="list-row w-full justify-between gap-3 px-2 py-2 text-left"
+              key={option.value}
+              onClick={() => onSelect(filterKey, option.value)}
+              role="menuitemradio"
+              type="button"
+            >
+              <span className="min-w-0 truncate">
+                {titleCase(option.label)}
+              </span>
+              <span className="chip soft t-num">{option.count}</span>
+            </button>
+          ))
+        ) : (
+          <p className="t-sm px-2 py-3" style={{ color: "var(--ink-3)" }}>
+            No matching options.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function FilterSummary({
   dashboard,
   basePath,
@@ -242,58 +383,103 @@ function FilterSummary({
   basePath: string;
   query: Record<string, string | undefined>;
 }) {
-  const queryString = new URLSearchParams(
-    Object.entries(query).filter((entry): entry is [string, string] =>
-      Boolean(entry[1]),
-    ),
+  const router = useRouter();
+  const [search, setSearch] = useState(dashboard.filters.q ?? "");
+  const [openFilter, setOpenFilter] = useState<FilterKey | null>(null);
+  const selectedFilters = useMemo(
+    () =>
+      FILTERS.map((key) => [key, dashboard.filters[key]] as const).filter(
+        (entry): entry is readonly [FilterKey, string] => Boolean(entry[1]),
+      ),
+    [dashboard.filters],
   );
-  const searchHref = queryString.size
-    ? `${basePath}/actions?${queryString.toString()}`
-    : `${basePath}/actions`;
+
+  const push = useCallback(
+    (updates: Record<string, string | number | null | undefined>) => {
+      router.push(actionsHref(basePath, query, { ...updates, page: null }));
+    },
+    [basePath, query, router],
+  );
+
+  useEffect(() => {
+    if (search === (dashboard.filters.q ?? "")) {
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      push({ q: search.trim() || null });
+    }, 350);
+    return () => window.clearTimeout(timeout);
+  }, [search, dashboard.filters.q, push]);
 
   return (
     <div className="card p-4">
-      <form action={`${basePath}/actions`} className="flex flex-wrap gap-2">
+      <form
+        className="flex flex-wrap gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          push({ q: search.trim() || null });
+        }}
+      >
         <label className="input min-w-64 flex-1" htmlFor="actions-run-filter">
           <span aria-hidden="true">⌕</span>
           <input
-            defaultValue={dashboard.filters.q ?? ""}
             id="actions-run-filter"
             name="q"
+            onChange={(event) => setSearch(event.target.value)}
             placeholder="Filter workflow runs"
+            value={search}
           />
         </label>
         <button className="btn" type="submit">
           Search
         </button>
-        {dashboard.filters.workflow ? (
-          <input
-            name="workflow"
-            type="hidden"
-            value={dashboard.filters.workflow}
-          />
-        ) : null}
       </form>
       <div className="mt-3 flex flex-wrap gap-2">
         {FILTERS.map((filter) => (
-          <Link className="btn sm" href={searchHref} key={filter}>
-            {filter}
-          </Link>
-        ))}
-        {Object.entries(dashboard.filters)
-          .filter(
-            ([key, value]) =>
-              Boolean(value) && !["page", "pageSize"].includes(key),
-          )
-          .map(([key, value]) => (
-            <Link
-              className="chip accent"
-              href={`${basePath}/actions`}
-              key={key}
+          <span className="relative" key={filter}>
+            <button
+              aria-expanded={openFilter === filter}
+              className="btn sm"
+              onClick={() =>
+                setOpenFilter(openFilter === filter ? null : filter)
+              }
+              type="button"
             >
-              {key}:{String(value)}
-            </Link>
-          ))}
+              {FILTER_LABELS[filter]}
+            </button>
+            {openFilter === filter ? (
+              <FilterPanel
+                active={dashboard.filters[filter]}
+                dashboard={dashboard}
+                filterKey={filter}
+                onClose={() => setOpenFilter(null)}
+                onSelect={(key, value) => {
+                  setOpenFilter(null);
+                  push({ [key]: value });
+                }}
+              />
+            ) : null}
+          </span>
+        ))}
+        {selectedFilters.map(([key, value]) => (
+          <button
+            className="chip accent"
+            key={key}
+            onClick={() => push({ [key]: null })}
+            type="button"
+          >
+            {FILTER_LABELS[key]}: {displayFilterValue(key, value, dashboard)} ×
+          </button>
+        ))}
+        {dashboard.filters.q ? (
+          <button
+            className="chip accent"
+            onClick={() => push({ q: null })}
+            type="button"
+          >
+            Search: {dashboard.filters.q} ×
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -426,13 +612,40 @@ export function RepositoryActionsPage({
   validationError = null,
 }: RepositoryActionsPageProps) {
   const basePath = `/${repository.owner_login}/${repository.name}`;
+  const pathname = usePathname();
+  const telemetryPayload = useMemo(
+    () =>
+      JSON.stringify({
+        actor: dashboard.filters.actor,
+        branch: dashboard.filters.branch,
+        event: dashboard.filters.event,
+        q: dashboard.filters.q,
+        status: dashboard.filters.status,
+        workflow: dashboard.filters.workflow,
+      }),
+    [dashboard.filters],
+  );
+  useEffect(() => {
+    if (validationError) {
+      return;
+    }
+    const controller = new AbortController();
+    void fetch(`${pathname}/recent-view`, {
+      body: telemetryPayload,
+      headers: { "content-type": "application/json" },
+      method: "POST",
+      signal: controller.signal,
+    }).catch(() => {});
+    return () => controller.abort();
+  }, [pathname, telemetryPayload, validationError]);
+
   return (
     <RepositoryShell
       activePath={`${basePath}/actions`}
       frameClassName="grid grid-cols-[260px_minmax(0,1fr)] gap-8 max-lg:grid-cols-1"
       repository={repository}
     >
-      <WorkflowRail basePath={basePath} dashboard={dashboard} />
+      <WorkflowRail basePath={basePath} dashboard={dashboard} query={query} />
       <main className="min-w-0">
         <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
           <div>

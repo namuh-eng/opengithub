@@ -1524,3 +1524,13 @@
 - Browser smoke screenshot saved at `ralph/screenshots/build/actions-001-phase2-actions-list.jpg`.
 - Verification passed: focused `cd web && npx vitest run tests/repository-actions.test.tsx`, `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`, same-env `make test` with Cargo tests plus 175 frontend tests, focused `web/tests/e2e/repository-actions.spec.ts`, full same-env `make test-e2e` with 67 Playwright tests, and mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
 - Marked Phase 2 as done in `.qrspi/actions-001/structure.md`; `prd.json` remains `build_pass: false` because Phases 3-5 remain.
+
+2026-05-02 - actions-001 phase 3 filters, workflow scoping, and telemetry
+
+- Implemented Phase 3 from `.qrspi/actions-001/structure.md`: URL-backed Actions search/filter controls, searchable filter panels, workflow rail scoping that preserves active query params, selected filter chips with clear actions, and non-blocking recent-view telemetry writes.
+- Added `record_actions_recent_view` in `crates/api/src/domain/actions.rs` and `POST /api/repos/{owner}/{repo}/actions/recent-view` in `crates/api/src/routes/actions.rs`; writes are read-permission gated, validate workflow ownership, normalize status strings such as `in progress` to `in_progress`, and upsert into the existing `actions_recent_views` table.
+- Added a same-origin Next.js proxy route at `web/src/app/[owner]/[repo]/actions/recent-view/route.ts` so the browser can persist telemetry without cross-origin API assumptions.
+- Extended `web/src/components/RepositoryActionsPage.tsx` and Actions tests for search URL updates, Workflow/Event/Status/Branch/Actor panels, selected-chip clearing, workflow scoping, telemetry payload flow, and no dead controls.
+- Browser smoke/E2E used deterministic Rust-signed sessions against local Postgres, exercised search, status, branch, workflow scoping, and telemetry POSTs, and saved `ralph/screenshots/build/actions-001-phase3-filters.jpg`.
+- Verification: focused `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false cargo test --test api_repository_actions_dashboard_contract -- --nocapture` passed with 3 DB-backed tests; focused `cd web && npx vitest run tests/repository-actions.test.tsx` passed; `make check` passed; `make test` passed with Cargo tests plus 176 frontend tests; same-env `make test-e2e` passed with 67 Playwright tests.
+- Marked Phase 3 as done in `.qrspi/actions-001/structure.md`; `prd.json` remains `build_pass: false` because Phases 4-5 remain.

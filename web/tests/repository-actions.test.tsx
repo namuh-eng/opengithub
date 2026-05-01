@@ -1,5 +1,5 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RepositoryActionsPage } from "@/components/RepositoryActionsPage";
 import type {
   ActionsRunListItem,
@@ -7,6 +7,25 @@ import type {
   RepositoryActionsDashboard,
   RepositoryOverview,
 } from "@/lib/api";
+
+const pushMock = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/mona/octo-app/actions",
+  useRouter: () => ({ push: pushMock }),
+}));
+
+beforeEach(() => {
+  pushMock.mockClear();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      ),
+    ),
+  );
+});
 
 function repositoryOverview(
   overrides: Partial<RepositoryOverview> = {},
@@ -167,11 +186,25 @@ function dashboard(
       workflow: null,
     },
     filterOptions: {
-      actors: [],
-      branches: [],
-      events: [],
-      statuses: [],
-      workflows: [],
+      actors: [{ count: 2, label: "mona", value: "user-1" }],
+      branches: [
+        { count: 2, label: "main", value: "main" },
+        { count: 1, label: "feature/actions", value: "feature/actions" },
+      ],
+      events: [
+        { count: 2, label: "push", value: "push" },
+        { count: 1, label: "pull_request", value: "pull_request" },
+      ],
+      statuses: [
+        { count: 1, label: "success", value: "success" },
+        { count: 1, label: "in progress", value: "in_progress" },
+        { count: 0, label: "timed out", value: "timed_out" },
+      ],
+      workflows: workflows.map((item) => ({
+        count: item.runCount,
+        label: item.name,
+        value: item.id,
+      })),
     },
     emptyState: {
       hasRuns: runs.length > 0,
@@ -226,11 +259,59 @@ describe("RepositoryActionsPage", () => {
     expect(screen.getByText("3/3 jobs passed")).toBeVisible();
     expect(screen.getByLabelText("Success run")).toBeVisible();
     for (const filter of ["Workflow", "Event", "Status", "Branch", "Actor"]) {
-      expect(screen.getByRole("link", { name: filter })).toHaveAttribute(
-        "href",
-        "/mona/octo-app/actions",
-      );
+      expect(screen.getByRole("button", { name: filter })).toBeVisible();
     }
+  });
+
+  it("updates the URL from search, filter panels, selected chips, and workflow scoping", () => {
+    renderActions(
+      dashboard({
+        filters: {
+          actor: null,
+          branch: null,
+          event: null,
+          page: 1,
+          pageSize: 30,
+          q: "deploy",
+          status: "success",
+          workflow: "workflow-1",
+        },
+      }),
+      { q: "deploy", status: "success", workflow: "workflow-1" },
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("Filter workflow runs"), {
+      target: { value: "release" },
+    });
+    const searchForm = screen
+      .getByRole("button", { name: "Search" })
+      .closest("form");
+    expect(searchForm).not.toBeNull();
+    fireEvent.submit(searchForm as HTMLFormElement);
+    expect(pushMock).toHaveBeenLastCalledWith(
+      "/mona/octo-app/actions?q=release&status=success&workflow=workflow-1",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Branch" }));
+    expect(
+      screen.getByRole("dialog", { name: "Branch filter options" }),
+    ).toBeVisible();
+    fireEvent.click(
+      screen.getByRole("menuitemradio", { name: /feature\/actions/i }),
+    );
+    expect(pushMock).toHaveBeenLastCalledWith(
+      "/mona/octo-app/actions?q=deploy&status=success&workflow=workflow-1&branch=feature%2Factions",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Status: success/ }));
+    expect(pushMock).toHaveBeenLastCalledWith(
+      "/mona/octo-app/actions?q=deploy&workflow=workflow-1",
+    );
+
+    expect(screen.getByRole("link", { name: /Release/ })).toHaveAttribute(
+      "href",
+      "/mona/octo-app/actions?q=deploy&status=success&workflow=workflow-2",
+    );
   });
 
   it("renders live and failed statuses with semantic Editorial chips", () => {

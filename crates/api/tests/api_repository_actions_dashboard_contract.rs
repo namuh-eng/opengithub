@@ -19,7 +19,7 @@ use opengithub_api::{
     },
 };
 use serde_json::{json, Value};
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use tower::ServiceExt;
 use url::Url;
 use uuid::Uuid;
@@ -90,6 +90,35 @@ async fn get_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (Status
         builder = builder.header(header::COOKIE, cookie);
     }
     let request = builder.body(Body::empty()).expect("request should build");
+    let response = app.oneshot(request).await.expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).expect("response should be json")
+    };
+    (status, value)
+}
+
+async fn post_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method(Method::POST)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let request = builder
+        .body(Body::from(body.to_string()))
+        .expect("request should build");
     let response = app.oneshot(request).await.expect("request should run");
     let status = response.status();
     let bytes = to_bytes(response.into_body(), usize::MAX)
@@ -328,6 +357,103 @@ async fn actions_dashboard_returns_workflows_runs_filters_and_summaries() {
     let (invalid_status, invalid_body) = get_json(app, &invalid_status_uri, None).await;
     assert_eq!(invalid_status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(invalid_body["error"]["code"], "validation_failed");
+}
+
+#[tokio::test]
+async fn actions_recent_view_persists_signed_in_filter_telemetry() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping actions recent view scenario; set TEST_DATABASE_URL or DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "actions-recent-owner").await;
+    let repo_name = format!("actions-recent-{}", Uuid::new_v4().simple());
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: repo_name.clone(),
+            description: None,
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    let workflow = create_workflow(
+        &pool,
+        CreateWorkflow {
+            repository_id: repository.id,
+            actor_user_id: owner.id,
+            name: "CI".to_owned(),
+            path: ".github/workflows/ci.yml".to_owned(),
+            trigger_events: vec!["push".to_owned()],
+        },
+    )
+    .await
+    .expect("workflow should create");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+    let uri = format!(
+        "/api/repos/{}/{}/actions/recent-view",
+        owner.email, repo_name
+    );
+    let anonymous = post_json(
+        app.clone(),
+        &uri,
+        None,
+        json!({ "workflow": workflow.id, "status": "in progress" }),
+    )
+    .await;
+    assert_eq!(anonymous.0, StatusCode::UNAUTHORIZED);
+
+    let cookie = cookie_header(&pool, &config, &owner).await;
+    let (status, body) = post_json(
+        app.clone(),
+        &uri,
+        Some(&cookie),
+        json!({
+            "q": "deploy",
+            "workflow": workflow.id.to_string(),
+            "event": "push",
+            "status": "in progress",
+            "branch": "main",
+            "actor": owner.id.to_string()
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["workflowId"], workflow.id.to_string());
+    assert_eq!(body["filters"]["status"], "in_progress");
+
+    let saved = sqlx::query(
+        "SELECT workflow_id, filters FROM actions_recent_views WHERE repository_id = $1 AND user_id = $2",
+    )
+    .bind(repository.id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("recent view should persist");
+    assert_eq!(
+        saved.get::<Option<Uuid>, _>("workflow_id"),
+        Some(workflow.id)
+    );
+    assert_eq!(
+        saved.get::<Value, _>("filters")["q"],
+        Value::String("deploy".to_owned())
+    );
+
+    let invalid = post_json(
+        app,
+        &uri,
+        Some(&cookie),
+        json!({ "workflow": Uuid::new_v4().to_string() }),
+    )
+    .await;
+    assert_eq!(invalid.0, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(invalid.1["error"]["code"], "validation_failed");
 }
 
 #[tokio::test]

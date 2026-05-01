@@ -2223,5 +2223,23 @@
       "Runner execution, live log streaming, artifacts, check-suite/check-run integration, and manual dispatch are outside this all-workflows list phase.",
       "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth."
     ]
+  },
+  {
+    "feature_id": "actions-001",
+    "tests_written": [
+      "Implemented Phase 3 URL-backed Actions filters, workflow scoping, and recent-view telemetry.",
+      "Added POST /api/repos/{owner}/{repo}/actions/recent-view with repository read permission, workflow validation, status normalization, and upsert persistence into actions_recent_views.",
+      "Normalized Actions status filter input for space/dash variants such as in progress and timed out while preserving the full PRD status vocabulary.",
+      "Converted the Actions page to a client-interactive Editorial surface with URL-preserving search, searchable Workflow/Event/Status/Branch/Actor panels, removable selected filter chips, workflow rail scoping, and non-blocking telemetry POSTs through a same-origin Next.js route.",
+      "Extended Rust, Vitest, and Playwright coverage for telemetry authorization/persistence, status normalization, search URL updates, filter panels, selected-chip clearing, workflow scoping, browser filter flows, and screenshot ralph/screenshots/build/actions-001-phase3-filters.jpg.",
+      "Verification passed: focused api_repository_actions_dashboard_contract, focused repository-actions Vitest, make check, make test with Cargo tests plus 176 frontend tests, and TEST_DATABASE_URL-backed make test-e2e with 67 Playwright tests."
+    ],
+    "needs_deeper_qa": [
+      "Filter option searching is client-side over currently returned option sets; QA should revisit server-side option search if repositories accumulate very large workflow/run histories.",
+      "Recent-view telemetry records the latest view per user and repository only; cross-device recency lists and history depth are not part of this phase.",
+      "Invalid status recovery currently returns the backend validation error; richer inline recovery links remain a Phase 5 guardrail.",
+      "Runner execution, live log streaming, artifacts, check-suite/check-run integration, and manual dispatch remain outside this all-workflows filter phase.",
+      "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth."
+    ]
   }
 ]

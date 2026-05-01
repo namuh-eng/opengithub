@@ -145,7 +145,38 @@ test("signed-in repository Actions tab renders workflows, runs, and empty templa
   ).toHaveAttribute("href", new RegExp(`/actions/runs/${run.id}`));
   await expect(page.getByText("push")).toBeVisible();
   await expect(page.getByText("main")).toBeVisible();
+  await page.getByPlaceholder("Filter workflow runs").fill("Editorial");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page).toHaveURL(/q=Editorial/);
+  await expect(
+    page.getByRole("link", { exact: true, name: "Editorial CI" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Status" }).click();
+  await page.getByRole("menuitemradio", { name: /success/i }).click();
+  await expect(page).toHaveURL(/status=success/);
+  await page.getByRole("button", { name: "Branch" }).click();
+  await page.getByRole("menuitemradio", { name: /main/i }).click();
+  await expect(page).toHaveURL(/branch=main/);
+  await workflowNav.getByRole("link", { name: /Editorial CI/ }).click();
+  await expect(page).toHaveURL(new RegExp(`workflow=${workflow.id}`));
+  const recentView = await page.request.post(
+    `http://localhost:3016/api/repos/${ownerLogin}/${repoName}/actions/recent-view`,
+    {
+      headers: { cookie },
+      data: {
+        branch: "main",
+        q: "Editorial",
+        status: "success",
+        workflow: workflow.id,
+      },
+    },
+  );
+  expect(recentView.status()).toBe(200);
   await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/actions-001-phase3-filters.jpg",
+  });
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/actions-001-phase2-actions-list.jpg",
