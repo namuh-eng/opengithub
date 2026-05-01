@@ -103,6 +103,23 @@ async fn get_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (Status
     (status, value)
 }
 
+async fn get_text(app: axum::Router, uri: &str, cookie: Option<&str>) -> (StatusCode, String) {
+    let mut builder = Request::builder().method(Method::GET).uri(uri);
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let request = builder.body(Body::empty()).expect("request should build");
+    let response = app.oneshot(request).await.expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    (
+        status,
+        String::from_utf8(bytes.to_vec()).expect("response should be utf8"),
+    )
+}
+
 #[tokio::test]
 async fn run_detail_returns_attempts_jobs_annotations_artifacts_and_action_state() {
     let Some(pool) = database_pool().await else {
@@ -233,6 +250,19 @@ async fn run_detail_returns_attempts_jobs_annotations_artifacts_and_action_state
     .execute(&pool)
     .await
     .expect("job should update");
+    sqlx::query(
+        r#"
+        INSERT INTO workflow_job_log_lines (job_id, line_number, timestamp, content)
+        VALUES
+            ($1, 1, now() - interval '3 minutes', 'Installing dependencies'),
+            ($1, 2, now() - interval '2 minutes', 'Running unit tests'),
+            ($1, 3, now() - interval '1 minute', 'error: expected string, found number')
+        "#,
+    )
+    .bind(job.id)
+    .execute(&pool)
+    .await
+    .expect("job logs should create");
     let step = create_workflow_step(
         &pool,
         CreateWorkflowStep {
@@ -324,13 +354,48 @@ async fn run_detail_returns_attempts_jobs_annotations_artifacts_and_action_state
     assert_eq!(public_body["actionState"]["canDeleteLogs"], false);
 
     let owner_cookie = cookie_header(&pool, &config, &owner).await;
-    let (owner_status, owner_body) = get_json(app, &uri, Some(&owner_cookie)).await;
+    let (owner_status, owner_body) = get_json(app.clone(), &uri, Some(&owner_cookie)).await;
     assert_eq!(owner_status, StatusCode::OK);
     assert_eq!(owner_body["viewerPermission"], "owner");
     assert_eq!(owner_body["actionState"]["canRerun"], true);
     assert_eq!(owner_body["actionState"]["canRerunFailed"], true);
     assert_eq!(owner_body["actionState"]["canDeleteLogs"], true);
     assert_eq!(owner_body["actionState"]["canCancel"], false);
+
+    let logs_uri = format!(
+        "/api/repos/{}/{}/actions/jobs/{}/logs?q=error",
+        owner.email, repo_name, job.id
+    );
+    let (logs_status, logs_body) = get_json(app.clone(), &logs_uri, None).await;
+    assert_eq!(logs_status, StatusCode::OK);
+    assert_eq!(logs_body["total"], 1);
+    assert_eq!(logs_body["lines"][0]["lineNumber"], 3);
+    assert_eq!(logs_body["lines"][0]["anchor"], "L3");
+
+    let download_uri = format!(
+        "/api/repos/{}/{}/actions/jobs/{}/logs/download",
+        owner.email, repo_name, job.id
+    );
+    let (download_status, download_body) = get_text(app.clone(), &download_uri, None).await;
+    assert_eq!(download_status, StatusCode::OK);
+    assert!(download_body.contains("Running unit tests"));
+
+    let artifact_id = owner_body["artifacts"][0]["id"]
+        .as_str()
+        .expect("artifact id");
+    let artifact_uri = format!(
+        "/api/repos/{}/{}/actions/artifacts/{}/download",
+        owner.email, repo_name, artifact_id
+    );
+    let (artifact_status, artifact_body) = get_json(app, &artifact_uri, None).await;
+    assert_eq!(artifact_status, StatusCode::OK);
+    assert_eq!(artifact_body["filename"], "playwright-report.zip");
+    assert!(
+        artifact_body["downloadUrl"]
+            .as_str()
+            .expect("download url")
+            .contains(artifact_id)
+    );
 }
 
 #[tokio::test]

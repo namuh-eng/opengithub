@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import type { FormEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { RepositoryShell } from "@/components/RepositoryShell";
 import type {
+  ActionsArtifactDownload,
+  ActionsJobLog,
   ActionsRunJobDetail,
   ApiErrorEnvelope,
   RepositoryActionsRunDetail,
@@ -118,6 +121,28 @@ function jobState(job: ActionsRunJobDetail) {
   return statusLabel(job.status, job.conclusion);
 }
 
+function jobLogsPath(basePath: string, jobId: string, query?: string) {
+  const params = new URLSearchParams();
+  if (query?.trim()) {
+    params.set("q", query.trim());
+  }
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return `${basePath}/actions/jobs/${jobId}/logs${suffix}`;
+}
+
+function jobLogDownloadPath(basePath: string, jobId: string) {
+  return `${basePath}/actions/jobs/${jobId}/logs/download`;
+}
+
+function artifactDownloadPath(
+  basePath: string,
+  artifactId: string,
+  options: { metadata?: boolean } = {},
+) {
+  const suffix = options.metadata ? "?metadata=1" : "";
+  return `${basePath}/actions/artifacts/${artifactId}/download${suffix}`;
+}
+
 export function RepositoryActionsRunPage({
   repository,
   detail,
@@ -127,6 +152,14 @@ export function RepositoryActionsRunPage({
   const [selectedJobId, setSelectedJobId] = useState(
     detail.jobs[0]?.id ?? "summary",
   );
+  const [logQuery, setLogQuery] = useState("");
+  const [submittedLogQuery, setSubmittedLogQuery] = useState("");
+  const [jobLog, setJobLog] = useState<ActionsJobLog | null>(null);
+  const [jobLogState, setJobLogState] = useState<"idle" | "loading" | "error">(
+    "idle",
+  );
+  const [jobLogMessage, setJobLogMessage] = useState("");
+  const [artifactMessage, setArtifactMessage] = useState("");
   const selectedJob = detail.jobs.find((job) => job.id === selectedJobId);
   const groupedJobs = useMemo(() => {
     const groups = new Map<string, ActionsRunJobDetail[]>();
@@ -138,6 +171,79 @@ export function RepositoryActionsRunPage({
   }, [detail.jobs]);
   const actionDisabledReason =
     detail.actionState.disabledReason ?? "This action lands in the next phase.";
+
+  useEffect(() => {
+    if (!selectedJob?.logAvailable) {
+      setJobLog(null);
+      setJobLogMessage("");
+      setJobLogState("idle");
+      return;
+    }
+
+    let cancelled = false;
+    setJobLogState("loading");
+    setJobLogMessage("");
+    fetch(jobLogsPath(basePath, selectedJob.id, submittedLogQuery), {
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        const body = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(
+            body?.error?.message ?? "Job logs could not be loaded.",
+          );
+        }
+        return body as ActionsJobLog;
+      })
+      .then((body) => {
+        if (!cancelled) {
+          setJobLog(body);
+          setJobLogState("idle");
+        }
+      })
+      .catch((error: Error) => {
+        if (!cancelled) {
+          setJobLog(null);
+          setJobLogState("error");
+          setJobLogMessage(error.message);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [basePath, selectedJob, submittedLogQuery]);
+
+  async function copyArtifactDownload(artifactId: string) {
+    setArtifactMessage("");
+    try {
+      const response = await fetch(
+        artifactDownloadPath(basePath, artifactId, { metadata: true }),
+        {
+          cache: "no-store",
+        },
+      );
+      const body = (await response.json().catch(() => null)) as
+        | ActionsArtifactDownload
+        | ApiErrorEnvelope
+        | null;
+      if (!response.ok || !body || "error" in body) {
+        throw new Error(
+          body && "error" in body
+            ? body.error.message
+            : "Artifact download is unavailable.",
+        );
+      }
+      await navigator.clipboard?.writeText(body.downloadUrl);
+      setArtifactMessage(`Copied ${body.filename} download URL.`);
+    } catch (error) {
+      setArtifactMessage(
+        error instanceof Error
+          ? error.message
+          : "Artifact download is unavailable.",
+      );
+    }
+  }
 
   return (
     <RepositoryShell
@@ -414,7 +520,19 @@ export function RepositoryActionsRunPage({
                 ) : null}
               </div>
               {selectedJob ? (
-                <JobDetail job={selectedJob} />
+                <JobDetail
+                  basePath={basePath}
+                  job={selectedJob}
+                  log={jobLog}
+                  logMessage={jobLogMessage}
+                  logQuery={logQuery}
+                  logState={jobLogState}
+                  onLogQueryChange={setLogQuery}
+                  onLogSearch={(event) => {
+                    event.preventDefault();
+                    setSubmittedLogQuery(logQuery);
+                  }}
+                />
               ) : (
                 <div className="p-5">
                   <p className="t-sm" style={{ color: "var(--ink-3)" }}>
@@ -426,7 +544,11 @@ export function RepositoryActionsRunPage({
             </section>
 
             <AnnotationsList detail={detail} />
-            <ArtifactsTable detail={detail} />
+            <ArtifactsTable
+              detail={detail}
+              message={artifactMessage}
+              onCopyDownload={copyArtifactDownload}
+            />
             <RunMetadata detail={detail} />
           </main>
         </div>
@@ -446,9 +568,27 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function JobDetail({ job }: { job: ActionsRunJobDetail }) {
+function JobDetail({
+  basePath,
+  job,
+  log,
+  logMessage,
+  logQuery,
+  logState,
+  onLogQueryChange,
+  onLogSearch,
+}: {
+  basePath: string;
+  job: ActionsRunJobDetail;
+  log: ActionsJobLog | null;
+  logMessage: string;
+  logQuery: string;
+  logState: "idle" | "loading" | "error";
+  onLogQueryChange: (value: string) => void;
+  onLogSearch: (event: FormEvent<HTMLFormElement>) => void;
+}) {
   return (
-    <div className="p-5">
+    <div className="space-y-5 p-5">
       <div className="mb-4 flex flex-wrap gap-2">
         <span className="chip soft">Attempt {job.attemptNumber}</span>
         {job.runnerLabel ? (
@@ -461,6 +601,11 @@ function JobDetail({ job }: { job: ActionsRunJobDetail }) {
               ? "Logs available"
               : "Logs unavailable"}
         </span>
+        {job.logAvailable ? (
+          <a className="btn sm" href={jobLogDownloadPath(basePath, job.id)}>
+            Download log
+          </a>
+        ) : null}
       </div>
       <div className="space-y-2">
         {job.steps.map((step) => (
@@ -482,6 +627,83 @@ function JobDetail({ job }: { job: ActionsRunJobDetail }) {
             </span>
           </div>
         ))}
+      </div>
+      <div
+        className="rounded-[var(--radius)] border"
+        style={{ borderColor: "var(--line)" }}
+      >
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 border-b p-3"
+          style={{ borderColor: "var(--line-soft)" }}
+        >
+          <div>
+            <p className="t-label">Job log</p>
+            <p className="t-xs mt-1">
+              {job.logAvailable
+                ? "Search and anchor lines from the stored job log."
+                : "This job does not have readable logs."}
+            </p>
+          </div>
+          {job.logAvailable ? (
+            <form className="flex min-w-[260px] gap-2" onSubmit={onLogSearch}>
+              <input
+                aria-label="Search job log"
+                className="input h-9"
+                onChange={(event) => onLogQueryChange(event.target.value)}
+                placeholder="Search log"
+                value={logQuery}
+              />
+              <button className="btn sm" type="submit">
+                Search
+              </button>
+            </form>
+          ) : null}
+        </div>
+        {job.logDeletedAt ? (
+          <p className="t-sm p-4" style={{ color: "var(--ink-3)" }}>
+            Logs were deleted for this job.
+          </p>
+        ) : !job.logAvailable ? (
+          <p className="t-sm p-4" style={{ color: "var(--ink-3)" }}>
+            Logs are not available yet.
+          </p>
+        ) : logState === "loading" ? (
+          <p className="t-sm p-4" style={{ color: "var(--ink-3)" }}>
+            Loading logs...
+          </p>
+        ) : logState === "error" ? (
+          <p className="t-sm p-4" role="status" style={{ color: "var(--err)" }}>
+            {logMessage}
+          </p>
+        ) : log ? (
+          <div>
+            <p
+              className="t-xs border-b px-4 py-2"
+              style={{ borderColor: "var(--line-soft)" }}
+            >
+              {log.total} matching lines
+            </p>
+            <ol className="max-h-[360px] overflow-auto py-2">
+              {log.lines.map((line) => (
+                <li
+                  className="grid grid-cols-[64px_minmax(0,1fr)] gap-3 px-4 py-1"
+                  id={`log-${line.anchor}`}
+                  key={line.anchor}
+                >
+                  <a
+                    className="t-mono-sm text-right hover:underline"
+                    href={`#log-${line.anchor}`}
+                  >
+                    {line.lineNumber}
+                  </a>
+                  <code className="t-mono-sm whitespace-pre-wrap break-words">
+                    {line.content}
+                  </code>
+                </li>
+              ))}
+            </ol>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -530,7 +752,15 @@ function AnnotationsList({ detail }: { detail: RepositoryActionsRunDetail }) {
   );
 }
 
-function ArtifactsTable({ detail }: { detail: RepositoryActionsRunDetail }) {
+function ArtifactsTable({
+  detail,
+  message,
+  onCopyDownload,
+}: {
+  detail: RepositoryActionsRunDetail;
+  message: string;
+  onCopyDownload: (artifactId: string) => void;
+}) {
   return (
     <section className="card overflow-hidden">
       <div
@@ -549,6 +779,7 @@ function ArtifactsTable({ detail }: { detail: RepositoryActionsRunDetail }) {
                 <th className="px-5 py-3 font-medium">Digest</th>
                 <th className="px-5 py-3 font-medium">Size</th>
                 <th className="px-5 py-3 font-medium">State</th>
+                <th className="px-5 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -576,10 +807,36 @@ function ArtifactsTable({ detail }: { detail: RepositoryActionsRunDetail }) {
                       {artifact.downloadAvailable ? "Available" : "Expired"}
                     </span>
                   </td>
+                  <td className="px-5 py-3">
+                    <div className="flex flex-wrap gap-2">
+                      <a
+                        className="btn sm"
+                        href={artifactDownloadPath(
+                          `/${detail.repository.ownerLogin}/${detail.repository.name}`,
+                          artifact.id,
+                        )}
+                      >
+                        Download
+                      </a>
+                      <button
+                        className="btn sm"
+                        disabled={!artifact.downloadAvailable}
+                        onClick={() => onCopyDownload(artifact.id)}
+                        type="button"
+                      >
+                        Copy URL
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {message ? (
+            <p className="t-sm px-5 pb-4" role="status">
+              {message}
+            </p>
+          ) : null}
         </div>
       ) : (
         <p className="t-sm p-5" style={{ color: "var(--ink-3)" }}>

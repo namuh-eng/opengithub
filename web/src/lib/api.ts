@@ -621,6 +621,39 @@ export type ActionsRunArtifact = {
   updatedAt: string;
 };
 
+export type ActionsJobLogLine = {
+  lineNumber: number;
+  timestamp: string | null;
+  content: string;
+  anchor: string;
+};
+
+export type ActionsJobLog = {
+  job: {
+    id: string;
+    runId: string;
+    name: string;
+    status: string;
+    conclusion: string | null;
+    logDeletedAt: string | null;
+  };
+  lines: ActionsJobLogLine[];
+  total: number;
+  page: number;
+  pageSize: number;
+  query: string | null;
+  downloadHref: string;
+};
+
+export type ActionsArtifactDownload = {
+  artifactId: string;
+  name: string;
+  filename: string;
+  downloadUrl: string;
+  storageKey: string;
+  expiresAt: string;
+};
+
 export type ActionsRunActionState = {
   canRerun: boolean;
   canRerunFailed: boolean;

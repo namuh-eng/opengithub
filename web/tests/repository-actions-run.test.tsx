@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RepositoryActionsRunPage } from "@/components/RepositoryActionsRunPage";
 import type { RepositoryActionsRunDetail, RepositoryOverview } from "@/lib/api";
 
@@ -241,6 +241,46 @@ function runDetail(
 }
 
 describe("RepositoryActionsRunPage", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        json: async () => ({
+          job: {
+            id: "job-1",
+            runId: "run-1",
+            name: "unit / web",
+            status: "completed",
+            conclusion: "failure",
+            logDeletedAt: null,
+          },
+          lines: [
+            {
+              lineNumber: 1,
+              timestamp: "2026-05-01T00:04:00Z",
+              content: "Installing dependencies",
+              anchor: "L1",
+            },
+            {
+              lineNumber: 2,
+              timestamp: "2026-05-01T00:05:00Z",
+              content: "error: Expected string, found number",
+              anchor: "L2",
+            },
+          ],
+          total: 2,
+          page: 1,
+          pageSize: 30,
+          query: null,
+          downloadHref:
+            "/api/repos/mona/octo-app/actions/jobs/job-1/logs/download",
+        }),
+        ok: true,
+      }),
+    );
+  });
+
   it("renders run metadata, jobs, annotations, and artifacts", () => {
     render(
       <RepositoryActionsRunPage
@@ -290,6 +330,93 @@ describe("RepositoryActionsRunPage", () => {
     expect(
       within(selected as HTMLElement).getByText("Logs deleted"),
     ).toBeVisible();
+  });
+
+  it("loads job logs, searches through the proxy, and copies artifact URLs", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/artifacts/")) {
+        return {
+          json: async () => ({
+            artifactId: "artifact-1",
+            name: "playwright-report",
+            filename: "playwright-report.zip",
+            downloadUrl:
+              "/api/repos/mona/octo-app/actions/artifacts/artifact-1/download?token=dev-local",
+            storageKey: "actions/artifacts/report.zip",
+            expiresAt: "2026-05-01T00:16:00Z",
+          }),
+          ok: true,
+        } as Response;
+      }
+      return {
+        json: async () => ({
+          job: {
+            id: "job-1",
+            runId: "run-1",
+            name: "unit / web",
+            status: "completed",
+            conclusion: "failure",
+            logDeletedAt: null,
+          },
+          lines: [
+            {
+              lineNumber: url.includes("q=error") ? 3 : 1,
+              timestamp: "2026-05-01T00:06:00Z",
+              content: url.includes("q=error")
+                ? "error: Expected string, found number"
+                : "Installing dependencies",
+              anchor: url.includes("q=error") ? "L3" : "L1",
+            },
+          ],
+          total: 1,
+          page: 1,
+          pageSize: 30,
+          query: url.includes("q=error") ? "error" : null,
+          downloadHref:
+            "/api/repos/mona/octo-app/actions/jobs/job-1/logs/download",
+        }),
+        ok: true,
+      } as Response;
+    });
+
+    render(
+      <RepositoryActionsRunPage
+        detail={runDetail()}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search job log" }), {
+      target: { value: "error" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+
+    expect(
+      await screen.findByText("error: Expected string, found number"),
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/mona/octo-app/actions/jobs/job-1/logs?q=error",
+      { cache: "no-store" },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy URL" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Copied playwright-report.zip download URL.",
+    );
+    expect(writeText).toHaveBeenCalledWith(
+      "/api/repos/mona/octo-app/actions/artifacts/artifact-1/download?token=dev-local",
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/mona/octo-app/actions/artifacts/artifact-1/download?metadata=1",
+      { cache: "no-store" },
+    );
   });
 
   it("does not render inert anchors or unnamed visible buttons", () => {

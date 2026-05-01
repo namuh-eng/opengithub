@@ -39,7 +39,7 @@
 
 ## Phase 3: Job Logs and Artifact Downloads - log and artifact actions are data-backed
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make the selected job log and artifact controls real. Job links focus the log pane, log search filters lines without losing context, line anchors/copy links are stable, download-log actions return a backend URL or text stream, and artifact download/copy affordances use short-lived signed URLs or local dev equivalents.
 

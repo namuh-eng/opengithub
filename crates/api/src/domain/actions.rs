@@ -309,6 +309,49 @@ pub struct ActionsRunArtifact {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct ActionsJobLog {
+    pub job: ActionsJobLogJob,
+    pub lines: Vec<ActionsJobLogLine>,
+    pub total: i64,
+    pub page: i64,
+    pub page_size: i64,
+    pub query: Option<String>,
+    pub download_href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsJobLogJob {
+    pub id: Uuid,
+    pub run_id: Uuid,
+    pub name: String,
+    pub status: String,
+    pub conclusion: Option<String>,
+    pub log_deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsJobLogLine {
+    pub line_number: i32,
+    pub timestamp: Option<DateTime<Utc>>,
+    pub content: String,
+    pub anchor: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsArtifactDownload {
+    pub artifact_id: Uuid,
+    pub name: String,
+    pub filename: String,
+    pub download_url: String,
+    pub storage_key: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct ActionsRunActionState {
     pub can_rerun: bool,
     pub can_rerun_failed: bool,
@@ -672,6 +715,12 @@ pub enum AutomationError {
     WorkflowRunNotFound,
     #[error("workflow job was not found")]
     WorkflowJobNotFound,
+    #[error("workflow logs are unavailable")]
+    WorkflowLogsUnavailable,
+    #[error("workflow artifact was not found")]
+    WorkflowArtifactNotFound,
+    #[error("workflow artifact download is unavailable")]
+    WorkflowArtifactUnavailable,
     #[error("package was not found")]
     PackageNotFound,
     #[error("invalid workflow state `{0}`")]
@@ -2242,6 +2291,223 @@ async fn actions_run_artifacts(
             }
         })
         .collect())
+}
+
+pub async fn workflow_job_logs_for_viewer(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Option<Uuid>,
+    job_id: Uuid,
+    query: Option<String>,
+    page: i64,
+    page_size: i64,
+) -> Result<ActionsJobLog, AutomationError> {
+    let repository = require_repository_read_for_viewer(pool, repository_id, actor_user_id).await?;
+    let job = workflow_job_for_repository(pool, repository_id, job_id).await?;
+    if job.log_deleted_at.is_some() {
+        return Err(AutomationError::WorkflowLogsUnavailable);
+    }
+
+    let page = page.max(1);
+    let page_size = page_size.clamp(1, 500);
+    let offset = (page - 1) * page_size;
+    let query = cleaned_filter(query);
+    let like_query = query.as_ref().map(|value| format!("%{}%", escape_like(value)));
+    let total = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT count(*)
+        FROM workflow_job_log_lines
+        WHERE job_id = $1
+          AND ($2::text IS NULL OR content ILIKE $2 ESCAPE '\')
+        "#,
+    )
+    .bind(job_id)
+    .bind(like_query.as_deref())
+    .fetch_one(pool)
+    .await?;
+    let rows = sqlx::query(
+        r#"
+        SELECT line_number, timestamp, content
+        FROM workflow_job_log_lines
+        WHERE job_id = $1
+          AND ($2::text IS NULL OR content ILIKE $2 ESCAPE '\')
+        ORDER BY line_number
+        LIMIT $3 OFFSET $4
+        "#,
+    )
+    .bind(job_id)
+    .bind(like_query.as_deref())
+    .bind(page_size)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+    let lines = rows
+        .into_iter()
+        .map(|row| {
+            let line_number: i32 = row.get("line_number");
+            ActionsJobLogLine {
+                line_number,
+                timestamp: row.get("timestamp"),
+                content: row.get("content"),
+                anchor: format!("L{line_number}"),
+            }
+        })
+        .collect();
+
+    Ok(ActionsJobLog {
+        job,
+        lines,
+        total,
+        page,
+        page_size,
+        query,
+        download_href: format!(
+            "/api/repos/{}/{}/actions/jobs/{}/logs/download",
+            repository.owner_login, repository.name, job_id
+        ),
+    })
+}
+
+pub async fn workflow_job_log_download_for_viewer(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Option<Uuid>,
+    job_id: Uuid,
+) -> Result<(String, String), AutomationError> {
+    let log = workflow_job_logs_for_viewer(pool, repository_id, actor_user_id, job_id, None, 1, 500)
+        .await?;
+    if log.total > log.lines.len() as i64 {
+        let rows = sqlx::query(
+            r#"
+            SELECT timestamp, content
+            FROM workflow_job_log_lines
+            WHERE job_id = $1
+            ORDER BY line_number
+            "#,
+        )
+        .bind(job_id)
+        .fetch_all(pool)
+        .await?;
+        let body = rows
+            .into_iter()
+            .map(|row| format_log_line(row.get("timestamp"), row.get("content")))
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Ok((format!("{}.log", safe_filename(&log.job.name)), body));
+    }
+
+    let body = log
+        .lines
+        .iter()
+        .map(|line| format_log_line(line.timestamp, line.content.clone()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    Ok((format!("{}.log", safe_filename(&log.job.name)), body))
+}
+
+pub async fn workflow_artifact_download_for_viewer(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Option<Uuid>,
+    artifact_id: Uuid,
+) -> Result<ActionsArtifactDownload, AutomationError> {
+    let repository = require_repository_read_for_viewer(pool, repository_id, actor_user_id).await?;
+    let row = sqlx::query(
+        r#"
+        SELECT workflow_artifacts.id, workflow_artifacts.name, workflow_artifacts.storage_key,
+               workflow_artifacts.expired_at
+        FROM workflow_artifacts
+        JOIN workflow_runs ON workflow_runs.id = workflow_artifacts.run_id
+        WHERE workflow_artifacts.id = $1 AND workflow_runs.repository_id = $2
+        "#,
+    )
+    .bind(artifact_id)
+    .bind(repository_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(AutomationError::WorkflowArtifactNotFound)?;
+    let storage_key: Option<String> = row.get("storage_key");
+    let expired_at: Option<DateTime<Utc>> = row.get("expired_at");
+    if storage_key.is_none() || expired_at.map(|value| value <= Utc::now()).unwrap_or(false) {
+        return Err(AutomationError::WorkflowArtifactUnavailable);
+    }
+    let name: String = row.get("name");
+    let filename = format!("{}.zip", safe_filename(&name));
+    Ok(ActionsArtifactDownload {
+        artifact_id,
+        name,
+        filename,
+        download_url: format!(
+            "/api/repos/{}/{}/actions/artifacts/{}/download?token=dev-local",
+            repository.owner_login, repository.name, artifact_id
+        ),
+        storage_key: storage_key.unwrap_or_default(),
+        expires_at: Utc::now() + chrono::Duration::minutes(10),
+    })
+}
+
+async fn workflow_job_for_repository(
+    pool: &PgPool,
+    repository_id: Uuid,
+    job_id: Uuid,
+) -> Result<ActionsJobLogJob, AutomationError> {
+    let row = sqlx::query(
+        r#"
+        SELECT workflow_jobs.id, workflow_jobs.run_id, workflow_jobs.name, workflow_jobs.status,
+               workflow_jobs.conclusion, workflow_jobs.log_deleted_at
+        FROM workflow_jobs
+        JOIN workflow_runs ON workflow_runs.id = workflow_jobs.run_id
+        WHERE workflow_jobs.id = $1 AND workflow_runs.repository_id = $2
+        "#,
+    )
+    .bind(job_id)
+    .bind(repository_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(AutomationError::WorkflowJobNotFound)?;
+
+    Ok(ActionsJobLogJob {
+        id: row.get("id"),
+        run_id: row.get("run_id"),
+        name: row.get("name"),
+        status: row.get("status"),
+        conclusion: row.get("conclusion"),
+        log_deleted_at: row.get("log_deleted_at"),
+    })
+}
+
+fn escape_like(value: &str) -> String {
+    value
+        .replace('\\', r"\\")
+        .replace('%', r"\%")
+        .replace('_', r"\_")
+}
+
+fn format_log_line(timestamp: Option<DateTime<Utc>>, content: String) -> String {
+    match timestamp {
+        Some(timestamp) => format!("{} {content}", timestamp.to_rfc3339()),
+        None => content,
+    }
+}
+
+fn safe_filename(value: &str) -> String {
+    let filename = value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_') {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_owned();
+    if filename.is_empty() {
+        "download".to_owned()
+    } else {
+        filename
+    }
 }
 
 fn actions_run_action_state(

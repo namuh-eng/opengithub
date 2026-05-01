@@ -97,6 +97,18 @@ test("signed-in workflow run detail renders jobs, annotations, and artifacts", a
   await expect(page.getByText("Expected string, found number")).toBeVisible();
   await expect(page.getByText("playwright-report")).toBeVisible();
   await expect(page.getByText("sha256:abc123")).toBeVisible();
+  await expect(page.getByText("Installing dependencies")).toBeVisible();
+  await page.getByRole("textbox", { name: "Search job log" }).fill("error");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(
+    page.getByText("error: Expected string, found number"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Download log" }),
+  ).toHaveAttribute("href", /\/actions\/jobs\/.*\/logs\/download/);
+  await expect(
+    page.getByRole("link", { exact: true, name: "Download" }),
+  ).toHaveAttribute("href", /\/actions\/artifacts\/.*\/download/);
 
   await page.getByRole("link", { name: /deploy preview/ }).click();
   await expect(
@@ -107,6 +119,6 @@ test("signed-in workflow run detail renders jobs, annotations, and artifacts", a
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/actions-003-phase2-run-detail.jpg",
+    path: "../ralph/screenshots/build/actions-003-phase3-logs-artifacts.jpg",
   });
 });

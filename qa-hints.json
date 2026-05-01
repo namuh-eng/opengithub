@@ -2399,5 +2399,24 @@
       "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth.",
       "The fixture uses local metadata/storage keys and does not contact real S3 or execute real Actions runners."
     ]
+  },
+  {
+    "feature_id": "actions-003",
+    "tests_written": [
+      "Implemented Phase 3 data-backed job logs and artifact download affordances.",
+      "Added workflow_job_log_lines migration, Rust log read/search/download endpoints, and artifact download metadata endpoint with repository permission checks.",
+      "Added same-origin Next.js proxies for job logs, log downloads, and artifact download metadata.",
+      "Updated the Editorial run detail page with selected-job log search, line anchors, log download link, artifact download link, copy URL feedback, and deleted/unavailable log states.",
+      "Extended Rust contract coverage for log search bounds, text log download, and artifact download URL shape.",
+      "Extended Vitest and Playwright coverage for log loading/search, artifact copy/download controls, no dead controls, and browser smoke screenshot ralph/screenshots/build/actions-003-phase3-logs-artifacts.jpg.",
+      "Verification passed: focused api_repository_actions_run_detail_contract, focused repository-actions-run Vitest, focused repository-actions-run Playwright, TEST_DATABASE_URL-backed make check, same-env make test with Cargo tests plus 189 frontend tests, full same-env make test-e2e with 69 Playwright tests, and mandatory Editorial banned-value scan with zero matches using rg -n -e."
+    ],
+    "needs_deeper_qa": [
+      "Artifact downloads return local dev signed-URL metadata and storage keys; real S3 signed URL generation/expiry should be rechecked when runner storage is wired.",
+      "Log lines are DB-backed for this phase; true streaming/polling, large log archives, and scroll-position preservation belong to actions-004.",
+      "Rerun all, rerun failed, specific-job rerun, cancel, delete logs, audit rows, and queue side effects are Phase 4.",
+      "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth.",
+      "The fixture does not execute real Actions runners."
+    ]
   }
 ]

@@ -739,6 +739,18 @@ async fn seed_actions_run_detail_repository(
     .bind(web_job.id)
     .execute(pool)
     .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO workflow_job_log_lines (job_id, line_number, timestamp, content)
+        VALUES
+            ($1, 1, now() - interval '3 minutes', 'Installing dependencies'),
+            ($1, 2, now() - interval '2 minutes', 'Running unit tests'),
+            ($1, 3, now() - interval '1 minute', 'error: Expected string, found number')
+        "#,
+    )
+    .bind(web_job.id)
+    .execute(pool)
+    .await?;
     let step = create_workflow_step(
         pool,
         CreateWorkflowStep {

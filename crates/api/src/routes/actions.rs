@@ -1,6 +1,8 @@
 use axum::{
+    body::Body,
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, StatusCode},
+    response::Response,
     routing::{get, post},
     Json, Router,
 };
@@ -21,9 +23,11 @@ use crate::{
             dispatch_workflow_run, get_workflow_for_actor, get_workflow_run_for_actor,
             list_workflow_runs, list_workflows, record_actions_recent_view,
             repository_for_actor_by_name, repository_for_optional_actor_by_name,
-            transition_workflow_run, ActionsDashboardQuery, ActionsWorkflowDetailQuery,
-            AutomationError, CreateWorkflow, CreateWorkflowRun, DispatchWorkflowRun,
-            RecordActionsRecentView, RunConclusion, RunStatus, TransitionRun,
+            transition_workflow_run, workflow_artifact_download_for_viewer,
+            workflow_job_log_download_for_viewer, workflow_job_logs_for_viewer,
+            ActionsDashboardQuery, ActionsWorkflowDetailQuery, AutomationError, CreateWorkflow,
+            CreateWorkflowRun, DispatchWorkflowRun, RecordActionsRecentView, RunConclusion,
+            RunStatus, TransitionRun,
         },
         permissions::RepositoryRole,
     },
@@ -65,6 +69,18 @@ pub fn router() -> Router<AppState> {
             get(read_workflow_run_detail_route),
         )
         .route(
+            "/api/repos/:owner/:repo/actions/jobs/:job_id/logs",
+            get(read_workflow_job_logs_route),
+        )
+        .route(
+            "/api/repos/:owner/:repo/actions/jobs/:job_id/logs/download",
+            get(download_workflow_job_logs_route),
+        )
+        .route(
+            "/api/repos/:owner/:repo/actions/artifacts/:artifact_id/download",
+            get(download_workflow_artifact_route),
+        )
+        .route(
             "/api/repos/:owner/:repo/actions/recent-view",
             axum::routing::post(record_recent_view_route),
         )
@@ -91,6 +107,15 @@ struct DashboardQuery {
     status: Option<String>,
     branch: Option<String>,
     actor: Option<String>,
+    page: Option<i64>,
+    #[serde(alias = "page_size")]
+    page_size: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LogQuery {
+    q: Option<String>,
     page: Option<i64>,
     #[serde(alias = "page_size")]
     page_size: Option<i64>,
@@ -514,6 +539,100 @@ async fn read_workflow_run_detail_route(
     Ok(Json(json!(detail)))
 }
 
+async fn read_workflow_job_logs_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, job_id)): Path<(String, String, Uuid)>,
+    Query(query): Query<LogQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let repository = repository_for_optional_actor_by_name(
+        pool,
+        &owner,
+        &repo,
+        actor.as_ref().map(|user| user.id),
+    )
+    .await
+    .map_err(map_automation_error)?;
+    let pagination = normalize_pagination(query.page, query.page_size);
+    let logs = workflow_job_logs_for_viewer(
+        pool,
+        repository.id,
+        actor.as_ref().map(|user| user.id),
+        job_id,
+        query.q,
+        pagination.page,
+        pagination.page_size,
+    )
+    .await
+    .map_err(map_automation_error)?;
+
+    Ok(Json(json!(logs)))
+}
+
+async fn download_workflow_job_logs_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, job_id)): Path<(String, String, Uuid)>,
+) -> Result<Response<Body>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let repository = repository_for_optional_actor_by_name(
+        pool,
+        &owner,
+        &repo,
+        actor.as_ref().map(|user| user.id),
+    )
+    .await
+    .map_err(map_automation_error)?;
+    let (filename, body) = workflow_job_log_download_for_viewer(
+        pool,
+        repository.id,
+        actor.as_ref().map(|user| user.id),
+        job_id,
+    )
+    .await
+    .map_err(map_automation_error)?;
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{filename}\""),
+        )
+        .body(Body::from(body))
+        .map_err(|_| database_unavailable())
+}
+
+async fn download_workflow_artifact_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, artifact_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let repository = repository_for_optional_actor_by_name(
+        pool,
+        &owner,
+        &repo,
+        actor.as_ref().map(|user| user.id),
+    )
+    .await
+    .map_err(map_automation_error)?;
+    let download = workflow_artifact_download_for_viewer(
+        pool,
+        repository.id,
+        actor.as_ref().map(|user| user.id),
+        artifact_id,
+    )
+    .await
+    .map_err(map_automation_error)?;
+
+    Ok(Json(json!(download)))
+}
+
 async fn update_workflow_run_route(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -554,8 +673,12 @@ pub(crate) fn map_automation_error(error: AutomationError) -> (StatusCode, Json<
         | AutomationError::WorkflowNotFound
         | AutomationError::WorkflowRunNotFound
         | AutomationError::WorkflowJobNotFound
+        | AutomationError::WorkflowArtifactNotFound
         | AutomationError::PackageNotFound => {
             error_response(StatusCode::NOT_FOUND, "not_found", error.to_string())
+        }
+        AutomationError::WorkflowLogsUnavailable | AutomationError::WorkflowArtifactUnavailable => {
+            error_response(StatusCode::GONE, "gone", error.to_string())
         }
         AutomationError::InvalidWorkflowState(_)
         | AutomationError::InvalidRunStatus(_)
