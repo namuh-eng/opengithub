@@ -75,6 +75,15 @@ async function expectNoDeadControls(page: Page) {
   }
 }
 
+async function expectNoHorizontalOverflow(page: Page) {
+  const overflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth >
+      document.documentElement.clientWidth,
+  );
+  expect(overflow).toBe(false);
+}
+
 test.skip(
   !databaseUrl,
   "repository Actions workflow E2E needs TEST_DATABASE_URL or DATABASE_URL",
@@ -190,6 +199,8 @@ test("signed-in workflow Actions page renders scoped runs and filters", async ({
   await page.getByRole("button", { name: "Branch" }).click();
   await page.getByRole("menuitemradio", { name: /main/i }).click();
   await expect(page).toHaveURL(/branch=main/);
+  await page.keyboard.press("Tab");
+  await expect(page.locator(":focus")).not.toHaveCount(0);
   await expectNoDeadControls(page);
 
   await page.getByRole("button", { name: "Run workflow" }).click();
@@ -210,14 +221,22 @@ test("signed-in workflow Actions page renders scoped runs and filters", async ({
   ).toBeVisible();
   await expect(page.getByText("Queued")).toBeVisible();
 
-  const desktopOverflow = await page.evaluate(
-    () =>
-      document.documentElement.scrollWidth >
-      document.documentElement.clientWidth,
-  );
-  expect(desktopOverflow).toBe(false);
+  await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/actions-002-phase4-workflow-options.jpg",
+    path: "../ralph/screenshots/build/actions-002-phase5-final-desktop.jpg",
+  });
+
+  await page.setViewportSize({ height: 900, width: 390 });
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Editorial CI" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Actions workflows" }),
+  ).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/actions-002-phase5-final-mobile.jpg",
   });
 });

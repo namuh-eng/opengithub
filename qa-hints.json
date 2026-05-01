@@ -2347,5 +2347,21 @@
       "Manual dispatch queueing exists from Phase 3, but real runner execution, streaming logs, artifacts, and check-suite/check-run synchronization remain outside this phase.",
       "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth."
     ]
+  },
+  {
+    "feature_id": "actions-002",
+    "tests_written": [
+      "Completed Phase 5 final workflow guardrails and set actions-002 build_pass true.",
+      "Extended Rust workflow dispatch coverage for default-branch-only workflow_dispatch enforcement, alongside existing permission, invalid YAML, input validation, queued run ordering, job lease, and no cross-workflow leakage coverage.",
+      "Extended Playwright workflow smoke for keyboard focus, dead-control sweep, desktop and mobile horizontal-overflow checks, and final screenshots ralph/screenshots/build/actions-002-phase5-final-desktop.jpg and ralph/screenshots/build/actions-002-phase5-final-mobile.jpg.",
+      "Verification passed: focused api_repository_actions_workflow_detail_contract, focused repository-actions-workflow Vitest, focused TEST_DATABASE_URL-backed repository-actions-workflow Playwright, TEST_DATABASE_URL-backed make check, same-env make test, full TEST_DATABASE_URL-backed make test-e2e, and mandatory Editorial banned-value scan with zero matches using rg -n -e."
+    ],
+    "needs_deeper_qa": [
+      "Real runner execution, streaming logs, artifacts, and check-suite/check-run synchronization are outside actions-002; current dispatch validation proves workflow_runs, workflow_jobs, and job_leases side effects because check_suites/check_runs tables do not exist yet.",
+      "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth.",
+      "Dispatch inputs still come from persisted parsed JSON on actions_workflows; live YAML parser provenance and workflow file edits should be retested when actions-005 wires parser/dispatcher behavior.",
+      "Branch/ref race conditions between dialog load and dispatch submit should be revisited after branch mutation APIs and live workflow discovery are richer.",
+      "Workflow options route to the existing Actions settings page; workflow-specific settings controls remain a later feature."
+    ]
   }
 ]

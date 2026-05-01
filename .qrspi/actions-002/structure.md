@@ -73,7 +73,7 @@
 
 ## Phase 5: Final Workflow Guardrails and QA Handoff - complete actions-002 safely
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Harden the full workflow-specific Actions surface before setting `actions-002.build_pass=true`. Validate permissions, run scoping, dispatch side effects, invalid YAML, mobile layout, visual compliance, browser evidence, QA hints, and bookkeeping.
 

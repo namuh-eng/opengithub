@@ -556,6 +556,29 @@ async fn workflow_dispatch_validates_inputs_permissions_refs_and_queues_run() {
         .unwrap_or_default()
         .contains("unknown ref"));
 
+    sqlx::query("UPDATE actions_workflows SET source_branch = 'release' WHERE id = $1")
+        .bind(workflow.id)
+        .execute(&pool)
+        .await
+        .expect("workflow source branch should update");
+    let (wrong_source_status, wrong_source_body) = post_json(
+        app.clone(),
+        &uri,
+        Some(&owner_cookie),
+        json!({ "ref": "main", "inputs": { "reason": "ship", "environment": "staging" } }),
+    )
+    .await;
+    assert_eq!(wrong_source_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(wrong_source_body["error"]["message"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("default branch"));
+    sqlx::query("UPDATE actions_workflows SET source_branch = 'main' WHERE id = $1")
+        .bind(workflow.id)
+        .execute(&pool)
+        .await
+        .expect("workflow source branch should restore");
+
     let (created_status, created_body) = post_json(
         app.clone(),
         &uri,
