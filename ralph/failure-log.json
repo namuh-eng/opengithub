@@ -1223,6 +1223,14 @@
       "exit_code": 0,
       "category": "test_failure",
       "attempt": 84
+    },
+    {
+      "timestamp": "2026-05-01T20:04:58.507971",
+      "phase": "build",
+      "feature": "build_cycle_1",
+      "exit_code": 0,
+      "category": "test_failure",
+      "attempt": 85
     }
   ]
 }
