@@ -229,6 +229,7 @@ pub struct ActionsWorkflowDetailWorkflow {
     pub source_href: String,
     pub dispatch: WorkflowDispatchSpec,
     pub yaml_parse_error: Option<String>,
+    pub yaml_parsed_at: DateTime<Utc>,
     pub valid: bool,
 }
 
@@ -2068,7 +2069,7 @@ async fn actions_workflow_detail_workflow(
     let row = sqlx::query(
         r#"
         SELECT id, name, path, state, trigger_events, source_blob_id, source_sha,
-               source_branch, yaml_parse_error, dispatch_inputs, dispatch_enabled
+               source_branch, yaml_parse_error, dispatch_inputs, dispatch_enabled, updated_at
         FROM actions_workflows
         WHERE repository_id = $1 AND lower(path) = lower($2)
         "#,
@@ -2085,7 +2086,9 @@ async fn actions_workflow_detail_workflow(
         .get::<Option<String>, _>("source_branch")
         .unwrap_or_else(|| repository.default_branch.clone());
     let dispatch_inputs = workflow_dispatch_inputs_from_json(row.get("dispatch_inputs"))?;
-    let yaml_parse_error: Option<String> = row.get("yaml_parse_error");
+    let yaml_parse_error: Option<String> = row
+        .get::<Option<String>, _>("yaml_parse_error")
+        .map(sanitize_yaml_parse_error);
     Ok(ActionsWorkflowDetailWorkflow {
         id: row.get("id"),
         name: row.get("name"),
@@ -2105,7 +2108,24 @@ async fn actions_workflow_detail_workflow(
         },
         valid: yaml_parse_error.is_none(),
         yaml_parse_error,
+        yaml_parsed_at: row.get("updated_at"),
     })
+}
+
+fn sanitize_yaml_parse_error(error: String) -> String {
+    let first_line = error
+        .lines()
+        .find(|line| {
+            let trimmed = line.trim().to_ascii_lowercase();
+            !trimmed.is_empty()
+                && !trimmed.contains("stack backtrace")
+                && !trimmed.starts_with("at ")
+                && !trimmed.contains("panicked at")
+        })
+        .unwrap_or("Workflow YAML could not be parsed.")
+        .trim();
+
+    first_line.chars().take(240).collect()
 }
 
 fn workflow_dispatch_inputs_from_json(

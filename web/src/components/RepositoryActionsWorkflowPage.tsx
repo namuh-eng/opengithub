@@ -117,6 +117,23 @@ function durationLabel(seconds: number | null) {
   return `${hours}h ${minutes % 60}m`;
 }
 
+function dateTimeLabel(value: string | null | undefined) {
+  if (!value) {
+    return "Not recorded";
+  }
+  const timestamp = new Date(value);
+  if (!Number.isFinite(timestamp.getTime())) {
+    return "Not recorded";
+  }
+  return timestamp.toLocaleString("en", {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 function statusTone(statusCategory: string) {
   if (["success", "completed"].includes(statusCategory)) {
     return "ok";
@@ -803,7 +820,13 @@ export function RepositoryActionsWorkflowPage({
               Workflow file
             </Link>
             <Link className="btn ghost" href={`${basePath}/settings/actions`}>
-              Options
+              Workflow options
+            </Link>
+            <Link
+              className="btn ghost"
+              href="/docs/api#actions-workflow-dispatch"
+            >
+              Dispatch API
             </Link>
             {detail.workflow.dispatch.enabled ? (
               <button
@@ -830,6 +853,17 @@ export function RepositoryActionsWorkflowPage({
               {detail.workflow.yamlParseError ??
                 "The workflow YAML could not be parsed."}
             </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link className="btn sm" href={detail.workflow.sourceHref}>
+                Open YAML
+              </Link>
+              <Link
+                className="btn sm ghost"
+                href="/docs/api#actions-workflow-detail"
+              >
+                Read workflow API docs
+              </Link>
+            </div>
           </div>
         ) : null}
         <div className="mb-4 grid gap-3 md:grid-cols-3">
@@ -843,6 +877,9 @@ export function RepositoryActionsWorkflowPage({
             </Link>
             <p className="t-xs mt-1">
               {detail.workflow.sourceSha ?? "No source SHA recorded"}
+            </p>
+            <p className="t-xs mt-1">
+              Parsed {dateTimeLabel(detail.workflow.yamlParsedAt)}
             </p>
           </div>
           <div className="card p-4">

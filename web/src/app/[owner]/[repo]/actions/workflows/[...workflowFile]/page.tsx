@@ -107,6 +107,7 @@ function emptyWorkflowDetail(
         inputs: [],
       },
       yamlParseError: null,
+      yamlParsedAt: new Date(0).toISOString(),
       valid: true,
     },
     workflows: [],

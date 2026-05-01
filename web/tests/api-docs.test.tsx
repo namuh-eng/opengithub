@@ -56,6 +56,19 @@ describe("ApiDocsPage", () => {
       ),
     ).toBeVisible();
     expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/actions/workflows/{workflow_file}/dashboard?status=success",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/actions/workflows/{workflow_file}/dispatches",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Invalid YAML keeps the workflow visible/),
+    ).toBeVisible();
+    expect(
       screen.getAllByText(
         "/api/repos/{owner}/{repo}/actions/workflows?page=1&pageSize=30",
       )[0],

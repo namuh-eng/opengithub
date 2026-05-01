@@ -313,6 +313,62 @@ Subject: [PATCH] Improve docs
     ],
   },
   {
+    id: "actions-workflow-detail",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/actions/workflows/{workflow_file}/dashboard?status=success",
+    title: "Read workflow detail dashboard",
+    description:
+      "Returns the workflow-specific Actions page contract: selected workflow metadata, source link, workflow rail, scoped run rows, branch/event/status/actor filters, refs available for dispatch, and invalid-YAML state.",
+    auth: "Public repositories are readable; private repositories require read permission",
+    response: `{
+  "workflow": {
+    "name": "CI",
+    "path": ".github/workflows/ci.yml",
+    "sourceHref": "/mona/octo-app/blob/main/.github/workflows/ci.yml",
+    "dispatch": { "enabled": true, "inputs": [] },
+    "valid": true,
+    "yamlParseError": null,
+    "yamlParsedAt": "2026-05-01T00:00:00Z"
+  },
+  "runs": { "items": [], "total": 0, "page": 1, "pageSize": 30 },
+  "filterOptions": { "statuses": [{ "value": "success", "count": 2 }] }
+}`,
+    notes: [
+      "workflow_file is the URL-encoded workflow path, for example .github%2Fworkflows%2Fci.yml.",
+      "The Workflow filter is intentionally omitted because the route is already scoped.",
+      "Invalid YAML keeps the workflow visible and returns a sanitized yamlParseError plus dispatch.enabled=false.",
+    ],
+  },
+  {
+    id: "actions-workflow-dispatch",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/actions/workflows/{workflow_file}/dispatches",
+    title: "Dispatch workflow run",
+    description:
+      "Queues a manual workflow_dispatch run for a workflow that enables dispatch on the default branch.",
+    auth: "Signed opengithub session cookie with write access",
+    request: `{
+  "ref": "main",
+  "inputs": {
+    "environment": "staging",
+    "dryRun": "true"
+  }
+}`,
+    response: `{
+  "id": "run_02",
+  "workflowName": "CI",
+  "runNumber": 8,
+  "status": "queued",
+  "event": "workflow_dispatch",
+  "headBranch": "main"
+}`,
+    notes: [
+      "The API validates ref existence, required inputs, choice values, boolean strings, and bounded input sizes.",
+      "Disabled dispatch, invalid workflow YAML, and missing write permission return standard error envelopes.",
+      "A successful dispatch seeds queued run/job/check records before the background runner picks it up.",
+    ],
+  },
+  {
     id: "actions-workflows-list",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/actions/workflows?page=1&pageSize=30",

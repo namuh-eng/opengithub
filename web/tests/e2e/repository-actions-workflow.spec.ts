@@ -165,6 +165,12 @@ test("signed-in workflow Actions page renders scoped runs and filters", async ({
     page.getByRole("button", { name: "Run workflow" }),
   ).toBeVisible();
   await expect(
+    page.getByRole("link", { name: "Workflow options" }),
+  ).toHaveAttribute("href", `/${ownerLogin}/${repoName}/settings/actions`);
+  await expect(
+    page.getByRole("link", { name: "Dispatch API" }),
+  ).toHaveAttribute("href", "/docs/api#actions-workflow-dispatch");
+  await expect(
     page.getByRole("link", { exact: true, name: "Editorial CI" }).last(),
   ).toHaveAttribute("href", new RegExp(`/actions/runs/${run.id}`));
   await expect(page.getByLabel("Success run")).toBeVisible();
@@ -212,6 +218,6 @@ test("signed-in workflow Actions page renders scoped runs and filters", async ({
   expect(desktopOverflow).toBe(false);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/actions-002-phase3-run-workflow.jpg",
+    path: "../ralph/screenshots/build/actions-002-phase4-workflow-options.jpg",
   });
 });

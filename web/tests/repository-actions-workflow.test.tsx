@@ -194,6 +194,7 @@ function detail(
         ],
       },
       yamlParseError: null,
+      yamlParsedAt: "2026-05-01T00:00:00Z",
       valid: true,
     },
     workflows,
@@ -263,6 +264,14 @@ describe("RepositoryActionsWorkflowPage", () => {
       "/mona/octo-app/blob/main/.github/workflows/ci.yml",
     );
     expect(screen.getByRole("button", { name: "Run workflow" })).toBeEnabled();
+    expect(
+      screen.getByRole("link", { name: "Workflow options" }),
+    ).toHaveAttribute("href", "/mona/octo-app/settings/actions");
+    expect(screen.getByRole("link", { name: "Dispatch API" })).toHaveAttribute(
+      "href",
+      "/docs/api#actions-workflow-dispatch",
+    );
+    expect(screen.getByText(/Parsed/)).toHaveTextContent("Parsed May 1, 2026");
     expect(
       screen.getByRole("navigation", { name: "Actions workflows" }),
     ).toBeVisible();
@@ -434,6 +443,13 @@ describe("RepositoryActionsWorkflowPage", () => {
       screen.getByText("mapping values are not allowed here"),
     ).toBeVisible();
     expect(screen.queryByRole("button", { name: "Run workflow" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Open YAML" })).toHaveAttribute(
+      "href",
+      "/mona/octo-app/blob/main/.github/workflows/ci.yml",
+    );
+    expect(
+      screen.getByRole("link", { name: "Read workflow API docs" }),
+    ).toHaveAttribute("href", "/docs/api#actions-workflow-detail");
     expect(screen.getByText("No runs for this workflow yet")).toBeVisible();
     expect(
       screen.getByRole("link", { name: "Back to all workflows" }),

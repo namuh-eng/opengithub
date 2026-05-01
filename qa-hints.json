@@ -2328,5 +2328,24 @@
       "Branch/ref race conditions between dialog load and dispatch submit should be revisited when branch mutation APIs are richer.",
       "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth."
     ]
+  },
+  {
+    "feature_id": "actions-002",
+    "tests_written": [
+      "Implemented Phase 4 invalid-YAML, workflow options, and API docs hardening.",
+      "Added workflow detail yamlParsedAt metadata and sanitized YAML parse errors so invalid workflow payloads do not expose raw stack traces.",
+      "Wired workflow source, workflow options, invalid-YAML recovery, and dispatch API documentation links to concrete routes with no inert controls.",
+      "Expanded /docs/api with workflow-specific dashboard and manual dispatch contracts, including permissions, validation, branch/ref behavior, and invalid YAML behavior.",
+      "Extended Rust contract coverage for sanitized parse errors and parse timestamp presence.",
+      "Extended Vitest coverage for workflow option/source/docs links, invalid YAML recovery links, API docs anchors, and no dead controls.",
+      "Extended Playwright workflow smoke for workflow options and Dispatch API links, saving ralph/screenshots/build/actions-002-phase4-workflow-options.jpg.",
+      "Verification passed: focused api_repository_actions_workflow_detail_contract, focused repository-actions-workflow/api-docs Vitest, TEST_DATABASE_URL-backed make check, TEST_DATABASE_URL-backed make test with Cargo tests plus 184 frontend tests, full TEST_DATABASE_URL-backed make test-e2e with 68 Playwright tests, focused repository-actions-workflow Playwright, and mandatory Editorial banned-value scan with zero matches using rg -n -e."
+    ],
+    "needs_deeper_qa": [
+      "Workflow options route to the existing Actions settings page; workflow-specific settings controls remain a later feature.",
+      "YAML parser provenance is represented through persisted parse metadata; live YAML parsing from repository blob edits should be revisited when workflow discovery is wired end to end.",
+      "Manual dispatch queueing exists from Phase 3, but real runner execution, streaming logs, artifacts, and check-suite/check-run synchronization remain outside this phase.",
+      "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth."
+    ]
   }
 ]

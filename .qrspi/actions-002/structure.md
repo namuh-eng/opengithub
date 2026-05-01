@@ -56,7 +56,7 @@
 
 ## Phase 4: Invalid YAML, Workflow Options, and API Docs - no dead workflow controls remain
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish workflow-specific navigation and developer-facing documentation. Invalid YAML disables dispatch with a clear callout; workflow options and source links resolve to concrete routes; `/docs/api` documents workflow detail and dispatch.
 

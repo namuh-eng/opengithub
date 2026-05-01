@@ -640,9 +640,12 @@ async fn workflow_detail_preserves_private_permissions_and_invalid_yaml_state() 
     sqlx::query(
         r#"
         UPDATE actions_workflows
-        SET yaml_parse_error = 'mapping values are not allowed here',
+        SET yaml_parse_error = 'mapping values are not allowed here
+stack backtrace:
+at crates/api/src/domain/actions.rs:42',
             dispatch_enabled = false,
-            source_branch = 'trunk'
+            source_branch = 'trunk',
+            updated_at = '2026-05-01T10:11:12Z'
         WHERE id = $1
         "#,
     )
@@ -678,6 +681,18 @@ async fn workflow_detail_preserves_private_permissions_and_invalid_yaml_state() 
     assert_eq!(
         owner_body["workflow"]["yamlParseError"],
         "mapping values are not allowed here"
+    );
+    assert!(
+        owner_body["workflow"]["yamlParsedAt"]
+            .as_str()
+            .is_some_and(|value| value.ends_with('Z')),
+        "workflow detail should expose a stable parse timestamp"
+    );
+    assert!(
+        !owner_body["workflow"]["yamlParseError"]
+            .to_string()
+            .contains("stack backtrace"),
+        "parse errors should not expose raw stack traces"
     );
     assert_eq!(owner_body["workflow"]["dispatch"]["enabled"], false);
     assert_eq!(owner_body["workflow"]["sourceBranch"], "trunk");

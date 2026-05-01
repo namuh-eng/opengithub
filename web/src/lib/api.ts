@@ -523,6 +523,7 @@ export type ActionsWorkflowDetailWorkflow = {
   sourceHref: string;
   dispatch: WorkflowDispatchSpec;
   yamlParseError: string | null;
+  yamlParsedAt: string;
   valid: boolean;
 };
 
