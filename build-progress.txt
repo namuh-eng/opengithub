@@ -1,3 +1,11 @@
+2026-05-02 - actions-004 structure planning
+
+- Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `CLAUDE.md`, `build-progress.txt`, `web/AGENTS.md`, the first incomplete `prd.json` entry, adjacent `.qrspi/actions-002/structure.md` and `.qrspi/actions-003/structure.md`, `design/project/og-screens-4.jsx`, Actions target-doc references, and current Actions backend/frontend surfaces.
+- Determined `actions-004` requires structure planning before implementation because `needs_structure: true` and `.qrspi/actions-004/structure.md` did not exist.
+- Added `.qrspi/actions-004/structure.md` with five independently verifiable vertical phases: job log read contract, dedicated Editorial job viewer page, search/navigation/step interaction, log options/archive downloads, and final QA guardrails.
+- Did not change `prd.json`; `build_pass` remains `false` until all implementation phases pass verification.
+- Tests not run because this iteration only created the required planning artifact.
+
 2026-05-01 - prs-004 structure planning
 
 - Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `CLAUDE.md`, `build-progress.txt`, `web/AGENTS.md`, the first incomplete `prd.json` entry, adjacent `.qrspi` outlines for pull requests and issue detail, `design/project/og-screens-3.jsx`, current pull request backend routes/domain code, and the current placeholder PR detail route.
