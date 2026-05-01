@@ -22,7 +22,7 @@
 
 ## Phase 2: Editorial Actions Page - real rail and run list replace the placeholder
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace `RepositoryFeaturePage` on `/{owner}/{repo}/actions` with the Editorial all-workflows screen. The page fetches the Phase 1 contract server-side, renders a left Actions rail, dense run rows, status chips/icons, run counts, and the no-workflows template cards with a working New workflow CTA.
 

@@ -5,6 +5,7 @@ import {
   getAppShellContextFromCookie,
   getDashboardSummaryFromCookie,
   getPullRequestCompareFromCookie,
+  getRepositoryActionsDashboardFromCookie,
   getRepositoryBlameFromCookie,
   getRepositoryBlobFromCookie,
   getRepositoryCommitHistoryFromCookie,
@@ -23,6 +24,7 @@ import {
   getRepositoryPullRequestTimelineFromCookie,
   getRepositoryRefsFromCookie,
   getSessionFromHeaders,
+  type RepositoryActionsDashboardQuery,
   type RepositoryIssueListQuery,
   type RepositoryPullRequestDiffQuery,
   type RepositoryPullRequestListQuery,
@@ -191,6 +193,20 @@ export async function getRepositoryPullRequests(
 ) {
   const requestHeaders = await headers();
   return getRepositoryPullRequestsFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    query,
+  );
+}
+
+export async function getRepositoryActionsDashboard(
+  owner: string,
+  repo: string,
+  query: RepositoryActionsDashboardQuery = {},
+) {
+  const requestHeaders = await headers();
+  return getRepositoryActionsDashboardFromCookie(
     requestHeaders.get("cookie"),
     owner,
     repo,

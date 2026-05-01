@@ -2205,5 +2205,23 @@
       "Runner execution, logs, artifacts, real check-run integration, and workflow dispatch are outside this all-workflows dashboard read-contract phase.",
       "Real Google OAuth was not used; API verification used deterministic Rust-signed test sessions against the local Postgres test database."
     ]
+  },
+  {
+    "feature_id": "actions-001",
+    "tests_written": [
+      "Implemented Phase 2 Editorial Actions all-workflows UI for /{owner}/{repo}/actions.",
+      "Added typed Next.js API helpers for GET /api/repos/{owner}/{repo}/actions/dashboard with cookie forwarding, query params, and error envelopes.",
+      "Replaced the placeholder Actions route with a real server-rendered page that fetches repository metadata plus the Actions dashboard contract.",
+      "Added RepositoryActionsPage with an Editorial workflow rail, pinned workflow markers, run rows, semantic status chips, branch pills, actor avatars, duration/live state, no-workflows template cards, and working New workflow CTA.",
+      "Added Vitest coverage for workflow rail links, run navigation, empty templates, status presentation, accessible controls, and no inert anchors.",
+      "Added Playwright smoke that signs in with a deterministic Rust session, creates repositories through the UI, creates workflow/run records through the Rust API, verifies the Actions page and empty workflow state, and saves ralph/screenshots/build/actions-001-phase2-actions-list.jpg.",
+      "Verification passed: focused repository-actions Vitest, TEST_DATABASE_URL-backed make check, TEST_DATABASE_URL-backed make test with Cargo tests plus 175 frontend tests, focused repository-actions Playwright, full TEST_DATABASE_URL-backed make test-e2e with 67 Playwright tests, and mandatory Editorial banned-value scan with zero matches using rg -n -e."
+    ],
+    "needs_deeper_qa": [
+      "Filter controls are intentionally link/form placeholders in Phase 2; searchable select panels, URL mutation depth, workflow scoping polish, and telemetry writes are Phase 3.",
+      "Management links render concrete hrefs but their destination pages are intentionally deferred to Phase 4, so QA should not treat thin management navigation as complete yet.",
+      "Runner execution, live log streaming, artifacts, check-suite/check-run integration, and manual dispatch are outside this all-workflows list phase.",
+      "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth."
+    ]
   }
 ]

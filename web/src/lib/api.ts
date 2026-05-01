@@ -367,6 +367,135 @@ export type ApiErrorEnvelope = {
   } | null;
 };
 
+export type ActionsWorkflowLatestRun = {
+  id: string;
+  runNumber: number;
+  status: string;
+  conclusion: string | null;
+  createdAt: string;
+};
+
+export type ActionsWorkflowRailItem = {
+  id: string;
+  name: string;
+  path: string;
+  state: string;
+  triggerEvents: string[];
+  pinned: boolean;
+  runCount: number;
+  latestRun: ActionsWorkflowLatestRun | null;
+};
+
+export type ActionsActor = {
+  id: string;
+  login: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+};
+
+export type ActionsRunPullRequest = {
+  id: string;
+  number: number;
+  title: string;
+};
+
+export type ActionsJobSummary = {
+  total: number;
+  queued: number;
+  inProgress: number;
+  completed: number;
+  cancelled: number;
+  success: number;
+  failure: number;
+  skipped: number;
+  timedOut: number;
+};
+
+export type ActionsRunListItem = {
+  id: string;
+  workflowId: string;
+  workflowName: string;
+  workflowPath: string;
+  runNumber: number;
+  displayTitle: string;
+  status: string;
+  conclusion: string | null;
+  statusCategory: string;
+  event: string;
+  actor: ActionsActor | null;
+  headBranch: string;
+  headSha: string | null;
+  shortSha: string | null;
+  pullRequest: ActionsRunPullRequest | null;
+  commitMessage: string | null;
+  jobSummary: ActionsJobSummary;
+  durationSeconds: number | null;
+  isLive: boolean;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ActionsRunFilters = {
+  q: string | null;
+  workflow: string | null;
+  event: string | null;
+  status: string | null;
+  branch: string | null;
+  actor: string | null;
+  page: number;
+  pageSize: number;
+};
+
+export type ActionsFilterOption = {
+  value: string;
+  label: string;
+  count: number;
+};
+
+export type ActionsRunFilterOptions = {
+  workflows: ActionsFilterOption[];
+  events: ActionsFilterOption[];
+  statuses: ActionsFilterOption[];
+  branches: ActionsFilterOption[];
+  actors: ActionsFilterOption[];
+};
+
+export type ActionsEmptyState = {
+  hasWorkflows: boolean;
+  hasRuns: boolean;
+  message: string;
+  newWorkflowHref: string;
+};
+
+export type RepositoryActionsDashboard = {
+  repository: {
+    id: string;
+    ownerLogin: string;
+    name: string;
+    visibility: RepositoryVisibility;
+    defaultBranch: string;
+  };
+  viewerPermission: string | null;
+  workflows: ActionsWorkflowRailItem[];
+  runs: ListEnvelope<ActionsRunListItem>;
+  filters: ActionsRunFilters;
+  filterOptions: ActionsRunFilterOptions;
+  emptyState: ActionsEmptyState;
+};
+
+export type RepositoryActionsDashboardQuery = {
+  q?: string | null;
+  workflow?: string | null;
+  event?: string | null;
+  status?: string | null;
+  branch?: string | null;
+  actor?: string | null;
+  page?: number | string | null;
+  pageSize?: number | string | null;
+};
+
 export type DashboardTopRepository = {
   ownerLogin: string;
   name: string;
@@ -1851,6 +1980,65 @@ export async function getRepositoryPullRequestsFromCookie(
   }
 
   return body as PullRequestListView;
+}
+
+export function repositoryActionsDashboardPath(
+  owner: string,
+  repo: string,
+  query: RepositoryActionsDashboardQuery = {},
+): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null || value === "") {
+      continue;
+    }
+    params.set(key, String(value));
+  }
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
+    repo,
+  )}/actions/dashboard${suffix}`;
+}
+
+export async function getRepositoryActionsDashboardFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  query: RepositoryActionsDashboardQuery = {},
+): Promise<RepositoryActionsDashboard | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}${repositoryActionsDashboardPath(owner, repo, query)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Repository Actions are temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "actions_dashboard_failed",
+          message: "Repository Actions could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as RepositoryActionsDashboard;
 }
 
 export function repositoryPullRequestPath(
