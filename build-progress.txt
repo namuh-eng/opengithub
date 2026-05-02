@@ -1,3 +1,11 @@
+2026-05-02 - profiles-001 structure planning
+
+- Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `prd.json`, `web/AGENTS.md`, `design/project/wf-profiles.jsx`, adjacent QRSPI outlines, current user/profile routes, current profile shell, identity/repository/social migrations, and current frontend route surfaces.
+- Determined `profiles-001` requires structure planning before implementation because `needs_structure: true` and `.qrspi/profiles-001/structure.md` did not exist.
+- Added `.qrspi/profiles-001/structure.md` with five independently verifiable vertical phases: profile overview API contract, Editorial profile shell, follow/block/report actions, contribution graph/accessibility, and final QA guardrails.
+- Did not change `prd.json`; `build_pass` remains `false` until all implementation phases pass verification.
+- Tests not run because this iteration only created the required planning artifact.
+
 2026-05-02 - search-004 phase 4 sort, save, pagination, and navigation
 
 - Completed Phase 4 from `.qrspi/search-004/structure.md`: issue and pull request search now has concrete sort, saved-search, compact/comfortable view, pagination-preserving, empty-state recovery, and result navigation interactions.
