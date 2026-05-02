@@ -2,15 +2,15 @@
   {
     "feature_id": "infra-001",
     "tests_written": [
-      "health returns HTTP 200 with degraded database status when DATABASE_URL is absent",
-      "app router builds without a database pool",
-      "users, OAuth accounts, and sessions round-trip through Postgres migrations",
-      "session revocation removes sessions from active-session lookup"
+      "QA verified existing core Postgres schema and Rust data-access foundation for users, auth accounts, sessions, repositories, refs, commits, issues, pull requests, organizations, teams, Actions/package/webhook/notification surfaces, request logging, API envelopes, and search-document permission filtering.",
+      "Focused backend infra suite passed with TEST_DATABASE_URL and DB_SSL=false: identity_foundation, repository_foundation, collaboration_foundation, automation_delivery_foundation, schema_contract, api_contract_hardening, api_collaboration_automation_contract, and search_global_contract.",
+      "make check passed: Cargo check, web typecheck, Clippy, and Biome.",
+      "Broader make test passed: Cargo tests passed and web tests passed (201 passed)."
     ],
     "needs_deeper_qa": [
-      "Run make db-migrate once sqlx-cli is installed or CI has a migration runner",
-      "Confirm the future tower-sessions store table contract is compatible with the sessions schema before wiring auth-001",
-      "Exercise /health against the provisioned RDS DATABASE_URL after preflight fills .env"
+      "QA was evidence-only; no source changes were required for infra-001.",
+      "Migration down/up behavior was verified through existing contract/foundation coverage, not a fresh destructive migration cycle against a production-like database.",
+      "Additional long-running production-scale data volume, concurrency, and retention tests remain future hardening."
     ]
   },
   {
@@ -2455,8 +2455,7 @@
       "Browser smoke uses deterministic Rust-signed sessions against local Postgres fixtures, not real Google OAuth.",
       "Check-suite/check-run synchronization is seeded only enough for run detail presentation; full merge-gate integration needs later QA."
     ]
-  }
-,
+  },
   {
     "feature_id": "actions-004",
     "tests_written": [

@@ -16,7 +16,7 @@
     ],
     "needs_structure": true,
     "build_pass": true,
-    "qa_pass": false
+    "qa_pass": true
   },
   {
     "id": "auth-001",

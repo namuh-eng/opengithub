@@ -1,3 +1,11 @@
+2026-05-02 - infra-001 QA pass
+
+- Independent QA verified infra-001 against `prd.json`, `.qrspi/infra-001/structure.md`, migrations, Rust domain/routes/tests, API envelopes, request logging, and search-document visibility boundaries.
+- Focused infra tests passed with TEST_DATABASE_URL and DB_SSL=false: identity_foundation, repository_foundation, collaboration_foundation, automation_delivery_foundation, schema_contract, api_contract_hardening, api_collaboration_automation_contract, and search_global_contract.
+- `make check` passed: Cargo check, web typecheck, Clippy, and Biome.
+- Broader `make test` passed: Cargo tests passed and web tests passed (201 passed).
+- Marked `infra-001.qa_pass=true` in `prd.json`; no infra-001 source-code fixes were required.
+
 2026-05-02 - search-002 phase 5 guardrails and feature completion
 
 - Implemented final guardrails from `.qrspi/search-002/structure.md`: hardened `GlobalSearchModal` so Tab stays inside the modal and Escape closes from any focused modal control, including the nested Create saved search dialog.
@@ -1796,3 +1804,11 @@
 - Verification passed: focused `search_suggestions_contract`; focused `web/tests/app-shell.test.tsx` and `web/tests/api-docs.test.tsx`; `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 201 frontend tests; full `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false SESSION_SECRET=playwright-session-secret-with-enough-entropy SESSION_COOKIE_NAME=og_session make test-e2e` with 73 Playwright tests; mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
 - Marked Phase 4 as done in `.qrspi/search-002/structure.md`; `prd.json` remains `build_pass: false` because Phase 5 remains.
 [Hermes 12:20:32] stale alert inspected: tmux pane idle; live watchdog codex exec appeared stalled, restarting that iteration.
+
+2026-05-02 - search-003 structure planning
+
+- Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `web/AGENTS.md`, the first incomplete `prd.json` entry, `design/project/wf-search.jsx`, `design/project/og-shell.jsx`, `.qrspi/search-001/structure.md`, `.qrspi/search-002/structure.md`, current search API/domain/page code, and target search docs/OpenAPI references.
+- Determined `search-003` requires structure planning before implementation because `needs_structure: true` and `.qrspi/search-003/structure.md` did not exist.
+- Added `.qrspi/search-003/structure.md` with five independently verifiable vertical phases: code-search API facets, Editorial code results shell, snippet grouping and expansion, facet/advanced/saved-search interactions, and final guardrails/QA handoff.
+- Did not change `prd.json`; `build_pass` remains `false` until all implementation phases pass verification.
+- Tests not run because this iteration only created the required planning artifact.
