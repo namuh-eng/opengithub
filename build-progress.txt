@@ -2175,3 +2175,14 @@
 - Verification passed: focused `cargo test -p opengithub-api --test api_notifications_inbox_contract`; focused `cd web && npx vitest run tests/notifications-inbox.test.tsx`; `cd web && npx tsc --noEmit --pretty false`; mandatory banned-value scan returned zero matches; `make check`; `CARGO_INCREMENTAL=0 make test` with Cargo tests plus 215 frontend tests.
 - `make test` initially hit disk exhaustion during Rust test linking; cleared local build/cache artifacts and reran successfully.
 - Set `notifications-001.build_pass=true`, `needs_structure=false`, and left `qa_pass=false` for independent QA.
+
+2026-05-03 - personal-settings-001 public profile settings build
+
+- Created `.qrspi/personal-settings-001/structure.md` and completed the personal public profile settings vertical slice for `/settings/profile`.
+- Added additive Rust/Postgres persistence for `users` profile settings columns, `user_email_addresses`, `user_social_accounts`, S3-modeled `user_avatars`, and `security_audit_events`.
+- Added authenticated API behavior for `GET/PATCH /api/user/settings/profile` plus `PATCH /api/user/settings/profile/avatar`, including optional field clearing, public email ownership validation, privacy/profile-visibility synchronization, social account persistence, avatar type/size validation, avatar remove, and audit events.
+- Replaced the profile placeholder with an Editorial settings form: Public profile fields, public email select, bio/pronouns/custom pronouns, URL/company/location/local time/time zone/language, four social account inputs, avatar upload/reset/remove, contribution/activity privacy toggles, inline validation, dirty-state compact save buttons, and success flashes.
+- Added focused tests: `crates/api/tests/personal_profile_settings_contract.rs` and `web/tests/personal-profile-settings.test.tsx`.
+- Verification passed: focused `CARGO_INCREMENTAL=0 cargo test -p opengithub-api --test personal_profile_settings_contract` (2 passed); focused `cd web && npm test -- --run tests/personal-profile-settings.test.tsx` (6 passed); `cd web && npx tsc --noEmit`; mandatory Editorial banned-value scan returned zero matches; `CARGO_INCREMENTAL=0 make check`; `CARGO_INCREMENTAL=0 make test` with Cargo tests plus 251 frontend tests.
+- `make check` initially reported the fresh-worktree setup guard; per task instruction, touched `.ralph-setup-done` and reran successfully. A first Rust run hit local target/temp-dir cache issues after disk cleanup; rerunning with `CARGO_INCREMENTAL=0` passed.
+- Set `personal-settings-001.build_pass=true`, `needs_structure=false`, and left `qa_pass=false` for independent QA.

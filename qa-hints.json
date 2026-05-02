@@ -3122,7 +3122,10 @@
       "TEST_DATABASE_URL-backed full make test still exposes an unrelated PR compare owner-login fixture mismatch; the standard make test path passed and org-focused frontend/browser coverage passed.",
       "Phase 3 still needs hardening for composed query normalization, pagination preservation under all controls, compact/mobile layout stress, and filter-count consistency across larger visible repository sets.",
       "QA should stress very long organization/repository names, many topics/languages, fork-source links, direct admin permissions for non-members, hidden private/internal repositories, and empty result recovery from every filter control."
-"feature_id": "notifications-001",
+    ]
+  },
+  {
+    "feature_id": "notifications-001",
     "tests_written": [
       "Added Rust API contract coverage in crates/api/tests/api_notifications_inbox_contract.rs for authenticated /api/notifications, reason/repo filters, repository grouping, unread tab, repository buckets, subscribed row state, and PATCH mark-read behavior.",
       "Added Vitest coverage in web/tests/notifications-inbox.test.tsx for folders, default filters, repository buckets, All/Unread tabs, query search form, sort/group links, row open hrefs, unread/subscribed states, and editable empty states.",
@@ -3150,6 +3153,19 @@
       "The first full E2E run failed only because the API had been started with API_URL=http://localhost:3016, producing localhost clone URLs for an unrelated repository Code-tab assertion; rerunning with API_URL=https://opengithub.namuh.co passed all 90 E2E tests.",
       "Phase 4 still needs the organization people list API/UI and signed-out/member/admin people visibility coverage before orgs-002 can be marked build_pass=true.",
       "QA should stress many pages of organization repositories, unusual language casing and spacing, direct repository permissions for non-members, empty results after every chip removal path, and compact density with very long names/topics."
+    ]
+  },
+  {
+    "feature_id": "personal-settings-001",
+    "tests_written": [
+      "Added Rust API contract coverage in crates/api/tests/personal_profile_settings_contract.rs for authenticated profile settings read/write, optional field clearing, privacy side effects, social accounts, avatar type/size validation, avatar remove, and security_audit_events rows.",
+      "Added Vitest coverage in web/tests/personal-profile-settings.test.tsx for Public profile fields, dirty Update profile state, clearable optional fields, inline URL/avatar validation, privacy save, no inert links, and accessible buttons.",
+      "Added migration 202605030041_personal_profile_settings for users profile settings columns, user_email_addresses, user_social_accounts, user_avatars, and security_audit_events."
+    ],
+    "needs_deeper_qa": [
+      "Avatar upload is modeled as an S3 object contract with validated metadata and preview URL persistence; independent QA should verify the future real S3 adapter when storage credentials are wired.",
+      "Browser E2E coverage was not added for this slice; QA should manually exercise /settings/profile with a signed-in seeded user, including large images, long text, and rapid repeated privacy saves.",
+      "Time zone and preferred language use a conservative fixed option set; QA should confirm product requirements before expecting a full IANA/language catalog."
     ]
   }
 ]

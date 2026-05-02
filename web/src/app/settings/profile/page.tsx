@@ -1,32 +1,36 @@
+import { PersonalProfileSettingsForm } from "@/components/PersonalProfileSettingsForm";
 import { SettingsShell } from "@/components/SettingsShell";
-import { getSessionAndShellContext } from "@/lib/server-session";
+import {
+  getPersonalProfileSettings,
+  getSessionAndShellContext,
+} from "@/lib/server-session";
 
 export default async function ProfileSettingsPage() {
-  const { session, shellContext } = await getSessionAndShellContext();
+  const [{ session, shellContext }, settings] = await Promise.all([
+    getSessionAndShellContext(),
+    getPersonalProfileSettings(),
+  ]);
 
   return (
     <SettingsShell
       activeSection="profile"
+      eyebrow="Settings"
       session={session}
       shellContext={shellContext}
-      title="Profile"
+      title="Public profile"
     >
-      <div className="card p-6">
-        <dl className="grid gap-4 t-sm">
-          <div>
-            <dt className="t-label" style={{ color: "var(--ink-3)" }}>
-              Display name
-            </dt>
-            <dd>{session.user?.display_name ?? "Not set"}</dd>
-          </div>
-          <div>
-            <dt className="t-label" style={{ color: "var(--ink-3)" }}>
-              Email
-            </dt>
-            <dd>{session.user?.email ?? "Unknown"}</dd>
-          </div>
-        </dl>
-      </div>
+      {settings ? (
+        <PersonalProfileSettingsForm initialSettings={settings} />
+      ) : (
+        <div className="card p-6">
+          <p className="t-label">Unavailable</p>
+          <h3 className="t-h2 mt-2">Profile settings could not be loaded</h3>
+          <p className="t-body mt-2" style={{ color: "var(--ink-3)" }}>
+            Refresh the page after signing in again. No profile changes were
+            made.
+          </p>
+        </div>
+      )}
     </SettingsShell>
   );
 }

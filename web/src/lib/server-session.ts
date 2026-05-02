@@ -7,6 +7,7 @@ import {
   getAppShellContextFromCookie,
   getDashboardSummaryFromCookie,
   getOrganizationRepositoriesFromCookie,
+  getPersonalProfileSettingsFromCookie,
   getProfileRepositoriesFromCookie,
   getProfileStarsFromCookie,
   getPublicOrganizationProfileFromCookie,
@@ -65,6 +66,11 @@ export async function getSessionAndShellContext() {
 export async function getAppShellContext() {
   const requestHeaders = await headers();
   return getAppShellContextFromCookie(requestHeaders.get("cookie"));
+}
+
+export async function getPersonalProfileSettings() {
+  const requestHeaders = await headers();
+  return getPersonalProfileSettingsFromCookie(requestHeaders.get("cookie"));
 }
 
 export async function getPublicUserProfile(
