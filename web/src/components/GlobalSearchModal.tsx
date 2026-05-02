@@ -181,6 +181,7 @@ export function GlobalSearchModal({
     [flatSuggestions],
   );
   const selectedSuggestion = flatSuggestions[selectedIndex];
+  const modalRef = useRef<HTMLDivElement | null>(null);
   const queryBuilderChips = [
     { label: "language:rust", value: "language:rust" },
     { label: "repo:owner/name", value: "repo:" },
@@ -414,6 +415,59 @@ export function GlobalSearchModal({
     }
   }
 
+  function onDialogKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.defaultPrevented) {
+      return;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      if (createDialogOpen) {
+        closeCreateDialog();
+        return;
+      }
+      onClose();
+      return;
+    }
+
+    if (event.key !== "Tab") {
+      return;
+    }
+
+    const focusable = Array.from(
+      modalRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter((element) => {
+      const style = window.getComputedStyle(element);
+      return (
+        !element.hasAttribute("disabled") &&
+        element.getAttribute("aria-hidden") !== "true" &&
+        style.display !== "none" &&
+        style.visibility !== "hidden"
+      );
+    });
+
+    if (focusable.length === 0) {
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable.at(-1) ?? first;
+    const active = document.activeElement;
+
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+      return;
+    }
+
+    if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
   return (
     <div className="palette-backdrop">
       <button
@@ -427,6 +481,8 @@ export function GlobalSearchModal({
         aria-label="Search"
         aria-modal="true"
         className="palette relative z-[1]"
+        onKeyDown={onDialogKeyDown}
+        ref={modalRef}
         role="dialog"
       >
         <div

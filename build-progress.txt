@@ -1,3 +1,11 @@
+2026-05-02 - search-002 phase 5 guardrails and feature completion
+
+- Implemented final guardrails from `.qrspi/search-002/structure.md`: hardened `GlobalSearchModal` so Tab stays inside the modal and Escape closes from any focused modal control, including the nested Create saved search dialog.
+- Added `web/tests/global-search-modal.test.tsx` for modal accessibility semantics, focus trap, Escape behavior, no inert links, no Copilot rows, grouped suggestions, saved-search validation/create feedback, and delete feedback.
+- Added `web/tests/e2e/search-modal.spec.ts` for signed-in browser smoke covering shortcut open, qualifier autocomplete, query-builder chips, scoped submit to `/search`, saved-search validation/create, Escape close, mobile no-overflow, and final screenshots `search-002-final-desktop-modal.jpg` and `search-002-final-mobile-modal.jpg`.
+- Verification passed: targeted Biome/TypeScript checks, focused GlobalSearchModal/AppShell Vitest, focused search-modal Playwright smoke with TEST_DATABASE_URL, TEST_DATABASE_URL-backed `make check`, same-env `make test` with Cargo tests plus 204 frontend tests, full same-env `make test-e2e` with 75 Playwright tests, and mandatory Editorial banned-value scan with zero matches.
+- Marked Phase 5 done in `.qrspi/search-002/structure.md` and set `search-002.build_pass` to `true` in `prd.json`; `qa_pass` remains `false`.
+
 2026-05-02 - actions-004 structure planning
 
 - Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `CLAUDE.md`, `build-progress.txt`, `web/AGENTS.md`, the first incomplete `prd.json` entry, adjacent `.qrspi/actions-002/structure.md` and `.qrspi/actions-003/structure.md`, `design/project/og-screens-4.jsx`, Actions target-doc references, and current Actions backend/frontend surfaces.

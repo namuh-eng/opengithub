@@ -2633,5 +2633,21 @@
       "Duplicate-name handling is covered in Rust and component tests; cross-tab concurrent creates/deletes and long saved-search lists need deeper QA.",
       "Recent-search write-through is coupled to saved-search creation and /api/search; analytics retention and telemetry review are still future hardening."
     ]
+  },
+  {
+    "feature_id": "search-002",
+    "tests_written": [
+      "Finalized Phase 5 guardrails for the global search modal and marked search-002 build-complete.",
+      "Added component coverage for modal aria-modal semantics, no inert links, no Copilot rows, grouped suggestions, focus trap behavior, Escape close from any focused control, nested saved-search focus return, validation, create feedback, and delete feedback.",
+      "Added Playwright smoke coverage for signed-in shortcut open, qualifier autocomplete, query-builder chips, scoped submit to /search, saved-search create validation/persistence, Escape close, mobile no-overflow behavior, and desktop/mobile screenshots.",
+      "Verified Rust search_suggestions_contract for private suggestion filtering, qualifier replacement, saved-search ownership/delete behavior, recent search rows, and JSON error contracts.",
+      "Mandatory Editorial banned-value scan returned zero matches under web/src/ excluding og*.css."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke uses deterministic Rust-signed local test sessions, not a real Google OAuth browser session.",
+      "Saved-search long-list ergonomics, concurrent create/delete across multiple tabs, and production-latency suggestion cancellation need deeper QA.",
+      "Symbol-specific jumps depend on later richer symbol indexing; current direct jumps are backed by repository/code search documents.",
+      "Mobile smoke verifies no horizontal overflow at 390px; additional devices and assistive technology passes should recheck the focus trap and nested dialog."
+    ]
   }
 ]

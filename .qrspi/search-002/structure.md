@@ -71,7 +71,7 @@
 
 ## Phase 5: Search Modal Guardrails and QA Handoff - finish search-002
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Harden the full global search modal feature across accessibility, responsive behavior, privacy boundaries, visual compliance, and bookkeeping. Mark `search-002.build_pass=true` only after every modal interaction is real and verified.
 
