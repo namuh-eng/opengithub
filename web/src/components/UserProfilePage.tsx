@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { AppShellFrame } from "@/components/AppShellFrame";
+import { OwnerPackagesPage } from "@/components/OwnerPackagesPage";
 import { ProfileContributionGraph } from "@/components/ProfileContributionGraph";
 import { ProfileRepositoryTabs } from "@/components/ProfileRepositoryTabs";
 import { QueryTabNavigation } from "@/components/QueryTabNavigation";
@@ -8,6 +9,7 @@ import { UserProfileActions } from "@/components/UserProfileActions";
 import type {
   AppShellContext,
   AuthSession,
+  OwnerPackageList,
   ProfileRepositoryList,
   PublicUserProfile,
 } from "@/lib/api";
@@ -21,6 +23,7 @@ import {
 type UserProfilePageProps = {
   activeTab: string;
   profile: PublicUserProfile;
+  packageList?: OwnerPackageList | null;
   repositoryList?: ProfileRepositoryList | null;
   session: AuthSession;
   shellContext?: AppShellContext | null;
@@ -370,6 +373,7 @@ function SecondaryTab({
 export function UserProfilePage({
   activeTab,
   profile,
+  packageList,
   repositoryList,
   session,
   shellContext,
@@ -401,6 +405,12 @@ export function UserProfilePage({
                   <ProfileRepositoryTabs
                     list={repositoryList}
                     owner={profile.identity.login}
+                  />
+                ) : selectedTab === "packages" && packageList ? (
+                  <OwnerPackagesPage
+                    list={packageList}
+                    owner={profile.identity.login}
+                    ownerKind="user"
                   />
                 ) : (
                   <SecondaryTab activeTab={selectedTab} profile={profile} />

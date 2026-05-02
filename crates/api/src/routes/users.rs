@@ -13,6 +13,10 @@ use crate::{
     auth::extractor::AuthenticatedUser,
     domain::{
         identity::User,
+        packages::{
+            owner_packages, OwnerPackageList, OwnerPackageListQuery, PackageListError,
+            PackageOwnerKind,
+        },
         profiles::{
             block_user, follow_user, profile_repositories, public_user_profile, report_user,
             starred_repositories, unfollow_user, ProfileActionState, ProfileError, ProfileReport,
@@ -30,6 +34,7 @@ pub fn router() -> Router<AppState> {
             "/api/users/:username/repositories",
             get(public_repositories),
         )
+        .route("/api/users/:username/packages", get(public_packages))
         .route("/api/users/:username/stars", get(public_stars))
         .route("/api/users/:username/follow", put(follow).delete(unfollow))
         .route("/api/users/:username/block", put(block))
@@ -130,6 +135,35 @@ pub async fn public_repositories(
     .map_err(map_profile_error)?;
 
     Ok(Json(repositories))
+}
+
+async fn public_packages(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+    Query(query): Query<OwnerPackagesQuery>,
+) -> Result<Json<OwnerPackageList>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let packages = owner_packages(
+        pool,
+        &username,
+        PackageOwnerKind::User,
+        actor.map(|user| user.id),
+        OwnerPackageListQuery {
+            query: query.q.as_deref(),
+            package_type: query.package_type.as_deref(),
+            visibility: query.visibility.as_deref(),
+            sort: query.sort.as_deref(),
+            artifact_tab: query.artifact_tab.as_deref(),
+            page: query.page,
+            page_size: query.page_size,
+        },
+    )
+    .await
+    .map_err(map_package_list_error)?;
+
+    Ok(Json(packages))
 }
 
 pub async fn public_stars(
@@ -276,6 +310,41 @@ fn fallback_login_from_email(email: &str) -> String {
         "user".to_owned()
     } else {
         trimmed.to_owned()
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct OwnerPackagesQuery {
+    q: Option<String>,
+    #[serde(rename = "type")]
+    package_type: Option<String>,
+    visibility: Option<String>,
+    sort: Option<String>,
+    #[serde(alias = "artifact_tab")]
+    artifact_tab: Option<String>,
+    page: Option<i64>,
+    #[serde(alias = "page_size")]
+    page_size: Option<i64>,
+}
+
+fn map_package_list_error(error: PackageListError) -> (StatusCode, Json<ErrorEnvelope>) {
+    match error {
+        PackageListError::NotFound => error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "package owner was not found",
+        ),
+        PackageListError::InvalidFilter(message) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            message,
+        ),
+        PackageListError::Sqlx(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "packages could not be loaded",
+        ),
     }
 }
 

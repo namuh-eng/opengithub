@@ -1,7 +1,6 @@
 import { OrganizationProfilePage } from "@/components/OrganizationProfilePage";
 import { ProfileOrgShell } from "@/components/ProfileOrgShell";
 import {
-  activeOrganizationTab,
   ORGANIZATION_TABS,
   organizationProjectHref,
   organizationSettingsHref,
@@ -9,12 +8,11 @@ import {
 } from "@/lib/navigation";
 import {
   getOrganizationPackages,
-  getOrganizationRepositories,
   getPublicOrganizationProfile,
   getSessionAndShellContext,
 } from "@/lib/server-session";
 
-type OrganizationPageProps = {
+type OrganizationPackagesPageProps = {
   params: Promise<{ org: string }>;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
@@ -32,59 +30,40 @@ function numberParam(value: string | string[] | undefined) {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-export default async function OrganizationPage({
+export default async function OrganizationPackagesPage({
   params,
   searchParams,
-}: OrganizationPageProps) {
+}: OrganizationPackagesPageProps) {
   const [{ org }, queryParams, { session, shellContext }] = await Promise.all([
     params,
     searchParams,
     getSessionAndShellContext(),
   ]);
   const orgLogin = decodeURIComponent(org);
-  const activeTab = activeOrganizationTab(firstParam(queryParams?.tab));
-  const [profile, repositoryList, packageList] = await Promise.all([
+  const [profile, packageList] = await Promise.all([
     getPublicOrganizationProfile(orgLogin),
-    activeTab === "repositories"
-      ? getOrganizationRepositories(orgLogin, {
-          q: firstParam(queryParams?.q),
-          type: firstParam(queryParams?.type),
-          language: firstParam(queryParams?.language),
-          sort: firstParam(queryParams?.sort),
-          density: firstParam(queryParams?.density),
-          page: numberParam(queryParams?.page),
-          pageSize: numberParam(queryParams?.pageSize),
-        })
-      : Promise.resolve(null),
-    activeTab === "packages"
-      ? getOrganizationPackages(orgLogin, {
-          q: firstParam(queryParams?.q),
-          type: firstParam(queryParams?.type),
-          visibility: firstParam(queryParams?.visibility),
-          sort: firstParam(queryParams?.sort),
-          artifactTab: firstParam(queryParams?.artifactTab),
-          page: numberParam(queryParams?.page),
-          pageSize: numberParam(queryParams?.pageSize),
-        })
-      : Promise.resolve(null),
+    getOrganizationPackages(orgLogin, {
+      q: firstParam(queryParams?.q),
+      type: firstParam(queryParams?.type),
+      visibility: firstParam(queryParams?.visibility),
+      sort: firstParam(queryParams?.sort),
+      artifactTab: firstParam(queryParams?.artifactTab),
+      page: numberParam(queryParams?.page),
+      pageSize: numberParam(queryParams?.pageSize),
+    }),
   ]);
 
   if (profile) {
     return (
       <OrganizationProfilePage
-        activeTab={activeTab}
-        profile={profile}
+        activeTab="packages"
         packageList={packageList}
-        repositoryList={repositoryList}
+        profile={profile}
         session={session}
         shellContext={shellContext}
       />
     );
   }
-
-  const activeTabLabel =
-    ORGANIZATION_TABS.find((tab) => tab.value === activeTab)?.label ??
-    "Overview";
 
   return (
     <ProfileOrgShell
@@ -92,11 +71,11 @@ export default async function OrganizationPage({
         { href: organizationProjectHref(orgLogin), label: "Projects" },
         { href: organizationSettingsHref(orgLogin), label: "Settings" },
       ]}
-      activeTab={activeTab}
+      activeTab="packages"
       eyebrow="Organization"
       hrefForTab={(value) => organizationTabHref(orgLogin, value)}
       identityLabel={orgLogin}
-      message={`${activeTabLabel} for ${orgLogin} will show organization repositories, people, teams, and packages when the organization features are implemented. The skeleton keeps organization navigation grounded today.`}
+      message={`Packages for ${orgLogin} are unavailable. The organization may not exist yet, or the organization API could not be reached.`}
       session={session}
       shellContext={shellContext}
       tabLabel="Organization sections"

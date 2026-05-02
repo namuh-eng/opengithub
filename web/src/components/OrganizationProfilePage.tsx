@@ -2,11 +2,13 @@ import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { AppShellFrame } from "@/components/AppShellFrame";
 import { OrganizationRepositoriesPage } from "@/components/OrganizationRepositoriesPage";
+import { OwnerPackagesPage } from "@/components/OwnerPackagesPage";
 import { QueryTabNavigation } from "@/components/QueryTabNavigation";
 import type {
   AppShellContext,
   AuthSession,
   OrganizationRepositoryList,
+  OwnerPackageList,
   PublicOrganizationProfile,
 } from "@/lib/api";
 import {
@@ -21,6 +23,7 @@ import {
 type OrganizationProfilePageProps = {
   activeTab: string;
   profile: PublicOrganizationProfile;
+  packageList?: OwnerPackageList | null;
   repositoryList?: OrganizationRepositoryList | null;
   session: AuthSession;
   shellContext?: AppShellContext | null;
@@ -755,6 +758,7 @@ function SecondaryTab({
 export function OrganizationProfilePage({
   activeTab,
   profile,
+  packageList,
   repositoryList,
   session,
   shellContext,
@@ -782,6 +786,12 @@ export function OrganizationProfilePage({
               <OrganizationRepositoriesPage
                 list={repositoryList}
                 org={profile.identity.slug}
+              />
+            ) : selectedTab === "packages" && packageList ? (
+              <OwnerPackagesPage
+                list={packageList}
+                owner={profile.identity.slug}
+                ownerKind="organization"
               />
             ) : (
               <SecondaryTab activeTab={selectedTab} profile={profile} />

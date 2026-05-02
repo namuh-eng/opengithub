@@ -9,9 +9,15 @@ use serde::Deserialize;
 use crate::{
     api_types::{database_unavailable, error_response, ErrorEnvelope},
     auth::extractor::AuthenticatedUser,
-    domain::organizations::{
-        organization_repositories, public_organization_profile, OrganizationProfileError,
-        OrganizationRepositoryList, OrganizationRepositoryListQuery, PublicOrganizationProfile,
+    domain::{
+        organizations::{
+            organization_repositories, public_organization_profile, OrganizationProfileError,
+            OrganizationRepositoryList, OrganizationRepositoryListQuery, PublicOrganizationProfile,
+        },
+        packages::{
+            owner_packages, OwnerPackageList, OwnerPackageListQuery, PackageListError,
+            PackageOwnerKind,
+        },
     },
     AppState,
 };
@@ -20,6 +26,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/orgs/:org/profile", get(public_profile))
         .route("/api/orgs/:org/repositories", get(public_repositories))
+        .route("/api/orgs/:org/packages", get(public_packages))
 }
 
 async fn public_profile(
@@ -64,6 +71,35 @@ async fn public_repositories(
     Ok(Json(repositories))
 }
 
+async fn public_packages(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(org): Path<String>,
+    Query(query): Query<OwnerPackagesQuery>,
+) -> Result<Json<OwnerPackageList>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let packages = owner_packages(
+        pool,
+        &org,
+        PackageOwnerKind::Organization,
+        actor.map(|user| user.id),
+        OwnerPackageListQuery {
+            query: query.q.as_deref(),
+            package_type: query.package_type.as_deref(),
+            visibility: query.visibility.as_deref(),
+            sort: query.sort.as_deref(),
+            artifact_tab: query.artifact_tab.as_deref(),
+            page: query.page,
+            page_size: query.page_size,
+        },
+    )
+    .await
+    .map_err(map_package_list_error)?;
+
+    Ok(Json(packages))
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OrganizationRepositoriesQuery {
@@ -76,6 +112,41 @@ struct OrganizationRepositoriesQuery {
     page: Option<i64>,
     #[serde(alias = "page_size")]
     page_size: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OwnerPackagesQuery {
+    q: Option<String>,
+    #[serde(rename = "type")]
+    package_type: Option<String>,
+    visibility: Option<String>,
+    sort: Option<String>,
+    #[serde(alias = "artifact_tab")]
+    artifact_tab: Option<String>,
+    page: Option<i64>,
+    #[serde(alias = "page_size")]
+    page_size: Option<i64>,
+}
+
+fn map_package_list_error(error: PackageListError) -> (StatusCode, Json<ErrorEnvelope>) {
+    match error {
+        PackageListError::NotFound => error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "package owner was not found",
+        ),
+        PackageListError::InvalidFilter(message) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            message,
+        ),
+        PackageListError::Sqlx(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "packages could not be loaded",
+        ),
+    }
 }
 
 fn map_organization_profile_error(

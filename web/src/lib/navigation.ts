@@ -664,6 +664,88 @@ export function organizationRepositoryListHref(
   return `${organizationHref(org)}/repositories${query ? `?${query}` : ""}`;
 }
 
+export type OwnerPackageListFilters = {
+  query?: string | null;
+  type?: string | null;
+  visibility?: string | null;
+  sort?: string | null;
+  artifactTab?: string | null;
+  page?: number | string | null;
+  pageSize?: number | string | null;
+};
+
+export function ownerPackagesHref(
+  ownerKind: "user" | "organization",
+  owner: string,
+  filters: OwnerPackageListFilters = {},
+  overrides: Partial<
+    Record<
+      "q" | "type" | "visibility" | "sort" | "artifactTab" | "page",
+      string | null
+    >
+  > & { pageSize?: string | null } = {},
+) {
+  const params = new URLSearchParams();
+  const nextQuery =
+    overrides.q === undefined ? filters.query : overrides.q?.trim() || null;
+  const nextType =
+    overrides.type === undefined
+      ? filters.type
+      : overrides.type?.trim() || "all";
+  const nextVisibility =
+    overrides.visibility === undefined
+      ? filters.visibility
+      : overrides.visibility?.trim() || "all";
+  const nextSort =
+    overrides.sort === undefined
+      ? filters.sort
+      : overrides.sort?.trim() || "downloads-desc";
+  const nextArtifactTab =
+    overrides.artifactTab === undefined
+      ? filters.artifactTab
+      : overrides.artifactTab?.trim() || "packages";
+  const nextPage =
+    overrides.page === undefined
+      ? filters.page
+      : overrides.page?.trim() || null;
+  const nextPageSize =
+    overrides.pageSize === undefined
+      ? filters.pageSize
+      : overrides.pageSize?.trim() || null;
+
+  if (ownerKind === "user") {
+    params.set("tab", "packages");
+  }
+  if (nextQuery?.trim()) {
+    params.set("q", nextQuery.trim());
+  }
+  if (nextType?.trim() && nextType !== "all") {
+    params.set("type", nextType.trim());
+  }
+  if (nextVisibility?.trim() && nextVisibility !== "all") {
+    params.set("visibility", nextVisibility.trim());
+  }
+  if (nextSort?.trim() && nextSort !== "downloads-desc") {
+    params.set("sort", nextSort.trim());
+  }
+  if (nextArtifactTab?.trim() && nextArtifactTab !== "packages") {
+    params.set("artifactTab", nextArtifactTab.trim());
+  }
+  if (nextPage && String(nextPage) !== "1") {
+    params.set("page", String(nextPage));
+  }
+  if (nextPageSize && String(nextPageSize) !== "30") {
+    params.set("pageSize", String(nextPageSize));
+  }
+
+  const base =
+    ownerKind === "organization"
+      ? `${organizationHref(owner)}/packages`
+      : `/${encodeURIComponent(owner)}`;
+  const query = params.toString();
+  return `${base}${query ? `?${query}` : ""}`;
+}
+
 export function organizationProjectHref(org: string) {
   return `${organizationHref(org)}/projects`;
 }

@@ -6,6 +6,7 @@ import {
   type GlobalSearchQuery,
   getAppShellContextFromCookie,
   getDashboardSummaryFromCookie,
+  getOrganizationPackagesFromCookie,
   getOrganizationRepositoriesFromCookie,
   getProfileRepositoriesFromCookie,
   getProfileStarsFromCookie,
@@ -35,7 +36,9 @@ import {
   getRepositoryRefsFromCookie,
   getSearchSuggestionsFromCookie,
   getSessionFromHeaders,
+  getUserPackagesFromCookie,
   type OrganizationRepositoryListQuery,
+  type OwnerPackageListQuery,
   type ProfileRepositoryListQuery,
   type RepositoryActionsDashboardQuery,
   type RepositoryIssueListQuery,
@@ -93,6 +96,30 @@ export async function getOrganizationRepositories(
 ) {
   const requestHeaders = await headers();
   return getOrganizationRepositoriesFromCookie(
+    requestHeaders.get("cookie"),
+    org,
+    query,
+  );
+}
+
+export async function getUserPackages(
+  username: string,
+  query: OwnerPackageListQuery = {},
+) {
+  const requestHeaders = await headers();
+  return getUserPackagesFromCookie(
+    requestHeaders.get("cookie"),
+    username,
+    query,
+  );
+}
+
+export async function getOrganizationPackages(
+  org: string,
+  query: OwnerPackageListQuery = {},
+) {
+  const requestHeaders = await headers();
+  return getOrganizationPackagesFromCookie(
     requestHeaders.get("cookie"),
     org,
     query,

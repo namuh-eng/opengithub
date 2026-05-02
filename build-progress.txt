@@ -2175,3 +2175,22 @@
 - Verification passed: focused `cargo test -p opengithub-api --test api_notifications_inbox_contract`; focused `cd web && npx vitest run tests/notifications-inbox.test.tsx`; `cd web && npx tsc --noEmit --pretty false`; mandatory banned-value scan returned zero matches; `make check`; `CARGO_INCREMENTAL=0 make test` with Cargo tests plus 215 frontend tests.
 - `make test` initially hit disk exhaustion during Rust test linking; cleared local build/cache artifacts and reran successfully.
 - Set `notifications-001.build_pass=true`, `needs_structure=false`, and left `qa_pass=false` for independent QA.
+
+2026-05-03 - packages-001 owner package lists build
+
+- Created `.qrspi/packages-001/structure.md` and completed the packages-001 vertical slice.
+- Added additive package list schema support for `package_permissions`, `package_repository_links`, `package_downloads`, and expanded package type validation for RubyGems and NuGet while preserving existing generic/container/npm/maven support.
+- Added Rust/Postgres owner package list reads for `GET /api/users/{username}/packages` and `GET /api/orgs/{org}/packages`, with search/type/visibility/sort/pagination filters, download aggregation, latest version, publisher, linked repository data, and viewer-aware visibility from package permissions, org memberships, and repository permissions.
+- Wired `/{owner}?tab=packages`, `/orgs/{org}?tab=packages`, and `/orgs/{org}/packages` into the Editorial profile/organization shells using `OwnerPackagesPage` with working GitHub Packages and Linked artifacts tabs, dropdown filters, search, clear filters, empty state recovery, package rows, visibility pills, linked repository links, and download counts.
+- Added typed Next API/server-session helpers and package navigation URL helpers.
+- Added focused Rust and Vitest coverage for package list visibility/filter behavior and UI/no-dead-control behavior.
+- Verification evidence collected so far: `CARGO_INCREMENTAL=0 cargo test -p opengithub-api --test owner_packages_contract` passed (2 tests); `npm --prefix web test -- owner-packages-page.test.tsx` passed (4 tests); `npx tsc --noEmit --incremental false` passed.
+- Disk was full from rebuildable sibling worktree `target/` and `web/node_modules/` caches; cleared only those generated caches outside the protected main checkout so required checks can run.
+- Set `packages-001.build_pass=true`, `needs_structure=false`, and left `qa_pass=false` for independent QA.
+
+2026-05-03 - packages-001 final verification
+
+- Mandatory Editorial banned-value scan on touched UI files passed with zero matches for GitHub blue/green/red, Octicons, and Primer terms.
+- `make check` initially required fresh-worktree setup, so `.ralph-setup-done` was created per lane instructions; rerun passed Cargo check, web typecheck, Clippy, and Biome.
+- `CARGO_INCREMENTAL=0 make test` passed with Cargo tests and web tests (249 passed).
+- `.qrspi/packages-001/structure.md` Phase 4 verification checklist is now complete.
