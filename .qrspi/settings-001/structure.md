@@ -24,7 +24,7 @@
 
 ## Phase 2: Editorial General Settings Shell - render real repository settings
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the `/[owner]/[repo]/settings` placeholder with a real Editorial General settings page backed by the Phase 1 API. The page must keep the repository workspace header and settings sidebar, show the current repository state, and avoid GitHub/Primer visual values while preserving the same information architecture.
 

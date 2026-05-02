@@ -3202,5 +3202,21 @@
       "Later phases should exercise the Editorial settings UI, server-forwarded mutations, confirmed persistence after reload, archive/unarchive behavior, and disabled delete/transfer affordances.",
       "QA should stress concurrent settings writes, very long descriptions, private/internal visibility transitions, default branch deletion races, archived repository write restrictions, and audit-event integrity."
     ]
+  },
+  {
+    "feature_id": "settings-001",
+    "tests_written": [
+      "Completed Phase 2 Editorial General Settings Shell without marking settings-001 build_pass=true.",
+      "Added typed RepositorySettings DTOs and cookie-backed server helpers for the Phase 1 GET /api/repos/{owner}/{repo}/settings contract.",
+      "Replaced the /{owner}/{repo}/settings placeholder with a real admin-only Editorial read surface for repository profile, visibility/default branch, template/archive state, feature toggles, merge methods, forking, web signoff, audit events, and disabled danger-zone actions.",
+      "Added Vitest coverage for current settings rendering, forbidden/unavailable states, disabled unsupported destructive actions, no inert anchors, named buttons, and Editorial primitive/token usage.",
+      "Added focused Playwright browser smoke for the seeded admin settings page and saved ralph/screenshots/build/settings-001-phase2-general-settings.jpg.",
+      "Verification passed: focused repository-general-settings Vitest; web tsc --noEmit; make check; make test with Cargo tests plus 254 frontend tests; focused repository-settings-general Playwright; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 is read-only by design; Phase 3 still needs server-forwarded settings mutations, validation feedback, persistence after reload, and success/error notices.",
+      "Browser smoke used deterministic Rust-signed local sessions and direct local API/Next dev servers because make dev depends on cargo-watch, which is not installed in this environment.",
+      "QA should stress non-admin direct /settings access, long descriptions and branch names, archived repositories, audit-event ordering, mobile wrapping, and screen reader clarity for disabled controls."
+    ]
   }
 ]

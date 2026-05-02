@@ -743,6 +743,60 @@ export type RepositoryOverview = RepositorySummary & {
   cloneUrls: RepositoryCloneUrls;
 };
 
+export type RepositoryMergeMethod = "squash" | "merge_commit" | "rebase";
+
+export type RepositoryFeatureSettings = {
+  issuesEnabled: boolean;
+  projectsEnabled: boolean;
+  wikiEnabled: boolean;
+};
+
+export type RepositoryMergeSettings = {
+  allowSquash: boolean;
+  allowMergeCommit: boolean;
+  allowRebase: boolean;
+  defaultMethod: RepositoryMergeMethod;
+};
+
+export type RepositoryDangerState = {
+  isArchived: boolean;
+  canArchive: boolean;
+  canUnarchive: boolean;
+  deleteSupported: boolean;
+  transferSupported: boolean;
+};
+
+export type RepositorySettingsAuditEvent = {
+  id: string;
+  eventType: string;
+  changedFields: string[];
+  actorUserId: string;
+  createdAt: string;
+};
+
+export type RepositorySettings = {
+  id: string;
+  ownerLogin: string;
+  name: string;
+  description: string | null;
+  visibility: RepositoryVisibility;
+  defaultBranch: string;
+  isTemplate: boolean;
+  allowForking: boolean;
+  webCommitSignoffRequired: boolean;
+  features: RepositoryFeatureSettings;
+  merge: RepositoryMergeSettings;
+  danger: RepositoryDangerState;
+  branches: string[];
+  viewerPermission: string;
+  updatedAt: string;
+  auditEvents: RepositorySettingsAuditEvent[];
+};
+
+export type RepositorySettingsFetchResult =
+  | { ok: true; settings: RepositorySettings }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type WritableRepositoryOwner = {
   ownerType: RepositoryOwnerType;
   id: string;
@@ -4818,6 +4872,50 @@ export async function getRepositoryFromCookie(
   }
 
   return (await response.json()) as RepositoryOverview;
+}
+
+export async function getRepositorySettingsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+): Promise<RepositorySettingsFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository settings are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Repository settings are unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    settings: (await response.json()) as RepositorySettings,
+  };
 }
 
 export async function getRepositoryPathFromCookie(

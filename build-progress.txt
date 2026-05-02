@@ -1,3 +1,14 @@
+2026-05-03 - settings-001 phase 2 Editorial general settings shell
+
+- Completed Phase 2 from `.qrspi/settings-001/structure.md`: `/[owner]/[repo]/settings` now fetches the Phase 1 Rust settings contract server-side and renders a real Editorial General settings page instead of a placeholder.
+- Added typed frontend settings DTOs and cookie-backed server helpers for `GET /api/repos/{owner}/{repo}/settings`, including a result shape that preserves forbidden/unavailable states for the UI.
+- Added `RepositoryGeneralSettingsPage` with repository profile, description/social preview state, visibility/default branch/template/archive state, feature toggles, pull request merge methods, forking, web signoff, recent audit events, branch links, and disabled unsupported danger-zone actions.
+- Added focused Vitest coverage for current admin settings state, forbidden rendering, disabled archive/transfer/delete controls, no inert anchors/buttons, and Editorial primitive/token usage.
+- Added focused Playwright browser smoke for a seeded admin repository and saved `ralph/screenshots/build/settings-001-phase2-general-settings.jpg`.
+- Verification passed: focused `web/tests/repository-general-settings-page.test.tsx`; `web` `tsc --noEmit`; `make check`; `make test` with Cargo tests plus 254 frontend tests; focused `web/tests/e2e/repository-settings-general.spec.ts`; mandatory Editorial banned-value scan returned zero matches.
+- `make dev` still cannot start the Rust API because `cargo-watch` is not installed; for browser smoke, the web dev server ran on `:3015` and the Rust API was started directly with `cargo run -p opengithub-api` on `:3016`.
+- Marked Phase 2 as done in `.qrspi/settings-001/structure.md`; `prd.json` remains `build_pass: false` because Phases 3-5 remain.
+
 2026-05-03 - orgs-002 phase 3 URL-backed repository filters and pagination
 
 - Completed Phase 3 from `.qrspi/orgs-002/structure.md`: organization repository search, type, language, sort, density, and pagination controls now preserve concrete URL state and reset pagination only when filters change.
