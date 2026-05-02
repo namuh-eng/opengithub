@@ -1953,6 +1953,85 @@ export type CodeSearchResponse = ListEnvelope<GlobalSearchResult> & {
   diagnostics: CodeSearchDiagnostic[];
 };
 
+export type CollaborationSearchQuery = {
+  query: string;
+  type: "issues" | "pull_requests" | "pullrequests" | "pulls" | string;
+  page?: number;
+  pageSize?: number;
+  sort?: string;
+};
+
+export type CollaborationSearchSortOption = {
+  value: string;
+  label: string;
+  selected: boolean;
+};
+
+export type CollaborationSearchFacetValue = CodeSearchFacetValue;
+
+export type CollaborationSearchResponse =
+  ListEnvelope<CollaborationSearchResult> & {
+    typeCounts: CodeSearchTypeCount[];
+    facets: {
+      states: CollaborationSearchFacetValue[];
+      owners: CollaborationSearchFacetValue[];
+      labels: CollaborationSearchFacetValue[];
+      milestones: CollaborationSearchFacetValue[];
+      assignees: CollaborationSearchFacetValue[];
+    };
+    activeChips: CodeSearchChip[];
+    sort: {
+      selected: string;
+      label: string;
+      options: CollaborationSearchSortOption[];
+    };
+    queryDurationMs: number;
+    diagnostics: CodeSearchDiagnostic[];
+  };
+
+export type CollaborationSearchResult = {
+  id: string;
+  type: "issues" | "pull_requests" | string;
+  href: string;
+  repository: {
+    id: string;
+    ownerLogin: string;
+    name: string;
+    visibility: RepositoryVisibility;
+    href: string;
+  };
+  number: number;
+  title: string;
+  state: string;
+  closeReason: string | null;
+  labels: { name: string; color: string; description: string | null }[];
+  author: {
+    id: string;
+    login: string;
+    displayName: string | null;
+    avatarUrl: string | null;
+  } | null;
+  assignees: {
+    id: string;
+    login: string;
+    displayName: string | null;
+    avatarUrl: string | null;
+  }[];
+  milestone: { id: string; title: string; state: string } | null;
+  linkedPullRequest: boolean;
+  commentCount: number;
+  interactionCount: number;
+  openedAt: string;
+  updatedAt: string;
+  closedAt: string | null;
+  snippets: {
+    field: string;
+    fragment: string;
+    matchRanges: { start: number; end: number }[];
+  }[];
+  rank: number;
+};
+
 const DEFAULT_API_URL = "http://localhost:3016";
 
 export function apiBaseUrl(): string {
@@ -2049,6 +2128,24 @@ export function codeSearchPath(query: CodeSearchQuery): string {
     page: query.page,
     pageSize: query.pageSize,
   });
+}
+
+export function collaborationSearchPath(
+  query: CollaborationSearchQuery,
+): string {
+  const params = new URLSearchParams();
+  params.set("q", query.query);
+  params.set("type", query.type);
+  if (query.page && query.page > 1) {
+    params.set("page", String(query.page));
+  }
+  if (query.pageSize) {
+    params.set("pageSize", String(query.pageSize));
+  }
+  if (query.sort) {
+    params.set("sort", query.sort);
+  }
+  return `/api/search?${params.toString()}`;
 }
 
 export function searchSuggestionsPath(query: SearchSuggestionsQuery = {}) {
@@ -2260,6 +2357,42 @@ export async function searchCodeFromCookie(
   }
 
   return body as CodeSearchResponse;
+}
+
+export async function searchCollaborationFromCookie(
+  cookie: string | null | undefined,
+  query: CollaborationSearchQuery,
+): Promise<CollaborationSearchResponse | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${collaborationSearchPath(query)}`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Issue and pull request search is temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "collaboration_search_failed",
+          message: "Issue and pull request search failed.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as CollaborationSearchResponse;
 }
 
 export type DashboardSummaryQuery = {

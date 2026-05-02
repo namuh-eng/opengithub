@@ -709,15 +709,9 @@ async fn search_rest_route_indexes_issue_pull_request_and_discussion_tabs() {
     assert_eq!(issues_status, StatusCode::OK);
     assert_eq!(issues_body["total"], 1);
     assert_eq!(issues_body["items"][0]["type"], "issues");
-    assert_eq!(issues_body["items"][0]["document"]["metadata"]["number"], 1);
-    assert_eq!(
-        issues_body["items"][0]["document"]["metadata"]["state"],
-        "closed"
-    );
-    assert_eq!(
-        issues_body["items"][0]["document"]["metadata"]["labels"][0]["name"],
-        labels[0].name
-    );
+    assert_eq!(issues_body["items"][0]["number"], 1);
+    assert_eq!(issues_body["items"][0]["state"], "closed");
+    assert_eq!(issues_body["items"][0]["labels"][0]["name"], labels[0].name);
     assert!(issues_body["items"][0]["href"]
         .as_str()
         .expect("issue href should be string")
@@ -734,15 +728,9 @@ async fn search_rest_route_indexes_issue_pull_request_and_discussion_tabs() {
     assert_eq!(pulls_status, StatusCode::OK);
     assert_eq!(pulls_body["total"], 1);
     assert_eq!(pulls_body["items"][0]["type"], "pull_requests");
-    assert_eq!(pulls_body["items"][0]["document"]["metadata"]["number"], 2);
-    assert_eq!(
-        pulls_body["items"][0]["document"]["metadata"]["state"],
-        "merged"
-    );
-    assert_eq!(
-        pulls_body["items"][0]["document"]["metadata"]["headRef"],
-        format!("feature/{marker}")
-    );
+    assert_eq!(pulls_body["items"][0]["number"], 2);
+    assert_eq!(pulls_body["items"][0]["state"], "merged");
+    assert_eq!(pulls_body["items"][0]["repository"]["name"], repo_name);
     assert!(pulls_body["items"][0]["href"]
         .as_str()
         .expect("pull href should be string")

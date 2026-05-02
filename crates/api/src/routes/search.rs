@@ -14,7 +14,8 @@ use crate::{
     auth::extractor::AuthenticatedUser,
     domain::search::{
         create_saved_search, delete_saved_search, record_recent_search, search_code_results,
-        search_documents, search_suggestions, CodeSearchQuery, CreateSavedSearchInput,
+        search_collaboration_results, search_documents, search_suggestions, CodeSearchQuery,
+        CollaborationSearchKind, CollaborationSearchQuery, CreateSavedSearchInput,
         SearchDocumentKind, SearchError, SearchQuery, SearchSuggestionQuery,
     },
     AppState,
@@ -39,6 +40,7 @@ struct SearchRequest {
     page: Option<i64>,
     #[serde(alias = "page_size")]
     page_size: Option<i64>,
+    sort: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -143,6 +145,31 @@ async fn search(
 
         return Ok(Json(json!(results)));
     }
+    if let Some(result_type) = collaboration_kind_from_param(selected_type) {
+        let results = search_collaboration_results(
+            pool,
+            CollaborationSearchQuery {
+                actor_user_id: actor.0.id,
+                query: search_query.clone(),
+                result_type,
+                page: pagination.page,
+                page_size: pagination.page_size,
+                sort: request.sort,
+            },
+        )
+        .await
+        .map_err(map_search_error)?;
+        let _ = record_recent_search(
+            pool,
+            actor.0.id,
+            &search_query,
+            selected_type,
+            Some(selected_type),
+        )
+        .await;
+
+        return Ok(Json(json!(results)));
+    }
 
     let results = search_documents(
         pool,
@@ -225,11 +252,23 @@ fn search_kind_from_param(value: &str) -> Result<SearchDocumentKind, SearchError
         "code" => Ok(SearchDocumentKind::Code),
         "commits" | "commit" => Ok(SearchDocumentKind::Commit),
         "issues" | "issue" => Ok(SearchDocumentKind::Issue),
-        "pull_requests" | "pull_request" | "pulls" | "pull" => Ok(SearchDocumentKind::PullRequest),
+        "pull_requests" | "pull_request" | "pullrequests" | "pulls" | "pull" => {
+            Ok(SearchDocumentKind::PullRequest)
+        }
         "users" | "user" => Ok(SearchDocumentKind::User),
         "organizations" | "organization" | "orgs" | "org" => Ok(SearchDocumentKind::Organization),
         "packages" | "package" => Ok(SearchDocumentKind::Package),
         other => Err(SearchError::InvalidKind(other.to_owned())),
+    }
+}
+
+fn collaboration_kind_from_param(value: &str) -> Option<CollaborationSearchKind> {
+    match value {
+        "issues" | "issue" => Some(CollaborationSearchKind::Issues),
+        "pull_requests" | "pull_request" | "pullrequests" | "pulls" | "pull" => {
+            Some(CollaborationSearchKind::PullRequests)
+        }
+        _ => None,
     }
 }
 
