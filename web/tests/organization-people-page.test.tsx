@@ -59,7 +59,16 @@ function peopleList(
 describe("OrganizationPeoplePage", () => {
   it("renders public member rows with concrete profile links and no role leakage", () => {
     const { container } = render(
-      <OrganizationPeoplePage list={peopleList()} org="namuh" />,
+      <OrganizationPeoplePage
+        list={peopleList({
+          items: [
+            person({
+              avatarUrl: "https://images.opengithub.local/ashley.png",
+            }),
+          ],
+        })}
+        org="namuh"
+      />,
     );
 
     expect(screen.getByRole("heading", { name: "People" })).toBeVisible();
@@ -67,8 +76,13 @@ describe("OrganizationPeoplePage", () => {
     expect(
       screen.getByRole("link", { name: "Open Ashley Ha" }),
     ).toHaveAttribute("href", "/ashley");
+    expect(container.querySelector(".av.lg")).toHaveStyle({
+      backgroundImage: 'url("https://images.opengithub.local/ashley.png")',
+    });
     expect(screen.getByText("@ashley")).toBeVisible();
     expect(screen.queryByText("Owner")).toBeNull();
+    expect(screen.queryByText("Admin")).toBeNull();
+    expect(screen.queryByText("Member")).toBeNull();
     expect(
       screen.getByText(
         "Signed-out and outside viewers see public members only.",
@@ -167,5 +181,24 @@ describe("OrganizationPeoplePage", () => {
     expect(
       within(pagination).getByRole("link", { name: "Next" }),
     ).toHaveAttribute("href", "/orgs/namuh/people?q=ash&page=3&pageSize=10");
+  });
+
+  it("uses disabled real buttons at people pagination boundaries", () => {
+    render(
+      <OrganizationPeoplePage
+        list={peopleList({ items: [person()], total: 1 })}
+        org="namuh"
+      />,
+    );
+
+    const pagination = screen.getByRole("navigation", {
+      name: "People pagination",
+    });
+    expect(
+      within(pagination).getByRole("button", { name: "Previous" }),
+    ).toBeDisabled();
+    expect(
+      within(pagination).getByRole("button", { name: "Next" }),
+    ).toBeDisabled();
   });
 });

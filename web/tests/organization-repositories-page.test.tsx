@@ -99,7 +99,24 @@ function repositoryList(
 describe("OrganizationRepositoriesPage", () => {
   it("renders dense Editorial organization repository rows with concrete links", () => {
     const { container } = render(
-      <OrganizationRepositoriesPage list={repositoryList()} org="namuh" />,
+      <OrganizationRepositoriesPage
+        list={repositoryList({
+          items: [
+            repository({
+              canAdmin: true,
+              contributedByViewer: true,
+              forkSource: {
+                owner: "upstream",
+                name: "forge",
+                href: "/upstream/forge",
+              },
+              isFork: true,
+              visibility: "internal",
+            }),
+          ],
+        })}
+        org="namuh"
+      />,
     );
 
     expect(screen.getByRole("heading", { name: "Repositories" })).toBeVisible();
@@ -119,6 +136,13 @@ describe("OrganizationRepositoriesPage", () => {
     expect(screen.getByText("MIT")).toBeVisible();
     expect(screen.getByText("5 issues")).toBeVisible();
     expect(screen.getByText("2 PRs")).toBeVisible();
+    expect(screen.getByText("internal")).toBeVisible();
+    expect(screen.getByText("fork")).toBeVisible();
+    expect(screen.getByText("admin")).toBeVisible();
+    expect(screen.getByText("contributed")).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "upstream/forge" }),
+    ).toHaveAttribute("href", "/upstream/forge");
     expect(screen.getByText("template")).toBeVisible();
     expect(container.querySelector('a[href="#"], a:not([href])')).toBeNull();
   });
@@ -192,6 +216,20 @@ describe("OrganizationRepositoriesPage", () => {
       "href",
       "/orgs/namuh/repositories?q=api+server&language=Rust&sort=stars-desc&density=compact",
     );
+    expect(screen.getByRole("link", { name: "Rust x" })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/repositories?q=api+server&type=forks&sort=stars-desc&density=compact",
+    );
+    expect(screen.getByRole("link", { name: "Sort: Stars x" })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/repositories?q=api+server&type=forks&language=Rust&density=compact",
+    );
+    expect(
+      screen.getByRole("link", { name: "Compact density x" }),
+    ).toHaveAttribute(
+      "href",
+      "/orgs/namuh/repositories?q=api+server&type=forks&language=Rust&sort=stars-desc",
+    );
     expect(
       screen.getAllByRole("link", { name: "Clear filters" })[0],
     ).toHaveAttribute("href", "/orgs/namuh/repositories");
@@ -237,5 +275,24 @@ describe("OrganizationRepositoriesPage", () => {
       "href",
       "/orgs/namuh/repositories?q=forge&type=public&language=Rust&sort=stars-desc&density=compact&page=3&pageSize=10",
     );
+  });
+
+  it("uses disabled real buttons at pagination boundaries", () => {
+    render(
+      <OrganizationRepositoriesPage
+        list={repositoryList({ items: [repository()], total: 1 })}
+        org="namuh"
+      />,
+    );
+
+    const pagination = screen.getByRole("navigation", {
+      name: "Repository pagination",
+    });
+    expect(
+      within(pagination).getByRole("button", { name: "Previous" }),
+    ).toBeDisabled();
+    expect(
+      within(pagination).getByRole("button", { name: "Next" }),
+    ).toBeDisabled();
   });
 });

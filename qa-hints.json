@@ -3172,5 +3172,20 @@
       "Phase 5 still needs final combined repository/people guardrails, API docs metadata, and orgs-002 build_pass=true.",
       "QA should stress hidden public members, many member pages, long names/logins, anonymous outside viewers, org members with role visibility, private organizations, and pageSize preservation across search clearing."
     ]
+  },
+  {
+    "feature_id": "orgs-002",
+    "tests_written": [
+      "Completed Phase 5 Final Privacy, Visual, and QA Guardrails and marked orgs-002 build_pass=true.",
+      "Documented GET /api/orgs/{org}/repositories and GET /api/orgs/{org}/people in /docs/api with auth, visibility, response, and privacy notes.",
+      "Extended organization repository and people component tests for final privacy/no-dead-control guardrails, active filter removal, fork-source links, role redaction, disabled pagination boundaries, and API docs visibility.",
+      "Extended organization Playwright smoke to save final repository and people desktop/mobile screenshots: ralph/screenshots/build/orgs-002-final-repositories-desktop.jpg, orgs-002-final-repositories-mobile.jpg, orgs-002-final-people-desktop.jpg, and orgs-002-final-people-mobile.jpg.",
+      "Verification passed: focused organization repository/people/api-docs Vitest; focused org Rust contracts; TEST_DATABASE_URL-backed make check; standard DB_SSL=false make test with Cargo tests plus 250 frontend tests; focused organization Playwright smoke with 4 tests; full TEST_DATABASE_URL-backed make test-e2e with 91 Playwright tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke used deterministic Rust-signed local sessions and direct local API/Next dev servers because make dev depends on cargo-watch, which is not installed in this environment.",
+      "Full E2E reused the manually started local servers; the Rust API was started without API_URL so clone URL assertions keep the public opengithub.namuh.co host while Next fetched the local API via API_URL=http://localhost:3016.",
+      "QA should stress anonymous outside viewers, private organizations, hidden public members, direct repository collaborators who are not org members, many repository/member pages, very long repository names/topics, and search/pageSize preservation across clearing filters."
+    ]
   }
 ]

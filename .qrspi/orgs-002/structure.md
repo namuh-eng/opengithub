@@ -78,7 +78,7 @@
 
 ## Phase 5: Final Privacy, Visual, and QA Guardrails - finish orgs-002
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Lock the organization repository and people surfaces against regressions and mark `orgs-002.build_pass=true` only after API contracts, Editorial UI, URL-backed interactions, visibility rules, browser smoke, and QA handoff all pass. This phase should not add new product scope.
 

@@ -31,6 +31,22 @@ describe("ApiDocsPage", () => {
     }
 
     expect(screen.getByText("/api/user")).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/orgs/{org}/repositories?q=router&type=public&language=Rust&page=1&pageSize=30",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/orgs/{org}/people?q=member&page=1&pageSize=30"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Private organizations return not_found/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Signed-out and outside viewers see public members only/,
+      ),
+    ).toBeVisible();
     expect(screen.getByText("/api/repos/{owner}/{repo}/issues")).toBeVisible();
     expect(screen.getByText("/api/repos/{owner}/{repo}/pulls")).toBeVisible();
     expect(

@@ -102,6 +102,61 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     notes: ["Private repositories require explicit repository permission."],
   },
   {
+    id: "org-repositories",
+    method: "GET",
+    path: "/api/orgs/{org}/repositories?q=router&type=public&language=Rust&page=1&pageSize=30",
+    title: "List organization repositories",
+    description:
+      "Lists repositories visible in an organization with org-scoped filters, language/type facets, density state, and bounded pagination.",
+    auth: "Public organizations expose public repositories; private/internal repositories require organization membership or direct repository permission",
+    response: `{
+  "items": [
+    {
+      "name": "octo-app",
+      "fullName": "namuh/octo-app",
+      "visibility": "public",
+      "href": "/namuh/octo-app",
+      "primaryLanguage": { "language": "Rust", "byteCount": 12000 }
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "pageSize": 30,
+  "availableTypes": [{ "value": "public", "label": "Public", "count": 1 }]
+}`,
+    notes: [
+      "Supported type filters are all, contributed, admin, public, sources, forks, archived, and templates.",
+      "Private organizations return not_found to outsiders without leaking membership or repository counts.",
+    ],
+  },
+  {
+    id: "org-people",
+    method: "GET",
+    path: "/api/orgs/{org}/people?q=member&page=1&pageSize=30",
+    title: "List organization people",
+    description:
+      "Lists visible organization members with public-member privacy rules, role visibility for members, search, and pagination.",
+    auth: "Public members are readable; private organizations and private role metadata require organization membership",
+    response: `{
+  "items": [
+    {
+      "login": "org-member",
+      "name": "Organization Member",
+      "href": "/org-member",
+      "role": null,
+      "joinedAt": "2026-04-30T00:00:00Z"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "pageSize": 30
+}`,
+    notes: [
+      "Signed-out and outside viewers see public members only.",
+      "Owner, admin, and member role chips are returned only when the viewer can see internal membership.",
+    ],
+  },
+  {
     id: "issues-create",
     method: "POST",
     path: "/api/repos/{owner}/{repo}/issues",

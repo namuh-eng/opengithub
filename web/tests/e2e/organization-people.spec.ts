@@ -102,6 +102,10 @@ test("organization people routes render members with URL-backed search and pagin
     fullPage: true,
     path: "../ralph/screenshots/build/orgs-002-phase4-people.jpg",
   });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/orgs-002-final-people-desktop.jpg",
+  });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
@@ -112,5 +116,9 @@ test("organization people routes render members with URL-backed search and pagin
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/orgs-002-phase4-people-mobile.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/orgs-002-final-people-mobile.jpg",
   });
 });

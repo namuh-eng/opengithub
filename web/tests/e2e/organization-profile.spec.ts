@@ -142,6 +142,25 @@ test("organization overview renders API data and concrete header controls", asyn
     fullPage: true,
     path: "../ralph/screenshots/build/orgs-002-phase2-repositories-shell.jpg",
   });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/orgs-002-final-repositories-mobile.jpg",
+  });
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${seeded.organizationProfileHref}?tab=repositories`);
+  await expect(
+    page.getByRole("heading", { name: "Repositories" }),
+  ).toBeVisible();
+  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
+  const finalRepositoryOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  );
+  expect(finalRepositoryOverflow).toBe(false);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/orgs-002-final-repositories-desktop.jpg",
+  });
 
   await page.goto(seeded.organizationProfileHref);
   const repositoryLink = page

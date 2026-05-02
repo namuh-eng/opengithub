@@ -2188,3 +2188,13 @@
 - `TEST_DATABASE_URL`-backed full `make test` still exposes an unrelated `api_notifications_inbox_contract` fixture mismatch where the old test filters by owner email while current repository owner labels use username/slug. The focused people contract passed against the same database and the standard make test path passed.
 - Full `make test-e2e` was attempted and the new organization people Playwright test passed inside the suite, but the suite had an unrelated dashboard git-storage failure and the long-running attempt was stopped; focused organization people E2E passed and saved screenshots.
 - Marked Phase 4 as done in `.qrspi/orgs-002/structure.md`; `prd.json` remains `build_pass: false` because Phase 5 remains.
+
+2026-05-03 - orgs-002 phase 5 final guardrails and QA handoff
+
+- Completed Phase 5 from `.qrspi/orgs-002/structure.md`: final organization repository/people API docs, privacy/no-dead-control tests, browser screenshots, QA handoff, and `orgs-002.build_pass=true`.
+- Added `/docs/api` metadata for `GET /api/orgs/{org}/repositories` and `GET /api/orgs/{org}/people`, including auth/visibility notes and response examples.
+- Extended `OrganizationRepositoriesPage`, `OrganizationPeoplePage`, and API docs Vitest coverage for active filter chip removal, fork-source links, role redaction for public viewers, disabled pagination boundaries, concrete links, and documented org endpoints.
+- Extended organization Playwright smoke with final screenshots at `ralph/screenshots/build/orgs-002-final-repositories-desktop.jpg`, `orgs-002-final-repositories-mobile.jpg`, `orgs-002-final-people-desktop.jpg`, and `orgs-002-final-people-mobile.jpg`.
+- Verification passed: focused organization repository/people/api-docs Vitest; focused org Rust contracts; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; standard `DB_SSL=false make test` with Cargo tests plus 250 frontend tests; focused organization Playwright smoke with 4 tests; full `make test-e2e` with 91 Playwright tests; mandatory Editorial banned-value scan returned zero matches.
+- Browser smoke reused manually started local API/Next servers because `make dev` depends on missing `cargo-watch`; the Rust API was started without `API_URL` so clone URL assertions kept the public `opengithub.namuh.co` host while Next used `API_URL=http://localhost:3016`.
+- Marked Phase 5 as done in `.qrspi/orgs-002/structure.md` and set `orgs-002.build_pass` to `true` in `prd.json`; `qa_pass` remains `false` for the QA agent.
