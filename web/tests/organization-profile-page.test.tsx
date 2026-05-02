@@ -231,12 +231,11 @@ describe("OrganizationProfilePage", () => {
     expect(
       screen.getByRole("link", { name: "Open namuh/ralph" }),
     ).toHaveAttribute("href", "/namuh/ralph");
-    expect(screen.getByRole("link", { name: "Ashley Ha" })).toHaveAttribute(
-      "href",
-      "/ashley",
-    );
     expect(
-      screen.getByRole("link", { name: "developer-tools" }),
+      screen.getByRole("link", { name: "Open Ashley Ha" }),
+    ).toHaveAttribute("href", "/ashley");
+    expect(
+      screen.getByRole("link", { name: "developer-tools, 4 repositories" }),
     ).toHaveAttribute("href", "/search?q=topic%3Adeveloper-tools");
     expect(screen.queryByRole("link", { name: "Settings" })).toBeNull();
   });
@@ -359,5 +358,110 @@ describe("OrganizationProfilePage", () => {
     expect(
       screen.getByRole("link", { name: "Create repository" }),
     ).toHaveAttribute("href", "/new");
+  });
+
+  it("redacts public people roles but shows member-visible roles and counts", () => {
+    const { rerender } = render(
+      <OrganizationProfilePage
+        activeTab="overview"
+        profile={organization({
+          peoplePreview: [
+            {
+              id: "user-1",
+              login: "ashley",
+              name: "Ashley Ha",
+              avatarUrl: null,
+              href: "/ashley",
+              role: null,
+            },
+          ],
+          tabCounts: { people: 1 },
+        })}
+        session={session}
+      />,
+    );
+
+    expect(screen.getByText("1 visible person.")).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Open Ashley Ha" }),
+    ).toHaveAttribute("href", "/ashley");
+    expect(screen.queryByText("owner")).toBeNull();
+
+    rerender(
+      <OrganizationProfilePage
+        activeTab="overview"
+        profile={organization({
+          peoplePreview: [
+            {
+              id: "user-1",
+              login: "ashley",
+              name: "Ashley Ha",
+              avatarUrl: null,
+              href: "/ashley",
+              role: "owner",
+            },
+          ],
+          tabCounts: { people: 2 },
+          viewerState: {
+            authenticated: true,
+            isMember: true,
+            role: "owner",
+            canViewInternal: true,
+            canAdmin: true,
+            isFollowing: false,
+          },
+        })}
+        session={session}
+      />,
+    );
+
+    expect(
+      screen.getByText("2 visible people including private members."),
+    ).toBeVisible();
+    expect(screen.getAllByText("owner").length).toBeGreaterThan(0);
+    expect(screen.getByText("Owner view")).toBeVisible();
+  });
+
+  it("renders sorted language bars, counted topic links, and disabled sponsoring state", () => {
+    render(
+      <OrganizationProfilePage
+        activeTab="overview"
+        profile={organization({
+          topLanguages: [
+            { language: "Rust", color: "#dea584", byteCount: 9000 },
+            { language: "TypeScript", color: "#3178c6", byteCount: 3000 },
+          ],
+          topTopics: [
+            {
+              topic: "automation",
+              count: 8,
+              href: "/orgs/namuh/repositories?q=topic%3Aautomation",
+            },
+            {
+              topic: "developer-tools",
+              count: 4,
+              href: "/orgs/namuh/repositories?q=topic%3Adeveloper-tools",
+            },
+          ],
+        })}
+        session={session}
+      />,
+    );
+
+    expect(
+      screen.getByLabelText("Rust 75% of visible organization code"),
+    ).toBeVisible();
+    expect(
+      screen.getByLabelText("TypeScript 25% of visible organization code"),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "automation, 8 repositories" }),
+    ).toHaveAttribute("href", "/orgs/namuh/repositories?q=topic%3Aautomation");
+    expect(
+      screen.getByRole("button", { name: "Sponsor preview unavailable" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText("Sponsorships are not available for organizations yet."),
+    ).toBeVisible();
   });
 });

@@ -1,3 +1,13 @@
+2026-05-02 - orgs-001 phase 4 people/topics/languages/sponsoring panels
+
+- Completed Phase 4 from `.qrspi/orgs-001/structure.md`: organization overview secondary panels now render member-aware people previews, role labels for members/admins, accessible top-language bars, counted topic links, and a concrete disabled sponsoring preview state.
+- Updated the Rust org profile contract so visible people counts are member-aware: anonymous non-members still respect `public_members_visible`, while members can see internal people counts and roles.
+- Extended `web/tests/organization-profile-page.test.tsx` for public role redaction, member-visible roles/counts, language percentage labels, counted topic links, disabled sponsoring state, and no inert controls.
+- Extended `web/tests/e2e/organization-profile.spec.ts` for secondary-panel browser smoke, keyboard focusability, mobile no-overflow, and screenshot `ralph/screenshots/build/orgs-001-phase4-mobile.jpg`.
+- Verification passed: focused `organization_profile_contract` against local Postgres on `localhost:55432`; focused organization-profile Vitest; focused organization-profile Playwright; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; standard `DB_SSL=false make test` with Cargo plus 239 frontend tests; full TEST_DATABASE_URL-backed `make test-e2e` with 90 Playwright tests after running local API with `API_URL=https://opengithub.namuh.co`; mandatory Editorial banned-value scan returned zero matches.
+- A TEST_DATABASE_URL-backed `make test` still exposed an existing non-org collaboration contract mismatch around email-as-login fixtures versus current username-slug identity behavior. The required standard make test path passed and the focused org Rust contract passed against the same database.
+- Marked Phase 4 as done in `.qrspi/orgs-001/structure.md`; `prd.json` remains `build_pass: false` because Phase 5 remains.
+
 2026-05-02 - orgs-001 structure planning
 
 - Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `prd.json`, `web/AGENTS.md`, `design/project/wf-profiles.jsx`, current profile implementation, current organization placeholder route, navigation helpers, existing migrations, and profile API/frontend patterns.

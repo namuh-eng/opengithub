@@ -69,7 +69,9 @@ test("organization overview renders API data and concrete header controls", asyn
   await expect(
     page.getByRole("link", { name: "Website namuh.co" }),
   ).toHaveAttribute("href", "https://namuh.co");
-  await expect(page.getByRole("button", { name: "Sponsor" })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { exact: true, name: "Sponsor" }),
+  ).toBeDisabled();
   await expect(
     page.getByRole("navigation", { name: "Organization sections" }),
   ).toBeVisible();
@@ -112,6 +114,28 @@ test("organization overview renders API data and concrete header controls", asyn
     "href",
     /\/orgs\/org-profile-.+\?tab=people/,
   );
+  await expect(
+    page.getByText("1 visible person including private members."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Open Dashboard Tester/ }),
+  ).toHaveAttribute("href", /\/dash-/);
+  await expect(
+    page.getByLabel("Rust 75% of visible organization code"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", {
+      name: "developer-tools, 1 repositories",
+    }),
+  ).toHaveAttribute(
+    "href",
+    /\/orgs\/org-profile-.+\/repositories\?q=topic%3Adeveloper-tools/,
+  );
+  await expect(
+    page.getByRole("button", { name: "Sponsor preview unavailable" }),
+  ).toBeDisabled();
+  await page.keyboard.press("Tab");
+  await expect(page.locator(":focus")).toBeVisible();
   await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,
@@ -120,5 +144,41 @@ test("organization overview renders API data and concrete header controls", asyn
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/orgs-001-phase3-repository-preview.jpg",
+  });
+});
+
+test("organization secondary panels fit on mobile without dead controls", async ({
+  page,
+}) => {
+  const seeded = seedOrganizationProfile();
+  await signIn(page, seeded);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(seeded.organizationProfileHref);
+
+  await expect(
+    page.getByRole("heading", { name: "Namuh Engineering" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /Open Dashboard Tester/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("Rust 75% of visible organization code"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", {
+      name: "developer-tools, 1 repositories",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Sponsor preview unavailable" }),
+  ).toBeDisabled();
+  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  );
+  expect(overflow).toBe(false);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/orgs-001-phase4-mobile.jpg",
   });
 });

@@ -3057,5 +3057,21 @@
       "Phase 4 still needs people, topics, languages, sponsoring, verified-domain accessibility, and mobile secondary-panel hardening before orgs-001 can be marked build_pass=true.",
       "QA should stress large pinned sets, repositories with very long full names and topic lists, private/internal repositories for non-member direct permission viewers, and repository metric consistency when PR backing issues are counted separately."
     ]
+  },
+  {
+    "feature_id": "orgs-001",
+    "tests_written": [
+      "Completed Phase 4 People, Topics, Languages, Sponsoring, and Accessibility without marking orgs-001 build_pass=true.",
+      "Made organization people counts member-aware so public views show only public people while member/admin views can see internal member counts and role labels.",
+      "Expanded OrganizationProfilePage secondary panels with linked people rows, member role indicators, accessible language progress bars, counted topic links, and a disabled sponsoring preview state.",
+      "Extended organization_profile_contract, organization-profile Vitest, and organization-profile Playwright coverage for member-visible people, public role redaction, language/topic ordering/counts, disabled sponsoring, keyboard focus, mobile no-overflow, and screenshot ralph/screenshots/build/orgs-001-phase4-mobile.jpg.",
+      "Verification passed: focused organization_profile_contract against local Postgres on localhost:55432; focused organization-profile Vitest; focused organization-profile Playwright; make check; standard DB_SSL=false make test with Cargo plus 239 frontend tests; full TEST_DATABASE_URL-backed make test-e2e with 90 Playwright tests; mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke uses deterministic Rust-signed local sessions and direct local API/Next dev servers because make dev depends on cargo-watch, which is not installed in this environment.",
+      "A TEST_DATABASE_URL-backed make test run still exposes an existing non-org collaboration contract mismatch around email-as-login fixtures versus current username-slug identity behavior; the required standard make test path passed and focused org Rust coverage passed against the same database.",
+      "Phase 5 still needs final privacy, visual, empty-state, and no-dead-control guardrails before orgs-001 can be marked build_pass=true.",
+      "QA should stress organizations with hidden public members, many members/topics/languages, unusual language color values, and future sponsorship-enabled data."
+    ]
   }
 ]

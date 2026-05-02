@@ -179,7 +179,7 @@ pub async fn public_organization_profile(
     let visible_repository_ids =
         visible_repository_ids(pool, organization.id, viewer_user_id, is_member).await?;
     let repository_count = visible_repository_ids.len() as i64;
-    let public_member_count = public_member_count(pool, &organization).await?;
+    let people_count = visible_people_count(pool, &organization, is_member).await?;
     let follower_count = follower_count(pool, organization.id).await?;
     let pinned_repositories = pinned_repositories(
         pool,
@@ -213,7 +213,7 @@ pub async fn public_organization_profile(
             profile_visibility: organization.profile_visibility.clone(),
             is_private: organization.profile_visibility == "private",
             follower_count,
-            public_member_count,
+            public_member_count: people_count,
             repository_count,
             created_at: organization.created_at,
         },
@@ -235,7 +235,7 @@ pub async fn public_organization_profile(
             repositories: repository_count,
             projects: 0,
             packages,
-            people: public_member_count,
+            people: people_count,
             sponsoring: 0,
         },
         viewer_state,
@@ -690,11 +690,12 @@ async fn top_topics(
         .collect())
 }
 
-async fn public_member_count(
+async fn visible_people_count(
     pool: &PgPool,
     organization: &OrganizationRow,
+    is_member: bool,
 ) -> Result<i64, sqlx::Error> {
-    if !organization.public_members_visible {
+    if !is_member && !organization.public_members_visible {
         return Ok(0);
     }
     sqlx::query_scalar(

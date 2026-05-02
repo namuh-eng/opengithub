@@ -403,6 +403,7 @@ async fn organization_members_can_see_internal_data_and_private_orgs_hide_from_a
     assert_eq!(member_status, StatusCode::OK);
     assert_json(&member_headers);
     assert_eq!(member_body["identity"]["isPrivate"], true);
+    assert_eq!(member_body["identity"]["publicMemberCount"], 1);
     assert_eq!(member_body["viewerState"]["isMember"], true);
     assert_eq!(member_body["viewerState"]["canAdmin"], true);
     assert_eq!(member_body["peoplePreview"][0]["role"], "owner");

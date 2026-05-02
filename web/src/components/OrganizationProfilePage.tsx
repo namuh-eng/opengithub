@@ -55,6 +55,17 @@ function formatCount(value: number) {
   return value.toLocaleString();
 }
 
+function languagePercent(
+  language: PublicOrganizationProfile["topLanguages"][number],
+  languages: PublicOrganizationProfile["topLanguages"],
+) {
+  const total = languages.reduce((sum, item) => sum + item.byteCount, 0);
+  if (total <= 0) {
+    return 0;
+  }
+  return Math.max(1, Math.round((language.byteCount / total) * 100));
+}
+
 function tabLabel(tab: QueryTab, profile: PublicOrganizationProfile) {
   if (tab.value === "repositories") {
     return `Repositories ${profile.tabCounts.repositories.toLocaleString()}`;
@@ -318,6 +329,13 @@ function OrganizationHeader({
               {identity.isPrivate ? (
                 <span className="chip warn">Private</span>
               ) : null}
+              {profile.viewerState.role ? (
+                <span className="chip soft">
+                  {profile.viewerState.role === "owner"
+                    ? "Owner view"
+                    : `${profile.viewerState.role} view`}
+                </span>
+              ) : null}
             </div>
             <p className="t-mono-sm mt-1" style={{ color: "var(--ink-3)" }}>
               @{identity.slug}
@@ -536,16 +554,48 @@ function OverviewShell({ profile }: { profile: PublicOrganizationProfile }) {
               View people
             </Link>
           </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {profile.peoplePreview.slice(0, 8).map((person) => (
+          <p className="t-sm mt-2" style={{ color: "var(--ink-3)" }}>
+            {profile.tabCounts.people.toLocaleString()} visible{" "}
+            {profile.tabCounts.people === 1 ? "person" : "people"}
+            {profile.viewerState.isMember ? " including private members." : "."}
+          </p>
+          <div className="mt-3 grid gap-2">
+            {profile.peoplePreview.slice(0, 6).map((person) => (
               <Link
-                aria-label={person.name || person.login}
-                className="av sm no-underline"
+                aria-label={`Open ${person.name || person.login}`}
+                className="list-row grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 py-2 no-underline"
                 href={person.href}
                 key={person.id}
-                title={person.name || person.login}
               >
-                {(person.name || person.login).slice(0, 1).toUpperCase()}
+                {person.avatarUrl ? (
+                  <span
+                    aria-hidden="true"
+                    className="av sm"
+                    style={{
+                      backgroundImage: `url(${person.avatarUrl})`,
+                      backgroundPosition: "center",
+                      backgroundSize: "cover",
+                    }}
+                  />
+                ) : (
+                  <span aria-hidden="true" className="av sm">
+                    {(person.name || person.login).slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+                <span className="min-w-0">
+                  <span className="t-sm block truncate">
+                    {person.name || person.login}
+                  </span>
+                  <span
+                    className="t-mono-sm block truncate"
+                    style={{ color: "var(--ink-3)" }}
+                  >
+                    @{person.login}
+                  </span>
+                </span>
+                {person.role ? (
+                  <span className="chip soft">{person.role}</span>
+                ) : null}
               </Link>
             ))}
             {profile.peoplePreview.length === 0 ? (
@@ -562,14 +612,43 @@ function OverviewShell({ profile }: { profile: PublicOrganizationProfile }) {
           </h2>
           <div className="mt-3 grid gap-2">
             {profile.topLanguages.slice(0, 5).map((language) => (
-              <div
-                className="flex items-center justify-between gap-3"
-                key={language.language}
-              >
-                <span className="t-sm truncate">{language.language}</span>
-                <span className="t-mono-sm" style={{ color: "var(--ink-3)" }}>
-                  {language.byteCount.toLocaleString()}
-                </span>
+              <div className="grid gap-1" key={language.language}>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="t-sm inline-flex min-w-0 items-center gap-2 truncate">
+                    <span
+                      aria-hidden="true"
+                      className="inline-block size-2 rounded-full"
+                      style={{ background: language.color }}
+                    />
+                    <span className="truncate">{language.language}</span>
+                  </span>
+                  <span className="t-mono-sm" style={{ color: "var(--ink-3)" }}>
+                    {language.byteCount.toLocaleString()}
+                  </span>
+                </div>
+                <div
+                  aria-label={`${language.language} ${languagePercent(
+                    language,
+                    profile.topLanguages,
+                  )}% of visible organization code`}
+                  aria-valuemax={100}
+                  aria-valuemin={0}
+                  aria-valuenow={languagePercent(
+                    language,
+                    profile.topLanguages,
+                  )}
+                  className="h-1.5 overflow-hidden rounded-[var(--radius-pill)]"
+                  role="progressbar"
+                  style={{ background: "var(--surface-2)" }}
+                >
+                  <span
+                    className="block h-full rounded-[var(--radius-pill)]"
+                    style={{
+                      background: language.color,
+                      width: `${languagePercent(language, profile.topLanguages)}%`,
+                    }}
+                  />
+                </div>
               </div>
             ))}
             {profile.topLanguages.length === 0 ? (
@@ -586,8 +665,16 @@ function OverviewShell({ profile }: { profile: PublicOrganizationProfile }) {
           </h2>
           <div className="mt-3 flex flex-wrap gap-2">
             {profile.topTopics.slice(0, 10).map((topic) => (
-              <a className="chip soft" href={topic.href} key={topic.topic}>
+              <a
+                aria-label={`${topic.topic}, ${topic.count.toLocaleString()} repositories`}
+                className="chip soft"
+                href={topic.href}
+                key={topic.topic}
+              >
                 {topic.topic}
+                <span className="t-mono-sm" style={{ color: "var(--ink-3)" }}>
+                  {topic.count.toLocaleString()}
+                </span>
               </a>
             ))}
             {profile.topTopics.length === 0 ? (
@@ -596,6 +683,26 @@ function OverviewShell({ profile }: { profile: PublicOrganizationProfile }) {
               </span>
             ) : null}
           </div>
+        </section>
+
+        <section className="card p-4" aria-labelledby="organization-sponsoring">
+          <h2 className="t-label" id="organization-sponsoring">
+            Sponsoring
+          </h2>
+          <p className="t-sm mt-3" style={{ color: "var(--ink-2)" }}>
+            {profile.sponsorship.enabled
+              ? `${profile.sponsorship.sponsorCount.toLocaleString()} active sponsors`
+              : "Sponsorships are not available for organizations yet."}
+          </p>
+          {profile.sponsorship.enabled && profile.sponsorship.href ? (
+            <a className="btn sm accent mt-3" href={profile.sponsorship.href}>
+              Sponsor this organization
+            </a>
+          ) : (
+            <button className="btn sm mt-3" disabled type="button">
+              Sponsor preview unavailable
+            </button>
+          )}
         </section>
       </aside>
     </div>

@@ -56,7 +56,7 @@
 
 ## Phase 4: People, Topics, Languages, Sponsoring, and Accessibility - finish overview secondary panels
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Complete the overview sidebar/secondary panels: public people preview, owners/member role indicators where allowed, top languages, most-used topics, sponsoring placeholder/preview, follower count, and accessible verified-domain behavior. Public views show public members only; member/admin views may show internal membership details according to existing permission contracts.
 
