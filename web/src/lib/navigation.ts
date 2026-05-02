@@ -694,6 +694,52 @@ export function profileHref(owner: string) {
   return `/${encodeURIComponent(owner)}`;
 }
 
+export type ProfileRepositoryTabFilters = {
+  query?: string | null;
+  repositoryType?: string | null;
+  language?: string | null;
+  sort?: string | null;
+};
+
+export function profileRepositoryTabHref(
+  owner: string,
+  filters: ProfileRepositoryTabFilters = {},
+  overrides: Partial<
+    Record<"q" | "type" | "language" | "sort", string | null>
+  > = {},
+) {
+  const params = new URLSearchParams();
+  params.set("tab", "repositories");
+
+  const nextQuery =
+    overrides.q === undefined ? filters.query : overrides.q?.trim() || null;
+  const nextType =
+    overrides.type === undefined
+      ? filters.repositoryType
+      : overrides.type?.trim() || "all";
+  const nextLanguage =
+    overrides.language === undefined
+      ? filters.language
+      : overrides.language?.trim() || null;
+  const nextSort =
+    overrides.sort === undefined ? filters.sort : overrides.sort?.trim() || "";
+
+  if (nextQuery?.trim()) {
+    params.set("q", nextQuery.trim());
+  }
+  if (nextType?.trim() && nextType !== "all") {
+    params.set("type", nextType.trim());
+  }
+  if (nextLanguage?.trim()) {
+    params.set("language", nextLanguage.trim());
+  }
+  if (nextSort?.trim() && nextSort !== "updated-desc") {
+    params.set("sort", nextSort.trim());
+  }
+
+  return `${profileHref(owner)}?${params.toString()}`;
+}
+
 export function createJumpSuggestions(): JumpSuggestion[] {
   return CREATE_NAV_ITEMS.map((item) => ({
     id: `create:${item.href}`,

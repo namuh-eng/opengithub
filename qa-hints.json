@@ -2955,5 +2955,23 @@
       "Stars tab remains unimplemented until Phase 4.",
       "QA should stress-test long repository names/descriptions and large repository counts once Phase 5 guardrails land."
     ]
+  },
+  {
+    "feature_id": "profiles-002",
+    "tests_written": [
+      "Completed Phase 3 URL-backed repository filters without marking profiles-002 build_pass=true.",
+      "Added shared profile repository tab URL builders for q/type/language/sort preservation and chip removal.",
+      "Aligned the Rust repository-list API with the UI sort values updated-desc, name-asc, and stars-desc while preserving older sort aliases.",
+      "Recorded signed-in repository overview opens in recent_repository_visits after permission checks, while anonymous public reads do not write visits.",
+      "Extended focused Rust, Vitest, navigation, and Playwright coverage for URL state, sort chips, clear filters, row navigation, no inert anchors, and recent-visit persistence.",
+      "Saved browser smoke screenshot ralph/screenshots/build/profiles-002-phase3-repository-filters.jpg.",
+      "Verification passed against local Postgres on localhost:55432 with the postgres role: focused profile_repositories_contract, focused repository/navigation Vitest, focused profile repository Playwright, make check, make test with Cargo plus 228 frontend tests, full make test-e2e with 86 Playwright tests, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke uses deterministic Rust-signed local sessions from dashboard_e2e_seed rather than a live Google OAuth browser login.",
+      "Language filter interaction is covered by the API contract and rendered control; QA should manually exercise language select combinations once the seeded browser profile has multiple language options visible.",
+      "Recent-visit write failures intentionally do not block repository navigation; QA should inspect dashboard recent repositories after opening rows.",
+      "Stars tab remains unimplemented until Phase 4, so profiles-002 build_pass remains false."
+    ]
   }
 ]

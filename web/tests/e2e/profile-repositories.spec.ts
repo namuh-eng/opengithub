@@ -83,6 +83,42 @@ test("profile repositories tab renders real rows and filter controls", async ({
   await expect(page.getByText(/forks/).first()).toBeVisible();
   await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
 
+  const repositoryName = seeded.firstRepositoryHref.split("/").at(-1) ?? "";
+  await page.getByLabel("Search", { exact: true }).fill(repositoryName);
+  await page.getByLabel("Sort", { exact: true }).selectOption("stars-desc");
+  await page.getByRole("button", { name: "Filter" }).click();
+  await expect(page).toHaveURL(/tab=repositories/);
+  await expect(page).toHaveURL(new RegExp(`q=${repositoryName}`));
+  await expect(page).toHaveURL(/sort=stars-desc/);
+  await expect(
+    page.getByRole("link", { name: `Search: ${repositoryName} x` }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Sort: Stars x" })).toBeVisible();
+
+  const typeOptions = await page
+    .getByLabel("Type", { exact: true })
+    .locator("option")
+    .evaluateAll((options) =>
+      options
+        .map((option) => (option as HTMLOptionElement).value)
+        .filter((value) => value && value !== "all"),
+    );
+  if (typeOptions.length > 0) {
+    await page.getByLabel("Type", { exact: true }).selectOption(typeOptions[0]);
+    await page.getByRole("button", { name: "Filter" }).click();
+    await expect(page).toHaveURL(new RegExp(`type=${typeOptions[0]}`));
+  }
+
+  await page.getByRole("link", { name: "Sort: Stars x" }).click();
+  await expect(page).not.toHaveURL(/sort=stars-desc/);
+  await page.getByRole("link", { name: "Clear filters" }).first().click();
+  await expect(page).toHaveURL(
+    new RegExp(`${profileHref(seeded)}\\?tab=repositories$`),
+  );
+  await expect(
+    page.locator(`a[href="${seeded.firstRepositoryHref}"]`).first(),
+  ).toBeVisible();
+
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,
   );
@@ -90,6 +126,9 @@ test("profile repositories tab renders real rows and filter controls", async ({
 
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/profiles-002-phase2-repositories.jpg",
+    path: "../ralph/screenshots/build/profiles-002-phase3-repository-filters.jpg",
   });
+
+  await page.locator(`a[href="${seeded.firstRepositoryHref}"]`).first().click();
+  await expect(page).toHaveURL(new RegExp(`${seeded.firstRepositoryHref}$`));
 });

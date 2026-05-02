@@ -223,6 +223,10 @@ describe("profile repository tab", () => {
       "href",
       "/ashley?tab=repositories&type=forks&language=TypeScript&sort=stars-desc",
     );
+    expect(screen.getByRole("link", { name: "Sort: Stars x" })).toHaveAttribute(
+      "href",
+      "/ashley?tab=repositories&q=quiet&type=forks&language=TypeScript",
+    );
     expect(screen.getByRole("link", { name: "Clear filters" })).toHaveAttribute(
       "href",
       "/ashley?tab=repositories",

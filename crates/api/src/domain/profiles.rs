@@ -852,10 +852,10 @@ fn normalize_repository_filters(
         let trimmed = value.trim();
         (!trimmed.is_empty() && trimmed != "all").then(|| trimmed.chars().take(80).collect())
     });
-    let sort = match query.sort.unwrap_or("updated").trim() {
-        "" | "updated" | "last-updated" => "updated",
-        "name" => "name",
-        "stars" => "stars",
+    let sort = match query.sort.unwrap_or("updated-desc").trim() {
+        "" | "updated" | "updated-desc" | "last-updated" => "updated-desc",
+        "name" | "name-asc" => "name-asc",
+        "stars" | "stars-desc" => "stars-desc",
         other => {
             return Err(ProfileError::InvalidRepositoryFilter(format!(
                 "unsupported repository sort: {other}"
@@ -1118,13 +1118,13 @@ fn apply_repository_filters(
 
 fn sort_profile_repositories(repositories: &mut [ProfileRepositoryListItem], sort: &str) {
     match sort {
-        "name" => repositories.sort_by(|a, b| {
+        "name" | "name-asc" => repositories.sort_by(|a, b| {
             a.name
                 .to_ascii_lowercase()
                 .cmp(&b.name.to_ascii_lowercase())
                 .then_with(|| a.updated_at.cmp(&b.updated_at).reverse())
         }),
-        "stars" => repositories.sort_by(|a, b| {
+        "stars" | "stars-desc" => repositories.sort_by(|a, b| {
             b.stars_count
                 .cmp(&a.stars_count)
                 .then_with(|| b.updated_at.cmp(&a.updated_at))

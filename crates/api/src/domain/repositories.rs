@@ -1049,6 +1049,9 @@ pub async fn repository_overview_for_viewer(
     if viewer_permission.is_none() {
         return Err(RepositoryError::PermissionDenied);
     }
+    if let Some(user_id) = actor_user_id {
+        record_recent_repository_visit(pool, user_id, repository.id).await?;
+    }
     let branch_count = count_repository_refs(pool, repository.id, "branch").await?;
     let tag_count = count_repository_refs(pool, repository.id, "tag").await?;
     let default_branch_ref = get_repository_ref(

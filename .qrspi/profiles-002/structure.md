@@ -40,7 +40,7 @@
 
 ## Phase 3: URL-Backed Repository Filters - search, type, language, sort, clear, and recent visits
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make every repository-tab control concrete. Typing search terms, selecting Type, selecting Language, selecting Sort, and clearing filters must update URL state, refetch data, and never rely on dead handlers. Opening a repository row may write a recent visit if an authenticated viewer is present.
 

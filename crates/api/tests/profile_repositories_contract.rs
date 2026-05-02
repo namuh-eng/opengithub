@@ -9,7 +9,8 @@ use opengithub_api::{
     domain::{
         identity::{upsert_session, upsert_user_by_email, User},
         repositories::{
-            create_repository, CreateRepository, RepositoryOwner, RepositoryVisibility,
+            create_repository, create_repository_with_bootstrap, CreateRepository,
+            RepositoryBootstrapRequest, RepositoryOwner, RepositoryVisibility,
         },
     },
 };
@@ -151,7 +152,7 @@ async fn profile_repositories_filter_sort_and_redact_private_rows() {
     )
     .await
     .expect("source repo should create");
-    let alpha = create_repository(
+    let alpha = create_repository_with_bootstrap(
         &pool,
         CreateRepository {
             owner: RepositoryOwner::User { id: owner.id },
@@ -160,6 +161,12 @@ async fn profile_repositories_filter_sort_and_redact_private_rows() {
             visibility: RepositoryVisibility::Public,
             default_branch: Some("main".to_owned()),
             created_by_user_id: owner.id,
+        },
+        RepositoryBootstrapRequest {
+            initialize_readme: true,
+            template_slug: Some("rust-axum".to_owned()),
+            gitignore_template_slug: Some("rust".to_owned()),
+            license_template_slug: Some("mit".to_owned()),
         },
     )
     .await
@@ -342,8 +349,41 @@ async fn profile_repositories_filter_sort_and_redact_private_rows() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["total"], 2);
     assert_eq!(body["items"].as_array().unwrap().len(), 1);
-    assert_eq!(body["filters"]["sort"], "name");
+    assert_eq!(body["filters"]["sort"], "name-asc");
     assert_eq!(body["filters"]["pageSize"], 1);
+
+    let (status, _, _) = get_json(
+        app.clone(),
+        &format!("/api/repos/{marker}/{}", alpha.name),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let anonymous_visit_count = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM recent_repository_visits WHERE repository_id = $1",
+    )
+    .bind(alpha.id)
+    .fetch_one(&pool)
+    .await
+    .expect("visit count should read");
+    assert_eq!(anonymous_visit_count, 0);
+
+    let (status, _, _) = get_json(
+        app.clone(),
+        &format!("/api/repos/{marker}/{}", alpha.name),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let signed_visit_count = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM recent_repository_visits WHERE user_id = $1 AND repository_id = $2",
+    )
+    .bind(owner.id)
+    .bind(alpha.id)
+    .fetch_one(&pool)
+    .await
+    .expect("signed visit count should read");
+    assert_eq!(signed_visit_count, 1);
 
     let (status, _, body) = get_json(
         app,

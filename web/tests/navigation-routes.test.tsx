@@ -19,6 +19,7 @@ import {
   organizationTabHref,
   organizationTeamHref,
   PROFILE_TABS,
+  profileRepositoryTabHref,
   profileTabHref,
   queryJumpSuggestions,
   REPOSITORY_TABS,
@@ -141,6 +142,32 @@ describe("navigation route registry", () => {
     expect(profileTabHref("mona lisa", "repositories")).toBe(
       "/mona%20lisa?tab=repositories",
     );
+    expect(
+      profileRepositoryTabHref(
+        "mona lisa",
+        {
+          query: "api server",
+          repositoryType: "forks",
+          language: "TypeScript",
+          sort: "stars-desc",
+        },
+        { type: "all" },
+      ),
+    ).toBe(
+      "/mona%20lisa?tab=repositories&q=api+server&language=TypeScript&sort=stars-desc",
+    );
+    expect(
+      profileRepositoryTabHref(
+        "mona lisa",
+        {
+          query: "api server",
+          repositoryType: "forks",
+          language: "TypeScript",
+          sort: "stars-desc",
+        },
+        { q: null, language: null, sort: "updated-desc" },
+      ),
+    ).toBe("/mona%20lisa?tab=repositories&type=forks");
 
     expect(activeOrganizationTab("people")).toBe("people");
     expect(organizationHref("namuh labs")).toBe("/orgs/namuh%20labs");

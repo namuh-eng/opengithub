@@ -4,6 +4,7 @@ import type {
   ProfileRepositoryList,
   ProfileRepositoryListItem,
 } from "@/lib/api";
+import { profileRepositoryTabHref } from "@/lib/navigation";
 
 type ProfileRepositoryTabsProps = {
   list: ProfileRepositoryList;
@@ -25,43 +26,6 @@ const REPOSITORY_TYPE_LABELS: Record<string, string> = {
   mirrors: "Mirrors",
   templates: "Templates",
 };
-
-function repositoryTabHref(
-  owner: string,
-  filters: ProfileRepositoryFilters,
-  overrides: Partial<Record<"q" | "type" | "language" | "sort", string | null>>,
-) {
-  const params = new URLSearchParams();
-  params.set("tab", "repositories");
-
-  const nextQuery =
-    overrides.q === undefined ? filters.query : overrides.q?.trim() || null;
-  const nextType =
-    overrides.type === undefined
-      ? filters.repositoryType
-      : overrides.type?.trim() || "all";
-  const nextLanguage =
-    overrides.language === undefined
-      ? filters.language
-      : overrides.language?.trim() || null;
-  const nextSort =
-    overrides.sort === undefined ? filters.sort : overrides.sort?.trim() || "";
-
-  if (nextQuery) {
-    params.set("q", nextQuery);
-  }
-  if (nextType && nextType !== "all") {
-    params.set("type", nextType);
-  }
-  if (nextLanguage) {
-    params.set("language", nextLanguage);
-  }
-  if (nextSort && nextSort !== "updated-desc") {
-    params.set("sort", nextSort);
-  }
-
-  return `/${encodeURIComponent(owner)}?${params.toString()}`;
-}
 
 function formatDate(value: string) {
   const date = new Date(value);
@@ -196,13 +160,13 @@ function ActiveFilters({
   const chips = [
     filters.query
       ? {
-          href: repositoryTabHref(owner, filters, { q: null }),
+          href: profileRepositoryTabHref(owner, filters, { q: null }),
           label: `Search: ${filters.query}`,
         }
       : null,
     filters.repositoryType !== "all"
       ? {
-          href: repositoryTabHref(owner, filters, { type: "all" }),
+          href: profileRepositoryTabHref(owner, filters, { type: "all" }),
           label:
             REPOSITORY_TYPE_LABELS[filters.repositoryType] ??
             filters.repositoryType,
@@ -210,8 +174,16 @@ function ActiveFilters({
       : null,
     filters.language
       ? {
-          href: repositoryTabHref(owner, filters, { language: null }),
+          href: profileRepositoryTabHref(owner, filters, { language: null }),
           label: filters.language,
+        }
+      : null,
+    filters.sort !== "updated-desc"
+      ? {
+          href: profileRepositoryTabHref(owner, filters, {
+            sort: "updated-desc",
+          }),
+          label: `Sort: ${REPOSITORY_SORT_LABELS[filters.sort] ?? filters.sort}`,
         }
       : null,
   ].filter((chip): chip is { href: string; label: string } => Boolean(chip));
@@ -236,7 +208,7 @@ function ActiveFilters({
       ))}
       <Link
         className="chip soft no-underline"
-        href={`/${encodeURIComponent(owner)}?tab=repositories`}
+        href={profileRepositoryTabHref(owner)}
       >
         Clear filters
       </Link>
@@ -363,7 +335,7 @@ export function ProfileRepositoryTabs({
           </p>
           <Link
             className="btn mt-4 inline-flex no-underline"
-            href={`/${encodeURIComponent(owner)}?tab=repositories`}
+            href={profileRepositoryTabHref(owner)}
           >
             Clear filters
           </Link>
