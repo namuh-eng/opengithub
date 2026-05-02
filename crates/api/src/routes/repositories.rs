@@ -23,10 +23,11 @@ use crate::{
         repository_file_finder_for_actor_by_owner_name, repository_name_availability,
         repository_overview_for_viewer_by_owner_name,
         repository_path_overview_for_actor_by_owner_name, repository_refs_for_actor_by_owner_name,
-        set_repository_star_by_owner_name, set_repository_watch_by_owner_name, CreateRepository,
-        RepositoryBootstrapRequest, RepositoryCommitHistoryQuery, RepositoryError,
-        RepositoryFileFinderQuery, RepositoryOwner, RepositoryPathQuery, RepositoryRefsQuery,
-        RepositoryVisibility,
+        repository_settings_for_actor_by_owner_name, set_repository_star_by_owner_name,
+        set_repository_watch_by_owner_name, update_repository_settings_by_owner_name,
+        CreateRepository, RepositoryBootstrapRequest, RepositoryCommitHistoryQuery,
+        RepositoryError, RepositoryFileFinderQuery, RepositoryOwner, RepositoryPathQuery,
+        RepositoryRefsQuery, RepositorySettingsPatch, RepositoryVisibility,
     },
     AppState,
 };
@@ -42,6 +43,10 @@ pub fn router() -> Router<AppState> {
         .route("/:owner/:repo/commits", get(commits))
         .route("/:owner/:repo/refs", get(refs))
         .route("/:owner/:repo/file-finder", get(file_finder))
+        .route(
+            "/:owner/:repo/settings",
+            get(settings).patch(update_settings),
+        )
         .route("/:owner/:repo/star", put(star).delete(unstar))
         .route("/:owner/:repo/watch", put(watch).delete(unwatch))
         .route("/:owner/:repo/forks", post(fork))
@@ -466,6 +471,49 @@ async fn file_finder(
     Ok(Json(json!(envelope)))
 }
 
+async fn settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = repository_settings_for_actor_by_owner_name(pool, actor.0.id, &owner, &repo)
+        .await
+        .map_err(map_repository_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "repository was not found".to_owned(),
+            )
+        })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn update_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(patch): RestJson<RepositorySettingsPatch>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = update_repository_settings_by_owner_name(pool, actor.0.id, &owner, &repo, patch)
+        .await
+        .map_err(map_repository_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "repository was not found".to_owned(),
+            )
+        })?;
+
+    Ok(Json(json!(settings)))
+}
+
 async fn star(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -607,6 +655,10 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         RepositoryError::InvalidVisibility(_)
         | RepositoryError::InvalidName(_)
         | RepositoryError::InvalidDescription(_)
+        | RepositoryError::InvalidMergeMethod(_)
+        | RepositoryError::MergeMethodRequired
+        | RepositoryError::DefaultMergeMethodDisabled
+        | RepositoryError::ArchivedRepositoryReadOnly
         | RepositoryError::UnknownTemplate(_)
         | RepositoryError::UnknownGitignoreTemplate(_)
         | RepositoryError::UnknownLicenseTemplate(_) => error_response(
@@ -614,6 +666,9 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
             "validation_failed",
             error.to_string(),
         ),
+        RepositoryError::DefaultBranchNotFound(_) => {
+            error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
         RepositoryError::ForkAlreadyExists => {
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }

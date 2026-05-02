@@ -6,7 +6,7 @@
 
 ## Phase 1: Repository Settings API Contract - admin-only read/write and audit events
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the Rust/Postgres contract for `GET /api/repos/{owner}/{repo}/settings` and `PATCH /api/repos/{owner}/{repo}/settings`. The endpoint must only load or mutate for viewers with admin/owner repository permission, return a dense settings DTO for the General settings page, validate every mutation, persist audit events for successful writes, and return structured errors for forbidden, validation, not-found, conflict, and database states.
 

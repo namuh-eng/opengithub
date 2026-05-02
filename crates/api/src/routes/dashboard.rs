@@ -197,6 +197,10 @@ fn map_dashboard_error(error: DashboardError) -> (StatusCode, Json<ErrorEnvelope
         DashboardError::Repositories(RepositoryError::InvalidVisibility(_))
         | DashboardError::Repositories(RepositoryError::InvalidName(_))
         | DashboardError::Repositories(RepositoryError::InvalidDescription(_))
+        | DashboardError::Repositories(RepositoryError::InvalidMergeMethod(_))
+        | DashboardError::Repositories(RepositoryError::MergeMethodRequired)
+        | DashboardError::Repositories(RepositoryError::DefaultMergeMethodDisabled)
+        | DashboardError::Repositories(RepositoryError::ArchivedRepositoryReadOnly)
         | DashboardError::Repositories(RepositoryError::UnknownTemplate(_))
         | DashboardError::Repositories(RepositoryError::UnknownGitignoreTemplate(_))
         | DashboardError::Repositories(RepositoryError::UnknownLicenseTemplate(_))
@@ -210,6 +214,9 @@ fn map_dashboard_error(error: DashboardError) -> (StatusCode, Json<ErrorEnvelope
             error_response(StatusCode::FORBIDDEN, "forbidden", error.to_string())
         }
         DashboardError::Repositories(RepositoryError::ForkAlreadyExists) => {
+            error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
+        DashboardError::Repositories(RepositoryError::DefaultBranchNotFound(_)) => {
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }
         DashboardError::Repositories(RepositoryError::OwnerNotFound)

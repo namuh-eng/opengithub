@@ -2206,3 +2206,14 @@
 - Added `.qrspi/settings-001/structure.md` with five independently verifiable vertical phases: repository settings API/audit contract, Editorial General settings shell, confirmed mutation flows, privacy/conflict/danger-zone guardrails, and final QA/build-pass bookkeeping.
 - Did not change `prd.json`; `build_pass` remains `false` until all implementation phases pass verification.
 - Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
+
+2026-05-03 - settings-001 phase 1 repository settings API contract
+
+- Completed Phase 1 from `.qrspi/settings-001/structure.md`: repository General settings now have an admin-only Rust/Postgres read/write contract at `GET /api/repos/{owner}/{repo}/settings` and `PATCH /api/repos/{owner}/{repo}/settings`.
+- Added additive migration `202605030041_repository_general_settings` for repository feature flags, forking, web commit signoff, and `repository_settings_audit_events`.
+- Added typed settings DTOs and patch validation for repository identity, visibility, default branch existence, feature flags, merge methods/default merge method, archived repository write restrictions, and disabled delete/transfer danger state.
+- Successful writes update repository and merge settings together, return fresh server state, and persist settings audit rows with changed fields and before/after state.
+- Added `crates/api/tests/repository_settings_contract.rs` covering anonymous 401, non-admin 403, admin read/write, default branch validation, merge-method validation, rename uniqueness conflicts, audit-event creation, and redacted structured errors.
+- Verification passed: focused `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false cargo test -p opengithub-api --test repository_settings_contract -- --nocapture`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; standard `DB_SSL=false make test` with Cargo tests plus 250 frontend tests; mandatory Editorial banned-value scan returned zero matches.
+- Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first and the structure outline marks browser smoke optional for this phase.
+- Marked Phase 1 as done in `.qrspi/settings-001/structure.md`; `prd.json` remains `build_pass: false` because Phases 2-5 remain.

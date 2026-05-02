@@ -161,6 +161,10 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         RepositoryError::InvalidVisibility(_)
         | RepositoryError::InvalidName(_)
         | RepositoryError::InvalidDescription(_)
+        | RepositoryError::InvalidMergeMethod(_)
+        | RepositoryError::MergeMethodRequired
+        | RepositoryError::DefaultMergeMethodDisabled
+        | RepositoryError::ArchivedRepositoryReadOnly
         | RepositoryError::UnknownTemplate(_)
         | RepositoryError::UnknownGitignoreTemplate(_)
         | RepositoryError::UnknownLicenseTemplate(_) => error_response(
@@ -169,6 +173,9 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
             error.to_string(),
         ),
         RepositoryError::ForkAlreadyExists => {
+            error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
+        RepositoryError::DefaultBranchNotFound(_) => {
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }
         RepositoryError::GitStorageFailed => error_response(

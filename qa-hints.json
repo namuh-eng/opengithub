@@ -3187,5 +3187,20 @@
       "Full E2E reused the manually started local servers; the Rust API was started without API_URL so clone URL assertions keep the public opengithub.namuh.co host while Next fetched the local API via API_URL=http://localhost:3016.",
       "QA should stress anonymous outside viewers, private organizations, hidden public members, direct repository collaborators who are not org members, many repository/member pages, very long repository names/topics, and search/pageSize preservation across clearing filters."
     ]
+  },
+  {
+    "feature_id": "settings-001",
+    "tests_written": [
+      "Completed Phase 1 Repository Settings API Contract without marking settings-001 build_pass=true.",
+      "Added additive repository settings migration fields for issues/projects/wiki, forking, web commit signoff, and repository_settings_audit_events.",
+      "Added admin-only GET /api/repos/{owner}/{repo}/settings and PATCH /api/repos/{owner}/{repo}/settings backed by Rust/Postgres.",
+      "Covered anonymous 401, non-admin 403, admin read/write, feature and merge setting persistence, default branch validation, rename uniqueness conflict, structured redacted errors, and audit-event creation in repository_settings_contract.",
+      "Verification passed: focused repository_settings_contract against TEST_DATABASE_URL on localhost:55432; TEST_DATABASE_URL-backed make check; standard DB_SSL=false make test with Cargo tests plus 250 frontend tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Phase 1 is API-first, so browser smoke and make test-e2e were not applicable yet.",
+      "Later phases should exercise the Editorial settings UI, server-forwarded mutations, confirmed persistence after reload, archive/unarchive behavior, and disabled delete/transfer affordances.",
+      "QA should stress concurrent settings writes, very long descriptions, private/internal visibility transitions, default branch deletion races, archived repository write restrictions, and audit-event integrity."
+    ]
   }
 ]
