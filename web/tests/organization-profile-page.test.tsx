@@ -4,6 +4,7 @@ import { OrganizationProfilePage } from "@/components/OrganizationProfilePage";
 import type {
   AuthSession,
   OrganizationIdentity,
+  OrganizationRepositoryPreview,
   OrganizationSponsorshipState,
   OrganizationTabCounts,
   OrganizationViewerState,
@@ -26,6 +27,38 @@ type OrganizationOverrides = Partial<
   tabCounts?: Partial<OrganizationTabCounts>;
   viewerState?: Partial<OrganizationViewerState>;
 };
+
+function repository(
+  overrides: Partial<OrganizationRepositoryPreview> = {},
+): OrganizationRepositoryPreview {
+  return {
+    id: "repo-1",
+    owner: "namuh",
+    name: "opengithub",
+    fullName: "namuh/opengithub",
+    description: "A rust-first collaboration platform.",
+    visibility: "public",
+    href: "/namuh/opengithub",
+    defaultBranch: "main",
+    primaryLanguage: {
+      language: "Rust",
+      color: "#dea584",
+      byteCount: 9000,
+    },
+    languages: [],
+    topics: ["forge"],
+    starsCount: 142,
+    forksCount: 18,
+    openIssuesCount: 5,
+    openPullRequestsCount: 2,
+    isArchived: false,
+    isTemplate: false,
+    isMirror: false,
+    license: { slug: "mit", name: "MIT" },
+    updatedAt: "2026-05-01T00:00:00Z",
+    ...overrides,
+  };
+}
 
 function organization(
   overrides: OrganizationOverrides = {},
@@ -54,57 +87,22 @@ function organization(
         href: "/docs/verification",
       },
     ],
-    pinnedRepositories: [
-      {
-        id: "repo-1",
-        owner: "namuh",
-        name: "opengithub",
-        fullName: "namuh/opengithub",
-        description: "A rust-first collaboration platform.",
-        visibility: "public",
-        href: "/namuh/opengithub",
-        defaultBranch: "main",
-        primaryLanguage: {
-          language: "Rust",
-          color: "#dea584",
-          byteCount: 9000,
-        },
-        languages: [],
-        topics: ["forge"],
-        starsCount: 142,
-        forksCount: 18,
-        openIssuesCount: 5,
-        openPullRequestsCount: 2,
-        isArchived: false,
-        isTemplate: false,
-        isMirror: false,
-        license: { slug: "mit", name: "MIT" },
-        updatedAt: "2026-05-01T00:00:00Z",
-      },
-    ],
+    pinnedRepositories: [repository()],
     repositoryPreview: [
-      {
+      repository({
         id: "repo-2",
-        owner: "namuh",
         name: "ralph",
         fullName: "namuh/ralph",
         description: "Autonomous build loop tooling.",
-        visibility: "public",
         href: "/namuh/ralph",
-        defaultBranch: "main",
         primaryLanguage: null,
-        languages: [],
         topics: [],
         starsCount: 64,
         forksCount: 7,
         openIssuesCount: 3,
         openPullRequestsCount: 1,
-        isArchived: false,
-        isTemplate: false,
-        isMirror: false,
         license: null,
-        updatedAt: "2026-05-01T00:00:00Z",
-      },
+      }),
     ],
     peoplePreview: [
       {
@@ -228,12 +226,11 @@ describe("OrganizationProfilePage", () => {
     );
 
     expect(
-      screen.getByRole("link", { name: "namuh/opengithub" }),
+      screen.getByRole("link", { name: "Open namuh/opengithub" }),
     ).toHaveAttribute("href", "/namuh/opengithub");
-    expect(screen.getByRole("link", { name: /namuh\/ralph/ })).toHaveAttribute(
-      "href",
-      "/namuh/ralph",
-    );
+    expect(
+      screen.getByRole("link", { name: "Open namuh/ralph" }),
+    ).toHaveAttribute("href", "/namuh/ralph");
     expect(screen.getByRole("link", { name: "Ashley Ha" })).toHaveAttribute(
       "href",
       "/ashley",
@@ -278,5 +275,89 @@ describe("OrganizationProfilePage", () => {
     expect(
       within(tabs).getByRole("link", { name: "Overview" }),
     ).toHaveAttribute("href", "/orgs/namuh?tab=overview");
+  });
+
+  it("renders pinned repository cards with metrics, badges, topics, and stable order", () => {
+    render(
+      <OrganizationProfilePage
+        activeTab="overview"
+        profile={organization({
+          pinnedRepositories: [
+            repository({
+              id: "repo-first",
+              fullName: "namuh/first",
+              name: "first",
+              href: "/namuh/first",
+              topics: ["platform", "search", "automation"],
+              isTemplate: true,
+            }),
+            repository({
+              id: "repo-second",
+              fullName: "namuh/second",
+              name: "second",
+              href: "/namuh/second",
+              visibility: "internal",
+              starsCount: 0,
+              forksCount: 0,
+              openIssuesCount: 0,
+              openPullRequestsCount: 0,
+              isArchived: true,
+              license: null,
+            }),
+          ],
+        })}
+        session={session}
+      />,
+    );
+
+    const cards = screen.getAllByRole("link", { name: /^Open namuh\// });
+    expect(cards.map((card) => card.getAttribute("href"))).toEqual([
+      "/namuh/first",
+      "/namuh/second",
+      "/namuh/ralph",
+    ]);
+    expect(screen.getByText("142 stars")).toBeVisible();
+    expect(screen.getByText("18 forks")).toBeVisible();
+    expect(screen.getByText("5 open issues")).toBeVisible();
+    expect(screen.getByText("2 open pull requests")).toBeVisible();
+    expect(screen.getByText("MIT")).toBeVisible();
+    expect(screen.getByText("platform")).toBeVisible();
+    expect(screen.getByText("Template")).toBeVisible();
+    expect(screen.getByText("Archived")).toBeVisible();
+    expect(screen.getByText("internal")).toBeVisible();
+  });
+
+  it("uses concrete empty-state actions for repository preview states", () => {
+    render(
+      <OrganizationProfilePage
+        activeTab="overview"
+        profile={organization({
+          pinnedRepositories: [],
+          repositoryPreview: [],
+          viewerState: {
+            authenticated: true,
+            isMember: true,
+            role: "owner",
+            canViewInternal: true,
+            canAdmin: true,
+            isFollowing: false,
+          },
+        })}
+        session={session}
+      />,
+    );
+
+    expect(
+      screen.getByText("No pinned repositories are visible yet."),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Browse repositories" }),
+    ).toHaveAttribute("href", "/orgs/namuh?tab=repositories");
+    expect(
+      screen.getByText("No repositories are visible to this viewer."),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Create repository" }),
+    ).toHaveAttribute("href", "/new");
   });
 });

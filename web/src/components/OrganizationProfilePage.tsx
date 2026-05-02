@@ -38,6 +38,23 @@ function compactDate(value: string) {
   }).format(new Date(value));
 }
 
+function relativeDate(value: string) {
+  const date = new Date(value);
+  const diffMs = Date.now() - date.getTime();
+  const diffDays = Math.max(0, Math.floor(diffMs / 86_400_000));
+  if (diffDays < 1) {
+    return "Updated today";
+  }
+  if (diffDays < 31) {
+    return `Updated ${diffDays} day${diffDays === 1 ? "" : "s"} ago`;
+  }
+  return `Updated ${compactDate(value)}`;
+}
+
+function formatCount(value: number) {
+  return value.toLocaleString();
+}
+
 function tabLabel(tab: QueryTab, profile: PublicOrganizationProfile) {
   if (tab.value === "repositories") {
     return `Repositories ${profile.tabCounts.repositories.toLocaleString()}`;
@@ -99,6 +116,170 @@ function Avatar({ profile }: { profile: PublicOrganizationProfile }) {
     <span className="av xl shrink-0" aria-hidden="true">
       {organizationInitial(profile)}
     </span>
+  );
+}
+
+function RepositoryMeta({
+  compact = false,
+  repository,
+}: {
+  compact?: boolean;
+  repository: PublicOrganizationProfile["repositoryPreview"][number];
+}) {
+  const stats = [
+    repository.primaryLanguage
+      ? {
+          label: repository.primaryLanguage.language,
+          node: (
+            <>
+              <span
+                aria-hidden="true"
+                className="inline-block size-2 rounded-full"
+                style={{ background: repository.primaryLanguage.color }}
+              />
+              <span>{repository.primaryLanguage.language}</span>
+            </>
+          ),
+        }
+      : null,
+    repository.starsCount > 0
+      ? { label: `${formatCount(repository.starsCount)} stars` }
+      : null,
+    repository.forksCount > 0
+      ? { label: `${formatCount(repository.forksCount)} forks` }
+      : null,
+    repository.openIssuesCount > 0
+      ? { label: `${formatCount(repository.openIssuesCount)} open issues` }
+      : null,
+    repository.openPullRequestsCount > 0
+      ? {
+          label: `${formatCount(repository.openPullRequestsCount)} open pull requests`,
+        }
+      : null,
+    repository.license ? { label: repository.license.name } : null,
+    { label: relativeDate(repository.updatedAt) },
+  ].filter(Boolean);
+
+  return (
+    <div
+      className={`mt-3 flex flex-wrap ${compact ? "gap-x-3 gap-y-1" : "gap-x-4 gap-y-2"}`}
+      style={{ color: "var(--ink-3)" }}
+    >
+      {stats.map((stat) => (
+        <span
+          className="t-xs inline-flex min-w-0 items-center gap-1.5"
+          key={stat?.label}
+        >
+          {stat?.node ?? stat?.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function RepositoryBadges({
+  repository,
+}: {
+  repository: PublicOrganizationProfile["repositoryPreview"][number];
+}) {
+  return (
+    <>
+      {repository.visibility !== "public" ? (
+        <span className="chip soft">{repository.visibility}</span>
+      ) : null}
+      {repository.isArchived ? (
+        <span className="chip warn">Archived</span>
+      ) : null}
+      {repository.isTemplate ? (
+        <span className="chip soft">Template</span>
+      ) : null}
+      {repository.isMirror ? <span className="chip soft">Mirror</span> : null}
+    </>
+  );
+}
+
+function TopicChips({
+  repository,
+}: {
+  repository: PublicOrganizationProfile["repositoryPreview"][number];
+}) {
+  if (repository.topics.length === 0) {
+    return null;
+  }
+  return (
+    <div className="mt-3 flex flex-wrap gap-1.5">
+      {repository.topics.slice(0, 4).map((topic) => (
+        <span className="chip soft" key={topic}>
+          {topic}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function PinnedRepositoryCard({
+  repository,
+}: {
+  repository: PublicOrganizationProfile["repositoryPreview"][number];
+}) {
+  return (
+    <Link
+      aria-label={`Open ${repository.fullName}`}
+      className="card block min-w-0 p-4 no-underline transition-colors hover:bg-[var(--hover)]"
+      href={repository.href}
+    >
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <span className="t-h3 min-w-0 truncate">{repository.fullName}</span>
+        <RepositoryBadges repository={repository} />
+      </div>
+      {repository.description ? (
+        <p className="t-sm mt-2 line-clamp-2" style={{ color: "var(--ink-2)" }}>
+          {repository.description}
+        </p>
+      ) : (
+        <p className="t-sm mt-2" style={{ color: "var(--ink-3)" }}>
+          No description published.
+        </p>
+      )}
+      <TopicChips repository={repository} />
+      <RepositoryMeta repository={repository} />
+    </Link>
+  );
+}
+
+function RepositoryPreviewRow({
+  repository,
+}: {
+  repository: PublicOrganizationProfile["repositoryPreview"][number];
+}) {
+  return (
+    <Link
+      aria-label={`Open ${repository.fullName}`}
+      className="list-row block min-w-0 py-4 no-underline"
+      href={repository.href}
+    >
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
+        <div className="min-w-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="t-h3 min-w-0 truncate">{repository.fullName}</span>
+            <RepositoryBadges repository={repository} />
+          </div>
+          {repository.description ? (
+            <p
+              className="t-sm mt-1 line-clamp-2"
+              style={{ color: "var(--ink-3)" }}
+            >
+              {repository.description}
+            </p>
+          ) : null}
+          <TopicChips repository={repository} />
+          <RepositoryMeta compact repository={repository} />
+        </div>
+        <span className="t-mono-sm" style={{ color: "var(--ink-4)" }}>
+          {repository.defaultBranch}
+        </span>
+      </div>
+    </Link>
   );
 }
 
@@ -269,23 +450,32 @@ function OverviewShell({ profile }: { profile: PublicOrganizationProfile }) {
             </span>
           </div>
           <p className="t-body mt-3" style={{ color: "var(--ink-2)" }}>
-            Repository cards are backed by the organization profile contract and
-            will gain full repository metrics in the next slice.
+            Curated repositories from this organization, ordered by profile pin
+            position and filtered to what this viewer can open.
           </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {profile.pinnedRepositories.slice(0, 4).map((repository) => (
-              <Link
-                className="chip soft"
-                href={repository.href}
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {profile.pinnedRepositories.slice(0, 6).map((repository) => (
+              <PinnedRepositoryCard
                 key={repository.id}
-              >
-                {repository.fullName}
-              </Link>
+                repository={repository}
+              />
             ))}
             {profile.pinnedRepositories.length === 0 ? (
-              <span className="t-sm" style={{ color: "var(--ink-3)" }}>
-                No pinned repositories are visible yet.
-              </span>
+              <div
+                className="rounded-[var(--radius)] border border-dashed p-4"
+                style={{ borderColor: "var(--line)", color: "var(--ink-3)" }}
+              >
+                <p className="t-sm">No pinned repositories are visible yet.</p>
+                <Link
+                  className="btn sm ghost mt-3"
+                  href={organizationTabHref(
+                    profile.identity.slug,
+                    "repositories",
+                  )}
+                >
+                  Browse repositories
+                </Link>
+              </div>
             ) : null}
           </div>
         </section>
@@ -307,30 +497,27 @@ function OverviewShell({ profile }: { profile: PublicOrganizationProfile }) {
               View all
             </Link>
           </div>
-          <div className="mt-4 grid gap-2">
+          <div className="mt-2 grid">
             {profile.repositoryPreview.slice(0, 3).map((repository) => (
-              <Link
-                className="list-row block py-3 no-underline"
-                href={repository.href}
+              <RepositoryPreviewRow
                 key={repository.id}
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="t-h3">{repository.fullName}</span>
-                  {repository.visibility !== "public" ? (
-                    <span className="chip soft">{repository.visibility}</span>
-                  ) : null}
-                </div>
-                {repository.description ? (
-                  <p className="t-sm mt-1" style={{ color: "var(--ink-3)" }}>
-                    {repository.description}
-                  </p>
-                ) : null}
-              </Link>
+                repository={repository}
+              />
             ))}
             {profile.repositoryPreview.length === 0 ? (
-              <p className="t-sm" style={{ color: "var(--ink-3)" }}>
-                No repositories are visible to this viewer.
-              </p>
+              <div
+                className="mt-4 rounded-[var(--radius)] border border-dashed p-4"
+                style={{ borderColor: "var(--line)", color: "var(--ink-3)" }}
+              >
+                <p className="t-sm">
+                  No repositories are visible to this viewer.
+                </p>
+                {profile.viewerState.canAdmin ? (
+                  <Link className="btn sm ghost mt-3" href="/new">
+                    Create repository
+                  </Link>
+                ) : null}
+              </div>
             ) : null}
           </div>
         </section>

@@ -40,7 +40,7 @@
 
 ## Phase 3: Pinned Repositories and Repository Preview - repo cards/rows navigate to real repositories
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Fill the main overview content with real pinned repository cards and repository preview rows. Cards and rows must include visibility badges, descriptions, primary language, stars/forks, open issue/PR counts when available, license, updated time, topic chips, and concrete repository links. Empty states must have working CTAs or no CTA if the viewer lacks permission.
 

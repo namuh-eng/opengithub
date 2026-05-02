@@ -3040,5 +3040,22 @@
       "Verified-domain hrefs currently point to the verified domain itself from the API contract; later QA should verify whether the product wants a dedicated verification explanation destination.",
       "QA should stress long organization names/slugs/descriptions and empty org profiles on mobile once Phase 5 guardrails land."
     ]
+  },
+  {
+    "feature_id": "orgs-001",
+    "tests_written": [
+      "Completed Phase 3 Pinned Repositories and Repository Preview without marking orgs-001 build_pass=true.",
+      "Replaced lightweight pinned repository chips with full Editorial repository cards that show visibility/status badges, description fallback, topics, primary language, stars, forks, open issues, open PRs, license, default branch, and updated time.",
+      "Kept repository preview rows as concrete links to real repository pages with the same API-backed metrics and truncation-safe layout.",
+      "Extended organization_profile_contract with pinned ordering, private repository redaction, recent repository preview sorting, license/template metadata, star/fork/issue/PR counts, language/topic aggregation, and standard public visibility checks.",
+      "Extended ORG_PROFILE_E2E seed data and Playwright coverage for metric rendering, pinned repository navigation, preview repository links, no inert anchors, no horizontal overflow, and screenshot ralph/screenshots/build/orgs-001-phase3-repository-preview.jpg.",
+      "Verification passed: focused organization_profile_contract, focused organization-profile Vitest, make check, standard make test with Cargo plus 237 frontend tests, focused organization-profile Playwright, full make test-e2e with 89 Playwright tests, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke uses deterministic Rust-signed local sessions and direct local API/Next dev servers because make dev depends on cargo-watch, which is not installed in this environment.",
+      "The TEST_DATABASE_URL-backed full make test path still exposes an existing collaboration contract mismatch around email-as-login fixtures versus current username-slug identity behavior; the standard make test path passed and focused org Rust coverage passed against the same database.",
+      "Phase 4 still needs people, topics, languages, sponsoring, verified-domain accessibility, and mobile secondary-panel hardening before orgs-001 can be marked build_pass=true.",
+      "QA should stress large pinned sets, repositories with very long full names and topic lists, private/internal repositories for non-member direct permission viewers, and repository metric consistency when PR backing issues are counted separately."
+    ]
   }
 ]

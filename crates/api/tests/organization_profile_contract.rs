@@ -181,6 +181,19 @@ async fn organization_profile_returns_public_overview_and_redacts_private_reposi
     )
     .await
     .expect("public repo should create");
+    let preview_repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::Organization { id: org.id },
+            name: format!("{marker}-preview"),
+            description: Some("recent preview org repo".to_owned()),
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("trunk".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("preview repo should create");
     let private_repo = create_repository(
         &pool,
         CreateRepository {
@@ -204,6 +217,32 @@ async fn organization_profile_returns_public_overview_and_redacts_private_reposi
     .await
     .expect("org pins should insert");
     sqlx::query(
+        "INSERT INTO organization_profile_pins (organization_id, repository_id, position) VALUES ($1, $2, 3)",
+    )
+    .bind(org.id)
+    .bind(preview_repo.id)
+    .execute(&pool)
+    .await
+    .expect("second public org pin should insert");
+    sqlx::query(
+        r#"
+        UPDATE repositories
+        SET license_template_slug = 'mit',
+            is_template = true,
+            updated_at = now() - INTERVAL '2 hours'
+        WHERE id = $1
+        "#,
+    )
+    .bind(public_repo.id)
+    .execute(&pool)
+    .await
+    .expect("public repo metadata should update");
+    sqlx::query("UPDATE repositories SET updated_at = now() - INTERVAL '1 hour' WHERE id = $1")
+        .bind(preview_repo.id)
+        .execute(&pool)
+        .await
+        .expect("preview repo metadata should update");
+    sqlx::query(
         "INSERT INTO repository_languages (repository_id, language, color, byte_count) VALUES ($1, 'Rust', '#b7410e', 900), ($1, 'TypeScript', '#8c5a3c', 100)",
     )
     .bind(public_repo.id)
@@ -223,6 +262,32 @@ async fn organization_profile_returns_public_overview_and_redacts_private_reposi
         .execute(&pool)
         .await
         .expect("star should insert");
+    sqlx::query(
+        "INSERT INTO repository_forks (source_repository_id, fork_repository_id, forked_by_user_id) VALUES ($1, $2, $3)",
+    )
+    .bind(public_repo.id)
+    .bind(private_repo.id)
+    .bind(follower.id)
+    .execute(&pool)
+    .await
+    .expect("fork should insert");
+    let issue_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO issues (repository_id, number, title, author_user_id) VALUES ($1, 1, 'Open organization issue', $2) RETURNING id",
+    )
+    .bind(public_repo.id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("issue should insert");
+    sqlx::query(
+        "INSERT INTO pull_requests (repository_id, issue_id, number, title, author_user_id, head_ref, base_ref, head_repository_id, base_repository_id) VALUES ($1, $2, 2, 'Open organization PR', $3, 'feature', 'main', $1, $1)",
+    )
+    .bind(public_repo.id)
+    .bind(issue_id)
+    .bind(owner.id)
+    .execute(&pool)
+    .await
+    .expect("pull request should insert");
 
     let (status, headers, body) = get_json(
         app.clone(),
@@ -236,14 +301,15 @@ async fn organization_profile_returns_public_overview_and_redacts_private_reposi
     assert_eq!(body["identity"]["name"], "Open Source Lab");
     assert_eq!(body["identity"]["websiteUrl"], "https://namuh.co");
     assert_eq!(body["identity"]["followerCount"], 1);
-    assert_eq!(body["identity"]["repositoryCount"], 1);
+    assert_eq!(body["identity"]["repositoryCount"], 2);
     assert_eq!(body["identity"]["publicMemberCount"], 1);
     assert_eq!(body["verifiedDomains"][0]["domain"], "namuh.co");
     assert_eq!(body["viewerState"]["authenticated"], false);
     assert_eq!(body["viewerState"]["isMember"], false);
     assert_eq!(body["sponsorship"]["enabled"], false);
-    assert_eq!(body["pinnedRepositories"].as_array().unwrap().len(), 1);
+    assert_eq!(body["pinnedRepositories"].as_array().unwrap().len(), 2);
     assert_eq!(body["pinnedRepositories"][0]["name"], public_repo.name);
+    assert_eq!(body["pinnedRepositories"][1]["name"], preview_repo.name);
     assert_eq!(
         body["pinnedRepositories"][0]["href"],
         format!("/{marker}/{}", public_repo.name)
@@ -253,7 +319,15 @@ async fn organization_profile_returns_public_overview_and_redacts_private_reposi
         "Rust"
     );
     assert_eq!(body["pinnedRepositories"][0]["topics"][0], "actions");
-    assert_eq!(body["repositoryPreview"].as_array().unwrap().len(), 1);
+    assert_eq!(body["pinnedRepositories"][0]["starsCount"], 1);
+    assert_eq!(body["pinnedRepositories"][0]["forksCount"], 1);
+    assert_eq!(body["pinnedRepositories"][0]["openIssuesCount"], 1);
+    assert_eq!(body["pinnedRepositories"][0]["openPullRequestsCount"], 1);
+    assert_eq!(body["pinnedRepositories"][0]["license"]["slug"], "mit");
+    assert_eq!(body["pinnedRepositories"][0]["isTemplate"], true);
+    assert_eq!(body["repositoryPreview"].as_array().unwrap().len(), 2);
+    assert_eq!(body["repositoryPreview"][0]["name"], preview_repo.name);
+    assert_eq!(body["repositoryPreview"][1]["name"], public_repo.name);
     assert_eq!(body["topLanguages"][0]["language"], "Rust");
     assert_eq!(body["topTopics"][0]["topic"], "actions");
 

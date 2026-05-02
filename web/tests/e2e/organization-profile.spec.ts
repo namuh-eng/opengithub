@@ -82,13 +82,32 @@ test("organization overview renders API data and concrete header controls", asyn
   await page.goto(seeded.organizationProfileHref);
   const repositoryLink = page
     .getByRole("link", {
-      name: /org-profile-[^/]+\/opengithub-/,
+      name: /Open org-profile-[^/]+\/opengithub-/,
     })
     .first();
   await expect(repositoryLink).toHaveAttribute(
     "href",
     /\/org-profile-.+\/opengithub-/,
   );
+  const pinnedRegion = page.getByRole("region", {
+    name: "Pinned repositories",
+  });
+  await expect(pinnedRegion.getByText("1 stars")).toBeVisible();
+  await expect(pinnedRegion.getByText("1 open issues")).toBeVisible();
+  await expect(pinnedRegion.getByText("1 open pull requests")).toBeVisible();
+  await expect(pinnedRegion.getByText("MIT License")).toBeVisible();
+  await expect(pinnedRegion.getByText("Template")).toBeVisible();
+  await expect(pinnedRegion.getByText("developer-tools")).toBeVisible();
+  await repositoryLink.click();
+  await expect(page).toHaveURL(/\/org-profile-.+\/opengithub-/);
+
+  await page.goto(seeded.organizationProfileHref);
+  const previewLink = page
+    .getByRole("link", {
+      name: /Open org-profile-[^/]+\/ralph-/,
+    })
+    .first();
+  await expect(previewLink).toHaveAttribute("href", /\/org-profile-.+\/ralph-/);
   await expect(page.getByRole("link", { name: "View people" })).toHaveAttribute(
     "href",
     /\/orgs\/org-profile-.+\?tab=people/,
@@ -100,6 +119,6 @@ test("organization overview renders API data and concrete header controls", asyn
   expect(overflow).toBe(false);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/orgs-001-phase2-overview-shell.jpg",
+    path: "../ralph/screenshots/build/orgs-001-phase3-repository-preview.jpg",
   });
 });

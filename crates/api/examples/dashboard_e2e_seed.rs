@@ -674,17 +674,34 @@ async fn seed_organization_profile_fixture(
         },
     )
     .await?;
+    sqlx::query(
+        r#"
+        UPDATE repositories
+        SET license_template_slug = 'mit',
+            is_template = true,
+            updated_at = now() - INTERVAL '2 hours'
+        WHERE id = $1
+        "#,
+    )
+    .bind(repository.id)
+    .execute(pool)
+    .await?;
+    sqlx::query("UPDATE repositories SET updated_at = now() - INTERVAL '1 hour' WHERE id = $1")
+        .bind(preview_repository.id)
+        .execute(pool)
+        .await?;
 
     sqlx::query(
         r#"
         INSERT INTO organization_profile_pins (organization_id, repository_id, position)
-        VALUES ($1, $2, 1)
+        VALUES ($1, $2, 1), ($1, $3, 2)
         ON CONFLICT (organization_id, repository_id)
         DO UPDATE SET position = EXCLUDED.position
         "#,
     )
     .bind(organization.id)
     .bind(repository.id)
+    .bind(preview_repository.id)
     .execute(pool)
     .await?;
     upsert_language(pool, repository.id, "Rust", "#b7410e", 9000).await?;
@@ -697,6 +714,38 @@ async fn seed_organization_profile_fixture(
         "#,
     )
     .bind(repository.id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO repository_topics (repository_id, topic)
+        VALUES ($1, 'automation')
+        ON CONFLICT DO NOTHING
+        "#,
+    )
+    .bind(preview_repository.id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "INSERT INTO repository_stars (user_id, repository_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+    )
+    .bind(owner_user_id)
+    .bind(repository.id)
+    .execute(pool)
+    .await?;
+    let issue_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO issues (repository_id, number, title, author_user_id) VALUES ($1, 1, 'Seeded organization issue', $2) RETURNING id",
+    )
+    .bind(repository.id)
+    .bind(owner_user_id)
+    .fetch_one(pool)
+    .await?;
+    sqlx::query(
+        "INSERT INTO pull_requests (repository_id, issue_id, number, title, author_user_id, head_ref, base_ref, head_repository_id, base_repository_id) VALUES ($1, $2, 2, 'Seeded organization PR', $3, 'feature/org-profile', 'main', $1, $1)",
+    )
+    .bind(repository.id)
+    .bind(issue_id)
+    .bind(owner_user_id)
     .execute(pool)
     .await?;
 
