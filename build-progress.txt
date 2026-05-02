@@ -1887,3 +1887,14 @@
 - Verification passed: focused `search_code_results_contract`; focused `web/tests/search-code-results.test.tsx` and `web/tests/global-search-modal.test.tsx`; focused `web/tests/e2e/search-code.spec.ts`; `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 211 frontend tests; full `make test-e2e` with 78 Playwright tests against reachable local Postgres `postgresql://namuh:namuh@localhost:55432/opengithub_identity_test`; mandatory Editorial banned-value scan passed with zero matches.
 - The first full `make test-e2e` attempts failed because the original `localhost:5432` test database became unreachable and disk pressure triggered Next compaction failures; generated artifacts and Cargo incremental files were cleaned, a fresh local Postgres test database was created on `localhost:55432`, and the full suite then passed.
 - Marked Phase 5 as done in `.qrspi/search-003/structure.md` and set `search-003.build_pass` to `true` in `prd.json`; `qa_pass` remains `false` for the QA agent.
+
+2026-05-02 - profiles-001 public user profile overview
+
+- Created `.qrspi/profiles-001/structure.md` and completed the vertical profile overview slice.
+- Added DB-backed profile schema for user public metadata, profile README, profile pins, contribution days/events, achievements, user blocks, and user reports.
+- Added Rust profile domain/routes for `GET /api/users/{login}/profile`, follow/unfollow, block/unblock, and report writes with session-gated mutations and standard JSON error envelopes.
+- Replaced the `/{user}` placeholder with an Editorial profile overview using existing `og.css` primitives/tokens: identity card, follow/block/report controls, URL tabs including More, pinned repository cards, achievements, private-profile state, and accessible contribution graph labels/tooltips.
+- Added same-origin Next action routes for profile controls plus focused Rust and Vitest coverage.
+- Verification passed: `cargo test -p opengithub-api --test api_user_profiles_contract`; `cd web && npx vitest run tests/user-profile-overview.test.tsx`; `cd web && npx tsc --noEmit`; mandatory Editorial banned-value scan returned zero matches; `make SETUP_DONE=.ralph-setup-done check`; `make SETUP_DONE=.ralph-setup-done test` with Cargo tests plus 217 frontend tests.
+- Plain `make check` initially stopped at the setup guard because `.ralph-setup-done` is absent in this isolated worktree; validation used the non-mutating `SETUP_DONE=.ralph-setup-done` make override. The first full `make test` attempt also failed after many passing suites with a missing generated `identity_foundation` test binary; targeted rerun passed and the subsequent full `make test` passed.
+- Marked `profiles-001.needs_structure=false` and `profiles-001.build_pass=true` in `prd.json`; `qa_pass` remains `false` for independent QA.

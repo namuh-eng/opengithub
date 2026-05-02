@@ -16,3 +16,5 @@ pub mod repository_imports;
 pub mod search;
 pub mod tokens;
 pub mod webhooks;
+
+pub mod profiles;
