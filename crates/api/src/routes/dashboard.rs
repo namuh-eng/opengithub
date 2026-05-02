@@ -198,6 +198,7 @@ fn map_dashboard_error(error: DashboardError) -> (StatusCode, Json<ErrorEnvelope
         | DashboardError::Repositories(RepositoryError::InvalidName(_))
         | DashboardError::Repositories(RepositoryError::InvalidDescription(_))
         | DashboardError::Repositories(RepositoryError::InvalidMergeMethod(_))
+        | DashboardError::Repositories(RepositoryError::InvalidAccessRole(_))
         | DashboardError::Repositories(RepositoryError::MergeMethodRequired)
         | DashboardError::Repositories(RepositoryError::DefaultMergeMethodDisabled)
         | DashboardError::Repositories(RepositoryError::ArchivedRepositoryReadOnly)
@@ -216,11 +217,15 @@ fn map_dashboard_error(error: DashboardError) -> (StatusCode, Json<ErrorEnvelope
         DashboardError::Repositories(RepositoryError::ForkAlreadyExists) => {
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }
+        DashboardError::Repositories(RepositoryError::AccessGrantConflict) => {
+            error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
         DashboardError::Repositories(RepositoryError::DefaultBranchNotFound(_)) => {
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }
         DashboardError::Repositories(RepositoryError::OwnerNotFound)
         | DashboardError::Repositories(RepositoryError::NotFound)
+        | DashboardError::Repositories(RepositoryError::AccessTargetNotFound)
         | DashboardError::Repositories(RepositoryError::PathNotFound)
         | DashboardError::Repositories(RepositoryError::RefNotFound)
         | DashboardError::Repositories(RepositoryError::PathNotFoundWithRecovery { .. })

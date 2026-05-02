@@ -2,7 +2,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, post, put},
+    routing::{delete, get, patch, post, put},
     Json, Router,
 };
 use serde::Deserialize;
@@ -16,16 +16,22 @@ use crate::{
     },
     auth::extractor::AuthenticatedUser,
     domain::repositories::{
-        create_repository_with_bootstrap, fork_repository_by_owner_name,
-        insert_repository_create_feed_event, list_repositories_for_user,
+        cancel_repository_invitation_by_owner_name, create_repository_with_bootstrap,
+        fork_repository_by_owner_name, grant_repository_team_access_by_owner_name,
+        insert_repository_create_feed_event, invite_repository_access_by_owner_name,
+        list_repositories_for_user, remove_repository_collaborator_access_by_owner_name,
+        remove_repository_team_access_by_owner_name,
+        repository_access_settings_for_actor_by_owner_name,
         repository_blame_for_actor_by_owner_name, repository_blob_for_actor_by_owner_name,
         repository_commit_history_for_actor_by_owner_name, repository_creation_options,
         repository_file_finder_for_actor_by_owner_name, repository_name_availability,
         repository_overview_for_viewer_by_owner_name,
         repository_path_overview_for_actor_by_owner_name, repository_refs_for_actor_by_owner_name,
         repository_settings_for_actor_by_owner_name, set_repository_star_by_owner_name,
-        set_repository_watch_by_owner_name, update_repository_settings_by_owner_name,
-        CreateRepository, RepositoryBootstrapRequest, RepositoryCommitHistoryQuery,
+        set_repository_watch_by_owner_name, update_repository_collaborator_access_by_owner_name,
+        update_repository_settings_by_owner_name, update_repository_team_access_by_owner_name,
+        CreateRepository, RepositoryAccessInviteRequest, RepositoryAccessRolePatch,
+        RepositoryAccessTeamGrantRequest, RepositoryBootstrapRequest, RepositoryCommitHistoryQuery,
         RepositoryError, RepositoryFileFinderQuery, RepositoryOwner, RepositoryPathQuery,
         RepositoryRefsQuery, RepositorySettingsPatch, RepositoryVisibility,
     },
@@ -46,6 +52,26 @@ pub fn router() -> Router<AppState> {
         .route(
             "/:owner/:repo/settings",
             get(settings).patch(update_settings),
+        )
+        .route(
+            "/:owner/:repo/settings/access",
+            get(access_settings).post(invite_access),
+        )
+        .route(
+            "/:owner/:repo/settings/access/collaborators/:user_id",
+            patch(update_collaborator_access).delete(remove_collaborator_access),
+        )
+        .route(
+            "/:owner/:repo/settings/access/teams",
+            post(grant_team_access),
+        )
+        .route(
+            "/:owner/:repo/settings/access/teams/:team_id",
+            patch(update_team_access).delete(remove_team_access),
+        )
+        .route(
+            "/:owner/:repo/settings/access/invitations/:invitation_id",
+            delete(cancel_invitation),
         )
         .route("/:owner/:repo/star", put(star).delete(unstar))
         .route("/:owner/:repo/watch", put(watch).delete(unwatch))
@@ -514,6 +540,188 @@ async fn update_settings(
     Ok(Json(json!(settings)))
 }
 
+async fn access_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings =
+        repository_access_settings_for_actor_by_owner_name(pool, actor.0.id, &owner, &repo)
+            .await
+            .map_err(map_repository_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn invite_access(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<RepositoryAccessInviteRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = invite_repository_access_by_owner_name(pool, actor.0.id, &owner, &repo, request)
+        .await
+        .map_err(map_repository_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "repository was not found".to_owned(),
+            )
+        })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn grant_team_access(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<RepositoryAccessTeamGrantRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings =
+        grant_repository_team_access_by_owner_name(pool, actor.0.id, &owner, &repo, request)
+            .await
+            .map_err(map_repository_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn update_team_access(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, team_id)): Path<(String, String, Uuid)>,
+    RestJson(patch): RestJson<RepositoryAccessRolePatch>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = update_repository_team_access_by_owner_name(
+        pool, actor.0.id, &owner, &repo, team_id, patch,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn remove_team_access(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, team_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings =
+        remove_repository_team_access_by_owner_name(pool, actor.0.id, &owner, &repo, team_id)
+            .await
+            .map_err(map_repository_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn update_collaborator_access(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, user_id)): Path<(String, String, Uuid)>,
+    RestJson(patch): RestJson<RepositoryAccessRolePatch>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = update_repository_collaborator_access_by_owner_name(
+        pool, actor.0.id, &owner, &repo, user_id, patch,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn remove_collaborator_access(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, user_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = remove_repository_collaborator_access_by_owner_name(
+        pool, actor.0.id, &owner, &repo, user_id,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn cancel_invitation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, invitation_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings =
+        cancel_repository_invitation_by_owner_name(pool, actor.0.id, &owner, &repo, invitation_id)
+            .await
+            .map_err(map_repository_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
+
+    Ok(Json(json!(settings)))
+}
+
 async fn star(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -656,6 +864,7 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         | RepositoryError::InvalidName(_)
         | RepositoryError::InvalidDescription(_)
         | RepositoryError::InvalidMergeMethod(_)
+        | RepositoryError::InvalidAccessRole(_)
         | RepositoryError::MergeMethodRequired
         | RepositoryError::DefaultMergeMethodDisabled
         | RepositoryError::ArchivedRepositoryReadOnly
@@ -670,6 +879,12 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }
         RepositoryError::ForkAlreadyExists => {
+            error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
+        RepositoryError::AccessTargetNotFound => {
+            error_response(StatusCode::NOT_FOUND, "not_found", error.to_string())
+        }
+        RepositoryError::AccessGrantConflict => {
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }
         RepositoryError::GitStorageFailed => error_response(

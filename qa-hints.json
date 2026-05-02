@@ -3315,5 +3315,23 @@
       "Real Google account selection/callback could not be completed because this isolated QA lane uses dummy local OAuth credentials, not a configured Google test account.",
       "npm install reported 2 moderate transitive audit findings in frontend tooling; no production dependency change was made for auth-001."
     ]
+  },
+  {
+    "feature_id": "settings-002",
+    "tests_written": [
+      "Completed Phase 1 Access API Contract without marking settings-002 build_pass=true.",
+      "Added additive access-management schema for repository_team_permissions and repository_invitations, and expanded repository role validation to include read, triage, write, maintain, admin, and owner.",
+      "Added Rust access settings DTOs and endpoints for GET /api/repos/{owner}/{repo}/settings/access, user invitations, team grants, collaborator role changes/removal, team role changes/removal, and pending invitation cancellation.",
+      "Added repository_access_settings_contract coverage for admin-only access, forbidden privacy, direct collaborator rows, role definitions, pending invitations with degraded email status, team-derived rows, role updates, removals, cancellation, and access audit events.",
+      "Focused repository_access_settings_contract compiled and passed; the DB-backed scenario self-skipped because localhost:55432 TEST_DATABASE_URL was not reachable in this run.",
+      "Verification passed: TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check; DB_SSL=false make test with Cargo tests plus 267 frontend tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Run repository_access_settings_contract against a reachable Postgres test database so the full DB scenario executes instead of self-skipping.",
+      "Real SES delivery is degraded/local-only in this phase; QA should verify queued/sent delivery after the SES handoff is wired in Phase 3.",
+      "Invite acceptance lifecycle, token expiry, duplicate invitation conflicts, and email redelivery are not complete until later phases.",
+      "Stress concurrent role edits, last-admin protection, organization base permissions, team membership changes after grants, and private repository leakage checks.",
+      "Browser/UI smoke was skipped because Phase 1 is API-first; Phase 2 should verify the Editorial access settings shell."
+    ]
   }
 ]

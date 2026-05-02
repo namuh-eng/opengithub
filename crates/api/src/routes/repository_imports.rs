@@ -152,6 +152,7 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         }
         RepositoryError::OwnerNotFound
         | RepositoryError::NotFound
+        | RepositoryError::AccessTargetNotFound
         | RepositoryError::PathNotFound
         | RepositoryError::RefNotFound
         | RepositoryError::PathNotFoundWithRecovery { .. }
@@ -162,6 +163,7 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         | RepositoryError::InvalidName(_)
         | RepositoryError::InvalidDescription(_)
         | RepositoryError::InvalidMergeMethod(_)
+        | RepositoryError::InvalidAccessRole(_)
         | RepositoryError::MergeMethodRequired
         | RepositoryError::DefaultMergeMethodDisabled
         | RepositoryError::ArchivedRepositoryReadOnly
@@ -173,6 +175,9 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
             error.to_string(),
         ),
         RepositoryError::ForkAlreadyExists => {
+            error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
+        RepositoryError::AccessGrantConflict => {
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }
         RepositoryError::DefaultBranchNotFound(_) => {

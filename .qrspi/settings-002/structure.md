@@ -6,7 +6,7 @@
 
 ## Phase 1: Access API Contract - direct collaborators, teams, inherited access, and invitations
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the Rust/Postgres read and write contract for repository access management under `/api/repos/{owner}/{repo}/settings/access`. The contract must expose direct collaborators, team-derived access, owner/org inherited access, pending invitations, role definitions, available invite targets, and admin-only mutation capabilities without leaking private access data to non-admins.
 

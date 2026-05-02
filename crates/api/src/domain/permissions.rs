@@ -4,7 +4,9 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum RepositoryRole {
     Read,
+    Triage,
     Write,
+    Maintain,
     Admin,
     Owner,
 }
@@ -13,7 +15,9 @@ impl RepositoryRole {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Read => "read",
+            Self::Triage => "triage",
             Self::Write => "write",
+            Self::Maintain => "maintain",
             Self::Admin => "admin",
             Self::Owner => "owner",
         }
@@ -38,7 +42,9 @@ impl TryFrom<&str> for RepositoryRole {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
             "read" => Ok(Self::Read),
+            "triage" => Ok(Self::Triage),
             "write" => Ok(Self::Write),
+            "maintain" => Ok(Self::Maintain),
             "admin" => Ok(Self::Admin),
             "owner" => Ok(Self::Owner),
             other => Err(PermissionParseError(other.to_owned())),

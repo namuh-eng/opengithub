@@ -2304,3 +2304,13 @@
 - Verification passed: focused `CARGO_INCREMENTAL=0 cargo test -p opengithub-api --test personal_profile_settings_contract` (2 passed); focused `cd web && npm test -- --run tests/personal-profile-settings.test.tsx` (6 passed); `cd web && npx tsc --noEmit`; mandatory Editorial banned-value scan returned zero matches; `CARGO_INCREMENTAL=0 make check`; `CARGO_INCREMENTAL=0 make test` with Cargo tests plus 251 frontend tests.
 - `make check` initially reported the fresh-worktree setup guard; per task instruction, touched `.ralph-setup-done` and reran successfully. A first Rust run hit local target/temp-dir cache issues after disk cleanup; rerunning with `CARGO_INCREMENTAL=0` passed.
 - Set `personal-settings-001.build_pass=true`, `needs_structure=false`, and left `qa_pass=false` for independent QA.
+
+2026-05-03 - settings-002 phase 1 access API contract
+
+- Completed Phase 1 from `.qrspi/settings-002/structure.md`: repository Access settings now have an API-first Rust/Postgres contract for admin-only collaborator, team, inherited, and invitation data.
+- Added additive migration `202605030042_repository_access_settings` for repository team grants and repository invitations, and expanded repository role validation to include `triage` and `maintain` while preserving existing read/write/admin/owner checks.
+- Added access settings DTOs and Rust domain/route handlers for `GET /api/repos/{owner}/{repo}/settings/access`, user invitations, team grants, collaborator role changes/removal, team role changes/removal, and pending invitation cancellation. Successful writes insert `repository_settings_audit_events`.
+- Added `crates/api/tests/repository_access_settings_contract.rs` covering admin-only access, non-leaky forbidden responses, direct collaborators, role definitions, pending invitations with degraded email status, team-derived access, updates/removals, cancellation, and audit events.
+- Verification passed: focused `repository_access_settings_contract` compiled and passed but self-skipped DB scenarios because localhost:55432 was unreachable; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; `DB_SSL=false make test` with Cargo tests plus 267 frontend tests; mandatory Editorial banned-value scan returned zero matches using `rg -n -e`.
+- Browser smoke and `make test-e2e` were not run because Phase 1 is API-first; the concrete Editorial page is Phase 2.
+- Marked Phase 1 as done in `.qrspi/settings-002/structure.md`; `prd.json` remains `build_pass: false` because Phases 2-5 remain.

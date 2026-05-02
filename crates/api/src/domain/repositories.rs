@@ -165,6 +165,125 @@ pub struct RepositorySettings {
     pub audit_events: Vec<RepositorySettingsAuditEvent>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryAccessSettings {
+    pub id: Uuid,
+    pub owner_login: String,
+    pub name: String,
+    pub visibility: RepositoryVisibility,
+    pub viewer_permission: String,
+    pub roles: Vec<RepositoryAccessRoleDefinition>,
+    pub people: Vec<RepositoryAccessPerson>,
+    pub teams: Vec<RepositoryAccessTeam>,
+    pub invitations: Vec<RepositoryInvitation>,
+    pub invite_targets: RepositoryInviteTargets,
+    pub audit_events: Vec<RepositorySettingsAuditEvent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryAccessRoleDefinition {
+    pub role: RepositoryRole,
+    pub label: String,
+    pub description: String,
+    pub rank: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryAccessPerson {
+    pub user_id: Uuid,
+    pub login: String,
+    pub display_name: Option<String>,
+    pub email: String,
+    pub avatar_url: Option<String>,
+    pub role: RepositoryRole,
+    pub source: String,
+    pub source_text: String,
+    pub team_slug: Option<String>,
+    pub team_name: Option<String>,
+    pub can_edit: bool,
+    pub can_remove: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryAccessTeam {
+    pub team_id: Uuid,
+    pub slug: String,
+    pub name: String,
+    pub role: RepositoryRole,
+    pub source: String,
+    pub source_text: String,
+    pub member_count: i64,
+    pub href: String,
+    pub can_edit: bool,
+    pub can_remove: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryInvitation {
+    pub id: Uuid,
+    pub invited_user_id: Option<Uuid>,
+    pub invited_email: String,
+    pub invited_login: Option<String>,
+    pub role: RepositoryRole,
+    pub status: String,
+    pub email_delivery_status: String,
+    pub invited_by_user_id: Uuid,
+    pub expires_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+    pub can_cancel: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryInviteTargets {
+    pub users: Vec<RepositoryInviteUserTarget>,
+    pub teams: Vec<RepositoryInviteTeamTarget>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryInviteUserTarget {
+    pub user_id: Uuid,
+    pub login: String,
+    pub display_name: Option<String>,
+    pub email: String,
+    pub avatar_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryInviteTeamTarget {
+    pub team_id: Uuid,
+    pub slug: String,
+    pub name: String,
+    pub member_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryAccessInviteRequest {
+    pub email_or_login: String,
+    pub role: RepositoryRole,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryAccessTeamGrantRequest {
+    pub team_slug: String,
+    pub role: RepositoryRole,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryAccessRolePatch {
+    pub role: RepositoryRole,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RepositoryFeatureSettingsPatch {
@@ -705,6 +824,12 @@ pub enum RepositoryError {
     UnknownLicenseTemplate(String),
     #[error("repository has already been forked by this user")]
     ForkAlreadyExists,
+    #[error("invalid repository access role `{0}`")]
+    InvalidAccessRole(String),
+    #[error("repository access target was not found")]
+    AccessTargetNotFound,
+    #[error("repository access grant already exists")]
+    AccessGrantConflict,
     #[error("repository git storage failed")]
     GitStorageFailed,
     #[error(transparent)]
@@ -1922,6 +2047,343 @@ pub async fn can_admin_repository(
     )
 }
 
+pub async fn repository_access_settings_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+) -> Result<Option<RepositoryAccessSettings>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    require_access_admin(pool, &repository, actor_user_id).await?;
+    repository_access_settings_for_repository(pool, &repository, actor_user_id).await
+}
+
+pub async fn invite_repository_access_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    request: RepositoryAccessInviteRequest,
+) -> Result<Option<RepositoryAccessSettings>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    require_access_admin(pool, &repository, actor_user_id).await?;
+    validate_grant_role(request.role)?;
+
+    let target = normalize_access_target(&request.email_or_login)?;
+    let invited_user = find_user_for_access_target(pool, &target).await?;
+    let invited_email = invited_user
+        .as_ref()
+        .map(|user| user.email.clone())
+        .unwrap_or_else(|| target.clone());
+    let token_hash = format!("{:x}", Sha256::digest(Uuid::new_v4().as_bytes()));
+
+    let inserted = sqlx::query(
+        r#"
+        INSERT INTO repository_invitations (
+            repository_id,
+            invited_user_id,
+            invited_email,
+            role,
+            token_hash,
+            invited_by_user_id,
+            email_delivery_status,
+            expires_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, 'degraded', now() + interval '7 days')
+        ON CONFLICT (repository_id, lower(invited_email)) WHERE status = 'pending'
+        DO NOTHING
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(invited_user.as_ref().map(|user| user.user_id))
+    .bind(&invited_email)
+    .bind(request.role.as_str())
+    .bind(token_hash)
+    .bind(actor_user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    if inserted.is_none() {
+        return Err(RepositoryError::AccessGrantConflict);
+    }
+    insert_repository_access_audit_event(
+        pool,
+        repository.id,
+        actor_user_id,
+        "repository.access.invite",
+        vec!["invitations".to_owned()],
+        json!({}),
+        json!({ "invitedEmail": invited_email, "role": request.role }),
+    )
+    .await?;
+    repository_access_settings_for_repository(pool, &repository, actor_user_id).await
+}
+
+pub async fn grant_repository_team_access_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    request: RepositoryAccessTeamGrantRequest,
+) -> Result<Option<RepositoryAccessSettings>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    require_access_admin(pool, &repository, actor_user_id).await?;
+    validate_grant_role(request.role)?;
+    let Some(organization_id) = repository.owner_organization_id else {
+        return Err(RepositoryError::AccessTargetNotFound);
+    };
+    let team = find_team_for_access_target(pool, organization_id, &request.team_slug)
+        .await?
+        .ok_or(RepositoryError::AccessTargetNotFound)?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO repository_team_permissions (repository_id, team_id, role, source, created_by_user_id)
+        VALUES ($1, $2, $3, 'team', $4)
+        ON CONFLICT (repository_id, team_id)
+        DO UPDATE SET role = EXCLUDED.role, source = 'team'
+        "#,
+    )
+    .bind(repository.id)
+    .bind(team.team_id)
+    .bind(request.role.as_str())
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
+
+    upsert_team_member_repository_permissions(pool, repository.id, team.team_id, request.role)
+        .await?;
+    insert_repository_access_audit_event(
+        pool,
+        repository.id,
+        actor_user_id,
+        "repository.access.team_grant",
+        vec!["teams".to_owned()],
+        json!({ "teamSlug": team.slug }),
+        json!({ "teamSlug": team.slug, "role": request.role }),
+    )
+    .await?;
+    repository_access_settings_for_repository(pool, &repository, actor_user_id).await
+}
+
+pub async fn update_repository_collaborator_access_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    user_id: Uuid,
+    patch: RepositoryAccessRolePatch,
+) -> Result<Option<RepositoryAccessSettings>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    require_access_admin(pool, &repository, actor_user_id).await?;
+    validate_grant_role(patch.role)?;
+    let existing = repository_permission_for_user(pool, repository.id, user_id)
+        .await?
+        .ok_or(RepositoryError::AccessTargetNotFound)?;
+    if existing.source != "direct" {
+        return Err(RepositoryError::PermissionDenied);
+    }
+
+    sqlx::query(
+        "UPDATE repository_permissions SET role = $3 WHERE repository_id = $1 AND user_id = $2 AND source = 'direct'",
+    )
+    .bind(repository.id)
+    .bind(user_id)
+    .bind(patch.role.as_str())
+    .execute(pool)
+    .await?;
+    insert_repository_access_audit_event(
+        pool,
+        repository.id,
+        actor_user_id,
+        "repository.access.role_update",
+        vec!["people".to_owned()],
+        json!({ "userId": user_id, "role": existing.role }),
+        json!({ "userId": user_id, "role": patch.role }),
+    )
+    .await?;
+    repository_access_settings_for_repository(pool, &repository, actor_user_id).await
+}
+
+pub async fn update_repository_team_access_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    team_id: Uuid,
+    patch: RepositoryAccessRolePatch,
+) -> Result<Option<RepositoryAccessSettings>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    require_access_admin(pool, &repository, actor_user_id).await?;
+    validate_grant_role(patch.role)?;
+    let row = sqlx::query(
+        r#"
+        UPDATE repository_team_permissions
+        SET role = $3
+        WHERE repository_id = $1 AND team_id = $2 AND source = 'team'
+        RETURNING role
+        "#,
+    )
+    .bind(repository.id)
+    .bind(team_id)
+    .bind(patch.role.as_str())
+    .fetch_optional(pool)
+    .await?
+    .ok_or(RepositoryError::AccessTargetNotFound)?;
+
+    upsert_team_member_repository_permissions(pool, repository.id, team_id, patch.role).await?;
+    insert_repository_access_audit_event(
+        pool,
+        repository.id,
+        actor_user_id,
+        "repository.access.team_role_update",
+        vec!["teams".to_owned()],
+        json!({ "teamId": team_id }),
+        json!({ "teamId": team_id, "role": row.get::<String, _>("role") }),
+    )
+    .await?;
+    repository_access_settings_for_repository(pool, &repository, actor_user_id).await
+}
+
+pub async fn remove_repository_team_access_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    team_id: Uuid,
+) -> Result<Option<RepositoryAccessSettings>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    require_access_admin(pool, &repository, actor_user_id).await?;
+    let deleted = sqlx::query(
+        r#"
+        DELETE FROM repository_team_permissions
+        WHERE repository_id = $1 AND team_id = $2 AND source = 'team'
+        RETURNING role
+        "#,
+    )
+    .bind(repository.id)
+    .bind(team_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(RepositoryError::AccessTargetNotFound)?;
+
+    sqlx::query(
+        r#"
+        DELETE FROM repository_permissions
+        WHERE repository_id = $1
+          AND source = 'team'
+          AND user_id IN (
+              SELECT user_id FROM team_memberships WHERE team_id = $2
+          )
+        "#,
+    )
+    .bind(repository.id)
+    .bind(team_id)
+    .execute(pool)
+    .await?;
+
+    insert_repository_access_audit_event(
+        pool,
+        repository.id,
+        actor_user_id,
+        "repository.access.team_remove",
+        vec!["teams".to_owned()],
+        json!({ "teamId": team_id, "role": deleted.get::<String, _>("role") }),
+        json!({}),
+    )
+    .await?;
+    repository_access_settings_for_repository(pool, &repository, actor_user_id).await
+}
+
+pub async fn remove_repository_collaborator_access_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    user_id: Uuid,
+) -> Result<Option<RepositoryAccessSettings>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    require_access_admin(pool, &repository, actor_user_id).await?;
+    let existing = repository_permission_for_user(pool, repository.id, user_id)
+        .await?
+        .ok_or(RepositoryError::AccessTargetNotFound)?;
+    if existing.source != "direct" {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    sqlx::query(
+        "DELETE FROM repository_permissions WHERE repository_id = $1 AND user_id = $2 AND source = 'direct'",
+    )
+    .bind(repository.id)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+    insert_repository_access_audit_event(
+        pool,
+        repository.id,
+        actor_user_id,
+        "repository.access.remove",
+        vec!["people".to_owned()],
+        json!({ "userId": user_id, "role": existing.role }),
+        json!({}),
+    )
+    .await?;
+    repository_access_settings_for_repository(pool, &repository, actor_user_id).await
+}
+
+pub async fn cancel_repository_invitation_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    invitation_id: Uuid,
+) -> Result<Option<RepositoryAccessSettings>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    require_access_admin(pool, &repository, actor_user_id).await?;
+    let row = sqlx::query(
+        r#"
+        UPDATE repository_invitations
+        SET status = 'canceled', canceled_at = now()
+        WHERE id = $1 AND repository_id = $2 AND status = 'pending'
+        RETURNING invited_email, role
+        "#,
+    )
+    .bind(invitation_id)
+    .bind(repository.id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(RepositoryError::AccessTargetNotFound)?;
+    let invited_email: String = row.get("invited_email");
+    let role: String = row.get("role");
+    insert_repository_access_audit_event(
+        pool,
+        repository.id,
+        actor_user_id,
+        "repository.access.invite_cancel",
+        vec!["invitations".to_owned()],
+        json!({ "invitedEmail": invited_email, "role": role }),
+        json!({ "status": "canceled" }),
+    )
+    .await?;
+    repository_access_settings_for_repository(pool, &repository, actor_user_id).await
+}
+
 pub async fn repository_settings_for_actor_by_owner_name(
     pool: &PgPool,
     actor_user_id: Uuid,
@@ -2289,6 +2751,547 @@ fn changed_settings_fields(
         fields.push("is_archived".to_owned());
     }
     fields
+}
+
+async fn require_access_admin(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+) -> Result<(), RepositoryError> {
+    if can_admin_repository(pool, repository, actor_user_id).await? {
+        Ok(())
+    } else {
+        Err(RepositoryError::PermissionDenied)
+    }
+}
+
+fn validate_grant_role(role: RepositoryRole) -> Result<(), RepositoryError> {
+    match role {
+        RepositoryRole::Owner => Err(RepositoryError::InvalidAccessRole(
+            RepositoryRole::Owner.as_str().to_owned(),
+        )),
+        RepositoryRole::Admin
+        | RepositoryRole::Maintain
+        | RepositoryRole::Write
+        | RepositoryRole::Triage
+        | RepositoryRole::Read => Ok(()),
+    }
+}
+
+fn normalize_access_target(value: &str) -> Result<String, RepositoryError> {
+    let target = value.trim();
+    if target.is_empty() {
+        return Err(RepositoryError::AccessTargetNotFound);
+    }
+    Ok(target.chars().take(254).collect::<String>())
+}
+
+async fn repository_access_settings_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+) -> Result<Option<RepositoryAccessSettings>, RepositoryError> {
+    let Some(row) = sqlx::query(
+        r#"
+        SELECT repositories.id,
+               COALESCE(NULLIF(owner_user.username, ''), owner_user.email, organizations.slug) AS owner_login,
+               repositories.name,
+               repositories.visibility,
+               repository_permissions.role AS viewer_permission
+        FROM repositories
+        LEFT JOIN users owner_user
+          ON owner_user.id = repositories.owner_user_id
+        LEFT JOIN organizations
+          ON organizations.id = repositories.owner_organization_id
+        LEFT JOIN repository_permissions
+          ON repository_permissions.repository_id = repositories.id
+         AND repository_permissions.user_id = $2
+        WHERE repositories.id = $1
+        "#,
+    )
+    .bind(repository.id)
+    .bind(actor_user_id)
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Ok(None);
+    };
+
+    let people = repository_access_people(pool, repository).await?;
+    let teams = repository_access_teams(pool, repository).await?;
+    let invitations = repository_access_invitations(pool, repository.id).await?;
+    let invite_targets = repository_access_invite_targets(pool, repository).await?;
+    let audit_events = repository_settings_audit_events(pool, repository.id).await?;
+    let viewer_permission: Option<String> = row.try_get("viewer_permission")?;
+
+    Ok(Some(RepositoryAccessSettings {
+        id: row.try_get("id")?,
+        owner_login: row.try_get("owner_login")?,
+        name: row.try_get("name")?,
+        visibility: RepositoryVisibility::try_from(
+            row.try_get::<String, _>("visibility")?.as_str(),
+        )?,
+        viewer_permission: viewer_permission.unwrap_or_else(|| {
+            if repository.owner_user_id == Some(actor_user_id) {
+                RepositoryRole::Owner.as_str().to_owned()
+            } else {
+                RepositoryRole::Admin.as_str().to_owned()
+            }
+        }),
+        roles: repository_access_role_definitions(),
+        people,
+        teams,
+        invitations,
+        invite_targets,
+        audit_events,
+    }))
+}
+
+fn repository_access_role_definitions() -> Vec<RepositoryAccessRoleDefinition> {
+    vec![
+        RepositoryAccessRoleDefinition {
+            role: RepositoryRole::Read,
+            label: "Read".to_owned(),
+            description: "Can view and clone the repository.".to_owned(),
+            rank: 10,
+        },
+        RepositoryAccessRoleDefinition {
+            role: RepositoryRole::Triage,
+            label: "Triage".to_owned(),
+            description: "Can manage issues and pull requests without write access.".to_owned(),
+            rank: 20,
+        },
+        RepositoryAccessRoleDefinition {
+            role: RepositoryRole::Write,
+            label: "Write".to_owned(),
+            description: "Can push branches and manage collaboration content.".to_owned(),
+            rank: 30,
+        },
+        RepositoryAccessRoleDefinition {
+            role: RepositoryRole::Maintain,
+            label: "Maintain".to_owned(),
+            description: "Can manage repository settings short of destructive ownership controls."
+                .to_owned(),
+            rank: 40,
+        },
+        RepositoryAccessRoleDefinition {
+            role: RepositoryRole::Admin,
+            label: "Admin".to_owned(),
+            description: "Can administer repository settings and access.".to_owned(),
+            rank: 50,
+        },
+    ]
+}
+
+async fn repository_access_people(
+    pool: &PgPool,
+    repository: &Repository,
+) -> Result<Vec<RepositoryAccessPerson>, RepositoryError> {
+    let mut people = Vec::new();
+    let direct_rows = sqlx::query(
+        r#"
+        SELECT users.id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS login,
+               users.display_name,
+               users.email,
+               users.avatar_url,
+               repository_permissions.role,
+               repository_permissions.source
+        FROM repository_permissions
+        JOIN users ON users.id = repository_permissions.user_id
+        WHERE repository_permissions.repository_id = $1
+        ORDER BY
+            CASE repository_permissions.role
+                WHEN 'owner' THEN 0
+                WHEN 'admin' THEN 1
+                WHEN 'maintain' THEN 2
+                WHEN 'write' THEN 3
+                WHEN 'triage' THEN 4
+                ELSE 5
+            END,
+            lower(login)
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_all(pool)
+    .await?;
+
+    for row in direct_rows {
+        let source: String = row.try_get("source")?;
+        let role = RepositoryRole::try_from(row.try_get::<String, _>("role")?.as_str())
+            .map_err(|error| RepositoryError::Sqlx(sqlx::Error::Protocol(error.to_string())))?;
+        let source_text = match source.as_str() {
+            "owner" => "Repository owner access".to_owned(),
+            "team" => "Granted by team membership".to_owned(),
+            "organization" => "Inherited from organization membership".to_owned(),
+            _ => "Direct collaborator access".to_owned(),
+        };
+        people.push(RepositoryAccessPerson {
+            user_id: row.try_get("id")?,
+            login: row.try_get("login")?,
+            display_name: row.try_get("display_name")?,
+            email: row.try_get("email")?,
+            avatar_url: row.try_get("avatar_url")?,
+            role,
+            source: source.clone(),
+            source_text,
+            team_slug: None,
+            team_name: None,
+            can_edit: source == "direct",
+            can_remove: source == "direct",
+        });
+    }
+
+    if let Some(organization_id) = repository.owner_organization_id {
+        let team_rows = sqlx::query(
+            r#"
+            SELECT users.id,
+                   COALESCE(NULLIF(users.username, ''), users.email) AS login,
+                   users.display_name,
+                   users.email,
+                   users.avatar_url,
+                   repository_team_permissions.role,
+                   teams.slug,
+                   teams.name
+            FROM repository_team_permissions
+            JOIN teams ON teams.id = repository_team_permissions.team_id
+            JOIN team_memberships ON team_memberships.team_id = teams.id
+            JOIN users ON users.id = team_memberships.user_id
+            WHERE repository_team_permissions.repository_id = $1
+              AND teams.organization_id = $2
+            ORDER BY lower(teams.slug), lower(login)
+            "#,
+        )
+        .bind(repository.id)
+        .bind(organization_id)
+        .fetch_all(pool)
+        .await?;
+
+        for row in team_rows {
+            let user_id: Uuid = row.try_get("id")?;
+            if people
+                .iter()
+                .any(|person| person.user_id == user_id && person.source != "team")
+            {
+                continue;
+            }
+            let role = RepositoryRole::try_from(row.try_get::<String, _>("role")?.as_str())
+                .map_err(|error| RepositoryError::Sqlx(sqlx::Error::Protocol(error.to_string())))?;
+            let slug: String = row.try_get("slug")?;
+            let name: String = row.try_get("name")?;
+            people.push(RepositoryAccessPerson {
+                user_id,
+                login: row.try_get("login")?,
+                display_name: row.try_get("display_name")?,
+                email: row.try_get("email")?,
+                avatar_url: row.try_get("avatar_url")?,
+                role,
+                source: "team".to_owned(),
+                source_text: format!("Inherited from team {slug}"),
+                team_slug: Some(slug),
+                team_name: Some(name),
+                can_edit: false,
+                can_remove: false,
+            });
+        }
+    }
+
+    Ok(people)
+}
+
+async fn repository_access_teams(
+    pool: &PgPool,
+    repository: &Repository,
+) -> Result<Vec<RepositoryAccessTeam>, RepositoryError> {
+    let Some(organization_id) = repository.owner_organization_id else {
+        return Ok(Vec::new());
+    };
+    let rows = sqlx::query(
+        r#"
+        SELECT teams.id,
+               teams.slug,
+               teams.name,
+               repository_team_permissions.role,
+               repository_team_permissions.source,
+               COUNT(team_memberships.user_id)::bigint AS member_count
+        FROM repository_team_permissions
+        JOIN teams ON teams.id = repository_team_permissions.team_id
+        LEFT JOIN team_memberships ON team_memberships.team_id = teams.id
+        WHERE repository_team_permissions.repository_id = $1
+          AND teams.organization_id = $2
+        GROUP BY teams.id, teams.slug, teams.name, repository_team_permissions.role, repository_team_permissions.source
+        ORDER BY lower(teams.slug)
+        "#,
+    )
+    .bind(repository.id)
+    .bind(organization_id)
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            let source: String = row.try_get("source")?;
+            let slug: String = row.try_get("slug")?;
+            Ok(RepositoryAccessTeam {
+                team_id: row.try_get("id")?,
+                slug: slug.clone(),
+                name: row.try_get("name")?,
+                role: RepositoryRole::try_from(row.try_get::<String, _>("role")?.as_str())
+                    .map_err(|error| {
+                        RepositoryError::Sqlx(sqlx::Error::Protocol(error.to_string()))
+                    })?,
+                source: source.clone(),
+                source_text: if source == "inherited" {
+                    "Inherited from organization base permissions".to_owned()
+                } else {
+                    "Direct team access".to_owned()
+                },
+                member_count: row.try_get("member_count")?,
+                href: format!("/orgs/{}/teams/{slug}", repository.owner_login),
+                can_edit: source == "team",
+                can_remove: source == "team",
+            })
+        })
+        .collect()
+}
+
+async fn repository_access_invitations(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<Vec<RepositoryInvitation>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT repository_invitations.id,
+               repository_invitations.invited_user_id,
+               repository_invitations.invited_email,
+               COALESCE(NULLIF(users.username, ''), users.email) AS invited_login,
+               repository_invitations.role,
+               repository_invitations.status,
+               repository_invitations.email_delivery_status,
+               repository_invitations.invited_by_user_id,
+               repository_invitations.expires_at,
+               repository_invitations.created_at
+        FROM repository_invitations
+        LEFT JOIN users ON users.id = repository_invitations.invited_user_id
+        WHERE repository_invitations.repository_id = $1
+          AND repository_invitations.status = 'pending'
+        ORDER BY repository_invitations.created_at DESC
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            Ok(RepositoryInvitation {
+                id: row.try_get("id")?,
+                invited_user_id: row.try_get("invited_user_id")?,
+                invited_email: row.try_get("invited_email")?,
+                invited_login: row.try_get("invited_login")?,
+                role: RepositoryRole::try_from(row.try_get::<String, _>("role")?.as_str())
+                    .map_err(|error| {
+                        RepositoryError::Sqlx(sqlx::Error::Protocol(error.to_string()))
+                    })?,
+                status: row.try_get("status")?,
+                email_delivery_status: row.try_get("email_delivery_status")?,
+                invited_by_user_id: row.try_get("invited_by_user_id")?,
+                expires_at: row.try_get("expires_at")?,
+                created_at: row.try_get("created_at")?,
+                can_cancel: true,
+            })
+        })
+        .collect()
+}
+
+async fn repository_access_invite_targets(
+    pool: &PgPool,
+    repository: &Repository,
+) -> Result<RepositoryInviteTargets, RepositoryError> {
+    let user_rows = sqlx::query(
+        r#"
+        SELECT users.id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS login,
+               users.display_name,
+               users.email,
+               users.avatar_url
+        FROM users
+        WHERE NOT EXISTS (
+            SELECT 1 FROM repository_permissions
+            WHERE repository_permissions.repository_id = $1
+              AND repository_permissions.user_id = users.id
+        )
+        ORDER BY lower(login)
+        LIMIT 10
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_all(pool)
+    .await?;
+
+    let users = user_rows
+        .into_iter()
+        .map(|row| RepositoryInviteUserTarget {
+            user_id: row.get("id"),
+            login: row.get("login"),
+            display_name: row.get("display_name"),
+            email: row.get("email"),
+            avatar_url: row.get("avatar_url"),
+        })
+        .collect();
+
+    let teams = if let Some(organization_id) = repository.owner_organization_id {
+        let rows = sqlx::query(
+            r#"
+            SELECT teams.id,
+                   teams.slug,
+                   teams.name,
+                   COUNT(team_memberships.user_id)::bigint AS member_count
+            FROM teams
+            LEFT JOIN team_memberships ON team_memberships.team_id = teams.id
+            WHERE teams.organization_id = $1
+              AND NOT EXISTS (
+                  SELECT 1 FROM repository_team_permissions
+                  WHERE repository_team_permissions.repository_id = $2
+                    AND repository_team_permissions.team_id = teams.id
+              )
+            GROUP BY teams.id, teams.slug, teams.name
+            ORDER BY lower(teams.slug)
+            LIMIT 10
+            "#,
+        )
+        .bind(organization_id)
+        .bind(repository.id)
+        .fetch_all(pool)
+        .await?;
+
+        rows.into_iter()
+            .map(|row| RepositoryInviteTeamTarget {
+                team_id: row.get("id"),
+                slug: row.get("slug"),
+                name: row.get("name"),
+                member_count: row.get("member_count"),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    Ok(RepositoryInviteTargets { users, teams })
+}
+
+async fn find_user_for_access_target(
+    pool: &PgPool,
+    target: &str,
+) -> Result<Option<RepositoryInviteUserTarget>, RepositoryError> {
+    let row = sqlx::query(
+        r#"
+        SELECT id,
+               COALESCE(NULLIF(username, ''), email) AS login,
+               display_name,
+               email,
+               avatar_url
+        FROM users
+        WHERE lower(email) = lower($1)
+           OR lower(username) = lower($1)
+        LIMIT 1
+        "#,
+    )
+    .bind(target)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|row| RepositoryInviteUserTarget {
+        user_id: row.get("id"),
+        login: row.get("login"),
+        display_name: row.get("display_name"),
+        email: row.get("email"),
+        avatar_url: row.get("avatar_url"),
+    }))
+}
+
+async fn find_team_for_access_target(
+    pool: &PgPool,
+    organization_id: Uuid,
+    team_slug: &str,
+) -> Result<Option<RepositoryInviteTeamTarget>, RepositoryError> {
+    let row = sqlx::query(
+        r#"
+        SELECT teams.id,
+               teams.slug,
+               teams.name,
+               COUNT(team_memberships.user_id)::bigint AS member_count
+        FROM teams
+        LEFT JOIN team_memberships ON team_memberships.team_id = teams.id
+        WHERE teams.organization_id = $1
+          AND lower(teams.slug) = lower($2)
+        GROUP BY teams.id, teams.slug, teams.name
+        "#,
+    )
+    .bind(organization_id)
+    .bind(team_slug.trim())
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|row| RepositoryInviteTeamTarget {
+        team_id: row.get("id"),
+        slug: row.get("slug"),
+        name: row.get("name"),
+        member_count: row.get("member_count"),
+    }))
+}
+
+async fn upsert_team_member_repository_permissions(
+    pool: &PgPool,
+    repository_id: Uuid,
+    team_id: Uuid,
+    role: RepositoryRole,
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        r#"
+        INSERT INTO repository_permissions (repository_id, user_id, role, source)
+        SELECT $1, team_memberships.user_id, $3, 'team'
+        FROM team_memberships
+        WHERE team_memberships.team_id = $2
+        ON CONFLICT (repository_id, user_id)
+        DO UPDATE SET role = EXCLUDED.role, source = EXCLUDED.source
+        WHERE repository_permissions.source = 'team'
+        "#,
+    )
+    .bind(repository_id)
+    .bind(team_id)
+    .bind(role.as_str())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn insert_repository_access_audit_event(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Uuid,
+    event_type: &str,
+    changed_fields: Vec<String>,
+    before_state: serde_json::Value,
+    after_state: serde_json::Value,
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        r#"
+        INSERT INTO repository_settings_audit_events (
+            repository_id, actor_user_id, event_type, changed_fields, before_state, after_state
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+        "#,
+    )
+    .bind(repository_id)
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(changed_fields)
+    .bind(before_state)
+    .bind(after_state)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 async fn repository_settings_for_repository(

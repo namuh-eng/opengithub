@@ -3643,7 +3643,9 @@ async fn require_role(
         .ok_or(CollaborationError::RepositoryAccessDenied)?;
     let allowed = match required_role {
         RepositoryRole::Read => permission.role.can_read(),
+        RepositoryRole::Triage => permission.role >= RepositoryRole::Triage,
         RepositoryRole::Write => permission.role.can_write(),
+        RepositoryRole::Maintain => permission.role >= RepositoryRole::Maintain,
         RepositoryRole::Admin => permission.role.can_admin(),
         RepositoryRole::Owner => permission.role == RepositoryRole::Owner,
     };
@@ -3677,7 +3679,9 @@ async fn repository_viewer_permission(
 
     let allowed = match required_role {
         RepositoryRole::Read => permission.role.can_read(),
+        RepositoryRole::Triage => permission.role >= RepositoryRole::Triage,
         RepositoryRole::Write => permission.role.can_write(),
+        RepositoryRole::Maintain => permission.role >= RepositoryRole::Maintain,
         RepositoryRole::Admin => permission.role.can_admin(),
         RepositoryRole::Owner => permission.role == RepositoryRole::Owner,
     };
