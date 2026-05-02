@@ -347,4 +347,39 @@ describe("CodeSearchResultsPage", () => {
       ).toBeTruthy();
     }
   });
+
+  it("exposes final guardrails for resizing and empty-state recovery", () => {
+    render(
+      <CodeSearchResultsPage
+        query="missing_symbol language:Rust"
+        results={codeResponse({ items: [], total: 0 })}
+      />,
+    );
+
+    const splitter = screen.getByRole("slider", {
+      name: "Resize filter rail",
+    });
+    expect(splitter).toHaveAttribute("min", "220");
+    expect(splitter).toHaveAttribute("max", "360");
+    fireEvent.change(splitter, { target: { value: "340" } });
+    expect(splitter).toHaveValue("340");
+
+    expect(screen.getByText("No code results")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Clear filters" })).toHaveAttribute(
+      "href",
+      "/search?type=code",
+    );
+    expect(
+      screen.getByRole("link", { name: "Search API docs" }),
+    ).toHaveAttribute("href", "/docs/api#search");
+
+    expect(
+      document.querySelectorAll('a[href="#"], a:not([href])'),
+    ).toHaveLength(0);
+    for (const button of Array.from(document.querySelectorAll("button"))) {
+      expect(
+        button.textContent?.trim() || button.getAttribute("aria-label"),
+      ).toBeTruthy();
+    }
+  });
 });

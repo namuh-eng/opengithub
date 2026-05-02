@@ -110,6 +110,7 @@ struct CodeDocumentFixture {
     body: String,
     path: String,
     language: String,
+    branch: String,
 }
 
 async fn seed_code_document(pool: &PgPool, actor: &User, fixture: CodeDocumentFixture) {
@@ -126,11 +127,12 @@ async fn seed_code_document(pool: &PgPool, actor: &User, fixture: CodeDocumentFi
             body: Some(fixture.body.clone()),
             path: Some(fixture.path.clone()),
             language: Some(fixture.language.clone()),
-            branch: Some("main".to_owned()),
+            branch: Some(fixture.branch.clone()),
             visibility: fixture.visibility,
             metadata: json!({
                 "lineNumber": 2,
                 "fragment": fixture.body,
+                "branch": fixture.branch,
                 "symbol": fixture.title,
             }),
         },
@@ -212,6 +214,7 @@ async fn code_search_returns_facets_chips_counts_and_validation_errors() {
             ),
             path: "src/router.rs".to_owned(),
             language: "Rust".to_owned(),
+            branch: "main".to_owned(),
         },
     )
     .await;
@@ -226,6 +229,22 @@ async fn code_search_returns_facets_chips_counts_and_validation_errors() {
             body: format!("export function router{marker}() {{ return 'client'; }}"),
             path: "web/src/router.ts".to_owned(),
             language: "TypeScript".to_owned(),
+            branch: "main".to_owned(),
+        },
+    )
+    .await;
+    seed_code_document(
+        &pool,
+        &owner,
+        CodeDocumentFixture {
+            repository_id: public_repo.id,
+            visibility: RepositoryVisibility::Public,
+            resource_id: format!("feature-rust-{marker}"),
+            title: format!("Feature branch {marker}"),
+            body: format!("fn feature_branch_{marker}() {{ hidden_from_default(); }}"),
+            path: "src/feature_only.rs".to_owned(),
+            language: "Rust".to_owned(),
+            branch: "feature/search-preview".to_owned(),
         },
     )
     .await;
@@ -240,6 +259,7 @@ async fn code_search_returns_facets_chips_counts_and_validation_errors() {
             body: format!("fn private_router_{marker}() {{ secret(); }}"),
             path: "crates/api/src/private_router.rs".to_owned(),
             language: "Rust".to_owned(),
+            branch: "main".to_owned(),
         },
     )
     .await;
@@ -254,6 +274,7 @@ async fn code_search_returns_facets_chips_counts_and_validation_errors() {
             body: format!("fn archived_router_{marker}() {{ old(); }}"),
             path: "src/archive.rs".to_owned(),
             language: "Rust".to_owned(),
+            branch: "main".to_owned(),
         },
     )
     .await;
@@ -292,6 +313,16 @@ async fn code_search_returns_facets_chips_counts_and_validation_errors() {
     assert_eq!(body["page"], 1);
     assert_eq!(body["pageSize"], 50);
     assert_eq!(body["total"], 3);
+    assert!(body["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|item| item["document"]["branch"] == "main"));
+    assert!(!body["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["document"]["path"] == "src/feature_only.rs"));
     assert!(body["queryDurationMs"].as_i64().is_some());
     assert_eq!(body["diagnostics"].as_array().unwrap().len(), 0);
     assert!(body["items"]
@@ -362,6 +393,8 @@ async fn code_search_returns_facets_chips_counts_and_validation_errors() {
     .await;
     assert_eq!(outsider_status, StatusCode::OK);
     assert_eq!(outsider_body["total"], 3);
+    assert!(outsider_body.to_string().contains(&marker));
+    assert!(!outsider_body.to_string().contains("private_router"));
     assert!(outsider_body["items"]
         .as_array()
         .unwrap()
@@ -410,5 +443,9 @@ async fn code_search_returns_facets_chips_counts_and_validation_errors() {
         assert_eq!(bad_status, StatusCode::UNPROCESSABLE_ENTITY);
         assert_eq!(bad_body["status"], 422);
         assert_eq!(bad_body["error"]["code"], "validation_failed");
+        let serialized = bad_body.to_string();
+        assert!(!serialized.contains("DATABASE_URL"));
+        assert!(!serialized.contains("stack backtrace"));
+        assert!(!serialized.contains("postgres://"));
     }
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { FormEvent, ReactNode } from "react";
+import type { CSSProperties, FormEvent, ReactNode } from "react";
 import { useMemo, useState } from "react";
 import type {
   ApiErrorEnvelope,
@@ -479,6 +479,7 @@ function CodeResultCard({ result }: { result: GlobalSearchResult }) {
 }
 
 function CodeSearchEmpty({ query }: { query: string }) {
+  const clearHref = "/search?type=code";
   return (
     <div className="card p-8">
       <p className="t-label" style={{ color: "var(--ink-3)" }}>
@@ -493,6 +494,14 @@ function CodeSearchEmpty({ query }: { query: string }) {
         <span className="kbd">path:</span>, and{" "}
         <span className="kbd">repo:</span> qualifiers.
       </p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Link className="btn sm" href={clearHref}>
+          Clear filters
+        </Link>
+        <Link className="btn sm ghost" href="/docs/api#search">
+          Search API docs
+        </Link>
+      </div>
     </div>
   );
 }
@@ -561,6 +570,7 @@ export function CodeSearchResultsPage({
   saved = false,
   results,
 }: CodeSearchResultsPageProps) {
+  const [railWidth, setRailWidth] = useState(276);
   const hasQuery = query.trim().length > 0;
   const successfulResults =
     results && !isErrorEnvelope(results) ? results : null;
@@ -593,7 +603,10 @@ export function CodeSearchResultsPage({
         </search>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[276px_minmax(0,1fr)]">
+      <div
+        className="grid gap-6 lg:grid-cols-[var(--search-rail)_12px_minmax(0,1fr)]"
+        style={{ "--search-rail": `${railWidth}px` } as CSSProperties}
+      >
         <aside className="self-start lg:sticky lg:top-[calc(var(--header-h)+24px)]">
           <div className="card p-4">
             <p className="t-label" style={{ color: "var(--ink-3)" }}>
@@ -665,6 +678,24 @@ export function CodeSearchResultsPage({
             <AdvancedFilters query={query} />
           </details>
         </aside>
+
+        <label
+          className="hidden cursor-col-resize items-stretch justify-center lg:flex"
+          title="Resize filters"
+        >
+          <span className="sr-only">Resize filter rail</span>
+          <input
+            aria-label="Resize filter rail"
+            className="h-full w-3 cursor-col-resize accent-[color:var(--accent)]"
+            max={360}
+            min={220}
+            onChange={(event) => setRailWidth(Number(event.target.value))}
+            step={4}
+            style={{ writingMode: "vertical-lr" }}
+            type="range"
+            value={railWidth}
+          />
+        </label>
 
         <div className="min-w-0">
           <div className="card mb-4 p-4">

@@ -2721,5 +2721,23 @@
       "Advanced controls currently normalize owner/user/org to owner: and symbol:/archived: qualifiers; richer parser UI for quoted values with spaces remains a future hardening point.",
       "Final Phase 5 still needs mobile/desktop guardrails, privacy sweeps, no-overflow checks, and build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "search-003",
+    "tests_written": [
+      "Completed Phase 5 final guardrails for code search results and marked search-003 build_pass=true.",
+      "Backend code search now filters repository-scoped code documents to the repository default branch and excludes non-default branch hits from totals, facets, and result rows.",
+      "Rust contract coverage verifies private repository redaction, default-branch-only results, pagination clamps, invalid qualifier envelopes, and absence of stack/secret leakage in validation errors.",
+      "CodeSearchResultsPage exposes an accessible filter-rail resize control, concrete empty-state CTAs, URL-backed facets/chips, saved-search creation, grouped snippets, collapse/expand, and line-anchor links.",
+      "Vitest coverage verifies final resize, empty-state, no-dead-control, error, saved-search, advanced-filter, and snippet guardrails.",
+      "Playwright coverage verifies desktop and mobile code search, type counts, facet add/remove, expansion/collapse, empty-state Clear filters, compact view state, no horizontal overflow, and screenshots ralph/screenshots/build/search-003-phase5-final-desktop.jpg and ralph/screenshots/build/search-003-phase5-final-mobile.jpg.",
+      "Verification passed: focused search_code_results_contract, focused search-code-results/global-search-modal Vitest, make check, make test with Cargo plus 211 frontend tests, focused search-code Playwright, full make test-e2e with 78 Playwright tests on reachable Postgres at localhost:55432, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke uses deterministic Rust-signed local sessions and seeded Postgres data, not a real Google OAuth browser session.",
+      "Full make test-e2e initially failed because the original localhost:5432 test database became unreachable and earlier disk pressure triggered Next compaction failures; after freeing generated artifacts and using a fresh local Postgres database on localhost:55432, the full E2E suite passed.",
+      "Search indexing is still backed by search_documents body/metadata; production-scale ranking, binary/large-file indexing, and richer symbol index backfills need later search hardening.",
+      "Saved-search duplicate-name and concurrent create/delete behavior is covered at the API/modal level from search-002/search-003, but should be rechecked manually under real multi-session usage."
+    ]
   }
 ]

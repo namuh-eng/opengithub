@@ -56,6 +56,13 @@ async function expectNoDeadControls(page: Page) {
   }
 }
 
+async function expectNoHorizontalOverflow(page: Page) {
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - window.innerWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(1);
+}
+
 test.skip(
   !databaseUrl,
   "code search E2E needs TEST_DATABASE_URL or DATABASE_URL",
@@ -184,5 +191,66 @@ test("code search filters, saved search, and invalid query recovery stay URL-bac
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/search-003-phase4-facets-saved-search.jpg",
+  });
+});
+
+test("final code search guardrails cover desktop, mobile, and empty-state actions", async ({
+  page,
+}) => {
+  const marker = `phase5code${Date.now()}`;
+  const seeded = seedSession(marker);
+  await signIn(page, seeded);
+
+  await page.setViewportSize({ width: 1365, height: 920 });
+  await page.goto(`/search?q=${marker}&type=code`);
+  await expect(
+    page.getByRole("heading", { name: "Search indexed code" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Search result types" }),
+  ).toContainText("Code");
+  await expect(page.getByRole("link", { name: /Rust\s+1/ })).toBeVisible();
+  await expect(
+    page.getByRole("slider", { name: "Resize filter rail" }),
+  ).toBeVisible();
+  await page.getByRole("slider", { name: "Resize filter rail" }).fill("340");
+  await page.keyboard.press("Tab");
+  await expect(page.locator(":focus")).toBeVisible();
+
+  await page.getByRole("button", { name: "Show 2 more matches" }).click();
+  await expect(
+    page.getByRole("button", { name: "Show fewer matches" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Show fewer matches" }).click();
+  await page.getByRole("button", { name: "Collapse" }).click();
+  await expect(page.getByText(/Snippets hidden/)).toBeVisible();
+  await page.getByRole("button", { name: "Expand" }).click();
+
+  await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/search-003-phase5-final-desktop.jpg",
+  });
+
+  await page.goto(`/search?q=${marker}-missing&type=code`);
+  await expect(page.getByText("No code results")).toBeVisible();
+  await page.getByRole("link", { name: "Clear filters" }).click();
+  await expect(page).toHaveURL(/\/search\?type=code$/);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/search?q=${marker}&type=code&view=compact`);
+  await expect(
+    page.getByRole("heading", { name: "Search indexed code" }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Compact" })).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/search-003-phase5-final-mobile.jpg",
   });
 });

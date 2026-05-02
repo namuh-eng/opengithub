@@ -622,6 +622,11 @@ pub async fn search_code_results(
               OR search_documents.body ILIKE '%' || $2 || '%'
               OR search_documents.path ILIKE '%' || $2 || '%'
           )
+          AND (
+              search_documents.repository_id IS NULL
+              OR search_documents.branch IS NULL
+              OR search_documents.branch = repositories.default_branch
+          )
           AND ($3::text IS NULL OR lower(search_documents.language) = lower($3))
           AND ($4::text IS NULL OR search_documents.path ILIKE '%' || $4 || '%')
           AND ($5::text IS NULL OR lower(COALESCE(repo_owner_user.username, repo_owner_user.email, repo_owner_org.slug)) = lower($5))
@@ -689,6 +694,11 @@ pub async fn search_code_results(
               OR search_documents.title ILIKE '%' || $2 || '%'
               OR search_documents.body ILIKE '%' || $2 || '%'
               OR search_documents.path ILIKE '%' || $2 || '%'
+          )
+          AND (
+              search_documents.repository_id IS NULL
+              OR search_documents.branch IS NULL
+              OR search_documents.branch = repositories.default_branch
           )
           AND ($3::text IS NULL OR lower(search_documents.language) = lower($3))
           AND ($4::text IS NULL OR search_documents.path ILIKE '%' || $4 || '%')
@@ -1421,6 +1431,7 @@ async fn code_search_type_counts(
         r#"
         SELECT search_documents.kind, count(*) AS count
         FROM search_documents
+        LEFT JOIN repositories ON repositories.id = search_documents.repository_id
         LEFT JOIN repository_permissions
           ON repository_permissions.repository_id = search_documents.repository_id
          AND repository_permissions.user_id = $1
@@ -1434,6 +1445,12 @@ async fn code_search_type_counts(
               OR search_documents.title ILIKE '%' || $2 || '%'
               OR search_documents.body ILIKE '%' || $2 || '%'
               OR search_documents.path ILIKE '%' || $2 || '%'
+          )
+          AND (
+              search_documents.kind <> 'code'
+              OR search_documents.repository_id IS NULL
+              OR search_documents.branch IS NULL
+              OR search_documents.branch = repositories.default_branch
           )
         GROUP BY search_documents.kind
         "#,
@@ -1498,6 +1515,11 @@ async fn code_search_facets(
               OR search_documents.body ILIKE '%' || $2 || '%'
               OR search_documents.path ILIKE '%' || $2 || '%'
           )
+          AND (
+              search_documents.repository_id IS NULL
+              OR search_documents.branch IS NULL
+              OR search_documents.branch = repositories.default_branch
+          )
           AND ($3::text IS NULL OR search_documents.path ILIKE '%' || $3 || '%')
           AND ($4::text IS NULL OR lower(COALESCE(repo_owner_user.username, repo_owner_user.email, repo_owner_org.slug)) = lower($4))
           AND ($5::text IS NULL OR lower(repositories.name) = lower($5))
@@ -1542,6 +1564,11 @@ async fn code_search_facets(
               OR search_documents.title ILIKE '%' || $2 || '%'
               OR search_documents.body ILIKE '%' || $2 || '%'
               OR search_documents.path ILIKE '%' || $2 || '%'
+          )
+          AND (
+              search_documents.repository_id IS NULL
+              OR search_documents.branch IS NULL
+              OR search_documents.branch = repositories.default_branch
           )
           AND ($3::text IS NULL OR lower(search_documents.language) = lower($3))
           AND ($4::text IS NULL OR lower(COALESCE(repo_owner_user.username, repo_owner_user.email, repo_owner_org.slug)) = lower($4))

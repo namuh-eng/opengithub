@@ -70,7 +70,7 @@
 
 ## Phase 5: Code Search Guardrails and QA Handoff - finish search-003
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Harden accessibility, privacy, responsive behavior, performance bounds, visual compliance, and bookkeeping. Mark `search-003.build_pass=true` only after code search has real API data, working filters, real result links, and verified no-dead-control coverage.
 

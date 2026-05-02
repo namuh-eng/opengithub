@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   type KeyboardEvent,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -190,9 +191,8 @@ export function GlobalSearchModal({
     { label: "is:open", value: "is:open" },
   ];
 
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => inputRef.current?.focus());
-    return () => window.cancelAnimationFrame(frame);
+  useLayoutEffect(() => {
+    inputRef.current?.focus();
   }, []);
 
   useEffect(() => {

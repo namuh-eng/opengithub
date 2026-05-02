@@ -1863,3 +1863,16 @@
 - Browser smoke screenshot saved at `ralph/screenshots/build/search-003-phase4-facets-saved-search.jpg`.
 - Verification passed: focused `search_code_results_contract`; focused `web/tests/search-code-results.test.tsx`; focused TEST_DATABASE_URL-backed `web/tests/e2e/search-code.spec.ts`; `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 210 frontend tests; full same-env Playwright with 77 tests.
 - Marked Phase 4 as done in `.qrspi/search-003/structure.md`; `prd.json` remains `build_pass: false` because Phase 5 remains.
+
+2026-05-02 - search-003 phase 5 final guardrails and QA handoff
+
+- Completed Phase 5 from `.qrspi/search-003/structure.md`: final code-search privacy, default-branch, accessibility, responsive, visual compliance, QA handoff, and `search-003.build_pass=true`.
+- Tightened Rust code-search results so repository-scoped code documents are returned, counted, and faceted only when they are on the repository default branch, while preserving permission-aware public/private filtering.
+- Extended `crates/api/tests/search_code_results_contract.rs` for default-branch-only results, private repository redaction, pagination clamps, invalid qualifier envelopes, and absence of stack/secret leakage in validation responses.
+- Updated `CodeSearchResultsPage` with an accessible draggable-style filter rail resize control and concrete empty-state CTAs; kept facets, chips, saved search, snippet expansion/collapse, and line anchors URL-backed or API-backed.
+- Hardened `GlobalSearchModal` focus on mount after the full frontend suite exposed a focus regression under the complete Vitest run.
+- Extended Vitest and Playwright coverage for final resize, empty-state recovery, no-dead-control, keyboard/focus, desktop/mobile no-overflow, compact view, snippet expansion/collapse, and final screenshots.
+- Browser smoke screenshots saved at `ralph/screenshots/build/search-003-phase5-final-desktop.jpg` and `ralph/screenshots/build/search-003-phase5-final-mobile.jpg`.
+- Verification passed: focused `search_code_results_contract`; focused `web/tests/search-code-results.test.tsx` and `web/tests/global-search-modal.test.tsx`; focused `web/tests/e2e/search-code.spec.ts`; `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 211 frontend tests; full `make test-e2e` with 78 Playwright tests against reachable local Postgres `postgresql://namuh:namuh@localhost:55432/opengithub_identity_test`; mandatory Editorial banned-value scan passed with zero matches.
+- The first full `make test-e2e` attempts failed because the original `localhost:5432` test database became unreachable and disk pressure triggered Next compaction failures; generated artifacts and Cargo incremental files were cleaned, a fresh local Postgres test database was created on `localhost:55432`, and the full suite then passed.
+- Marked Phase 5 as done in `.qrspi/search-003/structure.md` and set `search-003.build_pass` to `true` in `prd.json`; `qa_pass` remains `false` for the QA agent.
