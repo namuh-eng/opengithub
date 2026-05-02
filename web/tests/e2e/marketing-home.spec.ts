@@ -41,7 +41,7 @@ test("public home auth CTAs and footer links are live", async ({ page }) => {
   await page.getByRole("link", { exact: true, name: "Sign up" }).click();
   await expect(page).toHaveURL("http://localhost:3015/login");
   await expect(
-    page.getByRole("heading", { name: "Welcome back." }),
+    page.getByRole("heading", { name: "Sign in to opengithub" }),
   ).toBeVisible();
 });
 

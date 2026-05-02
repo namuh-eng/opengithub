@@ -125,7 +125,7 @@ pub fn expire_cookie_header(config: &AppConfig) -> String {
         "HttpOnly".to_owned(),
         "SameSite=Lax".to_owned(),
     ];
-    if config.session_cookie_secure {
+    if should_set_secure_cookie(config) {
         parts.push("Secure".to_owned());
     }
     parts.join("; ")
@@ -171,7 +171,7 @@ pub fn set_cookie_header(
         "HttpOnly".to_owned(),
         "SameSite=Lax".to_owned(),
     ];
-    if config.session_cookie_secure {
+    if should_set_secure_cookie(config) {
         parts.push("Secure".to_owned());
     }
     Ok(parts.join("; "))
@@ -179,6 +179,10 @@ pub fn set_cookie_header(
 
 pub fn set_cookie_value(value: String) -> Result<HeaderValue, SessionError> {
     HeaderValue::from_str(&value).map_err(|_| SessionError::InvalidCookie)
+}
+
+fn should_set_secure_cookie(config: &AppConfig) -> bool {
+    config.session_cookie_secure || config.session_cookie_name.starts_with("__Host-")
 }
 
 fn signed_cookie_value(config: &AppConfig, session_id: &str) -> Result<String, SessionError> {

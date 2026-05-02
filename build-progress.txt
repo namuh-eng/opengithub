@@ -20,6 +20,14 @@
 - Verification passed: focused `web/tests/repository-general-settings-page.test.tsx`; `web` `tsc --noEmit`; `make check`; `make test` with Cargo tests plus 254 frontend tests; focused `web/tests/e2e/repository-settings-general.spec.ts`; mandatory Editorial banned-value scan returned zero matches.
 - `make dev` still cannot start the Rust API because `cargo-watch` is not installed; for browser smoke, the web dev server ran on `:3015` and the Rust API was started directly with `cargo run -p opengithub-api` on `:3016`.
 - Marked Phase 2 as done in `.qrspi/settings-001/structure.md`; `prd.json` remains `build_pass: false` because Phases 3-5 remain.
+2026-05-03 - auth-001 independent QA pass
+
+- Independently QAed auth-001 against the PRD: fixed /login to the required compact centered Editorial sign-in card with Octocat-style mark, exact `Sign in to opengithub` heading, one full-width `Continue with Google` action, terms/privacy links, and no email/password alternatives.
+- Hardened Rust session cookie issuance so `__Host-session` cookies always include `Secure` with `Path=/`, `HttpOnly`, and `SameSite=Lax`; logout clearing cookies use the same prefix-safe policy.
+- Fixed fresh-worktree E2E startup by making `make dev`/`make api-dev` fall back to `cargo run --bin api` when `cargo-watch` is unavailable.
+- Verification passed: focused auth Rust suites (`auth_oauth_start`, `auth_callback_session`, `auth_security`, `auth_route_guard`), focused auth Vitest, web typecheck, `make check`, `CARGO_INCREMENTAL=0 make test` with Cargo tests plus 245 frontend tests, and `make test-e2e` with 18 runnable Playwright tests.
+- API smoke passed against local Rust API: OAuth start 302 sanitized an external `next`, callback provider error redirected to `/login?error=oauth_failed`, invalid current-user returned JSON 401 without secret leakage, and logout emitted a Secure `__Host-session` clearing cookie.
+- Marked `auth-001.qa_pass=true` in `prd.json`; real Google consent/callback remains unexercised because this isolated QA lane only has dummy OAuth credentials.
 
 2026-05-03 - orgs-002 phase 3 URL-backed repository filters and pagination
 

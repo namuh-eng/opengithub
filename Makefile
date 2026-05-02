@@ -91,14 +91,19 @@ test-verbose:
 
 # Dev: run API (with hot reload via cargo-watch) and Next.js together
 dev:
-	@if [ -n "$(HAS_WEB)" ]; then \
-	  ( cargo watch -q -x 'run --bin api' & API_PID=$$! ; cd web && npm run dev ; kill $$API_PID 2>/dev/null ) ; \
+	@if command -v cargo-watch >/dev/null 2>&1; then \
+	  API_DEV_CMD="cargo watch -q -x 'run --bin api'"; \
 	else \
-	  cargo watch -q -x 'run --bin api' ; \
+	  API_DEV_CMD="cargo run --bin api"; \
+	fi; \
+	if [ -n "$(HAS_WEB)" ]; then \
+	  ( sh -c "$$API_DEV_CMD" & API_PID=$$! ; cd web && npm run dev ; kill $$API_PID 2>/dev/null ) ; \
+	else \
+	  sh -c "$$API_DEV_CMD" ; \
 	fi
 
 api-dev:
-	cargo watch -q -x 'run --bin api'
+	@if command -v cargo-watch >/dev/null 2>&1; then cargo watch -q -x 'run --bin api'; else cargo run --bin api; fi
 
 web-dev:
 	@if [ -n "$(HAS_WEB)" ]; then cd web && npm run dev; else echo "web/ not yet scaffolded"; exit 1; fi
