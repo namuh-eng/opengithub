@@ -377,8 +377,11 @@ async fn organization_repositories_filter_sort_and_redact_by_visibility() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(repo_names(&filtered), vec![format!("{marker}-private")]);
     assert_eq!(filtered["filters"]["query"], "template");
-    assert_eq!(filtered["filters"]["language"], "typescript");
+    assert_eq!(filtered["filters"]["language"], "TypeScript");
     assert_eq!(filtered["filters"]["repositoryType"], "templates");
+    assert_eq!(filtered["total"], 1);
+    assert_eq!(filtered["tabCounts"]["repositories"], 4);
+    assert_eq!(option_count(&filtered, "availableTypes", "templates"), 1);
 
     let (status, _, admin_view) = get_json(
         app.clone(),
@@ -402,6 +405,21 @@ async fn organization_repositories_filter_sort_and_redact_by_visibility() {
     assert_eq!(page_two["page"], 2);
     assert_eq!(page_two["pageSize"], 1);
     assert_eq!(repo_names(&page_two), vec![format!("{marker}-fork")]);
+
+    let (status, _, normalized) = get_json(
+        app.clone(),
+        &format!(
+            "/api/orgs/{marker}/repositories?q=%20%20&type=sources&language=RUST&page=-9&pageSize=0"
+        ),
+        Some(&member_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(normalized["filters"]["query"], Value::Null);
+    assert_eq!(normalized["filters"]["language"], "Rust");
+    assert_eq!(normalized["page"], 1);
+    assert_eq!(normalized["pageSize"], 1);
+    assert_eq!(normalized["tabCounts"]["repositories"], 4);
 
     let (status, _, invalid) = get_json(
         app.clone(),

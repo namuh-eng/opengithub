@@ -599,6 +599,7 @@ export type OrganizationRepositoryListFilters = {
   sort?: string | null;
   density?: string | null;
   page?: number | string | null;
+  pageSize?: number | string | null;
 };
 
 export function organizationRepositoryListHref(
@@ -609,7 +610,7 @@ export function organizationRepositoryListHref(
       "q" | "type" | "language" | "sort" | "density" | "page",
       string | null
     >
-  > = {},
+  > & { pageSize?: string | null } = {},
 ) {
   const params = new URLSearchParams();
   const nextQuery =
@@ -632,6 +633,10 @@ export function organizationRepositoryListHref(
     overrides.page === undefined
       ? filters.page
       : overrides.page?.trim() || null;
+  const nextPageSize =
+    overrides.pageSize === undefined
+      ? filters.pageSize
+      : overrides.pageSize?.trim() || null;
 
   if (nextQuery?.trim()) {
     params.set("q", nextQuery.trim());
@@ -650,6 +655,9 @@ export function organizationRepositoryListHref(
   }
   if (nextPage && String(nextPage) !== "1") {
     params.set("page", String(nextPage));
+  }
+  if (nextPageSize && String(nextPageSize) !== "30") {
+    params.set("pageSize", String(nextPageSize));
   }
 
   const query = params.toString();

@@ -3133,5 +3133,23 @@
       "Saved and Done folders are wired into the query model and empty states, but persistence columns for saved/done notification state are not present yet; rows currently report saved=false and done=false with a clear upgrade path in the typed API.",
       "No full Playwright E2E was added for this slice; build lane focused on API contract, component rendering, make check, and make test."
     ]
+  },
+  {
+    "feature_id": "orgs-002",
+    "tests_written": [
+      "Completed Phase 3 URL-Backed Repository Filters and Pagination without marking orgs-002 build_pass=true.",
+      "Hardened GET /api/orgs/{org}/repositories so tabCounts.repositories stays based on the full visible repository set while filtered totals remain page/query-specific.",
+      "Canonicalized organization repository language filters to the stored language casing while preserving case-insensitive filtering and pagination clamps.",
+      "Added Editorial repository type chips for All, Contributed by me, Admin access, Public, Sources, Forks, Archived, and Templates, all using concrete URL-backed links.",
+      "Preserved pageSize through density, filter-chip, and pagination navigation while resetting page when filters change.",
+      "Extended organization_repositories_contract, organization-repositories Vitest, navigation Vitest, and organization-profile Playwright coverage for composed filters, pageSize-preserving pagination, density toggles, type chips, no inert controls, and mobile no-overflow.",
+      "Verification passed: focused organization_repositories_contract (DB scenarios self-skipped without env in the first run); focused organization repository/navigation Vitest; web typecheck; make check; make test with Cargo tests plus 243 frontend tests; focused organization-profile Playwright against local Postgres; full TEST_DATABASE_URL-backed make test-e2e with 90 Playwright tests after restarting the API with API_URL=https://opengithub.namuh.co; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke uses deterministic Rust-signed local sessions and direct local API/Next dev servers because make dev depends on cargo-watch, which is not installed in this environment.",
+      "The first full E2E run failed only because the API had been started with API_URL=http://localhost:3016, producing localhost clone URLs for an unrelated repository Code-tab assertion; rerunning with API_URL=https://opengithub.namuh.co passed all 90 E2E tests.",
+      "Phase 4 still needs the organization people list API/UI and signed-out/member/admin people visibility coverage before orgs-002 can be marked build_pass=true.",
+      "QA should stress many pages of organization repositories, unusual language casing and spacing, direct repository permissions for non-members, empty results after every chip removal path, and compact density with very long names/topics."
+    ]
   }
 ]

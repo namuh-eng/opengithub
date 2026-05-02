@@ -87,20 +87,26 @@ function ActiveFilters({
   filters: OrganizationRepositoryListFilters &
     Pick<
       OrganizationRepositoryFilters,
-      "query" | "repositoryType" | "language" | "sort" | "density"
+      "query" | "repositoryType" | "language" | "sort" | "density" | "pageSize"
     >;
   org: string;
 }) {
   const chips = [
     filters.query
       ? {
-          href: organizationRepositoryListHref(org, filters, { q: null }),
+          href: organizationRepositoryListHref(org, filters, {
+            page: null,
+            q: null,
+          }),
           label: `Search: ${filters.query}`,
         }
       : null,
     filters.repositoryType !== "all"
       ? {
-          href: organizationRepositoryListHref(org, filters, { type: "all" }),
+          href: organizationRepositoryListHref(org, filters, {
+            page: null,
+            type: "all",
+          }),
           label: TYPE_LABELS[filters.repositoryType] ?? filters.repositoryType,
         }
       : null,
@@ -108,6 +114,7 @@ function ActiveFilters({
       ? {
           href: organizationRepositoryListHref(org, filters, {
             language: null,
+            page: null,
           }),
           label: filters.language,
         }
@@ -115,6 +122,7 @@ function ActiveFilters({
     filters.sort !== "updated-desc"
       ? {
           href: organizationRepositoryListHref(org, filters, {
+            page: null,
             sort: "updated-desc",
           }),
           label: `Sort: ${SORT_LABELS[filters.sort] ?? filters.sort}`,
@@ -155,6 +163,39 @@ function ActiveFilters({
         Clear filters
       </Link>
     </div>
+  );
+}
+
+function RepositoryTypeChips({
+  filters,
+  org,
+  types,
+}: {
+  filters: OrganizationRepositoryFilters;
+  org: string;
+  types: OrganizationRepositoryList["availableTypes"];
+}) {
+  return (
+    <nav aria-label="Repository type filters" className="flex flex-wrap gap-2">
+      {types.map((option) => {
+        const active = filters.repositoryType === option.value;
+        return (
+          <Link
+            aria-current={active ? "page" : undefined}
+            aria-label={`${option.label} ${option.count.toLocaleString()}`}
+            className={`chip no-underline ${active ? "active" : "soft"}`}
+            href={organizationRepositoryListHref(org, filters, {
+              page: null,
+              type: option.value,
+            })}
+            key={option.value}
+          >
+            {option.label}
+            <span className="t-num">{option.count.toLocaleString()}</span>
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
 
@@ -313,11 +354,13 @@ export function OrganizationRepositoriesPage({
               name="type"
             >
               <option value="all">All</option>
-              {list.availableTypes.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label} ({option.count})
-                </option>
-              ))}
+              {list.availableTypes
+                .filter((option) => option.value !== "all")
+                .map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label} ({option.count})
+                  </option>
+                ))}
             </select>
           </label>
           <label className="grid gap-1">
@@ -352,6 +395,9 @@ export function OrganizationRepositoriesPage({
             </select>
           </label>
           <input name="density" type="hidden" value={filters.density} />
+          {filters.pageSize !== 30 ? (
+            <input name="pageSize" type="hidden" value={filters.pageSize} />
+          ) : null}
           <div className="flex items-end">
             <button className="btn primary w-full" type="submit">
               Filter
@@ -382,6 +428,13 @@ export function OrganizationRepositoriesPage({
               Tight
             </Link>
           </fieldset>
+        </div>
+        <div className="mt-4">
+          <RepositoryTypeChips
+            filters={filters}
+            org={org}
+            types={list.availableTypes}
+          />
         </div>
       </div>
 

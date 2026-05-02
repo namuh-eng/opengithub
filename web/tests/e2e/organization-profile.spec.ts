@@ -101,6 +101,42 @@ test("organization overview renders API data and concrete header controls", asyn
   await expect(
     page.getByRole("link", { name: /opengithub-/ }).first(),
   ).toBeVisible();
+  await page.goto(`${seeded.organizationProfileHref}/repositories?pageSize=1`);
+  await expect(page.getByText(/1-1 of \d+/)).toBeVisible();
+  await page.getByRole("link", { name: "Next" }).click();
+  await expect(page).toHaveURL(/\/repositories\?page=2&pageSize=1$/);
+  await expect(page.getByRole("link", { name: "Previous" })).toHaveAttribute(
+    "href",
+    /\/repositories\?pageSize=1$/,
+  );
+  await page.getByRole("link", { name: "Compact density" }).click();
+  await expect(page).toHaveURL(/density=compact/);
+  await expect(page).toHaveURL(/page=2/);
+  await expect(page).toHaveURL(/pageSize=1/);
+  await page.getByLabel("Language").selectOption("TypeScript");
+  await page.getByRole("button", { name: "Filter" }).click();
+  await expect(page).toHaveURL(/language=TypeScript/);
+  await expect(page).toHaveURL(/density=compact/);
+  await expect(page).toHaveURL(/pageSize=1/);
+  await expect(
+    page.getByRole("link", { name: /ralph-/ }).first(),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: /opengithub-/ })).toHaveCount(0);
+  await page.getByRole("link", { name: /All \d+/ }).click();
+  await expect(page).toHaveURL(/\/repositories\?/);
+  await expect(page).not.toHaveURL(/type=/);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    page.getByRole("heading", { name: "Repositories" }),
+  ).toBeVisible();
+  const repositoryOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  );
+  expect(repositoryOverflow).toBe(false);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/orgs-002-phase3-repositories-mobile.jpg",
+  });
   await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
   await page.screenshot({
     fullPage: true,

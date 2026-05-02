@@ -68,6 +68,7 @@ function repositoryList(
       { value: "TypeScript", label: "TypeScript", count: 1 },
     ],
     availableTypes: [
+      { value: "all", label: "All", count: 1 },
       { value: "contributed", label: "Contributed by me", count: 0 },
       { value: "admin", label: "Admin access", count: 0 },
       { value: "public", label: "Public", count: 1 },
@@ -166,6 +167,21 @@ describe("OrganizationRepositoriesPage", () => {
       "href",
       "/orgs/namuh/repositories?q=api+server&type=forks&language=Rust&sort=stars-desc&density=compact",
     );
+    const typeFilters = screen.getByRole("navigation", {
+      name: "Repository type filters",
+    });
+    expect(
+      within(typeFilters).getByRole("link", { name: "All 1" }),
+    ).toHaveAttribute(
+      "href",
+      "/orgs/namuh/repositories?q=api+server&language=Rust&sort=stars-desc&density=compact",
+    );
+    expect(
+      within(typeFilters).getByRole("link", { name: "Sources 1" }),
+    ).toHaveAttribute(
+      "href",
+      "/orgs/namuh/repositories?q=api+server&type=sources&language=Rust&sort=stars-desc&density=compact",
+    );
     expect(
       screen.getByRole("link", { name: "Search: api server x" }),
     ).toHaveAttribute(
@@ -191,7 +207,7 @@ describe("OrganizationRepositoriesPage", () => {
           items: [repository()],
           total: 45,
           page: 2,
-          pageSize: 30,
+          pageSize: 10,
           filters: {
             query: "forge",
             repositoryType: "public",
@@ -199,7 +215,7 @@ describe("OrganizationRepositoriesPage", () => {
             sort: "stars-desc",
             density: "compact",
             page: 2,
-            pageSize: 30,
+            pageSize: 10,
           },
         })}
         org="namuh"
@@ -213,10 +229,13 @@ describe("OrganizationRepositoriesPage", () => {
       within(pagination).getByRole("link", { name: "Previous" }),
     ).toHaveAttribute(
       "href",
-      "/orgs/namuh/repositories?q=forge&type=public&language=Rust&sort=stars-desc&density=compact",
+      "/orgs/namuh/repositories?q=forge&type=public&language=Rust&sort=stars-desc&density=compact&pageSize=10",
     );
     expect(
-      within(pagination).getByRole("button", { name: "Next" }),
-    ).toBeDisabled();
+      within(pagination).getByRole("link", { name: "Next" }),
+    ).toHaveAttribute(
+      "href",
+      "/orgs/namuh/repositories?q=forge&type=public&language=Rust&sort=stars-desc&density=compact&page=3&pageSize=10",
+    );
   });
 });

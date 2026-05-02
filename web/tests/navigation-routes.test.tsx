@@ -183,11 +183,12 @@ describe("navigation route registry", () => {
           sort: "stars-desc",
           density: "compact",
           page: 3,
+          pageSize: 10,
         },
         { type: "all", page: "1" },
       ),
     ).toBe(
-      "/orgs/namuh%20labs/repositories?q=api+server&language=Rust&sort=stars-desc&density=compact",
+      "/orgs/namuh%20labs/repositories?q=api+server&language=Rust&sort=stars-desc&density=compact&pageSize=10",
     );
     expect(organizationProjectHref("namuh")).toBe("/orgs/namuh/projects");
     expect(organizationSettingsHref("namuh")).toBe("/orgs/namuh/settings");

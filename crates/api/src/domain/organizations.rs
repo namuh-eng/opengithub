@@ -350,15 +350,17 @@ pub async fn organization_repositories(
         can_admin: matches!(viewer_role.as_deref(), Some("owner" | "admin")),
         is_following: is_following(pool, organization.id, viewer_user_id).await?,
     };
-    let filters = normalize_organization_repository_filters(query)?;
+    let mut filters = normalize_organization_repository_filters(query)?;
     let mut repositories =
         visible_organization_repository_rows(pool, &organization, viewer_user_id, &viewer_state)
             .await?;
+    let visible_repository_total = repositories.len() as i64;
     let available_languages = organization_repository_language_options(&repositories);
     let available_types = organization_repository_type_options(&repositories);
     let people_count = visible_people_count(pool, &organization, is_member).await?;
     let packages = packages_count(pool, organization.id, is_member).await?;
 
+    canonicalize_organization_repository_language(&mut filters, &available_languages);
     apply_organization_repository_filters(&mut repositories, &filters);
     sort_organization_repositories(&mut repositories, &filters.sort);
 
@@ -379,7 +381,7 @@ pub async fn organization_repositories(
         available_languages,
         available_types,
         tab_counts: OrganizationTabCounts {
-            repositories: total,
+            repositories: visible_repository_total,
             projects: 0,
             packages,
             people: people_count,
@@ -715,6 +717,22 @@ fn organization_repository_type_options(
         count,
     })
     .collect()
+}
+
+fn canonicalize_organization_repository_language(
+    filters: &mut OrganizationRepositoryFilters,
+    available_languages: &[OrganizationRepositoryFilterOption],
+) {
+    let Some(language) = filters.language.as_deref() else {
+        return;
+    };
+    let Some(option) = available_languages
+        .iter()
+        .find(|option| option.value.eq_ignore_ascii_case(language))
+    else {
+        return;
+    };
+    filters.language = Some(option.value.clone());
 }
 
 fn apply_organization_repository_filters(

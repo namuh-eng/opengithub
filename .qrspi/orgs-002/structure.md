@@ -42,7 +42,7 @@
 
 ## Phase 3: URL-Backed Repository Filters and Pagination - make every control concrete
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish repository-list interactions so filters compose predictably and every control mutates URL state without client-only placeholders. Search, type chips, language, sort, density, and Previous/Next pagination must preserve each other. Compact density changes row spacing only, not data or API visibility.
 
