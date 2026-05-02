@@ -2175,3 +2175,13 @@
 - Verification passed: focused `cargo test -p opengithub-api --test api_notifications_inbox_contract`; focused `cd web && npx vitest run tests/notifications-inbox.test.tsx`; `cd web && npx tsc --noEmit --pretty false`; mandatory banned-value scan returned zero matches; `make check`; `CARGO_INCREMENTAL=0 make test` with Cargo tests plus 215 frontend tests.
 - `make test` initially hit disk exhaustion during Rust test linking; cleared local build/cache artifacts and reran successfully.
 - Set `notifications-001.build_pass=true`, `needs_structure=false`, and left `qa_pass=false` for independent QA.
+
+2026-05-03 - settings-001 repository settings overview
+
+- Created `.qrspi/settings-001/structure.md` with the completed phase checklist for the repository Settings vertical slice.
+- Added Rust/Postgres repository settings persistence: feature flags, forking, web commit signoff, merge-method validation, auto-merge read state, admin-only `GET/PATCH /api/repos/:owner/:repo/settings`, and `repository_settings_audit_events` writes for every successful mutation.
+- Replaced the repository Settings placeholder with an Editorial settings overview backed by typed API/client helpers and a same-origin Next.js PATCH route. Controls save real general settings, feature toggles, merge methods, forking, and signoff state; destructive actions open typed-confirmation modals with final mutations disabled until backend support exists.
+- Added focused Rust and Vitest coverage for admin-only access, forbidden/validation envelopes, audit event creation, confirmed-only UI updates, merge-method dead-write prevention, and danger-zone modal behavior.
+- Verification passed: `cd web && npm test -- --run tests/repository-settings-overview.test.tsx`; `CARGO_INCREMENTAL=0 cargo test -p opengithub-api --test api_repository_settings_contract`; `cd web && npx tsc --noEmit --pretty false`; mandatory Editorial banned-value scan on touched UI files returned zero matches; `make check`; `CARGO_INCREMENTAL=0 make test` with Cargo tests plus 248 web tests.
+- Initial fresh-worktree `make check` required `.ralph-setup-done`; initial Rust verification hit local disk exhaustion, resolved by deleting generated `target/` and sibling worktree build artifacts only.
+- Set `settings-001.build_pass=true`, `needs_structure=false`, and left `qa_pass=false` for independent QA.

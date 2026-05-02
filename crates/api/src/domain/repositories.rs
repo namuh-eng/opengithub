@@ -338,6 +338,67 @@ pub struct RepositoryOverview {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySettingsFeatureFlags {
+    pub issues: bool,
+    pub projects: bool,
+    pub wiki: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySettingsMergeMethods {
+    pub merge_commit: bool,
+    pub squash: bool,
+    pub rebase: bool,
+    pub auto_merge: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySettingsCapabilities {
+    pub rename: bool,
+    pub archive: bool,
+    pub transfer: bool,
+    pub change_visibility: bool,
+    pub delete: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySettingsView {
+    pub id: Uuid,
+    pub owner_login: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub visibility: RepositoryVisibility,
+    pub default_branch: String,
+    pub is_archived: bool,
+    pub is_template: bool,
+    pub allow_forking: bool,
+    pub web_commit_signoff_required: bool,
+    pub features: RepositorySettingsFeatureFlags,
+    pub merge_methods: RepositorySettingsMergeMethods,
+    pub capabilities: RepositorySettingsCapabilities,
+    pub viewer_permission: String,
+    pub audit_event_count: i64,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateRepositorySettings {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub visibility: Option<RepositoryVisibility>,
+    pub default_branch: Option<String>,
+    pub is_template: Option<bool>,
+    pub allow_forking: Option<bool>,
+    pub web_commit_signoff_required: Option<bool>,
+    pub features: Option<RepositorySettingsFeatureFlags>,
+    pub merge_methods: Option<RepositorySettingsMergeMethods>,
+}
+
 pub struct RepositoryPermission {
     pub repository_id: Uuid,
     pub user_id: Uuid,
@@ -572,6 +633,8 @@ pub enum RepositoryError {
     UnknownGitignoreTemplate(String),
     #[error("unknown license template `{0}`")]
     UnknownLicenseTemplate(String),
+    #[error("at least one pull request merge method must stay enabled")]
+    NoMergeMethodEnabled,
     #[error("repository has already been forked by this user")]
     ForkAlreadyExists,
     #[error("repository git storage failed")]
@@ -1597,6 +1660,260 @@ pub async fn get_repository_for_actor_by_owner_name(
     } else {
         Err(RepositoryError::PermissionDenied)
     }
+}
+
+pub async fn repository_settings_for_admin_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+) -> Result<Option<RepositorySettingsView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_admin_repository(pool, &repository, actor_user_id).await? {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    repository_settings_view(pool, &repository, "admin")
+        .await
+        .map(Some)
+}
+
+pub async fn update_repository_settings_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    input: UpdateRepositorySettings,
+) -> Result<Option<RepositorySettingsView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    let permission = repository_permission_for_user(pool, repository.id, actor_user_id).await?;
+    let role = permission
+        .map(|permission| permission.role)
+        .unwrap_or_else(|| {
+            if repository.owner_user_id == Some(actor_user_id) {
+                RepositoryRole::Owner
+            } else {
+                RepositoryRole::Read
+            }
+        });
+    if !role.can_admin() {
+        return Err(RepositoryError::PermissionDenied);
+    }
+
+    let current = repository_settings_view(pool, &repository, role.as_str()).await?;
+    let next_name = match input.name {
+        Some(value) => {
+            let normalized = value.trim().to_owned();
+            validate_repository_name(&normalized).map_err(RepositoryError::InvalidName)?;
+            normalized
+        }
+        None => repository.name.clone(),
+    };
+    let next_description = match input.description {
+        Some(value) => normalize_repository_description(Some(value))?,
+        None => repository.description.clone(),
+    };
+    let next_visibility = input
+        .visibility
+        .unwrap_or_else(|| repository.visibility.clone());
+    let next_default_branch = match input.default_branch {
+        Some(value) => {
+            let normalized = value.trim().to_owned();
+            if normalized.is_empty() || normalized.len() > 255 {
+                return Err(RepositoryError::InvalidName("default branch".to_owned()));
+            }
+            normalized
+        }
+        None => repository.default_branch.clone(),
+    };
+    let next_template = input.is_template.unwrap_or(current.is_template);
+    let next_allow_forking = input.allow_forking.unwrap_or(current.allow_forking);
+    let next_signoff = input
+        .web_commit_signoff_required
+        .unwrap_or(current.web_commit_signoff_required);
+    let next_features = input.features.unwrap_or(current.features.clone());
+    let next_merge = input.merge_methods.unwrap_or(current.merge_methods.clone());
+    if !next_merge.merge_commit && !next_merge.squash && !next_merge.rebase {
+        return Err(RepositoryError::NoMergeMethodEnabled);
+    }
+
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        r#"
+        UPDATE repositories
+        SET name = $2,
+            description = $3,
+            visibility = $4,
+            default_branch = $5,
+            is_template = $6,
+            has_issues = $7,
+            has_projects = $8,
+            has_wiki = $9,
+            allow_forking = $10,
+            web_commit_signoff_required = $11
+        WHERE id = $1
+        "#,
+    )
+    .bind(repository.id)
+    .bind(&next_name)
+    .bind(&next_description)
+    .bind(next_visibility.as_str())
+    .bind(&next_default_branch)
+    .bind(next_template)
+    .bind(next_features.issues)
+    .bind(next_features.projects)
+    .bind(next_features.wiki)
+    .bind(next_allow_forking)
+    .bind(next_signoff)
+    .execute(&mut *tx)
+    .await?;
+
+    let default_method = if next_merge.squash {
+        "squash"
+    } else if next_merge.merge_commit {
+        "merge_commit"
+    } else {
+        "rebase"
+    };
+    sqlx::query(
+        r#"
+        INSERT INTO repository_merge_settings (
+            repository_id, allow_squash, allow_merge_commit, allow_rebase, default_method
+        )
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (repository_id) DO UPDATE
+        SET allow_squash = EXCLUDED.allow_squash,
+            allow_merge_commit = EXCLUDED.allow_merge_commit,
+            allow_rebase = EXCLUDED.allow_rebase,
+            default_method = CASE
+                WHEN repository_merge_settings.default_method = 'squash' AND EXCLUDED.allow_squash THEN 'squash'
+                WHEN repository_merge_settings.default_method = 'merge_commit' AND EXCLUDED.allow_merge_commit THEN 'merge_commit'
+                WHEN repository_merge_settings.default_method = 'rebase' AND EXCLUDED.allow_rebase THEN 'rebase'
+                ELSE EXCLUDED.default_method
+            END
+        "#,
+    )
+    .bind(repository.id)
+    .bind(next_merge.squash)
+    .bind(next_merge.merge_commit)
+    .bind(next_merge.rebase)
+    .bind(default_method)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO repository_settings_audit_events (
+            repository_id, actor_user_id, event_type, before_state, after_state
+        )
+        VALUES ($1, $2, 'repository_settings.updated', $3, $4)
+        "#,
+    )
+    .bind(repository.id)
+    .bind(actor_user_id)
+    .bind(json!(current))
+    .bind(json!({
+        "name": next_name,
+        "description": next_description,
+        "visibility": next_visibility,
+        "defaultBranch": next_default_branch,
+        "isTemplate": next_template,
+        "allowForking": next_allow_forking,
+        "webCommitSignoffRequired": next_signoff,
+        "features": next_features,
+        "mergeMethods": next_merge,
+    }))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let updated = get_repository(pool, repository.id)
+        .await?
+        .ok_or(RepositoryError::NotFound)?;
+    repository_settings_view(pool, &updated, role.as_str())
+        .await
+        .map(Some)
+}
+
+pub async fn can_admin_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+) -> Result<bool, RepositoryError> {
+    if repository.owner_user_id == Some(actor_user_id) {
+        return Ok(true);
+    }
+    Ok(
+        repository_permission_for_user(pool, repository.id, actor_user_id)
+            .await?
+            .is_some_and(|permission| permission.role.can_admin()),
+    )
+}
+
+async fn repository_settings_view(
+    pool: &PgPool,
+    repository: &Repository,
+    viewer_permission: &str,
+) -> Result<RepositorySettingsView, RepositoryError> {
+    let row = sqlx::query(
+        r#"
+        SELECT repositories.is_template,
+               repositories.has_issues,
+               repositories.has_projects,
+               repositories.has_wiki,
+               repositories.allow_forking,
+               repositories.web_commit_signoff_required,
+               COALESCE(repository_merge_settings.allow_merge_commit, true) AS allow_merge_commit,
+               COALESCE(repository_merge_settings.allow_squash, true) AS allow_squash,
+               COALESCE(repository_merge_settings.allow_rebase, true) AS allow_rebase,
+               COALESCE(repository_merge_settings.allow_auto_merge, false) AS allow_auto_merge,
+               (SELECT count(*) FROM repository_settings_audit_events WHERE repository_id = repositories.id) AS audit_event_count
+        FROM repositories
+        LEFT JOIN repository_merge_settings
+          ON repository_merge_settings.repository_id = repositories.id
+        WHERE repositories.id = $1
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(RepositorySettingsView {
+        id: repository.id,
+        owner_login: repository.owner_login.clone(),
+        name: repository.name.clone(),
+        description: repository.description.clone(),
+        visibility: repository.visibility.clone(),
+        default_branch: repository.default_branch.clone(),
+        is_archived: repository.is_archived,
+        is_template: row.get("is_template"),
+        allow_forking: row.get("allow_forking"),
+        web_commit_signoff_required: row.get("web_commit_signoff_required"),
+        features: RepositorySettingsFeatureFlags {
+            issues: row.get("has_issues"),
+            projects: row.get("has_projects"),
+            wiki: row.get("has_wiki"),
+        },
+        merge_methods: RepositorySettingsMergeMethods {
+            merge_commit: row.get("allow_merge_commit"),
+            squash: row.get("allow_squash"),
+            rebase: row.get("allow_rebase"),
+            auto_merge: row.get("allow_auto_merge"),
+        },
+        capabilities: RepositorySettingsCapabilities {
+            rename: true,
+            archive: false,
+            transfer: false,
+            change_visibility: true,
+            delete: false,
+        },
+        viewer_permission: viewer_permission.to_owned(),
+        audit_event_count: row.get::<i64, _>("audit_event_count"),
+        updated_at: repository.updated_at,
+    })
 }
 
 pub async fn get_repository_by_owner_name(

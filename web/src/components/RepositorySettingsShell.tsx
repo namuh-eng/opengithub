@@ -6,6 +6,31 @@ import {
   repositorySettingsHref,
 } from "@/lib/navigation";
 
+const REPOSITORY_SETTINGS_GROUPS = [
+  {
+    label: "General",
+    sections: ["general"],
+  },
+  {
+    label: "Access",
+    sections: ["access"],
+  },
+  {
+    label: "Code and automation",
+    sections: ["branches", "actions", "hooks", "pages", "tags"],
+  },
+  {
+    label: "Security",
+    sections: ["secrets", "security"],
+  },
+] as const;
+
+function repositorySettingsGroupItems(sections: readonly string[]) {
+  return REPOSITORY_SETTINGS_NAV_ITEMS.filter((item) =>
+    sections.includes(item.section),
+  );
+}
+
 type RepositorySettingsShellProps = {
   activeSection: string;
   children: React.ReactNode;
@@ -36,35 +61,57 @@ export function RepositorySettingsShell({
           aria-label="Repository settings navigation"
           className="grid gap-1 t-sm"
         >
-          {REPOSITORY_SETTINGS_NAV_ITEMS.map((item) => {
-            const active = activeSection === item.section;
-            return (
-              <Link
-                aria-current={active ? "page" : undefined}
-                className="rounded-md px-3 py-2 font-medium hover:bg-[var(--hover)]"
-                href={repositorySettingsHref(
-                  repository.owner_login,
-                  repository.name,
-                  item,
-                )}
-                key={item.section}
-                style={
-                  active
-                    ? {
-                        background: "var(--surface-2)",
-                        border: "1px solid var(--line)",
-                        color: "var(--ink-1)",
-                      }
-                    : {
-                        border: "1px solid transparent",
-                        color: "var(--ink-3)",
-                      }
-                }
+          {REPOSITORY_SETTINGS_GROUPS.map((group) => (
+            <div className="grid gap-1" key={group.label}>
+              <p
+                className="t-label px-3 pt-3 first:pt-0"
+                style={{ color: "var(--ink-4)" }}
               >
-                {item.label}
-              </Link>
-            );
-          })}
+                {group.label}
+              </p>
+              {repositorySettingsGroupItems(group.sections).map((item) => {
+                const active = activeSection === item.section;
+                return (
+                  <Link
+                    aria-current={active ? "page" : undefined}
+                    className="rounded-md px-3 py-2 font-medium hover:bg-[var(--hover)]"
+                    href={repositorySettingsHref(
+                      repository.owner_login,
+                      repository.name,
+                      item,
+                    )}
+                    key={item.section}
+                    style={
+                      active
+                        ? {
+                            background: "var(--surface-2)",
+                            border: "1px solid var(--line)",
+                            color: "var(--ink-1)",
+                          }
+                        : {
+                            border: "1px solid transparent",
+                            color: "var(--ink-3)",
+                          }
+                    }
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
+          <div className="grid gap-1">
+            <p className="t-label px-3 pt-3" style={{ color: "var(--ink-4)" }}>
+              Danger Zone
+            </p>
+            <Link
+              className="rounded-md px-3 py-2 font-medium hover:bg-[var(--hover)]"
+              href={`/${repository.owner_login}/${repository.name}/settings#danger-zone`}
+              style={{ border: "1px solid transparent", color: "var(--ink-3)" }}
+            >
+              Destructive actions
+            </Link>
+          </div>
         </nav>
       </aside>
       <section className="min-w-0">

@@ -710,6 +710,56 @@ export type RepositoryOverview = RepositorySummary & {
   cloneUrls: RepositoryCloneUrls;
 };
 
+export type RepositorySettingsFeatureFlags = {
+  issues: boolean;
+  projects: boolean;
+  wiki: boolean;
+};
+
+export type RepositorySettingsMergeMethods = {
+  mergeCommit: boolean;
+  squash: boolean;
+  rebase: boolean;
+  autoMerge: boolean;
+};
+
+export type RepositorySettings = {
+  id: string;
+  ownerLogin: string;
+  name: string;
+  description: string | null;
+  visibility: RepositoryVisibility;
+  defaultBranch: string;
+  isArchived: boolean;
+  isTemplate: boolean;
+  allowForking: boolean;
+  webCommitSignoffRequired: boolean;
+  features: RepositorySettingsFeatureFlags;
+  mergeMethods: RepositorySettingsMergeMethods;
+  capabilities: {
+    rename: boolean;
+    archive: boolean;
+    transfer: boolean;
+    changeVisibility: boolean;
+    delete: boolean;
+  };
+  viewerPermission: string;
+  auditEventCount: number;
+  updatedAt: string;
+};
+
+export type UpdateRepositorySettingsRequest = Partial<{
+  name: string;
+  description: string | null;
+  visibility: RepositoryVisibility;
+  defaultBranch: string;
+  isTemplate: boolean;
+  allowForking: boolean;
+  webCommitSignoffRequired: boolean;
+  features: RepositorySettingsFeatureFlags;
+  mergeMethods: RepositorySettingsMergeMethods;
+}>;
+
 export type WritableRepositoryOwner = {
   ownerType: RepositoryOwnerType;
   id: string;
@@ -4726,6 +4776,77 @@ export async function getRepositoryIssueTemplatesFromCookie(
 
   const body = (await response.json()) as IssueTemplateList;
   return body.items;
+}
+
+export async function getRepositorySettingsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+): Promise<RepositorySettings | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Repository settings are temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "settings_failed",
+          message: "Repository settings could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as RepositorySettings;
+}
+
+export async function updateRepositorySettingsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  request: UpdateRepositorySettingsRequest,
+): Promise<RepositorySettings> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = body as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Repository settings could not be updated",
+      { cause: envelope },
+    );
+  }
+
+  return body as RepositorySettings;
 }
 
 export async function getRepositoryFromCookie(

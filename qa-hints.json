@@ -3122,7 +3122,10 @@
       "TEST_DATABASE_URL-backed full make test still exposes an unrelated PR compare owner-login fixture mismatch; the standard make test path passed and org-focused frontend/browser coverage passed.",
       "Phase 3 still needs hardening for composed query normalization, pagination preservation under all controls, compact/mobile layout stress, and filter-count consistency across larger visible repository sets.",
       "QA should stress very long organization/repository names, many topics/languages, fork-source links, direct admin permissions for non-members, hidden private/internal repositories, and empty result recovery from every filter control."
-"feature_id": "notifications-001",
+    ]
+  },
+  {
+    "feature_id": "notifications-001",
     "tests_written": [
       "Added Rust API contract coverage in crates/api/tests/api_notifications_inbox_contract.rs for authenticated /api/notifications, reason/repo filters, repository grouping, unread tab, repository buckets, subscribed row state, and PATCH mark-read behavior.",
       "Added Vitest coverage in web/tests/notifications-inbox.test.tsx for folders, default filters, repository buckets, All/Unread tabs, query search form, sort/group links, row open hrefs, unread/subscribed states, and editable empty states.",
@@ -3150,6 +3153,21 @@
       "The first full E2E run failed only because the API had been started with API_URL=http://localhost:3016, producing localhost clone URLs for an unrelated repository Code-tab assertion; rerunning with API_URL=https://opengithub.namuh.co passed all 90 E2E tests.",
       "Phase 4 still needs the organization people list API/UI and signed-out/member/admin people visibility coverage before orgs-002 can be marked build_pass=true.",
       "QA should stress many pages of organization repositories, unusual language casing and spacing, direct repository permissions for non-members, empty results after every chip removal path, and compact density with very long names/topics."
+    ]
+  },
+  {
+    "feature_id": "settings-001",
+    "tests_written": [
+      "Rust contract api_repository_settings_contract covers admin-only settings access, forbidden read users, merge-method validation, persisted feature/signoff writes, and audit-event count increments.",
+      "Repository Settings page now reads real admin-only settings and renders working general, feature, merge-method, forking, and web-commit-signoff controls through typed Next.js and Rust APIs.",
+      "Vitest repository-settings-overview covers confirmed-only UI updates, no dead merge-method writes, and typed-confirmation danger dialogs with final destructive actions disabled until backend support exists.",
+      "Verification passed: focused web settings test, focused Rust settings contract, web typecheck, Editorial banned-value scan on touched UI files, make check, and CARGO_INCREMENTAL=0 make test with Cargo tests plus 248 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Run authenticated browser smoke with a real admin session against /namuh-eng/opengithub/settings and verify live reference defaults: public, main default branch, Issues disabled, Projects/Wiki enabled, merge/squash/rebase enabled, auto-merge disabled, forking enabled.",
+      "Danger-zone archive/transfer/delete final mutations are intentionally unavailable pending backend support; QA should verify the typed-confirmation modal copy and disabled final buttons, not expect destructive persistence.",
+      "Concurrent settings writes should receive deeper conflict/version testing once optimistic locking or updated-at preconditions are introduced.",
+      "Auto-merge remains read-only because no backend mutation support exists yet."
     ]
   }
 ]

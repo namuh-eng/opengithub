@@ -161,6 +161,7 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         RepositoryError::InvalidVisibility(_)
         | RepositoryError::InvalidName(_)
         | RepositoryError::InvalidDescription(_)
+        | RepositoryError::NoMergeMethodEnabled
         | RepositoryError::UnknownTemplate(_)
         | RepositoryError::UnknownGitignoreTemplate(_)
         | RepositoryError::UnknownLicenseTemplate(_) => error_response(
