@@ -3293,5 +3293,19 @@
       "Real Google account selection/callback could not be completed because this isolated QA lane uses dummy local OAuth credentials, not a configured Google test account.",
       "npm install reported 2 moderate transitive audit findings in frontend tooling; no production dependency change was made for auth-001."
     ]
+  },
+  {
+    "feature_id": "onboarding-001",
+    "tests_written": [
+      "Independent QA passed onboarding-001 without scoped code fixes; set onboarding-001.qa_pass=true.",
+      "Verified zero-repository dashboard empty state renders inside the app shell with Top repositories search/New controls, Create repository, Import repository, Read setup guide CTAs, per-hint dismiss buttons, no inert links/buttons, and repository-present switch to Dashboard feed.",
+      "Verified dismiss persistence and security/API behavior through focused frontend proxy tests and Rust onboarding/dashboard contract tests: anonymous dashboard/onboarding/hint routes return JSON 401, hint dismissal is user-scoped and idempotent, restore is safe, dashboard summary exposes empty-state and dismissed-hint contracts.",
+      "Verification passed: focused dashboard-onboarding Vitest (15 tests); focused Rust dashboard_onboarding + dashboard_summary tests (13 tests); cd web && npx tsc --noEmit --pretty false; CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 make check; CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 make test with Cargo tests plus 267 web tests; focused dashboard-onboarding Playwright (4 tests); CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 make test-e2e (18 tests); local API smoke for anonymous /api/dashboard and onboarding routes returned 401 without leaking session details; Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Real Google OAuth consent/callback could not be completed in this isolated QA lane because only dummy local OAuth credentials are available.",
+      "Signed-in browser E2E for the zero-repository seeded dashboard depends on TEST_DATABASE_URL/DATABASE_URL; no database URL was present, so DB-backed signed-in coverage is represented by Rust contract tests and existing skipped Playwright seed coverage rather than a live browser session.",
+      "npm ci reported 2 moderate transitive audit findings in frontend tooling; no production dependency change was made for onboarding-001."
+    ]
   }
 ]

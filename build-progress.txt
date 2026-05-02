@@ -1,3 +1,13 @@
+2026-05-03 - onboarding-001 independent QA pass
+
+- Independently QAed onboarding-001 against the PRD and found no scoped implementation defects requiring source changes.
+- Verified the zero-repository signed-in dashboard empty state contract in component/API tests: Top repositories sidebar with search and New link, empty repository copy, Create repository / Import repository / Read setup guide CTAs, per-hint dismiss controls, no inert controls, persisted dismissed hints, and switch from welcome panel to Dashboard feed once repositories exist.
+- Verified auth/security/API edges: anonymous /api/dashboard and /api/dashboard/onboarding routes return JSON 401 without leaking session details; hint dismissal is user-scoped/idempotent; dashboard summary includes empty-state and dismissed-hint contracts.
+- Browser smoke passed for protected dashboard/new/import redirects, setup guide reachability, no dead controls, and repository placeholder back-navigation. Full make test-e2e passed its 18 runnable Playwright tests in this no-DATABASE_URL lane.
+- Verification passed: focused `cd web && npx vitest run tests/dashboard-onboarding.test.tsx` (15 tests); focused `cargo test -p opengithub-api --test dashboard_onboarding --test dashboard_summary` (13 tests); `cd web && npx tsc --noEmit --pretty false`; `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 make check`; `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 make test` with Cargo tests plus 267 web tests; focused `cd web && npx playwright test tests/e2e/dashboard-onboarding.spec.ts --project=chromium` (4 tests); `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 make test-e2e` (18 tests); local API curl smoke for anonymous dashboard/onboarding endpoints; Editorial banned-value scan returned zero matches.
+- Created `.ralph-setup-done` after the documented Makefile setup guard, installed frontend dependencies with `npm ci`, and cleared only disposable Rust target caches outside the protected main checkout to recover from local disk exhaustion during verification.
+- Set only `onboarding-001.qa_pass=true` in `prd.json`; real Google OAuth consent/callback and DB-backed signed-in browser seed smoke were not feasible because this lane has dummy OAuth credentials and no DATABASE_URL/TEST_DATABASE_URL.
+
 2026-05-03 - settings-001 phase 4 admin/privacy/conflict guardrails
 
 - Completed Phase 4 from `.qrspi/settings-001/structure.md`: repository General settings now have stronger admin privacy, conflict, archive, unsupported destructive-action, docs, and browser guardrails without marking `settings-001.build_pass=true`.
