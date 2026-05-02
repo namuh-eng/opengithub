@@ -1220,6 +1220,30 @@ export type WebhookDeliveryDetailFetchResult =
   | { ok: true; delivery: WebhookDeliveryDetail }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type RepositoryWebhookMutationPayload = {
+  payloadUrl: string;
+  contentType?: WebhookContentType;
+  secret?: string | null;
+  sslVerify?: boolean;
+  eventSelection?: WebhookEventSelection;
+  events?: string[];
+  active?: boolean;
+};
+
+export type RepositoryWebhookMutation =
+  | ({ action: "create-webhook" } & RepositoryWebhookMutationPayload)
+  | ({
+      action: "update-webhook";
+      hookId: string;
+    } & RepositoryWebhookMutationPayload)
+  | { action: "delete-webhook"; hookId: string }
+  | { action: "ping-webhook"; hookId: string }
+  | { action: "redeliver-delivery"; hookId: string; deliveryId: string };
+
+export type RepositoryWebhookMutationResult =
+  | RepositoryWebhookSettings
+  | { settings: RepositoryWebhookSettings; delivery: WebhookDeliverySummary };
+
 export type BranchPolicyMutationRequirements =
   Partial<BranchPolicyRequirements>;
 
@@ -5785,6 +5809,65 @@ export async function getRepositoryWebhookDeliveryDetailFromCookie(
     ok: true,
     delivery: (await response.json()) as WebhookDeliveryDetail,
   };
+}
+
+export async function mutateRepositoryWebhookSettingsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  mutation: RepositoryWebhookMutation,
+): Promise<RepositoryWebhookMutationResult> {
+  const base = `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/hooks`;
+  let path = base;
+  let method = "POST";
+  let body: unknown;
+
+  switch (mutation.action) {
+    case "create-webhook": {
+      const { action: _action, ...payload } = mutation;
+      body = payload;
+      break;
+    }
+    case "update-webhook": {
+      const { action: _action, hookId, ...payload } = mutation;
+      path = `${base}/${encodeURIComponent(hookId)}`;
+      method = "PATCH";
+      body = payload;
+      break;
+    }
+    case "delete-webhook":
+      path = `${base}/${encodeURIComponent(mutation.hookId)}`;
+      method = "DELETE";
+      break;
+    case "ping-webhook":
+      path = `${base}/${encodeURIComponent(mutation.hookId)}/ping`;
+      break;
+    case "redeliver-delivery":
+      path = `${base}/${encodeURIComponent(mutation.hookId)}/deliveries/${encodeURIComponent(mutation.deliveryId)}/redeliver`;
+      break;
+  }
+
+  const response = await fetch(path, {
+    method,
+    headers: {
+      ...(body ? { "content-type": "application/json" } : {}),
+      ...(cookie ? { cookie } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const envelope = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Repository webhook update failed.",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as RepositoryWebhookMutationResult;
 }
 
 export async function mutateRepositoryBranchSettingsFromCookie(

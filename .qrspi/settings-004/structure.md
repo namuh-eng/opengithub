@@ -46,7 +46,7 @@
 
 ## Phase 3: Add/Edit/Delete/Test Webhook Mutations - confirmed forms and no dead controls
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire every visible webhook settings action to real server-confirmed writes. Admins must be able to create, edit, delete, ping-test, and redeliver hooks from the UI with inline success/error feedback, while invalid inputs never update local UI state optimistically.
 

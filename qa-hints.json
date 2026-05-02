@@ -3521,5 +3521,24 @@
       "Delivery worker behavior is deferred to Phase 4; queued ping rows are visible, but real outbound HTTP delivery, retries, HMAC signing, payload bounds, and retention cleanup need later QA.",
       "Stress private repository leakage, long payload URLs, long headers/body excerpts, failed delivery panels, mobile wrapping, concurrent admin edits, and secret redaction in audit/API responses."
     ]
+  },
+  {
+    "feature_id": "settings-004",
+    "tests_written": [
+      "Completed Phase 3 Add/Edit/Delete/Test Webhook Mutations without marking settings-004 build_pass=true.",
+      "Added same-origin Next.js webhook action forwarding for create, update, delete, ping, and redeliver mutations while preserving Rust API session authority.",
+      "Converted RepositoryWebhookSettingsPage into a client-backed Editorial mutation surface with Add/Edit forms, write-only secret handling, content type radios, SSL/active toggles, event selection radios, individual event checkbox grid, delete URL confirmation, ping confirmation, redelivery confirmation, inline errors, success feedback, and server-confirmed state refresh.",
+      "Create now redirects to the new hook detail with the queued ping delivery selected, and invalid selected-event forms are rejected before any local-only state change.",
+      "Focused Vitest coverage now asserts create payloads, client-side selected-event validation, delete confirmation, server-confirmed updates, no inert anchors/buttons, and Editorial primitive/token usage.",
+      "Focused Playwright smoke created a webhook from the UI, verified the detail redirect, edited events/active state, queued ping, redelivered a selected delivery, deleted the disposable hook with confirmation, checked mobile no-overflow, and saved settings-004 phase 3 screenshots.",
+      "Verification passed: focused repository_webhook_settings_contract harness compiled and passed with DB assertions self-skipped on this local database; focused webhook Vitest; web tsc --noEmit; TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check; DB_SSL=false make test with Cargo tests plus 292 frontend tests; focused repository-settings-hooks Playwright; full same-env make test-e2e with 95 Playwright tests."
+    ],
+    "needs_deeper_qa": [
+      "Rerun repository_webhook_settings_contract against a clean reachable TEST_DATABASE_URL so DB assertions execute instead of self-skipping.",
+      "Exercise real external receiver success/failure after Phase 4 delivery worker ships; Phase 3 only queues delivery records through settings mutations.",
+      "Stress concurrent admin edits, secret rotation, very long payload URLs, invalid downgrade attempts, duplicate redelivery clicks, and private repository leakage checks.",
+      "Verify keyboard traversal through Add/Edit/Delete/Test/Redeliver panels with a real browser and screen reader.",
+      "Delivery worker behavior remains Phase 4: outbound HTTP, HMAC signing, retries, timeout handling, payload/body truncation, and retention cleanup still need deeper QA."
+    ]
   }
 ]

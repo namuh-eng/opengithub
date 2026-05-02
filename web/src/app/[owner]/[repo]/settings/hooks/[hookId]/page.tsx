@@ -12,7 +12,13 @@ import {
 
 type RepositoryWebhookDetailPageProps = {
   params: Promise<{ hookId: string; owner: string; repo: string }>;
-  searchParams: Promise<{ delivery?: string | string[] }>;
+  searchParams: Promise<{
+    delete?: string | string[];
+    delivery?: string | string[];
+    edit?: string | string[];
+    redeliver?: string | string[];
+    test?: string | string[];
+  }>;
 };
 
 export default async function RepositoryWebhookDetailPage({
@@ -24,6 +30,24 @@ export default async function RepositoryWebhookDetailPage({
   const selectedDelivery = Array.isArray(query.delivery)
     ? query.delivery[0]
     : query.delivery;
+  const editValue = Array.isArray(query.edit) ? query.edit[0] : query.edit;
+  const testValue = Array.isArray(query.test) ? query.test[0] : query.test;
+  const deleteValue = Array.isArray(query.delete)
+    ? query.delete[0]
+    : query.delete;
+  const redeliverValue = Array.isArray(query.redeliver)
+    ? query.redeliver[0]
+    : query.redeliver;
+  const intent =
+    editValue === "webhook"
+      ? "edit"
+      : testValue === "ping"
+        ? "ping"
+        : deleteValue === "confirm"
+          ? "delete"
+          : redeliverValue === "confirm"
+            ? "redeliver"
+            : undefined;
   const ownerLogin = decodeURIComponent(owner);
   const repositoryName = decodeURIComponent(repo);
   const webhookId = decodeURIComponent(hookId);
@@ -53,6 +77,7 @@ export default async function RepositoryWebhookDetailPage({
           <RepositoryWebhookSettingsPage
             deliveryResult={deliveryResult}
             detailResult={detailResult}
+            intent={intent}
             repository={repository}
             settingsResult={settingsResult}
           />

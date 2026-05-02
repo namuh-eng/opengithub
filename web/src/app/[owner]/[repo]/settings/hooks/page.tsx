@@ -22,7 +22,7 @@ export default async function RepositorySettingsHooksPage({
   const ownerLogin = decodeURIComponent(owner);
   const repositoryName = decodeURIComponent(repo);
   const newValue = Array.isArray(query.new) ? query.new[0] : query.new;
-  const mode = newValue === "webhook" ? "new" : undefined;
+  const intent = newValue === "webhook" ? "new" : undefined;
   const { session, shellContext } = await getSessionAndShellContext();
   const [repository, settingsResult] = await Promise.all([
     getRepository(ownerLogin, repositoryName),
@@ -38,7 +38,7 @@ export default async function RepositorySettingsHooksPage({
           title="Webhooks"
         >
           <RepositoryWebhookSettingsPage
-            mode={mode}
+            intent={intent}
             repository={repository}
             settingsResult={settingsResult}
           />

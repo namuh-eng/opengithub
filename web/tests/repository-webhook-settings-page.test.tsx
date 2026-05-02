@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RepositoryWebhookSettingsPage } from "@/components/RepositoryWebhookSettingsPage";
 import type {
   RepositoryOverview,
@@ -8,6 +8,12 @@ import type {
   WebhookDeliveryDetail,
   WebhookDeliverySummary,
 } from "@/lib/api";
+
+const pushMock = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: pushMock }),
+}));
 
 function repositoryOverview(
   overrides: Partial<RepositoryOverview> = {},
@@ -169,6 +175,11 @@ function deliveryDetail(
 }
 
 describe("repository webhook settings page", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    pushMock.mockReset();
+  });
+
   it("renders the empty state with a concrete add webhook route", () => {
     const { container } = render(
       <RepositoryWebhookSettingsPage
@@ -213,18 +224,9 @@ describe("repository webhook settings page", () => {
     expect(screen.getByText("Secret configured")).toBeVisible();
     expect(screen.getByText("Pushes, Issues")).toBeVisible();
     expect(screen.getByText("delivered · 200 · 88ms")).toBeVisible();
-    expect(screen.getByRole("link", { name: "Edit" })).toHaveAttribute(
-      "href",
-      "/namuh-eng/opengithub/settings/hooks/hook-1?edit=webhook",
-    );
-    expect(screen.getByRole("link", { name: "Test" })).toHaveAttribute(
-      "href",
-      "/namuh-eng/opengithub/settings/hooks/hook-1?test=ping",
-    );
-    expect(screen.getByRole("link", { name: "Delete" })).toHaveAttribute(
-      "href",
-      "/namuh-eng/opengithub/settings/hooks/hook-1?delete=confirm",
-    );
+    expect(screen.getByRole("button", { name: "Edit" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Test" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeEnabled();
   });
 
   it("renders hook detail deliveries and selected delivery panels", () => {
@@ -245,10 +247,7 @@ describe("repository webhook settings page", () => {
     ).toBeVisible();
     expect(screen.getByText("Response")).toBeVisible();
     expect(screen.getByText(/Keep it logically awesome/)).toBeVisible();
-    expect(screen.getByRole("link", { name: "Redeliver" })).toHaveAttribute(
-      "href",
-      "/namuh-eng/opengithub/settings/hooks/hook-1?delivery=delivery-1&redeliver=confirm",
-    );
+    expect(screen.getByRole("button", { name: "Redeliver" })).toBeEnabled();
   });
 
   it("renders forbidden without leaking private hook URLs", () => {
@@ -272,20 +271,16 @@ describe("repository webhook settings page", () => {
   it("renders the new webhook event contract view", () => {
     render(
       <RepositoryWebhookSettingsPage
-        mode="new"
+        intent="new"
         repository={repositoryOverview()}
         settingsResult={{ ok: true, settings: settings({ hooks: [] }) }}
       />,
     );
 
-    const addEndpoint = screen.getByRole("heading", { name: "Add endpoint" });
+    const addEndpoint = screen.getByRole("heading", { name: "Add webhook" });
     expect(addEndpoint).toBeVisible();
-    expect(screen.getByText("Pull requests")).toBeVisible();
-    expect(screen.getByText("pull_request")).toBeVisible();
-    expect(screen.getByRole("link", { name: "Back to hooks" })).toHaveAttribute(
-      "href",
-      "/namuh-eng/opengithub/settings/hooks",
-    );
+    expect(screen.getByLabelText("Payload URL")).toBeVisible();
+    expect(screen.getByText("Let me select individual events")).toBeVisible();
   });
 
   it("does not render inert anchors or enabled placeholder buttons", () => {
@@ -304,7 +299,121 @@ describe("repository webhook settings page", () => {
     }
 
     for (const button of Array.from(container.querySelectorAll("button"))) {
-      expect(button).toBeDisabled();
+      expect(button).toHaveAccessibleName(/.+/);
     }
+  });
+
+  it("submits create form and updates from confirmed server state", async () => {
+    const nextSettings = settings({
+      hooks: [
+        {
+          ...settings().hooks[0],
+          id: "hook-created",
+          payloadUrl: "https://receiver.example.com/new",
+        },
+      ],
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      json: async () => ({
+        delivery: delivery({ id: "delivery-created" }),
+        settings: nextSettings,
+      }),
+      ok: true,
+    } as Response);
+
+    render(
+      <RepositoryWebhookSettingsPage
+        intent="new"
+        repository={repositoryOverview()}
+        settingsResult={{ ok: true, settings: settings({ hooks: [] }) }}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Payload URL"), {
+      target: { value: "https://receiver.example.com/new" },
+    });
+    fireEvent.click(screen.getByLabelText("Let me select individual events"));
+    fireEvent.click(screen.getByLabelText(/Pushes/));
+    fireEvent.change(screen.getByLabelText("Secret"), {
+      target: { value: "playwright-secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add webhook" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("Webhook created and ping delivery queued."),
+      ).toBeVisible(),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/namuh-eng/opengithub/settings/hooks/actions",
+      expect.objectContaining({
+        body: expect.stringContaining("https://receiver.example.com/new"),
+        method: "POST",
+      }),
+    );
+    expect(
+      screen.getByRole("link", {
+        name: "https://receiver.example.com/new",
+      }),
+    ).toBeVisible();
+    expect(pushMock).toHaveBeenCalledWith(
+      "/namuh-eng/opengithub/settings/hooks/hook-created?delivery=delivery-created",
+    );
+  });
+
+  it("requires selected events before submitting local state", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    render(
+      <RepositoryWebhookSettingsPage
+        intent="new"
+        repository={repositoryOverview()}
+        settingsResult={{ ok: true, settings: settings({ hooks: [] }) }}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Payload URL"), {
+      target: { value: "https://receiver.example.com/new" },
+    });
+    fireEvent.click(screen.getByLabelText("Let me select individual events"));
+    fireEvent.click(screen.getByRole("button", { name: "Add webhook" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Select at least one individual event.",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("confirms delete with the hook URL before sending the action", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      json: async () => settings({ hooks: [] }),
+      ok: true,
+    } as Response);
+
+    render(
+      <RepositoryWebhookSettingsPage
+        detailResult={{ ok: true, detail: detail() }}
+        intent="delete"
+        repository={repositoryOverview()}
+        settingsResult={{ ok: true, settings: settings() }}
+      />,
+    );
+
+    const deleteButton = screen.getByRole("button", { name: "Delete webhook" });
+    expect(deleteButton).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Type payload URL to confirm"), {
+      target: { value: "https://receiver.opengithub.local/hook" },
+    });
+    fireEvent.click(deleteButton);
+
+    await waitFor(() =>
+      expect(screen.getByText("Webhook deleted.")).toBeVisible(),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/namuh-eng/opengithub/settings/hooks/actions",
+      expect.objectContaining({
+        body: expect.stringContaining("delete-webhook"),
+        method: "POST",
+      }),
+    );
   });
 });

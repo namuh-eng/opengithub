@@ -2,7 +2,6 @@ import { execFileSync } from "node:child_process";
 import { expect, type Page, test } from "@playwright/test";
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const apiUrl = process.env.API_URL ?? "http://localhost:3016";
 
 type SeededDashboard = {
   cookieName: string;
@@ -64,41 +63,32 @@ test.skip(
   "repository webhook settings smoke needs TEST_DATABASE_URL or DATABASE_URL",
 );
 
-test("admin can view webhook list, detail, and delivery panels", async ({
+test("admin can create, edit, test, redeliver, and delete a webhook", async ({
   page,
-  request,
 }) => {
   const seeded = seedDashboard();
   await signIn(page, seeded);
-  const receiverUrl = `https://receiver.opengithub.local/hooks/${Date.now()}`;
-  const apiPath = `${apiUrl}/api/repos${seeded.firstRepositoryHref}/settings/hooks`;
+  const receiverUrl = `https://receiver.example.com/hooks/${Date.now()}`;
 
-  const createResponse = await request.post(apiPath, {
-    data: {
-      active: true,
-      contentType: "json",
-      eventSelection: "selected",
-      events: ["push", "issues"],
-      payloadUrl: receiverUrl,
-      secret: "playwright-secret-value",
-      sslVerify: true,
-    },
-    headers: {
-      cookie: `${seeded.cookieName}=${seeded.cookieValue}`,
-    },
-  });
-  expect(createResponse.status()).toBe(201);
-  const created = (await createResponse.json()) as {
-    delivery: { id: string };
-    settings: { hooks: Array<{ id: string }> };
-  };
-  const hookId = created.settings.hooks[0].id;
-  const deliveryId = created.delivery.id;
-
-  await page.goto(`${seeded.firstRepositoryHref}/settings/hooks`);
+  await page.goto(`${seeded.firstRepositoryHref}/settings/hooks?new=webhook`);
   await expect(
     page.getByRole("heading", { exact: true, name: "Webhooks" }),
   ).toBeVisible();
+  await page.getByLabel("Payload URL").fill(receiverUrl);
+  await page.getByLabel("Secret").fill("playwright-secret-value");
+  await page.getByLabel("Let me select individual events").check();
+  await expect(page.getByLabel(/Pushes/)).toBeVisible();
+  await page.getByLabel(/Pushes/).check();
+  await page.getByLabel(/Issues/).check();
+  await page.getByRole("button", { name: "Add webhook" }).click();
+  await expect(page).toHaveURL(/\/settings\/hooks\/[^/]+\?delivery=/);
+  const hookUrl = page.url();
+  const hookId = hookUrl.match(/\/settings\/hooks\/([^?]+)/)?.[1];
+  const deliveryId = new URL(hookUrl).searchParams.get("delivery");
+  expect(hookId).toBeTruthy();
+  expect(deliveryId).toBeTruthy();
+
+  await page.goto(`${seeded.firstRepositoryHref}/settings/hooks`);
   await expect(page.getByText("Configured endpoints")).toBeVisible();
   await expect(page.getByRole("link", { name: receiverUrl })).toHaveAttribute(
     "href",
@@ -111,7 +101,7 @@ test("admin can view webhook list, detail, and delivery panels", async ({
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/settings-004-phase2-hooks-list.jpg",
+    path: "../ralph/screenshots/build/settings-004-phase3-hooks-mutations.jpg",
   });
 
   await page.goto(
@@ -122,15 +112,36 @@ test("admin can view webhook list, detail, and delivery panels", async ({
   await expect(page.getByText("Request", { exact: true })).toBeVisible();
   await expect(page.getByText("Response", { exact: true })).toBeVisible();
   await expect(page.getByText(/Keep it logically awesome/)).toBeVisible();
-  await expect(page.getByRole("link", { name: "Redeliver" })).toHaveAttribute(
-    "href",
-    `${seeded.firstRepositoryHref}/settings/hooks/${hookId}?delivery=${deliveryId}&redeliver=confirm`,
-  );
+
+  await page.getByRole("button", { name: "Edit" }).click();
+  await page.getByLabel("Just push").check();
+  await page.getByLabel("Active").uncheck();
+  await page.getByRole("button", { name: "Edit webhook" }).click();
+  await expect(page.getByText("Webhook settings saved.")).toBeVisible();
+  await expect(page.getByText("Inactive")).toBeVisible();
+
+  await page.getByRole("button", { name: "Test" }).click();
+  await page.getByRole("button", { name: "Send ping" }).click();
+  await expect(page.getByText("Webhook ping delivery queued.")).toBeVisible();
+
+  await page.getByRole("button", { name: "Redeliver" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Redeliver" })
+    .click();
+  await expect(page.getByText("Webhook delivery queued again.")).toBeVisible();
   await expectNoDeadControls(page);
-  await page.screenshot({
-    fullPage: true,
-    path: "../ralph/screenshots/build/settings-004-phase2-hooks-detail.jpg",
-  });
+
+  await page.goto(`${seeded.firstRepositoryHref}/settings/hooks`);
+  const row = page.locator(".list-row", { hasText: receiverUrl });
+  await row.getByRole("button", { name: "Delete" }).click();
+  await expect(
+    page.getByRole("button", { name: "Delete webhook" }),
+  ).toBeDisabled();
+  await page.getByLabel("Type payload URL to confirm").fill(receiverUrl);
+  await page.getByRole("button", { name: "Delete webhook" }).click();
+  await expect(page.getByText("Webhook deleted.")).toBeVisible();
+  await expect(row).toHaveCount(0);
 
   await page.setViewportSize({ width: 390, height: 860 });
   await page.goto(`${seeded.firstRepositoryHref}/settings/hooks`);
@@ -140,6 +151,6 @@ test("admin can view webhook list, detail, and delivery panels", async ({
   expect(overflow).toBe(false);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/settings-004-phase2-hooks-mobile.jpg",
+    path: "../ralph/screenshots/build/settings-004-phase3-hooks-mobile.jpg",
   });
 });
