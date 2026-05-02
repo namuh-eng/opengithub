@@ -2198,3 +2198,11 @@
 - Verification passed: focused organization repository/people/api-docs Vitest; focused org Rust contracts; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; standard `DB_SSL=false make test` with Cargo tests plus 250 frontend tests; focused organization Playwright smoke with 4 tests; full `make test-e2e` with 91 Playwright tests; mandatory Editorial banned-value scan returned zero matches.
 - Browser smoke reused manually started local API/Next servers because `make dev` depends on missing `cargo-watch`; the Rust API was started without `API_URL` so clone URL assertions kept the public `opengithub.namuh.co` host while Next used `API_URL=http://localhost:3016`.
 - Marked Phase 5 as done in `.qrspi/orgs-002/structure.md` and set `orgs-002.build_pass` to `true` in `prd.json`; `qa_pass` remains `false` for the QA agent.
+
+2026-05-03 - settings-001 structure planning
+
+- Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `web/AGENTS.md`, the first incomplete `prd.json` entry, `design/project/wf-settings.jsx`, current repository settings placeholders, repository routes/domain, navigation helpers, existing settings tests, repository schema, permissions, and merge-policy schema.
+- Determined `settings-001` requires structure planning before implementation because `needs_structure: true` and `.qrspi/settings-001/structure.md` did not exist.
+- Added `.qrspi/settings-001/structure.md` with five independently verifiable vertical phases: repository settings API/audit contract, Editorial General settings shell, confirmed mutation flows, privacy/conflict/danger-zone guardrails, and final QA/build-pass bookkeeping.
+- Did not change `prd.json`; `build_pass` remains `false` until all implementation phases pass verification.
+- Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
