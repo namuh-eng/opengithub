@@ -2326,3 +2326,16 @@
 - Added `DASHBOARD_E2E_SKIP_MIGRATIONS` to the dashboard E2E seeder so pre-migrated local databases can be used when existing SQLx migration checksum/version drift blocks migration replay.
 - Verification passed: focused `web/tests/repository-access-settings-page.test.tsx`; focused `web/tests/e2e/repository-settings-access.spec.ts`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; `DB_SSL=false make test` with Cargo tests plus 272 frontend tests; `make test-e2e` with 18 passed; mandatory Editorial banned-value scan returned zero matches.
 - For the browser smoke only, the local `opengithub_identity_test` database needed the already-committed `202605030042_repository_access_settings` migration applied manually because older `202605030041` migration checksum/version drift prevents normal SQLx replay. `prd.json` remains `build_pass: false` because Phases 3-5 remain.
+
+2026-05-03 - settings-002 phase 3 access mutations
+
+- Completed Phase 3 from `.qrspi/settings-002/structure.md`: repository Access settings now wire visible access-management actions to real writes and refresh only from confirmed Rust API state.
+- Added same-origin `POST /{owner}/{repo}/settings/access/actions` route forwarding authenticated access mutations to the Rust API without JS-side auth.
+- Converted `RepositoryAccessSettingsPage` into an Editorial client mutation surface with Add person/team dialogs, role selectors, success/error feedback, direct collaborator/team removal confirmations, pending invitation cancellation, source-aware disabled controls, and no placeholder links.
+- Added typed `RepositoryAccessMutation` helpers in `web/src/lib/api.ts` for invite person, grant team, update person/team role, remove person/team, and cancel invitation.
+- Extended `repository_access_settings_contract` for duplicate pending invitation conflicts and missing team grant redaction.
+- Extended focused Vitest and Playwright coverage; browser smoke screenshot saved at `ralph/screenshots/build/settings-002-phase3-access-mutations.jpg`.
+- Verification passed: `cd web && npx tsc --noEmit --pretty false`; focused `web/tests/repository-access-settings-page.test.tsx`; focused `web/tests/e2e/repository-settings-access.spec.ts`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; `DB_SSL=false make test` with Cargo tests plus 273 frontend tests; mandatory Editorial banned-value scan returned zero matches.
+- Focused `repository_access_settings_contract` compiled and passed but self-skipped DB assertions because the local helper could not connect/replay the configured `TEST_DATABASE_URL`; rerun against a clean reachable Postgres migration state for full DB evidence.
+- Full `make test-e2e` without migration skip failed on the existing `202605030041` SQLx checksum drift; retry with `DASHBOARD_E2E_SKIP_MIGRATIONS=1` reached 91/93 passing, with remaining unrelated failures in `navigation-settings` strict heading matching and `repository-code-overview` clone URL host expectations from the Playwright webServer `API_URL` override.
+- Marked Phase 3 as done in `.qrspi/settings-002/structure.md`; `prd.json` remains `build_pass: false` because Phases 4-5 remain.

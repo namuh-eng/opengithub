@@ -1,5 +1,11 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RepositoryAccessSettingsPage } from "@/components/RepositoryAccessSettingsPage";
 import type {
   RepositoryAccessSettings,
@@ -214,6 +220,10 @@ function okResult(
 }
 
 describe("repository access settings page", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("renders people, teams, pending invitations, and Editorial primitives", () => {
     const { container } = render(
       <RepositoryAccessSettingsPage
@@ -266,9 +276,9 @@ describe("repository access settings page", () => {
     expect(screen.getByLabelText("Role for morgan")).toBeDisabled();
     expect(screen.getByLabelText("Role for ashley-ha")).toBeEnabled();
     expect(screen.getByLabelText("Role for Everyone")).toBeDisabled();
-    expect(screen.getAllByRole("link", { name: "Why disabled" }).length).toBe(
-      3,
-    );
+    expect(
+      screen.getAllByRole("button", { name: "Source managed" }).length,
+    ).toBe(3);
     expect(
       screen.getByText(/Owner, inherited organization, and team-derived rows/),
     ).toBeVisible();
@@ -352,5 +362,91 @@ describe("repository access settings page", () => {
         screen.getByRole("navigation", { name: "Access sections" }),
       ).getByRole("link", { name: /Teams/ }),
     ).toHaveAttribute("href", "#team-access");
+  });
+
+  it("sends invites, role changes, removals, and cancellation through confirmed server state", async () => {
+    const nextSettings = accessSettings({
+      people: [
+        {
+          ...accessSettings().people[0],
+        },
+        {
+          ...accessSettings().people[1],
+          role: "maintain",
+        },
+      ],
+      teams: [],
+      invitations: [],
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      json: async () => nextSettings,
+      ok: true,
+    } as Response);
+
+    render(
+      <RepositoryAccessSettingsPage
+        repository={repositoryOverview()}
+        settingsResult={okResult()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add people" }));
+    fireEvent.change(
+      screen.getByPlaceholderText("octo@example.com or username"),
+      {
+        target: { value: "casey@example.com" },
+      },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Send invitation" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        "/namuh-eng/opengithub/settings/access/actions",
+        expect.objectContaining({
+          body: JSON.stringify({
+            action: "invite-person",
+            emailOrLogin: "casey@example.com",
+            role: "read",
+          }),
+          method: "POST",
+        }),
+      ),
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Access settings saved.",
+    );
+
+    fireEvent.change(screen.getByLabelText("Role for ashley-ha"), {
+      target: { value: "maintain" },
+    });
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        "/namuh-eng/opengithub/settings/access/actions",
+        expect.objectContaining({
+          body: JSON.stringify({
+            action: "update-person-role",
+            role: "maintain",
+            userId: "user-direct",
+          }),
+        }),
+      ),
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Add teams" })[0]);
+    fireEvent.change(screen.getByLabelText("Team"), {
+      target: { value: "docs" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add team" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        "/namuh-eng/opengithub/settings/access/actions",
+        expect.objectContaining({
+          body: JSON.stringify({
+            action: "grant-team",
+            teamSlug: "docs",
+            role: "read",
+          }),
+        }),
+      ),
+    );
   });
 });

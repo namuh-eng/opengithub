@@ -3353,5 +3353,24 @@
       "Stress concurrent role edits, last-admin protection, organization base permissions, team membership changes after grants, and private repository leakage checks.",
       "Browser/UI smoke was skipped because Phase 1 is API-first; Phase 2 should verify the Editorial access settings shell."
     ]
+  },
+  {
+    "feature_id": "settings-002",
+    "tests_written": [
+      "Completed Phase 3 Access Mutations without marking settings-002 build_pass=true.",
+      "Added same-origin POST /{owner}/{repo}/settings/access/actions route forwarding authenticated access mutations to the Rust API without JS-side auth.",
+      "Wired the Editorial Access page to real confirmed server-state writes for inviting a person, granting a team, updating direct collaborator/team roles, removing direct access, and canceling pending invitations.",
+      "Extended web/tests/repository-access-settings-page.test.tsx for mutation requests, dialogs, validation surfaces, enabled/disabled source-aware controls, and confirmed server state refresh.",
+      "Extended crates/api/tests/repository_access_settings_contract.rs for duplicate pending invitation conflict and missing team grant redaction.",
+      "Extended web/tests/e2e/repository-settings-access.spec.ts to smoke invite/cancel, role change, removal, no-dead-control behavior, forbidden non-admin state, and saved ralph/screenshots/build/settings-002-phase3-access-mutations.jpg.",
+      "Verification passed: web tsc, focused access Vitest, focused access Playwright smoke, TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check, DB_SSL=false make test with Cargo tests plus 273 frontend tests, mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Focused repository_access_settings_contract compiled but self-skipped DB assertions in this local run because the helper could not connect/replay the configured TEST_DATABASE_URL; rerun against a clean reachable Postgres migration state.",
+      "Full make test-e2e with DASHBOARD_E2E_SKIP_MIGRATIONS=1 reached 91/93 passing; remaining failures were existing unrelated issues in navigation-settings strict heading matching and repository-code-overview clone URL host expectations.",
+      "Real SES email delivery remains degraded/local-only; QA should verify queued/sent statuses once SES credentials and mail jobs are active.",
+      "Invite acceptance lifecycle, pending invite expiry, concurrent role edits, last-admin protection, organization base permissions, and team membership changes after grants remain deeper QA targets.",
+      "Stress long usernames, team names, and email addresses in dialogs and row controls on mobile."
+    ]
   }
 ]

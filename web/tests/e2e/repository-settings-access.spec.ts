@@ -99,15 +99,52 @@ test("admin can load repository access settings shell", async ({ page }) => {
 
   await page.getByRole("link", { name: "Clear" }).click();
   await expect(
-    page.getByRole("link", { name: "Add people" }).first(),
-  ).toHaveAttribute("href", "#invite-people");
+    page.getByRole("button", { name: "Add people" }).first(),
+  ).toBeEnabled();
+
+  await page.getByRole("button", { name: "Add people" }).first().click();
   await expect(
-    page.getByRole("link", { name: "Add teams" }).first(),
-  ).toHaveAttribute("href", "#invite-teams");
+    page.getByRole("heading", { name: "Invite a collaborator" }),
+  ).toBeVisible();
+  const inviteDialog = page.getByRole("dialog", {
+    name: "Invite a collaborator",
+  });
+  await page
+    .getByPlaceholder("octo@example.com or username")
+    .fill(`phase3-${Date.now()}@opengithub.local`);
+  await inviteDialog.getByLabel("Role").selectOption("triage");
+  await page.getByRole("button", { name: "Send invitation" }).click();
+  await expect(page.getByRole("status")).toContainText(
+    "Access settings saved.",
+  );
+  await expect(page.getByText("degraded").first()).toBeVisible();
+
+  const editableRole = page.locator("select:not([disabled])").first();
+  await editableRole.selectOption("maintain");
+  await expect(page.getByRole("status")).toContainText("role was updated");
+
+  await page.getByRole("button", { name: "Cancel invitation" }).first().click();
+  await expect(
+    page.getByRole("heading", { name: "Cancel pending invitation" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Cancel pending invitation" }).click();
+  await expect(page.getByRole("status")).toContainText(
+    "Pending invitation was canceled.",
+  );
+
+  await page.getByRole("button", { name: "Remove" }).first().click();
+  await expect(
+    page.getByRole("heading", { name: "Remove direct access" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Remove direct access" }).click();
+  await expect(page.getByRole("status")).toContainText(
+    "was removed from direct access.",
+  );
+
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/settings-002-phase2-access-shell.jpg",
+    path: "../ralph/screenshots/build/settings-002-phase3-access-mutations.jpg",
   });
 
   await page.context().clearCookies();

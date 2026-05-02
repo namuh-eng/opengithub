@@ -5390,6 +5390,97 @@ export async function getRepositoryAccessSettingsFromCookie(
   };
 }
 
+export type RepositoryAccessMutation =
+  | {
+      action: "invite-person";
+      emailOrLogin: string;
+      role: Exclude<RepositoryAccessRole, "owner">;
+    }
+  | {
+      action: "grant-team";
+      teamSlug: string;
+      role: Exclude<RepositoryAccessRole, "owner">;
+    }
+  | {
+      action: "update-person-role";
+      userId: string;
+      role: Exclude<RepositoryAccessRole, "owner">;
+    }
+  | {
+      action: "update-team-role";
+      teamId: string;
+      role: Exclude<RepositoryAccessRole, "owner">;
+    }
+  | { action: "remove-person"; userId: string }
+  | { action: "remove-team"; teamId: string }
+  | { action: "cancel-invitation"; invitationId: string };
+
+export async function mutateRepositoryAccessSettingsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  mutation: RepositoryAccessMutation,
+): Promise<RepositoryAccessSettings> {
+  const base = `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/access`;
+  let path = base;
+  let method = "POST";
+  let body: unknown;
+
+  switch (mutation.action) {
+    case "invite-person":
+      body = { emailOrLogin: mutation.emailOrLogin, role: mutation.role };
+      break;
+    case "grant-team":
+      path = `${base}/teams`;
+      body = { teamSlug: mutation.teamSlug, role: mutation.role };
+      break;
+    case "update-person-role":
+      path = `${base}/collaborators/${encodeURIComponent(mutation.userId)}`;
+      method = "PATCH";
+      body = { role: mutation.role };
+      break;
+    case "update-team-role":
+      path = `${base}/teams/${encodeURIComponent(mutation.teamId)}`;
+      method = "PATCH";
+      body = { role: mutation.role };
+      break;
+    case "remove-person":
+      path = `${base}/collaborators/${encodeURIComponent(mutation.userId)}`;
+      method = "DELETE";
+      break;
+    case "remove-team":
+      path = `${base}/teams/${encodeURIComponent(mutation.teamId)}`;
+      method = "DELETE";
+      break;
+    case "cancel-invitation":
+      path = `${base}/invitations/${encodeURIComponent(mutation.invitationId)}`;
+      method = "DELETE";
+      break;
+  }
+
+  const response = await fetch(path, {
+    method,
+    headers: {
+      ...(body ? { "content-type": "application/json" } : {}),
+      ...(cookie ? { cookie } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const envelope = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Repository access update failed",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as RepositoryAccessSettings;
+}
+
 export async function getRepositoryPathFromCookie(
   cookie: string | null | undefined,
   owner: string,

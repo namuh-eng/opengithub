@@ -154,6 +154,18 @@ async fn repository_access_settings_cover_admin_privacy_invites_and_team_grants(
         "degraded"
     );
 
+    let (duplicate_invite_status, _, duplicate_invite_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &uri,
+        Some(&owner_cookie),
+        Some(json!({ "emailOrLogin": invitee.email, "role": "write" })),
+    )
+    .await;
+    assert_eq!(duplicate_invite_status, StatusCode::CONFLICT);
+    assert_eq!(duplicate_invite_body["error"]["code"], "conflict");
+    assert!(!duplicate_invite_body.to_string().contains("token_hash"));
+
     let (team_status, _, team_body) = send_json(
         app.clone(),
         Method::POST,
@@ -174,6 +186,18 @@ async fn repository_access_settings_cover_admin_privacy_invites_and_team_grants(
                 && person["source"] == "team"
                 && person["canEdit"] == false
         ));
+
+    let (missing_team_status, _, missing_team_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("{uri}/teams"),
+        Some(&owner_cookie),
+        Some(json!({ "teamSlug": format!("{marker}-missing"), "role": "write" })),
+    )
+    .await;
+    assert_eq!(missing_team_status, StatusCode::NOT_FOUND);
+    assert_eq!(missing_team_body["error"]["code"], "not_found");
+    assert!(!missing_team_body.to_string().contains("Private access surface"));
 
     let (role_status, _, role_body) = send_json(
         app.clone(),

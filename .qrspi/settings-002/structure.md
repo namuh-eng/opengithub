@@ -43,7 +43,7 @@
 
 ## Phase 3: Access Mutations - invites, role changes, removals, and SES handoff
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire every visible access-management action to real API writes and confirmed server state. Admins must be able to invite users/teams, update direct roles, cancel pending invitations, and remove direct access after confirmation; inherited/team-derived rows must remain disabled with source-aware messaging.
 
