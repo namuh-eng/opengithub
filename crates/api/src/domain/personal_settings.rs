@@ -6,6 +6,14 @@ use uuid::Uuid;
 
 const SOCIAL_PROVIDERS: [&str; 4] = ["x", "mastodon", "linkedin", "bluesky"];
 const MAX_AVATAR_BYTES: i32 = 2 * 1024 * 1024;
+const APPEARANCE_THEMES: [&str; 5] = [
+    "light",
+    "dark",
+    "system",
+    "dark_dimmed",
+    "dark_high_contrast",
+];
+const APPEARANCE_FONT_SIZES: [&str; 3] = ["small", "medium", "large"];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -58,6 +66,22 @@ pub struct UserAvatar {
     pub content_type: String,
     pub byte_size: i32,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UserAppearanceSettings {
+    pub user_id: Uuid,
+    pub theme: String,
+    pub font_size: String,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateUserAppearanceSettings {
+    pub theme: Option<String>,
+    pub font_size: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -115,6 +139,64 @@ impl From<sqlx::Error> for PersonalSettingsError {
     fn from(error: sqlx::Error) -> Self {
         Self::Sqlx(error)
     }
+}
+
+pub async fn user_appearance_settings(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<UserAppearanceSettings, PersonalSettingsError> {
+    ensure_appearance_settings(pool, user_id).await?;
+
+    let row = sqlx::query(
+        r#"
+        SELECT user_id, theme, font_size, updated_at
+        FROM user_settings
+        WHERE user_id = $1
+        "#,
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(UserAppearanceSettings {
+        user_id: row.try_get("user_id")?,
+        theme: row.try_get("theme")?,
+        font_size: row.try_get("font_size")?,
+        updated_at: row.try_get("updated_at")?,
+    })
+}
+
+pub async fn update_user_appearance_settings(
+    pool: &PgPool,
+    user_id: Uuid,
+    input: UpdateUserAppearanceSettings,
+) -> Result<UserAppearanceSettings, PersonalSettingsError> {
+    let theme = validate_choice(input.theme, &APPEARANCE_THEMES, "Theme")?;
+    let font_size = validate_choice(input.font_size, &APPEARANCE_FONT_SIZES, "Font size")?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO user_settings (user_id, theme, font_size)
+        VALUES ($1, COALESCE($2, 'system'), COALESCE($3, 'medium'))
+        ON CONFLICT (user_id) DO UPDATE
+        SET theme = COALESCE($2, user_settings.theme),
+            font_size = COALESCE($3, user_settings.font_size)
+        "#,
+    )
+    .bind(user_id)
+    .bind(theme)
+    .bind(font_size)
+    .execute(pool)
+    .await?;
+
+    audit(
+        pool,
+        user_id,
+        "appearance.settings.update",
+        json!({ "section": "appearance" }),
+    )
+    .await?;
+    user_appearance_settings(pool, user_id).await
 }
 
 pub async fn personal_profile_settings(
@@ -353,6 +435,23 @@ pub async fn update_personal_avatar(
     personal_profile_settings(pool, user_id).await
 }
 
+async fn ensure_appearance_settings(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<(), PersonalSettingsError> {
+    sqlx::query(
+        r#"
+        INSERT INTO user_settings (user_id, theme, font_size)
+        VALUES ($1, 'system', 'medium')
+        ON CONFLICT (user_id) DO NOTHING
+        "#,
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 async fn ensure_primary_email(pool: &PgPool, user_id: Uuid) -> Result<(), PersonalSettingsError> {
     sqlx::query(
         r#"
@@ -582,6 +681,24 @@ fn clean_required(
         )));
     }
     Ok(Some(trimmed))
+}
+
+fn validate_choice(
+    value: Option<String>,
+    allowed: &[&str],
+    label: &str,
+) -> Result<Option<String>, PersonalSettingsError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let normalized = value.trim().to_ascii_lowercase().replace('-', "_");
+    if allowed.contains(&normalized.as_str()) {
+        Ok(Some(normalized))
+    } else {
+        Err(PersonalSettingsError::Validation(format!(
+            "{label} is not supported"
+        )))
+    }
 }
 
 fn fallback_login_from_email(email: &str) -> String {

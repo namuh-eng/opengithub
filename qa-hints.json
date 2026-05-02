@@ -3293,5 +3293,19 @@
       "Real Google account selection/callback could not be completed because this isolated QA lane uses dummy local OAuth credentials, not a configured Google test account.",
       "npm install reported 2 moderate transitive audit findings in frontend tooling; no production dependency change was made for auth-001."
     ]
+  },
+  {
+    "feature_id": "theme-001",
+    "tests_written": [
+      "Added Rust API contract coverage inside personal_profile_settings_contract for GET/PATCH /api/user/settings/appearance defaults, dark-high-contrast normalization, font size persistence, validation errors, and user_settings rows.",
+      "Added AppearanceSettingsForm Vitest coverage for theme/font-size controls, Show preview panel, no inert controls, save payload, live html theme application hook, cookie fallback normalization, and data-attribute mapping.",
+      "Verification evidence: cd web && npx tsc --noEmit --pretty false passed; focused appearance/settings navigation Vitest passed; CARGO_INCREMENTAL=0 make check passed; Editorial banned-value scan on touched web files returned zero matches.",
+      "Final required gate passed: CARGO_INCREMENTAL=0 make test with Cargo tests plus 270 frontend tests."
+    ],
+    "needs_deeper_qa": [
+      "Run browser QA on /settings/appearance with a signed-in user to verify cookie + user_settings persistence across reload and sign-out/sign-in boundaries.",
+      "Check visual contrast manually/with axe for all five theme choices at mobile widths down to 360px, especially dark dimmed and dark high contrast.",
+      "Verify unauthenticated public pages with color_mode=system respect OS prefers-color-scheme and reduced-motion settings in a real browser."
+    ]
   }
 ]

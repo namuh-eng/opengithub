@@ -203,6 +203,64 @@ async fn profile_settings_reads_and_saves_identity_privacy_social_and_audit_even
 }
 
 #[tokio::test]
+async fn appearance_settings_default_validate_and_persist_theme_preferences() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping appearance settings scenario; set TEST_DATABASE_URL");
+        return;
+    };
+    let config = app_config();
+    let user = create_user(&pool).await;
+    let cookie = cookie_header(&pool, &config, &user).await;
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+
+    let (status, _headers, body) = send_json(
+        app.clone(),
+        Method::GET,
+        "/api/user/settings/appearance",
+        Some(&cookie),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["theme"], "system");
+    assert_eq!(body["fontSize"], "medium");
+
+    let (status, _headers, body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        "/api/user/settings/appearance",
+        Some(&cookie),
+        Some(json!({ "theme": "dark-high-contrast", "fontSize": "large" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["theme"], "dark_high_contrast");
+    assert_eq!(body["fontSize"], "large");
+
+    let persisted: (String, String) =
+        sqlx::query_as("SELECT theme, font_size FROM user_settings WHERE user_id = $1")
+            .bind(user.id)
+            .fetch_one(&pool)
+            .await
+            .expect("appearance settings should persist");
+    assert_eq!(
+        persisted,
+        ("dark_high_contrast".to_owned(), "large".to_owned())
+    );
+
+    let (status, _headers, body) = send_json(
+        app,
+        Method::PATCH,
+        "/api/user/settings/appearance",
+        Some(&cookie),
+        Some(json!({ "theme": "neon", "fontSize": "large" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["error"]["code"], "validation_failed");
+}
+
+#[tokio::test]
 async fn avatar_upload_validates_type_size_and_supports_remove() {
     let Some(pool) = database_pool().await else {
         eprintln!("skipping personal avatar scenario; set TEST_DATABASE_URL");

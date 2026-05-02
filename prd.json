@@ -2224,7 +2224,9 @@
     "dependent_on": [
       "auth-001"
     ],
-    "build_pass": false
+    "build_pass": true,
+    "needs_structure": false,
+    "qa_pass": false
   },
   {
     "id": "api-002",

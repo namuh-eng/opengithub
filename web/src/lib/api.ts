@@ -55,6 +55,27 @@ export type PersonalProfileSettings = {
   updatedAt: string;
 };
 
+export type ThemePreference =
+  | "light"
+  | "dark"
+  | "system"
+  | "dark_dimmed"
+  | "dark_high_contrast";
+
+export type FontSizePreference = "small" | "medium" | "large";
+
+export type UserAppearanceSettings = {
+  userId: string;
+  theme: ThemePreference;
+  fontSize: FontSizePreference;
+  updatedAt: string;
+};
+
+export type UpdateUserAppearanceSettingsRequest = {
+  theme?: ThemePreference;
+  fontSize?: FontSizePreference;
+};
+
 export type UpdatePersonalProfileSettingsRequest = {
   displayName?: string;
   publicEmailId?: string | null;
@@ -2800,6 +2821,55 @@ export async function getPersonalProfileSettingsFromCookie(
   }
 
   return (await response.json()) as PersonalProfileSettings;
+}
+
+export async function getUserAppearanceSettingsFromCookie(
+  cookie: string | null | undefined,
+): Promise<UserAppearanceSettings | null> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}/api/user/settings/appearance`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return null;
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return (await response.json()) as UserAppearanceSettings;
+}
+
+export async function updateUserAppearanceSettingsFromCookie(
+  cookie: string | null | undefined,
+  input: UpdateUserAppearanceSettingsRequest,
+): Promise<UserAppearanceSettings> {
+  const response = await fetch(`${apiBaseUrl()}/api/user/settings/appearance`, {
+    method: "PATCH",
+    headers: {
+      "content-type": "application/json",
+      ...(cookie ? { cookie } : {}),
+    },
+    body: JSON.stringify(input),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const body = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      body?.error.message ?? "Appearance settings update failed",
+      {
+        cause: body,
+      },
+    );
+  }
+
+  return (await response.json()) as UserAppearanceSettings;
 }
 
 export async function updatePersonalProfileSettingsFromCookie(

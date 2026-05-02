@@ -2287,3 +2287,13 @@
 - Verification passed: focused `CARGO_INCREMENTAL=0 cargo test -p opengithub-api --test personal_profile_settings_contract` (2 passed); focused `cd web && npm test -- --run tests/personal-profile-settings.test.tsx` (6 passed); `cd web && npx tsc --noEmit`; mandatory Editorial banned-value scan returned zero matches; `CARGO_INCREMENTAL=0 make check`; `CARGO_INCREMENTAL=0 make test` with Cargo tests plus 251 frontend tests.
 - `make check` initially reported the fresh-worktree setup guard; per task instruction, touched `.ralph-setup-done` and reran successfully. A first Rust run hit local target/temp-dir cache issues after disk cleanup; rerunning with `CARGO_INCREMENTAL=0` passed.
 - Set `personal-settings-001.build_pass=true`, `needs_structure=false`, and left `qa_pass=false` for independent QA.
+
+2026-05-03 - theme-001 site-wide appearance settings build
+
+- Completed theme-001 end-to-end: authenticated user_settings persistence, html data-attribute theme application, cookie fallback for unauthenticated visitors, /settings/appearance UI, and cross-cutting token/breakpoint/reduced-motion support.
+- Added additive user_settings migration for theme/font_size plus Rust GET/PATCH /api/user/settings/appearance with validation and appearance.settings.update audit events.
+- Replaced the appearance placeholder with Editorial theme/font controls for light, dark, system, dark dimmed, dark high contrast, small/medium/large font sizes, Show preview panel, save/reset, inline status/error, and no dead controls.
+- Added tests for API defaults/persistence/validation and UI rendering/save payload/live application/cookie fallback normalization.
+- Verification passed: focused CARGO_INCREMENTAL=0 cargo check -p opengithub-api --tests; cd web && npx tsc --noEmit --pretty false; focused web Vitest appearance/settings navigation; CARGO_INCREMENTAL=0 make check; mandatory Editorial banned-value scan returned zero matches.
+- Set theme-001.build_pass=true, needs_structure=false, and qa_pass=false for independent QA.
+- Final verification passed: CARGO_INCREMENTAL=0 make test with Cargo tests plus 270 frontend tests.

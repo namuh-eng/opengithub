@@ -19,9 +19,22 @@
 @theme inline {
   --color-background: var(--bg);
   --color-foreground: var(--ink-1);
+  --color-muted: var(--ink-3);
+  --color-border: var(--line);
+  --color-subtle: var(--surface-2);
+  --color-accent: var(--accent);
+  --color-success: var(--ok);
+  --color-warning: var(--warn);
+  --color-danger: var(--err);
+  --color-info: var(--info);
   --font-sans: var(--font-inter-tight);
   --font-mono: var(--font-jetbrains-mono);
   --font-display: var(--font-fraunces);
+  --breakpoint-sm: 40rem;
+  --breakpoint-md: 48rem;
+  --breakpoint-lg: 64rem;
+  --breakpoint-xl: 80rem;
+  --breakpoint-2xl: 96rem;
 }
 
 body.og-app {
@@ -32,6 +45,17 @@ body.og-app {
   line-height: 1.5;
   font-feature-settings: "cv11", "ss01", "ss03";
   letter-spacing: -0.005em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    scroll-behavior: auto;
+    transition-duration: 0.01ms;
+  }
 }
 
 button,

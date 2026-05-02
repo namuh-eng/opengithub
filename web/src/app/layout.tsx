@@ -1,5 +1,14 @@
 import type { Metadata } from "next";
 import { Fraunces, Inter_Tight, JetBrains_Mono } from "next/font/google";
+import { cookies, headers } from "next/headers";
+import { ThemeClientScript } from "@/components/ThemeClientScript";
+import { getUserAppearanceSettingsFromCookie } from "@/lib/api";
+import {
+  appearanceFromCookieAndSettings,
+  normalizeFontSize,
+  normalizeTheme,
+  themeAttributes,
+} from "@/lib/theme";
 import "./globals.css";
 
 const fraunces = Fraunces({
@@ -33,12 +42,37 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  return <RootLayoutContent>{children}</RootLayoutContent>;
+}
+
+async function RootLayoutContent({ children }: { children: React.ReactNode }) {
+  const [cookieStore, requestHeaders] = await Promise.all([
+    cookies(),
+    headers(),
+  ]);
+  const cookieHeader = requestHeaders.get("cookie");
+  const settings = await getUserAppearanceSettingsFromCookie(cookieHeader);
+  const { theme, fontSize } = appearanceFromCookieAndSettings(
+    cookieStore.get("color_mode")?.value,
+    cookieStore.get("font_size")?.value,
+    settings,
+  );
+  const attrs = themeAttributes(normalizeTheme(theme));
+  const normalizedFontSize = normalizeFontSize(fontSize);
+
   return (
     <html
+      data-color-mode={attrs.colorMode}
+      data-dark-theme={attrs.darkTheme}
+      data-font-size={normalizedFontSize}
+      data-light-theme={attrs.lightTheme}
       lang="en"
       className={`${fraunces.variable} ${interTight.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
-      <body className="og-app flex min-h-full flex-col">{children}</body>
+      <body className="og-app flex min-h-full flex-col">
+        <ThemeClientScript fontSize={normalizedFontSize} />
+        {children}
+      </body>
     </html>
   );
 }

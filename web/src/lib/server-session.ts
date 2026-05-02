@@ -39,6 +39,7 @@ import {
   getRepositorySettingsFromCookie,
   getSearchSuggestionsFromCookie,
   getSessionFromHeaders,
+  getUserAppearanceSettingsFromCookie,
   getUserPackagesFromCookie,
   type OrganizationPeopleListQuery,
   type OrganizationRepositoryListQuery,
@@ -77,6 +78,11 @@ export async function getAppShellContext() {
 export async function getPersonalProfileSettings() {
   const requestHeaders = await headers();
   return getPersonalProfileSettingsFromCookie(requestHeaders.get("cookie"));
+}
+
+export async function getUserAppearanceSettings() {
+  const requestHeaders = await headers();
+  return getUserAppearanceSettingsFromCookie(requestHeaders.get("cookie"));
 }
 
 export async function getPublicUserProfile(

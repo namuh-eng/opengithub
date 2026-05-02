@@ -19,8 +19,9 @@ use crate::{
         },
         personal_settings::{
             personal_profile_settings, update_personal_avatar, update_personal_profile_settings,
-            PersonalProfileSettings, PersonalSettingsError, UpdateAvatarInput,
-            UpdatePersonalProfileSettings,
+            update_user_appearance_settings, user_appearance_settings, PersonalProfileSettings,
+            PersonalSettingsError, UpdateAvatarInput, UpdatePersonalProfileSettings,
+            UpdateUserAppearanceSettings, UserAppearanceSettings,
         },
         profiles::{
             block_user, follow_user, profile_repositories, public_user_profile, report_user,
@@ -34,6 +35,10 @@ use crate::{
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/user", get(current_api_user))
+        .route(
+            "/api/user/settings/appearance",
+            get(user_appearance_settings_route).patch(update_user_appearance_settings_route),
+        )
         .route(
             "/api/user/settings/profile",
             get(personal_profile_settings_route).patch(update_personal_profile_settings_route),
@@ -213,6 +218,31 @@ async fn personal_profile_settings_route(
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
     let settings = personal_profile_settings(pool, actor.id)
+        .await
+        .map_err(map_personal_settings_error)?;
+    Ok(Json(settings))
+}
+
+async fn user_appearance_settings_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<UserAppearanceSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let settings = user_appearance_settings(pool, actor.id)
+        .await
+        .map_err(map_personal_settings_error)?;
+    Ok(Json(settings))
+}
+
+async fn update_user_appearance_settings_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    RestJson(request): RestJson<UpdateUserAppearanceSettings>,
+) -> Result<Json<UserAppearanceSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let settings = update_user_appearance_settings(pool, actor.id, request)
         .await
         .map_err(map_personal_settings_error)?;
     Ok(Json(settings))
