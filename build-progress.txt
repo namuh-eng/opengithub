@@ -1812,3 +1812,13 @@
 - Added `.qrspi/search-003/structure.md` with five independently verifiable vertical phases: code-search API facets, Editorial code results shell, snippet grouping and expansion, facet/advanced/saved-search interactions, and final guardrails/QA handoff.
 - Did not change `prd.json`; `build_pass` remains `false` until all implementation phases pass verification.
 - Tests not run because this iteration only created the required planning artifact.
+
+2026-05-02 - search-003 phase 1 code search API facets
+
+- Implemented Phase 1 from `.qrspi/search-003/structure.md`: `/api/search?q=...&type=code` now returns a richer permission-aware code-search contract while preserving `items`, `total`, `page`, and `pageSize` compatibility.
+- Added backend code-search parsing and response metadata for type counts, language/path facets, active qualifier chips with remove queries, query duration, pagination clamps, and structured validation errors for oversized or unsupported qualifier queries.
+- Added typed frontend `CodeSearchResponse`/`searchCodeFromCookie` helpers for later code results UI phases.
+- Added `crates/api/tests/search_code_results_contract.rs` with real Postgres scenarios for public/private visibility filtering, repo/language/path/archive qualifiers, facet selection, type counts, active chips, invalid qualifier errors, and deterministic code result shape.
+- Verification passed: focused `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false cargo test --test search_code_results_contract -- --nocapture`; `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 204 frontend tests; mandatory Editorial banned-value scan passed with zero matches.
+- Browser smoke and `make test-e2e` were not run because Phase 1 is API-only and the structure outline marks browser smoke optional for this phase.
+- Marked Phase 1 as done in `.qrspi/search-003/structure.md`; `prd.json` remains `build_pass: false` because Phases 2-5 remain.

@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::{PgPool, Row};
+use std::time::Instant;
 use uuid::Uuid;
 
 use crate::api_types::ListEnvelope;
@@ -97,6 +98,83 @@ pub struct SearchQuery {
     pub kind: Option<SearchDocumentKind>,
     pub page: i64,
     pub page_size: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeSearchQuery {
+    pub actor_user_id: Uuid,
+    pub query: String,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeSearchResponse {
+    pub items: Vec<SearchResult>,
+    pub total: i64,
+    pub page: i64,
+    #[serde(rename = "pageSize")]
+    pub page_size: i64,
+    pub type_counts: Vec<CodeSearchTypeCount>,
+    pub facets: CodeSearchFacets,
+    pub active_chips: Vec<CodeSearchChip>,
+    pub query_duration_ms: i64,
+    pub diagnostics: Vec<CodeSearchDiagnostic>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeSearchTypeCount {
+    pub result_type: String,
+    pub label: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeSearchFacets {
+    pub languages: Vec<CodeSearchFacetValue>,
+    pub paths: Vec<CodeSearchFacetValue>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeSearchFacetValue {
+    pub value: String,
+    pub label: String,
+    pub count: i64,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeSearchChip {
+    pub qualifier: String,
+    pub value: String,
+    pub label: String,
+    pub remove_query: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeSearchDiagnostic {
+    pub code: String,
+    pub message: String,
+    pub qualifier: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsedCodeSearchQuery {
+    terms: String,
+    chips: Vec<CodeSearchChip>,
+    repo: Option<(String, String)>,
+    owner: Option<String>,
+    language: Option<String>,
+    path: Option<String>,
+    symbol: Option<String>,
+    archived: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -491,6 +569,183 @@ pub async fn search_documents(
         total,
         page,
         page_size,
+    })
+}
+
+pub async fn search_code_results(
+    pool: &PgPool,
+    input: CodeSearchQuery,
+) -> Result<CodeSearchResponse, SearchError> {
+    let started_at = Instant::now();
+    let parsed = parse_code_search_query(&input.query)?;
+    if parsed.terms.chars().count() < 2 {
+        return Err(SearchError::QueryTooShort);
+    }
+
+    let page = input.page.max(1);
+    let page_size = input.page_size.clamp(1, 50);
+    let offset = (page - 1) * page_size;
+    let repo_owner = parsed.repo.as_ref().map(|(owner, _)| owner.as_str());
+    let repo_name = parsed.repo.as_ref().map(|(_, name)| name.as_str());
+
+    let total = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT count(*)
+        FROM search_documents
+        LEFT JOIN repositories ON repositories.id = search_documents.repository_id
+        LEFT JOIN users repo_owner_user ON repo_owner_user.id = repositories.owner_user_id
+        LEFT JOIN organizations repo_owner_org ON repo_owner_org.id = repositories.owner_organization_id
+        LEFT JOIN repository_permissions
+          ON repository_permissions.repository_id = search_documents.repository_id
+         AND repository_permissions.user_id = $1
+        WHERE search_documents.kind = 'code'
+          AND (
+              search_documents.visibility = 'public'
+              OR repository_permissions.user_id IS NOT NULL
+              OR search_documents.owner_user_id = $1
+          )
+          AND (
+              search_documents.search_vector @@ plainto_tsquery('simple', $2)
+              OR search_documents.title ILIKE '%' || $2 || '%'
+              OR search_documents.body ILIKE '%' || $2 || '%'
+              OR search_documents.path ILIKE '%' || $2 || '%'
+          )
+          AND ($3::text IS NULL OR lower(search_documents.language) = lower($3))
+          AND ($4::text IS NULL OR search_documents.path ILIKE '%' || $4 || '%')
+          AND ($5::text IS NULL OR lower(COALESCE(repo_owner_user.username, repo_owner_user.email, repo_owner_org.slug)) = lower($5))
+          AND ($6::text IS NULL OR lower(repositories.name) = lower($6))
+          AND ($7::text IS NULL OR lower(COALESCE(repo_owner_user.username, repo_owner_user.email, repo_owner_org.slug)) = lower($7))
+          AND ($8::text IS NULL OR search_documents.metadata->>'symbol' ILIKE '%' || $8 || '%' OR search_documents.body ILIKE '%' || $8 || '%')
+          AND ($9::boolean IS NULL OR repositories.is_archived = $9)
+        "#,
+    )
+    .bind(input.actor_user_id)
+    .bind(&parsed.terms)
+    .bind(parsed.language.as_deref())
+    .bind(parsed.path.as_deref())
+    .bind(repo_owner)
+    .bind(repo_name)
+    .bind(parsed.owner.as_deref())
+    .bind(parsed.symbol.as_deref())
+    .bind(parsed.archived)
+    .fetch_one(pool)
+    .await?;
+
+    let rows = sqlx::query(
+        r#"
+        SELECT search_documents.id,
+               search_documents.repository_id,
+               search_documents.owner_user_id,
+               search_documents.owner_organization_id,
+               search_documents.kind,
+               search_documents.resource_id,
+               search_documents.title,
+               search_documents.body,
+               search_documents.path,
+               search_documents.language,
+               search_documents.branch,
+               search_documents.visibility,
+               search_documents.metadata,
+               search_documents.indexed_at,
+               search_documents.created_at,
+               search_documents.updated_at,
+               COALESCE(NULLIF(repo_owner_user.username, ''), repo_owner_user.email, repo_owner_org.slug, search_documents.metadata->>'ownerLogin') AS owner_login,
+               repositories.name AS repository_name,
+               COALESCE(NULLIF(search_documents.metadata->>'description', ''), repositories.description, search_documents.body) AS result_summary,
+               search_documents.title AS display_name,
+               NULL::text AS avatar_url,
+               (
+                   ts_rank(search_documents.search_vector, plainto_tsquery('simple', $2))
+                   + similarity(search_documents.title, $2)
+                   + COALESCE(similarity(search_documents.path, $2), 0)
+               )::float8 AS rank
+        FROM search_documents
+        LEFT JOIN repositories ON repositories.id = search_documents.repository_id
+        LEFT JOIN users repo_owner_user ON repo_owner_user.id = repositories.owner_user_id
+        LEFT JOIN organizations repo_owner_org ON repo_owner_org.id = repositories.owner_organization_id
+        LEFT JOIN repository_permissions
+          ON repository_permissions.repository_id = search_documents.repository_id
+         AND repository_permissions.user_id = $1
+        WHERE search_documents.kind = 'code'
+          AND (
+              search_documents.visibility = 'public'
+              OR repository_permissions.user_id IS NOT NULL
+              OR search_documents.owner_user_id = $1
+          )
+          AND (
+              search_documents.search_vector @@ plainto_tsquery('simple', $2)
+              OR search_documents.title ILIKE '%' || $2 || '%'
+              OR search_documents.body ILIKE '%' || $2 || '%'
+              OR search_documents.path ILIKE '%' || $2 || '%'
+          )
+          AND ($3::text IS NULL OR lower(search_documents.language) = lower($3))
+          AND ($4::text IS NULL OR search_documents.path ILIKE '%' || $4 || '%')
+          AND ($5::text IS NULL OR lower(COALESCE(repo_owner_user.username, repo_owner_user.email, repo_owner_org.slug)) = lower($5))
+          AND ($6::text IS NULL OR lower(repositories.name) = lower($6))
+          AND ($7::text IS NULL OR lower(COALESCE(repo_owner_user.username, repo_owner_user.email, repo_owner_org.slug)) = lower($7))
+          AND ($8::text IS NULL OR search_documents.metadata->>'symbol' ILIKE '%' || $8 || '%' OR search_documents.body ILIKE '%' || $8 || '%')
+          AND ($9::boolean IS NULL OR repositories.is_archived = $9)
+        ORDER BY rank DESC, search_documents.updated_at DESC, search_documents.path ASC
+        LIMIT $10 OFFSET $11
+        "#,
+    )
+    .bind(input.actor_user_id)
+    .bind(&parsed.terms)
+    .bind(parsed.language.as_deref())
+    .bind(parsed.path.as_deref())
+    .bind(repo_owner)
+    .bind(repo_name)
+    .bind(parsed.owner.as_deref())
+    .bind(parsed.symbol.as_deref())
+    .bind(parsed.archived)
+    .bind(page_size)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+
+    let mut items = Vec::with_capacity(rows.len());
+    for row in rows {
+        let rank = row.get::<f64, _>("rank");
+        let owner_login: Option<String> = row.get("owner_login");
+        let repository_name: Option<String> = row.get("repository_name");
+        let summary: Option<String> = row.get("result_summary");
+        let display_name: Option<String> = row.get("display_name");
+        let avatar_url: Option<String> = row.get("avatar_url");
+        let document = document_from_row(row)?;
+        let href = result_href(
+            &document,
+            owner_login.as_deref(),
+            repository_name.as_deref(),
+        );
+        let snippet = code_snippet_for_document(&document, &parsed.terms);
+        items.push(SearchResult {
+            title: document.title.clone(),
+            visibility: document.visibility.clone(),
+            updated_at: document.updated_at,
+            document,
+            rank,
+            result_type: "code".to_owned(),
+            href,
+            summary,
+            owner_login,
+            repository_name,
+            display_name,
+            avatar_url,
+            snippet,
+            commit: None,
+        });
+    }
+
+    Ok(CodeSearchResponse {
+        items,
+        total,
+        page,
+        page_size,
+        type_counts: code_search_type_counts(pool, input.actor_user_id, &parsed.terms).await?,
+        facets: code_search_facets(pool, input.actor_user_id, &parsed).await?,
+        active_chips: parsed.chips,
+        query_duration_ms: started_at.elapsed().as_millis().min(i64::MAX as u128) as i64,
+        diagnostics: Vec::new(),
     })
 }
 
@@ -1137,6 +1392,311 @@ async fn recent_search_suggestions(
         .collect())
 }
 
+async fn code_search_type_counts(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    terms: &str,
+) -> Result<Vec<CodeSearchTypeCount>, SearchError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT search_documents.kind, count(*) AS count
+        FROM search_documents
+        LEFT JOIN repository_permissions
+          ON repository_permissions.repository_id = search_documents.repository_id
+         AND repository_permissions.user_id = $1
+        WHERE (
+              search_documents.visibility = 'public'
+              OR repository_permissions.user_id IS NOT NULL
+              OR search_documents.owner_user_id = $1
+          )
+          AND (
+              search_documents.search_vector @@ plainto_tsquery('simple', $2)
+              OR search_documents.title ILIKE '%' || $2 || '%'
+              OR search_documents.body ILIKE '%' || $2 || '%'
+              OR search_documents.path ILIKE '%' || $2 || '%'
+          )
+        GROUP BY search_documents.kind
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(terms)
+    .fetch_all(pool)
+    .await?;
+
+    let mut counts = std::collections::HashMap::new();
+    for row in rows {
+        let kind: String = row.get("kind");
+        counts.insert(kind, row.get::<i64, _>("count"));
+    }
+
+    Ok([
+        ("code", "Code"),
+        ("repository", "Repositories"),
+        ("issue", "Issues"),
+        ("pull_request", "Pull requests"),
+        ("commit", "Commits"),
+        ("package", "Packages"),
+        ("user", "Users"),
+        ("organization", "Organizations"),
+    ]
+    .into_iter()
+    .map(|(kind, label)| CodeSearchTypeCount {
+        result_type: ui_type_for_kind_str(kind).to_owned(),
+        label: label.to_owned(),
+        count: counts.get(kind).copied().unwrap_or(0),
+    })
+    .collect())
+}
+
+async fn code_search_facets(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    parsed: &ParsedCodeSearchQuery,
+) -> Result<CodeSearchFacets, SearchError> {
+    let repo_owner = parsed.repo.as_ref().map(|(owner, _)| owner.as_str());
+    let repo_name = parsed.repo.as_ref().map(|(_, name)| name.as_str());
+    let language_rows = sqlx::query(
+        r#"
+        SELECT search_documents.language AS value, count(*) AS count
+        FROM search_documents
+        LEFT JOIN repositories ON repositories.id = search_documents.repository_id
+        LEFT JOIN users repo_owner_user ON repo_owner_user.id = repositories.owner_user_id
+        LEFT JOIN organizations repo_owner_org ON repo_owner_org.id = repositories.owner_organization_id
+        LEFT JOIN repository_permissions
+          ON repository_permissions.repository_id = search_documents.repository_id
+         AND repository_permissions.user_id = $1
+        WHERE search_documents.kind = 'code'
+          AND search_documents.language IS NOT NULL
+          AND (
+              search_documents.visibility = 'public'
+              OR repository_permissions.user_id IS NOT NULL
+              OR search_documents.owner_user_id = $1
+          )
+          AND (
+              search_documents.search_vector @@ plainto_tsquery('simple', $2)
+              OR search_documents.title ILIKE '%' || $2 || '%'
+              OR search_documents.body ILIKE '%' || $2 || '%'
+              OR search_documents.path ILIKE '%' || $2 || '%'
+          )
+          AND ($3::text IS NULL OR search_documents.path ILIKE '%' || $3 || '%')
+          AND ($4::text IS NULL OR lower(COALESCE(repo_owner_user.username, repo_owner_user.email, repo_owner_org.slug)) = lower($4))
+          AND ($5::text IS NULL OR lower(repositories.name) = lower($5))
+          AND ($6::text IS NULL OR lower(COALESCE(repo_owner_user.username, repo_owner_user.email, repo_owner_org.slug)) = lower($6))
+          AND ($7::text IS NULL OR search_documents.metadata->>'symbol' ILIKE '%' || $7 || '%' OR search_documents.body ILIKE '%' || $7 || '%')
+          AND ($8::boolean IS NULL OR repositories.is_archived = $8)
+        GROUP BY search_documents.language
+        ORDER BY count DESC, search_documents.language ASC
+        LIMIT 12
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(&parsed.terms)
+    .bind(parsed.path.as_deref())
+    .bind(repo_owner)
+    .bind(repo_name)
+    .bind(parsed.owner.as_deref())
+    .bind(parsed.symbol.as_deref())
+    .bind(parsed.archived)
+    .fetch_all(pool)
+    .await?;
+
+    let path_rows = sqlx::query(
+        r#"
+        SELECT split_part(search_documents.path, '/', 1) AS value, count(*) AS count
+        FROM search_documents
+        LEFT JOIN repositories ON repositories.id = search_documents.repository_id
+        LEFT JOIN users repo_owner_user ON repo_owner_user.id = repositories.owner_user_id
+        LEFT JOIN organizations repo_owner_org ON repo_owner_org.id = repositories.owner_organization_id
+        LEFT JOIN repository_permissions
+          ON repository_permissions.repository_id = search_documents.repository_id
+         AND repository_permissions.user_id = $1
+        WHERE search_documents.kind = 'code'
+          AND search_documents.path IS NOT NULL
+          AND (
+              search_documents.visibility = 'public'
+              OR repository_permissions.user_id IS NOT NULL
+              OR search_documents.owner_user_id = $1
+          )
+          AND (
+              search_documents.search_vector @@ plainto_tsquery('simple', $2)
+              OR search_documents.title ILIKE '%' || $2 || '%'
+              OR search_documents.body ILIKE '%' || $2 || '%'
+              OR search_documents.path ILIKE '%' || $2 || '%'
+          )
+          AND ($3::text IS NULL OR lower(search_documents.language) = lower($3))
+          AND ($4::text IS NULL OR lower(COALESCE(repo_owner_user.username, repo_owner_user.email, repo_owner_org.slug)) = lower($4))
+          AND ($5::text IS NULL OR lower(repositories.name) = lower($5))
+          AND ($6::text IS NULL OR lower(COALESCE(repo_owner_user.username, repo_owner_user.email, repo_owner_org.slug)) = lower($6))
+          AND ($7::text IS NULL OR search_documents.metadata->>'symbol' ILIKE '%' || $7 || '%' OR search_documents.body ILIKE '%' || $7 || '%')
+          AND ($8::boolean IS NULL OR repositories.is_archived = $8)
+        GROUP BY split_part(search_documents.path, '/', 1)
+        ORDER BY count DESC, value ASC
+        LIMIT 12
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(&parsed.terms)
+    .bind(parsed.language.as_deref())
+    .bind(repo_owner)
+    .bind(repo_name)
+    .bind(parsed.owner.as_deref())
+    .bind(parsed.symbol.as_deref())
+    .bind(parsed.archived)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(CodeSearchFacets {
+        languages: language_rows
+            .into_iter()
+            .filter_map(|row| {
+                let value: Option<String> = row.get("value");
+                value.map(|value| CodeSearchFacetValue {
+                    selected: parsed
+                        .language
+                        .as_ref()
+                        .is_some_and(|selected| selected.eq_ignore_ascii_case(&value)),
+                    label: value.clone(),
+                    value,
+                    count: row.get("count"),
+                })
+            })
+            .collect(),
+        paths: path_rows
+            .into_iter()
+            .filter_map(|row| {
+                let value: Option<String> = row.get("value");
+                value
+                    .filter(|value| !value.is_empty())
+                    .map(|value| CodeSearchFacetValue {
+                        selected: parsed.path.as_ref().is_some_and(|selected| {
+                            selected.eq_ignore_ascii_case(&value)
+                                || selected
+                                    .trim_end_matches('/')
+                                    .eq_ignore_ascii_case(value.as_str())
+                        }),
+                        label: value.clone(),
+                        value,
+                        count: row.get("count"),
+                    })
+            })
+            .collect(),
+    })
+}
+
+fn parse_code_search_query(query: &str) -> Result<ParsedCodeSearchQuery, SearchError> {
+    let normalized = query.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.chars().count() > 256 {
+        return Err(SearchError::Validation(
+            "code search query must be 256 characters or fewer".to_owned(),
+        ));
+    }
+
+    let mut terms = Vec::new();
+    let mut qualifiers = Vec::new();
+    let mut parsed = ParsedCodeSearchQuery {
+        terms: String::new(),
+        chips: Vec::new(),
+        repo: None,
+        owner: None,
+        language: None,
+        path: None,
+        symbol: None,
+        archived: None,
+    };
+
+    for token in normalized.split_whitespace() {
+        if let Some((qualifier, value)) = token.split_once(':') {
+            let qualifier = qualifier.to_ascii_lowercase();
+            let value = value.trim();
+            if is_probable_qualifier(&qualifier) {
+                if value.is_empty() {
+                    return Err(SearchError::Validation(format!(
+                        "{qualifier}: requires a value"
+                    )));
+                }
+                match qualifier.as_str() {
+                    "repo" => {
+                        let Some((owner, name)) = value.split_once('/') else {
+                            return Err(SearchError::Validation(
+                                "repo: requires owner/name".to_owned(),
+                            ));
+                        };
+                        parsed.repo = Some((owner.to_owned(), name.to_owned()));
+                    }
+                    "org" | "user" => parsed.owner = Some(value.to_owned()),
+                    "language" => parsed.language = Some(value.to_owned()),
+                    "path" => parsed.path = Some(value.trim_matches('"').to_owned()),
+                    "symbol" => parsed.symbol = Some(value.to_owned()),
+                    "archived" => parsed.archived = Some(parse_bool_qualifier(value)?),
+                    "is" => {
+                        if value.eq_ignore_ascii_case("archived") {
+                            parsed.archived = Some(true);
+                        } else if value.eq_ignore_ascii_case("unarchived") {
+                            parsed.archived = Some(false);
+                        } else {
+                            return Err(SearchError::Validation(format!(
+                                "is:{value} is not supported for code search"
+                            )));
+                        }
+                    }
+                    _ => {
+                        return Err(SearchError::Validation(format!(
+                            "{qualifier}: is not supported for code search"
+                        )));
+                    }
+                }
+                qualifiers.push((qualifier, value.to_owned()));
+                continue;
+            }
+        }
+        terms.push(token.to_owned());
+    }
+
+    parsed.terms = terms.join(" ");
+    parsed.chips = qualifiers
+        .iter()
+        .map(|(qualifier, value)| CodeSearchChip {
+            qualifier: qualifier.clone(),
+            value: value.clone(),
+            label: format!("{qualifier}:{value}"),
+            remove_query: remove_qualifier_token(&normalized, qualifier, value),
+        })
+        .collect();
+
+    Ok(parsed)
+}
+
+fn is_probable_qualifier(value: &str) -> bool {
+    !value.is_empty()
+        && value.chars().all(|character| {
+            character.is_ascii_alphabetic() || character == '_' || character == '-'
+        })
+}
+
+fn parse_bool_qualifier(value: &str) -> Result<bool, SearchError> {
+    match value.to_ascii_lowercase().as_str() {
+        "true" | "yes" | "archived" => Ok(true),
+        "false" | "no" | "unarchived" => Ok(false),
+        _ => Err(SearchError::Validation(format!(
+            "archived:{value} must be true or false"
+        ))),
+    }
+}
+
+fn remove_qualifier_token(query: &str, qualifier: &str, value: &str) -> String {
+    let exact = format!("{qualifier}:{value}");
+    let remainder = query
+        .split_whitespace()
+        .filter(|token| *token != exact)
+        .collect::<Vec<_>>()
+        .join(" ");
+    if remainder.is_empty() {
+        query.to_owned()
+    } else {
+        remainder
+    }
+}
+
 fn code_snippet_for_document(document: &SearchDocument, query: &str) -> Option<SearchSnippet> {
     if document.kind != SearchDocumentKind::Code {
         return None;
@@ -1270,6 +1830,20 @@ fn ui_type_for_kind(kind: &SearchDocumentKind) -> &'static str {
         SearchDocumentKind::User => "users",
         SearchDocumentKind::Organization => "organizations",
         SearchDocumentKind::Package => "packages",
+    }
+}
+
+fn ui_type_for_kind_str(kind: &str) -> &'static str {
+    match kind {
+        "repository" => "repositories",
+        "code" => "code",
+        "commit" => "commits",
+        "issue" => "issues",
+        "pull_request" => "pull_requests",
+        "user" => "users",
+        "organization" => "organizations",
+        "package" => "packages",
+        _ => "repositories",
     }
 }
 

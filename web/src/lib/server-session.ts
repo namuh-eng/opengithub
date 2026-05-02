@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import {
+  type CodeSearchQuery,
   type DashboardSummaryQuery,
   type GlobalSearchQuery,
   getAppShellContextFromCookie,
@@ -33,6 +34,7 @@ import {
   type RepositoryPullRequestDiffQuery,
   type RepositoryPullRequestListQuery,
   type SearchSuggestionsQuery,
+  searchCodeFromCookie,
   searchGlobalFromCookie,
 } from "@/lib/api";
 
@@ -59,6 +61,11 @@ export async function getAppShellContext() {
 export async function searchGlobal(query: GlobalSearchQuery) {
   const requestHeaders = await headers();
   return searchGlobalFromCookie(requestHeaders.get("cookie"), query);
+}
+
+export async function searchCode(query: CodeSearchQuery) {
+  const requestHeaders = await headers();
+  return searchCodeFromCookie(requestHeaders.get("cookie"), query);
 }
 
 export async function getSearchSuggestions(query: SearchSuggestionsQuery = {}) {

@@ -6,7 +6,7 @@
 
 ## Phase 1: Code Search API Facets - results include counts, facets, chips, and bounded query errors
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Extend the existing permission-aware search contract for `type=code` without breaking other result types. The API should return type counts, language/path facets, active query chips, timing metadata, and structured validation errors for invalid qualifiers or oversized queries.
 

@@ -1899,6 +1899,49 @@ export type GlobalSearchQuery = {
   pageSize?: number;
 };
 
+export type CodeSearchQuery = {
+  query: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type CodeSearchTypeCount = {
+  resultType: SearchResultType | string;
+  label: string;
+  count: number;
+};
+
+export type CodeSearchFacetValue = {
+  value: string;
+  label: string;
+  count: number;
+  selected: boolean;
+};
+
+export type CodeSearchChip = {
+  qualifier: string;
+  value: string;
+  label: string;
+  removeQuery: string;
+};
+
+export type CodeSearchDiagnostic = {
+  code: string;
+  message: string;
+  qualifier: string | null;
+};
+
+export type CodeSearchResponse = ListEnvelope<GlobalSearchResult> & {
+  typeCounts: CodeSearchTypeCount[];
+  facets: {
+    languages: CodeSearchFacetValue[];
+    paths: CodeSearchFacetValue[];
+  };
+  activeChips: CodeSearchChip[];
+  queryDurationMs: number;
+  diagnostics: CodeSearchDiagnostic[];
+};
+
 const DEFAULT_API_URL = "http://localhost:3016";
 
 export function apiBaseUrl(): string {
@@ -1986,6 +2029,15 @@ export function globalSearchPath(query: GlobalSearchQuery): string {
     params.set("pageSize", String(query.pageSize));
   }
   return `/api/search?${params.toString()}`;
+}
+
+export function codeSearchPath(query: CodeSearchQuery): string {
+  return globalSearchPath({
+    query: query.query,
+    type: "code",
+    page: query.page,
+    pageSize: query.pageSize,
+  });
 }
 
 export function searchSuggestionsPath(query: SearchSuggestionsQuery = {}) {
@@ -2161,6 +2213,42 @@ export async function searchGlobalFromCookie(
   }
 
   return body as ListEnvelope<GlobalSearchResult>;
+}
+
+export async function searchCodeFromCookie(
+  cookie: string | null | undefined,
+  query: CodeSearchQuery,
+): Promise<CodeSearchResponse | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${codeSearchPath(query)}`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Code search is temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "code_search_failed",
+          message: "Code search failed.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as CodeSearchResponse;
 }
 
 export type DashboardSummaryQuery = {

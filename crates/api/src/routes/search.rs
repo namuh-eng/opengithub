@@ -13,9 +13,9 @@ use crate::{
     },
     auth::extractor::AuthenticatedUser,
     domain::search::{
-        create_saved_search, delete_saved_search, record_recent_search, search_documents,
-        search_suggestions, CreateSavedSearchInput, SearchDocumentKind, SearchError, SearchQuery,
-        SearchSuggestionQuery,
+        create_saved_search, delete_saved_search, record_recent_search, search_code_results,
+        search_documents, search_suggestions, CodeSearchQuery, CreateSavedSearchInput,
+        SearchDocumentKind, SearchError, SearchQuery, SearchSuggestionQuery,
     },
     AppState,
 };
@@ -127,6 +127,23 @@ async fn search(
         .transpose()
         .map_err(map_search_error)?;
     let search_query = request.q.unwrap_or_default();
+    if kind == Some(SearchDocumentKind::Code) {
+        let results = search_code_results(
+            pool,
+            CodeSearchQuery {
+                actor_user_id: actor.0.id,
+                query: search_query.clone(),
+                page: pagination.page,
+                page_size: pagination.page_size,
+            },
+        )
+        .await
+        .map_err(map_search_error)?;
+        let _ = record_recent_search(pool, actor.0.id, &search_query, "code", Some("code")).await;
+
+        return Ok(Json(json!(results)));
+    }
+
     let results = search_documents(
         pool,
         SearchQuery {

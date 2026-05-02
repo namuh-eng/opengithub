@@ -2648,5 +2648,21 @@
       "Symbol-specific jumps depend on later richer symbol indexing; current direct jumps are backed by repository/code search documents.",
       "Mobile smoke verifies no horizontal overflow at 390px; additional devices and assistive technology passes should recheck the focus trap and nested dialog."
     ]
+  },
+  {
+    "feature_id": "search-003",
+    "tests_written": [
+      "Implemented Phase 1 code-search API facets and metadata contract for /api/search?q=...&type=code.",
+      "Added permission-aware code-search response fields for typeCounts, language/path facets, active qualifier chips, queryDurationMs, and diagnostics while preserving items/total/page/pageSize compatibility.",
+      "Added typed frontend code-search DTOs and cookie-forwarded searchCode helpers for later UI phases.",
+      "Added real Postgres Rust contract coverage for public/private visibility filtering, language/path/repo/archive qualifiers, type counts, facet selection, chip removal queries, page-size clamps, and structured validation errors.",
+      "Verification passed: focused search_code_results_contract, TEST_DATABASE_URL-backed make check, same-env make test with Cargo tests plus 204 frontend tests, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Phase 1 is API-only; the dedicated Editorial two-pane code results UI, snippet expansion, saved-search integration, and browser smoke are still later search-003 phases.",
+      "Search is backed by search_documents and repository metadata; dedicated repository_file_index/code_symbol_index parity and richer symbol ranking remain future hardening.",
+      "Qualifier parsing intentionally supports the Phase 1 bounded set and rejects unsupported qualifiers; regex/boolean syntax should be revisited in later parser phases.",
+      "Private leakage was tested with direct repository ownership; organization/team permission edge cases should be rechecked when the UI consumes this endpoint."
+    ]
   }
 ]
