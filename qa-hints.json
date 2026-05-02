@@ -2702,5 +2702,24 @@
       "Browser smoke uses deterministic Rust-signed local sessions and seeded Postgres data, not real Google OAuth.",
       "The snippet extractor uses search_documents body/metadata today; richer repository_file_index and symbol-aware ranking still need later search index hardening."
     ]
+  },
+  {
+    "feature_id": "search-003",
+    "tests_written": [
+      "Implemented Phase 4 facet interactions, advanced controls, view state, and saved-search creation for /search?q={query}&type=code.",
+      "Language/path facets and active chips now mutate URL-backed qualifiers instead of resetting the query.",
+      "Advanced owner, symbol, and exclude-archived controls compose supported code-search qualifiers into the search URL.",
+      "Save search now posts to the existing /search/saved-searches route with inline success/error feedback.",
+      "Added backend validation coverage for unsupported regex-style code search queries.",
+      "Added Vitest coverage for advanced filter URL mutation and saved-search creation.",
+      "Added Playwright coverage for facet add/remove, chip removal, advanced controls, compact view state, type switching, saved-search creation, invalid regex recovery, no-dead-control checks, and screenshot ralph/screenshots/build/search-003-phase4-facets-saved-search.jpg.",
+      "Verification passed: focused search_code_results_contract, focused search-code-results Vitest, focused search-code Playwright, TEST_DATABASE_URL-backed make check, same-env make test with Cargo tests plus 210 frontend tests, and full same-env Playwright with 77 tests."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke uses deterministic Rust-signed local sessions and seeded Postgres data, not real Google OAuth.",
+      "Phase 4 validates saved-search creation, but duplicate-name and concurrent create/delete flows should be rechecked in the final guardrail phase.",
+      "Advanced controls currently normalize owner/user/org to owner: and symbol:/archived: qualifiers; richer parser UI for quoted values with spaces remains a future hardening point.",
+      "Final Phase 5 still needs mobile/desktop guardrails, privacy sweeps, no-overflow checks, and build_pass bookkeeping."
+    ]
   }
 ]

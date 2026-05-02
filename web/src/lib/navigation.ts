@@ -596,14 +596,54 @@ function quoteSearchQualifierValue(value: string) {
   return /\s/.test(value) ? `"${value.replaceAll('"', '\\"')}"` : value;
 }
 
+function searchQualifierTokenPattern(qualifier: string, value?: string) {
+  const escapedQualifier = qualifier.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (!value) {
+    return new RegExp(`(^|\\s)${escapedQualifier}:(?:"[^"]*"|\\S+)`, "gi");
+  }
+  const escapedValue = quoteSearchQualifierValue(value).replace(
+    /[.*+?^${}()|[\]\\]/g,
+    "\\$&",
+  );
+  return new RegExp(
+    `(^|\\s)${escapedQualifier}:${escapedValue}(?=\\s|$)`,
+    "gi",
+  );
+}
+
+export function removeCodeSearchQualifier(
+  query: string,
+  qualifier: string,
+  value?: string,
+) {
+  return query
+    .replace(searchQualifierTokenPattern(qualifier, value), " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(" ");
+}
+
 export function addCodeSearchQualifierHref(
   query: string,
   qualifier: string,
   value: string,
 ) {
+  const baseQuery = removeCodeSearchQualifier(query, qualifier, value);
   const nextQuery =
-    `${query.trim()} ${qualifier}:${quoteSearchQualifierValue(value)}`.trim();
+    `${baseQuery.trim()} ${qualifier}:${quoteSearchQualifierValue(value)}`.trim();
   return codeSearchHref(nextQuery);
+}
+
+export function toggleCodeSearchQualifierHref(
+  query: string,
+  qualifier: string,
+  value: string,
+  selected: boolean,
+) {
+  if (selected) {
+    return codeSearchHref(removeCodeSearchQualifier(query, qualifier, value));
+  }
+  return addCodeSearchQualifierHref(query, qualifier, value);
 }
 
 export function removeCodeSearchQualifierHref(removeQuery: string) {

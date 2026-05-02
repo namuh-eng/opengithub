@@ -54,7 +54,7 @@
 
 ## Phase 4: Facet Interactions, Advanced Controls, and Saved Search - filters mutate URL-backed results
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Complete the interactive controls around code results. Clicking language/path facets adds qualifiers and refreshes results, deleting chips removes qualifiers, advanced owner/symbol/exclude-archived controls update the URL, type menu preserves the query, view controls are stateful, and Save uses the `search-002` saved-search API instead of a placeholder.
 

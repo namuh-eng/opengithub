@@ -401,6 +401,7 @@ async fn code_search_returns_facets_chips_counts_and_validation_errors() {
     for uri in [
         "/api/search?q=language:&type=code".to_owned(),
         "/api/search?q=router+fork:true&type=code".to_owned(),
+        "/api/search?q=/router.*/&type=code".to_owned(),
         format!("/api/search?q={}+repo:broken&type=code", marker),
         format!("/api/search?q={}&type=code", "x".repeat(257)),
     ] {

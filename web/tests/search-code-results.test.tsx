@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CodeSearchResultsPage } from "@/components/CodeSearchResultsPage";
 import type { CodeSearchResponse, GlobalSearchResult } from "@/lib/api";
 
@@ -127,6 +127,10 @@ function codeResponse(
 }
 
 describe("CodeSearchResultsPage", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("renders the dedicated two-pane code search workspace", () => {
     render(
       <CodeSearchResultsPage
@@ -163,7 +167,7 @@ describe("CodeSearchResultsPage", () => {
 
     expect(screen.getByRole("link", { name: /Rust\s*10/ })).toHaveAttribute(
       "href",
-      "/search?q=search_code_results+language%3ARust&type=code",
+      "/search?q=search_code_results&type=code",
     );
     expect(
       screen.getByRole("link", { name: /TypeScript\s*2/ }),
@@ -240,6 +244,79 @@ describe("CodeSearchResultsPage", () => {
         button.textContent?.trim() || button.getAttribute("aria-label"),
       ).toBeTruthy();
     }
+  });
+
+  it("applies advanced filters through URL-backed code qualifiers", () => {
+    const assign = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { assign },
+    });
+
+    render(
+      <CodeSearchResultsPage
+        query="search_code_results language:Rust"
+        results={codeResponse()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Advanced"));
+    fireEvent.change(screen.getByPlaceholderText("namuh"), {
+      target: { value: "mona" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("router"), {
+      target: { value: "search_code_results" },
+    });
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: "Exclude archived repositories",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Apply filters" }));
+
+    expect(assign).toHaveBeenCalledWith(
+      "/search?q=search_code_results+language%3ARust+owner%3Amona+symbol%3Asearch_code_results+archived%3Afalse&type=code",
+    );
+  });
+
+  it("creates saved searches from the code results page", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        id: "saved-1",
+        name: "Router references",
+        query: "search_code_results language:Rust",
+        scope: "code",
+        href: "/search?q=search_code_results+language%3ARust&type=code",
+        updatedAt: "2026-05-02T00:00:00Z",
+      }),
+    } as Response);
+
+    render(
+      <CodeSearchResultsPage
+        query="search_code_results language:Rust"
+        results={codeResponse()}
+        saved
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Saved search name"), {
+      target: { value: "Router references" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create saved search" }),
+    );
+
+    expect(fetch).toHaveBeenCalledWith("/search/saved-searches", {
+      body: JSON.stringify({
+        name: "Router references",
+        query: "search_code_results language:Rust",
+        scope: "code",
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    expect(await screen.findByText('Saved "Router references".')).toBeVisible();
   });
 
   it("renders inline API errors and keeps controls concrete", () => {

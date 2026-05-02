@@ -17,6 +17,8 @@ import {
 type SearchResultsPageProps = {
   activeType: string;
   query: string;
+  saved?: boolean;
+  view?: string;
   results:
     | ListEnvelope<GlobalSearchResult>
     | CodeSearchResponse
@@ -478,11 +480,20 @@ function Pagination({
 export function SearchResultsPage({
   activeType,
   query,
+  saved = false,
+  view = "comfortable",
   results,
 }: SearchResultsPageProps) {
   const normalizedType = activeSearchType(activeType);
   if (normalizedType === "code") {
-    return <CodeSearchResultsPage query={query} results={results} />;
+    return (
+      <CodeSearchResultsPage
+        query={query}
+        results={results}
+        saved={saved}
+        view={view}
+      />
+    );
   }
 
   const activeTypeLabel =

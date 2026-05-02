@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { useMemo, useState } from "react";
 import type {
   ApiErrorEnvelope,
@@ -16,12 +16,16 @@ import {
   addCodeSearchQualifierHref,
   codeSearchHref,
   codeSearchViewHref,
+  removeCodeSearchQualifier,
   removeCodeSearchQualifierHref,
   searchTypeHref,
+  toggleCodeSearchQualifierHref,
 } from "@/lib/navigation";
 
 type CodeSearchResultsPageProps = {
   query: string;
+  view?: string;
+  saved?: boolean;
   results:
     | CodeSearchResponse
     | ListEnvelope<GlobalSearchResult>
@@ -115,7 +119,7 @@ function FacetLink({
   qualifier: "language" | "path";
 }) {
   const href = facet.selected
-    ? codeSearchHref(query)
+    ? toggleCodeSearchQualifierHref(query, qualifier, facet.value, true)
     : addCodeSearchQualifierHref(query, qualifier, facet.value);
   return (
     <Link
@@ -151,6 +155,185 @@ function lineHref(
 ) {
   const baseHref = blobHref ?? fallbackHref.split("#")[0] ?? fallbackHref;
   return line && line > 0 ? `${baseHref}#L${line}` : baseHref;
+}
+
+function firstQualifierValue(query: string, qualifier: string) {
+  const match = query.match(
+    new RegExp(`(?:^|\\s)${qualifier}:(?:"([^"]*)"|(\\S+))`, "i"),
+  );
+  return match?.[1] ?? match?.[2] ?? "";
+}
+
+function hasQualifierValue(query: string, qualifier: string, value: string) {
+  const normalizedValue = value.toLocaleLowerCase();
+  return (
+    query
+      .match(new RegExp(`(?:^|\\s)${qualifier}:(?:"[^"]*"|\\S+)`, "gi"))
+      ?.some((token) => {
+        const rawValue = token.trim().slice(token.indexOf(":") + 1);
+        return (
+          rawValue.replace(/^"|"$/g, "").toLocaleLowerCase() === normalizedValue
+        );
+      }) ?? false
+  );
+}
+
+function AdvancedFilters({ query }: { query: string }) {
+  const [owner, setOwner] = useState(firstQualifierValue(query, "owner"));
+  const [symbol, setSymbol] = useState(firstQualifierValue(query, "symbol"));
+  const [excludeArchived, setExcludeArchived] = useState(
+    hasQualifierValue(query, "archived", "false") ||
+      hasQualifierValue(query, "is", "unarchived"),
+  );
+
+  function submitFilters(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    let nextQuery = removeCodeSearchQualifier(query, "owner");
+    nextQuery = removeCodeSearchQualifier(nextQuery, "user");
+    nextQuery = removeCodeSearchQualifier(nextQuery, "org");
+    nextQuery = removeCodeSearchQualifier(nextQuery, "symbol");
+    nextQuery = removeCodeSearchQualifier(nextQuery, "archived");
+    nextQuery = removeCodeSearchQualifier(nextQuery, "is", "unarchived");
+    const parts = [nextQuery];
+    if (owner.trim()) {
+      parts.push(`owner:${owner.trim()}`);
+    }
+    if (symbol.trim()) {
+      parts.push(`symbol:${symbol.trim()}`);
+    }
+    if (excludeArchived) {
+      parts.push("archived:false");
+    }
+    window.location.assign(codeSearchHref(parts.join(" ")));
+  }
+
+  return (
+    <form className="mt-4 space-y-3" onSubmit={submitFilters}>
+      <label className="block">
+        <span className="t-label" style={{ color: "var(--ink-4)" }}>
+          Owner
+        </span>
+        <input
+          className="input mt-1 w-full"
+          onChange={(event) => setOwner(event.target.value)}
+          placeholder="namuh"
+          value={owner}
+        />
+      </label>
+      <label className="block">
+        <span className="t-label" style={{ color: "var(--ink-4)" }}>
+          Symbol
+        </span>
+        <input
+          className="input mt-1 w-full"
+          onChange={(event) => setSymbol(event.target.value)}
+          placeholder="router"
+          value={symbol}
+        />
+      </label>
+      <label className="flex items-center gap-2 t-sm">
+        <input
+          checked={excludeArchived}
+          onChange={(event) => setExcludeArchived(event.target.checked)}
+          type="checkbox"
+        />
+        Exclude archived repositories
+      </label>
+      <button className="btn sm" type="submit">
+        Apply filters
+      </button>
+    </form>
+  );
+}
+
+function SaveSearchDialog({ query, open }: { query: string; open: boolean }) {
+  const [expanded, setExpanded] = useState(open);
+  const [name, setName] = useState("");
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function saveSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const normalizedName = name.trim();
+    if (!normalizedName) {
+      setError("Name is required.");
+      setFeedback(null);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    setFeedback(null);
+    try {
+      const response = await fetch("/search/saved-searches", {
+        body: JSON.stringify({
+          name: normalizedName,
+          query,
+          scope: "code",
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || (body && "error" in body)) {
+        setError(body?.error?.message ?? "Saved search could not be created.");
+        return;
+      }
+      setFeedback(`Saved "${body.name ?? normalizedName}".`);
+      setName("");
+    } catch {
+      setError("Saved search could not be created.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="card mb-4 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="t-label" style={{ color: "var(--ink-3)" }}>
+            Saved search
+          </p>
+          <p className="t-sm mt-1" style={{ color: "var(--ink-3)" }}>
+            Store this code query in your search dashboard.
+          </p>
+        </div>
+        <button
+          aria-expanded={expanded}
+          className="btn sm"
+          onClick={() => setExpanded((value) => !value)}
+          type="button"
+        >
+          {expanded ? "Close" : "Save search"}
+        </button>
+      </div>
+      {expanded ? (
+        <form className="mt-4 flex flex-wrap gap-2" onSubmit={saveSearch}>
+          <input
+            aria-label="Saved search name"
+            className="input min-w-[220px] flex-1"
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Router references"
+            value={name}
+          />
+          <button className="btn primary" disabled={saving} type="submit">
+            {saving ? "Saving..." : "Create saved search"}
+          </button>
+        </form>
+      ) : null}
+      {feedback ? (
+        <p className="t-sm mt-3" role="status" style={{ color: "var(--ok)" }}>
+          {feedback}
+        </p>
+      ) : null}
+      {error ? (
+        <p className="t-sm mt-3" role="alert" style={{ color: "var(--err)" }}>
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 function CodeResultCard({ result }: { result: GlobalSearchResult }) {
@@ -374,6 +557,8 @@ function Pagination({
 
 export function CodeSearchResultsPage({
   query,
+  view = "comfortable",
+  saved = false,
   results,
 }: CodeSearchResultsPageProps) {
   const hasQuery = query.trim().length > 0;
@@ -477,46 +662,7 @@ export function CodeSearchResultsPage({
             <summary className="cursor-pointer t-label text-[color:var(--ink-3)]">
               Advanced
             </summary>
-            <form action="/search" className="mt-4 space-y-3">
-              <input name="type" type="hidden" value="code" />
-              <label className="block">
-                <span className="t-label" style={{ color: "var(--ink-4)" }}>
-                  Query
-                </span>
-                <input
-                  className="input mt-1 w-full"
-                  name="q"
-                  defaultValue={query}
-                />
-              </label>
-              <label className="block">
-                <span className="t-label" style={{ color: "var(--ink-4)" }}>
-                  Owner
-                </span>
-                <input
-                  className="input mt-1 w-full"
-                  name="owner"
-                  placeholder="owner:namuh"
-                />
-              </label>
-              <label className="block">
-                <span className="t-label" style={{ color: "var(--ink-4)" }}>
-                  Symbol
-                </span>
-                <input
-                  className="input mt-1 w-full"
-                  name="symbol"
-                  placeholder="symbol:router"
-                />
-              </label>
-              <label className="flex items-center gap-2 t-sm">
-                <input name="archived" type="checkbox" value="false" />
-                Exclude archived repositories
-              </label>
-              <button className="btn sm" type="submit">
-                Apply filters
-              </button>
-            </form>
+            <AdvancedFilters query={query} />
           </details>
         </aside>
 
@@ -551,13 +697,15 @@ export function CodeSearchResultsPage({
                   Save
                 </Link>
                 <Link
-                  className="btn sm"
+                  aria-current={view === "comfortable" ? "true" : undefined}
+                  className={`btn sm ${view === "comfortable" ? "primary" : ""}`}
                   href={codeSearchViewHref(query, "comfortable")}
                 >
                   Comfortable
                 </Link>
                 <Link
-                  className="btn sm"
+                  aria-current={view === "compact" ? "true" : undefined}
+                  className={`btn sm ${view === "compact" ? "primary" : ""}`}
                   href={codeSearchViewHref(query, "compact")}
                 >
                   Compact
@@ -565,6 +713,8 @@ export function CodeSearchResultsPage({
               </div>
             </div>
           </div>
+
+          {saved ? <SaveSearchDialog open={saved} query={query} /> : null}
 
           {isErrorEnvelope(results) ? (
             <CodeSearchError error={results} />
@@ -588,7 +738,7 @@ export function CodeSearchResultsPage({
           ) : null}
 
           {successfulResults && successfulResults.items.length > 0 ? (
-            <div className="space-y-3">
+            <div className={view === "compact" ? "space-y-2" : "space-y-3"}>
               {successfulResults.items.map((result) => (
                 <CodeResultCard key={result.document.id} result={result} />
               ))}

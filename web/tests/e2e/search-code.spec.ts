@@ -115,3 +115,74 @@ test("code search groups snippets, expands hidden matches, and opens line anchor
   await expect(page).toHaveURL(/\/blob\/main\/src\/search_phase_three\.rs#L3$/);
   await expect(page.locator("#L3")).toBeVisible();
 });
+
+test("code search filters, saved search, and invalid query recovery stay URL-backed", async ({
+  page,
+}) => {
+  const marker = `phase4code${Date.now()}`;
+  const seeded = seedSession(marker);
+  await signIn(page, seeded);
+
+  await page.goto(`/search?q=${marker}&type=code`);
+  await expect(
+    page.getByRole("heading", { name: "Search indexed code" }),
+  ).toBeVisible();
+
+  await page.getByRole("link", { name: /Rust\s+1/ }).click();
+  await expect(page).toHaveURL(/language%3ARust|language:Rust/);
+  await expect(page.getByRole("link", { name: /language:Rust/ })).toBeVisible();
+
+  await page.getByRole("link", { name: /language:Rust/ }).click();
+  await expect(page).not.toHaveURL(/language%3ARust|language:Rust/);
+
+  await page.getByRole("link", { name: /src\s+1/ }).click();
+  await expect(page).toHaveURL(/path%3Asrc|path:src/);
+  await page.getByRole("link", { name: /path:src/ }).click();
+  await expect(page).not.toHaveURL(/path%3Asrc|path:src/);
+
+  await page.getByText("Advanced").click();
+  await page
+    .getByPlaceholder("namuh")
+    .fill(seeded.cookieName ? "search-e2e-user" : "unused");
+  await page.getByPlaceholder("router").fill(marker);
+  await page
+    .getByRole("checkbox", { name: "Exclude archived repositories" })
+    .check();
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await expect(page).toHaveURL(/owner%3Asearch-e2e-user|owner:search-e2e-user/);
+  await expect(page).toHaveURL(/symbol%3Aphase4code|symbol:phase4code/);
+  await expect(page).toHaveURL(/archived%3Afalse|archived:false/);
+
+  await page.getByRole("link", { name: "Compact" }).click();
+  await expect(page.getByRole("link", { name: "Compact" })).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+
+  await page.goto(`/search?q=${marker}&type=code&saved=1`);
+  const savedName = `Code saved ${Date.now()}`;
+  await page.getByLabel("Saved search name").fill(savedName);
+  await page.getByRole("button", { name: "Create saved search" }).click();
+  await expect(page.getByText(`Saved "${savedName}".`)).toBeVisible();
+
+  await page
+    .getByRole("navigation", { name: "Search result types" })
+    .getByRole("link", { name: /Issues/ })
+    .click();
+  await expect(page).toHaveURL(/type=issues/);
+
+  await page.goto("/search?q=/router.*/&type=code");
+  await expect(page.getByText("Code search unavailable")).toBeVisible();
+  await expect(
+    page.getByText("regular expression code search is not supported"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("searchbox", { name: "Search query" }),
+  ).toHaveValue("/router.*/");
+
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/search-003-phase4-facets-saved-search.jpg",
+  });
+});

@@ -1843,3 +1843,15 @@
 - Browser smoke screenshot saved at `ralph/screenshots/build/search-003-phase3-snippet-expansion.jpg`.
 - Verification passed: focused `search_code_results_contract`; focused `web/tests/search-code-results.test.tsx`; focused TEST_DATABASE_URL-backed `web/tests/e2e/search-code.spec.ts`; `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 208 frontend tests; full `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false SESSION_SECRET=playwright-session-secret-with-enough-entropy SESSION_COOKIE_NAME=og_session make test-e2e` with 76 Playwright tests; mandatory Editorial banned-value scan returned zero matches.
 - Marked Phase 3 as done in `.qrspi/search-003/structure.md`; `prd.json` remains `build_pass: false` because Phases 4-5 remain.
+
+2026-05-02 - search-003 phase 4 facet interactions, advanced controls, and saved search
+
+- Implemented Phase 4 from `.qrspi/search-003/structure.md`: code search facets, chips, advanced controls, view toggles, type switching, saved-search creation, and invalid-query recovery now have concrete URL-backed or API-backed behavior.
+- Updated `web/src/lib/navigation.ts` with code-search qualifier removal/toggle helpers so language/path facets and chips mutate only the selected qualifier instead of resetting the query.
+- Updated `web/src/components/CodeSearchResultsPage.tsx` with client-side advanced owner/symbol/exclude-archived controls, stateful Comfortable/Compact view links, and a saved-search form that posts to the existing `/search/saved-searches` route with inline success/error feedback.
+- Updated `web/src/app/search/page.tsx` and `SearchResultsPage` to parse/forward `view`, `saved`, and advanced query params for the code workspace.
+- Hardened `crates/api/src/domain/search.rs` to reject unsupported regex-style code search queries with the standard validation envelope.
+- Added/extended Rust, Vitest, and Playwright coverage for facet add/remove, chip removal, advanced controls, compact view state, type switching, saved-search creation, invalid regex recovery, and no-dead-control checks.
+- Browser smoke screenshot saved at `ralph/screenshots/build/search-003-phase4-facets-saved-search.jpg`.
+- Verification passed: focused `search_code_results_contract`; focused `web/tests/search-code-results.test.tsx`; focused TEST_DATABASE_URL-backed `web/tests/e2e/search-code.spec.ts`; `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 210 frontend tests; full same-env Playwright with 77 tests.
+- Marked Phase 4 as done in `.qrspi/search-003/structure.md`; `prd.json` remains `build_pass: false` because Phase 5 remains.

@@ -1625,6 +1625,11 @@ fn parse_code_search_query(query: &str) -> Result<ParsedCodeSearchQuery, SearchE
     };
 
     for token in normalized.split_whitespace() {
+        if token.len() > 2 && token.starts_with('/') && token.ends_with('/') {
+            return Err(SearchError::Validation(
+                "regular expression code search is not supported".to_owned(),
+            ));
+        }
         if let Some((qualifier, value)) = token.split_once(':') {
             let qualifier = qualifier.to_ascii_lowercase();
             let value = value.trim();
