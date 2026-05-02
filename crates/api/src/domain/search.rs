@@ -186,6 +186,7 @@ pub struct SearchSuggestionGroup {
 pub struct SearchSuggestionItem {
     pub id: String,
     pub kind: String,
+    pub action: SearchSuggestionAction,
     pub title: String,
     pub description: Option<String>,
     pub href: Option<String>,
@@ -194,6 +195,15 @@ pub struct SearchSuggestionItem {
     pub owner_login: Option<String>,
     pub repository_name: Option<String>,
     pub visibility: Option<RepositoryVisibility>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchSuggestionAction {
+    Navigate,
+    SubmitSearch,
+    ReplaceToken,
+    OpenSavedSearchDialog,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -568,6 +578,7 @@ fn scoped_search_suggestions(query: &str, scope: &str) -> Vec<SearchSuggestionIt
     .map(|(id, title, description)| SearchSuggestionItem {
         id: format!("scope-{id}"),
         kind: "submit_search".to_owned(),
+        action: SearchSuggestionAction::SubmitSearch,
         title: title.to_owned(),
         description: Some(description.to_owned()),
         href: Some(format!("/search?q={encoded}&type={id}")),
@@ -638,9 +649,18 @@ fn qualifier_item(
     description: &str,
 ) -> SearchSuggestionItem {
     let replacement = format!("{prefix}:");
+    let replacement = if token
+        .and_then(|token| token.prefix.as_deref())
+        .is_some_and(|typed_prefix| typed_prefix == prefix)
+    {
+        title.to_owned()
+    } else {
+        replacement
+    };
     SearchSuggestionItem {
         id: format!("qualifier-{prefix}"),
         kind: "replace_token".to_owned(),
+        action: SearchSuggestionAction::ReplaceToken,
         title: title.to_owned(),
         description: Some(description.to_owned()),
         href: None,
@@ -738,6 +758,7 @@ async fn repository_and_code_suggestions(
                     "direct_repository_jump"
                 }
                 .to_owned(),
+                action: SearchSuggestionAction::Navigate,
                 title: if kind == "code" {
                     path.clone().unwrap_or(title)
                 } else {
@@ -795,6 +816,7 @@ async fn people_and_org_suggestions(
         .map(|row| SearchSuggestionItem {
             id: row.get("id"),
             kind: row.get("kind"),
+            action: SearchSuggestionAction::Navigate,
             title: row.get("title"),
             description: row.get("description"),
             href: row.get("href"),
@@ -844,6 +866,7 @@ async fn team_suggestions(
             SearchSuggestionItem {
                 id: row.get::<Uuid, _>("id").to_string(),
                 kind: "team".to_owned(),
+                action: SearchSuggestionAction::Navigate,
                 title: row.get("name"),
                 description: row.get("description"),
                 href: Some(format!("/orgs/{org_slug}/teams/{slug}")),

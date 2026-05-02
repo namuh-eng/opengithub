@@ -22,6 +22,11 @@ export type SearchSuggestionToken = {
 export type SearchSuggestionItem = {
   id: string;
   kind: string;
+  action:
+    | "navigate"
+    | "submit_search"
+    | "replace_token"
+    | "open_saved_search_dialog";
   title: string;
   description: string | null;
   href: string | null;

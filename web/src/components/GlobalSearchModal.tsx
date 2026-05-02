@@ -15,6 +15,12 @@ import type {
   SearchSuggestionGroup,
   SearchSuggestionItem,
 } from "@/lib/api";
+import {
+  replaceSearchQueryToken,
+  type SearchModalAction,
+  searchHref,
+  searchModalActionHref,
+} from "@/lib/navigation";
 
 type GlobalSearchModalProps = {
   initialQuery?: string;
@@ -23,6 +29,7 @@ type GlobalSearchModalProps = {
 
 type FlatSuggestion =
   | {
+      action: SearchModalAction;
       groupTitle: string;
       href: string;
       id: string;
@@ -31,6 +38,7 @@ type FlatSuggestion =
       kind: string;
     }
   | {
+      action: SearchModalAction;
       groupTitle: string;
       href: string;
       id: string;
@@ -54,7 +62,32 @@ function SearchIcon() {
 }
 
 function itemHref(item: SearchSuggestionItem) {
-  return item.href ?? `/search?q=${encodeURIComponent(item.nextQuery ?? "")}`;
+  if (item.action === "replace_token") {
+    return searchHref(item.nextQuery ?? "");
+  }
+  return item.href ?? searchHref(item.nextQuery ?? "");
+}
+
+function itemAction(item: SearchSuggestionItem): SearchModalAction {
+  if (item.action === "replace_token") {
+    return {
+      kind: "replace_token",
+      nextQuery: item.nextQuery ?? "",
+    };
+  }
+  if (item.action === "submit_search") {
+    return {
+      href: item.href ?? searchHref(item.nextQuery ?? ""),
+      kind: "submit_search",
+    };
+  }
+  if (item.action === "open_saved_search_dialog") {
+    return { kind: "open_saved_search_dialog" };
+  }
+  return {
+    href: item.href ?? searchHref(item.nextQuery ?? ""),
+    kind: "navigate",
+  };
 }
 
 function flattenSuggestions(
@@ -68,6 +101,7 @@ function flattenSuggestions(
     group.items
       .filter((item) => item.href || item.nextQuery)
       .map((item) => ({
+        action: itemAction(item),
         description: item.description,
         groupTitle: group.title,
         href: itemHref(item),
@@ -79,6 +113,10 @@ function flattenSuggestions(
   const savedItems = dashboard.savedSearches.map(
     (item: SavedSearchSuggestion) => ({
       description: item.query,
+      action: {
+        href: item.href,
+        kind: "submit_search" as const,
+      },
       groupTitle: "Saved searches",
       href: item.href,
       id: `saved:${item.id}`,
@@ -89,6 +127,10 @@ function flattenSuggestions(
   const recentItems = dashboard.recentSearches.map(
     (item: RecentSearchSuggestion) => ({
       description: item.resultType ?? item.scope,
+      action: {
+        href: item.href,
+        kind: "submit_search" as const,
+      },
       groupTitle: "Recent searches",
       href: item.href,
       id: `recent:${item.id}`,
@@ -112,10 +154,7 @@ function groupedFlatSuggestions(items: FlatSuggestion[]) {
 }
 
 function submitHref(query: string) {
-  const params = new URLSearchParams();
-  params.set("q", query.trim());
-  params.set("type", "repositories");
-  return `/search?${params.toString()}`;
+  return searchHref(query);
 }
 
 export function GlobalSearchModal({
@@ -139,6 +178,13 @@ export function GlobalSearchModal({
     [flatSuggestions],
   );
   const selectedSuggestion = flatSuggestions[selectedIndex];
+  const queryBuilderChips = [
+    { label: "language:rust", value: "language:rust" },
+    { label: "repo:owner/name", value: "repo:" },
+    { label: "org:name", value: "org:" },
+    { label: "path:src/", value: "path:src/" },
+    { label: "is:open", value: "is:open" },
+  ];
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => inputRef.current?.focus());
@@ -198,6 +244,38 @@ export function GlobalSearchModal({
     }
   }, [flatSuggestions.length, selectedIndex]);
 
+  function applyAction(action: SearchModalAction) {
+    if (action.kind === "replace_token") {
+      setQuery(
+        action.nextQuery.endsWith(" ")
+          ? action.nextQuery
+          : `${action.nextQuery} `,
+      );
+      window.requestAnimationFrame(() => inputRef.current?.focus());
+      return;
+    }
+    window.location.assign(searchModalActionHref(action, query));
+  }
+
+  function addQualifier(value: string) {
+    const token = dashboard?.token;
+    const tokenStillMatches =
+      token &&
+      query.slice(token.replaceFrom, token.replaceTo) === token.value &&
+      (token.replaceTo === query.length ||
+        /\s/.test(query.charAt(token.replaceTo)));
+    const nextQuery = tokenStillMatches
+      ? replaceSearchQueryToken(
+          query,
+          token.replaceFrom,
+          token.replaceTo,
+          value,
+        )
+      : `${query.trim()}${query.trim() ? " " : ""}${value} `;
+    setQuery(nextQuery);
+    window.requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") {
       event.preventDefault();
@@ -217,9 +295,19 @@ export function GlobalSearchModal({
       );
       return;
     }
+    if (event.key === "Home" && flatSuggestions.length > 0) {
+      event.preventDefault();
+      setSelectedIndex(0);
+      return;
+    }
+    if (event.key === "End" && flatSuggestions.length > 0) {
+      event.preventDefault();
+      setSelectedIndex(flatSuggestions.length - 1);
+      return;
+    }
     if (event.key === "Enter" && selectedSuggestion) {
       event.preventDefault();
-      window.location.assign(selectedSuggestion.href);
+      applyAction(selectedSuggestion.action);
     }
   }
 
@@ -283,6 +371,24 @@ export function GlobalSearchModal({
           </Link>
           <span className="kbd">esc</span>
         </form>
+        <div
+          className="flex flex-wrap items-center gap-2 border-b px-3 py-2"
+          style={{ borderColor: "var(--line)" }}
+        >
+          <span className="t-label" style={{ color: "var(--ink-3)" }}>
+            Add qualifier
+          </span>
+          {queryBuilderChips.map((chip) => (
+            <button
+              className="chip soft"
+              key={chip.label}
+              onClick={() => addQualifier(chip.value)}
+              type="button"
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
 
         <div
           className="palette-list"
@@ -311,6 +417,28 @@ export function GlobalSearchModal({
                 const index = flatSuggestions.findIndex(
                   (candidate) => candidate.id === item.id,
                 );
+                if (item.action.kind === "replace_token") {
+                  return (
+                    <button
+                      aria-selected={index === selectedIndex}
+                      className={`palette-item w-full ${
+                        index === selectedIndex ? "selected" : ""
+                      }`}
+                      id={`global-search-${item.id}`}
+                      key={item.id}
+                      onClick={() => applyAction(item.action)}
+                      onMouseEnter={() => setSelectedIndex(index)}
+                      role="option"
+                      type="button"
+                    >
+                      <span className="ico">
+                        <SearchIcon />
+                      </span>
+                      <span className="min-w-0 truncate">{item.title}</span>
+                      <span className="desc">{item.description}</span>
+                    </button>
+                  );
+                }
                 return (
                   <Link
                     aria-selected={index === selectedIndex}

@@ -2598,5 +2598,23 @@
       "Browser smoke uses deterministic Rust-signed sessions and local Postgres fixtures instead of real Google OAuth.",
       "Suggestion latency and rapid typing cancellation were covered by component behavior, but high-latency network behavior should be stressed once production deployment exists."
     ]
+  },
+  {
+    "feature_id": "search-002",
+    "tests_written": [
+      "Implemented Phase 3 autocomplete, query-builder chips, scoped search submission, and direct jump behavior for the global search modal.",
+      "Added explicit action metadata to search suggestion rows so the browser can distinguish navigate, submit_search, replace_token, and future saved-search dialog actions.",
+      "Changed qualifier completions such as language:ru to normalize to language:rust and keep focus in the combobox after replacement.",
+      "Added typed search modal navigation helpers for search URL construction and token-preserving replacement.",
+      "Extended app-shell Vitest coverage for replace-token rows, query-builder chips, Home/End keyboard selection, concrete scoped search links, saved/recent links, and no dead modal controls.",
+      "Extended Playwright coverage for qualifier autocomplete, query-builder chip append behavior, direct repository jumps, keyboard scoped search submission, and screenshot ralph/screenshots/build/search-002-phase3-autocomplete-jumps.jpg.",
+      "Verification passed: focused search_suggestions_contract, focused app-shell Vitest, focused app-shell Playwright smoke, TEST_DATABASE_URL-backed make check, same-env make test with Cargo tests plus 200 frontend tests, full same-env make test-e2e with 72 Playwright tests, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 still does not create or delete saved searches; the nested Create saved search write flow remains Phase 4.",
+      "Query-builder chips cover common qualifiers but do not yet provide repository/org-aware value pickers.",
+      "Direct jump smoke uses seeded local Postgres search fixtures and deterministic Rust-signed sessions, not real Google OAuth.",
+      "Rapid typing and stale token replacement are guarded in component and browser coverage, but high-latency production suggestion responses should still be stress-tested."
+    ]
   }
 ]

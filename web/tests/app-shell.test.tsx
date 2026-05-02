@@ -74,6 +74,7 @@ beforeEach(() => {
               {
                 id: "scope-repositories",
                 kind: "submit_search",
+                action: "submit_search",
                 title: "Repositories",
                 description: "Search repository names and descriptions",
                 href: "/search?q=&type=repositories",
@@ -90,8 +91,28 @@ beforeEach(() => {
             title: "Repositories and code",
             items: [
               {
+                id: "qualifier-language",
+                kind: "replace_token",
+                action: "replace_token",
+                title: "language:rust",
+                description: "Limit code results by language",
+                href: null,
+                nextQuery: "language:rust ",
+                scope: null,
+                ownerLogin: null,
+                repositoryName: null,
+                visibility: null,
+              },
+            ],
+          },
+          {
+            id: "repositories",
+            title: "Repositories and code",
+            items: [
+              {
                 id: "repo-1",
                 kind: "direct_repository_jump",
+                action: "navigate",
                 title: "mona/editorial",
                 description: "public repository",
                 href: "/mona/editorial",
@@ -220,6 +241,28 @@ describe("AppShell desktop header", () => {
       "href",
       "/search?q=router+guards&type=repositories",
     );
+
+    fireEvent.click(
+      screen.getAllByRole("option", { name: /language:rust/ })[0],
+    );
+    expect(
+      screen.getByRole("combobox", { name: "Search opengithub" }),
+    ).toHaveValue("language:rust ");
+
+    fireEvent.click(screen.getByRole("button", { name: "path:src/" }));
+    expect(
+      screen.getByRole("combobox", { name: "Search opengithub" }),
+    ).toHaveValue("language:rust path:src/ ");
+
+    fireEvent.keyDown(
+      screen.getByRole("combobox", { name: "Search opengithub" }),
+      {
+        key: "End",
+      },
+    );
+    expect(
+      screen.getByRole("option", { name: /router guards/ }),
+    ).toHaveAttribute("aria-selected", "true");
 
     fireEvent.keyDown(
       screen.getByRole("combobox", { name: "Search opengithub" }),

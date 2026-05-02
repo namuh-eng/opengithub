@@ -38,7 +38,7 @@
 
 ## Phase 3: Autocomplete, Query Builder, and Direct Jumps - modal interactions mutate query or navigate
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make modal suggestions interactive: typed input updates suggestions in place, qualifier rows autocomplete the current token, scoped-search rows submit to `/search`, and direct jump rows navigate to their concrete target. The query-builder surface should let users add common qualifiers without losing the typed query.
 

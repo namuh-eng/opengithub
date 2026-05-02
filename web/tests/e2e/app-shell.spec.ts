@@ -179,6 +179,50 @@ test("signed-in desktop header menus, links, search, and sign-out work", async (
   await expect(page).toHaveURL("http://localhost:3015/");
 });
 
+test("global search modal autocompletes qualifiers and follows direct jumps", async ({
+  page,
+}) => {
+  const seeded = seedDashboard();
+  await signIn(page, seeded);
+
+  await page.goto("/dashboard");
+  await page.getByRole("searchbox", { name: "Search or jump to" }).focus();
+  const searchDialog = page.getByRole("dialog", { name: "Search" });
+  const combobox = searchDialog.getByRole("combobox", {
+    name: "Search opengithub",
+  });
+  await expect(combobox).toBeFocused();
+
+  await combobox.fill("language:ru");
+  await searchDialog.getByRole("option", { name: /language:rust/ }).click();
+  await expect(combobox).toHaveValue("language:rust ");
+
+  await searchDialog.getByRole("button", { name: "path:src/" }).click();
+  await expect(combobox).toHaveValue("language:rust path:src/ ");
+
+  await combobox.fill("searchmodal");
+  await searchDialog
+    .getByRole("option", { name: /searchmodal/ })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/[^/]+\/search-[^/?#]+$/);
+
+  await page.goto("/dashboard");
+  await page.getByRole("searchbox", { name: "Search or jump to" }).focus();
+  await combobox.fill("searchmodal");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/search\?q=searchmodal&type=repositories$/);
+
+  await page.goto("/dashboard");
+  await page.getByRole("searchbox", { name: "Search or jump to" }).focus();
+  await combobox.fill("language:ru");
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/search-002-phase3-autocomplete-jumps.jpg",
+  });
+});
+
 test("signed-in mobile drawer exposes navigation and responsive frames", async ({
   page,
 }) => {

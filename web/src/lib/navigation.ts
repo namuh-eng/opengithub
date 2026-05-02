@@ -439,6 +439,61 @@ export const SEARCH_TABS = [
   },
 ] as const satisfies readonly QueryTab[];
 
+export type SearchModalAction =
+  | {
+      href: string;
+      kind: "navigate" | "submit_search";
+    }
+  | {
+      kind: "replace_token";
+      nextQuery: string;
+    }
+  | {
+      kind: "open_saved_search_dialog";
+    };
+
+export function searchHref(
+  query: string,
+  resultType = "repositories",
+  extraParams: Record<string, string | null | undefined> = {},
+) {
+  const params = new URLSearchParams();
+  const trimmedQuery = query.trim();
+  if (trimmedQuery) {
+    params.set("q", trimmedQuery);
+  }
+  params.set("type", resultType);
+  for (const [key, value] of Object.entries(extraParams)) {
+    if (value?.trim()) {
+      params.set(key, value.trim());
+    }
+  }
+  return `/search?${params.toString()}`;
+}
+
+export function replaceSearchQueryToken(
+  query: string,
+  replaceFrom: number,
+  replaceTo: number,
+  replacement: string,
+) {
+  const nextQuery = `${query.slice(0, replaceFrom)}${replacement}${query.slice(replaceTo)}`;
+  return nextQuery.endsWith(" ") ? nextQuery : `${nextQuery} `;
+}
+
+export function searchModalActionHref(
+  action: SearchModalAction,
+  fallbackQuery: string,
+) {
+  if (action.kind === "navigate" || action.kind === "submit_search") {
+    return action.href;
+  }
+  if (action.kind === "replace_token") {
+    return searchHref(action.nextQuery || fallbackQuery);
+  }
+  return "/search?saved=1";
+}
+
 export type JumpSuggestionKind =
   | "repository"
   | "organization"

@@ -330,7 +330,9 @@ async fn search_suggestions_include_people_teams_and_qualifier_replacements() {
 
     let rendered = body.to_string();
     assert!(rendered.contains("replace_token"));
+    assert!(rendered.contains("\"action\":\"replace_token\""));
     assert!(rendered.contains("language:"));
+    assert!(rendered.contains("language:rust"));
 
     let (directory_status, _headers, directory_body) = get_json(
         app,
