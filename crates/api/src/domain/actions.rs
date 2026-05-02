@@ -1,8 +1,9 @@
 use chrono::{DateTime, Utc};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{PgPool, Row};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use uuid::Uuid;
 
 use crate::api_types::ListEnvelope;
@@ -799,6 +800,29 @@ pub struct CreateWorkflowRun {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerWorkflowsForPush {
+    pub repository_id: Uuid,
+    pub actor_user_id: Uuid,
+    pub ref_name: String,
+    pub head_sha: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PushTriggerResult {
+    pub scanned_workflows: usize,
+    pub triggered_runs: Vec<WorkflowRun>,
+    pub skipped_workflows: Vec<PushTriggerSkip>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PushTriggerSkip {
+    pub path: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransitionRun {
     pub status: RunStatus,
     pub conclusion: Option<RunConclusion>,
@@ -1551,6 +1575,111 @@ pub async fn create_workflow_run(
     .await?;
 
     workflow_run_from_row(row)
+}
+
+pub async fn trigger_workflows_for_push(
+    pool: &PgPool,
+    input: TriggerWorkflowsForPush,
+) -> Result<PushTriggerResult, AutomationError> {
+    let repository = get_repository(pool, input.repository_id)
+        .await
+        .map_err(map_repository_error)?
+        .ok_or(AutomationError::RepositoryNotFound)?;
+    require_repository_role(
+        pool,
+        repository.id,
+        input.actor_user_id,
+        RepositoryRole::Write,
+    )
+    .await?;
+
+    let pushed_ref = normalize_pushed_ref(&input.ref_name)?;
+    let workflow_files = workflow_files_for_ref(pool, repository.id, &input.ref_name).await?;
+    let changed_paths = changed_paths_for_commit(pool, repository.id, &input.head_sha).await?;
+    let mut triggered_runs = Vec::new();
+    let mut skipped_workflows = Vec::new();
+
+    for file in &workflow_files {
+        let parsed = match parse_workflow_file(&file.content) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                upsert_discovered_workflow(
+                    pool,
+                    &repository,
+                    file,
+                    &pushed_ref.short_name,
+                    DiscoveredWorkflow {
+                        name: workflow_name_from_path(&file.path),
+                        trigger_events: Vec::new(),
+                        dispatch_enabled: false,
+                        dispatch_inputs: Vec::new(),
+                        yaml_parse_error: Some(sanitize_yaml_parse_error(error.to_string())),
+                    },
+                )
+                .await?;
+                skipped_workflows.push(PushTriggerSkip {
+                    path: file.path.clone(),
+                    reason: "invalid_yaml".to_owned(),
+                });
+                continue;
+            }
+        };
+
+        let workflow = upsert_discovered_workflow(
+            pool,
+            &repository,
+            file,
+            &pushed_ref.short_name,
+            parsed.discovered.clone(),
+        )
+        .await?;
+        if workflow.state != WorkflowState::Active {
+            skipped_workflows.push(PushTriggerSkip {
+                path: file.path.clone(),
+                reason: "disabled".to_owned(),
+            });
+            continue;
+        }
+        let Some(ref push_config) = parsed.push else {
+            skipped_workflows.push(PushTriggerSkip {
+                path: file.path.clone(),
+                reason: "push_not_configured".to_owned(),
+            });
+            continue;
+        };
+        if !push_config.matches_ref(&pushed_ref) {
+            skipped_workflows.push(PushTriggerSkip {
+                path: file.path.clone(),
+                reason: "ref_filter".to_owned(),
+            });
+            continue;
+        }
+        if !push_config.matches_paths(&changed_paths) {
+            skipped_workflows.push(PushTriggerSkip {
+                path: file.path.clone(),
+                reason: "path_filter".to_owned(),
+            });
+            continue;
+        }
+
+        let run = create_push_workflow_run(
+            pool,
+            &repository,
+            &workflow,
+            &parsed,
+            &input,
+            &pushed_ref,
+            &changed_paths,
+        )
+        .await?;
+        triggered_runs.push(run);
+    }
+
+    Ok(PushTriggerResult {
+        scanned_workflows: workflow_files.len(),
+        triggered_runs,
+        skipped_workflows,
+    })
 }
 
 pub async fn dispatch_workflow_run(
@@ -3924,6 +4053,700 @@ fn string_dispatch_input(name: &str, value: Value) -> Result<String, AutomationE
             "input `{name}` must be a scalar value"
         ))),
     }
+}
+
+#[derive(Debug, Clone)]
+struct WorkflowSourceFile {
+    path: String,
+    content: String,
+    oid: String,
+    blob_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone)]
+struct ParsedWorkflow {
+    discovered: DiscoveredWorkflow,
+    push: Option<PushWorkflowConfig>,
+    jobs: Vec<WorkflowJobPlan>,
+    concurrency_group: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct DiscoveredWorkflow {
+    name: String,
+    trigger_events: Vec<String>,
+    dispatch_enabled: bool,
+    dispatch_inputs: Vec<WorkflowDispatchInput>,
+    yaml_parse_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct PushWorkflowConfig {
+    branches: Vec<String>,
+    branches_ignore: Vec<String>,
+    tags: Vec<String>,
+    tags_ignore: Vec<String>,
+    paths: Vec<String>,
+    paths_ignore: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct PushedRef {
+    name: String,
+    short_name: String,
+    kind: String,
+}
+
+#[derive(Debug, Clone)]
+struct WorkflowJobPlan {
+    name: String,
+    runner_label: Option<String>,
+    steps: Vec<String>,
+    matrix: BTreeMap<String, String>,
+}
+
+impl PushWorkflowConfig {
+    fn matches_ref(&self, pushed_ref: &PushedRef) -> bool {
+        match pushed_ref.kind.as_str() {
+            "branch" => {
+                patterns_allow(&self.branches, &pushed_ref.short_name)
+                    && !patterns_match_any(&self.branches_ignore, &pushed_ref.short_name)
+            }
+            "tag" => {
+                patterns_allow(&self.tags, &pushed_ref.short_name)
+                    && !patterns_match_any(&self.tags_ignore, &pushed_ref.short_name)
+            }
+            _ => false,
+        }
+    }
+
+    fn matches_paths(&self, changed_paths: &[String]) -> bool {
+        if changed_paths.is_empty() {
+            return self.paths.is_empty();
+        }
+        let included = if self.paths.is_empty() {
+            true
+        } else {
+            changed_paths
+                .iter()
+                .any(|path| patterns_match_any(&self.paths, path))
+        };
+        if !included {
+            return false;
+        }
+        if self.paths_ignore.is_empty() {
+            return true;
+        }
+        changed_paths
+            .iter()
+            .any(|path| !patterns_match_any(&self.paths_ignore, path))
+    }
+}
+
+async fn workflow_files_for_ref(
+    pool: &PgPool,
+    repository_id: Uuid,
+    ref_name: &str,
+) -> Result<Vec<WorkflowSourceFile>, AutomationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT repository_files.path,
+               repository_files.content,
+               repository_files.oid,
+               git_objects.id AS blob_id
+        FROM repository_git_refs
+        JOIN repository_files
+          ON repository_files.commit_id = repository_git_refs.target_commit_id
+         AND repository_files.repository_id = repository_git_refs.repository_id
+        LEFT JOIN git_objects
+          ON git_objects.repository_id = repository_files.repository_id
+         AND git_objects.oid = repository_files.oid
+         AND git_objects.object_type = 'blob'
+        WHERE repository_git_refs.repository_id = $1
+          AND repository_git_refs.name = $2
+          AND lower(repository_files.path) LIKE '.github/workflows/%'
+          AND (
+              lower(repository_files.path) LIKE '%.yml'
+              OR lower(repository_files.path) LIKE '%.yaml'
+          )
+        ORDER BY lower(repository_files.path)
+        "#,
+    )
+    .bind(repository_id)
+    .bind(ref_name)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| WorkflowSourceFile {
+            path: row.get("path"),
+            content: row.get("content"),
+            oid: row.get("oid"),
+            blob_id: row.get("blob_id"),
+        })
+        .collect())
+}
+
+async fn changed_paths_for_commit(
+    pool: &PgPool,
+    repository_id: Uuid,
+    head_sha: &str,
+) -> Result<Vec<String>, AutomationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT repository_files.path
+        FROM commits
+        JOIN repository_files ON repository_files.commit_id = commits.id
+        WHERE commits.repository_id = $1 AND commits.oid = $2
+        ORDER BY lower(repository_files.path)
+        "#,
+    )
+    .bind(repository_id)
+    .bind(head_sha)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|row| row.get("path")).collect())
+}
+
+async fn upsert_discovered_workflow(
+    pool: &PgPool,
+    repository: &Repository,
+    file: &WorkflowSourceFile,
+    source_branch: &str,
+    workflow: DiscoveredWorkflow,
+) -> Result<ActionsWorkflow, AutomationError> {
+    let row = sqlx::query(
+        r#"
+        INSERT INTO actions_workflows (
+            repository_id, name, path, trigger_events, source_blob_id, source_sha,
+            source_branch, yaml_parse_error, dispatch_enabled, dispatch_inputs
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT (repository_id, lower(path))
+        DO UPDATE SET name = EXCLUDED.name,
+                      trigger_events = EXCLUDED.trigger_events,
+                      source_blob_id = EXCLUDED.source_blob_id,
+                      source_sha = EXCLUDED.source_sha,
+                      source_branch = EXCLUDED.source_branch,
+                      yaml_parse_error = EXCLUDED.yaml_parse_error,
+                      dispatch_enabled = EXCLUDED.dispatch_enabled,
+                      dispatch_inputs = EXCLUDED.dispatch_inputs
+        RETURNING id, repository_id, name, path, state, trigger_events, created_at, updated_at
+        "#,
+    )
+    .bind(repository.id)
+    .bind(workflow.name)
+    .bind(&file.path)
+    .bind(workflow.trigger_events)
+    .bind(file.blob_id)
+    .bind(&file.oid)
+    .bind(source_branch)
+    .bind(workflow.yaml_parse_error)
+    .bind(workflow.dispatch_enabled)
+    .bind(serde_json::to_value(workflow.dispatch_inputs).unwrap_or_else(|_| json!([])))
+    .fetch_one(pool)
+    .await?;
+    workflow_from_row(row)
+}
+
+async fn create_push_workflow_run(
+    pool: &PgPool,
+    repository: &Repository,
+    workflow: &ActionsWorkflow,
+    parsed: &ParsedWorkflow,
+    input: &TriggerWorkflowsForPush,
+    pushed_ref: &PushedRef,
+    changed_paths: &[String],
+) -> Result<WorkflowRun, AutomationError> {
+    let run_number = next_run_number(pool, workflow.id).await?;
+    let display_title = format!(
+        "{} pushed to {}",
+        repository.owner_login, pushed_ref.short_name
+    );
+    let event_payload = json!({
+        "ref": pushed_ref.name,
+        "headBranch": if pushed_ref.kind == "branch" { Some(pushed_ref.short_name.clone()) } else { None },
+        "headTag": if pushed_ref.kind == "tag" { Some(pushed_ref.short_name.clone()) } else { None },
+        "headSha": input.head_sha,
+        "workflowPath": workflow.path,
+        "changedPaths": changed_paths,
+        "source": "git_receive_pack",
+    });
+    let workflow_matrix = json!({
+        "jobCount": parsed.jobs.len(),
+        "jobs": parsed.jobs.iter().map(|job| {
+            json!({
+                "name": job.name,
+                "matrix": job.matrix,
+            })
+        }).collect::<Vec<_>>(),
+    });
+
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(
+        r#"
+        INSERT INTO workflow_runs (
+            repository_id, workflow_id, actor_user_id, run_number, head_branch,
+            head_sha, event, display_title, event_payload, concurrency_group, workflow_matrix
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, 'push', $7, $8, $9, $10)
+        RETURNING id, repository_id, workflow_id, actor_user_id, run_number, status, conclusion,
+                  head_branch, head_sha, event, started_at, completed_at, created_at, updated_at
+        "#,
+    )
+    .bind(repository.id)
+    .bind(workflow.id)
+    .bind(input.actor_user_id)
+    .bind(run_number)
+    .bind(&pushed_ref.short_name)
+    .bind(&input.head_sha)
+    .bind(&display_title)
+    .bind(&event_payload)
+    .bind(&parsed.concurrency_group)
+    .bind(&workflow_matrix)
+    .fetch_one(&mut *tx)
+    .await?;
+    let run = workflow_run_from_row(row)?;
+
+    let jobs = if parsed.jobs.is_empty() {
+        vec![WorkflowJobPlan {
+            name: workflow.name.clone(),
+            runner_label: Some("ubuntu-latest".to_owned()),
+            steps: vec!["Run workflow".to_owned()],
+            matrix: BTreeMap::new(),
+        }]
+    } else {
+        parsed.jobs.clone()
+    };
+
+    for job in jobs {
+        let job_row = sqlx::query(
+            r#"
+            INSERT INTO workflow_jobs (run_id, name, runner_label, group_name)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id
+            "#,
+        )
+        .bind(run.id)
+        .bind(&job.name)
+        .bind(&job.runner_label)
+        .bind(&parsed.concurrency_group)
+        .fetch_one(&mut *tx)
+        .await?;
+        let job_id: Uuid = job_row.get("id");
+        let steps = if job.steps.is_empty() {
+            vec!["Run job".to_owned()]
+        } else {
+            job.steps
+        };
+        for (index, step) in steps.into_iter().enumerate() {
+            sqlx::query(
+                r#"
+                INSERT INTO workflow_steps (job_id, number, name)
+                VALUES ($1, $2, $3)
+                "#,
+            )
+            .bind(job_id)
+            .bind((index + 1) as i32)
+            .bind(step)
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
+    tx.commit().await?;
+
+    enqueue_job(
+        pool,
+        "actions.workflow_push",
+        &format!("workflow-push:{}:{}", workflow.id, run.id),
+        json!({
+            "repositoryId": repository.id,
+            "workflowId": workflow.id,
+            "workflowPath": workflow.path,
+            "runId": run.id,
+            "runNumber": run.run_number,
+            "actorUserId": input.actor_user_id,
+            "ref": pushed_ref.name,
+            "headBranch": pushed_ref.short_name,
+            "headSha": input.head_sha,
+            "concurrencyGroup": parsed.concurrency_group,
+            "eventPayload": event_payload,
+            "matrix": workflow_matrix,
+        }),
+    )
+    .await?;
+
+    Ok(run)
+}
+
+fn parse_workflow_file(source: &str) -> Result<ParsedWorkflow, serde_yaml::Error> {
+    let document: serde_yaml::Value = serde_yaml::from_str(source)?;
+    let name = yaml_get(&document, "name")
+        .and_then(yaml_scalar_string)
+        .unwrap_or_else(|| "Workflow".to_owned());
+    let on = yaml_get(&document, "on");
+    let trigger_events = workflow_trigger_events(on);
+    let push = push_workflow_config(on);
+    let dispatch_inputs = workflow_dispatch_inputs(on);
+    let jobs = workflow_job_plans(yaml_get(&document, "jobs"));
+    let concurrency_group = yaml_get(&document, "concurrency").and_then(concurrency_group);
+
+    Ok(ParsedWorkflow {
+        discovered: DiscoveredWorkflow {
+            name,
+            trigger_events,
+            dispatch_enabled: !dispatch_inputs.is_empty()
+                || workflow_trigger_events(on)
+                    .iter()
+                    .any(|event| event == "workflow_dispatch"),
+            dispatch_inputs,
+            yaml_parse_error: None,
+        },
+        push,
+        jobs,
+        concurrency_group,
+    })
+}
+
+fn workflow_trigger_events(on: Option<&serde_yaml::Value>) -> Vec<String> {
+    let Some(on) = on else {
+        return Vec::new();
+    };
+    match on {
+        serde_yaml::Value::String(event) => vec![event.clone()],
+        serde_yaml::Value::Sequence(events) => {
+            events.iter().filter_map(yaml_scalar_string).collect()
+        }
+        serde_yaml::Value::Mapping(mapping) => mapping
+            .keys()
+            .filter_map(yaml_key_string)
+            .collect::<Vec<_>>(),
+        _ => Vec::new(),
+    }
+}
+
+fn push_workflow_config(on: Option<&serde_yaml::Value>) -> Option<PushWorkflowConfig> {
+    let on = on?;
+    match on {
+        serde_yaml::Value::String(event) if event == "push" => Some(PushWorkflowConfig::default()),
+        serde_yaml::Value::Sequence(events)
+            if events
+                .iter()
+                .filter_map(yaml_scalar_string)
+                .any(|event| event == "push") =>
+        {
+            Some(PushWorkflowConfig::default())
+        }
+        serde_yaml::Value::Mapping(mapping) => {
+            let push = mapping.iter().find_map(|(key, value)| {
+                if yaml_key_string(key).as_deref() == Some("push") {
+                    Some(value)
+                } else {
+                    None
+                }
+            })?;
+            let mut config = PushWorkflowConfig::default();
+            if let serde_yaml::Value::Mapping(push_mapping) = push {
+                config.branches = yaml_string_list(mapping_get(push_mapping, "branches"));
+                config.branches_ignore =
+                    yaml_string_list(mapping_get(push_mapping, "branches-ignore"));
+                config.tags = yaml_string_list(mapping_get(push_mapping, "tags"));
+                config.tags_ignore = yaml_string_list(mapping_get(push_mapping, "tags-ignore"));
+                config.paths = yaml_string_list(mapping_get(push_mapping, "paths"));
+                config.paths_ignore = yaml_string_list(mapping_get(push_mapping, "paths-ignore"));
+            }
+            Some(config)
+        }
+        _ => None,
+    }
+}
+
+fn workflow_dispatch_inputs(on: Option<&serde_yaml::Value>) -> Vec<WorkflowDispatchInput> {
+    let Some(serde_yaml::Value::Mapping(on_mapping)) = on else {
+        return Vec::new();
+    };
+    let Some(serde_yaml::Value::Mapping(dispatch_mapping)) =
+        mapping_get(on_mapping, "workflow_dispatch")
+    else {
+        return Vec::new();
+    };
+    let Some(serde_yaml::Value::Mapping(inputs_mapping)) = mapping_get(dispatch_mapping, "inputs")
+    else {
+        return Vec::new();
+    };
+
+    inputs_mapping
+        .iter()
+        .filter_map(|(key, value)| {
+            let name = yaml_key_string(key)?;
+            let input_mapping = match value {
+                serde_yaml::Value::Mapping(mapping) => Some(mapping),
+                _ => None,
+            };
+            let description = input_mapping
+                .and_then(|mapping| mapping_get(mapping, "description"))
+                .and_then(yaml_scalar_string);
+            let required = input_mapping
+                .and_then(|mapping| mapping_get(mapping, "required"))
+                .and_then(yaml_bool)
+                .unwrap_or(false);
+            let default_value = input_mapping
+                .and_then(|mapping| mapping_get(mapping, "default"))
+                .and_then(yaml_scalar_string);
+            let input_type = input_mapping
+                .and_then(|mapping| mapping_get(mapping, "type"))
+                .and_then(yaml_scalar_string)
+                .unwrap_or_else(|| "string".to_owned());
+            let options = input_mapping
+                .and_then(|mapping| mapping_get(mapping, "options"))
+                .map(|value| yaml_string_list(Some(value)))
+                .unwrap_or_default();
+            Some(WorkflowDispatchInput {
+                name,
+                label: description.clone().unwrap_or_else(|| input_type.clone()),
+                description,
+                required,
+                default: default_value,
+                input_type,
+                options,
+            })
+        })
+        .collect()
+}
+
+fn workflow_job_plans(jobs: Option<&serde_yaml::Value>) -> Vec<WorkflowJobPlan> {
+    let Some(serde_yaml::Value::Mapping(jobs)) = jobs else {
+        return Vec::new();
+    };
+    let mut plans = Vec::new();
+    for (key, value) in jobs {
+        let job_key = yaml_key_string(key).unwrap_or_else(|| "job".to_owned());
+        let Some(mapping) = value.as_mapping() else {
+            plans.push(WorkflowJobPlan {
+                name: job_key,
+                runner_label: None,
+                steps: Vec::new(),
+                matrix: BTreeMap::new(),
+            });
+            continue;
+        };
+        let base_name = mapping_get(mapping, "name")
+            .and_then(yaml_scalar_string)
+            .unwrap_or(job_key);
+        let runner_label = mapping_get(mapping, "runs-on").and_then(yaml_scalar_or_first_string);
+        let steps = workflow_step_names(mapping_get(mapping, "steps"));
+        let matrices = matrix_combinations(
+            mapping_get(mapping, "strategy")
+                .and_then(|strategy| strategy.as_mapping())
+                .and_then(|strategy| mapping_get(strategy, "matrix")),
+        );
+        for matrix in matrices {
+            let name = if matrix.is_empty() {
+                base_name.clone()
+            } else {
+                let suffix = matrix
+                    .iter()
+                    .map(|(key, value)| format!("{key}={value}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{base_name} ({suffix})")
+            };
+            plans.push(WorkflowJobPlan {
+                name,
+                runner_label: runner_label.clone(),
+                steps: steps.clone(),
+                matrix,
+            });
+        }
+    }
+    plans
+}
+
+fn workflow_step_names(steps: Option<&serde_yaml::Value>) -> Vec<String> {
+    let Some(serde_yaml::Value::Sequence(steps)) = steps else {
+        return Vec::new();
+    };
+    steps
+        .iter()
+        .enumerate()
+        .map(|(index, step)| {
+            step.as_mapping()
+                .and_then(|mapping| mapping_get(mapping, "name"))
+                .and_then(yaml_scalar_string)
+                .or_else(|| {
+                    step.as_mapping()
+                        .and_then(|mapping| mapping_get(mapping, "uses"))
+                        .and_then(yaml_scalar_string)
+                })
+                .or_else(|| {
+                    step.as_mapping()
+                        .and_then(|mapping| mapping_get(mapping, "run"))
+                        .map(|_| "Run command".to_owned())
+                })
+                .unwrap_or_else(|| format!("Step {}", index + 1))
+        })
+        .collect()
+}
+
+fn matrix_combinations(matrix: Option<&serde_yaml::Value>) -> Vec<BTreeMap<String, String>> {
+    let Some(serde_yaml::Value::Mapping(matrix)) = matrix else {
+        return vec![BTreeMap::new()];
+    };
+    let mut dimensions = Vec::new();
+    for (key, value) in matrix {
+        let Some(name) = yaml_key_string(key) else {
+            continue;
+        };
+        if name == "include" || name == "exclude" {
+            continue;
+        }
+        let values = yaml_string_list(Some(value));
+        if !values.is_empty() {
+            dimensions.push((name, values));
+        }
+    }
+    if dimensions.is_empty() {
+        return vec![BTreeMap::new()];
+    }
+    let mut combinations = vec![BTreeMap::new()];
+    for (name, values) in dimensions {
+        let mut next = Vec::new();
+        for combination in &combinations {
+            for value in &values {
+                let mut clone = combination.clone();
+                clone.insert(name.clone(), value.clone());
+                next.push(clone);
+            }
+        }
+        combinations = next;
+    }
+    combinations
+}
+
+fn normalize_pushed_ref(ref_name: &str) -> Result<PushedRef, AutomationError> {
+    if let Some(short_name) = ref_name.strip_prefix("refs/heads/") {
+        Ok(PushedRef {
+            name: ref_name.to_owned(),
+            short_name: short_name.to_owned(),
+            kind: "branch".to_owned(),
+        })
+    } else if let Some(short_name) = ref_name.strip_prefix("refs/tags/") {
+        Ok(PushedRef {
+            name: ref_name.to_owned(),
+            short_name: short_name.to_owned(),
+            kind: "tag".to_owned(),
+        })
+    } else {
+        Err(AutomationError::InvalidWorkflowDispatch(format!(
+            "unsupported pushed ref `{ref_name}`"
+        )))
+    }
+}
+
+fn workflow_name_from_path(path: &str) -> String {
+    path.rsplit('/')
+        .next()
+        .unwrap_or("Workflow")
+        .trim_end_matches(".yaml")
+        .trim_end_matches(".yml")
+        .replace(['_', '-'], " ")
+}
+
+fn yaml_get<'a>(value: &'a serde_yaml::Value, key: &str) -> Option<&'a serde_yaml::Value> {
+    value
+        .as_mapping()
+        .and_then(|mapping| mapping_get(mapping, key))
+}
+
+fn mapping_get<'a>(mapping: &'a serde_yaml::Mapping, key: &str) -> Option<&'a serde_yaml::Value> {
+    mapping.iter().find_map(|(candidate, value)| {
+        if yaml_key_string(candidate).as_deref() == Some(key) {
+            Some(value)
+        } else {
+            None
+        }
+    })
+}
+
+fn yaml_key_string(value: &serde_yaml::Value) -> Option<String> {
+    match value {
+        serde_yaml::Value::String(value) => Some(value.clone()),
+        serde_yaml::Value::Bool(true) => Some("on".to_owned()),
+        _ => None,
+    }
+}
+
+fn yaml_scalar_string(value: &serde_yaml::Value) -> Option<String> {
+    match value {
+        serde_yaml::Value::String(value) => Some(value.clone()),
+        serde_yaml::Value::Number(value) => Some(value.to_string()),
+        serde_yaml::Value::Bool(value) => Some(value.to_string()),
+        _ => None,
+    }
+}
+
+fn yaml_scalar_or_first_string(value: &serde_yaml::Value) -> Option<String> {
+    yaml_scalar_string(value).or_else(|| match value {
+        serde_yaml::Value::Sequence(items) => items.first().and_then(yaml_scalar_string),
+        _ => None,
+    })
+}
+
+fn yaml_bool(value: &serde_yaml::Value) -> Option<bool> {
+    match value {
+        serde_yaml::Value::Bool(value) => Some(*value),
+        serde_yaml::Value::String(value) if value.eq_ignore_ascii_case("true") => Some(true),
+        serde_yaml::Value::String(value) if value.eq_ignore_ascii_case("false") => Some(false),
+        _ => None,
+    }
+}
+
+fn yaml_string_list(value: Option<&serde_yaml::Value>) -> Vec<String> {
+    match value {
+        Some(serde_yaml::Value::Sequence(values)) => {
+            values.iter().filter_map(yaml_scalar_string).collect()
+        }
+        Some(value) => yaml_scalar_string(value).into_iter().collect(),
+        None => Vec::new(),
+    }
+}
+
+fn concurrency_group(value: &serde_yaml::Value) -> Option<String> {
+    yaml_scalar_string(value).or_else(|| {
+        value
+            .as_mapping()
+            .and_then(|mapping| mapping_get(mapping, "group"))
+            .and_then(yaml_scalar_string)
+    })
+}
+
+fn patterns_allow(patterns: &[String], value: &str) -> bool {
+    patterns.is_empty() || patterns_match_any(patterns, value)
+}
+
+fn patterns_match_any(patterns: &[String], value: &str) -> bool {
+    patterns.iter().any(|pattern| glob_match(pattern, value))
+}
+
+fn glob_match(pattern: &str, value: &str) -> bool {
+    let mut regex = String::from("^");
+    let mut chars = pattern.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '*' if chars.peek() == Some(&'*') => {
+                chars.next();
+                regex.push_str(".*");
+            }
+            '*' => regex.push_str("[^/]*"),
+            '?' => regex.push_str("[^/]"),
+            _ => regex.push_str(&regex::escape(&ch.to_string())),
+        }
+    }
+    regex.push('$');
+    Regex::new(&regex)
+        .map(|compiled| compiled.is_match(value))
+        .unwrap_or(false)
 }
 
 async fn resolve_workflow_dispatch_ref(

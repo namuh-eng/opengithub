@@ -2548,5 +2548,23 @@
       "Browser smoke uses deterministic Rust-signed sessions against local Postgres fixtures instead of real Google OAuth.",
       "Clipboard behavior depends on browser permissions and uses a fallback path; cross-browser clipboard permission behavior needs QA."
     ]
+  },
+  {
+    "feature_id": "actions-005",
+    "tests_written": [
+      "Implemented backend workflow YAML discovery for internal git push events: .github/workflows/*.yml/.yaml files are loaded from the pushed ref commit, parsed with serde_yaml, and upserted into actions_workflows with source metadata and sanitized YAML errors.",
+      "Added push trigger evaluation for branches, branches-ignore, tags, tags-ignore, paths, and paths-ignore filters.",
+      "Added matrix expansion for workflow jobs and persisted queued workflow_runs with event_payload, concurrency_group, workflow_matrix, queued workflow_jobs, workflow_steps, and actions.workflow_push job leases.",
+      "Hooked the trigger dispatcher into sync_pushed_refs_to_database after pushed branch snapshots are upserted and feed/audit push events are recorded.",
+      "Added real Postgres Rust contract tests for push-triggered run creation, dispatch input metadata, matrix expansion, job/step creation, job lease payloads, branch/path filtering, and invalid YAML recording.",
+      "Verification passed: focused api_repository_actions_push_trigger_contract, TEST_DATABASE_URL-backed make check, same-env make test with Cargo tests plus 199 frontend tests, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "This feature queues workflow runs but does not execute real Actions runner jobs; worker execution remains a later feature.",
+      "Path filtering currently evaluates against repository_files for the pushed commit snapshot, not an exact git diff between before/after SHAs; real multi-commit push diff behavior should be revisited with runner/import plumbing.",
+      "The parser covers common push/workflow_dispatch/job matrix shapes, but advanced GitHub Actions syntax such as matrix include/exclude semantics, expressions inside filters, reusable workflows, pull_request, and schedule need future QA.",
+      "Concurrency group metadata is persisted and included in queued payloads; active-run cancellation/serialization semantics should be tested when the worker scheduler consumes it.",
+      "Integration was verified against local Postgres contract tests, not a live git receive-pack browser or CLI smoke."
+    ]
   }
 ]

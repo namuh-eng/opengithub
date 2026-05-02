@@ -1728,3 +1728,14 @@
 - Browser smoke screenshots saved at `ralph/screenshots/build/actions-004-phase5-final-desktop.jpg` and `ralph/screenshots/build/actions-004-phase5-final-mobile.jpg`.
 - Verification passed: focused `api_repository_actions_job_log_contract`; focused `web/tests/repository-actions-job-log.test.tsx`; focused TEST_DATABASE_URL-backed `web/tests/e2e/repository-actions-job-log.spec.ts`; `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`; same-env `make test`; full `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false SESSION_SECRET=playwright-session-secret-with-enough-entropy SESSION_COOKIE_NAME=og_session make test-e2e`; mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
 - Marked Phase 5 as done in `.qrspi/actions-004/structure.md` and set `actions-004.build_pass` to `true` in `prd.json`; `qa_pass` remains `false` for the QA agent.
+
+2026-05-02 - actions-005 workflow push trigger dispatcher
+
+- Built the backend workflow YAML parser and internal git push dispatcher for `actions-005`.
+- Added `serde_yaml` to the Rust workspace and a migration for `workflow_runs.event_payload`, `workflow_runs.concurrency_group`, and `workflow_runs.workflow_matrix`.
+- Implemented `trigger_workflows_for_push` in `crates/api/src/domain/actions.rs`: loads `.github/workflows/*.yml/.yaml` from the pushed ref commit, records workflow source metadata, sanitizes invalid YAML errors, evaluates push branch/tag/path filters, extracts workflow_dispatch inputs, expands matrix jobs, creates queued runs/jobs/steps, and enqueues `actions.workflow_push` leases.
+- Hooked the dispatcher into `sync_pushed_refs_to_database` after branch snapshots and push feed/audit events are recorded.
+- Added `crates/api/tests/api_repository_actions_push_trigger_contract.rs` with real Postgres scenarios for queued push runs, matrix expansion, dispatch metadata, job lease payloads, branch/path skips, and invalid YAML persistence.
+- Browser smoke and `make test-e2e` were skipped because this feature is a backend service with no direct UI changes.
+- Verification passed: focused `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false cargo test --test api_repository_actions_push_trigger_contract -- --nocapture`; `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 199 frontend tests; mandatory Editorial banned-value scan returned zero matches.
+- Set `actions-005.build_pass` to `true` in `prd.json`; `qa_pass` remains unset/false for the QA agent.

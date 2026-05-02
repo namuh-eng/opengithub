@@ -9,6 +9,7 @@ use sqlx::{PgPool, Row};
 use tokio::{fs, io::AsyncWriteExt, process::Command};
 use uuid::Uuid;
 
+use super::actions::{trigger_workflows_for_push, AutomationError, TriggerWorkflowsForPush};
 use super::repositories::{
     can_read_repository, can_write_repository, get_repository_by_owner_name, Repository,
     RepositorySnapshot, RepositorySnapshotFile, RepositoryVisibility,
@@ -316,6 +317,17 @@ pub async fn sync_pushed_refs_to_database(
             &commit.oid,
         )
         .await?;
+        trigger_workflows_for_push(
+            pool,
+            TriggerWorkflowsForPush {
+                repository_id: repository.id,
+                actor_user_id,
+                ref_name: pushed_ref.name.clone(),
+                head_sha: commit.oid.clone(),
+            },
+        )
+        .await
+        .map_err(actions_error)?;
     }
 
     prune_deleted_branch_refs(pool, repository.id, &synced_ref_names).await?;
@@ -334,6 +346,13 @@ pub async fn sync_pushed_refs_to_database(
     .flatten();
     upsert_storage(pool, repository.id, bare_path, default_commit_id).await?;
     Ok(())
+}
+
+fn actions_error(error: AutomationError) -> GitTransportError {
+    match error {
+        AutomationError::Sqlx(error) => GitTransportError::Sqlx(error),
+        other => GitTransportError::Storage(format!("actions push trigger failed: {other}")),
+    }
 }
 
 async fn readable_repository(
