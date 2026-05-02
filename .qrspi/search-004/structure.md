@@ -22,7 +22,7 @@
 
 ## Phase 2: Editorial Collaboration Results Shell - `/search?type=issues` and `/search?type=pull_requests` use the shared two-pane search workspace
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the generic issue/PR result rendering with a dedicated Editorial collaboration-search layout that matches the code-search shell: left rail, result-type switching, active scope chips, count/timing header, Save button, Sort menu, view options, and dense rows. The page must keep the Editorial design system locked: tokens, `.btn`, `.chip`, `.card`, `.input`, `.tabs`, and type ramp only.
 

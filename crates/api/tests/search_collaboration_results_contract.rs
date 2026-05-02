@@ -453,6 +453,8 @@ async fn pull_request_search_alias_returns_pr_rows_and_sort_metadata() {
         body["items"][0]["href"],
         format!("/{}/{}/pull/88", repo.owner_login, repo.name)
     );
+    assert_eq!(body["items"][0]["headRef"], "feature/search");
+    assert_eq!(body["items"][0]["baseRef"], "main");
     assert_eq!(body["items"][0]["commentCount"], 1);
     assert_eq!(body["typeCounts"][1]["resultType"], "pull_requests");
 }

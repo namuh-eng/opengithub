@@ -2756,5 +2756,20 @@
       "Sort metadata and basic sort ordering are present, but full URL-backed sort menu UX and pagination preservation remain later phases.",
       "Real Postgres validation used the reachable local database at localhost:55432 with existing namuh/namuh credentials because localhost:5432 was not available in this session."
     ]
+  },
+  {
+    "feature_id": "search-004",
+    "tests_written": [
+      "Completed Phase 2 Editorial collaboration results shell for /search?q={query}&type=issues and type=pull_requests.",
+      "Richer collaboration search rows now expose headRef/baseRef for pull request result metadata and render branch direction in the shared Editorial row card.",
+      "Updated the search E2E sweep to expect the dedicated Issues search and Pull requests search headings introduced by the Phase 2 shell.",
+      "Verification passed: focused search_collaboration_results_contract, focused search-collaboration-results Vitest, focused collaboration search Playwright smoke, make check, and make test with Cargo plus 213 frontend tests."
+    ],
+    "needs_deeper_qa": [
+      "Full make test-e2e was attempted twice: first failed only on the old generic-heading expectation and was fixed; the second failed after 43 passes due to local Postgres pool timeouts across seeded E2E setup commands, not a search assertion.",
+      "Focused browser smoke passed for issue and pull request search tab navigation, real seeded rows, PR branch metadata, no-dead-control checks, and screenshot ralph/screenshots/build/search-001-phase4-collaboration-results.jpg.",
+      "Advanced facet controls remain Phase 3; sort/save/pagination hardening remains Phase 4.",
+      "Browser smoke uses deterministic Rust-signed local sessions and seeded Postgres data, not a real Google OAuth browser session."
+    ]
   }
 ]

@@ -176,8 +176,8 @@ function ResultRow({
   const author = isRich
     ? result.author?.login
     : metadataString(metadata, "authorLogin");
-  const headRef = isRich ? null : metadataString(metadata, "headRef");
-  const baseRef = isRich ? null : metadataString(metadata, "baseRef");
+  const headRef = isRich ? result.headRef : metadataString(metadata, "headRef");
+  const baseRef = isRich ? result.baseRef : metadataString(metadata, "baseRef");
   const comments = isRich
     ? result.commentCount
     : metadataNumber(metadata, "commentCount");

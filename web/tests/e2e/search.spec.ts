@@ -233,20 +233,43 @@ test("final search sweep covers header submit, all tabs, mobile layout, and empt
     {
       label: "Repositories",
       type: "repositories",
+      heading: "Search opengithub",
       text: /repositories results/,
     },
-    { label: "Code", type: "code", text: /code results/ },
-    { label: "Issues", type: "issues", text: /issues results/ },
+    {
+      label: "Code",
+      type: "code",
+      heading: "Search indexed code",
+      text: /code results/,
+    },
+    {
+      label: "Issues",
+      type: "issues",
+      heading: "Issues search",
+      text: /issues results/,
+    },
     {
       label: "Pull requests",
       type: "pull_requests",
+      heading: "Pull requests search",
       text: /pull requests results/,
     },
-    { label: "Commits", type: "commits", text: /commits results/ },
-    { label: "Users", type: "users", text: /users results/ },
+    {
+      label: "Commits",
+      type: "commits",
+      heading: "Search opengithub",
+      text: /commits results/,
+    },
+    {
+      label: "Users",
+      type: "users",
+      heading: "Search opengithub",
+      text: /users results/,
+    },
     {
       label: "Organizations",
       type: "organizations",
+      heading: "Search opengithub",
       text: /organizations results/,
     },
   ] as const;
@@ -255,7 +278,7 @@ test("final search sweep covers header submit, all tabs, mobile layout, and empt
     await page.goto(`/search?q=${marker}&type=${tab.type}`);
     await expect(
       page.getByRole("heading", {
-        name: tab.type === "code" ? "Search indexed code" : "Search opengithub",
+        name: tab.heading,
       }),
     ).toBeVisible();
     await expect(page.getByText(tab.text)).toBeVisible();

@@ -2023,6 +2023,8 @@ export type CollaborationSearchResult = {
   }[];
   milestone: { id: string; title: string; state: string } | null;
   linkedPullRequest: boolean;
+  headRef: string | null;
+  baseRef: string | null;
   commentCount: number;
   interactionCount: number;
   openedAt: string;
