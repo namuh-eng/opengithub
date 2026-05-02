@@ -1,8 +1,8 @@
 {
-  "observed_at": "2026-05-02T09:42:14.334Z",
+  "observed_at": "2026-05-02T09:48:24.445Z",
   "provider": "claude-code",
   "event_name": "UserPromptSubmit",
   "session_id": "92298111-a8dd-4498-82e9-7a8ee7cff38c",
   "turn_id": null,
-  "prompt_summary": "anything i need to know?"
+  "prompt_summary": "huh what takes so much speace?"
 }
