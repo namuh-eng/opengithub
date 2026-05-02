@@ -54,7 +54,7 @@
 
 ## Phase 4: Sort, Save, Pagination, and Result Navigation - every advertised collaboration-search interaction is concrete
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Complete the user workflow around issue/PR search. Sort menu options should update URL/results for Best match, Most/Least commented, Newest, Oldest, Recently updated, and Least recently updated. Pagination must preserve query, type, sort, view, and qualifiers. Save should reuse the `search-002` saved-search API. Clicking rows must open real issue or PR detail routes.
 

@@ -2846,6 +2846,13 @@ fn normalize_collaboration_state(value: &str) -> Result<String, SearchError> {
 
 fn normalize_collaboration_sort(value: Option<&str>) -> String {
     match value.unwrap_or("best_match") {
+        "best-match" => "best_match".to_owned(),
+        "comments-desc" => "most_commented".to_owned(),
+        "comments-asc" => "least_commented".to_owned(),
+        "created-desc" => "newest".to_owned(),
+        "created-asc" => "oldest".to_owned(),
+        "updated-desc" => "recently_updated".to_owned(),
+        "updated-asc" => "least_recently_updated".to_owned(),
         "most_commented"
         | "least_commented"
         | "newest"

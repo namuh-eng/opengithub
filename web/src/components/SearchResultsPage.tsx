@@ -494,7 +494,7 @@ export function SearchResultsPage({
         query={query}
         results={results as CodeSearchResponse | ApiErrorEnvelope | null}
         saved={saved}
-        view={view}
+        view={view === "compact" ? "compact" : "comfortable"}
       />
     );
   }
@@ -506,6 +506,8 @@ export function SearchResultsPage({
         results={
           results as CollaborationSearchResponse | ApiErrorEnvelope | null
         }
+        saved={saved}
+        view={view === "compact" ? "compact" : "comfortable"}
       />
     );
   }

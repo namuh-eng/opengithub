@@ -1,3 +1,13 @@
+2026-05-02 - search-004 phase 4 sort, save, pagination, and navigation
+
+- Completed Phase 4 from `.qrspi/search-004/structure.md`: issue and pull request search now has concrete sort, saved-search, compact/comfortable view, pagination-preserving, empty-state recovery, and result navigation interactions.
+- Added collaboration search sort alias normalization in `crates/api/src/domain/search.rs` so existing repository-list sort values (`comments-desc`, `created-desc`, `updated-desc`, etc.) map to the collaboration sort contract while preserving deterministic API-selected sort metadata.
+- Updated `web/src/components/CollaborationSearchResultsPage.tsx` to preserve `sort` and `view` through facets, active chips, advanced qualifier shortcuts, sort links, save links, and pagination; added a real saved-search form using `/search/saved-searches` with validation and success/error feedback.
+- Passed `saved` and normalized `view` state from `SearchResultsPage` into the collaboration shell, and added focused Vitest coverage plus focused Playwright collaboration-search smoke coverage for signed-in sort/save/compact/navigation/empty-state workflows.
+- Verification passed: `CARGO_INCREMENTAL=0 TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; `CARGO_INCREMENTAL=0 DB_SSL=false make test` with Cargo tests plus 214 frontend tests; `DB_SSL=false SESSION_SECRET=playwright-session-secret-with-enough-entropy SESSION_COOKIE_NAME=og_session make test-e2e` with 18 non-DB E2E tests; focused `cd web && npx vitest run tests/search-collaboration-results.test.tsx`; mandatory Editorial banned-value scan passed with zero matches.
+- Focused `search_collaboration_results_contract` compiled and passed, but its Postgres scenarios self-skipped because the configured local database pool timed out. Focused signed-in Playwright collaboration-search smoke was attempted with `TEST_DATABASE_URL`/`DATABASE_URL` on `localhost:55432` but failed in `dashboard_e2e_seed` with `pool timed out while waiting for an open connection`; Docker was not available to start a replacement local Postgres, so no Phase 4 screenshot was captured.
+- Marked Phase 4 as done in `.qrspi/search-004/structure.md`; `prd.json` remains `build_pass: false` because Phase 5 remains.
+
 2026-05-02 - search-004 phase 3 advanced collaboration facets and qualifiers
 
 - Completed Phase 3 from `.qrspi/search-004/structure.md`: issue and pull request search facets now add/remove URL-backed collaboration qualifiers instead of rendering display-only controls.

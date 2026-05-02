@@ -487,7 +487,7 @@ async fn pull_request_search_alias_returns_pr_rows_and_sort_metadata() {
     .expect("pull request search document should persist");
 
     let (status, _headers, body) = get_json(
-        app,
+        app.clone(),
         &format!("/api/search?q={marker}&type=pullrequests&sort=most_commented"),
         Some(&cookie),
     )
@@ -509,4 +509,13 @@ async fn pull_request_search_alias_returns_pr_rows_and_sort_metadata() {
     assert_eq!(body["items"][0]["baseRef"], "main");
     assert_eq!(body["items"][0]["commentCount"], 1);
     assert_eq!(body["typeCounts"][1]["resultType"], "pull_requests");
+
+    let (status, _headers, alias_body) = get_json(
+        app,
+        &format!("/api/search?q={marker}&type=pullrequests&sort=comments-desc"),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(alias_body["sort"]["selected"], "most_commented");
 }

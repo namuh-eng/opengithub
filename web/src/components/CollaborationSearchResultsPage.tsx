@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import type { FormEvent } from "react";
+import { useState } from "react";
 import { QueryTabNavigation } from "@/components/QueryTabNavigation";
 import type {
   ApiErrorEnvelope,
@@ -18,6 +22,8 @@ type Props = {
   activeType: "issues" | "pull_requests" | string;
   query: string;
   results: CollaborationSearchResponse | ApiErrorEnvelope | null;
+  saved?: boolean;
+  view?: "comfortable" | "compact";
 };
 
 function isErrorEnvelope(value: Props["results"]): value is ApiErrorEnvelope {
@@ -99,12 +105,14 @@ function facetHref(
   qualifier: string,
   value: string,
   sort?: string,
+  view?: string,
 ) {
   return searchHref(
     toggleSearchQualifier(query, qualifier, value),
     activeType,
     {
       sort,
+      view,
     },
   );
 }
@@ -114,10 +122,12 @@ function pageHref(
   query: string,
   page: number,
   sort?: string,
+  view?: string,
 ) {
   return searchHref(query, activeType, {
     ...(page > 1 ? { page: String(page) } : {}),
     ...(sort ? { sort } : {}),
+    ...(view ? { view } : {}),
   });
 }
 
@@ -128,6 +138,7 @@ function FacetGroup({
   qualifier,
   sort,
   title,
+  view,
 }: {
   activeType: string;
   facets: CodeSearchFacetValue[];
@@ -135,6 +146,7 @@ function FacetGroup({
   qualifier: string;
   sort?: string;
   title: string;
+  view?: string;
 }) {
   if (facets.length === 0) {
     return null;
@@ -149,7 +161,14 @@ function FacetGroup({
         {facets.map((facet) => (
           <Link
             className={`flex items-center justify-between gap-3 rounded-[var(--radius)] px-2 py-1 t-sm ${facet.selected ? "chip active" : ""}`}
-            href={facetHref(activeType, query, qualifier, facet.value, sort)}
+            href={facetHref(
+              activeType,
+              query,
+              qualifier,
+              facet.value,
+              sort,
+              view,
+            )}
             key={`${qualifier}-${facet.value}`}
           >
             <span className="truncate">{facet.label}</span>
@@ -167,10 +186,12 @@ function AdvancedQualifierLinks({
   activeType,
   query,
   sort,
+  view,
 }: {
   activeType: string;
   query: string;
   sort?: string;
+  view?: string;
 }) {
   const controls = [
     ["author", "@author"],
@@ -199,7 +220,7 @@ function AdvancedQualifierLinks({
             href={searchHref(
               addSearchQualifier(query, qualifier, value),
               activeType,
-              { sort },
+              { sort, view },
             )}
             key={`${qualifier}-${value}`}
           >
@@ -214,9 +235,11 @@ function AdvancedQualifierLinks({
 function ResultRow({
   activeType,
   result,
+  view,
 }: {
   activeType: string;
   result: GlobalSearchResult | import("@/lib/api").CollaborationSearchResult;
+  view: "comfortable" | "compact";
 }) {
   const isRich = "repository" in result;
   const metadata = isRich ? {} : result.document.metadata;
@@ -252,7 +275,10 @@ function ResultRow({
   const summary = isRich ? result.snippets[0]?.fragment : result.summary;
 
   return (
-    <Link className="list-row items-start gap-3 px-0" href={result.href}>
+    <Link
+      className={`list-row items-start gap-3 px-0 ${view === "compact" ? "py-2" : ""}`}
+      href={result.href}
+    >
       <span
         aria-hidden="true"
         className="av sm shrink-0"
@@ -271,7 +297,7 @@ function ResultRow({
         <span className="mt-1 block text-[15px] font-semibold text-[color:var(--ink-1)]">
           {result.title}
         </span>
-        {summary ? (
+        {summary && view !== "compact" ? (
           <span
             className="t-sm mt-1 line-clamp-2 block"
             style={{ color: "var(--ink-3)" }}
@@ -326,6 +352,105 @@ function ResultRow({
   );
 }
 
+function SaveSearchDialog({
+  activeType,
+  open,
+  query,
+}: {
+  activeType: string;
+  open: boolean;
+  query: string;
+}) {
+  const [expanded, setExpanded] = useState(open);
+  const [name, setName] = useState("");
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function saveSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const normalizedName = name.trim();
+    if (!normalizedName) {
+      setError("Name is required.");
+      setFeedback(null);
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setFeedback(null);
+    try {
+      const response = await fetch("/search/saved-searches", {
+        body: JSON.stringify({
+          name: normalizedName,
+          query,
+          scope: activeType,
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || (body && "error" in body)) {
+        setError(body?.error?.message ?? "Saved search could not be created.");
+        return;
+      }
+      setFeedback(`Saved "${body.name ?? normalizedName}".`);
+      setName("");
+    } catch {
+      setError("Saved search could not be created.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="card mb-4 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="t-label" style={{ color: "var(--ink-3)" }}>
+            Saved search
+          </p>
+          <p className="t-sm mt-1" style={{ color: "var(--ink-3)" }}>
+            Store this issue and pull request query in your search dashboard.
+          </p>
+        </div>
+        <button
+          aria-expanded={expanded}
+          className="btn sm"
+          onClick={() => setExpanded((value) => !value)}
+          type="button"
+        >
+          {expanded ? "Close" : "Save search"}
+        </button>
+      </div>
+      {expanded ? (
+        <form className="mt-4 flex flex-wrap gap-2" onSubmit={saveSearch}>
+          <input
+            aria-label="Saved search name"
+            className="input min-w-[220px] flex-1"
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Open regressions"
+            value={name}
+          />
+          <button className="btn primary" disabled={saving} type="submit">
+            {saving ? "Saving..." : "Create saved search"}
+          </button>
+        </form>
+      ) : null}
+      {feedback ? (
+        <p className="t-sm mt-3" role="status" style={{ color: "var(--ok)" }}>
+          {feedback}
+        </p>
+      ) : null}
+      {error ? (
+        <p className="t-sm mt-3" role="alert" style={{ color: "var(--err)" }}>
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function ErrorState({ error }: { error: ApiErrorEnvelope }) {
   return (
     <div className="card p-6">
@@ -344,6 +469,8 @@ export function CollaborationSearchResultsPage({
   activeType,
   query,
   results,
+  saved = false,
+  view = "comfortable",
 }: Props) {
   const label = typeLabel(activeType);
   const successful = results && !isErrorEnvelope(results) ? results : null;
@@ -357,11 +484,15 @@ export function CollaborationSearchResultsPage({
   };
   const activeChips = successful?.activeChips ?? [];
   const activeSort =
-    successful?.sort?.selected ?? successful?.activeSort ?? "best-match";
+    successful?.sort?.selected ?? successful?.activeSort ?? "best_match";
   const sortOptions = successful?.sort?.options ??
     successful?.sortOptions ?? [
-      { label: "Best match", selected: true, value: "best-match" },
+      { label: "Best match", selected: true, value: "best_match" },
     ];
+  const activeSortLabel =
+    successful?.sort?.label ??
+    sortOptions.find((option) => option.selected)?.label ??
+    "Best match";
   const queryDurationMs = successful?.queryDurationMs ?? 0;
   const pageSize = successful?.pageSize ?? 30;
   const totalPages = Math.max(
@@ -389,6 +520,8 @@ export function CollaborationSearchResultsPage({
               type="search"
             />
             <input name="type" type="hidden" value={activeType} />
+            <input name="sort" type="hidden" value={activeSort} />
+            <input name="view" type="hidden" value={view} />
             <button className="btn primary" type="submit">
               Search
             </button>
@@ -416,6 +549,7 @@ export function CollaborationSearchResultsPage({
               qualifier="state"
               sort={activeSort}
               title="State"
+              view={view}
             />
             <FacetGroup
               activeType={activeType}
@@ -424,6 +558,7 @@ export function CollaborationSearchResultsPage({
               qualifier="owner"
               sort={activeSort}
               title="Owner"
+              view={view}
             />
             <FacetGroup
               activeType={activeType}
@@ -432,6 +567,7 @@ export function CollaborationSearchResultsPage({
               qualifier="label"
               sort={activeSort}
               title="Labels"
+              view={view}
             />
             <FacetGroup
               activeType={activeType}
@@ -440,6 +576,7 @@ export function CollaborationSearchResultsPage({
               qualifier="assignee"
               sort={activeSort}
               title="Assignees"
+              view={view}
             />
             {activeType === "pull_requests" ? (
               <FacetGroup
@@ -449,6 +586,7 @@ export function CollaborationSearchResultsPage({
                 qualifier="reviewer"
                 sort={activeSort}
                 title="Reviewers"
+                view={view}
               />
             ) : null}
             <FacetGroup
@@ -458,11 +596,13 @@ export function CollaborationSearchResultsPage({
               qualifier="milestone"
               sort={activeSort}
               title="Milestones"
+              view={view}
             />
             <AdvancedQualifierLinks
               activeType={activeType}
               query={query}
               sort={activeSort}
+              view={view}
             />
             <div>
               <p className="t-label" style={{ color: "var(--ink-4)" }}>
@@ -507,6 +647,7 @@ export function CollaborationSearchResultsPage({
                       className="chip active"
                       href={searchHref(chip.removeQuery, activeType, {
                         sort: activeSort,
+                        view,
                       })}
                       key={`${chip.qualifier}-${chip.value}`}
                     >
@@ -517,23 +658,66 @@ export function CollaborationSearchResultsPage({
               ) : null}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {sortOptions.map((option) => (
-                <Link
-                  className={option.selected ? "chip active" : "chip soft"}
-                  href={searchHref(query, activeType, { sort: option.value })}
-                  key={option.value}
-                >
-                  {option.label}
-                </Link>
-              ))}
+              <details className="relative">
+                <summary className="btn sm cursor-pointer list-none">
+                  Sort by: {activeSortLabel}
+                </summary>
+                <div className="card absolute right-0 z-20 mt-2 min-w-[220px] p-2 shadow-md">
+                  {sortOptions.map((option) => (
+                    <Link
+                      aria-current={option.selected ? "true" : undefined}
+                      className={`block rounded-[var(--radius)] px-3 py-2 t-sm ${option.selected ? "chip active" : ""}`}
+                      href={searchHref(query, activeType, {
+                        sort: option.value,
+                        view,
+                      })}
+                      key={option.value}
+                    >
+                      {option.label}
+                    </Link>
+                  ))}
+                </div>
+              </details>
               <Link
                 className="btn sm"
-                href={`/search?saved=1&q=${encodeURIComponent(query)}&type=${encodeURIComponent(activeType)}`}
+                href={searchHref(query, activeType, {
+                  saved: "1",
+                  sort: activeSort,
+                  view,
+                })}
               >
                 Save
               </Link>
+              <Link
+                aria-current={view === "comfortable" ? "true" : undefined}
+                className={`btn sm ${view === "comfortable" ? "primary" : ""}`}
+                href={searchHref(query, activeType, {
+                  sort: activeSort,
+                  view: "comfortable",
+                })}
+              >
+                Comfortable
+              </Link>
+              <Link
+                aria-current={view === "compact" ? "true" : undefined}
+                className={`btn sm ${view === "compact" ? "primary" : ""}`}
+                href={searchHref(query, activeType, {
+                  sort: activeSort,
+                  view: "compact",
+                })}
+              >
+                Compact
+              </Link>
             </div>
           </div>
+
+          {saved ? (
+            <SaveSearchDialog
+              activeType={activeType}
+              open={saved}
+              query={query}
+            />
+          ) : null}
 
           {!query.trim() ? (
             <div className="card p-8">
@@ -552,6 +736,7 @@ export function CollaborationSearchResultsPage({
                   activeType={activeType}
                   key={"repository" in result ? result.id : result.document.id}
                   result={result}
+                  view={view}
                 />
               ))}
             </div>
@@ -563,6 +748,22 @@ export function CollaborationSearchResultsPage({
               <p className="t-body mt-3" style={{ color: "var(--ink-3)" }}>
                 Remove a facet or try a broader phrase.
               </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {activeChips[0] ? (
+                  <Link
+                    className="btn sm"
+                    href={searchHref(activeChips[0].removeQuery, activeType, {
+                      sort: activeSort,
+                      view,
+                    })}
+                  >
+                    Remove {activeChips[0].label}
+                  </Link>
+                ) : null}
+                <Link className="btn sm" href={searchHref("", activeType)}>
+                  Clear search
+                </Link>
+              </div>
             </div>
           )}
 
@@ -579,6 +780,7 @@ export function CollaborationSearchResultsPage({
                   query,
                   Math.max(1, successful.page - 1),
                   activeSort,
+                  view,
                 )}
               >
                 Previous
@@ -594,6 +796,7 @@ export function CollaborationSearchResultsPage({
                   query,
                   Math.min(totalPages, successful.page + 1),
                   activeSort,
+                  view,
                 )}
               >
                 Next

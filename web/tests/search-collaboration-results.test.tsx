@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CollaborationSearchResultsPage } from "@/components/CollaborationSearchResultsPage";
 import type {
   CollaborationSearchResponse,
@@ -86,15 +86,20 @@ function response(items: GlobalSearchResult[]): CollaborationSearchResponse {
       },
     ],
     sortOptions: [
-      { value: "best-match", label: "Best match", selected: false },
-      { value: "comments-desc", label: "Most commented", selected: true },
+      { value: "best_match", label: "Best match", selected: false },
+      { value: "most_commented", label: "Most commented", selected: true },
+      { value: "least_commented", label: "Least commented", selected: false },
     ],
-    activeSort: "comments-desc",
+    activeSort: "most_commented",
     queryDurationMs: 12,
   };
 }
 
 describe("CollaborationSearchResultsPage", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("renders issue search rows with facets, sort links, chips, and pagination", () => {
     render(
       <CollaborationSearchResultsPage
@@ -118,37 +123,48 @@ describe("CollaborationSearchResultsPage", () => {
     expect(screen.getByText("7 comments")).toBeVisible();
     expect(screen.getByRole("link", { name: "mona9" })).toHaveAttribute(
       "href",
-      "/search?q=search004+state%3Aopen+owner%3Amona&type=issues&sort=comments-desc",
+      "/search?q=search004+state%3Aopen+owner%3Amona&type=issues&sort=most_commented&view=comfortable",
     );
     expect(screen.getByRole("link", { name: "urgent5" })).toHaveAttribute(
       "href",
-      "/search?q=search004+state%3Aopen+label%3Aurgent&type=issues&sort=comments-desc",
+      "/search?q=search004+state%3Aopen+label%3Aurgent&type=issues&sort=most_commented&view=comfortable",
     );
     expect(screen.getByRole("link", { name: "open18" })).toHaveAttribute(
       "href",
-      "/search?q=search004&type=issues&sort=comments-desc",
+      "/search?q=search004&type=issues&sort=most_commented&view=comfortable",
     );
     expect(screen.getByRole("link", { name: "comments:>10" })).toHaveAttribute(
       "href",
-      "/search?q=search004+state%3Aopen+comments%3A%3E10&type=issues&sort=comments-desc",
+      "/search?q=search004+state%3Aopen+comments%3A%3E10&type=issues&sort=most_commented&view=comfortable",
     );
     expect(screen.getByRole("link", { name: "state:open ×" })).toHaveAttribute(
       "href",
-      "/search?q=search004&type=issues&sort=comments-desc",
+      "/search?q=search004&type=issues&sort=most_commented&view=comfortable",
     );
+    expect(screen.getByText("Sort by: Most commented")).toBeVisible();
     expect(
       screen.getByRole("link", { name: "Most commented" }),
     ).toHaveAttribute(
       "href",
-      "/search?q=search004+state%3Aopen&type=issues&sort=comments-desc",
+      "/search?q=search004+state%3Aopen&type=issues&sort=most_commented&view=comfortable",
+    );
+    expect(
+      screen.getByRole("link", { name: "Least commented" }),
+    ).toHaveAttribute(
+      "href",
+      "/search?q=search004+state%3Aopen&type=issues&sort=least_commented&view=comfortable",
+    );
+    expect(screen.getByRole("link", { name: "Compact" })).toHaveAttribute(
+      "href",
+      "/search?q=search004+state%3Aopen&type=issues&sort=most_commented&view=compact",
     );
     expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute(
       "href",
-      "/search?q=search004+state%3Aopen&type=issues&sort=comments-desc",
+      "/search?q=search004+state%3Aopen&type=issues&sort=most_commented&view=comfortable",
     );
     expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute(
       "href",
-      "/search?q=search004+state%3Aopen&type=issues&page=3&sort=comments-desc",
+      "/search?q=search004+state%3Aopen&type=issues&page=3&sort=most_commented&view=comfortable",
     );
     expect(
       document.querySelectorAll('a[href="#"], a:not([href])'),
@@ -186,6 +202,7 @@ describe("CollaborationSearchResultsPage", () => {
             title: "Search 004 pull shell",
           }),
         ])}
+        view="compact"
       />,
     );
 
@@ -200,10 +217,54 @@ describe("CollaborationSearchResultsPage", () => {
     expect(screen.getByText("feature/search-004 -> main")).toBeVisible();
     expect(screen.getByRole("link", { name: "Save" })).toHaveAttribute(
       "href",
-      "/search?saved=1&q=search004%20reviewer%3Aoctavia&type=pull_requests",
+      "/search?q=search004+reviewer%3Aoctavia&type=pull_requests&saved=1&sort=most_commented&view=compact",
+    );
+    expect(screen.getByRole("link", { name: "Compact" })).toHaveAttribute(
+      "aria-current",
+      "true",
     );
     expect(
       document.querySelectorAll('button:not([type]), button[type="button"]'),
     ).toHaveLength(0);
+  });
+
+  it("creates saved searches with inline success and error feedback", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ name: "Regression triage" }), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    render(
+      <CollaborationSearchResultsPage
+        activeType="issues"
+        query="search004 state:open"
+        results={response([result()])}
+        saved
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Saved search name"), {
+      target: { value: "Regression triage" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create saved search" }),
+    );
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/search/saved-searches",
+        expect.objectContaining({
+          body: JSON.stringify({
+            name: "Regression triage",
+            query: "search004 state:open",
+            scope: "issues",
+          }),
+          method: "POST",
+        }),
+      ),
+    );
+    expect(await screen.findByText('Saved "Regression triage".')).toBeVisible();
   });
 });

@@ -2790,5 +2790,22 @@
       "Reviewer-specific facets are still display-compatible but backend reviewer semantics remain for later PR review phases; Phase 3 filters commenter/involved/assignee/author with current collaboration tables.",
       "Sort/save/pagination completion remains Phase 4; final privacy/accessibility/mobile guardrails remain Phase 5."
     ]
+  },
+  {
+    "feature_id": "search-004",
+    "tests_written": [
+      "Completed Phase 4 sort, save, view, pagination-preservation, and result-navigation interactions for collaboration search.",
+      "Backend collaboration search now accepts repository-list sort aliases such as comments-desc/comments-asc/created-desc/updated-desc and normalizes them to the collaboration search sort contract.",
+      "Issue and pull request search links now preserve sort and compact/comfortable view state through facets, active chip removal, advanced qualifier links, save entry, sort changes, and pagination.",
+      "Saved-search creation now reuses /search/saved-searches with inline validation, success, and error feedback for issue and pull request queries.",
+      "Focused Vitest coverage verifies sort menu links, view links, pagination URLs, save-search POST payloads, compact rendering, row navigation hrefs, and no dead controls.",
+      "Focused Rust collaboration-search contract coverage verifies legacy sort alias normalization for pull request search."
+    ],
+    "needs_deeper_qa": [
+      "Focused Playwright collaboration-search smoke was added but could not complete in this session because dashboard_e2e_seed timed out opening a local Postgres pool; Docker was unavailable, so no replacement local database could be started.",
+      "make test-e2e passed only the non-DB/auth-public subset in this environment (18 tests); signed-in seeded collaboration-search scenarios need QA with a reachable TEST_DATABASE_URL.",
+      "Full make test passed without TEST_DATABASE_URL: Cargo tests self-skipped DB scenarios and Vitest passed 214 frontend tests.",
+      "Phase 5 still needs final privacy, responsive/mobile, accessibility, and full signed-in browser sweeps before search-004.build_pass can be set true."
+    ]
   }
 ]
