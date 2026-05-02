@@ -224,7 +224,10 @@ async fn collaboration_and_automation_routes_use_session_auth_and_standard_envel
     .await;
     assert_eq!(comment_status, StatusCode::CREATED);
     assert_eq!(comment_body["eventType"], "commented");
-    assert_eq!(comment_body["actor"]["login"], owner.email);
+    assert_eq!(
+        comment_body["actor"]["login"],
+        owner.username.as_deref().unwrap_or(&owner.email)
+    );
     assert_eq!(
         comment_body["comment"]["body"],
         "Confirmed through session-auth API."

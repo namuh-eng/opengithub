@@ -72,7 +72,7 @@
 
 ## Phase 5: Final Privacy, Visual, and QA Guardrails - finish orgs-001
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Lock the completed organization overview against regressions and mark `orgs-001.build_pass=true` only after real API data, Editorial UI, navigation, visibility rules, and browser smoke all pass. This phase should not add new product scope; it hardens the finished surface.
 

@@ -3073,5 +3073,22 @@
       "Phase 5 still needs final privacy, visual, empty-state, and no-dead-control guardrails before orgs-001 can be marked build_pass=true.",
       "QA should stress organizations with hidden public members, many members/topics/languages, unusual language color values, and future sponsorship-enabled data."
     ]
+  },
+  {
+    "feature_id": "orgs-001",
+    "tests_written": [
+      "Completed Phase 5 Final Privacy, Visual, and QA Guardrails and marked orgs-001 build_pass=true.",
+      "Extended organization_profile_contract for anonymous, unrelated signed-in follower, owner/admin, private repository redaction, member-visible private repositories, verified-domain href shape, tab-count consistency, and sanitized 404 envelopes without stack/secret leakage.",
+      "Extended OrganizationProfilePage Vitest coverage for verified-domain accessibility, disabled sponsor button semantics, final empty-state panels, concrete browse/create behavior, and no inert anchors.",
+      "Extended organization-profile Playwright smoke with verified-domain title checks plus final desktop and mobile screenshots: ralph/screenshots/build/orgs-001-final-desktop.jpg and ralph/screenshots/build/orgs-001-final-mobile.jpg.",
+      "Aligned one stale collaboration API test assertion with the current username-slug identity contract so the standard make test path remains green.",
+      "Verification passed: focused organization_profile_contract against local Postgres on localhost:55432; focused organization-profile Vitest; focused organization-profile Playwright; TEST_DATABASE_URL-backed make check; standard DB_SSL=false make test with Cargo plus 240 frontend tests; full TEST_DATABASE_URL-backed Playwright with 90 tests; mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke uses deterministic Rust-signed local sessions and direct local API/Next dev servers because make dev depends on cargo-watch, which is not installed in this environment.",
+      "The API server must be started without API_URL for full E2E clone URL assertions to expect opengithub.namuh.co; starting it with API_URL=http://localhost:3016 makes the known repository clone-url test fail.",
+      "TEST_DATABASE_URL-backed cargo test still exposes broader stale owner-login expectations in unrelated PR/API contract suites; the standard make test path passed and the focused org contract passed against the same database.",
+      "QA should stress hidden public members, unrelated signed-in users with direct repository permissions, many topics/languages/members, unusual language color values, future sponsorship-enabled data, and very long organization names/descriptions."
+    ]
   }
 ]

@@ -67,6 +67,9 @@ test("organization overview renders API data and concrete header controls", asyn
     page.getByRole("link", { exact: true, name: "Verified" }),
   ).toHaveAttribute("href", "https://namuh.co");
   await expect(
+    page.getByRole("link", { exact: true, name: "Verified" }),
+  ).toHaveAttribute("title", "Verified domain namuh.co");
+  await expect(
     page.getByRole("link", { name: "Website namuh.co" }),
   ).toHaveAttribute("href", "https://namuh.co");
   await expect(
@@ -145,6 +148,11 @@ test("organization overview renders API data and concrete header controls", asyn
     fullPage: true,
     path: "../ralph/screenshots/build/orgs-001-phase3-repository-preview.jpg",
   });
+  await page.goto(seeded.organizationProfileHref);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/orgs-001-final-desktop.jpg",
+  });
 });
 
 test("organization secondary panels fit on mobile without dead controls", async ({
@@ -180,5 +188,9 @@ test("organization secondary panels fit on mobile without dead controls", async 
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/orgs-001-phase4-mobile.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/orgs-001-final-mobile.jpg",
   });
 });

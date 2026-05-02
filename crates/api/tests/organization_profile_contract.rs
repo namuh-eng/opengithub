@@ -127,6 +127,8 @@ async fn organization_profile_returns_public_overview_and_redacts_private_reposi
     let marker = format!("orgprofile{}", Uuid::new_v4().simple());
     let owner = create_user(&pool, &format!("{marker}-owner")).await;
     let follower = create_user(&pool, &format!("{marker}-follower")).await;
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let follower_cookie = cookie_header(&pool, &config, &follower).await;
     let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
     let org = create_organization(
         &pool,
@@ -304,9 +306,14 @@ async fn organization_profile_returns_public_overview_and_redacts_private_reposi
     assert_eq!(body["identity"]["repositoryCount"], 2);
     assert_eq!(body["identity"]["publicMemberCount"], 1);
     assert_eq!(body["verifiedDomains"][0]["domain"], "namuh.co");
+    assert_eq!(body["verifiedDomains"][0]["href"], "https://namuh.co");
     assert_eq!(body["viewerState"]["authenticated"], false);
     assert_eq!(body["viewerState"]["isMember"], false);
+    assert_eq!(body["viewerState"]["canAdmin"], false);
+    assert_eq!(body["viewerState"]["isFollowing"], false);
     assert_eq!(body["sponsorship"]["enabled"], false);
+    assert_eq!(body["tabCounts"]["repositories"], 2);
+    assert_eq!(body["tabCounts"]["people"], 1);
     assert_eq!(body["pinnedRepositories"].as_array().unwrap().len(), 2);
     assert_eq!(body["pinnedRepositories"][0]["name"], public_repo.name);
     assert_eq!(body["pinnedRepositories"][1]["name"], preview_repo.name);
@@ -330,9 +337,52 @@ async fn organization_profile_returns_public_overview_and_redacts_private_reposi
     assert_eq!(body["repositoryPreview"][1]["name"], public_repo.name);
     assert_eq!(body["topLanguages"][0]["language"], "Rust");
     assert_eq!(body["topTopics"][0]["topic"], "actions");
+    assert_eq!(body["peoplePreview"][0]["login"], format!("{marker}-owner"));
+    assert_eq!(body["peoplePreview"][0]["role"], Value::Null);
 
     let body_text = body.to_string();
     assert!(!body_text.contains(&private_repo.name));
+
+    let (follower_status, _, follower_body) = get_json(
+        app.clone(),
+        &format!("/api/orgs/{marker}/profile"),
+        Some(&follower_cookie),
+    )
+    .await;
+    assert_eq!(follower_status, StatusCode::OK);
+    assert_eq!(follower_body["viewerState"]["authenticated"], true);
+    assert_eq!(follower_body["viewerState"]["isMember"], false);
+    assert_eq!(follower_body["viewerState"]["isFollowing"], true);
+    assert_eq!(follower_body["tabCounts"]["repositories"], 2);
+    assert!(!follower_body.to_string().contains(&private_repo.name));
+
+    let (owner_status, _, owner_body) = get_json(
+        app.clone(),
+        &format!("/api/orgs/{marker}/profile"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(owner_status, StatusCode::OK);
+    assert_eq!(owner_body["viewerState"]["isMember"], true);
+    assert_eq!(owner_body["viewerState"]["canAdmin"], true);
+    assert_eq!(owner_body["tabCounts"]["repositories"], 3);
+    assert!(owner_body.to_string().contains(&private_repo.name));
+    assert_eq!(owner_body["peoplePreview"][0]["role"], "owner");
+
+    let (missing_status, missing_headers, missing_body) =
+        get_json(app, "/api/orgs/does-not-exist/profile", None).await;
+    assert_eq!(missing_status, StatusCode::NOT_FOUND);
+    assert_json(&missing_headers);
+    assert_eq!(missing_body["error"]["code"], "not_found");
+    assert_eq!(
+        missing_body["error"]["message"],
+        "organization profile was not found"
+    );
+    let missing_text = missing_body.to_string();
+    assert!(!missing_text.contains("DATABASE_URL"));
+    assert!(!missing_text.contains("SESSION_SECRET"));
+    assert!(!missing_text.contains("stack backtrace"));
+    assert!(!missing_text.contains("panicked"));
 }
 
 #[tokio::test]

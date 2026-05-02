@@ -179,6 +179,13 @@ describe("OrganizationProfilePage", () => {
       "href",
       "/docs/verification",
     );
+    expect(screen.getByRole("link", { name: "Verified" })).toHaveAttribute(
+      "title",
+      "Verified domain namuh.co",
+    );
+    expect(
+      screen.getByRole("link", { name: "Verified domain namuh.co" }),
+    ).toHaveAttribute("href", "/docs/verification");
     expect(
       screen.getByRole("link", { name: "Website namuh.co" }),
     ).toHaveAttribute("href", "https://namuh.co");
@@ -187,6 +194,10 @@ describe("OrganizationProfilePage", () => {
     expect(screen.getByText("12 repositories")).toBeVisible();
     expect(screen.getByText(/Sponsorships are unavailable/i)).toBeVisible();
     expect(screen.getByRole("button", { name: "Sponsor" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Sponsor" })).toHaveAttribute(
+      "type",
+      "button",
+    );
     expect(container.querySelector('a[href="#"], a:not([href])')).toBeNull();
   });
 
@@ -463,5 +474,52 @@ describe("OrganizationProfilePage", () => {
     expect(
       screen.getByText("Sponsorships are not available for organizations yet."),
     ).toBeVisible();
+  });
+
+  it("keeps final empty secondary panels accessible without dead controls", () => {
+    const { container } = render(
+      <OrganizationProfilePage
+        activeTab="overview"
+        profile={organization({
+          pinnedRepositories: [],
+          repositoryPreview: [],
+          peoplePreview: [],
+          topLanguages: [],
+          topTopics: [],
+          tabCounts: {
+            repositories: 0,
+            projects: 0,
+            packages: 0,
+            people: 0,
+            sponsoring: 0,
+          },
+          identity: {
+            repositoryCount: 0,
+            publicMemberCount: 0,
+          },
+        })}
+        session={session}
+      />,
+    );
+
+    expect(
+      screen.getByText("No pinned repositories are visible yet."),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Browse repositories" }),
+    ).toHaveAttribute("href", "/orgs/namuh?tab=repositories");
+    expect(
+      screen.getByText("No repositories are visible to this viewer."),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("link", { name: "Create repository" }),
+    ).toBeNull();
+    expect(screen.getByText("No public members are visible.")).toBeVisible();
+    expect(screen.getByText("No language data yet.")).toBeVisible();
+    expect(screen.getByText("No topics have been published.")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Sponsor preview unavailable" }),
+    ).toBeDisabled();
+    expect(container.querySelector('a[href="#"], a:not([href])')).toBeNull();
   });
 });
