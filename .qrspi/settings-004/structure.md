@@ -6,7 +6,7 @@
 
 ## Phase 1: Webhook Settings API Contract - hooks, deliveries, validation, and audit events
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Extend the existing Rust/Postgres webhook foundation into an admin-only repository settings API under `/api/repos/{owner}/{repo}/settings/hooks`. This phase should preserve the current `webhooks` / `webhook_deliveries` tables and domain helpers while adding the missing settings contract: content type, SSL verification, write-only secret metadata, event selection mode, delivery summaries, ping creation, manual redelivery records, retention metadata, and audit events.
 

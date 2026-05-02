@@ -41,6 +41,14 @@ use crate::{
         RepositoryRefsQuery, RepositoryRulesetMutation, RepositorySettingsPatch,
         RepositoryVisibility,
     },
+    domain::webhooks::{
+        create_repository_webhook_by_owner_name, delete_repository_webhook_by_owner_name,
+        ping_repository_webhook_by_owner_name, redeliver_repository_webhook_delivery_by_owner_name,
+        repository_webhook_delivery_for_actor_by_owner_name,
+        repository_webhook_detail_for_actor_by_owner_name,
+        repository_webhook_settings_for_actor_by_owner_name,
+        update_repository_webhook_by_owner_name, WebhookError, WebhookMutation,
+    },
     AppState,
 };
 
@@ -95,6 +103,28 @@ pub fn router() -> Router<AppState> {
         .route(
             "/:owner/:repo/settings/branches/rulesets/:ruleset_id",
             patch(update_ruleset).delete(delete_ruleset),
+        )
+        .route(
+            "/:owner/:repo/settings/hooks",
+            get(webhook_settings).post(create_webhook),
+        )
+        .route(
+            "/:owner/:repo/settings/hooks/:hook_id",
+            get(webhook_detail)
+                .patch(update_webhook)
+                .delete(delete_webhook),
+        )
+        .route(
+            "/:owner/:repo/settings/hooks/:hook_id/ping",
+            post(ping_webhook),
+        )
+        .route(
+            "/:owner/:repo/settings/hooks/:hook_id/deliveries/:delivery_id",
+            get(webhook_delivery_detail),
+        )
+        .route(
+            "/:owner/:repo/settings/hooks/:hook_id/deliveries/:delivery_id/redeliver",
+            post(redeliver_webhook_delivery),
         )
         .route("/:owner/:repo/star", put(star).delete(unstar))
         .route("/:owner/:repo/watch", put(watch).delete(unwatch))
@@ -905,6 +935,183 @@ async fn delete_ruleset(
     Ok(Json(json!(settings)))
 }
 
+async fn webhook_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings =
+        repository_webhook_settings_for_actor_by_owner_name(pool, actor.0.id, &owner, &repo)
+            .await
+            .map_err(map_webhook_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn webhook_detail(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, hook_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let detail =
+        repository_webhook_detail_for_actor_by_owner_name(pool, actor.0.id, &owner, &repo, hook_id)
+            .await
+            .map_err(map_webhook_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
+
+    Ok(Json(json!(detail)))
+}
+
+async fn webhook_delivery_detail(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, hook_id, delivery_id)): Path<(String, String, Uuid, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let detail = repository_webhook_delivery_for_actor_by_owner_name(
+        pool, actor.0.id, &owner, &repo, hook_id, delivery_id,
+    )
+    .await
+    .map_err(map_webhook_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(detail)))
+}
+
+async fn create_webhook(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<WebhookMutation>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let result = create_repository_webhook_by_owner_name(pool, actor.0.id, &owner, &repo, request)
+        .await
+        .map_err(map_webhook_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "repository was not found".to_owned(),
+            )
+        })?;
+
+    Ok((StatusCode::CREATED, Json(json!(result))))
+}
+
+async fn update_webhook(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, hook_id)): Path<(String, String, Uuid)>,
+    RestJson(request): RestJson<WebhookMutation>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings =
+        update_repository_webhook_by_owner_name(pool, actor.0.id, &owner, &repo, hook_id, request)
+            .await
+            .map_err(map_webhook_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn delete_webhook(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, hook_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = delete_repository_webhook_by_owner_name(pool, actor.0.id, &owner, &repo, hook_id)
+        .await
+        .map_err(map_webhook_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "repository was not found".to_owned(),
+            )
+        })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn ping_webhook(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, hook_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let result = ping_repository_webhook_by_owner_name(pool, actor.0.id, &owner, &repo, hook_id)
+        .await
+        .map_err(map_webhook_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "repository was not found".to_owned(),
+            )
+        })?;
+
+    Ok(Json(json!(result)))
+}
+
+async fn redeliver_webhook_delivery(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, hook_id, delivery_id)): Path<(String, String, Uuid, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let result = redeliver_repository_webhook_delivery_by_owner_name(
+        pool, actor.0.id, &owner, &repo, hook_id, delivery_id,
+    )
+    .await
+    .map_err(map_webhook_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(result)))
+}
+
 async fn star(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1103,6 +1310,31 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal_error",
             "repository operation failed".to_owned(),
+        ),
+    }
+}
+
+fn map_webhook_error(error: WebhookError) -> (StatusCode, Json<ErrorEnvelope>) {
+    match error {
+        WebhookError::RepositoryNotFound
+        | WebhookError::WebhookNotFound
+        | WebhookError::DeliveryNotFound => {
+            error_response(StatusCode::NOT_FOUND, "not_found", error.to_string())
+        }
+        WebhookError::RepositoryAccessDenied => {
+            error_response(StatusCode::FORBIDDEN, "forbidden", error.to_string())
+        }
+        WebhookError::InvalidWebhook(_) | WebhookError::InvalidDeliveryStatus(_) => {
+            error_response(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "validation_failed",
+                error.to_string(),
+            )
+        }
+        WebhookError::Sqlx(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "webhook operation failed".to_owned(),
         ),
     }
 }

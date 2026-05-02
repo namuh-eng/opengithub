@@ -2430,3 +2430,14 @@
 - Added `.qrspi/settings-004/structure.md` with five independently verifiable phases: webhook settings API contract, Editorial hooks list/detail shell, confirmed add/edit/delete/test mutations, delivery worker integration, and final docs/browser/QA/build-pass bookkeeping.
 - Did not change `prd.json`; `settings-004.build_pass` remains `false` until all implementation phases pass verification.
 - Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
+
+2026-05-03 - settings-004 phase 1 webhook settings API contract
+
+- Completed Phase 1 from `.qrspi/settings-004/structure.md`: repository Webhooks settings now have an admin-only Rust/Postgres API contract under `/api/repos/{owner}/{repo}/settings/hooks`.
+- Added additive migration `202605030044_repository_webhook_settings` for webhook content type, SSL verification, event selection mode, write-only secret metadata, disabled reason, delivery GUIDs, request/response metadata, body storage keys, duration, redelivery linkage, and terminal error metadata.
+- Added webhook settings DTOs and handlers for list, detail, delivery detail, create, update, delete, ping, and redelivery. The API validates HTTPS payload URLs, supported content types, selected events, secret bounds, hook/delivery ownership, and preserves secret hashes without returning plaintext secrets or storing them in audit JSON.
+- Added `repository_settings_audit_events` writes for create/update/delete/ping/redelivery and queued ping/redelivery delivery rows with bounded request body excerpts.
+- Added `crates/api/tests/repository_webhook_settings_contract.rs` covering auth/admin gates, HTTPS validation, write-only secret behavior, ping delivery creation, delivery detail, update secret retention, redelivery linkage, delete, private repository redaction, and audit redaction.
+- Verification passed: focused `repository_webhook_settings_contract` compiled and passed but self-skipped DB assertions because the configured local test database could not connect or replay migrations; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; `DB_SSL=false make test` with Cargo tests plus 283 frontend tests; mandatory Editorial banned-value scan returned zero matches.
+- Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first and the structure outline marks browser smoke optional for this phase.
+- Marked Phase 1 as done in `.qrspi/settings-004/structure.md`; `prd.json` remains `build_pass:false` because Phases 2-5 remain.
