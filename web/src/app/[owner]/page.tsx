@@ -1,10 +1,14 @@
 import { ProfileOrgShell } from "@/components/ProfileOrgShell";
+import { UserProfilePage } from "@/components/UserProfilePage";
 import {
   activeProfileTab,
   PROFILE_TABS,
   profileTabHref,
 } from "@/lib/navigation";
-import { getSessionAndShellContext } from "@/lib/server-session";
+import {
+  getPublicUserProfile,
+  getSessionAndShellContext,
+} from "@/lib/server-session";
 
 type ProfilePageProps = {
   params: Promise<{ owner: string }>;
@@ -24,6 +28,19 @@ export default async function ProfilePage({
   );
   const ownerLogin = decodeURIComponent(owner);
   const activeTab = activeProfileTab(firstParam(queryParams?.tab));
+  const profile = await getPublicUserProfile(ownerLogin);
+
+  if (profile) {
+    return (
+      <UserProfilePage
+        activeTab={activeTab}
+        profile={profile}
+        session={session}
+        shellContext={shellContext}
+      />
+    );
+  }
+
   const activeTabLabel =
     PROFILE_TABS.find((tab) => tab.value === activeTab)?.label ?? "Overview";
 
@@ -33,7 +50,7 @@ export default async function ProfilePage({
       eyebrow="Profile"
       hrefForTab={(value) => profileTabHref(ownerLogin, value)}
       identityLabel={ownerLogin}
-      message={`${activeTabLabel} for ${ownerLogin} will connect to profile repositories, stars, packages, and activity once the profile data APIs land. This route is concrete now so owner links never fall through to a 404.`}
+      message={`${activeTabLabel} for ${ownerLogin} is unavailable. The profile may not exist yet, or the profile API could not be reached.`}
       session={session}
       shellContext={shellContext}
       tabLabel="Profile sections"

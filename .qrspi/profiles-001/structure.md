@@ -24,7 +24,7 @@
 
 ## Phase 2: Editorial Profile Shell - `/{user}` renders the public overview from real data
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the current placeholder `ProfileOrgShell` usage for user profiles with a full Editorial profile overview: left identity column, tab bar, README/bio area, pinned repository grid, achievement badges, organization memberships, and contribution graph summary. Visuals must follow the Editorial system, not GitHub Primer chrome: use `web/src/app/og.css` tokens, `.btn`, `.chip`, `.card`, `.tabs`, `.av`, `.t-*` classes, and the profile layout language from `design/project/wf-profiles.jsx`.
 

@@ -254,6 +254,77 @@ async fn main() -> anyhow::Result<()> {
         )
         .await?;
 
+        sqlx::query(
+            r#"
+            UPDATE users
+            SET bio = $1,
+                company = $2,
+                location = $3,
+                website_url = $4,
+                profile_visibility = 'public'
+            WHERE id = $5
+            "#,
+        )
+        .bind("Building calm developer tools at Namuh.")
+        .bind("Namuh")
+        .bind("San Francisco")
+        .bind("https://namuh.co")
+        .bind(user.id)
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            r#"
+            INSERT INTO user_profile_readmes (user_id, body, rendered_html, updated_by_user_id)
+            VALUES ($1, $2, $3, $1)
+            ON CONFLICT (user_id)
+            DO UPDATE SET body = EXCLUDED.body,
+                          rendered_html = EXCLUDED.rendered_html,
+                          updated_by_user_id = EXCLUDED.updated_by_user_id
+            "#,
+        )
+        .bind(user.id)
+        .bind("# Dashboard Tester\nSeeded profile overview for browser smoke.")
+        .bind("<h1>Dashboard Tester</h1><p>Seeded profile overview for browser smoke.</p>")
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            r#"
+            INSERT INTO profile_pins (user_id, repository_id, position)
+            VALUES ($1, $2, 1)
+            ON CONFLICT (user_id, repository_id)
+            DO UPDATE SET position = EXCLUDED.position
+            "#,
+        )
+        .bind(user.id)
+        .bind(first_repository.id)
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            r#"
+            INSERT INTO profile_contribution_days (user_id, day, contribution_count)
+            VALUES ($1, CURRENT_DATE, 5)
+            ON CONFLICT (user_id, day)
+            DO UPDATE SET contribution_count = EXCLUDED.contribution_count
+            "#,
+        )
+        .bind(user.id)
+        .execute(&pool)
+        .await?;
+        sqlx::query(
+            r#"
+            INSERT INTO profile_contribution_events
+                (user_id, repository_id, event_type, title, target_href)
+            VALUES ($1, $2, 'push', 'Pushed seeded profile overview', $3)
+            "#,
+        )
+        .bind(user.id)
+        .bind(first_repository.id)
+        .bind(format!(
+            "/{username}/{first_repository_name}/commit/profile"
+        ))
+        .execute(&pool)
+        .await?;
+
         upsert_language(&pool, first_repository.id, "TypeScript", "#3178c6", 1200).await?;
         upsert_language(&pool, second_repository.id, "Rust", "#dea584", 900).await?;
         sqlx::query(

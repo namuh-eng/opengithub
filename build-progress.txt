@@ -1958,3 +1958,15 @@
 - Verification passed against a temporary local Postgres 16 database on `localhost:55432`: focused `search_rest_compat_contract`; focused `web/tests/api-docs.test.tsx`; `TEST_DATABASE_URL=postgresql://namuh@localhost:55432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 216 frontend tests.
 - Browser smoke and `make test-e2e` were skipped because `search-005` is backend/API-first and no product UI flow changed beyond static API docs metadata.
 - Set `search-005.build_pass` to `true` in `prd.json`; `qa_pass` remains untouched for the QA agent.
+
+2026-05-02 - profiles-001 phase 2 Editorial profile shell
+
+- Completed Phase 2 from `.qrspi/profiles-001/structure.md`: `/{user}` now renders real `GET /api/users/{username}/profile` data through a dedicated Editorial `UserProfilePage` when the profile API returns data.
+- Added the public profile overview UI with identity column, README card, count-bearing profile tabs, pinned repository cards, achievements, organization chips, recent activity, and a compact contribution summary using Editorial tokens/primitives.
+- Kept unknown/unavailable users on a concrete fallback `ProfileOrgShell` with stable profile tabs and no placeholder API promises; follow/block/report controls remain deferred to Phase 3 to avoid dead actions.
+- Extended `dashboard_e2e_seed` so browser smoke can seed profile metadata, README, a pinned repository, and contribution data.
+- Added `web/tests/user-profile-page.test.tsx` for public overview rendering, private-profile redaction, pinned links, stable tab hrefs, contribution cell labels, and no inert anchors.
+- Added `web/tests/e2e/profile-overview.spec.ts` for seeded profile rendering, tab navigation, pinned repository navigation, and screenshot capture.
+- Verification passed: focused `web/tests/user-profile-page.test.tsx`; `cd web && npx tsc --noEmit`; `cargo check --example dashboard_e2e_seed -p opengithub-api`; `CARGO_INCREMENTAL=0 TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 219 frontend tests; mandatory Editorial banned-value scan returned zero matches.
+- Focused Playwright profile smoke was attempted with `TEST_DATABASE_URL`/`DATABASE_URL` on `localhost:55432`, but `dashboard_e2e_seed` failed with `pool timed out while waiting for an open connection`; no profile UI assertion failure was reached and no screenshot was captured.
+- Marked Phase 2 as done in `.qrspi/profiles-001/structure.md`; `prd.json` remains `build_pass: false` because Phases 3-5 remain.

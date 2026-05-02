@@ -2856,5 +2856,22 @@
       "Private-profile behavior intentionally suppresses pins, achievements, organizations, contribution graph data, follower/following counts, and secondary tab counts while still returning avatar/bio/README identity fields.",
       "Profile action writes, contribution graph interactions, and full responsive Editorial UI remain for later profiles-001 phases."
     ]
+  },
+  {
+    "feature_id": "profiles-001",
+    "tests_written": [
+      "Completed Phase 2 Editorial profile shell without marking profiles-001 build_pass=true.",
+      "Added UserProfilePage for real GET /api/users/{username}/profile data with identity column, README card, count-bearing tabs, pinned repository cards, achievements, organizations, recent activity, and contribution summary.",
+      "Updated /{user} to fetch the profile API server-side and fall back to a concrete unavailable profile shell when the API returns null.",
+      "Extended the dashboard E2E seed to create profile metadata, a profile README, a pinned repository, and contribution data for browser smoke.",
+      "Added focused Vitest coverage for public profile rendering, private-profile redaction, tab href stability, pinned repository links, and no inert anchors.",
+      "Added focused Playwright profile-overview smoke coverage for seeded profile rendering, tab navigation, pinned repository navigation, and screenshot capture."
+    ],
+    "needs_deeper_qa": [
+      "Focused Playwright profile-overview smoke was attempted with TEST_DATABASE_URL/DATABASE_URL on localhost:55432 but dashboard_e2e_seed failed with `pool timed out while waiting for an open connection`; no UI assertion failure was reached and no Phase 2 screenshot was captured.",
+      "Verification that did pass: make check, make test with Cargo plus 219 frontend tests, focused user-profile-page Vitest, TypeScript check, dashboard_e2e_seed cargo check, and mandatory Editorial banned-value scan with zero matches.",
+      "Follow, block, and report controls remain intentionally unrendered in Phase 2 to avoid dead buttons; concrete action controls are Phase 3.",
+      "The contribution graph is a compact summary in Phase 2; accessible heatmap cells, tooltips, year selector, and mobile overflow hardening remain Phase 4."
+    ]
   }
 ]
