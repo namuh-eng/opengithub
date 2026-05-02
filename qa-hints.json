@@ -3005,5 +3005,22 @@
       "QA should stress very large repository/star counts, organization-owned private starred repositories, unusual language color values, and recent-visit write failures.",
       "Final screenshots captured: profiles-002-final-mobile-repositories.jpg and profiles-002-final-mobile-stars.jpg."
     ]
+  },
+  {
+    "feature_id": "orgs-001",
+    "tests_written": [
+      "Completed Phase 1 Organization Overview API Contract without marking orgs-001 build_pass=true.",
+      "Added additive organization profile metadata migration for avatar, website, location, profile visibility, public member visibility, verified domains, organization profile pins, repository topics, and org repository/member indexes.",
+      "Added GET /api/orgs/{org}/profile with case-insensitive slug lookup, signed-cookie viewer detection, private organization hiding, member-aware internal/private repository visibility, verified domains, pinned repositories, repository previews, people previews, language/topic summaries, follower counts, package counts, and sponsorship-unavailable state.",
+      "Added typed Next.js PublicOrganizationProfile DTOs plus cookie-backed server fetch helpers for later UI phases.",
+      "Added organization_profile_contract coverage for public overview data, verified domains, pinned repository filtering, private repository redaction, topic/language summaries, follower/member counts, member-visible internal data, private organization 404 behavior, and standard JSON responses.",
+      "Verification passed: focused organization_profile_contract against local Postgres on localhost:55432 with the postgres role; make check with TEST_DATABASE_URL and DB_SSL=false; standard DB_SSL=false make test with Cargo tests plus 231 frontend tests."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke and make test-e2e were skipped because Phase 1 is API-first and does not yet render the organization profile UI.",
+      "The TEST_DATABASE_URL-backed full make test path exposed an existing collaboration contract mismatch around email-as-login fixtures versus current username-slug identity behavior; the focused org contract passed with the same DB and the standard make test path passed.",
+      "Later phases still need UI validation for tab navigation, verified-domain tooltip/explanation behavior, pinned/repository row navigation, empty states, mobile wrapping, and no inert controls.",
+      "QA should stress large organization member lists, hidden public members, direct repository permissions for non-members, and topic/language aggregation over many repositories."
+    ]
   }
 ]

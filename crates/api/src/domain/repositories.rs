@@ -1624,7 +1624,10 @@ pub async fn get_repository_by_owner_name(
           ON owner_user.id = repositories.owner_user_id
         LEFT JOIN organizations
           ON organizations.id = repositories.owner_organization_id
-        WHERE lower(COALESCE(NULLIF(owner_user.username, ''), owner_user.email, organizations.slug)) = lower($1)
+        WHERE (
+            lower(COALESCE(NULLIF(owner_user.username, ''), owner_user.email, organizations.slug)) = lower($1)
+            OR lower(owner_user.email) = lower($1)
+        )
           AND lower(repositories.name) = lower($2)
         "#,
     )

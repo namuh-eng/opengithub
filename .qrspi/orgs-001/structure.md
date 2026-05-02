@@ -6,7 +6,7 @@
 
 ## Phase 1: Organization Overview API Contract - identity, visibility, counts, and preview data
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the Rust read contract for `GET /api/orgs/{org}/profile` so the organization overview can render from real Postgres data. This phase should expose organization identity, verified domains, public/member-aware repository previews, pinned repositories, public people preview, topic/language summaries, sponsorship placeholder state, and tab counts. The contract must hide private/internal repository and member details from anonymous or non-member viewers while allowing members/admins to see permitted internal data.
 

@@ -2069,3 +2069,15 @@
 - Browser smoke screenshot saved at `ralph/screenshots/build/profiles-002-phase4-stars.jpg`.
 - Verification passed against local Postgres on `localhost:55432` with the `postgres` role: focused `profile_repositories_contract` and `profile_starred_repositories_contract`; focused `web/tests/user-profile-repositories.test.tsx` and `web/tests/navigation-routes.test.tsx`; focused `web/tests/e2e/profile-repositories.spec.ts` and `profile-overview.spec.ts`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 229 frontend tests; full same-env `make test-e2e` with 87 Playwright tests; mandatory Editorial banned-value scan passed with zero matches.
 - Marked Phase 4 as done in `.qrspi/profiles-002/structure.md`; `prd.json` remains `build_pass: false` because Phase 5 remains.
+
+2026-05-02 - orgs-001 phase 1 organization overview API contract
+
+- Completed Phase 1 from `.qrspi/orgs-001/structure.md`: organization overview profiles now have a real Rust/Postgres read contract at `GET /api/orgs/{org}/profile`.
+- Added additive migration `202605020040_organization_profiles` for organization avatar/website/location/profile visibility/public-member metadata, verified domains, organization profile pins, repository topics, and org profile read indexes.
+- Added `crates/api/src/domain/organizations.rs` and `crates/api/src/routes/organizations.rs` with case-insensitive organization lookup, signed-cookie viewer detection, private organization hiding, member-aware internal/private repository visibility, verified domains, pinned repositories, repository previews, people previews, language/topic summaries, follower counts, package counts, tab counts, and sponsorship-unavailable state.
+- Added typed frontend DTOs and server-session helpers for public organization profiles so later UI phases can fetch the new contract without inventing shapes.
+- Added `crates/api/tests/organization_profile_contract.rs` covering public overview data, verified domains, pinned repository filtering, private repository redaction, topics/languages, follower/member counts, member-visible internal data, private organization 404 behavior, and standard JSON responses.
+- Verification passed: focused `organization_profile_contract` against local Postgres on `localhost:55432` with the `postgres` role; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; standard `DB_SSL=false make test` with Cargo tests plus 231 frontend tests.
+- A TEST_DATABASE_URL-backed full `make test` attempt stopped in the existing `api_collaboration_automation_contract` email-as-login fixture after the current identity layer returned username slugs; the focused org contract passed against the same DB, and the standard make test path passed.
+- Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first; `prd.json` remains `build_pass: false` because Phases 2-5 remain.
+- Marked Phase 1 as done in `.qrspi/orgs-001/structure.md`.

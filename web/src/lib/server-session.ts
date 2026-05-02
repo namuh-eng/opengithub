@@ -8,6 +8,7 @@ import {
   getDashboardSummaryFromCookie,
   getProfileRepositoriesFromCookie,
   getProfileStarsFromCookie,
+  getPublicOrganizationProfileFromCookie,
   getPublicUserProfileFromCookie,
   getPullRequestCompareFromCookie,
   getRepositoryActionsDashboardFromCookie,
@@ -73,6 +74,14 @@ export async function getPublicUserProfile(
     requestHeaders.get("cookie"),
     username,
     options,
+  );
+}
+
+export async function getPublicOrganizationProfile(org: string) {
+  const requestHeaders = await headers();
+  return getPublicOrganizationProfileFromCookie(
+    requestHeaders.get("cookie"),
+    org,
   );
 }
 

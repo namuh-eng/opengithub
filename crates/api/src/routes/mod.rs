@@ -8,6 +8,7 @@ pub mod highlight;
 pub mod issues;
 pub mod markdown;
 pub mod onboarding;
+pub mod organizations;
 pub mod packages;
 pub mod pulls;
 pub mod repositories;

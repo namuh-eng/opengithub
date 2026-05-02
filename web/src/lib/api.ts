@@ -141,6 +141,115 @@ export type ProfileRepositoryLanguage = {
   byteCount: number;
 };
 
+export type PublicOrganizationProfile = {
+  identity: OrganizationIdentity;
+  verifiedDomains: OrganizationVerifiedDomain[];
+  pinnedRepositories: OrganizationRepositoryPreview[];
+  repositoryPreview: OrganizationRepositoryPreview[];
+  peoplePreview: OrganizationPersonPreview[];
+  topLanguages: OrganizationLanguageSummary[];
+  topTopics: OrganizationTopicSummary[];
+  sponsorship: OrganizationSponsorshipState;
+  tabCounts: OrganizationTabCounts;
+  viewerState: OrganizationViewerState;
+};
+
+export type OrganizationIdentity = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  avatarUrl: string | null;
+  websiteUrl: string | null;
+  location: string | null;
+  htmlUrl: string;
+  profileVisibility: "public" | "private" | string;
+  isPrivate: boolean;
+  followerCount: number;
+  publicMemberCount: number;
+  repositoryCount: number;
+  createdAt: string;
+};
+
+export type OrganizationVerifiedDomain = {
+  domain: string;
+  verifiedAt: string;
+  href: string;
+};
+
+export type OrganizationRepositoryPreview = {
+  id: string;
+  owner: string;
+  name: string;
+  fullName: string;
+  description: string | null;
+  visibility: RepositoryVisibility;
+  href: string;
+  defaultBranch: string;
+  primaryLanguage: OrganizationLanguageSummary | null;
+  languages: OrganizationLanguageSummary[];
+  topics: string[];
+  starsCount: number;
+  forksCount: number;
+  openIssuesCount: number;
+  openPullRequestsCount: number;
+  isArchived: boolean;
+  isTemplate: boolean;
+  isMirror: boolean;
+  license: OrganizationRepositoryLicense | null;
+  updatedAt: string;
+};
+
+export type OrganizationRepositoryLicense = {
+  slug: string;
+  name: string;
+};
+
+export type OrganizationPersonPreview = {
+  id: string;
+  login: string;
+  name: string | null;
+  avatarUrl: string | null;
+  href: string;
+  role: string | null;
+};
+
+export type OrganizationLanguageSummary = {
+  language: string;
+  color: string;
+  byteCount: number;
+};
+
+export type OrganizationTopicSummary = {
+  topic: string;
+  count: number;
+  href: string;
+};
+
+export type OrganizationSponsorshipState = {
+  enabled: boolean;
+  sponsorCount: number;
+  href: string | null;
+  unavailableReason: string | null;
+};
+
+export type OrganizationTabCounts = {
+  repositories: number;
+  projects: number;
+  packages: number;
+  people: number;
+  sponsoring: number;
+};
+
+export type OrganizationViewerState = {
+  authenticated: boolean;
+  isMember: boolean;
+  role: string | null;
+  canViewInternal: boolean;
+  canAdmin: boolean;
+  isFollowing: boolean;
+};
+
 export type ProfileAchievement = {
   slug: string;
   name: string;
@@ -2383,6 +2492,30 @@ export async function getPublicUserProfileFromCookie(
   }
 
   return (await response.json()) as PublicUserProfile;
+}
+
+export async function getPublicOrganizationProfileFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+): Promise<PublicOrganizationProfile | null> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/profile`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return null;
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return (await response.json()) as PublicOrganizationProfile;
 }
 
 export async function getProfileRepositoriesFromCookie(

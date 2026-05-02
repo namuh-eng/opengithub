@@ -109,13 +109,12 @@ async fn ensure_user_username(
             let suffix = Uuid::new_v4().simple().to_string();
             format!("{base}-{}", &suffix[..6])
         };
-        let result = sqlx::query(
-            "UPDATE users SET username = $1 WHERE id = $2 AND username IS NULL",
-        )
-        .bind(&candidate)
-        .bind(user_id)
-        .execute(pool)
-        .await;
+        let result =
+            sqlx::query("UPDATE users SET username = $1 WHERE id = $2 AND username IS NULL")
+                .bind(&candidate)
+                .bind(user_id)
+                .execute(pool)
+                .await;
 
         match result {
             Ok(rows) if rows.rows_affected() == 1 => return Ok(candidate),
