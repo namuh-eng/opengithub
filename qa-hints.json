@@ -2807,5 +2807,22 @@
       "Full make test passed without TEST_DATABASE_URL: Cargo tests self-skipped DB scenarios and Vitest passed 214 frontend tests.",
       "Phase 5 still needs final privacy, responsive/mobile, accessibility, and full signed-in browser sweeps before search-004.build_pass can be set true."
     ]
+  },
+  {
+    "feature_id": "search-004",
+    "tests_written": [
+      "Completed Phase 5 final collaboration-search guardrails and marked search-004 build_pass=true.",
+      "Rust contract coverage now verifies collaboration-search validation errors are bounded, use the standard validation envelope, and do not leak DATABASE_URL, SESSION_SECRET, stack traces, or panic text.",
+      "Fixed the Postgres-backed collaboration search test fixture to use the same username/email fallback that the API uses for assignee qualifiers.",
+      "Vitest coverage now verifies final empty-state recovery links, diagnostic rendering, no dead anchors, and validation-error redaction for CollaborationSearchResultsPage.",
+      "Playwright coverage now verifies issue search desktop accessibility/no-overflow, pull request mobile invalid-query recovery/no-overflow, concrete sort/chip controls, and final screenshots: ralph/screenshots/build/search-004-phase5-final-desktop-issues.jpg and ralph/screenshots/build/search-004-phase5-final-mobile-pulls.jpg.",
+      "Verification passed against a temporary local Postgres 16 database on localhost:55432: focused search_collaboration_results_contract, focused search-collaboration-results Vitest, focused search-collaboration Playwright, make check, make test with Cargo plus 216 frontend tests, full make test-e2e with 82 Playwright tests, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke uses deterministic Rust-signed local sessions and seeded Postgres data, not a real Google OAuth browser session.",
+      "A temporary Homebrew Postgres 16 cluster was started under /tmp because no existing localhost Postgres or Docker daemon was available; QA should re-run the signed-in smoke against the standard shared test database when available.",
+      "Reviewer-specific PR facets remain display-compatible but backend reviewer filtering is still constrained by the current PR review data model and should be revisited when richer review indexing ships.",
+      "Production-scale ranking, facet performance, and concurrent saved-search create/delete behavior still need later search hardening under larger datasets."
+    ]
   }
 ]

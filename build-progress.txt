@@ -1917,3 +1917,14 @@
 - Verification passed: focused `search_collaboration_results_contract`; focused `web/tests/search-collaboration-results.test.tsx`; focused TEST_DATABASE_URL-backed Playwright smoke `search.spec.ts -g "issue, pull request, and discussions search tabs stay navigable"`; focused final search sweep Playwright after the heading update; `TEST_DATABASE_URL=postgresql://namuh:namuh@localhost:55432/opengithub_identity_test DB_SSL=false make check`; and same-env `make test` with Cargo tests plus 213 frontend tests.
 - Full `make test-e2e` was attempted twice. The first run passed 77/78 tests and failed only on the old generic heading expectation, which this phase fixed. The second run failed after 43 passes because seeded E2E setup commands hit local Postgres pool timeouts; this appears environmental/database pressure rather than a search-004 assertion failure.
 - Marked Phase 2 as done in `.qrspi/search-004/structure.md`; `prd.json` remains `build_pass: false` because Phases 3-5 remain.
+
+2026-05-02 - search-004 phase 5 final guardrails and QA handoff
+
+- Completed Phase 5 from `.qrspi/search-004/structure.md`: final issue/PR collaboration-search guardrails, desktop/mobile browser evidence, QA handoff, and `search-004.build_pass=true`.
+- Added backend validation guardrail coverage in `crates/api/tests/search_collaboration_results_contract.rs` for bounded collaboration-search validation errors, standard 422 envelopes, unsupported state diagnostics, and no leakage of database URLs, session secrets, stack traces, or panic text.
+- Fixed the existing collaboration-search fixture to use the same username/email fallback as the API for assignee qualifiers.
+- Extended `web/tests/search-collaboration-results.test.tsx` for final empty-state recovery links, diagnostics, no-dead-anchor checks, and validation-error redaction.
+- Extended `web/tests/e2e/search-collaboration.spec.ts` for desktop issue-search keyboard/no-overflow evidence and mobile pull-request invalid-query recovery/no-overflow evidence.
+- Browser smoke screenshots saved at `ralph/screenshots/build/search-004-phase5-final-desktop-issues.jpg` and `ralph/screenshots/build/search-004-phase5-final-mobile-pulls.jpg`.
+- Verification passed against a temporary local Postgres 16 test database on `localhost:55432`: focused `search_collaboration_results_contract`; focused `web/tests/search-collaboration-results.test.tsx`; focused `web/tests/e2e/search-collaboration.spec.ts`; `TEST_DATABASE_URL=postgresql://namuh@localhost:55432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 216 frontend tests; full same-env `make test-e2e` with 82 Playwright tests; mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
+- Marked Phase 5 as done in `.qrspi/search-004/structure.md` and set `search-004.build_pass` to `true` in `prd.json`; `qa_pass` remains `false` for the QA agent.

@@ -334,7 +334,10 @@ async fn issue_search_returns_facets_snippets_counts_and_private_redaction() {
     for (qualifier, expected_chip) in [
         (format!("label:bug-{marker}"), "label"),
         (
-            format!("assignee:{}", assignee.username.as_deref().unwrap()),
+            format!(
+                "assignee:{}",
+                assignee.username.as_deref().unwrap_or(&assignee.email)
+            ),
             "assignee",
         ),
         (format!("milestone:\"Release {marker}\""), "milestone"),
@@ -518,4 +521,52 @@ async fn pull_request_search_alias_returns_pr_rows_and_sort_metadata() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(alias_body["sort"]["selected"], "most_commented");
+}
+
+#[tokio::test]
+async fn collaboration_search_validation_errors_are_bounded_and_non_leaky() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping collaboration search scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let user = create_user(&pool, "search004-guardrail").await;
+    let cookie = cookie_header(&pool, &config, &user).await;
+    let app = opengithub_api::build_app_with_config(Some(pool), config);
+    let long_query = "x".repeat(257);
+    let encoded = encode_query_component(&long_query);
+
+    let (status, headers, body) = get_json(
+        app.clone(),
+        &format!("/api/search?q={encoded}&type=issues&pageSize=500"),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_json(&headers);
+    assert_eq!(body["status"], 422);
+    assert_eq!(body["error"]["code"], "validation_failed");
+    assert_eq!(
+        body["error"]["message"],
+        "collaboration search query must be 256 characters or fewer"
+    );
+    let rendered = body.to_string();
+    assert!(!rendered.contains("DATABASE_URL"));
+    assert!(!rendered.contains("SESSION_SECRET"));
+    assert!(!rendered.contains("stack backtrace"));
+    assert!(!rendered.contains("panicked at"));
+
+    let (status, _headers, body) = get_json(
+        app,
+        "/api/search?q=router%20state:triaged&type=pull_requests",
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["error"]["code"], "validation_failed");
+    assert_eq!(
+        body["error"]["message"],
+        "state:triaged is not supported for issue and pull request search"
+    );
 }

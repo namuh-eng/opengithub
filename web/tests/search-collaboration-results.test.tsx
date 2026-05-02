@@ -267,4 +267,79 @@ describe("CollaborationSearchResultsPage", () => {
     );
     expect(await screen.findByText('Saved "Regression triage".')).toBeVisible();
   });
+
+  it("renders final guardrail states without dead or overflowing controls", async () => {
+    render(
+      <CollaborationSearchResultsPage
+        activeType="issues"
+        query="search004 label:missing"
+        results={{
+          ...response([]),
+          activeChips: [
+            {
+              qualifier: "label",
+              value: "missing",
+              label: "label:missing",
+              removeQuery: "search004",
+            },
+          ],
+          diagnostics: [
+            {
+              code: "invalid_comments_qualifier",
+              message: "comments:many must compare against a whole number",
+              qualifier: "comments",
+            },
+          ],
+          total: 0,
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/comments:many/)).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "No issues matched “search004 label:missing”.",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Remove label:missing" }),
+    ).toHaveAttribute(
+      "href",
+      "/search?q=search004&type=issues&sort=most_commented&view=comfortable",
+    );
+    expect(screen.getByRole("link", { name: "Clear search" })).toHaveAttribute(
+      "href",
+      "/search?type=issues",
+    );
+    expect(
+      document.querySelectorAll('a[href="#"], a:not([href])'),
+    ).toHaveLength(0);
+  });
+
+  it("shows validation errors without leaking stack or secret-like text", () => {
+    render(
+      <CollaborationSearchResultsPage
+        activeType="pull_requests"
+        query={"x".repeat(300)}
+        results={{
+          error: {
+            code: "validation_failed",
+            message:
+              "collaboration search query must be 256 characters or fewer",
+          },
+          status: 422,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Search unavailable")).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "collaboration search query must be 256 characters or fewer",
+      }),
+    ).toBeVisible();
+    expect(document.body.textContent).not.toMatch(
+      /DATABASE_URL|SESSION_SECRET|stack backtrace|panicked at/i,
+    );
+  });
 });

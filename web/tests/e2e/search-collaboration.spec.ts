@@ -56,6 +56,14 @@ async function expectNoDeadControls(page: Page) {
   }
 }
 
+async function expectNoHorizontalOverflow(page: Page) {
+  const overflow = await page.evaluate(() => {
+    const documentElement = document.documentElement;
+    return documentElement.scrollWidth - documentElement.clientWidth;
+  });
+  expect(overflow).toBeLessThanOrEqual(2);
+}
+
 test.skip(
   !databaseUrl,
   "collaboration search E2E needs TEST_DATABASE_URL or DATABASE_URL",
@@ -142,5 +150,64 @@ test("pull request search preserves sort/view and empty-state recovery is action
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/search-004-phase4-sort-save-pagination.jpg",
+  });
+});
+
+test("desktop issue search keeps facets, chips, sort, and row navigation accessible", async ({
+  page,
+}) => {
+  const marker = `search004p5issue${Date.now()}`;
+  const seeded = seedSession(marker);
+  await signIn(page, seeded);
+  await page.setViewportSize({ width: 1366, height: 900 });
+
+  await page.goto(`/search?q=${marker}%20state:open&type=issues`);
+  await expect(
+    page.getByRole("heading", { name: "Issues search" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "state:open ×" }),
+  ).toHaveAttribute("href", /q=search004p5issue/);
+  await page.getByText("Sort by: Best match").click();
+  await expect(
+    page.getByRole("link", { exact: true, name: "Recently updated" }),
+  ).toHaveAttribute("href", /sort=recently_updated/);
+  await page.keyboard.press("Tab");
+  await expect(page.locator(":focus")).toBeVisible();
+  await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/search-004-phase5-final-desktop-issues.jpg",
+  });
+});
+
+test("mobile pull request search supports invalid-query recovery and final screenshot", async ({
+  page,
+}) => {
+  const marker = `search004p5pr${Date.now()}`;
+  const seeded = seedSession(marker);
+  await signIn(page, seeded);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.goto(`/search?q=${marker}&type=pull_requests&view=compact`);
+  await expect(
+    page.getByRole("heading", { name: "Pull requests search" }),
+  ).toBeVisible();
+  await expect(page.getByText(/1 pull requests results/)).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+
+  await page.goto(
+    `/search?q=${marker}%20comments:many&type=pull_requests&view=compact`,
+  );
+  await expect(
+    page.getByText(/must compare against a whole number/),
+  ).toBeVisible();
+  await expect(page.getByText(/1 pull requests results/)).toBeVisible();
+  await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/search-004-phase5-final-mobile-pulls.jpg",
   });
 });

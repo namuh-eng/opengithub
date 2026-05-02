@@ -70,7 +70,7 @@
 
 ## Phase 5: Collaboration Search Guardrails and QA Handoff - finish search-004
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Harden accessibility, privacy, responsive behavior, performance bounds, and bookkeeping. Mark `search-004.build_pass=true` only after issue and pull request search use real API data, filters and sort are URL-backed, result rows navigate to detail pages, saved search writes persist, and no visible controls are dead.
 
