@@ -44,7 +44,7 @@
 
 ## Phase 3: Branch Rule and Ruleset Mutations - editors, confirmations, and server-confirmed state
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire every visible branch-policy action to real API writes. Admins must be able to create, edit, disable/evaluate/activate, and delete branch protection rules/rulesets through confirmed server state; invalid or conflicting policies must show inline errors and never update the UI optimistically.
 

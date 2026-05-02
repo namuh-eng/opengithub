@@ -168,6 +168,32 @@ async fn repository_branch_settings_cover_rules_rulesets_privacy_and_audit_event
         .expect("ruleset id should be returned")
         .to_owned();
 
+    let (update_ruleset_status, _, update_ruleset_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &format!("{uri}/rulesets/{ruleset_id}"),
+        Some(&owner_cookie),
+        Some(json!({
+            "name": "release readiness",
+            "enforcement": "active",
+            "patterns": ["release/*"],
+            "requiredStatusChecks": ["deploy/staging", "security/review"],
+            "requiresSignedCommits": true,
+            "bypassActors": [{ "actorType": "user", "actorId": owner.id, "label": "owner" }]
+        })),
+    )
+    .await;
+    assert_eq!(update_ruleset_status, StatusCode::OK);
+    assert_eq!(update_ruleset_body["rulesets"][0]["enforcement"], "active");
+    assert_eq!(
+        update_ruleset_body["rulesets"][0]["requirements"]["requiredStatusChecks"][1],
+        "security/review"
+    );
+    assert_eq!(
+        update_ruleset_body["rulesets"][0]["bypassActors"][0]["label"],
+        "owner"
+    );
+
     let (update_status, _, update_body) = send_json(
         app.clone(),
         Method::PATCH,

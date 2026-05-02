@@ -1,5 +1,11 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RepositoryBranchSettingsPage } from "@/components/RepositoryBranchSettingsPage";
 import type {
   BranchPolicyRequirements,
@@ -164,6 +170,10 @@ function okResult(
 }
 
 describe("repository branch settings page", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("renders default branch, policies, requirements, and Editorial primitives", () => {
     const { container } = render(
       <RepositoryBranchSettingsPage
@@ -186,17 +196,11 @@ describe("repository branch settings page", () => {
     expect(screen.getAllByText("Linear history").length).toBeGreaterThan(0);
     expect(screen.getByText("Bypass: Core")).toBeVisible();
     expect(
-      screen.getByRole("link", { name: "New branch protection rule" }),
-    ).toHaveAttribute(
-      "href",
-      "/namuh-eng/opengithub/settings/branches?new=rule#branch-rules",
-    );
+      screen.getByRole("button", { name: "New branch protection rule" }),
+    ).toBeVisible();
     expect(
-      screen.getAllByRole("link", { name: "New ruleset" })[0],
-    ).toHaveAttribute(
-      "href",
-      "/namuh-eng/opengithub/settings/branches?new=ruleset#branch-rules",
-    );
+      screen.getAllByRole("button", { name: "New ruleset" })[0],
+    ).toBeVisible();
 
     expect(container.querySelectorAll(".card").length).toBeGreaterThan(3);
     expect(container.querySelector(".chip")).not.toBeNull();
@@ -272,14 +276,11 @@ describe("repository branch settings page", () => {
     ).toBeVisible();
     expect(screen.getByText("No suggestions yet")).toBeVisible();
     expect(
-      screen.getAllByRole("link", { name: "New ruleset" })[0],
-    ).toHaveAttribute(
-      "href",
-      "/namuh-eng/opengithub/settings/branches?new=ruleset#branch-rules",
-    );
+      screen.getAllByRole("button", { name: "New ruleset" })[0],
+    ).toBeVisible();
   });
 
-  it("shows the Phase 3 editor entry state from the new-rule query", () => {
+  it("opens the Phase 3 editor entry state from the new-rule query", () => {
     render(
       <RepositoryBranchSettingsPage
         intent="rule"
@@ -291,9 +292,144 @@ describe("repository branch settings page", () => {
     expect(
       screen.getByRole("heading", { name: "Branch protection rule editor" }),
     ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Open editor" }));
+    expect(screen.getByLabelText("Branch pattern")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Create policy" })).toBeVisible();
+  });
+
+  it("creates rules through the same-origin action route and waits for server state", async () => {
+    const nextSettings = branchSettings({
+      rules: [
+        ...branchSettings().rules,
+        {
+          ...branchSettings().rules[0],
+          id: "rule-2",
+          pattern: "release/*",
+          description: "Release trains need a stricter check.",
+          matchingBranches: [],
+          matchingBranchCount: 0,
+          bypassActors: [],
+        },
+      ],
+    });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(nextSettings), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryBranchSettingsPage
+        repository={repositoryOverview()}
+        settingsResult={okResult()}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "New branch protection rule" }),
+    );
+    fireEvent.change(screen.getByLabelText("Branch pattern"), {
+      target: { value: "release/*" },
+    });
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "Release trains need a stricter check." },
+    });
+    fireEvent.change(screen.getByLabelText("Required status checks"), {
+      target: { value: "ci\nrelease-smoke" },
+    });
+    fireEvent.click(screen.getByLabelText("Require signed commits"));
+    fireEvent.click(screen.getByRole("button", { name: "Create policy" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/namuh-eng/opengithub/settings/branches/actions",
+        expect.objectContaining({
+          method: "POST",
+        }),
+      ),
+    );
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+      action: "create-rule",
+      description: "Release trains need a stricter check.",
+      pattern: "release/*",
+      requiredStatusChecks: ["ci", "release-smoke"],
+      requiresSignedCommits: true,
+    });
+    expect(await screen.findByText("Branch policy saved.")).toBeVisible();
     expect(
-      screen.getByRole("link", { name: "Return to policies" }),
-    ).toHaveAttribute("href", "/namuh-eng/opengithub/settings/branches");
+      screen.getByText("Release trains need a stricter check."),
+    ).toBeVisible();
+  });
+
+  it("shows API validation errors and keeps local policy state unchanged", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            error: {
+              code: "conflict",
+              message: "A branch rule with that pattern already exists.",
+            },
+            status: 409,
+          }),
+          { headers: { "content-type": "application/json" }, status: 409 },
+        ),
+      ),
+    );
+
+    render(
+      <RepositoryBranchSettingsPage
+        repository={repositoryOverview()}
+        settingsResult={okResult()}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "New branch protection rule" }),
+    );
+    fireEvent.change(screen.getByLabelText("Branch pattern"), {
+      target: { value: "main" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create policy" }));
+
+    expect(
+      await screen.findByText(
+        "A branch rule with that pattern already exists.",
+      ),
+    ).toBeVisible();
+    expect(screen.getAllByText("main").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Branch policy saved.")).not.toBeInTheDocument();
+  });
+
+  it("confirms deletes before forwarding the delete action", async () => {
+    const nextSettings = branchSettings({ rules: [] });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(nextSettings), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryBranchSettingsPage
+        repository={repositoryOverview()}
+        settingsResult={okResult()}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]);
+    expect(screen.getByRole("alertdialog")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Delete policy" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      action: "delete-rule",
+      ruleId: "rule-1",
+    });
   });
 
   it("renders unavailable states with recovery navigation", () => {

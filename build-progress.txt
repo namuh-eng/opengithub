@@ -1,3 +1,15 @@
+2026-05-03 - settings-003 phase 3 branch policy mutations
+
+- Completed Phase 3 from `.qrspi/settings-003/structure.md`: Branches settings now supports real server-confirmed branch protection rule and ruleset create/update/delete flows without marking `settings-003.build_pass=true`.
+- Added same-origin Next.js action forwarding at `/[owner]/[repo]/settings/branches/actions` plus typed `RepositoryBranchPolicyMutation` helpers so the frontend sends authenticated writes to the Rust API rather than owning auth locally.
+- Converted `RepositoryBranchSettingsPage` into a client-backed Editorial editor with pattern/name inputs, enforcement radio controls, required reviews/status checks/deployment fields, requirement checkboxes, bypass actor entry, validation feedback, success state, edit actions, and delete confirmations.
+- Extended `repository_branch_settings_contract` with ruleset update assertions for active enforcement, required status check persistence, and bypass actor persistence.
+- Added focused Vitest coverage for create payloads, API validation errors without optimistic local updates, delete confirmations, no inert controls, and Editorial primitive/token usage.
+- Added focused Playwright smoke for signed-in admin branch policy mutations; it creates a rule, edits review/linear-history requirements, creates an evaluate-only ruleset, deletes the disposable rule, reloads persisted state, verifies no dead controls, and saves `ralph/screenshots/build/settings-003-phase3-branches-mutations.jpg`.
+- Verification passed: focused `repository_branch_settings_contract` harness compiled/passed but self-skipped DB assertions because the shared local migration state is dirty; focused branch settings Vitest; `web` `tsc --noEmit`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 283 frontend tests; focused `web/tests/e2e/repository-settings-branches.spec.ts`; mandatory Editorial banned-value scan returned zero matches.
+- Full `make test-e2e` was attempted. It reached 21 passed tests, then 73 signed-in seeded tests failed before exercising their scenarios because the shared local database still reports `migration 202605030041 was previously applied but has been modified`.
+- Marked Phase 3 as done in `.qrspi/settings-003/structure.md`; `prd.json` remains `build_pass:false` because Phases 4-5 remain.
+
 2026-05-03 - settings-003 phase 2 Editorial branches settings shell
 
 - Completed Phase 2 from `.qrspi/settings-003/structure.md`: `/[owner]/[repo]/settings/branches` now fetches the Phase 1 Rust branch-policy contract server-side and renders a real Editorial Branches settings page instead of a placeholder.

@@ -1139,6 +1139,40 @@ export type RepositoryBranchSettingsFetchResult =
   | { ok: true; settings: RepositoryBranchSettings }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type BranchPolicyMutationRequirements =
+  Partial<BranchPolicyRequirements>;
+
+export type BranchPolicyBypassActorMutation = {
+  actorType: string;
+  actorId: string;
+  label: string;
+};
+
+export type RepositoryBranchRuleMutation = BranchPolicyMutationRequirements & {
+  action: "create-rule" | "update-rule";
+  ruleId?: string;
+  pattern: string;
+  description?: string | null;
+  enforcement?: BranchPolicyEnforcement;
+  bypassActors?: BranchPolicyBypassActorMutation[];
+};
+
+export type RepositoryBranchRulesetMutation =
+  BranchPolicyMutationRequirements & {
+    action: "create-ruleset" | "update-ruleset";
+    rulesetId?: string;
+    name: string;
+    enforcement?: BranchPolicyEnforcement;
+    patterns: string[];
+    bypassActors?: BranchPolicyBypassActorMutation[];
+  };
+
+export type RepositoryBranchPolicyMutation =
+  | RepositoryBranchRuleMutation
+  | RepositoryBranchRulesetMutation
+  | { action: "delete-rule"; ruleId: string }
+  | { action: "delete-ruleset"; rulesetId: string };
+
 export type WritableRepositoryOwner = {
   ownerType: RepositoryOwnerType;
   id: string;
@@ -5523,6 +5557,77 @@ export async function getRepositoryBranchSettingsFromCookie(
     ok: true,
     settings: (await response.json()) as RepositoryBranchSettings,
   };
+}
+
+export async function mutateRepositoryBranchSettingsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  mutation: RepositoryBranchPolicyMutation,
+): Promise<RepositoryBranchSettings> {
+  const base = `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/branches`;
+  let path = base;
+  let method = "POST";
+  let body: unknown;
+
+  switch (mutation.action) {
+    case "create-rule": {
+      path = `${base}/rules`;
+      const { action: _action, ruleId: _ruleId, ...payload } = mutation;
+      body = payload;
+      break;
+    }
+    case "update-rule": {
+      path = `${base}/rules/${encodeURIComponent(mutation.ruleId ?? "")}`;
+      method = "PATCH";
+      const { action: _action, ruleId: _ruleId, ...payload } = mutation;
+      body = payload;
+      break;
+    }
+    case "delete-rule":
+      path = `${base}/rules/${encodeURIComponent(mutation.ruleId)}`;
+      method = "DELETE";
+      break;
+    case "create-ruleset": {
+      path = `${base}/rulesets`;
+      const { action: _action, rulesetId: _rulesetId, ...payload } = mutation;
+      body = payload;
+      break;
+    }
+    case "update-ruleset": {
+      path = `${base}/rulesets/${encodeURIComponent(mutation.rulesetId ?? "")}`;
+      method = "PATCH";
+      const { action: _action, rulesetId: _rulesetId, ...payload } = mutation;
+      body = payload;
+      break;
+    }
+    case "delete-ruleset":
+      path = `${base}/rulesets/${encodeURIComponent(mutation.rulesetId)}`;
+      method = "DELETE";
+      break;
+  }
+
+  const response = await fetch(path, {
+    method,
+    headers: {
+      ...(body ? { "content-type": "application/json" } : {}),
+      ...(cookie ? { cookie } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const envelope = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Repository branch policy update failed.",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as RepositoryBranchSettings;
 }
 
 export type RepositoryAccessMutation =

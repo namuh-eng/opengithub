@@ -1,7 +1,13 @@
+"use client";
+
 import Link from "next/link";
+import { useMemo, useState } from "react";
 import type {
   BranchPolicyEnforcement,
+  BranchPolicyMutationRequirements,
   BranchPolicyRequirements,
+  BypassActor,
+  RepositoryBranchPolicyMutation,
   RepositoryBranchRule,
   RepositoryBranchSettings,
   RepositoryBranchSettingsFetchResult,
@@ -18,6 +24,14 @@ type RepositoryBranchSettingsPageProps = {
 type PolicyCard =
   | { kind: "rule"; item: RepositoryBranchRule }
   | { kind: "ruleset"; item: RepositoryRuleset };
+type EditorMode =
+  | { kind: "rule"; item?: RepositoryBranchRule }
+  | { kind: "ruleset"; item?: RepositoryRuleset }
+  | null;
+type Confirmation =
+  | { kind: "rule"; item: RepositoryBranchRule }
+  | { kind: "ruleset"; item: RepositoryRuleset }
+  | null;
 
 const requirementLabels: Array<{
   label: string;
@@ -107,6 +121,78 @@ function requirementChips(requirements: BranchPolicyRequirements) {
   return chips;
 }
 
+function emptyRequirements(): BranchPolicyRequirements {
+  return {
+    allowsDeletions: false,
+    allowsForcePushes: false,
+    locked: false,
+    requiredApprovingReviewCount: 0,
+    requiredDeploymentEnvironments: [],
+    requiredStatusChecks: [],
+    requiresConversationResolution: false,
+    requiresDeployments: false,
+    requiresLinearHistory: false,
+    requiresMergeQueue: false,
+    requiresSignedCommits: false,
+    requiresUpToDateBranch: false,
+    restrictsPushes: false,
+  };
+}
+
+function splitList(value: FormDataEntryValue | null) {
+  return String(value ?? "")
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function bypassActorsFromForm(value: FormDataEntryValue | null) {
+  return String(value ?? "")
+    .split(/\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [actorType = "", actorId = "", ...labelParts] = line.split(":");
+      return {
+        actorId: actorId.trim(),
+        actorType: actorType.trim(),
+        label: labelParts.join(":").trim(),
+      };
+    })
+    .filter((actor) => actor.actorId && actor.actorType && actor.label);
+}
+
+function bypassActorsToText(actors: BypassActor[]) {
+  return actors
+    .map((actor) => `${actor.actorType}:${actor.actorId}:${actor.label}`)
+    .join("\n");
+}
+
+function requirementsFromForm(
+  form: FormData,
+): BranchPolicyMutationRequirements {
+  return {
+    allowsDeletions: form.get("allowsDeletions") === "on",
+    allowsForcePushes: form.get("allowsForcePushes") === "on",
+    locked: form.get("locked") === "on",
+    requiredApprovingReviewCount: Number(
+      form.get("requiredApprovingReviewCount") ?? 0,
+    ),
+    requiredDeploymentEnvironments: splitList(
+      form.get("requiredDeploymentEnvironments"),
+    ),
+    requiredStatusChecks: splitList(form.get("requiredStatusChecks")),
+    requiresConversationResolution:
+      form.get("requiresConversationResolution") === "on",
+    requiresDeployments: form.get("requiresDeployments") === "on",
+    requiresLinearHistory: form.get("requiresLinearHistory") === "on",
+    requiresMergeQueue: form.get("requiresMergeQueue") === "on",
+    requiresSignedCommits: form.get("requiresSignedCommits") === "on",
+    requiresUpToDateBranch: form.get("requiresUpToDateBranch") === "on",
+    restrictsPushes: form.get("restrictsPushes") === "on",
+  };
+}
+
 function BranchSettingsUnavailable({
   repository,
   result,
@@ -145,12 +231,282 @@ function BranchSettingsUnavailable({
   );
 }
 
+function checkboxLabel(
+  name: keyof BranchPolicyRequirements,
+  label: string,
+  requirements: BranchPolicyRequirements,
+) {
+  return (
+    <label className="flex items-start gap-2">
+      <input
+        className="mt-1"
+        defaultChecked={Boolean(requirements[name])}
+        name={name}
+        type="checkbox"
+      />
+      <span className="t-sm">{label}</span>
+    </label>
+  );
+}
+
+function PolicyEditor({
+  busy,
+  error,
+  mode,
+  onCancel,
+  onSubmit,
+  settings,
+}: {
+  busy: boolean;
+  error: string | null;
+  mode: Exclude<EditorMode, null>;
+  onCancel: () => void;
+  onSubmit: (mutation: RepositoryBranchPolicyMutation) => void;
+  settings: RepositoryBranchSettings;
+}) {
+  const isRule = mode.kind === "rule";
+  const item = mode.item;
+  const requirements = item?.requirements ?? emptyRequirements();
+  const title = isRule
+    ? item
+      ? "Edit branch protection rule"
+      : "Branch protection rule editor"
+    : item
+      ? "Edit repository ruleset"
+      : "Repository ruleset editor";
+
+  return (
+    <section className="card p-5" id="branch-policy-editor">
+      <span className="chip active">{isRule ? "Branch rule" : "Ruleset"}</span>
+      <h2 className="t-h3 mt-3">{title}</h2>
+      <p className="t-body mt-2" style={{ color: "var(--ink-2)" }}>
+        Saves are confirmed by the Rust API before this page updates. Status
+        checks accept comma or newline separated contexts.
+      </p>
+      <form
+        className="mt-5 grid gap-5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const form = new FormData(event.currentTarget);
+          const base = {
+            ...requirementsFromForm(form),
+            bypassActors: bypassActorsFromForm(form.get("bypassActors")),
+            enforcement: String(
+              form.get("enforcement") ?? "active",
+            ) as BranchPolicyEnforcement,
+          };
+
+          if (isRule) {
+            onSubmit({
+              ...base,
+              action: item ? "update-rule" : "create-rule",
+              description: String(form.get("description") ?? ""),
+              pattern: String(form.get("pattern") ?? ""),
+              ruleId: item?.id,
+            });
+            return;
+          }
+          onSubmit({
+            ...base,
+            action: item ? "update-ruleset" : "create-ruleset",
+            name: String(form.get("name") ?? ""),
+            patterns: splitList(form.get("patterns")),
+            rulesetId: item?.id,
+          });
+        }}
+      >
+        <div className="grid gap-4 lg:grid-cols-2">
+          {isRule ? (
+            <label className="grid gap-2" htmlFor="branch-rule-pattern">
+              <span className="t-label">Branch pattern</span>
+              <input
+                className="input"
+                defaultValue={item && "pattern" in item ? item.pattern : ""}
+                id="branch-rule-pattern"
+                name="pattern"
+                placeholder={settings.defaultBranch}
+                required
+              />
+            </label>
+          ) : (
+            <>
+              <label className="grid gap-2" htmlFor="ruleset-name">
+                <span className="t-label">Ruleset name</span>
+                <input
+                  className="input"
+                  defaultValue={item && "name" in item ? item.name : ""}
+                  id="ruleset-name"
+                  name="name"
+                  placeholder="Release branches"
+                  required
+                />
+              </label>
+              <label className="grid gap-2" htmlFor="ruleset-patterns">
+                <span className="t-label">Branch patterns</span>
+                <textarea
+                  className="input min-h-24"
+                  defaultValue={
+                    item && "patterns" in item ? item.patterns.join("\n") : ""
+                  }
+                  id="ruleset-patterns"
+                  name="patterns"
+                  placeholder="main&#10;release/*"
+                  required
+                />
+              </label>
+            </>
+          )}
+          {isRule ? (
+            <label className="grid gap-2" htmlFor="branch-rule-description">
+              <span className="t-label">Description</span>
+              <input
+                className="input"
+                defaultValue={
+                  item && "description" in item ? (item.description ?? "") : ""
+                }
+                id="branch-rule-description"
+                name="description"
+                placeholder="Protect the release branch"
+              />
+            </label>
+          ) : null}
+        </div>
+
+        <fieldset className="grid gap-2">
+          <legend className="t-label">Enforcement status</legend>
+          <div className="flex flex-wrap gap-2">
+            {(["active", "evaluate", "disabled"] as const).map((value) => (
+              <label className="chip soft" key={value}>
+                <input
+                  className="mr-2"
+                  defaultChecked={(item?.enforcement ?? "active") === value}
+                  name="enforcement"
+                  type="radio"
+                  value={value}
+                />
+                {enforcementLabel(value)}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <label className="grid gap-2" htmlFor="required-review-count">
+            <span className="t-label">Required reviews</span>
+            <input
+              className="input"
+              defaultValue={requirements.requiredApprovingReviewCount}
+              id="required-review-count"
+              min={0}
+              name="requiredApprovingReviewCount"
+              type="number"
+            />
+          </label>
+          <label className="grid gap-2" htmlFor="required-status-checks">
+            <span className="t-label">Required status checks</span>
+            <textarea
+              className="input min-h-24"
+              defaultValue={requirements.requiredStatusChecks.join("\n")}
+              id="required-status-checks"
+              name="requiredStatusChecks"
+              placeholder={settings.statusCheckSuggestions.join(", ") || "ci"}
+            />
+          </label>
+        </div>
+
+        <fieldset className="grid gap-3">
+          <legend className="t-label">Requirements</legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {checkboxLabel(
+              "requiresUpToDateBranch",
+              "Require branches to be up to date",
+              requirements,
+            )}
+            {checkboxLabel(
+              "requiresConversationResolution",
+              "Require conversation resolution",
+              requirements,
+            )}
+            {checkboxLabel(
+              "requiresSignedCommits",
+              "Require signed commits",
+              requirements,
+            )}
+            {checkboxLabel(
+              "requiresLinearHistory",
+              "Require linear history",
+              requirements,
+            )}
+            {checkboxLabel(
+              "requiresMergeQueue",
+              "Require merge queue",
+              requirements,
+            )}
+            {checkboxLabel(
+              "requiresDeployments",
+              "Require deployments",
+              requirements,
+            )}
+            {checkboxLabel("locked", "Lock branch", requirements)}
+            {checkboxLabel("restrictsPushes", "Restrict pushes", requirements)}
+            {checkboxLabel(
+              "allowsForcePushes",
+              "Allow force pushes",
+              requirements,
+            )}
+            {checkboxLabel("allowsDeletions", "Allow deletions", requirements)}
+          </div>
+        </fieldset>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <label className="grid gap-2" htmlFor="deployment-environments">
+            <span className="t-label">Deployment environments</span>
+            <textarea
+              className="input min-h-20"
+              defaultValue={requirements.requiredDeploymentEnvironments.join(
+                "\n",
+              )}
+              id="deployment-environments"
+              name="requiredDeploymentEnvironments"
+              placeholder="production"
+            />
+          </label>
+          <label className="grid gap-2" htmlFor="bypass-actors">
+            <span className="t-label">Bypass actors</span>
+            <textarea
+              className="input min-h-20"
+              defaultValue={bypassActorsToText(item?.bypassActors ?? [])}
+              id="bypass-actors"
+              name="bypassActors"
+              placeholder="team:00000000-0000-0000-0000-000000000000:Core"
+            />
+          </label>
+        </div>
+
+        {error ? (
+          <p className="t-sm" role="alert" style={{ color: "var(--err)" }}>
+            {error}
+          </p>
+        ) : null}
+        <div className="flex flex-wrap justify-end gap-2">
+          <button className="btn" onClick={onCancel} type="button">
+            Cancel
+          </button>
+          <button className="btn primary" disabled={busy} type="submit">
+            {busy ? "Saving..." : item ? "Save policy" : "Create policy"}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
 function PolicyIntentCard({
   intent,
-  repository,
+  onStart,
 }: {
   intent: "rule" | "ruleset";
-  repository: RepositoryOverview;
+  onStart: (mode: Exclude<EditorMode, null>) => void;
 }) {
   return (
     <section className="card p-5" role="status">
@@ -163,15 +519,16 @@ function PolicyIntentCard({
           : "Repository ruleset editor"}
       </h2>
       <p className="t-body mt-2" style={{ color: "var(--ink-2)" }}>
-        The write contract is available now. The full editor, validation flow,
-        and server-confirmed saves are the next vertical slice.
+        Start a server-confirmed editor for branch patterns, requirements,
+        bypass actors, and enforcement status.
       </p>
-      <Link
-        className="btn mt-4"
-        href={`/${repository.owner_login}/${repository.name}/settings/branches`}
+      <button
+        className="btn primary mt-4"
+        onClick={() => onStart({ kind: intent })}
+        type="button"
       >
-        Return to policies
-      </Link>
+        Open editor
+      </button>
     </section>
   );
 }
@@ -268,7 +625,15 @@ function BranchRefsCard({ settings }: { settings: RepositoryBranchSettings }) {
   );
 }
 
-function PolicyCardView({ card }: { card: PolicyCard }) {
+function PolicyCardView({
+  card,
+  onDelete,
+  onEdit,
+}: {
+  card: PolicyCard;
+  onDelete: (card: PolicyCard) => void;
+  onEdit: (card: PolicyCard) => void;
+}) {
   const requirements = requirementChips(card.item.requirements);
   const patterns = policyPatterns(card);
   return (
@@ -325,15 +690,21 @@ function PolicyCardView({ card }: { card: PolicyCard }) {
       <div className="flex shrink-0 flex-col gap-2 text-right">
         <span className="t-xs">Updated {formatDate(card.item.updatedAt)}</span>
         {card.item.canEdit ? (
-          <Link
-            className="btn sm"
-            href={`?edit=${card.item.id}#${card.kind}-${card.item.id}`}
-          >
+          <button className="btn sm" onClick={() => onEdit(card)} type="button">
             Edit
-          </Link>
+          </button>
         ) : (
           <span className="chip soft">Read-only</span>
         )}
+        {card.item.canDelete ? (
+          <button
+            className="btn sm"
+            onClick={() => onDelete(card)}
+            type="button"
+          >
+            Delete
+          </button>
+        ) : null}
       </div>
     </article>
   );
@@ -341,12 +712,16 @@ function PolicyCardView({ card }: { card: PolicyCard }) {
 
 function PolicyList({
   cards,
-  repository,
   settings,
+  onDelete,
+  onEdit,
+  onNew,
 }: {
   cards: PolicyCard[];
-  repository: RepositoryOverview;
   settings: RepositoryBranchSettings;
+  onDelete: (card: PolicyCard) => void;
+  onEdit: (card: PolicyCard) => void;
+  onNew: (mode: Exclude<EditorMode, null>) => void;
 }) {
   return (
     <section className="card p-0" id="branch-rules">
@@ -362,18 +737,20 @@ function PolicyList({
         </div>
         {settings.canEdit ? (
           <div className="flex flex-wrap gap-2">
-            <Link
+            <button
               className="btn primary"
-              href={`/${repository.owner_login}/${repository.name}/settings/branches?new=rule#branch-rules`}
+              onClick={() => onNew({ kind: "rule" })}
+              type="button"
             >
               New branch protection rule
-            </Link>
-            <Link
+            </button>
+            <button
               className="btn"
-              href={`/${repository.owner_login}/${repository.name}/settings/branches?new=ruleset#branch-rules`}
+              onClick={() => onNew({ kind: "ruleset" })}
+              type="button"
             >
               New ruleset
-            </Link>
+            </button>
           </div>
         ) : (
           <p className="t-sm" style={{ color: "var(--ink-2)" }}>
@@ -392,25 +769,32 @@ function PolicyList({
           </p>
           {settings.canEdit ? (
             <div className="mt-4 flex flex-wrap gap-2">
-              <Link
+              <button
                 className="btn primary"
-                href={`/${repository.owner_login}/${repository.name}/settings/branches?new=rule#branch-rules`}
+                onClick={() => onNew({ kind: "rule" })}
+                type="button"
               >
                 New branch protection rule
-              </Link>
-              <Link
+              </button>
+              <button
                 className="btn"
-                href={`/${repository.owner_login}/${repository.name}/settings/branches?new=ruleset#branch-rules`}
+                onClick={() => onNew({ kind: "ruleset" })}
+                type="button"
               >
                 New ruleset
-              </Link>
+              </button>
             </div>
           ) : null}
         </div>
       ) : (
         <div>
           {cards.map((card) => (
-            <PolicyCardView card={card} key={`${card.kind}-${card.item.id}`} />
+            <PolicyCardView
+              card={card}
+              key={`${card.kind}-${card.item.id}`}
+              onDelete={onDelete}
+              onEdit={onEdit}
+            />
           ))}
         </div>
       )}
@@ -450,11 +834,83 @@ export function RepositoryBranchSettingsPage({
     );
   }
 
-  const settings = settingsResult.settings;
-  const cards: PolicyCard[] = [
-    ...settings.rules.map((item) => ({ kind: "rule" as const, item })),
-    ...settings.rulesets.map((item) => ({ kind: "ruleset" as const, item })),
-  ];
+  return (
+    <RepositoryBranchSettingsContent
+      initialIntent={intent}
+      initialSettings={settingsResult.settings}
+      repository={repository}
+    />
+  );
+}
+
+function RepositoryBranchSettingsContent({
+  initialIntent,
+  initialSettings,
+  repository,
+}: {
+  initialIntent?: "rule" | "ruleset";
+  initialSettings: RepositoryBranchSettings;
+  repository: RepositoryOverview;
+}) {
+  const [settings, setSettings] = useState(initialSettings);
+  const [editor, setEditor] = useState<EditorMode>(null);
+  const [confirmation, setConfirmation] = useState<Confirmation>(null);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const actionUrl = `/${repository.owner_login}/${repository.name}/settings/branches/actions`;
+  const cards: PolicyCard[] = useMemo(
+    () => [
+      ...settings.rules.map((item) => ({ kind: "rule" as const, item })),
+      ...settings.rulesets.map((item) => ({
+        kind: "ruleset" as const,
+        item,
+      })),
+    ],
+    [settings.rules, settings.rulesets],
+  );
+
+  async function mutate(mutation: RepositoryBranchPolicyMutation) {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    const response = await fetch(actionUrl, {
+      body: JSON.stringify(mutation),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    const body = await response.json().catch(() => null);
+    setBusy(false);
+    if (!response.ok) {
+      setError(
+        body?.error?.message ??
+          "Repository branch policy update failed. Try again.",
+      );
+      return;
+    }
+    setSettings(body as RepositoryBranchSettings);
+    setEditor(null);
+    setConfirmation(null);
+    setNotice("Branch policy saved.");
+  }
+
+  function startEdit(card: PolicyCard) {
+    setError(null);
+    setEditor(
+      card.kind === "rule"
+        ? { kind: "rule", item: card.item }
+        : { kind: "ruleset", item: card.item },
+    );
+  }
+
+  function startDelete(card: PolicyCard) {
+    setError(null);
+    setConfirmation(
+      card.kind === "rule"
+        ? { kind: "rule", item: card.item }
+        : { kind: "ruleset", item: card.item },
+    );
+  }
 
   return (
     <div className="grid gap-5">
@@ -475,8 +931,87 @@ export function RepositoryBranchSettingsPage({
         </div>
       </div>
 
-      {intent ? (
-        <PolicyIntentCard intent={intent} repository={repository} />
+      {notice ? (
+        <p className="chip ok w-fit" role="status">
+          {notice}
+        </p>
+      ) : null}
+
+      {initialIntent && !editor ? (
+        <PolicyIntentCard
+          intent={initialIntent}
+          onStart={(mode) => {
+            setError(null);
+            setEditor(mode);
+          }}
+        />
+      ) : null}
+
+      {editor ? (
+        <PolicyEditor
+          busy={busy}
+          error={error}
+          mode={editor}
+          onCancel={() => {
+            setEditor(null);
+            setError(null);
+          }}
+          onSubmit={(mutation) => void mutate(mutation)}
+          settings={settings}
+        />
+      ) : null}
+
+      {confirmation ? (
+        <section className="card p-5" role="alertdialog">
+          <span className="chip warn">Confirm deletion</span>
+          <h2 className="t-h3 mt-3">
+            Delete {confirmation.kind === "rule" ? "rule" : "ruleset"}{" "}
+            {confirmation.kind === "rule"
+              ? confirmation.item.pattern
+              : confirmation.item.name}
+          </h2>
+          <p className="t-body mt-2" style={{ color: "var(--ink-2)" }}>
+            The policy list refreshes only after the API accepts the delete.
+          </p>
+          {error ? (
+            <p
+              className="t-sm mt-3"
+              role="alert"
+              style={{ color: "var(--err)" }}
+            >
+              {error}
+            </p>
+          ) : null}
+          <div className="mt-5 flex flex-wrap justify-end gap-2">
+            <button
+              className="btn"
+              onClick={() => {
+                setConfirmation(null);
+                setError(null);
+              }}
+              type="button"
+            >
+              Keep policy
+            </button>
+            <button
+              className="btn primary"
+              disabled={busy}
+              onClick={() =>
+                void mutate(
+                  confirmation.kind === "rule"
+                    ? { action: "delete-rule", ruleId: confirmation.item.id }
+                    : {
+                        action: "delete-ruleset",
+                        rulesetId: confirmation.item.id,
+                      },
+                )
+              }
+              type="button"
+            >
+              {busy ? "Deleting..." : "Delete policy"}
+            </button>
+          </div>
+        </section>
       ) : null}
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -485,7 +1020,12 @@ export function RepositoryBranchSettingsPage({
           <ReadOnlyExplanation settings={settings} />
           <PolicyList
             cards={cards}
-            repository={repository}
+            onDelete={startDelete}
+            onEdit={startEdit}
+            onNew={(mode) => {
+              setError(null);
+              setEditor(mode);
+            }}
             settings={settings}
           />
         </div>

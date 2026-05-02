@@ -3443,5 +3443,24 @@
       "PR mergeability and Git push enforcement integration remains deferred to Phase 4.",
       "Stress long branch patterns, long ruleset names, evaluate-only explanations, private repository leakage, and non-admin read-only states with production-like data."
     ]
+  },
+  {
+    "feature_id": "settings-003",
+    "tests_written": [
+      "Completed Phase 3 Branch Rule and Ruleset Mutations without marking settings-003 build_pass=true.",
+      "Added same-origin Next.js branch-policy action forwarding for branch rule/ruleset create, update, and delete requests while keeping auth in the Rust API.",
+      "Converted RepositoryBranchSettingsPage into a client-backed Editorial editor with branch pattern/name inputs, enforcement radio controls, required review/check/deployment fields, requirement checkboxes, bypass actor text entry, server-confirmed saves, validation errors, and delete confirmations.",
+      "Extended repository_branch_settings_contract with ruleset update assertions for active enforcement, required status check persistence, and bypass actor persistence.",
+      "Extended Vitest coverage for create payloads, API validation errors without optimistic local updates, delete confirmations, no inert anchors/buttons, and Editorial primitive/token usage.",
+      "Focused Playwright smoke passed for a signed-in admin creating a branch rule, editing review/linear-history requirements, creating an evaluate-only ruleset, deleting the disposable rule, reloading persisted state, and screenshot ralph/screenshots/build/settings-003-phase3-branches-mutations.jpg.",
+      "Verification passed: focused repository_branch_settings_contract harness, focused branch settings Vitest, web tsc --noEmit, TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check, same-env make test with Cargo tests plus 283 frontend tests, focused branch-settings Playwright smoke, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Full make test-e2e remains blocked by the pre-existing shared local DB migration checksum issue: migration 202605030041 was previously applied but has been modified; 21 public/focused tests passed and 73 signed-in seeded tests failed during seed startup.",
+      "The focused Rust contract compiled and passed its harness, but its DB scenario self-skipped on this machine because the SQLx migrator cannot replay the dirty shared migration state; rerun against a clean TEST_DATABASE_URL.",
+      "Exercise concurrent admin edits, duplicate/conflicting wildcard rules, invalid bypass UUIDs, long pattern/name wrapping, and private repository leakage checks with clean seeded data.",
+      "Real Git force-push/deletion blocking and PR mergeability aggregation are deferred to Phase 4; QA should not treat Phase 3 UI mutation success as enforcement completeness.",
+      "CODEOWNERS-specific review semantics, bypass actor permission changes, and evaluate-only rule evaluation logs remain deeper QA targets."
+    ]
   }
 ]
