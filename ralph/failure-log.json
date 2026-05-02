@@ -1751,6 +1751,14 @@
       "exit_code": 0,
       "category": "api_error",
       "attempt": 150
+    },
+    {
+      "timestamp": "2026-05-02T18:50:10.243958",
+      "phase": "build",
+      "feature": "build_cycle_1",
+      "exit_code": 0,
+      "category": "test_failure",
+      "attempt": 151
     }
   ]
 }
