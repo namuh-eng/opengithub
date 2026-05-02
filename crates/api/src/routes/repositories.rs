@@ -97,6 +97,9 @@ struct CommitsQuery {
     #[serde(rename = "ref")]
     ref_name: Option<String>,
     path: Option<String>,
+    author: Option<String>,
+    since: Option<String>,
+    until: Option<String>,
     page: Option<i64>,
     #[serde(alias = "page_size")]
     page_size: Option<i64>,
@@ -382,6 +385,9 @@ async fn commits(
         RepositoryCommitHistoryQuery {
             ref_name: query.ref_name.as_deref(),
             path: query.path.as_deref(),
+            author: query.author.as_deref(),
+            since: query.since.as_deref(),
+            until: query.until.as_deref(),
             page: pagination.page,
             page_size: pagination.page_size,
         },

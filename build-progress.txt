@@ -1928,3 +1928,10 @@
 - Browser smoke screenshots saved at `ralph/screenshots/build/search-004-phase5-final-desktop-issues.jpg` and `ralph/screenshots/build/search-004-phase5-final-mobile-pulls.jpg`.
 - Verification passed against a temporary local Postgres 16 test database on `localhost:55432`: focused `search_collaboration_results_contract`; focused `web/tests/search-collaboration-results.test.tsx`; focused `web/tests/e2e/search-collaboration.spec.ts`; `TEST_DATABASE_URL=postgresql://namuh@localhost:55432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 216 frontend tests; full same-env `make test-e2e` with 82 Playwright tests; mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
 - Marked Phase 5 as done in `.qrspi/search-004/structure.md` and set `search-004.build_pass` to `true` in `prd.json`; `qa_pass` remains `false` for the QA agent.
+
+## commits-001 — repository commit history filters
+- Implemented commits-001 from `.qrspi/commits-001/structure.md`: `/api/repos/{owner}/{repo}/commits` now returns a typed commit-history envelope with resolved ref metadata, active filters, branch/tag options, author options, and commit rows backed by commits, repository_git_refs, repository_files, and users.
+- Wired the Next.js `/[owner]/[repo]/commits/[ref]/[[...path]]` server route through typed API/session seams for author, since, until, page, and pageSize filters.
+- Rendered an Editorial commit history page with branch/tag chips, author/date controls, clear filters, grouped commit rows, commit detail links, status links, short SHA links, browse-at-commit links, empty state, and unavailable state.
+- Added focused Rust/API and Vitest coverage for filter options, path/author/date filtering, date grouping, row links, controls, and empty-state behavior.
+- Verification passed: banned Editorial scan (zero matches), focused repository-code-overview Vitest, focused repository_code_overview Rust test compile/pass with DB-backed scenario skipped because TEST_DATABASE_URL is unset, make check, and make test (216 web tests).

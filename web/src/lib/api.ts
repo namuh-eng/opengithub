@@ -225,8 +225,44 @@ export type RepositoryCommitHistoryItem = {
   shortOid: string;
   message: string;
   href: string;
+  treeHref: string;
   committedAt: string;
   authorLogin: string | null;
+  authorDisplayName: string | null;
+  authorAvatarUrl: string | null;
+  statusLabel: string;
+  statusHref: string;
+};
+
+export type RepositoryCommitAuthorOption = {
+  login: string;
+  displayName: string;
+  avatarUrl: string | null;
+  count: number;
+};
+
+export type RepositoryCommitHistoryFilters = {
+  ref: string;
+  path: string | null;
+  author: string | null;
+  since: string | null;
+  until: string | null;
+};
+
+export type RepositoryCommitHistory =
+  ListEnvelope<RepositoryCommitHistoryItem> & {
+    resolvedRef: RepositoryResolvedRef;
+    filters: RepositoryCommitHistoryFilters;
+    refs: RepositoryRefSummary[];
+    authors: RepositoryCommitAuthorOption[];
+  };
+
+export type RepositoryCommitHistoryQuery = {
+  author?: string | null;
+  since?: string | null;
+  until?: string | null;
+  page?: number | string | null;
+  pageSize?: number | string | null;
 };
 
 export type RepositoryLanguageSummary = {
@@ -4162,11 +4198,27 @@ export async function getRepositoryCommitHistoryFromCookie(
   repo: string,
   refName: string,
   path = "",
-): Promise<ListEnvelope<RepositoryCommitHistoryItem> | null> {
+  options: RepositoryCommitHistoryQuery = {},
+): Promise<RepositoryCommitHistory | null> {
   const params = new URLSearchParams({ ref: refName });
   const normalizedPath = path.replace(/^\/+|\/+$/g, "");
   if (normalizedPath) {
     params.set("path", normalizedPath);
+  }
+  if (options.author?.trim()) {
+    params.set("author", options.author.trim());
+  }
+  if (options.since?.trim()) {
+    params.set("since", options.since.trim());
+  }
+  if (options.until?.trim()) {
+    params.set("until", options.until.trim());
+  }
+  if (options.page) {
+    params.set("page", String(options.page));
+  }
+  if (options.pageSize) {
+    params.set("pageSize", String(options.pageSize));
   }
   let response: Response;
   try {
@@ -4185,7 +4237,7 @@ export async function getRepositoryCommitHistoryFromCookie(
     return null;
   }
 
-  return (await response.json()) as ListEnvelope<RepositoryCommitHistoryItem>;
+  return (await response.json()) as RepositoryCommitHistory;
 }
 
 export async function getRepositoryRefsFromCookie(

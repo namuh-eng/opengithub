@@ -987,17 +987,50 @@ describe("RepositoryCodeOverview", () => {
               shortOid: "abcdef1",
               message: "Initial commit",
               href: "/mona/octo-app/commit/abcdef1234567890",
+              treeHref: "/mona/octo-app/tree/abcdef1234567890",
               committedAt: "2026-04-30T00:00:00Z",
               authorLogin: "mona",
+              authorDisplayName: "Mona",
+              authorAvatarUrl: null,
+              statusLabel: "Checks unavailable",
+              statusHref: "/mona/octo-app/actions?query=abcdef1234567890",
             },
           ],
           total: 1,
           page: 1,
           pageSize: 30,
+          resolvedRef: {
+            kind: "branch",
+            shortName: "main",
+            qualifiedName: "refs/heads/main",
+            targetOid: "abcdef1234567890",
+            recoveryHref: "/mona/octo-app/tree/main",
+          },
+          filters: {
+            ref: "main",
+            path: "src/index.ts",
+            author: null,
+            since: null,
+            until: null,
+          },
+          refs: [
+            {
+              name: "refs/heads/main",
+              shortName: "main",
+              kind: "branch",
+              href: "/mona/octo-app/commits/main/src/index.ts",
+              samePathHref: "/mona/octo-app/commits/main/src/index.ts",
+              active: true,
+              targetShortOid: "abcdef1",
+              updatedAt: "2026-04-30T00:00:00Z",
+            },
+          ],
+          authors: [
+            { login: "mona", displayName: "Mona", avatarUrl: null, count: 1 },
+          ],
         }}
         owner="mona"
         path="src/index.ts"
-        refName="main"
         repo="octo-app"
       />,
     );
@@ -1006,5 +1039,11 @@ describe("RepositoryCodeOverview", () => {
       screen.getByRole("link", { name: /Initial commit/ }),
     ).toHaveAttribute("href", "/mona/octo-app/commit/abcdef1234567890");
     expect(screen.getByText("abcdef1")).toBeVisible();
+    expect(screen.getByText("Thursday, April 30, 2026")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Browse" })).toHaveAttribute(
+      "href",
+      "/mona/octo-app/tree/abcdef1234567890",
+    );
+    expect(screen.getByRole("button", { name: "Apply filters" })).toBeVisible();
   });
 });

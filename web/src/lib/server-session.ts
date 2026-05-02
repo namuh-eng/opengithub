@@ -31,6 +31,7 @@ import {
   getSearchSuggestionsFromCookie,
   getSessionFromHeaders,
   type RepositoryActionsDashboardQuery,
+  type RepositoryCommitHistoryQuery,
   type RepositoryIssueListQuery,
   type RepositoryPullRequestDiffQuery,
   type RepositoryPullRequestListQuery,
@@ -154,6 +155,7 @@ export async function getRepositoryCommitHistory(
   repo: string,
   refName: string,
   path: string,
+  options: RepositoryCommitHistoryQuery = {},
 ) {
   const requestHeaders = await headers();
   return getRepositoryCommitHistoryFromCookie(
@@ -162,6 +164,7 @@ export async function getRepositoryCommitHistory(
     repo,
     refName,
     path,
+    options,
   );
 }
 

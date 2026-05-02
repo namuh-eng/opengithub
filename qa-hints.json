@@ -2824,5 +2824,22 @@
       "Reviewer-specific PR facets remain display-compatible but backend reviewer filtering is still constrained by the current PR review data model and should be revisited when richer review indexing ships.",
       "Production-scale ranking, facet performance, and concurrent saved-search create/delete behavior still need later search hardening under larger datasets."
     ]
+  },
+  {
+    "feature_id": "commits-001",
+    "tests_written": [
+      "Extended GET /api/repos/{owner}/{repo}/commits to return a typed commit-history envelope with resolved ref metadata, active filters, branch/tag options, author options, and commit rows backed by commits, repository_git_refs, repository_files, and users.",
+      "Added Rust contract coverage in repository_code_overview for ref options, author options, path filtering, author filtering, date filtering, tree links, and status placeholders.",
+      "Updated the Next.js commits route and typed server-session/API helpers to pass author/since/until/page/pageSize filters through to the Rust API.",
+      "Rendered the Editorial commit history page with branch/tag chips, author/date controls, clear filters, date-grouped rows, commit links, status links, short SHA links, browse-at-commit links, and deterministic empty/unavailable states.",
+      "Extended repository-code-overview Vitest coverage for grouped commit date rendering, filter controls, subject links, short SHA display, and browse-at-commit links.",
+      "Verification passed: Editorial banned-value scan with zero matches, focused repository-code-overview Vitest, focused repository_code_overview Rust test compile/pass with DB-backed assertions skipped because TEST_DATABASE_URL is unset, make check, and make test with 216 web tests."
+    ],
+    "needs_deeper_qa": [
+      "DB-backed Rust assertions require TEST_DATABASE_URL; local focused cargo test compiled and passed but skipped the scenario without a configured test database.",
+      "Commit status and signature verification are honest placeholders in this slice until check-run/signature read models are implemented.",
+      "Branch/tag UI is rendered as the first eight ref chips rather than the full searchable dialog from the long-form PRD; QA should verify large-ref repository ergonomics in a later refinement.",
+      "Browser E2E was not run for this lane; unit/API contracts cover the committed behavior and full make test passed."
+    ]
   }
 ]

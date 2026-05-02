@@ -327,6 +327,55 @@ async fn repository_tree_blob_and_history_routes_resolve_nested_paths() {
     .await
     .expect("repository should create");
 
+    let second_author = create_user(&pool, "repo-path-author").await;
+    let second_author_login = second_author
+        .username
+        .clone()
+        .expect("username should exist");
+    let initial_oid = sqlx::query_scalar::<_, String>(
+        "SELECT oid FROM commits WHERE repository_id = $1 ORDER BY committed_at DESC LIMIT 1",
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("initial oid should exist");
+    let followup_commit_id = Uuid::new_v4();
+    let followup_oid = format!("{:040}", 42);
+    sqlx::query(
+        r#"
+        INSERT INTO commits (id, repository_id, oid, author_user_id, committer_user_id, message, parent_oids, committed_at)
+        VALUES ($1, $2, $3, $4, $4, 'Tune commit filters', $5, '2026-05-01T10:00:00Z')
+        "#,
+    )
+    .bind(followup_commit_id)
+    .bind(repository.id)
+    .bind(&followup_oid)
+    .bind(second_author.id)
+    .bind(vec![initial_oid.clone()])
+    .execute(&pool)
+    .await
+    .expect("follow-up commit should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO repository_files (repository_id, commit_id, path, content, oid, byte_size)
+        VALUES ($1, $2, 'src/main.rs', 'fn main() { println!("filters"); }', $3, 38)
+        "#,
+    )
+    .bind(repository.id)
+    .bind(followup_commit_id)
+    .bind(format!("blob-{followup_oid}"))
+    .execute(&pool)
+    .await
+    .expect("follow-up file snapshot should insert");
+    sqlx::query(
+        "UPDATE repository_git_refs SET target_commit_id = $1 WHERE repository_id = $2 AND name = 'refs/heads/main'",
+    )
+    .bind(followup_commit_id)
+    .bind(repository.id)
+    .execute(&pool)
+    .await
+    .expect("main ref should advance");
+
     let app = opengithub_api::build_app_with_config(Some(pool), config);
     let (tree_status, tree_body) = send_json(
         app.clone(),
@@ -384,8 +433,47 @@ async fn repository_tree_blob_and_history_routes_resolve_nested_paths() {
     )
     .await;
     assert_eq!(history_status, StatusCode::OK);
-    assert_eq!(history_body["total"], 1);
-    assert_eq!(history_body["items"][0]["message"], "Initial commit");
+    assert_eq!(history_body["total"], 2);
+    assert_eq!(history_body["items"][0]["message"], "Tune commit filters");
+    assert_eq!(history_body["resolvedRef"]["shortName"], "main");
+    assert!(history_body["refs"]
+        .as_array()
+        .expect("ref filters should be an array")
+        .iter()
+        .any(|entry| entry["shortName"] == "main" && entry["active"] == true));
+    assert!(history_body["authors"]
+        .as_array()
+        .expect("author filters should be an array")
+        .iter()
+        .any(|entry| entry["login"] == second_author_login));
+    assert_eq!(
+        history_body["items"][0]["treeHref"],
+        format!(
+            "/{}/{}/tree/{}",
+            repository.owner_login, repository.name, followup_oid
+        )
+    );
+    assert_eq!(
+        history_body["items"][0]["statusLabel"],
+        "Checks unavailable"
+    );
+
+    let (filtered_status, filtered_body) = send_json(
+        app.clone(),
+        &format!(
+            "/api/repos/{}/{}/commits?ref=main&path=src/main.rs&author={}&since=2026-05-01&until=2026-05-01",
+            repository.owner_login,
+            repository.name,
+            second_author_login
+        ),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(filtered_status, StatusCode::OK);
+    assert_eq!(filtered_body["total"], 1);
+    assert_eq!(filtered_body["filters"]["author"], second_author_login);
+    assert_eq!(filtered_body["filters"]["since"], "2026-05-01");
+    assert_eq!(filtered_body["items"][0]["message"], "Tune commit filters");
 
     let (missing_status, missing_body) = send_json(
         app,
