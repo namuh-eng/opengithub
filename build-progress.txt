@@ -1,3 +1,13 @@
+2026-05-03 - orgs-002 phase 2 Editorial repository tab shell
+
+- Completed Phase 2 from `.qrspi/orgs-002/structure.md`: organization repository lists now render through the real Phase 1 API on both `/orgs/{org}?tab=repositories` and `/orgs/{org}/repositories`.
+- Added `OrganizationRepositoriesPage` with Editorial search/type/language/sort controls, active filter chips, display-density links, repository rows, empty-state recovery, concrete pagination controls, and no inert anchors/buttons.
+- Added `organizationRepositoryListHref` navigation helpers and a canonical Next.js route at `web/src/app/orgs/[org]/repositories/page.tsx`; the existing org profile page now fetches repository-list data only for the repositories tab.
+- Extended `organization-profile`, `organization-repositories`, and navigation Vitest coverage, plus Playwright org browser smoke for tab/canonical route parity and screenshot `ralph/screenshots/build/orgs-002-phase2-repositories-shell.jpg`.
+- Verification passed: focused Vitest; web `tsc --noEmit`; focused organization-profile Playwright; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; standard `DB_SSL=false make test` with Cargo tests plus 243 frontend tests; full `TEST_DATABASE_URL`-backed `make test-e2e` with 90 Playwright tests after starting the API with `API_URL=https://opengithub.namuh.co`; mandatory Editorial banned-value scan returned zero matches.
+- A `TEST_DATABASE_URL`-backed full `make test` still exposes an unrelated PR compare contract mismatch around owner email-as-login fixtures versus current username-slug identity behavior. The required standard make test path passed, and this phase did not change Rust contracts.
+- Marked Phase 2 as done in `.qrspi/orgs-002/structure.md`; `prd.json` remains `build_pass: false` because Phases 3-5 remain.
+
 2026-05-02 - orgs-001 phase 4 people/topics/languages/sponsoring panels
 
 - Completed Phase 4 from `.qrspi/orgs-001/structure.md`: organization overview secondary panels now render member-aware people previews, role labels for members/admins, accessible top-language bars, counted topic links, and a concrete disabled sponsoring preview state.

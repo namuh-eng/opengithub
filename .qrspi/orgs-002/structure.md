@@ -24,7 +24,7 @@
 
 ## Phase 2: Editorial Organization Repository Tab Shell - render the real list
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the placeholder `Repositories for {org}` secondary tab with a real Editorial repository list when `tab=repositories`, and add the canonical `/orgs/{org}/repositories` route. The UI should use the org header/tabs from `OrganizationProfilePage`, fetch the Phase 1 repository contract, and render repository rows with the same data density expected by the PRD.
 

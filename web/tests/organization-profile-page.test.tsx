@@ -4,6 +4,7 @@ import { OrganizationProfilePage } from "@/components/OrganizationProfilePage";
 import type {
   AuthSession,
   OrganizationIdentity,
+  OrganizationRepositoryList,
   OrganizationRepositoryPreview,
   OrganizationSponsorshipState,
   OrganizationTabCounts,
@@ -158,6 +159,74 @@ function organization(
   };
 }
 
+function organizationRepositoryList(): OrganizationRepositoryList {
+  return {
+    items: [
+      {
+        id: "repo-list-1",
+        owner: "namuh",
+        name: "opengithub",
+        fullName: "namuh/opengithub",
+        description: "A rust-first collaboration platform.",
+        visibility: "public",
+        href: "/namuh/opengithub",
+        defaultBranch: "main",
+        primaryLanguage: {
+          language: "Rust",
+          color: "#b7410e",
+          byteCount: 9000,
+        },
+        languages: [],
+        topics: ["forge"],
+        starsCount: 142,
+        forksCount: 18,
+        openIssuesCount: 5,
+        openPullRequestsCount: 2,
+        license: { slug: "mit", name: "MIT" },
+        isArchived: false,
+        isFork: false,
+        isTemplate: true,
+        isMirror: false,
+        canAdmin: false,
+        contributedByViewer: false,
+        forkSource: null,
+        createdAt: "2026-04-01T00:00:00Z",
+        updatedAt: "2026-05-01T00:00:00Z",
+      },
+    ],
+    total: 1,
+    page: 1,
+    pageSize: 30,
+    mode: "repositories",
+    filters: {
+      query: null,
+      repositoryType: "all",
+      language: null,
+      sort: "updated-desc",
+      density: "comfortable",
+      page: 1,
+      pageSize: 30,
+    },
+    availableLanguages: [{ value: "Rust", label: "Rust", count: 1 }],
+    availableTypes: [{ value: "templates", label: "Templates", count: 1 }],
+    tabCounts: {
+      repositories: 1,
+      projects: 0,
+      packages: 0,
+      people: 1,
+      sponsoring: 0,
+    },
+    viewerState: {
+      authenticated: false,
+      isMember: false,
+      role: null,
+      canViewInternal: false,
+      canAdmin: false,
+      isFollowing: false,
+    },
+  };
+}
+
 describe("OrganizationProfilePage", () => {
   it("renders the Editorial organization header from the profile contract", () => {
     const { container } = render(
@@ -206,6 +275,7 @@ describe("OrganizationProfilePage", () => {
       <OrganizationProfilePage
         activeTab="repositories"
         profile={organization()}
+        repositoryList={organizationRepositoryList()}
         session={session}
       />,
     );
@@ -222,9 +292,11 @@ describe("OrganizationProfilePage", () => {
     expect(
       within(tabs).getByRole("link", { name: "People 4" }),
     ).toHaveAttribute("href", "/orgs/namuh?tab=people");
-    expect(
-      screen.getByRole("heading", { name: "Repositories for namuh" }),
-    ).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Repositories" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "opengithub" })).toHaveAttribute(
+      "href",
+      "/namuh/opengithub",
+    );
   });
 
   it("renders overview links and hides admin settings for public viewers", () => {

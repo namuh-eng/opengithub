@@ -15,6 +15,7 @@ import {
   ORGANIZATION_TABS,
   organizationHref,
   organizationProjectHref,
+  organizationRepositoryListHref,
   organizationSettingsHref,
   organizationTabHref,
   organizationTeamHref,
@@ -172,6 +173,22 @@ describe("navigation route registry", () => {
     expect(activeOrganizationTab("people")).toBe("people");
     expect(organizationHref("namuh labs")).toBe("/orgs/namuh%20labs");
     expect(organizationTabHref("namuh", "teams")).toBe("/orgs/namuh?tab=teams");
+    expect(
+      organizationRepositoryListHref(
+        "namuh labs",
+        {
+          query: "api server",
+          repositoryType: "forks",
+          language: "Rust",
+          sort: "stars-desc",
+          density: "compact",
+          page: 3,
+        },
+        { type: "all", page: "1" },
+      ),
+    ).toBe(
+      "/orgs/namuh%20labs/repositories?q=api+server&language=Rust&sort=stars-desc&density=compact",
+    );
     expect(organizationProjectHref("namuh")).toBe("/orgs/namuh/projects");
     expect(organizationSettingsHref("namuh")).toBe("/orgs/namuh/settings");
     expect(organizationTeamHref("namuh", "platform team")).toBe(
@@ -236,6 +253,9 @@ describe("navigation route registry", () => {
       hasRouteFile(["[owner]", "[repo]", "actions", "performance", "page.tsx"]),
     ).toBe(true);
     expect(hasRouteFile(["orgs", "[org]", "page.tsx"])).toBe(true);
+    expect(hasRouteFile(["orgs", "[org]", "repositories", "page.tsx"])).toBe(
+      true,
+    );
     expect(hasRouteFile(["orgs", "[org]", "projects", "page.tsx"])).toBe(true);
     expect(hasRouteFile(["orgs", "[org]", "settings", "page.tsx"])).toBe(true);
     expect(

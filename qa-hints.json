@@ -3107,5 +3107,21 @@
       "Later phases still need Editorial UI validation for repository tabs, density buttons, active chips, row navigation, no-overflow behavior, and canonical /orgs/{org}/repositories route parity.",
       "QA should stress large organizations, mixed direct repository permissions for non-members, many topics/languages, archived template forks, private organizations, and unusual filter casing."
     ]
+  },
+  {
+    "feature_id": "orgs-002",
+    "tests_written": [
+      "Completed Phase 2 Editorial Organization Repository Tab Shell without marking orgs-002 build_pass=true.",
+      "Added the OrganizationRepositoriesPage component with Editorial filter form, type/language/sort controls, active chips, density links, repository rows, empty-state recovery, and pagination.",
+      "Wired /orgs/{org}?tab=repositories and canonical /orgs/{org}/repositories to the Phase 1 Rust/Postgres repository-list contract.",
+      "Added navigation, Vitest, and Playwright coverage for concrete repository links, display density state, active filter hrefs, canonical route parity, no inert anchors, and screenshot ralph/screenshots/build/orgs-002-phase2-repositories-shell.jpg.",
+      "Verification passed: focused organization repository/profile/navigation Vitest; web typecheck; focused organization-profile Playwright; TEST_DATABASE_URL-backed make check; standard DB_SSL=false make test with Cargo tests plus 243 frontend tests; full TEST_DATABASE_URL-backed make test-e2e with 90 Playwright tests after restarting the API with API_URL=https://opengithub.namuh.co; mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke uses deterministic Rust-signed local sessions and direct local API/Next dev servers because make dev depends on cargo-watch, which is not installed in this environment.",
+      "TEST_DATABASE_URL-backed full make test still exposes an unrelated PR compare owner-login fixture mismatch; the standard make test path passed and org-focused frontend/browser coverage passed.",
+      "Phase 3 still needs hardening for composed query normalization, pagination preservation under all controls, compact/mobile layout stress, and filter-count consistency across larger visible repository sets.",
+      "QA should stress very long organization/repository names, many topics/languages, fork-source links, direct admin permissions for non-members, hidden private/internal repositories, and empty result recovery from every filter control."
+    ]
   }
 ]

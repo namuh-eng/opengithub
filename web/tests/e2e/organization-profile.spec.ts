@@ -81,8 +81,31 @@ test("organization overview renders API data and concrete header controls", asyn
   await page.getByRole("link", { name: /Repositories \d+/ }).click();
   await expect(page).toHaveURL(/\/orgs\/org-profile-[^?]+\?tab=repositories$/);
   await expect(
-    page.getByRole("heading", { name: /Repositories for/ }),
+    page.getByRole("heading", { name: "Repositories" }),
   ).toBeVisible();
+  await expect(
+    page.getByLabel("Search organization repositories"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /opengithub-/ }).first(),
+  ).toHaveAttribute("href", /\/org-profile-.+\/opengithub-/);
+  await expect(
+    page.getByRole("group", { name: "Display density" }),
+  ).toBeVisible();
+
+  await page.goto(`${seeded.organizationProfileHref}/repositories`);
+  await expect(page).toHaveURL(/\/orgs\/org-profile-[^/]+\/repositories$/);
+  await expect(
+    page.getByRole("heading", { name: "Repositories" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /opengithub-/ }).first(),
+  ).toBeVisible();
+  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/orgs-002-phase2-repositories-shell.jpg",
+  });
 
   await page.goto(seeded.organizationProfileHref);
   const repositoryLink = page

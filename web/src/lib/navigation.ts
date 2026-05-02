@@ -592,6 +592,70 @@ export function organizationTabHref(org: string, tabValueName: string) {
   return queryTabHref(organizationHref(org), "tab", tabValueName);
 }
 
+export type OrganizationRepositoryListFilters = {
+  query?: string | null;
+  repositoryType?: string | null;
+  language?: string | null;
+  sort?: string | null;
+  density?: string | null;
+  page?: number | string | null;
+};
+
+export function organizationRepositoryListHref(
+  org: string,
+  filters: OrganizationRepositoryListFilters = {},
+  overrides: Partial<
+    Record<
+      "q" | "type" | "language" | "sort" | "density" | "page",
+      string | null
+    >
+  > = {},
+) {
+  const params = new URLSearchParams();
+  const nextQuery =
+    overrides.q === undefined ? filters.query : overrides.q?.trim() || null;
+  const nextType =
+    overrides.type === undefined
+      ? filters.repositoryType
+      : overrides.type?.trim() || "all";
+  const nextLanguage =
+    overrides.language === undefined
+      ? filters.language
+      : overrides.language?.trim() || null;
+  const nextSort =
+    overrides.sort === undefined ? filters.sort : overrides.sort?.trim() || "";
+  const nextDensity =
+    overrides.density === undefined
+      ? filters.density
+      : overrides.density?.trim() || "comfortable";
+  const nextPage =
+    overrides.page === undefined
+      ? filters.page
+      : overrides.page?.trim() || null;
+
+  if (nextQuery?.trim()) {
+    params.set("q", nextQuery.trim());
+  }
+  if (nextType?.trim() && nextType !== "all") {
+    params.set("type", nextType.trim());
+  }
+  if (nextLanguage?.trim()) {
+    params.set("language", nextLanguage.trim());
+  }
+  if (nextSort?.trim() && nextSort !== "updated-desc") {
+    params.set("sort", nextSort.trim());
+  }
+  if (nextDensity?.trim() && nextDensity !== "comfortable") {
+    params.set("density", nextDensity.trim());
+  }
+  if (nextPage && String(nextPage) !== "1") {
+    params.set("page", String(nextPage));
+  }
+
+  const query = params.toString();
+  return `${organizationHref(org)}/repositories${query ? `?${query}` : ""}`;
+}
+
 export function organizationProjectHref(org: string) {
   return `${organizationHref(org)}/projects`;
 }
