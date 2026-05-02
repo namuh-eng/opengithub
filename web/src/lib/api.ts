@@ -4537,3 +4537,148 @@ export async function highlightCode(
 
   return (await response.json()) as HighlightedFile;
 }
+
+export type NotificationInboxQueryView = {
+  q: string;
+  folder: string;
+  tab: string;
+  sort: string;
+  group: string;
+  repo: string | null;
+};
+
+export type NotificationFacet = {
+  id: string;
+  label: string;
+  query: string;
+  href: string;
+  count: number;
+  active: boolean;
+};
+
+export type NotificationChoice = {
+  id: string;
+  label: string;
+  href: string;
+  active: boolean;
+};
+
+export type NotificationInboxRow = {
+  id: string;
+  repositoryId: string | null;
+  repositoryName: string;
+  repositoryHref: string | null;
+  subjectType: string;
+  subjectNumber: number | null;
+  title: string;
+  reason: string;
+  reasonLabel: string;
+  href: string;
+  openHref: string;
+  unread: boolean;
+  saved: boolean;
+  done: boolean;
+  subscribed: boolean;
+  updatedAt: string;
+  relativeTime: string;
+};
+
+export type NotificationGroup = {
+  id: string;
+  label: string;
+  count: number;
+  rows: NotificationInboxRow[];
+};
+
+export type NotificationInboxView = {
+  query: NotificationInboxQueryView;
+  folders: NotificationFacet[];
+  filters: NotificationFacet[];
+  repositories: NotificationFacet[];
+  sortOptions: NotificationChoice[];
+  groupOptions: NotificationChoice[];
+  groups: NotificationGroup[];
+  total: number;
+  unreadCount: number;
+  page: number;
+  pageSize: number;
+  emptyTitle: string;
+  emptyMessage: string;
+};
+
+export type NotificationInboxQuery = {
+  q?: string;
+  folder?: string;
+  tab?: string;
+  sort?: string;
+  group?: string;
+  repo?: string;
+  page?: string;
+  pageSize?: string;
+};
+
+export function notificationsPath(query: NotificationInboxQuery = {}): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value?.trim()) {
+      params.set(key, value.trim());
+    }
+  }
+  const suffix = params.toString();
+  return suffix ? `/api/notifications?${suffix}` : "/api/notifications";
+}
+
+export async function getNotificationsFromCookie(
+  cookie: string | null | undefined,
+  query: NotificationInboxQuery = {},
+): Promise<NotificationInboxView | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${notificationsPath(query)}`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Notifications are temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "notifications_failed",
+          message: "Notifications could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as NotificationInboxView;
+}
+
+export async function markNotificationReadFromCookie(
+  cookie: string | null | undefined,
+  notificationId: string,
+): Promise<boolean> {
+  try {
+    const response = await fetch(
+      `${apiBaseUrl()}/api/notifications/${encodeURIComponent(notificationId)}/read`,
+      {
+        method: "PATCH",
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
