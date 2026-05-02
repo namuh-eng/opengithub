@@ -1928,3 +1928,13 @@
 - Browser smoke screenshots saved at `ralph/screenshots/build/search-004-phase5-final-desktop-issues.jpg` and `ralph/screenshots/build/search-004-phase5-final-mobile-pulls.jpg`.
 - Verification passed against a temporary local Postgres 16 test database on `localhost:55432`: focused `search_collaboration_results_contract`; focused `web/tests/search-collaboration-results.test.tsx`; focused `web/tests/e2e/search-collaboration.spec.ts`; `TEST_DATABASE_URL=postgresql://namuh@localhost:55432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 216 frontend tests; full same-env `make test-e2e` with 82 Playwright tests; mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
 - Marked Phase 5 as done in `.qrspi/search-004/structure.md` and set `search-004.build_pass` to `true` in `prd.json`; `qa_pass` remains `false` for the QA agent.
+
+## branches-001 build handoff — 2026-05-02
+
+- Replaced the repository Branches placeholder with a live refs-backed page at /{owner}/{repo}/branches.
+- Server route now loads session, repository overview, and repository refs through getRepository/getRepositoryRefs.
+- Added RepositoryBranchesPage with Editorial primitives, Overview/Active/Stale/All tabs, case-insensitive search, branch-only filtering, default/stale metadata, status/protection hints, PR discovery, Activity/View rules/Compare links, and copy branch-name action.
+- Added focused component tests in web/tests/repository-branches.test.tsx for tab classification, search, metadata/action hrefs, tag exclusion, and clipboard copy.
+- Verification: npm exec vitest run tests/repository-branches.test.tsx from web/ passed (4 tests); focused Biome check on touched files passed; mandatory Editorial banned scan passed with zero matches; make check passed; make test passed with Cargo tests and 220 web tests.
+- Bookkeeping: branches-001 build_pass=true in prd.json; qa_pass remains false.
+- Known QA follow-up: ahead/behind counts, branch protection, status checks, branch activity, and linked PR metadata are deterministic placeholders until backend branch activity/protection/status tables are exposed.

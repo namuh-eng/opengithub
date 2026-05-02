@@ -2824,5 +2824,19 @@
       "Reviewer-specific PR facets remain display-compatible but backend reviewer filtering is still constrained by the current PR review data model and should be revisited when richer review indexing ships.",
       "Production-scale ranking, facet performance, and concurrent saved-search create/delete behavior still need later search hardening under larger datasets."
     ]
+  },
+  {
+    "feature_id": "branches-001",
+    "tests_written": [
+      "Implemented /{owner}/{repo}/branches with server-side getRepository + getRepositoryRefs loading through existing typed seams.",
+      "Added RepositoryBranchesPage client UI with Overview/Active/Stale/All tabs, case-insensitive branch search, branch-only ref filtering, deterministic default/stale metadata, status/protection hints, PR discovery links, Activity/View rules/Compare actions, and copy branch-name affordance.",
+      "Added focused Vitest coverage for overview/default/active rendering, stale/all tab classification, search filtering, tag exclusion, metadata/action hrefs, and clipboard copy.",
+      "Verification passed: focused repository branches Vitest, focused Biome check for touched files, mandatory Editorial banned-value scan over web/src excluding og*.css, make check, and make test (Cargo tests plus 220 web tests)."
+    ],
+    "needs_deeper_qa": [
+      "Branch activity age, status checks, ahead/behind counts, pull-request association, and protection/ruleset data are deterministic placeholders until branch_activity_snapshots, commit_status_summaries, pull_requests, branch_protection_rules, and repository_rulesets are wired into the refs contract.",
+      "Actions are intentionally non-destructive; delete/restore/rename branch flows remain future permission-gated work.",
+      "No browser E2E screenshot was added for branches-001 because this slice required focused component tests plus full check/test validation."
+    ]
   }
 ]
