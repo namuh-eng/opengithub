@@ -5430,6 +5430,12 @@ fn clone_url_hosts() -> (String, String) {
         .ok()
         .map(|s| s.trim().to_owned())
         .filter(|s| !s.is_empty())
+        .filter(|s| {
+            url::Url::parse(s)
+                .ok()
+                .and_then(|u| u.host_str().map(|host| !matches!(host, "localhost" | "127.0.0.1")))
+                .unwrap_or(true)
+        })
         .unwrap_or_else(|| "https://opengithub.namuh.co".to_owned());
     let https_base = raw.trim_end_matches('/').to_owned();
     let ssh_host = url::Url::parse(&https_base)

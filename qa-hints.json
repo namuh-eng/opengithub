@@ -3390,5 +3390,21 @@
       "Invite acceptance lifecycle, pending invite expiry, concurrent role edits, last-admin races, organization base permissions, and team membership changes after grants need deeper QA.",
       "Recheck private/internal repository leakage and inherited organization/team rows with clean, production-like seeded data."
     ]
+  },
+  {
+    "feature_id": "settings-002",
+    "tests_written": [
+      "Rust access contract covers admin-only reads, anonymous/non-admin rejection, direct collaborators, organization owner access, team grants, duplicate invite/team conflicts, personal-repository team rejection, role updates, last-admin protection, invitation cancellation, and repository.access audit-event creation.",
+      "Vitest covers the Editorial access page, API docs, people/team/pending-invite rows, disabled inherited controls, query filtering, forbidden/unavailable states, no inert anchors/buttons, mutation request payloads, long-label wrapping, and keyboard-contained dialogs.",
+      "Playwright smoke covers the seeded admin access page, Add people dialog, invite/degraded delivery, role change, invitation cancellation, direct collaborator removal, mobile no-overflow, forbidden non-admin state, and screenshots under ralph/screenshots/build/settings-002-phase4-*.jpg.",
+      "Mandatory Editorial banned-value scan passed with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Real SES email delivery remains degraded in local verification; QA should verify an actual invitation email reaches the configured test inbox in AWS SES.",
+      "Invite acceptance lifecycle is not implemented in this feature; QA should validate pending/expired/canceled invitation states when acceptance ships.",
+      "Concurrent role edits and invitation cancellation by multiple admins need deeper race-condition testing against a shared database.",
+      "Last-admin protection, organization base permissions, inherited team rows, team membership changes after a grant, and private repository leakage checks should be rechecked with production-like org data.",
+      "The focused Rust DB scenario self-skipped in the final pass because normal SQLx migration replay hits the existing 202605030041 checksum drift on this already-migrated local database; rerun against a clean TEST_DATABASE_URL for full contract evidence."
+    ]
   }
 ]

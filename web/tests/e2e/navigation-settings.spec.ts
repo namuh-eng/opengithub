@@ -72,7 +72,9 @@ test("personal settings sidebar highlights sections and keeps routes concrete", 
   await expect(
     page.getByRole("heading", { name: "Personal settings" }),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Profile" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Public profile" }),
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: "Profile" })).toHaveAttribute(
     "aria-current",
     "page",

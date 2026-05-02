@@ -81,7 +81,7 @@
 
 ## Phase 5: Final QA Handoff and Build-Pass Bookkeeping - finish settings-002
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Lock repository Access settings as a completed vertical slice and mark `settings-002.build_pass=true` only after API contract, UI, mutation flows, SES/degraded delivery behavior, audit events, admin-only privacy, browser smoke, docs, and QA handoff are verified. This phase should not add branches, webhooks, Pages, secrets, or security subfeatures.
 
