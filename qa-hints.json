@@ -2702,5 +2702,18 @@
       "Browser smoke uses deterministic Rust-signed local sessions and seeded Postgres data, not real Google OAuth.",
       "The snippet extractor uses search_documents body/metadata today; richer repository_file_index and symbol-aware ranking still need later search index hardening."
     ]
+  },
+  {
+    "feature_id": "search-004",
+    "tests_written": [
+      "Added search_collaboration_results_contract Rust coverage for issue/pull request result shape, type counts, facets, active qualifier chips, sort options, pullrequests aliasing, permission filtering, and private-result redaction.",
+      "Added search-collaboration-results Vitest coverage for issue and pull request Editorial shell rendering, facets, sort links, active chips, labels, assignees, reviewers, milestones, comments/interactions, pagination, Save link, and no dead anchors.",
+      "Verification passed: focused Rust contract, focused collaboration Vitest, focused compatibility Vitest, TEST_DATABASE_URL-backed make check, same-env make test with Cargo tests plus 210 frontend tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phases 1-2 use indexed search_documents metadata; Phase 3 still needs mutation-path enrichment for close reason, linked PR, mentioned/commenter/involved participants, and richer snippet highlighting.",
+      "Browser E2E for signed-in issue/PR search tabs, mobile layout, facet clicks, sort changes, pagination, and detail navigation remains Phase 4.",
+      "search-004 build_pass remains false until Phases 3-5 complete; qa_pass remains false for independent QA."
+    ]
   }
 ]

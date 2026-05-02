@@ -14,8 +14,9 @@ use crate::{
     auth::extractor::AuthenticatedUser,
     domain::search::{
         create_saved_search, delete_saved_search, record_recent_search, search_code_results,
-        search_documents, search_suggestions, CodeSearchQuery, CreateSavedSearchInput,
-        SearchDocumentKind, SearchError, SearchQuery, SearchSuggestionQuery,
+        search_collaboration_results, search_documents, search_suggestions, CodeSearchQuery,
+        CollaborationSearchQuery, CreateSavedSearchInput, SearchDocumentKind, SearchError,
+        SearchQuery, SearchSuggestionQuery,
     },
     AppState,
 };
@@ -39,6 +40,7 @@ struct SearchRequest {
     page: Option<i64>,
     #[serde(alias = "page_size")]
     page_size: Option<i64>,
+    sort: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -127,6 +129,7 @@ async fn search(
         .transpose()
         .map_err(map_search_error)?;
     let search_query = request.q.unwrap_or_default();
+    let scope = selected_type.to_owned();
     if kind == Some(SearchDocumentKind::Code) {
         let results = search_code_results(
             pool,
@@ -143,6 +146,29 @@ async fn search(
 
         return Ok(Json(json!(results)));
     }
+    if matches!(
+        kind,
+        Some(SearchDocumentKind::Issue | SearchDocumentKind::PullRequest)
+    ) {
+        let collaboration_kind = kind.clone().expect("kind checked above");
+        let results = search_collaboration_results(
+            pool,
+            CollaborationSearchQuery {
+                actor_user_id: actor.0.id,
+                query: search_query.clone(),
+                kind: collaboration_kind,
+                page: pagination.page,
+                page_size: pagination.page_size,
+                sort: request.sort.clone(),
+            },
+        )
+        .await
+        .map_err(map_search_error)?;
+        let _ = record_recent_search(pool, actor.0.id, &search_query, &scope, Some(selected_type))
+            .await;
+
+        return Ok(Json(json!(results)));
+    }
 
     let results = search_documents(
         pool,
@@ -156,7 +182,6 @@ async fn search(
     )
     .await
     .map_err(map_search_error)?;
-    let scope = selected_type.to_owned();
     let _ =
         record_recent_search(pool, actor.0.id, &search_query, &scope, Some(selected_type)).await;
 
@@ -225,7 +250,9 @@ fn search_kind_from_param(value: &str) -> Result<SearchDocumentKind, SearchError
         "code" => Ok(SearchDocumentKind::Code),
         "commits" | "commit" => Ok(SearchDocumentKind::Commit),
         "issues" | "issue" => Ok(SearchDocumentKind::Issue),
-        "pull_requests" | "pull_request" | "pulls" | "pull" => Ok(SearchDocumentKind::PullRequest),
+        "pull_requests" | "pull_request" | "pullrequests" | "pulls" | "pull" => {
+            Ok(SearchDocumentKind::PullRequest)
+        }
         "users" | "user" => Ok(SearchDocumentKind::User),
         "organizations" | "organization" | "orgs" | "org" => Ok(SearchDocumentKind::Organization),
         "packages" | "package" => Ok(SearchDocumentKind::Package),

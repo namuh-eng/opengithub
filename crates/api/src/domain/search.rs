@@ -124,6 +124,63 @@ pub struct CodeSearchResponse {
     pub diagnostics: Vec<CodeSearchDiagnostic>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CollaborationSearchQuery {
+    pub actor_user_id: Uuid,
+    pub query: String,
+    pub kind: SearchDocumentKind,
+    pub page: i64,
+    pub page_size: i64,
+    pub sort: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CollaborationSearchResponse {
+    pub items: Vec<SearchResult>,
+    pub total: i64,
+    pub page: i64,
+    #[serde(rename = "pageSize")]
+    pub page_size: i64,
+    pub type_counts: Vec<CodeSearchTypeCount>,
+    pub facets: CollaborationSearchFacets,
+    pub active_chips: Vec<CodeSearchChip>,
+    pub sort_options: Vec<CollaborationSearchSortOption>,
+    pub active_sort: String,
+    pub query_duration_ms: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CollaborationSearchFacets {
+    pub states: Vec<CodeSearchFacetValue>,
+    pub labels: Vec<CodeSearchFacetValue>,
+    pub assignees: Vec<CodeSearchFacetValue>,
+    pub reviewers: Vec<CodeSearchFacetValue>,
+    pub milestones: Vec<CodeSearchFacetValue>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CollaborationSearchSortOption {
+    pub value: String,
+    pub label: String,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsedCollaborationSearchQuery {
+    terms: String,
+    chips: Vec<CodeSearchChip>,
+    state: Option<String>,
+    label: Option<String>,
+    author: Option<String>,
+    assignee: Option<String>,
+    reviewer: Option<String>,
+    milestone: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeSearchTypeCount {
@@ -552,7 +609,11 @@ pub async fn search_documents(
         let snippets = code_snippets_for_document(&document, query);
         let match_count = snippets.len() as i64;
         let hidden_match_count = (match_count - 3).max(0);
-        let blob_href = code_blob_href(&document, owner_login.as_deref(), repository_name.as_deref());
+        let blob_href = code_blob_href(
+            &document,
+            owner_login.as_deref(),
+            repository_name.as_deref(),
+        );
         let commit = commit_summary_for_document(&document);
         items.push(SearchResult {
             title: document.title.clone(),
@@ -581,6 +642,232 @@ pub async fn search_documents(
         total,
         page,
         page_size,
+    })
+}
+
+pub async fn search_collaboration_results(
+    pool: &PgPool,
+    input: CollaborationSearchQuery,
+) -> Result<CollaborationSearchResponse, SearchError> {
+    if !matches!(
+        input.kind,
+        SearchDocumentKind::Issue | SearchDocumentKind::PullRequest
+    ) {
+        return Err(SearchError::InvalidKind(input.kind.as_str().to_owned()));
+    }
+    let query = input.query.trim();
+    if query.chars().count() < 2 {
+        return Err(SearchError::QueryTooShort);
+    }
+
+    let started_at = Instant::now();
+    let parsed = parse_collaboration_query(query);
+    let page = input.page.max(1);
+    let page_size = input.page_size.clamp(1, 50);
+    let offset = (page - 1) * page_size;
+    let kind = input.kind.as_str();
+    let sort = normalize_collaboration_sort(input.sort.as_deref());
+    let order_by = collaboration_sort_order_by(&sort);
+
+    let total = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT count(*)
+        FROM search_documents
+        LEFT JOIN repository_permissions
+          ON repository_permissions.repository_id = search_documents.repository_id
+         AND repository_permissions.user_id = $1
+        WHERE search_documents.kind = $2
+          AND (
+              search_documents.visibility = 'public'
+              OR repository_permissions.user_id IS NOT NULL
+              OR search_documents.owner_user_id = $1
+          )
+          AND (
+              $3 = ''
+              OR search_documents.search_vector @@ plainto_tsquery('simple', $3)
+              OR search_documents.title ILIKE '%' || $3 || '%'
+              OR search_documents.body ILIKE '%' || $3 || '%'
+          )
+          AND ($4::text IS NULL OR lower(search_documents.metadata->>'state') = lower($4))
+          AND ($5::text IS NULL OR EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(COALESCE(search_documents.metadata->'labels', '[]'::jsonb)) AS label(value)
+              WHERE lower(label.value->>'name') = lower($5)
+          ))
+          AND ($6::text IS NULL OR lower(search_documents.metadata->>'authorLogin') = lower($6))
+          AND ($7::text IS NULL OR EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(COALESCE(search_documents.metadata->'assignees', '[]'::jsonb)) AS assignee(value)
+              WHERE lower(COALESCE(assignee.value->>'login', assignee.value->>'name')) = lower($7)
+          ))
+          AND ($8::text IS NULL OR EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(COALESCE(search_documents.metadata->'reviewers', '[]'::jsonb)) AS reviewer(value)
+              WHERE lower(COALESCE(reviewer.value->>'login', reviewer.value->>'name')) = lower($8)
+          ))
+          AND ($9::text IS NULL OR lower(COALESCE(search_documents.metadata->'milestone'->>'title', search_documents.metadata->>'milestone')) = lower($9))
+        "#,
+    )
+    .bind(input.actor_user_id)
+    .bind(kind)
+    .bind(&parsed.terms)
+    .bind(parsed.state.as_deref())
+    .bind(parsed.label.as_deref())
+    .bind(parsed.author.as_deref())
+    .bind(parsed.assignee.as_deref())
+    .bind(parsed.reviewer.as_deref())
+    .bind(parsed.milestone.as_deref())
+    .fetch_one(pool)
+    .await?;
+
+    let rows = sqlx::query(&format!(
+        r#"
+        SELECT search_documents.id,
+               search_documents.repository_id,
+               search_documents.owner_user_id,
+               search_documents.owner_organization_id,
+               search_documents.kind,
+               search_documents.resource_id,
+               search_documents.title,
+               search_documents.body,
+               search_documents.path,
+               search_documents.language,
+               search_documents.branch,
+               search_documents.visibility,
+               search_documents.metadata,
+               search_documents.indexed_at,
+               search_documents.created_at,
+               search_documents.updated_at,
+               COALESCE(
+                   NULLIF(repo_owner_user.username, ''),
+                   repo_owner_user.email,
+                   repo_owner_org.slug,
+                   NULLIF(owner_user.username, ''),
+                   owner_user.email,
+                   owner_org.slug,
+                   search_documents.metadata->>'ownerLogin'
+               ) AS owner_login,
+               repositories.name AS repository_name,
+               COALESCE(
+                   NULLIF(search_documents.metadata->>'description', ''),
+                   search_documents.body
+               ) AS result_summary,
+               search_documents.title AS display_name,
+               COALESCE(owner_user.avatar_url, search_documents.metadata->>'avatarUrl') AS avatar_url,
+               (
+                   CASE WHEN $3 = '' THEN 0 ELSE ts_rank(search_documents.search_vector, plainto_tsquery('simple', $3)) END
+                   + CASE WHEN $3 = '' THEN 0 ELSE similarity(search_documents.title, $3) END
+               )::float8 AS rank
+        FROM search_documents
+        LEFT JOIN repositories
+          ON repositories.id = search_documents.repository_id
+        LEFT JOIN users repo_owner_user
+          ON repo_owner_user.id = repositories.owner_user_id
+        LEFT JOIN organizations repo_owner_org
+          ON repo_owner_org.id = repositories.owner_organization_id
+        LEFT JOIN users owner_user
+          ON owner_user.id = search_documents.owner_user_id
+        LEFT JOIN organizations owner_org
+          ON owner_org.id = search_documents.owner_organization_id
+        LEFT JOIN repository_permissions
+          ON repository_permissions.repository_id = search_documents.repository_id
+         AND repository_permissions.user_id = $1
+        WHERE search_documents.kind = $2
+          AND (
+              search_documents.visibility = 'public'
+              OR repository_permissions.user_id IS NOT NULL
+              OR search_documents.owner_user_id = $1
+          )
+          AND (
+              $3 = ''
+              OR search_documents.search_vector @@ plainto_tsquery('simple', $3)
+              OR search_documents.title ILIKE '%' || $3 || '%'
+              OR search_documents.body ILIKE '%' || $3 || '%'
+          )
+          AND ($4::text IS NULL OR lower(search_documents.metadata->>'state') = lower($4))
+          AND ($5::text IS NULL OR EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(COALESCE(search_documents.metadata->'labels', '[]'::jsonb)) AS label(value)
+              WHERE lower(label.value->>'name') = lower($5)
+          ))
+          AND ($6::text IS NULL OR lower(search_documents.metadata->>'authorLogin') = lower($6))
+          AND ($7::text IS NULL OR EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(COALESCE(search_documents.metadata->'assignees', '[]'::jsonb)) AS assignee(value)
+              WHERE lower(COALESCE(assignee.value->>'login', assignee.value->>'name')) = lower($7)
+          ))
+          AND ($8::text IS NULL OR EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(COALESCE(search_documents.metadata->'reviewers', '[]'::jsonb)) AS reviewer(value)
+              WHERE lower(COALESCE(reviewer.value->>'login', reviewer.value->>'name')) = lower($8)
+          ))
+          AND ($9::text IS NULL OR lower(COALESCE(search_documents.metadata->'milestone'->>'title', search_documents.metadata->>'milestone')) = lower($9))
+        ORDER BY {order_by}
+        LIMIT $10 OFFSET $11
+        "#
+    ))
+    .bind(input.actor_user_id)
+    .bind(kind)
+    .bind(&parsed.terms)
+    .bind(parsed.state.as_deref())
+    .bind(parsed.label.as_deref())
+    .bind(parsed.author.as_deref())
+    .bind(parsed.assignee.as_deref())
+    .bind(parsed.reviewer.as_deref())
+    .bind(parsed.milestone.as_deref())
+    .bind(page_size)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+
+    let mut items = Vec::with_capacity(rows.len());
+    for row in rows {
+        let rank = row.get::<f64, _>("rank");
+        let owner_login: Option<String> = row.get("owner_login");
+        let repository_name: Option<String> = row.get("repository_name");
+        let summary: Option<String> = row.get("result_summary");
+        let display_name: Option<String> = row.get("display_name");
+        let avatar_url: Option<String> = row.get("avatar_url");
+        let document = document_from_row(row)?;
+        let result_type = ui_type_for_kind(&document.kind).to_owned();
+        let href = result_href(
+            &document,
+            owner_login.as_deref(),
+            repository_name.as_deref(),
+        );
+        items.push(SearchResult {
+            title: document.title.clone(),
+            visibility: document.visibility.clone(),
+            updated_at: document.updated_at,
+            document,
+            rank,
+            result_type,
+            href,
+            summary,
+            owner_login,
+            repository_name,
+            display_name,
+            avatar_url,
+            snippet: None,
+            snippets: Vec::new(),
+            match_count: 0,
+            hidden_match_count: 0,
+            blob_href: None,
+            commit: None,
+        });
+    }
+
+    Ok(CollaborationSearchResponse {
+        items,
+        total,
+        page,
+        page_size,
+        type_counts: collaboration_type_counts(pool, input.actor_user_id, &parsed.terms).await?,
+        facets: collaboration_search_facets(pool, input.actor_user_id, kind, &parsed).await?,
+        active_chips: parsed.chips,
+        sort_options: collaboration_sort_options(&sort),
+        active_sort: sort,
+        query_duration_ms: started_at.elapsed().as_millis().min(i64::MAX as u128) as i64,
     })
 }
 
@@ -733,7 +1020,11 @@ pub async fn search_code_results(
         let snippets = code_snippets_for_document(&document, &parsed.terms);
         let match_count = snippets.len() as i64;
         let hidden_match_count = (match_count - 3).max(0);
-        let blob_href = code_blob_href(&document, owner_login.as_deref(), repository_name.as_deref());
+        let blob_href = code_blob_href(
+            &document,
+            owner_login.as_deref(),
+            repository_name.as_deref(),
+        );
         items.push(SearchResult {
             title: document.title.clone(),
             visibility: document.visibility.clone(),
@@ -1468,6 +1759,394 @@ async fn code_search_type_counts(
     .collect())
 }
 
+fn parse_collaboration_query(query: &str) -> ParsedCollaborationSearchQuery {
+    let mut terms = Vec::new();
+    let mut parsed = ParsedCollaborationSearchQuery {
+        terms: String::new(),
+        chips: Vec::new(),
+        state: None,
+        label: None,
+        author: None,
+        assignee: None,
+        reviewer: None,
+        milestone: None,
+    };
+
+    for token in query.split_whitespace() {
+        let Some((qualifier, raw_value)) = token.split_once(':') else {
+            terms.push(token.to_owned());
+            continue;
+        };
+        let value = raw_value.trim_matches('"').trim();
+        if value.is_empty() {
+            terms.push(token.to_owned());
+            continue;
+        }
+        match qualifier {
+            "state" => parsed.state = Some(value.to_owned()),
+            "is" if matches!(value, "open" | "closed" | "merged") => {
+                parsed.state = Some(value.to_owned())
+            }
+            "label" => parsed.label = Some(value.to_owned()),
+            "author" => parsed.author = Some(value.to_owned()),
+            "assignee" => parsed.assignee = Some(value.to_owned()),
+            "reviewer" | "reviewed-by" | "review-requested" => {
+                parsed.reviewer = Some(value.to_owned())
+            }
+            "milestone" => parsed.milestone = Some(value.to_owned()),
+            _ => {
+                terms.push(token.to_owned());
+                continue;
+            }
+        }
+        parsed.chips.push(CodeSearchChip {
+            qualifier: qualifier.to_owned(),
+            value: value.to_owned(),
+            label: format!("{qualifier}:{value}"),
+            remove_query: remove_first_qualifier_token(query, qualifier, value),
+        });
+    }
+
+    parsed.terms = terms.join(" ");
+    parsed
+}
+
+fn remove_first_qualifier_token(query: &str, qualifier: &str, value: &str) -> String {
+    let target = format!("{qualifier}:{value}");
+    let quoted_target = format!("{qualifier}:\"{value}\"");
+    let mut removed = false;
+    query
+        .split_whitespace()
+        .filter(|token| {
+            if !removed && (*token == target || *token == quoted_target) {
+                removed = true;
+                return false;
+            }
+            true
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn normalize_collaboration_sort(sort: Option<&str>) -> String {
+    match sort.unwrap_or("best-match") {
+        "comments-desc" | "comments-asc" | "created-desc" | "created-asc" | "updated-desc"
+        | "updated-asc" | "interactions-desc" | "interactions-asc" => sort.unwrap().to_owned(),
+        _ => "best-match".to_owned(),
+    }
+}
+
+fn collaboration_sort_order_by(sort: &str) -> &'static str {
+    match sort {
+        "comments-desc" => "(COALESCE((search_documents.metadata->>'commentCount')::bigint, 0)) DESC, rank DESC, search_documents.updated_at DESC",
+        "comments-asc" => "(COALESCE((search_documents.metadata->>'commentCount')::bigint, 0)) ASC, rank DESC, search_documents.updated_at DESC",
+        "created-desc" => "search_documents.created_at DESC, rank DESC",
+        "created-asc" => "search_documents.created_at ASC, rank DESC",
+        "updated-desc" => "search_documents.updated_at DESC, rank DESC",
+        "updated-asc" => "search_documents.updated_at ASC, rank DESC",
+        "interactions-desc" => "(COALESCE((search_documents.metadata->>'interactionCount')::bigint, 0)) DESC, rank DESC, search_documents.updated_at DESC",
+        "interactions-asc" => "(COALESCE((search_documents.metadata->>'interactionCount')::bigint, 0)) ASC, rank DESC, search_documents.updated_at DESC",
+        _ => "rank DESC, search_documents.updated_at DESC",
+    }
+}
+
+fn collaboration_sort_options(active: &str) -> Vec<CollaborationSearchSortOption> {
+    [
+        ("best-match", "Best match"),
+        ("comments-desc", "Most commented"),
+        ("comments-asc", "Least commented"),
+        ("created-desc", "Newest"),
+        ("created-asc", "Oldest"),
+        ("updated-desc", "Recently updated"),
+        ("updated-asc", "Least recently updated"),
+        ("interactions-desc", "Most interactions"),
+        ("interactions-asc", "Least interactions"),
+    ]
+    .into_iter()
+    .map(|(value, label)| CollaborationSearchSortOption {
+        value: value.to_owned(),
+        label: label.to_owned(),
+        selected: value == active,
+    })
+    .collect()
+}
+
+async fn collaboration_type_counts(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    terms: &str,
+) -> Result<Vec<CodeSearchTypeCount>, SearchError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT search_documents.kind, count(*) AS count
+        FROM search_documents
+        LEFT JOIN repository_permissions
+          ON repository_permissions.repository_id = search_documents.repository_id
+         AND repository_permissions.user_id = $1
+        WHERE search_documents.kind IN ('issue', 'pull_request')
+          AND (
+              search_documents.visibility = 'public'
+              OR repository_permissions.user_id IS NOT NULL
+              OR search_documents.owner_user_id = $1
+          )
+          AND (
+              $2 = ''
+              OR search_documents.search_vector @@ plainto_tsquery('simple', $2)
+              OR search_documents.title ILIKE '%' || $2 || '%'
+              OR search_documents.body ILIKE '%' || $2 || '%'
+          )
+        GROUP BY search_documents.kind
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(terms)
+    .fetch_all(pool)
+    .await?;
+
+    let count_for = |kind: &str| {
+        rows.iter()
+            .find(|row| row.get::<String, _>("kind") == kind)
+            .map(|row| row.get::<i64, _>("count"))
+            .unwrap_or(0)
+    };
+    Ok(vec![
+        CodeSearchTypeCount {
+            result_type: "issues".to_owned(),
+            label: "Issues".to_owned(),
+            count: count_for("issue"),
+        },
+        CodeSearchTypeCount {
+            result_type: "pull_requests".to_owned(),
+            label: "Pull requests".to_owned(),
+            count: count_for("pull_request"),
+        },
+    ])
+}
+
+async fn collaboration_search_facets(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    kind: &str,
+    parsed: &ParsedCollaborationSearchQuery,
+) -> Result<CollaborationSearchFacets, SearchError> {
+    Ok(CollaborationSearchFacets {
+        states: collaboration_scalar_facet(
+            pool,
+            actor_user_id,
+            kind,
+            &parsed.terms,
+            "state",
+            parsed.state.as_deref(),
+        )
+        .await?,
+        labels: collaboration_array_facet(
+            pool,
+            actor_user_id,
+            kind,
+            &parsed.terms,
+            "labels",
+            parsed.label.as_deref(),
+        )
+        .await?,
+        assignees: collaboration_array_facet(
+            pool,
+            actor_user_id,
+            kind,
+            &parsed.terms,
+            "assignees",
+            parsed.assignee.as_deref(),
+        )
+        .await?,
+        reviewers: collaboration_array_facet(
+            pool,
+            actor_user_id,
+            kind,
+            &parsed.terms,
+            "reviewers",
+            parsed.reviewer.as_deref(),
+        )
+        .await?,
+        milestones: collaboration_milestone_facet(
+            pool,
+            actor_user_id,
+            kind,
+            &parsed.terms,
+            parsed.milestone.as_deref(),
+        )
+        .await?,
+    })
+}
+
+async fn collaboration_scalar_facet(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    kind: &str,
+    terms: &str,
+    key: &str,
+    selected: Option<&str>,
+) -> Result<Vec<CodeSearchFacetValue>, SearchError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT search_documents.metadata->>$4 AS value, count(*) AS count
+        FROM search_documents
+        LEFT JOIN repository_permissions
+          ON repository_permissions.repository_id = search_documents.repository_id
+         AND repository_permissions.user_id = $1
+        WHERE search_documents.kind = $2
+          AND search_documents.metadata ? $4
+          AND (
+              search_documents.visibility = 'public'
+              OR repository_permissions.user_id IS NOT NULL
+              OR search_documents.owner_user_id = $1
+          )
+          AND (
+              $3 = ''
+              OR search_documents.search_vector @@ plainto_tsquery('simple', $3)
+              OR search_documents.title ILIKE '%' || $3 || '%'
+              OR search_documents.body ILIKE '%' || $3 || '%'
+          )
+        GROUP BY search_documents.metadata->>$4
+        ORDER BY count DESC, value ASC
+        LIMIT 12
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(kind)
+    .bind(terms)
+    .bind(key)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            let value: Option<String> = row.get("value");
+            let value = value?;
+            Some(CodeSearchFacetValue {
+                label: value.clone(),
+                selected: selected.is_some_and(|active| active.eq_ignore_ascii_case(&value)),
+                value,
+                count: row.get("count"),
+            })
+        })
+        .collect())
+}
+
+async fn collaboration_array_facet(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    kind: &str,
+    terms: &str,
+    key: &str,
+    selected: Option<&str>,
+) -> Result<Vec<CodeSearchFacetValue>, SearchError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT COALESCE(item.value->>'login', item.value->>'name') AS value, count(*) AS count
+        FROM search_documents
+        CROSS JOIN LATERAL jsonb_array_elements(COALESCE(search_documents.metadata->$4, '[]'::jsonb)) AS item(value)
+        LEFT JOIN repository_permissions
+          ON repository_permissions.repository_id = search_documents.repository_id
+         AND repository_permissions.user_id = $1
+        WHERE search_documents.kind = $2
+          AND (
+              search_documents.visibility = 'public'
+              OR repository_permissions.user_id IS NOT NULL
+              OR search_documents.owner_user_id = $1
+          )
+          AND (
+              $3 = ''
+              OR search_documents.search_vector @@ plainto_tsquery('simple', $3)
+              OR search_documents.title ILIKE '%' || $3 || '%'
+              OR search_documents.body ILIKE '%' || $3 || '%'
+          )
+        GROUP BY COALESCE(item.value->>'login', item.value->>'name')
+        ORDER BY count DESC, value ASC
+        LIMIT 12
+        "#
+    )
+    .bind(actor_user_id)
+    .bind(kind)
+    .bind(terms)
+    .bind(key)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            let value: Option<String> = row.get("value");
+            let value = value?.trim().to_owned();
+            if value.is_empty() {
+                return None;
+            }
+            Some(CodeSearchFacetValue {
+                label: value.clone(),
+                selected: selected.is_some_and(|active| active.eq_ignore_ascii_case(&value)),
+                value,
+                count: row.get("count"),
+            })
+        })
+        .collect())
+}
+
+async fn collaboration_milestone_facet(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    kind: &str,
+    terms: &str,
+    selected: Option<&str>,
+) -> Result<Vec<CodeSearchFacetValue>, SearchError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT COALESCE(search_documents.metadata->'milestone'->>'title', search_documents.metadata->>'milestone') AS value,
+               count(*) AS count
+        FROM search_documents
+        LEFT JOIN repository_permissions
+          ON repository_permissions.repository_id = search_documents.repository_id
+         AND repository_permissions.user_id = $1
+        WHERE search_documents.kind = $2
+          AND COALESCE(search_documents.metadata->'milestone'->>'title', search_documents.metadata->>'milestone') IS NOT NULL
+          AND (
+              search_documents.visibility = 'public'
+              OR repository_permissions.user_id IS NOT NULL
+              OR search_documents.owner_user_id = $1
+          )
+          AND (
+              $3 = ''
+              OR search_documents.search_vector @@ plainto_tsquery('simple', $3)
+              OR search_documents.title ILIKE '%' || $3 || '%'
+              OR search_documents.body ILIKE '%' || $3 || '%'
+          )
+        GROUP BY COALESCE(search_documents.metadata->'milestone'->>'title', search_documents.metadata->>'milestone')
+        ORDER BY count DESC, value ASC
+        LIMIT 12
+        "#
+    )
+    .bind(actor_user_id)
+    .bind(kind)
+    .bind(terms)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            let value: Option<String> = row.get("value");
+            let value = value?.trim().to_owned();
+            if value.is_empty() {
+                return None;
+            }
+            Some(CodeSearchFacetValue {
+                label: value.clone(),
+                selected: selected.is_some_and(|active| active.eq_ignore_ascii_case(&value)),
+                value,
+                count: row.get("count"),
+            })
+        })
+        .collect())
+}
+
 async fn code_search_facets(
     pool: &PgPool,
     actor_user_id: Uuid,
@@ -1767,7 +2446,8 @@ fn code_snippets_for_document(document: &SearchDocument, query: &str) -> Vec<Sea
         .unwrap_or_else(|| "main".to_owned());
     let language = document.language.clone();
 
-    let mut snippets = metadata_snippets(&document.metadata, query, &path, &branch, language.clone());
+    let mut snippets =
+        metadata_snippets(&document.metadata, query, &path, &branch, language.clone());
     if snippets.is_empty() {
         snippets = body_snippets(document, query, &path, &branch, language);
     }

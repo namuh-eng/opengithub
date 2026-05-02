@@ -4,6 +4,7 @@ import { activeSearchType } from "@/lib/navigation";
 import {
   getSessionAndShellContext,
   searchCode,
+  searchCollaboration,
   searchGlobal,
 } from "@/lib/server-session";
 
@@ -22,6 +23,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   ]);
   const query = firstParam(params?.q)?.trim() ?? "";
   const activeType = activeSearchType(firstParam(params?.type));
+  const sort = firstParam(params?.sort);
   const parsedPage = Number.parseInt(firstParam(params?.page) ?? "1", 10);
   const page = Number.isFinite(parsedPage) ? Math.max(1, parsedPage) : 1;
   const results =
@@ -32,12 +34,20 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
             page,
             pageSize: 30,
           })
-        : await searchGlobal({
-            query,
-            type: activeType,
-            page,
-            pageSize: 30,
-          })
+        : activeType === "issues" || activeType === "pull_requests"
+          ? await searchCollaboration({
+              query,
+              type: activeType,
+              page,
+              pageSize: 30,
+              sort,
+            })
+          : await searchGlobal({
+              query,
+              type: activeType,
+              page,
+              pageSize: 30,
+            })
       : null;
 
   return (

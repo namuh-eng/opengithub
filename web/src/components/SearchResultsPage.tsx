@@ -1,10 +1,12 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CodeSearchResultsPage } from "@/components/CodeSearchResultsPage";
+import { CollaborationSearchResultsPage } from "@/components/CollaborationSearchResultsPage";
 import { QueryTabNavigation } from "@/components/QueryTabNavigation";
 import type {
   ApiErrorEnvelope,
   CodeSearchResponse,
+  CollaborationSearchResponse,
   GlobalSearchResult,
   ListEnvelope,
 } from "@/lib/api";
@@ -20,6 +22,7 @@ type SearchResultsPageProps = {
   results:
     | ListEnvelope<GlobalSearchResult>
     | CodeSearchResponse
+    | CollaborationSearchResponse
     | ApiErrorEnvelope
     | null;
 };
@@ -483,6 +486,17 @@ export function SearchResultsPage({
   const normalizedType = activeSearchType(activeType);
   if (normalizedType === "code") {
     return <CodeSearchResultsPage query={query} results={results} />;
+  }
+  if (normalizedType === "issues" || normalizedType === "pull_requests") {
+    return (
+      <CollaborationSearchResultsPage
+        activeType={normalizedType}
+        query={query}
+        results={
+          results as CollaborationSearchResponse | ApiErrorEnvelope | null
+        }
+      />
+    );
   }
 
   const activeTypeLabel =

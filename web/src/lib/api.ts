@@ -1908,6 +1908,7 @@ export type GlobalSearchQuery = {
   type: SearchResultType | string;
   page?: number;
   pageSize?: number;
+  sort?: string;
 };
 
 export type CodeSearchQuery = {
@@ -1951,6 +1952,35 @@ export type CodeSearchResponse = ListEnvelope<GlobalSearchResult> & {
   activeChips: CodeSearchChip[];
   queryDurationMs: number;
   diagnostics: CodeSearchDiagnostic[];
+};
+
+export type CollaborationSearchSortOption = {
+  value: string;
+  label: string;
+  selected: boolean;
+};
+
+export type CollaborationSearchResponse = ListEnvelope<GlobalSearchResult> & {
+  typeCounts: CodeSearchTypeCount[];
+  facets: {
+    states: CodeSearchFacetValue[];
+    labels: CodeSearchFacetValue[];
+    assignees: CodeSearchFacetValue[];
+    reviewers: CodeSearchFacetValue[];
+    milestones: CodeSearchFacetValue[];
+  };
+  activeChips: CodeSearchChip[];
+  sortOptions: CollaborationSearchSortOption[];
+  activeSort: string;
+  queryDurationMs: number;
+};
+
+export type CollaborationSearchQuery = {
+  query: string;
+  type: "issues" | "pull_requests" | string;
+  page?: number;
+  pageSize?: number;
+  sort?: string;
 };
 
 const DEFAULT_API_URL = "http://localhost:3016";
@@ -2039,6 +2069,9 @@ export function globalSearchPath(query: GlobalSearchQuery): string {
   if (query.pageSize) {
     params.set("pageSize", String(query.pageSize));
   }
+  if (query.sort?.trim()) {
+    params.set("sort", query.sort.trim());
+  }
   return `/api/search?${params.toString()}`;
 }
 
@@ -2048,6 +2081,18 @@ export function codeSearchPath(query: CodeSearchQuery): string {
     type: "code",
     page: query.page,
     pageSize: query.pageSize,
+  });
+}
+
+export function collaborationSearchPath(
+  query: CollaborationSearchQuery,
+): string {
+  return globalSearchPath({
+    query: query.query,
+    type: query.type,
+    page: query.page,
+    pageSize: query.pageSize,
+    ...(query.sort ? { sort: query.sort } : {}),
   });
 }
 
@@ -2260,6 +2305,42 @@ export async function searchCodeFromCookie(
   }
 
   return body as CodeSearchResponse;
+}
+
+export async function searchCollaborationFromCookie(
+  cookie: string | null | undefined,
+  query: CollaborationSearchQuery,
+): Promise<CollaborationSearchResponse | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${collaborationSearchPath(query)}`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Issue and pull request search is temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "collaboration_search_failed",
+          message: "Issue and pull request search failed.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as CollaborationSearchResponse;
 }
 
 export type DashboardSummaryQuery = {
