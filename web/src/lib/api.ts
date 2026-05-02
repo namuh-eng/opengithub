@@ -2473,6 +2473,17 @@ export type PullRequestDetailView = {
       requiredApprovingReviewCount: number;
       requiresUpToDateBranch: boolean;
       requiredStatusChecks: string[];
+      requiresConversationResolution?: boolean;
+      requiresSignedCommits?: boolean;
+      requiresLinearHistory?: boolean;
+      requiresMergeQueue?: boolean;
+      requiresDeployments?: boolean;
+      requiredDeploymentEnvironments?: string[];
+      locked?: boolean;
+      activeRuleCount?: number;
+      activeRulesetCount?: number;
+      evaluateRuleCount?: number;
+      evaluateRulesetCount?: number;
     };
     blockers: Array<{
       code: string;

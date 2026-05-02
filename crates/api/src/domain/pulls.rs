@@ -8,6 +8,7 @@ use uuid::Uuid;
 use crate::api_types::ListEnvelope;
 
 use super::{
+    branch_policies::{evaluate_branch_policy, BranchPolicyOperation, BranchPolicySummary},
     issues::{
         append_timeline_event, insert_issue_with_number, issue_from_row, next_issue_number,
         reaction_summaries, repository_for_actor, search_error_to_collaboration, user_login,
@@ -377,15 +378,7 @@ impl From<sqlx::Error> for MergePullRequestError {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct BranchProtectionSummary {
-    pub protected: bool,
-    pub pattern: Option<String>,
-    pub required_approving_review_count: i64,
-    pub requires_up_to_date_branch: bool,
-    pub required_status_checks: Vec<String>,
-}
+pub type BranchProtectionSummary = BranchPolicySummary;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -5765,8 +5758,14 @@ async fn pull_request_mergeability(
         .remove(&pull_request.id)
         .unwrap_or_else(default_review_summary);
     let merge_settings = repository_merge_settings(pool, pull_request.repository_id).await?;
-    let branch_protection =
-        branch_protection_summary(pool, pull_request.repository_id, &pull_request.base_ref).await?;
+    let branch_protection = evaluate_branch_policy(
+        pool,
+        pull_request.repository_id,
+        &pull_request.base_ref,
+        actor_user_id,
+        BranchPolicyOperation::Merge,
+    )
+    .await?;
     let approving_review_count = pull_request_approval_count(pool, pull_request.id).await?;
     let mut blockers = Vec::new();
 
@@ -5846,6 +5845,9 @@ async fn pull_request_mergeability(
             "review_required",
             "At least one requested review is still required.",
         ));
+    }
+    for reason in &branch_protection.blocking_reasons {
+        blockers.push(merge_blocker("branch_policy_blocked", reason));
     }
 
     let terminal = matches!(
@@ -5957,70 +5959,6 @@ async fn repository_merge_settings(
         default_method,
         methods,
     })
-}
-
-async fn branch_protection_summary(
-    pool: &PgPool,
-    repository_id: Uuid,
-    base_ref: &str,
-) -> Result<BranchProtectionSummary, CollaborationError> {
-    let rules = sqlx::query(
-        r#"
-        SELECT id, pattern, required_approving_review_count, requires_up_to_date_branch
-        FROM repository_branch_protection_rules
-        WHERE repository_id = $1
-        ORDER BY
-            CASE WHEN pattern = $2 THEN 0 WHEN position('*' in pattern) > 0 THEN 1 ELSE 2 END,
-            length(pattern) DESC,
-            created_at ASC
-        "#,
-    )
-    .bind(repository_id)
-    .bind(base_ref)
-    .fetch_all(pool)
-    .await?;
-    for row in rules {
-        let pattern: String = row.get("pattern");
-        if !branch_pattern_matches(&pattern, base_ref) {
-            continue;
-        }
-        let rule_id: Uuid = row.get("id");
-        let required_status_checks = sqlx::query_scalar::<_, String>(
-            r#"
-            SELECT context
-            FROM repository_required_status_checks
-            WHERE branch_protection_rule_id = $1
-            ORDER BY lower(context)
-            "#,
-        )
-        .bind(rule_id)
-        .fetch_all(pool)
-        .await?;
-        return Ok(BranchProtectionSummary {
-            protected: true,
-            pattern: Some(pattern),
-            required_approving_review_count: row.get("required_approving_review_count"),
-            requires_up_to_date_branch: row.get("requires_up_to_date_branch"),
-            required_status_checks,
-        });
-    }
-    Ok(BranchProtectionSummary {
-        protected: false,
-        pattern: None,
-        required_approving_review_count: 0,
-        requires_up_to_date_branch: false,
-        required_status_checks: Vec::new(),
-    })
-}
-
-fn branch_pattern_matches(pattern: &str, branch: &str) -> bool {
-    if pattern == branch {
-        return true;
-    }
-    let Some((prefix, suffix)) = pattern.split_once('*') else {
-        return false;
-    };
-    branch.starts_with(prefix) && branch.ends_with(suffix)
 }
 
 async fn pull_request_approval_count(

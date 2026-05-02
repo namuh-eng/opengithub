@@ -2401,3 +2401,14 @@
 - Verification passed: focused `repository_branch_settings_contract` compiled and passed but self-skipped DB assertions because the configured `TEST_DATABASE_URL` could not connect or replay migrations; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; `DB_SSL=false make test` with Cargo tests plus 274 frontend tests; mandatory Editorial banned-value scan returned zero matches.
 - Browser smoke and `make test-e2e` were not run because Phase 1 is API-first; the concrete Editorial page is Phase 2.
 - Marked Phase 1 as done in `.qrspi/settings-003/structure.md`; `prd.json` remains `build_pass:false` because Phases 2-5 remain.
+
+2026-05-03 - settings-003 phase 4 branch policy enforcement integration
+
+- Completed Phase 4 from `.qrspi/settings-003/structure.md`: branch protection and rulesets are now operational in PR mergeability and Git smart HTTP receive-pack enforcement.
+- Added `crates/api/src/domain/branch_policies.rs` as the shared evaluator for branch rules/rulesets, bounded wildcard matching, most-restrictive aggregation, bypass actors, evaluate-only logging, and push operation checks.
+- Replaced PR mergeability's old first-match branch protection query with shared evaluation; responses now include active/evaluate rule and ruleset counts, source summaries, required checks/reviews, linear history, signed commit, deployment, lock, and blocked-reason metadata while preserving existing required fields.
+- Git receive-pack now evaluates changed branch refs before database sync and returns `branch_policy_blocked` for restricted pushes, locked branches, force pushes, deletions, and non-bypassed protected branch writes.
+- Updated PR detail UI and tests so aggregated policy requirements such as linear history and combined policy counts are visible with Editorial chips.
+- Extended Rust and Vitest coverage for policy aggregation, evaluate-only merge logging, protected push rejection, and PR detail rendering.
+- Verification passed: `cargo check -p opengithub-api`; focused `api_pull_request_detail_contract` and `git_transport` harnesses compiled and passed but self-skipped DB assertions because the shared local migration state cannot replay cleanly; focused `web/tests/repository-pull-request-detail.test.tsx`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; `DB_SSL=false make test` with Cargo tests plus 283 frontend tests; focused Playwright `repository-pull-request-detail.spec.ts` and `repository-settings-branches.spec.ts`; mandatory Editorial banned-value scan returned zero matches.
+- Marked Phase 4 as done in `.qrspi/settings-003/structure.md`; `prd.json` remains `build_pass:false` because Phase 5 remains.

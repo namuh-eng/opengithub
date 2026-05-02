@@ -1286,6 +1286,9 @@ describe("RepositoryPullRequestDetailPage", () => {
               requiredApprovingReviewCount: 2,
               requiresUpToDateBranch: true,
               requiredStatusChecks: ["ci/test", "lint"],
+              requiresLinearHistory: true,
+              activeRuleCount: 1,
+              activeRulesetCount: 1,
             },
             blockers: [
               {
@@ -1318,6 +1321,8 @@ describe("RepositoryPullRequestDetailPage", () => {
       1,
     );
     expect(screen.getByText("Up-to-date branch required")).toBeVisible();
+    expect(screen.getByText("Linear history required")).toBeVisible();
+    expect(screen.getByText("2 policies combined")).toBeVisible();
     expect(
       screen.getByRole("button", { name: "Squash and merge" }),
     ).toBeVisible();

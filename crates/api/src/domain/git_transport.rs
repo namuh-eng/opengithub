@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     ffi::{OsStr, OsString},
     path::{Path, PathBuf},
 };
@@ -10,6 +11,7 @@ use tokio::{fs, io::AsyncWriteExt, process::Command};
 use uuid::Uuid;
 
 use super::actions::{trigger_workflows_for_push, AutomationError, TriggerWorkflowsForPush};
+use super::branch_policies::{evaluate_branch_policy, BranchPolicyOperation};
 use super::repositories::{
     can_read_repository, can_write_repository, get_repository_by_owner_name, Repository,
     RepositorySnapshot, RepositorySnapshotFile, RepositoryVisibility,
@@ -55,6 +57,8 @@ pub enum GitTransportError {
     RequestTooLarge,
     #[error("repository has no cloneable refs")]
     EmptyRepository,
+    #[error("branch policy blocked git push: {0}")]
+    BranchPolicyBlocked(String),
     #[error("git storage failed: {0}")]
     Storage(String),
     #[error("git command failed")]
@@ -72,6 +76,7 @@ impl GitTransportError {
             Self::UnsupportedService => StatusCode::BAD_REQUEST,
             Self::RequestTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             Self::EmptyRepository => StatusCode::NOT_FOUND,
+            Self::BranchPolicyBlocked(_) => StatusCode::CONFLICT,
             Self::Storage(_) | Self::GitCommand | Self::Sqlx(_) => {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
@@ -86,6 +91,7 @@ impl GitTransportError {
             Self::UnsupportedService => "unsupported_git_service",
             Self::RequestTooLarge => "request_too_large",
             Self::EmptyRepository => "empty_repository",
+            Self::BranchPolicyBlocked(_) => "branch_policy_blocked",
             Self::Storage(_) | Self::GitCommand | Self::Sqlx(_) => "git_transport_failed",
         }
     }
@@ -200,6 +206,7 @@ pub async fn run_receive_pack(
         writable_repository(pool, &request.owner, &request.repo, actor_user_id).await?;
     let store = materialize_bare_repository(pool, &repository).await?;
     let bare_path = PathBuf::from(store.storage_path);
+    let before_refs = branch_refs_map(&bare_path).await?;
     let result = git_output(
         None,
         [
@@ -210,6 +217,7 @@ pub async fn run_receive_pack(
         Some(body),
     )
     .await?;
+    enforce_pushed_ref_policies(pool, &repository, actor_user_id, &bare_path, &before_refs).await?;
     sync_pushed_refs_to_database(pool, &repository, actor_user_id, &bare_path).await?;
 
     Ok(GitServiceResponse {
@@ -535,6 +543,81 @@ async fn pushed_refs(bare_path: &Path) -> Result<Vec<PushedRef>, GitTransportErr
         });
     }
     Ok(refs)
+}
+
+async fn branch_refs_map(bare_path: &Path) -> Result<BTreeMap<String, String>, GitTransportError> {
+    Ok(pushed_refs(bare_path)
+        .await?
+        .into_iter()
+        .filter(|reference| reference.kind == "branch")
+        .map(|reference| (reference.short_name, reference.commit_oid))
+        .collect())
+}
+
+async fn enforce_pushed_ref_policies(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    bare_path: &Path,
+    before_refs: &BTreeMap<String, String>,
+) -> Result<(), GitTransportError> {
+    let after_refs = branch_refs_map(bare_path).await?;
+    let mut branches = before_refs
+        .keys()
+        .chain(after_refs.keys())
+        .cloned()
+        .collect::<Vec<_>>();
+    branches.sort();
+    branches.dedup();
+
+    for branch in branches {
+        let before_oid = before_refs.get(&branch);
+        let after_oid = after_refs.get(&branch);
+        if before_oid == after_oid {
+            continue;
+        }
+        let deletion = after_oid.is_none();
+        let creation = before_oid.is_none();
+        let force = match (before_oid, after_oid) {
+            (Some(old), Some(new)) => !is_ancestor(bare_path, old, new).await?,
+            _ => false,
+        };
+        let policy = evaluate_branch_policy(
+            pool,
+            repository.id,
+            &branch,
+            Some(actor_user_id),
+            BranchPolicyOperation::Push {
+                force,
+                deletion,
+                creation,
+            },
+        )
+        .await?;
+        if policy.blocking_reasons.is_empty() {
+            continue;
+        }
+        return Err(GitTransportError::BranchPolicyBlocked(format!(
+            "{} is protected: {}.",
+            branch,
+            policy.blocking_reasons.join("; ")
+        )));
+    }
+    Ok(())
+}
+
+async fn is_ancestor(
+    bare_path: &Path,
+    old_oid: &str,
+    new_oid: &str,
+) -> Result<bool, GitTransportError> {
+    let status = Command::new("git")
+        .current_dir(bare_path)
+        .args(["merge-base", "--is-ancestor", old_oid, new_oid])
+        .status()
+        .await
+        .map_err(|_| GitTransportError::GitCommand)?;
+    Ok(status.success())
 }
 
 async fn snapshot_from_commit(

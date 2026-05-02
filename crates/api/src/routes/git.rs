@@ -323,6 +323,7 @@ fn map_git_error(error: GitTransportError) -> GitRouteError {
             GitTransportError::UnsupportedService => "unsupported git service".to_owned(),
             GitTransportError::RequestTooLarge => "git request is too large".to_owned(),
             GitTransportError::EmptyRepository => "repository has no cloneable refs".to_owned(),
+            GitTransportError::BranchPolicyBlocked(message) => message,
         },
     ))
 }

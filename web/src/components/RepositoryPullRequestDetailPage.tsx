@@ -182,6 +182,7 @@ export function RepositoryPullRequestDetailPage({
     requiredApprovingReviewCount: 0,
     requiresUpToDateBranch: false,
     requiredStatusChecks: [],
+    requiredDeploymentEnvironments: [],
   };
   const bodyLabelId = `pull-request-${pullRequest.number}-body`;
   const basePath = `/${repository.owner_login}/${repository.name}`;
@@ -659,6 +660,40 @@ export function RepositoryPullRequestDetailPage({
                     {branchProtection.requiresUpToDateBranch ? (
                       <span className="chip soft">
                         Up-to-date branch required
+                      </span>
+                    ) : null}
+                    {branchProtection.requiresLinearHistory ? (
+                      <span className="chip soft">Linear history required</span>
+                    ) : null}
+                    {branchProtection.requiresSignedCommits ? (
+                      <span className="chip soft">Signed commits required</span>
+                    ) : null}
+                    {branchProtection.requiresConversationResolution ? (
+                      <span className="chip soft">
+                        Conversations must be resolved
+                      </span>
+                    ) : null}
+                    {branchProtection.requiresMergeQueue ? (
+                      <span className="chip soft">Merge queue required</span>
+                    ) : null}
+                    {branchProtection.requiresDeployments ? (
+                      <span className="chip soft">
+                        Deployments required
+                        {branchProtection.requiredDeploymentEnvironments?.length
+                          ? `: ${branchProtection.requiredDeploymentEnvironments.join(", ")}`
+                          : ""}
+                      </span>
+                    ) : null}
+                    {branchProtection.locked ? (
+                      <span className="chip err">Branch locked</span>
+                    ) : null}
+                    {(branchProtection.activeRuleCount ?? 0) +
+                      (branchProtection.activeRulesetCount ?? 0) >
+                    1 ? (
+                      <span className="chip info">
+                        {(branchProtection.activeRuleCount ?? 0) +
+                          (branchProtection.activeRulesetCount ?? 0)}{" "}
+                        policies combined
                       </span>
                     ) : null}
                   </div>

@@ -3462,5 +3462,25 @@
       "Real Git force-push/deletion blocking and PR mergeability aggregation are deferred to Phase 4; QA should not treat Phase 3 UI mutation success as enforcement completeness.",
       "CODEOWNERS-specific review semantics, bypass actor permission changes, and evaluate-only rule evaluation logs remain deeper QA targets."
     ]
+  },
+  {
+    "feature_id": "settings-003",
+    "tests_written": [
+      "Completed Phase 4 Policy Evaluation Integration without marking settings-003 build_pass=true.",
+      "Added a shared Rust branch_policies domain evaluator for branch rules and rulesets, including bounded wildcard matching, most-restrictive aggregation, bypass actors, push operation checks, and evaluate-only logging.",
+      "PR mergeability now uses the shared evaluator and returns aggregated branch protection details including active/evaluate rule and ruleset counts, required checks, required reviews, linear history, signed commit, deployment, lock, and source summaries.",
+      "Git smart HTTP receive-pack now evaluates changed branch refs before database sync and blocks restricted pushes, locked branches, force pushes, deletions, and non-bypassed protected branch writes with a redacted branch_policy_blocked error.",
+      "Repository PR detail UI now renders aggregated branch-policy requirements such as linear history and combined policy count.",
+      "Extended api_pull_request_detail_contract, git_transport, and repository-pull-request-detail Vitest coverage for aggregation, evaluate-only logging, protected push rejection, and policy requirement rendering.",
+      "Focused Playwright passed for repository-pull-request-detail.spec.ts and repository-settings-branches.spec.ts, refreshing existing PR detail and branches screenshots under ralph/screenshots/build/.",
+      "Verification passed: cargo check -p opengithub-api, focused Rust harnesses compiled and passed with DB assertions self-skipped on the dirty local migration state, focused PR detail Vitest, TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check, DB_SSL=false make test with Cargo tests plus 283 frontend tests, focused Playwright PR detail plus Branches settings, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Rerun api_pull_request_detail_contract and git_transport against a clean reachable TEST_DATABASE_URL so the new DB-backed merge and push assertions execute instead of self-skipping on the shared migration state.",
+      "Exercise real Git force-push and branch deletion attempts through smart HTTP against protected branches; this phase blocks changed refs after receive-pack but before database sync, so QA should inspect bare-storage side effects in a clean environment.",
+      "Verify bypass actor behavior for direct users and role-based bypasses after permission changes, including private/internal repository visibility.",
+      "Stress overlapping wildcard policies, evaluate-only ruleset logging volume, concurrent admin edits while pushes occur, long pattern wrapping in PR detail, and CODEOWNERS-specific review semantics if that remains deferred.",
+      "Full build-pass bookkeeping, docs, final desktop/mobile screenshots, and final all-suite E2E are deferred to Phase 5."
+    ]
   }
 ]

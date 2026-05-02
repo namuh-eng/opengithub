@@ -683,6 +683,38 @@ async fn authorized_token_push_updates_repository_snapshot_and_activity() {
     );
     git_in(&worktree, ["remote", "add", "origin", &remote]).await;
     git_in(&worktree, ["push", "-u", "origin", "main"]).await;
+    sqlx::query(
+        r#"
+        INSERT INTO repository_branch_protection_rules (
+            repository_id, pattern, restricts_pushes
+        )
+        VALUES ($1, 'main', true)
+        "#,
+    )
+    .bind(repository.id)
+    .execute(&pool)
+    .await
+    .expect("branch policy should be inserted");
+    std::fs::write(
+        worktree.join("README.md"),
+        format!(
+            "# {}\n\nThis protected branch update should be blocked.\n",
+            repository.name
+        ),
+    )
+    .expect("protected README should write");
+    git_in(&worktree, ["add", "README.md"]).await;
+    git_in(&worktree, ["commit", "-m", "Blocked protected branch push"]).await;
+    let blocked_push = Command::new("git")
+        .current_dir(&worktree)
+        .args(["push", "origin", "main"])
+        .output()
+        .await
+        .expect("blocked git push should run");
+    assert!(
+        !blocked_push.status.success(),
+        "protected branch push unexpectedly succeeded"
+    );
     server.abort();
 
     let repository = get_repository_by_owner_name(&pool, &repository.owner_login, &repository.name)
@@ -699,6 +731,14 @@ async fn authorized_token_push_updates_repository_snapshot_and_activity() {
             .map(|commit| commit.message.as_str()),
         Some("Push repository contents")
     );
+    let policy_evaluations: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM repository_rule_evaluations WHERE repository_id = $1 AND operation = 'push'",
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("push policy evaluation count should read");
+    assert_eq!(policy_evaluations, 0);
     assert!(overview.files.iter().any(|file| file.path == "README.md"));
     assert!(overview.files.iter().any(|file| file.path == "src/lib.rs"));
     assert!(overview

@@ -733,6 +733,21 @@ async fn pull_request_mergeability_uses_repository_policy_and_branch_rules() {
     .expect("required checks should create");
     sqlx::query(
         r#"
+        INSERT INTO repository_rulesets (
+            repository_id, name, enforcement, patterns, required_approving_review_count,
+            required_status_checks, requires_linear_history
+        )
+        VALUES
+            ($1, 'release discipline', 'active', ARRAY['ma*'], 3, ARRAY['security'], true),
+            ($1, 'evaluation preview', 'evaluate', ARRAY['main'], 1, ARRAY['preview'], false)
+        "#,
+    )
+    .bind(repository.id)
+    .execute(&pool)
+    .await
+    .expect("rulesets should create");
+    sqlx::query(
+        r#"
         INSERT INTO pull_request_reviews (pull_request_id, reviewer_user_id, state, body)
         VALUES ($1, $2, 'approved', 'One approval')
         "#,
@@ -808,11 +823,23 @@ async fn pull_request_mergeability_uses_repository_policy_and_branch_rules() {
     assert_eq!(body["mergeability"]["branchProtection"]["pattern"], "main");
     assert_eq!(
         body["mergeability"]["branchProtection"]["requiredApprovingReviewCount"],
-        2
+        3
     );
     assert_eq!(
         body["mergeability"]["branchProtection"]["requiredStatusChecks"],
-        json!(["ci/test", "lint"])
+        json!(["ci/test", "lint", "security"])
+    );
+    assert_eq!(
+        body["mergeability"]["branchProtection"]["activeRulesetCount"],
+        1
+    );
+    assert_eq!(
+        body["mergeability"]["branchProtection"]["evaluateRulesetCount"],
+        1
+    );
+    assert_eq!(
+        body["mergeability"]["branchProtection"]["requiresLinearHistory"],
+        true
     );
     let blockers = body["mergeability"]["blockers"]
         .as_array()
@@ -829,7 +856,7 @@ async fn pull_request_mergeability_uses_repository_policy_and_branch_rules() {
         INSERT INTO pull_request_checks_summary (
             pull_request_id, status, conclusion, total_count, completed_count, failed_count
         )
-        VALUES ($1, 'completed', 'failure', 2, 2, 1)
+        VALUES ($1, 'completed', 'failure', 3, 3, 1)
         ON CONFLICT (pull_request_id) DO UPDATE
         SET status = EXCLUDED.status,
             conclusion = EXCLUDED.conclusion,
@@ -857,7 +884,7 @@ async fn pull_request_mergeability_uses_repository_policy_and_branch_rules() {
         UPDATE pull_request_checks_summary
         SET status = 'running',
             conclusion = NULL,
-            total_count = 2,
+            total_count = 3,
             completed_count = 1,
             failed_count = 0
         WHERE pull_request_id = $1
@@ -907,13 +934,25 @@ async fn pull_request_mergeability_uses_repository_policy_and_branch_rules() {
     .execute(&pool)
     .await
     .expect("second review should create");
+    let third_reviewer = create_user(&pool, "pull-policy-third-reviewer").await;
+    sqlx::query(
+        r#"
+        INSERT INTO pull_request_reviews (pull_request_id, reviewer_user_id, state, body)
+        VALUES ($1, $2, 'approved', 'Third approval')
+        "#,
+    )
+    .bind(pull.pull_request.id)
+    .bind(third_reviewer.id)
+    .execute(&pool)
+    .await
+    .expect("third review should create");
     sqlx::query(
         r#"
         UPDATE pull_request_checks_summary
         SET status = 'completed',
             conclusion = 'success',
-            total_count = 2,
-            completed_count = 2,
+            total_count = 3,
+            completed_count = 3,
             failed_count = 0
         WHERE pull_request_id = $1
         "#,
@@ -928,6 +967,14 @@ async fn pull_request_mergeability_uses_repository_policy_and_branch_rules() {
     assert_eq!(ready_body["mergeability"]["state"], "ready");
     assert_eq!(ready_body["mergeability"]["canMerge"], true);
     assert_eq!(ready_body["mergeability"]["blockers"], json!([]));
+    let evaluation_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM repository_rule_evaluations WHERE repository_id = $1 AND operation = 'merge' AND outcome = 'evaluated'",
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("evaluate-only ruleset should log merge evaluations");
+    assert!(evaluation_count >= 1);
 
     let linked_issue = create_issue(
         &pool,

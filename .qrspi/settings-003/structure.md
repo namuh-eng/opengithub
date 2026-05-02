@@ -64,7 +64,7 @@
 
 ## Phase 4: Policy Evaluation Integration - PR mergeability and Git push enforcement
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make branch protection and rulesets operational. Pull request mergeability and Git push handling must aggregate all applicable branch policies and choose the most restrictive requirement. Push attempts that violate active policies must fail with structured errors, while evaluate-only rules record evaluations without blocking.
 

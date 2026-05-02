@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::api_types::ListEnvelope;
 
-use super::permissions::RepositoryRole;
+use super::{branch_policies::branch_pattern_matches, permissions::RepositoryRole};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -4341,29 +4341,6 @@ fn matching_branches(refs: &[RepositoryBranchRefSummary], patterns: &[String]) -
         })
         .map(|branch| branch.name.clone())
         .collect()
-}
-
-fn branch_pattern_matches(pattern: &str, branch: &str) -> bool {
-    if pattern == branch {
-        return true;
-    }
-    let mut remainder = branch;
-    let mut first = true;
-    for part in pattern.split('*') {
-        if part.is_empty() {
-            first = false;
-            continue;
-        }
-        let Some(index) = remainder.find(part) else {
-            return false;
-        };
-        if first && !pattern.starts_with('*') && index != 0 {
-            return false;
-        }
-        remainder = &remainder[index + part.len()..];
-        first = false;
-    }
-    pattern.ends_with('*') || remainder.is_empty()
 }
 
 fn decode_bypass_actors(value: serde_json::Value) -> Result<Vec<BypassActor>, RepositoryError> {
