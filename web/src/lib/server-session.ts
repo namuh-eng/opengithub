@@ -6,6 +6,7 @@ import {
   type GlobalSearchQuery,
   getAppShellContextFromCookie,
   getDashboardSummaryFromCookie,
+  getOrganizationPeopleFromCookie,
   getOrganizationRepositoriesFromCookie,
   getProfileRepositoriesFromCookie,
   getProfileStarsFromCookie,
@@ -35,6 +36,7 @@ import {
   getRepositoryRefsFromCookie,
   getSearchSuggestionsFromCookie,
   getSessionFromHeaders,
+  type OrganizationPeopleListQuery,
   type OrganizationRepositoryListQuery,
   type ProfileRepositoryListQuery,
   type RepositoryActionsDashboardQuery,
@@ -93,6 +95,18 @@ export async function getOrganizationRepositories(
 ) {
   const requestHeaders = await headers();
   return getOrganizationRepositoriesFromCookie(
+    requestHeaders.get("cookie"),
+    org,
+    query,
+  );
+}
+
+export async function getOrganizationPeople(
+  org: string,
+  query: OrganizationPeopleListQuery = {},
+) {
+  const requestHeaders = await headers();
+  return getOrganizationPeopleFromCookie(
     requestHeaders.get("cookie"),
     org,
     query,

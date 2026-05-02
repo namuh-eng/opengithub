@@ -207,6 +207,37 @@ pub struct OrganizationRepositoryFilterOption {
     pub count: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationPeopleList {
+    #[serde(flatten)]
+    pub envelope: ListEnvelope<OrganizationPeopleListItem>,
+    pub mode: String,
+    pub filters: OrganizationPeopleFilters,
+    pub tab_counts: OrganizationTabCounts,
+    pub viewer_state: OrganizationViewerState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationPeopleListItem {
+    pub id: Uuid,
+    pub login: String,
+    pub name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub href: String,
+    pub role: Option<String>,
+    pub joined_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationPeopleFilters {
+    pub query: Option<String>,
+    pub page: i64,
+    pub page_size: i64,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct OrganizationRepositoryListQuery<'a> {
     pub query: Option<&'a str>,
@@ -214,6 +245,13 @@ pub struct OrganizationRepositoryListQuery<'a> {
     pub language: Option<&'a str>,
     pub sort: Option<&'a str>,
     pub density: Option<&'a str>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct OrganizationPeopleListQuery<'a> {
+    pub query: Option<&'a str>,
     pub page: Option<i64>,
     pub page_size: Option<i64>,
 }
@@ -391,6 +429,73 @@ pub async fn organization_repositories(
     })
 }
 
+pub async fn organization_people(
+    pool: &PgPool,
+    slug: &str,
+    viewer_user_id: Option<Uuid>,
+    query: OrganizationPeopleListQuery<'_>,
+) -> Result<OrganizationPeopleList, OrganizationProfileError> {
+    let organization = organization_by_slug(pool, slug).await?;
+    let viewer_role = viewer_role(pool, organization.id, viewer_user_id).await?;
+    let is_member = viewer_role.is_some();
+
+    if organization.profile_visibility == "private" && !is_member {
+        return Err(OrganizationProfileError::NotFound);
+    }
+
+    let viewer_state = OrganizationViewerState {
+        authenticated: viewer_user_id.is_some(),
+        is_member,
+        role: viewer_role.clone(),
+        can_view_internal: is_member,
+        can_admin: matches!(viewer_role.as_deref(), Some("owner" | "admin")),
+        is_following: is_following(pool, organization.id, viewer_user_id).await?,
+    };
+    let filters = normalize_organization_people_filters(query);
+    let visible_repository_ids =
+        visible_repository_ids(pool, organization.id, viewer_user_id, is_member).await?;
+    let people_count = visible_people_count(pool, &organization, is_member).await?;
+    let packages = packages_count(pool, organization.id, is_member).await?;
+    let mut people = visible_organization_people_rows(pool, &organization, is_member).await?;
+
+    if let Some(query) = &filters.query {
+        let needle = query.to_ascii_lowercase();
+        people.retain(|person| {
+            person.login.to_ascii_lowercase().contains(&needle)
+                || person
+                    .name
+                    .as_deref()
+                    .unwrap_or_default()
+                    .to_ascii_lowercase()
+                    .contains(&needle)
+        });
+    }
+
+    let total = people.len() as i64;
+    let offset = ((filters.page - 1) * filters.page_size) as usize;
+    let limit = filters.page_size as usize;
+    let items = people.into_iter().skip(offset).take(limit).collect();
+
+    Ok(OrganizationPeopleList {
+        envelope: ListEnvelope {
+            items,
+            total,
+            page: filters.page,
+            page_size: filters.page_size,
+        },
+        mode: "people".to_owned(),
+        filters,
+        tab_counts: OrganizationTabCounts {
+            repositories: visible_repository_ids.len() as i64,
+            projects: 0,
+            packages,
+            people: people_count,
+            sponsoring: 0,
+        },
+        viewer_state,
+    })
+}
+
 async fn organization_by_slug(
     pool: &PgPool,
     slug: &str,
@@ -420,6 +525,22 @@ async fn organization_by_slug(
         public_members_visible: row.get("public_members_visible"),
         created_at: row.get("created_at"),
     })
+}
+
+fn normalize_organization_people_filters(
+    query: OrganizationPeopleListQuery<'_>,
+) -> OrganizationPeopleFilters {
+    let pagination = normalize_pagination(query.page, query.page_size);
+    let normalized_query = query.query.and_then(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.chars().take(120).collect::<String>())
+    });
+
+    OrganizationPeopleFilters {
+        query: normalized_query,
+        page: pagination.page,
+        page_size: pagination.page_size,
+    }
 }
 
 fn normalize_organization_repository_filters(
@@ -627,6 +748,61 @@ async fn visible_organization_repository_rows(
     }
 
     Ok(repositories)
+}
+
+async fn visible_organization_people_rows(
+    pool: &PgPool,
+    organization: &OrganizationRow,
+    is_member: bool,
+) -> Result<Vec<OrganizationPeopleListItem>, sqlx::Error> {
+    if !is_member && !organization.public_members_visible {
+        return Ok(Vec::new());
+    }
+
+    let rows = sqlx::query(
+        r#"
+        SELECT users.id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS login,
+               users.display_name,
+               users.avatar_url,
+               organization_memberships.role,
+               organization_memberships.created_at
+        FROM organization_memberships
+        JOIN users ON users.id = organization_memberships.user_id
+        WHERE organization_memberships.organization_id = $1
+        ORDER BY
+            CASE organization_memberships.role
+                WHEN 'owner' THEN 0
+                WHEN 'admin' THEN 1
+                ELSE 2
+            END ASC,
+            lower(COALESCE(NULLIF(users.display_name, ''), NULLIF(users.username, ''), users.email)) ASC,
+            lower(COALESCE(NULLIF(users.username, ''), users.email)) ASC
+        "#,
+    )
+    .bind(organization.id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let login: String = row.get("login");
+            OrganizationPeopleListItem {
+                id: row.get("id"),
+                login: login.clone(),
+                name: row.get("display_name"),
+                avatar_url: row.get("avatar_url"),
+                href: format!("/{login}"),
+                role: if is_member {
+                    Some(row.get("role"))
+                } else {
+                    None
+                },
+                joined_at: row.get("created_at"),
+            }
+        })
+        .collect())
 }
 
 fn organization_repository_language_options(

@@ -3122,7 +3122,10 @@
       "TEST_DATABASE_URL-backed full make test still exposes an unrelated PR compare owner-login fixture mismatch; the standard make test path passed and org-focused frontend/browser coverage passed.",
       "Phase 3 still needs hardening for composed query normalization, pagination preservation under all controls, compact/mobile layout stress, and filter-count consistency across larger visible repository sets.",
       "QA should stress very long organization/repository names, many topics/languages, fork-source links, direct admin permissions for non-members, hidden private/internal repositories, and empty result recovery from every filter control."
-"feature_id": "notifications-001",
+    ]
+  },
+  {
+    "feature_id": "notifications-001",
     "tests_written": [
       "Added Rust API contract coverage in crates/api/tests/api_notifications_inbox_contract.rs for authenticated /api/notifications, reason/repo filters, repository grouping, unread tab, repository buckets, subscribed row state, and PATCH mark-read behavior.",
       "Added Vitest coverage in web/tests/notifications-inbox.test.tsx for folders, default filters, repository buckets, All/Unread tabs, query search form, sort/group links, row open hrefs, unread/subscribed states, and editable empty states.",
@@ -3150,6 +3153,24 @@
       "The first full E2E run failed only because the API had been started with API_URL=http://localhost:3016, producing localhost clone URLs for an unrelated repository Code-tab assertion; rerunning with API_URL=https://opengithub.namuh.co passed all 90 E2E tests.",
       "Phase 4 still needs the organization people list API/UI and signed-out/member/admin people visibility coverage before orgs-002 can be marked build_pass=true.",
       "QA should stress many pages of organization repositories, unusual language casing and spacing, direct repository permissions for non-members, empty results after every chip removal path, and compact density with very long names/topics."
+    ]
+  },
+  {
+    "feature_id": "orgs-002",
+    "tests_written": [
+      "Completed Phase 4 Organization People List API and Editorial People Page without marking orgs-002 build_pass=true.",
+      "Added GET /api/orgs/{org}/people with optional signed-cookie viewer detection, public-member visibility rules, private-organization 404 behavior, bounded pagination, search over login/display name, stable owner/admin/member ordering, tab counts, and viewer state.",
+      "Added typed Next.js people DTOs, cookie-backed server helpers, URL builders, /orgs/{org}/people canonical route, and /orgs/{org}?tab=people rendering inside the existing Editorial organization header/tabs shell.",
+      "Added OrganizationPeoplePage with Organization permissions side nav, Members subtab, member rows, role chips only for member-visible views, concrete profile links, search, empty-state recovery, and Previous/Next pagination.",
+      "Added organization_people_contract, organization-people Vitest, and organization-people Playwright coverage for public/member/admin visibility, private org 404, hidden public members, search, pagination preservation, concrete profile links, no inert anchors, and desktop/mobile screenshots.",
+      "Verification passed: focused organization_people_contract against local Postgres on localhost:55432; focused organization-people Vitest; web typecheck; TEST_DATABASE_URL-backed make check; standard DB_SSL=false make test with Cargo tests plus 248 frontend tests; focused organization-people Playwright smoke with screenshots ralph/screenshots/build/orgs-002-phase4-people.jpg and ralph/screenshots/build/orgs-002-phase4-people-mobile.jpg; mandatory Editorial banned-value scan pending final commit gate."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke uses deterministic Rust-signed local sessions and direct local API/Next dev servers because make dev depends on cargo-watch, which is not installed in this environment.",
+      "TEST_DATABASE_URL-backed full make test still exposes an unrelated notifications inbox fixture failure where the query uses owner.email for a repository owner now displayed by username/slug; the focused people contract passed against the same database and the standard make test path passed.",
+      "Full make test-e2e was attempted and orgs-002 people coverage passed, but the suite had an unrelated dashboard git-storage failure before being stopped; focused organization-people Playwright passed and saved desktop/mobile evidence.",
+      "Phase 5 still needs final combined repository/people guardrails, API docs metadata, and orgs-002 build_pass=true.",
+      "QA should stress hidden public members, many member pages, long names/logins, anonymous outside viewers, org members with role visibility, private organizations, and pageSize preservation across search clearing."
     ]
   }
 ]

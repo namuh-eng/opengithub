@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { AppShellFrame } from "@/components/AppShellFrame";
+import { OrganizationPeoplePage } from "@/components/OrganizationPeoplePage";
 import { OrganizationRepositoriesPage } from "@/components/OrganizationRepositoriesPage";
 import { QueryTabNavigation } from "@/components/QueryTabNavigation";
 import type {
   AppShellContext,
   AuthSession,
+  OrganizationPeopleList,
   OrganizationRepositoryList,
   PublicOrganizationProfile,
 } from "@/lib/api";
@@ -20,6 +22,7 @@ import {
 
 type OrganizationProfilePageProps = {
   activeTab: string;
+  peopleList?: OrganizationPeopleList | null;
   profile: PublicOrganizationProfile;
   repositoryList?: OrganizationRepositoryList | null;
   session: AuthSession;
@@ -754,6 +757,7 @@ function SecondaryTab({
 
 export function OrganizationProfilePage({
   activeTab,
+  peopleList,
   profile,
   repositoryList,
   session,
@@ -781,6 +785,11 @@ export function OrganizationProfilePage({
             ) : selectedTab === "repositories" && repositoryList ? (
               <OrganizationRepositoriesPage
                 list={repositoryList}
+                org={profile.identity.slug}
+              />
+            ) : selectedTab === "people" && peopleList ? (
+              <OrganizationPeoplePage
+                list={peopleList}
                 org={profile.identity.slug}
               />
             ) : (

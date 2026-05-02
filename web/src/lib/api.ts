@@ -323,6 +323,39 @@ export type OrganizationRepositoryListQuery = {
   pageSize?: number;
 };
 
+export type OrganizationPeopleList = {
+  items: OrganizationPeopleListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  mode: "people" | string;
+  filters: OrganizationPeopleFilters;
+  tabCounts: OrganizationTabCounts;
+  viewerState: OrganizationViewerState;
+};
+
+export type OrganizationPeopleListItem = {
+  id: string;
+  login: string;
+  name: string | null;
+  avatarUrl: string | null;
+  href: string;
+  role: string | null;
+  joinedAt: string;
+};
+
+export type OrganizationPeopleFilters = {
+  query: string | null;
+  page: number;
+  pageSize: number;
+};
+
+export type OrganizationPeopleListQuery = {
+  q?: string;
+  page?: number;
+  pageSize?: number;
+};
+
 export type ProfileAchievement = {
   slug: string;
   name: string;
@@ -2635,6 +2668,40 @@ export async function getOrganizationRepositoriesFromCookie(
   }
 
   return (await response.json()) as OrganizationRepositoryList;
+}
+
+export async function getOrganizationPeopleFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  query: OrganizationPeopleListQuery = {},
+): Promise<OrganizationPeopleList | null> {
+  let response: Response;
+  try {
+    const url = new URL(
+      `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/people`,
+    );
+    if (query.q) {
+      url.searchParams.set("q", query.q);
+    }
+    if (query.page) {
+      url.searchParams.set("page", String(query.page));
+    }
+    if (query.pageSize) {
+      url.searchParams.set("pageSize", String(query.pageSize));
+    }
+    response = await fetch(url, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return null;
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return (await response.json()) as OrganizationPeopleList;
 }
 
 export async function getProfileRepositoriesFromCookie(

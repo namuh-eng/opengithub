@@ -546,7 +546,7 @@ async fn main() -> anyhow::Result<()> {
         (String::new(), String::new())
     };
     let organization_profile_href = if seed_organization_profile() {
-        seed_organization_profile_fixture(&pool, user.id, &suffix).await?
+        seed_organization_profile_fixture(&pool, user.id, profile_action_viewer.id, &suffix).await?
     } else {
         String::new()
     };
@@ -604,6 +604,7 @@ async fn main() -> anyhow::Result<()> {
 async fn seed_organization_profile_fixture(
     pool: &PgPool,
     owner_user_id: Uuid,
+    member_user_id: Uuid,
     suffix: &str,
 ) -> anyhow::Result<String> {
     let slug = format!("org-profile-{}", &suffix[..12]);
@@ -643,6 +644,18 @@ async fn seed_organization_profile_fixture(
         "#,
     )
     .bind(organization.id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO organization_memberships (organization_id, user_id, role, created_at)
+        VALUES ($1, $2, 'member', now() - INTERVAL '1 day')
+        ON CONFLICT (organization_id, user_id)
+        DO UPDATE SET role = EXCLUDED.role
+        "#,
+    )
+    .bind(organization.id)
+    .bind(member_user_id)
     .execute(pool)
     .await?;
 

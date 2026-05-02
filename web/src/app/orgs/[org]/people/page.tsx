@@ -1,7 +1,6 @@
 import { OrganizationProfilePage } from "@/components/OrganizationProfilePage";
 import { ProfileOrgShell } from "@/components/ProfileOrgShell";
 import {
-  activeOrganizationTab,
   ORGANIZATION_TABS,
   organizationProjectHref,
   organizationSettingsHref,
@@ -9,12 +8,11 @@ import {
 } from "@/lib/navigation";
 import {
   getOrganizationPeople,
-  getOrganizationRepositories,
   getPublicOrganizationProfile,
   getSessionAndShellContext,
 } from "@/lib/server-session";
 
-type OrganizationPageProps = {
+type OrganizationPeopleRouteProps = {
   params: Promise<{ org: string }>;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
@@ -32,55 +30,36 @@ function numberParam(value: string | string[] | undefined) {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-export default async function OrganizationPage({
+export default async function OrganizationPeopleRoute({
   params,
   searchParams,
-}: OrganizationPageProps) {
+}: OrganizationPeopleRouteProps) {
   const [{ org }, queryParams, { session, shellContext }] = await Promise.all([
     params,
     searchParams,
     getSessionAndShellContext(),
   ]);
   const orgLogin = decodeURIComponent(org);
-  const activeTab = activeOrganizationTab(firstParam(queryParams?.tab));
-  const [profile, repositoryList, peopleList] = await Promise.all([
+  const [profile, peopleList] = await Promise.all([
     getPublicOrganizationProfile(orgLogin),
-    activeTab === "repositories"
-      ? getOrganizationRepositories(orgLogin, {
-          q: firstParam(queryParams?.q),
-          type: firstParam(queryParams?.type),
-          language: firstParam(queryParams?.language),
-          sort: firstParam(queryParams?.sort),
-          density: firstParam(queryParams?.density),
-          page: numberParam(queryParams?.page),
-          pageSize: numberParam(queryParams?.pageSize),
-        })
-      : Promise.resolve(null),
-    activeTab === "people"
-      ? getOrganizationPeople(orgLogin, {
-          q: firstParam(queryParams?.q),
-          page: numberParam(queryParams?.page),
-          pageSize: numberParam(queryParams?.pageSize),
-        })
-      : Promise.resolve(null),
+    getOrganizationPeople(orgLogin, {
+      q: firstParam(queryParams?.q),
+      page: numberParam(queryParams?.page),
+      pageSize: numberParam(queryParams?.pageSize),
+    }),
   ]);
 
   if (profile) {
     return (
       <OrganizationProfilePage
-        activeTab={activeTab}
+        activeTab="people"
         peopleList={peopleList}
         profile={profile}
-        repositoryList={repositoryList}
         session={session}
         shellContext={shellContext}
       />
     );
   }
-
-  const activeTabLabel =
-    ORGANIZATION_TABS.find((tab) => tab.value === activeTab)?.label ??
-    "Overview";
 
   return (
     <ProfileOrgShell
@@ -88,11 +67,11 @@ export default async function OrganizationPage({
         { href: organizationProjectHref(orgLogin), label: "Projects" },
         { href: organizationSettingsHref(orgLogin), label: "Settings" },
       ]}
-      activeTab={activeTab}
+      activeTab="people"
       eyebrow="Organization"
       hrefForTab={(value) => organizationTabHref(orgLogin, value)}
       identityLabel={orgLogin}
-      message={`${activeTabLabel} for ${orgLogin} will show organization repositories, people, teams, and packages when the organization features are implemented. The skeleton keeps organization navigation grounded today.`}
+      message={`People for ${orgLogin} will show organization members when this organization is available.`}
       session={session}
       shellContext={shellContext}
       tabLabel="Organization sections"

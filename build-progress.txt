@@ -2175,3 +2175,16 @@
 - Verification passed: focused `cargo test -p opengithub-api --test api_notifications_inbox_contract`; focused `cd web && npx vitest run tests/notifications-inbox.test.tsx`; `cd web && npx tsc --noEmit --pretty false`; mandatory banned-value scan returned zero matches; `make check`; `CARGO_INCREMENTAL=0 make test` with Cargo tests plus 215 frontend tests.
 - `make test` initially hit disk exhaustion during Rust test linking; cleared local build/cache artifacts and reran successfully.
 - Set `notifications-001.build_pass=true`, `needs_structure=false`, and left `qa_pass=false` for independent QA.
+
+2026-05-03 - orgs-002 phase 4 organization people list
+
+- Completed Phase 4 from `.qrspi/orgs-002/structure.md`: `/api/orgs/{org}/people`, `/orgs/{org}?tab=people`, and `/orgs/{org}/people` now render real organization member data.
+- Added Rust/Postgres people-list DTOs and `GET /api/orgs/{org}/people` with optional signed-cookie viewer detection, public-member visibility rules, private-organization 404 behavior, bounded pagination, search over login/display name, stable owner/admin/member ordering, tab counts, and viewer state.
+- Added typed Next.js fetch helpers, server-session helpers, URL builders, canonical people route, and `OrganizationPeoplePage` with the Editorial organization permissions side nav, Members subtab, member rows, member-only role chips, concrete profile links, search, empty-state recovery, and pagination.
+- Extended the organization E2E seed with a second member so browser smoke can prove owner/member role visibility.
+- Added `crates/api/tests/organization_people_contract.rs`, `web/tests/organization-people-page.test.tsx`, and `web/tests/e2e/organization-people.spec.ts` for public/member/admin visibility, hidden public members, private org 404 redaction, search, pagination preservation, no inert anchors, profile links, and desktop/mobile screenshots.
+- Browser smoke screenshots saved at `ralph/screenshots/build/orgs-002-phase4-people.jpg` and `ralph/screenshots/build/orgs-002-phase4-people-mobile.jpg`.
+- Verification passed: focused `organization_people_contract`; focused `web/tests/organization-people-page.test.tsx`; `cd web && npx tsc --noEmit --pretty false`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; standard `DB_SSL=false make test` with Cargo tests plus 248 frontend tests; focused TEST_DATABASE_URL-backed Playwright `organization-people.spec.ts`; mandatory Editorial banned-value scan returned zero matches.
+- `TEST_DATABASE_URL`-backed full `make test` still exposes an unrelated `api_notifications_inbox_contract` fixture mismatch where the old test filters by owner email while current repository owner labels use username/slug. The focused people contract passed against the same database and the standard make test path passed.
+- Full `make test-e2e` was attempted and the new organization people Playwright test passed inside the suite, but the suite had an unrelated dashboard git-storage failure and the long-running attempt was stopped; focused organization people E2E passed and saved screenshots.
+- Marked Phase 4 as done in `.qrspi/orgs-002/structure.md`; `prd.json` remains `build_pass: false` because Phase 5 remains.

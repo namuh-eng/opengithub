@@ -177,7 +177,7 @@ test("organization overview renders API data and concrete header controls", asyn
     /\/orgs\/org-profile-.+\?tab=people/,
   );
   await expect(
-    page.getByText("1 visible person including private members."),
+    page.getByText("2 visible people including private members."),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: /Open Dashboard Tester/ }),

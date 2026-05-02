@@ -10,7 +10,8 @@ use crate::{
     api_types::{database_unavailable, error_response, ErrorEnvelope},
     auth::extractor::AuthenticatedUser,
     domain::organizations::{
-        organization_repositories, public_organization_profile, OrganizationProfileError,
+        organization_people, organization_repositories, public_organization_profile,
+        OrganizationPeopleList, OrganizationPeopleListQuery, OrganizationProfileError,
         OrganizationRepositoryList, OrganizationRepositoryListQuery, PublicOrganizationProfile,
     },
     AppState,
@@ -20,6 +21,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/orgs/:org/profile", get(public_profile))
         .route("/api/orgs/:org/repositories", get(public_repositories))
+        .route("/api/orgs/:org/people", get(public_people))
 }
 
 async fn public_profile(
@@ -64,6 +66,30 @@ async fn public_repositories(
     Ok(Json(repositories))
 }
 
+async fn public_people(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(org): Path<String>,
+    Query(query): Query<OrganizationPeopleQuery>,
+) -> Result<Json<OrganizationPeopleList>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let people = organization_people(
+        pool,
+        &org,
+        actor.map(|user| user.id),
+        OrganizationPeopleListQuery {
+            query: query.q.as_deref(),
+            page: query.page,
+            page_size: query.page_size,
+        },
+    )
+    .await
+    .map_err(map_organization_profile_error)?;
+
+    Ok(Json(people))
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OrganizationRepositoriesQuery {
@@ -73,6 +99,15 @@ struct OrganizationRepositoriesQuery {
     language: Option<String>,
     sort: Option<String>,
     density: Option<String>,
+    page: Option<i64>,
+    #[serde(alias = "page_size")]
+    page_size: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OrganizationPeopleQuery {
+    q: Option<String>,
     page: Option<i64>,
     #[serde(alias = "page_size")]
     page_size: Option<i64>,

@@ -60,7 +60,7 @@
 
 ## Phase 4: Organization People List API and Editorial People Page - public members and pagination
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add a real people list for `/api/orgs/{org}/people`, `/orgs/{org}?tab=people`, and `/orgs/{org}/people`. Signed-out viewers see public members only when the organization allows public members; members/admins can see internal membership rows. This phase is read-only and defers pending invitations, outside collaborators, role edits, and admin management actions to later settings/admin features.
 

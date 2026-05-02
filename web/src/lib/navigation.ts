@@ -664,6 +664,45 @@ export function organizationRepositoryListHref(
   return `${organizationHref(org)}/repositories${query ? `?${query}` : ""}`;
 }
 
+export type OrganizationPeopleListFilters = {
+  query?: string | null;
+  page?: number | string | null;
+  pageSize?: number | string | null;
+};
+
+export function organizationPeopleListHref(
+  org: string,
+  filters: OrganizationPeopleListFilters = {},
+  overrides: Partial<Record<"q" | "page", string | null>> & {
+    pageSize?: string | null;
+  } = {},
+) {
+  const params = new URLSearchParams();
+  const nextQuery =
+    overrides.q === undefined ? filters.query : overrides.q?.trim() || null;
+  const nextPage =
+    overrides.page === undefined
+      ? filters.page
+      : overrides.page?.trim() || null;
+  const nextPageSize =
+    overrides.pageSize === undefined
+      ? filters.pageSize
+      : overrides.pageSize?.trim() || null;
+
+  if (nextQuery?.trim()) {
+    params.set("q", nextQuery.trim());
+  }
+  if (nextPage && String(nextPage) !== "1") {
+    params.set("page", String(nextPage));
+  }
+  if (nextPageSize && String(nextPageSize) !== "30") {
+    params.set("pageSize", String(nextPageSize));
+  }
+
+  const query = params.toString();
+  return `${organizationHref(org)}/people${query ? `?${query}` : ""}`;
+}
+
 export function organizationProjectHref(org: string) {
   return `${organizationHref(org)}/projects`;
 }
