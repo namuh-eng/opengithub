@@ -2473,5 +2473,24 @@
       "Archive downloads and real S3 signed URLs are not part of Phase 1; existing single-job text download remains local DB-backed.",
       "The tests use local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth or real Actions runner execution."
     ]
+  },
+  {
+    "feature_id": "actions-004",
+    "tests_written": [
+      "Implemented Phase 2 dedicated job log viewer page at /{owner}/{repo}/actions/runs/{run_id}/jobs/{job_id}.",
+      "Added typed frontend job-log-detail fetch helpers and server-session forwarding for the Phase 1 Rust contract.",
+      "Added an Editorial job viewer component with run breadcrumb, selected job header/status/duration, sibling job sidebar, annotations toggle, log options menu, read-only search controls, collapsible step rows, monospace log lines, unavailable 410-style state, and download affordance.",
+      "Updated the run-detail job link builder to produce stable dedicated job-view URLs.",
+      "Extended the Playwright seed fixture to emit a direct actionsJobLogHref.",
+      "Added Vitest coverage for metadata, sibling navigation, step collapse, annotations toggle, options menu, unavailable state, validation errors, and dead-control checks.",
+      "Added Playwright smoke coverage with screenshot ralph/screenshots/build/actions-004-phase2-job-viewer.jpg.",
+      "Verification passed: focused repository-actions-job-log Vitest, TypeScript check, cargo check, make check, make test with 195 frontend tests, focused same-env Playwright job-viewer smoke, and full same-env make test-e2e with 70 Playwright tests."
+    ],
+    "needs_deeper_qa": [
+      "Search controls are present but previous/next jumping, live highlighting, copy/permalink line actions, and polling without scroll loss are Phase 3.",
+      "The log options menu reflects current options but preference writes, raw/timestamp toggles, copy job permalink, and run archive download are Phase 4.",
+      "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth.",
+      "Log lines remain DB-backed fixtures; real Actions runner streaming, very large logs, S3 archives, retention expiry, and deletion race cases need later QA."
+    ]
   }
 ]

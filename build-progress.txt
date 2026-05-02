@@ -6,6 +6,16 @@
 - Did not change `prd.json`; `build_pass` remains `false` until all implementation phases pass verification.
 - Tests not run because this iteration only created the required planning artifact.
 
+2026-05-02 - actions-004 phase 2 Editorial job viewer page
+
+- Implemented Phase 2 from `.qrspi/actions-004/structure.md`: dedicated `/{owner}/{repo}/actions/runs/{run_id}/jobs/{job_id}` route and Editorial job log workspace.
+- Added typed frontend job-log-detail API helpers and server-session forwarding for the existing Rust `GET /api/repos/{owner}/{repo}/actions/runs/{run_id}/jobs/{job_id}/detail` contract.
+- Added `web/src/components/RepositoryActionsJobLogPage.tsx` with run breadcrumbs, selected job status/header, sibling job sidebar, annotations toggle, log options menu, read-only search controls, collapsible step rows, monospace log lines, unavailable 410-style state, and log download affordance.
+- Updated run-detail job links to stable dedicated job-view URLs and extended the dashboard E2E seed output with `actionsJobLogHref`.
+- Added Vitest coverage in `web/tests/repository-actions-job-log.test.tsx` and Playwright smoke coverage in `web/tests/e2e/repository-actions-job-log.spec.ts`; saved `ralph/screenshots/build/actions-004-phase2-job-viewer.jpg`.
+- Verification: focused job-viewer Vitest passed; `cd web && npx tsc --noEmit` passed; `cargo check --workspace` passed; `make check` passed; `make test` passed with Cargo tests plus 195 frontend tests; focused same-env Playwright job-viewer smoke passed; full same-env `make test-e2e` passed with 70 Playwright tests.
+- Marked Phase 2 as done in `.qrspi/actions-004/structure.md`; `prd.json` remains `build_pass: false` because Phases 3-5 remain.
+
 2026-05-01 - prs-004 structure planning
 
 - Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `CLAUDE.md`, `build-progress.txt`, `web/AGENTS.md`, the first incomplete `prd.json` entry, adjacent `.qrspi` outlines for pull requests and issue detail, `design/project/og-screens-3.jsx`, current pull request backend routes/domain code, and the current placeholder PR detail route.

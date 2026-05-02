@@ -1,0 +1,400 @@
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { RepositoryActionsJobLogPage } from "@/components/RepositoryActionsJobLogPage";
+import type {
+  RepositoryActionsJobLogDetail,
+  RepositoryOverview,
+} from "@/lib/api";
+
+function repositoryOverview(): RepositoryOverview {
+  return {
+    id: "repo-1",
+    owner_user_id: "user-1",
+    owner_organization_id: null,
+    owner_login: "mona",
+    name: "octo-app",
+    description: "Actions job log test repository",
+    visibility: "public",
+    default_branch: "main",
+    is_archived: false,
+    created_by_user_id: "user-1",
+    created_at: "2026-05-01T00:00:00Z",
+    updated_at: "2026-05-01T00:00:00Z",
+    viewerPermission: "owner",
+    branchCount: 2,
+    tagCount: 0,
+    defaultBranchRef: null,
+    latestCommit: null,
+    rootEntries: [],
+    files: [],
+    readme: null,
+    sidebar: {
+      about: null,
+      websiteUrl: null,
+      topics: [],
+      starsCount: 0,
+      watchersCount: 0,
+      forksCount: 0,
+      releasesCount: 0,
+      deploymentsCount: 0,
+      contributorsCount: 1,
+      languages: [],
+    },
+    viewerState: {
+      forkedRepositoryHref: null,
+      starred: false,
+      watching: false,
+    },
+    cloneUrls: {
+      git: "git@opengithub.namuh.co:mona/octo-app.git",
+      https: "https://opengithub.namuh.co/mona/octo-app.git",
+      zip: "/mona/octo-app/archive/refs/heads/main.zip",
+    },
+  };
+}
+
+function jobLogDetail(
+  overrides: Partial<RepositoryActionsJobLogDetail> = {},
+): RepositoryActionsJobLogDetail {
+  const detail: RepositoryActionsJobLogDetail = {
+    repository: {
+      id: "repo-1",
+      ownerLogin: "mona",
+      name: "octo-app",
+      visibility: "public",
+      defaultBranch: "main",
+    },
+    viewerPermission: "owner",
+    workflow: {
+      id: "workflow-1",
+      name: "CI",
+      path: ".github/workflows/ci.yml",
+      state: "active",
+      sourceBranch: "main",
+      sourceSha: "workflow-source-sha",
+      sourceHref: "/mona/octo-app/blob/main/.github/workflows/ci.yml",
+    },
+    run: {
+      id: "run-1",
+      workflowId: "workflow-1",
+      workflowName: "CI",
+      workflowPath: ".github/workflows/ci.yml",
+      runNumber: 42,
+      displayTitle: "Validate run detail",
+      status: "completed",
+      conclusion: "failure",
+      statusCategory: "failure",
+      event: "pull_request",
+      actor: {
+        id: "user-1",
+        login: "mona",
+        displayName: "Mona",
+        avatarUrl: null,
+      },
+      headBranch: "feature/actions",
+      headSha: "abcdef0123456789",
+      shortSha: "abcdef0",
+      pullRequest: {
+        id: "pr-1",
+        number: 17,
+        title: "Improve Actions",
+      },
+      commitMessage: "Add run detail fixture",
+      jobSummary: {
+        total: 2,
+        queued: 0,
+        inProgress: 0,
+        completed: 2,
+        cancelled: 0,
+        success: 1,
+        failure: 1,
+        skipped: 0,
+        timedOut: 0,
+      },
+      durationSeconds: 180,
+      isLive: false,
+      startedAt: "2026-05-01T00:00:00Z",
+      completedAt: "2026-05-01T00:03:00Z",
+      createdAt: "2026-05-01T00:00:00Z",
+      updatedAt: "2026-05-01T00:03:00Z",
+    },
+    jobs: [
+      {
+        id: "job-1",
+        name: "unit / web",
+        groupName: "Checks",
+        attemptNumber: 2,
+        status: "completed",
+        conclusion: "failure",
+        runnerLabel: "ubuntu-latest",
+        durationSeconds: 120,
+        logAvailable: true,
+        logDeletedAt: null,
+        steps: [],
+        startedAt: "2026-05-01T00:04:00Z",
+        completedAt: "2026-05-01T00:06:00Z",
+        createdAt: "2026-05-01T00:04:00Z",
+        updatedAt: "2026-05-01T00:06:00Z",
+      },
+      {
+        id: "job-2",
+        name: "deploy preview",
+        groupName: "Deploy",
+        attemptNumber: 2,
+        status: "completed",
+        conclusion: "success",
+        runnerLabel: "ubuntu-latest",
+        durationSeconds: 60,
+        logAvailable: false,
+        logDeletedAt: "2026-05-01T00:07:00Z",
+        steps: [],
+        startedAt: "2026-05-01T00:04:00Z",
+        completedAt: "2026-05-01T00:05:00Z",
+        createdAt: "2026-05-01T00:04:00Z",
+        updatedAt: "2026-05-01T00:05:00Z",
+      },
+    ],
+    job: {
+      id: "job-1",
+      name: "unit / web",
+      groupName: "Checks",
+      attemptNumber: 2,
+      status: "completed",
+      conclusion: "failure",
+      runnerLabel: "ubuntu-latest",
+      durationSeconds: 120,
+      logAvailable: true,
+      logDeletedAt: null,
+      steps: [],
+      startedAt: "2026-05-01T00:04:00Z",
+      completedAt: "2026-05-01T00:06:00Z",
+      createdAt: "2026-05-01T00:04:00Z",
+      updatedAt: "2026-05-01T00:06:00Z",
+    },
+    steps: [
+      {
+        id: "step-1",
+        number: 1,
+        name: "Install dependencies",
+        status: "completed",
+        conclusion: "success",
+        durationSeconds: 20,
+        startedAt: "2026-05-01T00:04:00Z",
+        completedAt: "2026-05-01T00:04:20Z",
+        matchCount: 0,
+        lines: {
+          items: [
+            {
+              lineNumber: 1,
+              timestamp: "2026-05-01T00:04:00Z",
+              content: "Installing dependencies",
+              anchor: "L1",
+            },
+          ],
+          page: 1,
+          pageSize: 30,
+          total: 1,
+        },
+      },
+      {
+        id: "step-2",
+        number: 2,
+        name: "Run tests",
+        status: "completed",
+        conclusion: "failure",
+        durationSeconds: 100,
+        startedAt: "2026-05-01T00:04:20Z",
+        completedAt: "2026-05-01T00:06:00Z",
+        matchCount: 1,
+        lines: {
+          items: [
+            {
+              lineNumber: 3,
+              timestamp: "2026-05-01T00:06:00Z",
+              content: "error: Expected string, found number",
+              anchor: "L3",
+            },
+          ],
+          page: 1,
+          pageSize: 30,
+          total: 1,
+        },
+      },
+    ],
+    annotations: [
+      {
+        id: "annotation-1",
+        jobId: "job-1",
+        stepId: "step-2",
+        level: "failure",
+        path: "web/src/app/page.tsx",
+        startLine: 42,
+        endLine: 42,
+        title: "Type error",
+        message: "Expected string, found number",
+        rawDetails: "tsc failed",
+        createdAt: "2026-05-01T00:06:00Z",
+      },
+    ],
+    logState: {
+      available: true,
+      status: 200,
+      reason: null,
+      deletedAt: null,
+      isLive: false,
+      nextCursor: 3,
+    },
+    search: {
+      query: "error",
+      totalMatches: 1,
+      selectedMatch: 1,
+      matches: [
+        {
+          lineNumber: 3,
+          stepId: "step-2",
+          stepNumber: 2,
+          anchor: "L3",
+          preview: "error: Expected string, found number",
+        },
+      ],
+    },
+    options: {
+      showTimestamps: false,
+      rawLogs: false,
+      wrapLines: true,
+    },
+    downloadHref: "/api/repos/mona/octo-app/actions/jobs/job-1/logs/download",
+  };
+
+  return { ...detail, ...overrides };
+}
+
+describe("RepositoryActionsJobLogPage", () => {
+  it("renders job metadata, sibling navigation, annotations, and log steps", () => {
+    render(
+      <RepositoryActionsJobLogPage
+        detail={jobLogDetail()}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "unit / web" })).toBeVisible();
+    expect(
+      screen.getAllByText((_content, element) =>
+        Boolean(element?.textContent?.includes("CI · Validate run detail")),
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("navigation", { name: "Workflow run jobs" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: /deploy preview/ }),
+    ).toHaveAttribute("href", "/mona/octo-app/actions/runs/run-1/jobs/job-2");
+    expect(screen.getByRole("textbox", { name: "Search log" })).toHaveValue(
+      "error",
+    );
+    expect(screen.getByText("1 matches")).toBeVisible();
+    expect(screen.getByText("Installing dependencies")).toBeVisible();
+    expect(
+      screen.getByText("error: Expected string, found number"),
+    ).toBeVisible();
+    expect(screen.getByText("Type error")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Download log" })).toHaveAttribute(
+      "href",
+      "/mona/octo-app/actions/jobs/job-1/logs/download",
+    );
+  });
+
+  it("collapses steps and toggles annotations without dead controls", () => {
+    const { container } = render(
+      <RepositoryActionsJobLogPage
+        detail={jobLogDetail()}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    const stepButton = screen.getByRole("button", {
+      name: /Run tests/,
+    });
+    expect(stepButton).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(stepButton);
+    expect(stepButton).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByText("error: Expected string, found number"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide annotations" }));
+    expect(screen.queryByText("Problems in this job")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show annotations" }));
+    expect(screen.getByText("Problems in this job")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Log options" }));
+    expect(screen.getByRole("menu")).toHaveTextContent("rendered logs");
+    expect(
+      container.querySelectorAll('a[href="#"], a:not([href])'),
+    ).toHaveLength(0);
+    for (const button of screen.getAllByRole("button")) {
+      expect(button).toHaveAccessibleName(/.+/);
+    }
+  });
+
+  it("renders deleted or unavailable logs as a 410-style state", () => {
+    render(
+      <RepositoryActionsJobLogPage
+        detail={jobLogDetail({
+          logState: {
+            available: false,
+            status: 410,
+            reason: "workflow logs are unavailable",
+            deletedAt: "2026-05-01T00:07:00Z",
+            isLive: false,
+            nextCursor: null,
+          },
+        })}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    const status = screen.getByRole("status");
+    expect(within(status).getByText("410 unavailable")).toBeVisible();
+    expect(
+      within(status).getByText("workflow logs are unavailable"),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Download log" })).toBeDisabled();
+  });
+
+  it("shows backend validation errors while preserving the job shell", () => {
+    render(
+      <RepositoryActionsJobLogPage
+        detail={jobLogDetail({
+          annotations: [],
+          logState: {
+            available: false,
+            status: 410,
+            reason: "Workflow logs are unavailable for this job.",
+            deletedAt: null,
+            isLive: false,
+            nextCursor: null,
+          },
+          steps: [],
+        })}
+        repository={repositoryOverview()}
+        validationError={{
+          error: {
+            code: "not_found",
+            message: "Workflow job could not be loaded.",
+          },
+          status: 404,
+        }}
+      />,
+    );
+
+    expect(screen.getAllByRole("status")[0]).toHaveTextContent(
+      "Workflow job could not be loaded.",
+    );
+    expect(screen.getByRole("heading", { name: "unit / web" })).toBeVisible();
+    expect(
+      screen.getByText("Workflow logs are unavailable for this job."),
+    ).toBeVisible();
+  });
+});

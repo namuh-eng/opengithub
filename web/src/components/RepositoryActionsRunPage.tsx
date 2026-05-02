@@ -115,7 +115,7 @@ function statusGlyph(status: string | null, conclusion: string | null) {
 }
 
 function jobHref(basePath: string, runId: string, jobId: string) {
-  return `${basePath}/actions/runs/${runId}#job-${jobId}`;
+  return `${basePath}/actions/runs/${runId}/jobs/${jobId}`;
 }
 
 function jobState(job: ActionsRunJobDetail) {

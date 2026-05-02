@@ -22,7 +22,7 @@
 
 ## Phase 2: Editorial Job Viewer Page - dedicated job route renders the real workspace
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Build `/{owner}/{repo}/actions/runs/{run_id}/jobs/{job_id}` as an Editorial job-log workspace. The run left sidebar stays visible, the selected job is highlighted, the main panel shows job title/status/duration, annotations toggle, search controls, options menu, and a step list that can expand into stored log chunks.
 

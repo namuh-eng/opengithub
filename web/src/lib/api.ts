@@ -645,6 +645,70 @@ export type ActionsJobLog = {
   downloadHref: string;
 };
 
+export type ActionsJobLogStep = {
+  id: string | null;
+  number: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  durationSeconds: number | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  lines: ListEnvelope<ActionsJobLogLine>;
+  matchCount: number;
+};
+
+export type ActionsJobLogState = {
+  available: boolean;
+  status: number;
+  reason: string | null;
+  deletedAt: string | null;
+  isLive: boolean;
+  nextCursor: number | null;
+};
+
+export type ActionsJobLogSearchMatch = {
+  lineNumber: number;
+  stepId: string | null;
+  stepNumber: number;
+  anchor: string;
+  preview: string;
+};
+
+export type ActionsJobLogSearch = {
+  query: string | null;
+  totalMatches: number;
+  selectedMatch: number | null;
+  matches: ActionsJobLogSearchMatch[];
+};
+
+export type ActionsJobLogOptions = {
+  showTimestamps: boolean;
+  rawLogs: boolean;
+  wrapLines: boolean;
+};
+
+export type RepositoryActionsJobLogDetail = {
+  repository: {
+    id: string;
+    ownerLogin: string;
+    name: string;
+    visibility: RepositoryVisibility;
+    defaultBranch: string;
+  };
+  viewerPermission: string | null;
+  workflow: ActionsRunDetailWorkflow;
+  run: ActionsRunListItem;
+  jobs: ActionsRunJobDetail[];
+  job: ActionsRunJobDetail;
+  steps: ActionsJobLogStep[];
+  annotations: ActionsRunAnnotation[];
+  logState: ActionsJobLogState;
+  search: ActionsJobLogSearch;
+  options: ActionsJobLogOptions;
+  downloadHref: string;
+};
+
 export type ActionsArtifactDownload = {
   artifactId: string;
   name: string;
@@ -2218,6 +2282,19 @@ export function repositoryActionsRunDetailPath(
   )}/actions/runs/${encodeURIComponent(runId)}/detail`;
 }
 
+export function repositoryActionsJobLogDetailPath(
+  owner: string,
+  repo: string,
+  runId: string,
+  jobId: string,
+): string {
+  return `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
+    repo,
+  )}/actions/runs/${encodeURIComponent(runId)}/jobs/${encodeURIComponent(
+    jobId,
+  )}/detail`;
+}
+
 export async function getRepositoryActionsDashboardFromCookie(
   cookie: string | null | undefined,
   owner: string,
@@ -2345,6 +2422,53 @@ export async function getRepositoryActionsRunDetailFromCookie(
   }
 
   return body as RepositoryActionsRunDetail;
+}
+
+export async function getRepositoryActionsJobLogDetailFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  runId: string,
+  jobId: string,
+): Promise<RepositoryActionsJobLogDetail | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}${repositoryActionsJobLogDetailPath(
+        owner,
+        repo,
+        runId,
+        jobId,
+      )}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Workflow job logs are temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "actions_job_log_detail_failed",
+          message: "Workflow job logs could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as RepositoryActionsJobLogDetail;
 }
 
 export function repositoryPullRequestPath(

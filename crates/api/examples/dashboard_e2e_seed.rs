@@ -40,6 +40,7 @@ struct SeedOutput {
     fork_compare_href: String,
     pull_request_merge_href: String,
     actions_run_detail_href: String,
+    actions_job_log_href: String,
 }
 
 fn seed_empty_dashboard() -> bool {
@@ -409,10 +410,10 @@ async fn main() -> anyhow::Result<()> {
     if let Some(marker) = search_e2e_marker() {
         seed_search_documents(&pool, user.id, &username, &marker).await?;
     }
-    let actions_run_detail_href = if seed_actions_run_detail() {
+    let (actions_run_detail_href, actions_job_log_href) = if seed_actions_run_detail() {
         seed_actions_run_detail_repository(&pool, user.id, &username, &suffix).await?
     } else {
-        String::new()
+        (String::new(), String::new())
     };
 
     let session_id = Uuid::new_v4().to_string();
@@ -442,6 +443,7 @@ async fn main() -> anyhow::Result<()> {
         fork_compare_href,
         pull_request_merge_href,
         actions_run_detail_href,
+        actions_job_log_href,
     };
     println!("{}", serde_json::to_string(&output)?);
     Ok(())
@@ -618,7 +620,7 @@ async fn seed_actions_run_detail_repository(
     user_id: Uuid,
     username: &str,
     suffix: &str,
-) -> anyhow::Result<String> {
+) -> anyhow::Result<(String, String)> {
     let repository_name = format!("actions-run-{}", &suffix[..12]);
     let repository = create_repository_with_bootstrap(
         pool,
@@ -833,9 +835,12 @@ async fn seed_actions_run_detail_repository(
     .execute(pool)
     .await?;
 
-    Ok(format!(
-        "/{username}/{repository_name}/actions/runs/{}",
-        run.id
+    Ok((
+        format!("/{username}/{repository_name}/actions/runs/{}", run.id),
+        format!(
+            "/{username}/{repository_name}/actions/runs/{}/jobs/{}",
+            run.id, web_job.id
+        ),
     ))
 }
 
