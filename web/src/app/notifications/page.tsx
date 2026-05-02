@@ -1,30 +1,46 @@
+import { headers } from "next/headers";
 import { AppShell } from "@/components/AppShell";
+import { AppShellFrame } from "@/components/AppShellFrame";
+import { NotificationsInboxPage } from "@/components/NotificationsInboxPage";
+import {
+  getNotificationsFromCookie,
+  type NotificationInboxQuery,
+} from "@/lib/api";
 import { getSessionAndShellContext } from "@/lib/server-session";
 
-export default async function NotificationsPage() {
-  const { session, shellContext } = await getSessionAndShellContext();
+type NotificationsPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+function firstParam(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export default async function NotificationsPage({
+  searchParams,
+}: NotificationsPageProps) {
+  const requestHeaders = await headers();
+  const params = (await searchParams) ?? {};
+  const query: NotificationInboxQuery = {
+    q: firstParam(params.q),
+    folder: firstParam(params.folder),
+    tab: firstParam(params.tab),
+    sort: firstParam(params.sort),
+    group: firstParam(params.group),
+    repo: firstParam(params.repo),
+    page: firstParam(params.page),
+    pageSize: firstParam(params.pageSize),
+  };
+  const [{ session, shellContext }, notifications] = await Promise.all([
+    getSessionAndShellContext(),
+    getNotificationsFromCookie(requestHeaders.get("cookie"), query),
+  ]);
 
   return (
     <AppShell session={session} shellContext={shellContext}>
-      <section className="mx-auto max-w-[1240px] px-6 py-8">
-        <div className="mb-6 flex items-end justify-between gap-4">
-          <div>
-            <p className="t-label" style={{ color: "var(--ink-3)" }}>
-              Inbox
-            </p>
-            <h1 className="t-h1">Notifications</h1>
-          </div>
-          <span className="chip">
-            {shellContext?.unreadNotificationCount ?? 0} unread
-          </span>
-        </div>
-        <div className="card p-6">
-          <p className="t-body" style={{ color: "var(--ink-2)" }}>
-            Notification delivery is available through the Rust data model. The
-            full inbox list arrives in the notification feature phases.
-          </p>
-        </div>
-      </section>
+      <AppShellFrame>
+        <NotificationsInboxPage view={notifications} />
+      </AppShellFrame>
     </AppShell>
   );
 }
