@@ -74,7 +74,7 @@
 
 ## Phase 5: Profile Repository Tabs Guardrails and QA Handoff - finish profiles-002
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Harden privacy, accessibility, URL-state behavior, responsive layout, visual consistency, and bookkeeping. Mark `profiles-002.build_pass=true` only after repository and star tabs are backed by real APIs, filters are URL-backed, rows navigate to concrete repository pages, empty states have working clear actions, and no visible controls are dead.
 

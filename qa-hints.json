@@ -2990,5 +2990,20 @@
       "QA should stress private starred repository visibility for organization-owned repositories once organization profile surfaces are fully wired.",
       "QA should verify large starred lists and language filter combinations beyond the deterministic seed size."
     ]
+  },
+  {
+    "feature_id": "profiles-002",
+    "tests_written": [
+      "Completed Phase 5 final guardrails and marked profiles-002 build_pass=true.",
+      "Added final Vitest coverage for long repository names/descriptions, concrete submit controls, concrete links, empty-state clear actions, and no inert anchors in the repository tab surface.",
+      "Extended profile repository Playwright smoke with an anonymous mobile pass over repositories and stars, including no inert anchors, URL-backed search/sort/clear behavior, no horizontal overflow, and final screenshots.",
+      "Verification passed against local Postgres on localhost:55432 with the postgres role: focused profile_repositories_contract and profile_starred_repositories_contract, focused profile repository Vitest, focused profile repository Playwright, make check, make test with Cargo plus 230 frontend tests, full make test-e2e with 88 Playwright tests, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke uses deterministic Rust-signed local sessions from dashboard_e2e_seed rather than a live Google OAuth browser login.",
+      "Anonymous mobile stars can render an empty public result set when the deterministic starred repository is permission-restricted; QA should verify additional public-starred fixtures when broader seed data exists.",
+      "QA should stress very large repository/star counts, organization-owned private starred repositories, unusual language color values, and recent-visit write failures.",
+      "Final screenshots captured: profiles-002-final-mobile-repositories.jpg and profiles-002-final-mobile-stars.jpg."
+    ]
   }
 ]

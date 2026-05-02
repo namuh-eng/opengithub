@@ -304,4 +304,50 @@ describe("profile repository tab", () => {
       screen.getAllByRole("link", { name: "Clear filters" })[0],
     ).toHaveAttribute("href", "/ashley?tab=repositories");
   });
+
+  it("keeps long repository content readable with concrete controls only", () => {
+    const longName =
+      "editorial-repository-with-a-very-long-name-that-should-wrap-cleanly";
+    const { container } = render(
+      <UserProfilePage
+        activeTab="repositories"
+        profile={profile()}
+        repositoryList={repositoryList({
+          items: [
+            repository({
+              id: "repo-long",
+              name: longName,
+              fullName: `ashley/${longName}`,
+              href: `/ashley/${longName}`,
+              description:
+                "A long description exercises the dense profile repository row so metadata, chips, and controls remain readable on narrow screens.",
+            }),
+          ],
+          total: 1,
+          filters: {
+            query: "long",
+            repositoryType: "all",
+            language: null,
+            sort: "updated-desc",
+            page: 1,
+            pageSize: 30,
+          },
+        })}
+        session={session}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: longName })).toHaveAttribute(
+      "href",
+      `/ashley/${longName}`,
+    );
+    expect(
+      screen.getByText(/A long description exercises the dense profile/),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Filter" })).toHaveAttribute(
+      "type",
+      "submit",
+    );
+    expect(container.querySelector('a[href="#"], a:not([href])')).toBeNull();
+  });
 });

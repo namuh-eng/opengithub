@@ -1,3 +1,11 @@
+2026-05-02 - profiles-002 phase 5 guardrails and feature completion
+
+- Completed Phase 5 from `.qrspi/profiles-002/structure.md`: profile repository and starred repository tabs now have final privacy, accessibility, URL-state, responsive, no-dead-control, and QA handoff guardrails.
+- Added final Vitest coverage for long repository content, concrete submit controls, empty-state clear actions, concrete row links, and no inert anchors in `ProfileRepositoryTabs`.
+- Extended `web/tests/e2e/profile-repositories.spec.ts` with anonymous mobile smoke for repositories and stars, covering URL-backed search/sort/clear interactions, no inert anchors, no horizontal overflow, and final screenshots at `ralph/screenshots/build/profiles-002-final-mobile-repositories.jpg` and `ralph/screenshots/build/profiles-002-final-mobile-stars.jpg`.
+- Verification passed against local Postgres on `localhost:55432` with the `postgres` role: focused `profile_repositories_contract` and `profile_starred_repositories_contract`; focused `web/tests/user-profile-repositories.test.tsx`; focused `web/tests/e2e/profile-repositories.spec.ts`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 230 frontend tests; full same-env `make test-e2e` with 88 Playwright tests; mandatory Editorial banned-value scan returned zero matches using `rg -n -e`.
+- Marked Phase 5 as done in `.qrspi/profiles-002/structure.md` and set `profiles-002.build_pass` to `true` in `prd.json`; `qa_pass` remains `false`.
+
 2026-05-02 - profiles-002 phase 2 Editorial repository tab shell
 
 - Completed Phase 2 from `.qrspi/profiles-002/structure.md`: `/{user}?tab=repositories` now renders a concrete Editorial repository results surface using the Phase 1 profile repository API.

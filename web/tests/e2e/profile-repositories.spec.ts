@@ -196,3 +196,59 @@ test("profile stars tab renders starred rows and stars filters", async ({
     .click();
   await expect(page).toHaveURL(new RegExp(`${seeded.secondRepositoryHref}$`));
 });
+
+test("anonymous mobile profile repository tabs stay responsive and actionable", async ({
+  page,
+}) => {
+  const seeded = seedProfile();
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.goto(`${profileHref(seeded)}?tab=repositories`);
+  await expect(
+    page.getByRole("heading", { name: "Repositories" }),
+  ).toBeVisible();
+  await expect(
+    page.locator(`a[href="${seeded.firstRepositoryHref}"]`).first(),
+  ).toBeVisible();
+  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
+  await page.getByLabel("Search", { exact: true }).fill("no-results-final");
+  await page.getByRole("button", { name: "Filter" }).click();
+  await expect(
+    page.getByText("No repositories matched these filters."),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Clear filters" }).first().click();
+  await expect(page).toHaveURL(
+    new RegExp(`${profileHref(seeded)}\\?tab=repositories$`),
+  );
+  let overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  );
+  expect(overflow).toBe(false);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/profiles-002-final-mobile-repositories.jpg",
+  });
+
+  await page.goto(`${profileHref(seeded)}?tab=stars`);
+  await expect(
+    page.getByRole("heading", { name: "Starred repositories" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Search", { exact: true })).toBeVisible();
+  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
+  await page
+    .getByLabel("Sort", { exact: true })
+    .selectOption("recently-active");
+  await page.getByRole("button", { name: "Filter" }).click();
+  await expect(page).toHaveURL(/tab=stars/);
+  await expect(page).toHaveURL(/sort=recently-active/);
+  await page.getByRole("link", { name: "Sort: Recently active x" }).click();
+  await expect(page).not.toHaveURL(/sort=recently-active/);
+  overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  );
+  expect(overflow).toBe(false);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/profiles-002-final-mobile-stars.jpg",
+  });
+});
