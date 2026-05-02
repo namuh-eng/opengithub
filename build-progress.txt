@@ -2125,3 +2125,11 @@
 - The first full E2E run passed 89/90 and failed only because the API was started with `API_URL=http://localhost:3016`, producing local clone URLs; restarting the API without `API_URL` restored the expected `opengithub.namuh.co` clone URL contract and the full suite passed.
 - A TEST_DATABASE_URL-backed full `make test` still exposes broader stale owner-login expectations in unrelated PR/API contract suites; the focused org Rust contract passed against the same database and the standard `make test` target passed.
 - Marked Phase 5 as done in `.qrspi/orgs-001/structure.md` and set `orgs-001.build_pass` to `true` in `prd.json`; `qa_pass` remains `false` for the QA agent.
+
+2026-05-03 - orgs-002 structure planning
+
+- Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `web/AGENTS.md`, the first incomplete `prd.json` entry, `.qrspi/orgs-001/structure.md`, `design/project/wf-profiles.jsx`, current organization backend routes/domain, current `OrganizationProfilePage`, profile repository-tab backend/frontend patterns, and existing organization/profile tests.
+- Determined `orgs-002` requires structure planning before implementation because `needs_structure: true` and `.qrspi/orgs-002/structure.md` did not exist.
+- Added `.qrspi/orgs-002/structure.md` with five independently verifiable vertical phases: org repository list API, Editorial repository tab shell, URL-backed repository filters/pagination, public people list API/UI, and final privacy/visual/QA guardrails.
+- Did not change `prd.json`; `build_pass` remains `false` until all implementation phases pass verification.
+- Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches using `rg -n -e` after the local `rg -E` form failed to parse the pattern.
