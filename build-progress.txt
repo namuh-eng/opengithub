@@ -1927,3 +1927,13 @@
 - Verification passed: `cargo test -p opengithub-api --test api_user_profiles_contract`; `cd web && npx vitest run tests/user-profile-overview.test.tsx`; `cd web && npx tsc --noEmit`; mandatory Editorial banned-value scan returned zero matches; `make SETUP_DONE=.ralph-setup-done check`; `make SETUP_DONE=.ralph-setup-done test` with Cargo tests plus 217 frontend tests.
 - Plain `make check` initially stopped at the setup guard because `.ralph-setup-done` is absent in this isolated worktree; validation used the non-mutating `SETUP_DONE=.ralph-setup-done` make override. The first full `make test` attempt also failed after many passing suites with a missing generated `identity_foundation` test binary; targeted rerun passed and the subsequent full `make test` passed.
 - Marked `profiles-001.needs_structure=false` and `profiles-001.build_pass=true` in `prd.json`; `qa_pass` remains `false` for independent QA.
+2026-05-02 - notifications-001 signed-in inbox build
+
+- Created `.qrspi/notifications-001/structure.md` and implemented the notifications inbox vertical slice.
+- Added authenticated Rust API routes for `GET /api/notifications` and `PATCH /api/notifications/:id/read`, backed by persisted notifications/repositories/issues/pulls/actions/releases where available.
+- Replaced the `/notifications` placeholder with an Editorial signed-in inbox: folders, default filters, repository buckets, All/Unread tabs, query search, sort/group controls, cleanup notice, selectable rows, unread/read indicators, subscription/save/done state chips, and empty states.
+- Added `/notifications/[notificationId]/open` to mark a row read before redirecting to the source target.
+- Added focused Rust and Vitest tests for API filtering/grouping/mark-read behavior and UI controls/row states.
+- Verification passed: focused `cargo test -p opengithub-api --test api_notifications_inbox_contract`; focused `cd web && npx vitest run tests/notifications-inbox.test.tsx`; `cd web && npx tsc --noEmit --pretty false`; mandatory banned-value scan returned zero matches; `make check`; `CARGO_INCREMENTAL=0 make test` with Cargo tests plus 215 frontend tests.
+- `make test` initially hit disk exhaustion during Rust test linking; cleared local build/cache artifacts and reran successfully.
+- Set `notifications-001.build_pass=true`, `needs_structure=false`, and left `qa_pass=false` for independent QA.

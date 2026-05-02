@@ -2820,6 +2820,16 @@
       "Projects/packages tab counts are currently zero-backed until those domain slices land; tabs are concrete URL navigation placeholders preserving the identity column.",
       "Contribution graph reads profile_contribution_days plus authored commits; production backfill/scheduled aggregation should populate days/events continuously.",
       "Initial make test attempt failed after many passing suites because the identity_foundation test binary was missing from target; rerunning the targeted identity suite and then make test passed."
+    "feature_id": "notifications-001",
+    "tests_written": [
+      "Added Rust API contract coverage in crates/api/tests/api_notifications_inbox_contract.rs for authenticated /api/notifications, reason/repo filters, repository grouping, unread tab, repository buckets, subscribed row state, and PATCH mark-read behavior.",
+      "Added Vitest coverage in web/tests/notifications-inbox.test.tsx for folders, default filters, repository buckets, All/Unread tabs, query search form, sort/group links, row open hrefs, unread/subscribed states, and editable empty states.",
+      "Verification passed: focused cargo test -p opengithub-api --test api_notifications_inbox_contract; focused cd web && npx vitest run tests/notifications-inbox.test.tsx; cd web && npx tsc --noEmit --pretty false; mandatory Editorial banned-value scan returned zero matches; make check passed; CARGO_INCREMENTAL=0 make test passed with Cargo tests plus 215 frontend tests."
+    ],
+    "needs_deeper_qa": [
+      "Independent QA should exercise /notifications in a browser with a seeded signed-in user and verify row redirects mark notifications read before opening issue/PR/action/release targets.",
+      "Saved and Done folders are wired into the query model and empty states, but persistence columns for saved/done notification state are not present yet; rows currently report saved=false and done=false with a clear upgrade path in the typed API.",
+      "No full Playwright E2E was added for this slice; build lane focused on API contract, component rendering, make check, and make test."
     ]
   }
 ]
