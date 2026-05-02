@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { useMemo, useState } from "react";
 import type {
   ApiErrorEnvelope,
   CodeSearchChip,
@@ -141,14 +144,37 @@ function ActiveChip({ chip }: { chip: CodeSearchChip }) {
   );
 }
 
+function lineHref(
+  blobHref: string | null,
+  fallbackHref: string,
+  line: number | null,
+) {
+  const baseHref = blobHref ?? fallbackHref.split("#")[0] ?? fallbackHref;
+  return line && line > 0 ? `${baseHref}#L${line}` : baseHref;
+}
+
 function CodeResultCard({ result }: { result: GlobalSearchResult }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const snippet = result.snippet;
+  const snippets = useMemo(() => {
+    if (result.snippets.length > 0) {
+      return result.snippets;
+    }
+    return snippet ? [snippet] : [];
+  }, [result.snippets, snippet]);
   const repoLabel =
     result.owner_login && result.repository_name
       ? `${result.owner_login}/${result.repository_name}`
       : "repository";
   const path = snippet?.path ?? result.document.path ?? result.title;
   const language = snippet?.language ?? result.document.language;
+  const visibleSnippets = expanded ? snippets : snippets.slice(0, 3);
+  const hiddenCount = Math.max(
+    result.hidden_match_count,
+    snippets.length - visibleSnippets.length,
+  );
+  const matchCount = Math.max(result.match_count, snippets.length);
 
   return (
     <article className="card p-0">
@@ -159,7 +185,11 @@ function CodeResultCard({ result }: { result: GlobalSearchResult }) {
           </p>
           <Link
             className="mt-1 block truncate font-semibold"
-            href={result.href}
+            href={lineHref(
+              result.blob_href,
+              result.href,
+              snippet?.line_number ?? null,
+            )}
           >
             {path}
             {snippet?.line_number ? (
@@ -170,6 +200,9 @@ function CodeResultCard({ result }: { result: GlobalSearchResult }) {
           </Link>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <span className="chip soft">
+            {matchCount} {matchCount === 1 ? "match" : "matches"}
+          </span>
           {language ? <span className="chip soft">{language}</span> : null}
           {result.commit ? (
             <span className="t-mono-sm" style={{ color: "var(--ink-3)" }}>
@@ -177,30 +210,87 @@ function CodeResultCard({ result }: { result: GlobalSearchResult }) {
             </span>
           ) : null}
           <span className="chip soft">{result.visibility}</span>
+          <button
+            aria-expanded={!collapsed}
+            className="btn sm"
+            onClick={() => setCollapsed((value) => !value)}
+            type="button"
+          >
+            {collapsed ? "Expand" : "Collapse"}
+          </button>
         </div>
       </div>
-      <div className="overflow-x-auto p-4">
-        {snippet ? (
-          <pre
-            className="t-mono-sm m-0"
-            style={{ color: "var(--ink-2)", whiteSpace: "pre-wrap" }}
-          >
-            <span style={{ color: "var(--ink-4)" }}>
-              {String(snippet.line_number ?? 1).padStart(4, " ")}
-            </span>
-            <span aria-hidden="true"> </span>
-            <HighlightedFragment
-              fragment={snippet.fragment}
-              ranges={snippet.match_ranges}
-            />
-          </pre>
-        ) : (
+      {!collapsed ? (
+        <div className="overflow-x-auto p-4">
+          {visibleSnippets.length > 0 ? (
+            <div className="min-w-[520px] overflow-hidden rounded-[var(--radius)] border border-[color:var(--line-soft)]">
+              {visibleSnippets.map((match, index) => {
+                const href = lineHref(
+                  result.blob_href,
+                  result.href,
+                  match.line_number,
+                );
+                return (
+                  <div
+                    className="grid grid-cols-[72px_minmax(0,1fr)] border-b border-[color:var(--line-soft)] last:border-b-0"
+                    key={`${match.line_number ?? index}:${match.fragment}`}
+                  >
+                    <Link
+                      className="t-mono-sm px-3 py-2 text-right"
+                      href={href}
+                      style={{ color: "var(--ink-4)" }}
+                    >
+                      {match.line_number ?? index + 1}
+                    </Link>
+                    <pre
+                      className="t-mono-sm m-0 px-3 py-2"
+                      style={{
+                        color: "var(--ink-2)",
+                        whiteSpace: "pre-wrap",
+                      }}
+                    >
+                      <HighlightedFragment
+                        fragment={match.fragment}
+                        ranges={match.match_ranges}
+                      />
+                    </pre>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="t-sm" style={{ color: "var(--ink-3)" }}>
+              Indexed file match is available. Open the file to inspect the
+              current default-branch content.
+            </p>
+          )}
+          {!expanded && hiddenCount > 0 ? (
+            <button
+              className="btn sm mt-3"
+              onClick={() => setExpanded(true)}
+              type="button"
+            >
+              Show {hiddenCount} more {hiddenCount === 1 ? "match" : "matches"}
+            </button>
+          ) : null}
+          {expanded && snippets.length > 3 ? (
+            <button
+              className="btn sm mt-3"
+              onClick={() => setExpanded(false)}
+              type="button"
+            >
+              Show fewer matches
+            </button>
+          ) : null}
+        </div>
+      ) : (
+        <div className="p-4">
           <p className="t-sm" style={{ color: "var(--ink-3)" }}>
-            Indexed file match is available. Open the file to inspect the
-            current default-branch content.
+            Snippets hidden. Expand this file to review matching lines without
+            changing the current search URL.
           </p>
-        )}
-      </div>
+        </div>
+      )}
     </article>
   );
 }

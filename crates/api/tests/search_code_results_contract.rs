@@ -207,7 +207,9 @@ async fn code_search_returns_facets_chips_counts_and_validation_errors() {
             visibility: RepositoryVisibility::Public,
             resource_id: format!("public-rust-{marker}"),
             title: format!("Router {marker}"),
-            body: format!("fn router_{marker}() {{ build_routes(); }}"),
+            body: format!(
+                "fn router_{marker}() {{ build_routes(); }}\nlet {marker}_middleware = tower_layer();\nassert!({marker}_middleware.ready());\ntracing::info!(\"{marker} complete\");"
+            ),
             path: "src/router.rs".to_owned(),
             language: "Rust".to_owned(),
         },
@@ -302,6 +304,29 @@ async fn code_search_returns_facets_chips_counts_and_validation_errors() {
         .unwrap()
         .iter()
         .any(|item| item["document"]["visibility"] == "private"));
+    let grouped_rust_item = body["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["document"]["path"] == "src/router.rs")
+        .expect("public Rust result should be present");
+    assert_eq!(grouped_rust_item["match_count"], 4);
+    assert_eq!(grouped_rust_item["hidden_match_count"], 1);
+    assert_eq!(
+        grouped_rust_item["blob_href"],
+        format!(
+            "/{}/{}/blob/main/src/router.rs",
+            owner.email.replace('@', "%40"),
+            public_repo.name
+        )
+    );
+    assert_eq!(grouped_rust_item["snippets"].as_array().unwrap().len(), 4);
+    assert_eq!(grouped_rust_item["snippets"][0]["line_number"], 1);
+    assert!(grouped_rust_item["snippets"][0]["match_ranges"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|range| range["end"].as_i64().unwrap() > range["start"].as_i64().unwrap()));
     assert!(body["facets"]["languages"]
         .as_array()
         .unwrap()

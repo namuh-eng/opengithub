@@ -507,10 +507,10 @@ async fn seed_search_documents(
             files: vec![RepositorySnapshotFile {
                 path: "src/search_phase_three.rs".to_owned(),
                 content: format!(
-                    "pub fn {marker}() {{\n    println!(\"search phase three\");\n}}\n"
+                    "pub fn {marker}() {{\n    let {marker}_router = true;\n    println!(\"search phase three {marker}\");\n    assert!({marker}_router);\n    tracing::info!(\"{marker} indexed\");\n}}\n"
                 ),
                 oid: format!("blob-{marker}"),
-                byte_size: 72,
+                byte_size: 180,
             }],
         },
     )

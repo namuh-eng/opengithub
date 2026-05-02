@@ -41,6 +41,10 @@ function result(
     visibility: overrides.visibility ?? "public",
     updated_at: overrides.updated_at ?? "2026-05-01T00:00:00Z",
     snippet: overrides.snippet ?? null,
+    snippets: overrides.snippets ?? [],
+    match_count: overrides.match_count ?? (overrides.snippet ? 1 : 0),
+    hidden_match_count: overrides.hidden_match_count ?? 0,
+    blob_href: overrides.blob_href ?? null,
     commit: overrides.commit ?? null,
   };
 }

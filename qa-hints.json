@@ -2683,5 +2683,24 @@
       "Browser smoke uses deterministic Rust-signed local sessions and seeded Postgres search data, not real Google OAuth.",
       "Organization/team permission edges and large facet lists should be rechecked once richer search index data is available."
     ]
+  },
+  {
+    "feature_id": "search-003",
+    "tests_written": [
+      "Implemented Phase 3 grouped code snippets and expansion for /search?q={query}&type=code.",
+      "Added additive Rust code-search result fields: snippets, match_count, hidden_match_count, and blob_href while preserving the existing single snippet field.",
+      "Updated CodeSearchResultsPage with grouped line-number anchors, highlighted match fragments, Collapse/Expand controls, and Show more/Show fewer match controls.",
+      "Extended the Playwright search seed so code fixtures contain multiple query matches across real blob lines.",
+      "Added Rust contract coverage for grouped snippets, match counts, hidden-match count, blob href, line numbers, and match ranges.",
+      "Added Vitest coverage for grouped snippet anchors, expansion, collapse, and no dead controls.",
+      "Added focused Playwright coverage for seeded code search, hidden-match expansion, collapse/expand, line-anchor navigation, and screenshot ralph/screenshots/build/search-003-phase3-snippet-expansion.jpg.",
+      "Verification passed: focused search_code_results_contract, focused search-code-results Vitest, focused search-code Playwright, TEST_DATABASE_URL-backed make check, same-env make test with Cargo tests plus 208 frontend tests, full same-env make test-e2e with 76 Playwright tests, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 expansion is client-side for the returned top 20 snippet matches; very large files and pagination across many per-file matches remain future hardening.",
+      "Facet mutation, advanced owner/symbol/archive controls, and saved-search creation remain Phase 4.",
+      "Browser smoke uses deterministic Rust-signed local sessions and seeded Postgres data, not real Google OAuth.",
+      "The snippet extractor uses search_documents body/metadata today; richer repository_file_index and symbol-aware ranking still need later search index hardening."
+    ]
   }
 ]

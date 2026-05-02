@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { CodeSearchResultsPage } from "@/components/CodeSearchResultsPage";
 import type { CodeSearchResponse, GlobalSearchResult } from "@/lib/api";
@@ -48,6 +48,45 @@ function codeResult(
       language: "Rust",
       match_ranges: [{ start: 9, end: 28 }],
     },
+    snippets: overrides.snippets ?? [
+      {
+        path: "crates/api/src/search.rs",
+        branch: "main",
+        line_number: 42,
+        fragment: "async fn search_code_results() {}",
+        language: "Rust",
+        match_ranges: [{ start: 9, end: 28 }],
+      },
+      {
+        path: "crates/api/src/search.rs",
+        branch: "main",
+        line_number: 47,
+        fragment: "let search_code_results = router.layer(middleware);",
+        language: "Rust",
+        match_ranges: [{ start: 4, end: 23 }],
+      },
+      {
+        path: "crates/api/src/search.rs",
+        branch: "main",
+        line_number: 53,
+        fragment: "assert!(search_code_results.is_ready());",
+        language: "Rust",
+        match_ranges: [{ start: 8, end: 27 }],
+      },
+      {
+        path: "crates/api/src/search.rs",
+        branch: "main",
+        line_number: 61,
+        fragment: "search_code_results.await;",
+        language: "Rust",
+        match_ranges: [{ start: 0, end: 19 }],
+      },
+    ],
+    match_count: overrides.match_count ?? 4,
+    hidden_match_count: overrides.hidden_match_count ?? 1,
+    blob_href:
+      overrides.blob_href ??
+      "/mona/editorial-search/blob/main/crates/api/src/search.rs",
     commit: overrides.commit ?? null,
   };
 }
@@ -156,7 +195,51 @@ describe("CodeSearchResultsPage", () => {
       "href",
       "/mona/editorial-search/blob/main/crates/api/src/search.rs#L42",
     );
-    expect(screen.getByText("search_code_results")).toBeVisible();
+    expect(screen.getByRole("link", { name: "42" })).toHaveAttribute(
+      "href",
+      "/mona/editorial-search/blob/main/crates/api/src/search.rs#L42",
+    );
+    expect(screen.getByRole("link", { name: "47" })).toHaveAttribute(
+      "href",
+      "/mona/editorial-search/blob/main/crates/api/src/search.rs#L47",
+    );
+    expect(screen.getAllByText("search_code_results").length).toBeGreaterThan(
+      0,
+    );
+  });
+
+  it("collapses and expands grouped file snippets without dead controls", () => {
+    render(
+      <CodeSearchResultsPage
+        query="search_code_results language:Rust"
+        results={codeResponse()}
+      />,
+    );
+
+    expect(screen.getByText("4 matches")).toBeVisible();
+    expect(screen.getByRole("link", { name: "42" })).toBeVisible();
+    expect(screen.queryByRole("link", { name: "61" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show 1 more match" }));
+    expect(screen.getByRole("link", { name: "61" })).toHaveAttribute(
+      "href",
+      "/mona/editorial-search/blob/main/crates/api/src/search.rs#L61",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse" }));
+    expect(screen.getByText(/Snippets hidden/)).toBeVisible();
+    expect(screen.queryByRole("link", { name: "42" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand" }));
+    expect(screen.getByRole("link", { name: "42" })).toBeVisible();
+    expect(
+      document.querySelectorAll('a[href="#"], a:not([href])'),
+    ).toHaveLength(0);
+    for (const button of Array.from(document.querySelectorAll("button"))) {
+      expect(
+        button.textContent?.trim() || button.getAttribute("aria-label"),
+      ).toBeTruthy();
+    }
   });
 
   it("renders inline API errors and keeps controls concrete", () => {

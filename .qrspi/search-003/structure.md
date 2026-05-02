@@ -38,7 +38,7 @@
 
 ## Phase 3: Snippet Groups and Expansion - file cards expose line anchors and hidden matches
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make individual code results behave like grouped file matches. Each card should show repository/path/language context, line-number anchors, highlighted query terms, collapse/expand state, and a working "Show N more matches" action that reveals additional snippets without losing the URL-backed search state.
 

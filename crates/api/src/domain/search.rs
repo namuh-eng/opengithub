@@ -219,6 +219,10 @@ pub struct SearchResult {
     pub visibility: RepositoryVisibility,
     pub updated_at: DateTime<Utc>,
     pub snippet: Option<SearchSnippet>,
+    pub snippets: Vec<SearchSnippet>,
+    pub match_count: i64,
+    pub hidden_match_count: i64,
+    pub blob_href: Option<String>,
     pub commit: Option<SearchCommitSummary>,
 }
 
@@ -545,6 +549,10 @@ pub async fn search_documents(
             repository_name.as_deref(),
         );
         let snippet = code_snippet_for_document(&document, query);
+        let snippets = code_snippets_for_document(&document, query);
+        let match_count = snippets.len() as i64;
+        let hidden_match_count = (match_count - 3).max(0);
+        let blob_href = code_blob_href(&document, owner_login.as_deref(), repository_name.as_deref());
         let commit = commit_summary_for_document(&document);
         items.push(SearchResult {
             title: document.title.clone(),
@@ -560,6 +568,10 @@ pub async fn search_documents(
             display_name,
             avatar_url,
             snippet,
+            snippets,
+            match_count,
+            hidden_match_count,
+            blob_href,
             commit,
         });
     }
@@ -718,6 +730,10 @@ pub async fn search_code_results(
             repository_name.as_deref(),
         );
         let snippet = code_snippet_for_document(&document, &parsed.terms);
+        let snippets = code_snippets_for_document(&document, &parsed.terms);
+        let match_count = snippets.len() as i64;
+        let hidden_match_count = (match_count - 3).max(0);
+        let blob_href = code_blob_href(&document, owner_login.as_deref(), repository_name.as_deref());
         items.push(SearchResult {
             title: document.title.clone(),
             visibility: document.visibility.clone(),
@@ -732,6 +748,10 @@ pub async fn search_code_results(
             display_name,
             avatar_url,
             snippet,
+            snippets,
+            match_count,
+            hidden_match_count,
+            blob_href,
             commit: None,
         });
     }
@@ -1732,6 +1752,124 @@ fn code_snippet_for_document(document: &SearchDocument, query: &str) -> Option<S
     })
 }
 
+fn code_snippets_for_document(document: &SearchDocument, query: &str) -> Vec<SearchSnippet> {
+    if document.kind != SearchDocumentKind::Code {
+        return Vec::new();
+    }
+
+    let Some(path) = document.path.clone() else {
+        return Vec::new();
+    };
+    let branch = document
+        .branch
+        .clone()
+        .or_else(|| metadata_string(&document.metadata, "branch"))
+        .unwrap_or_else(|| "main".to_owned());
+    let language = document.language.clone();
+
+    let mut snippets = metadata_snippets(&document.metadata, query, &path, &branch, language.clone());
+    if snippets.is_empty() {
+        snippets = body_snippets(document, query, &path, &branch, language);
+    }
+    if snippets.is_empty() {
+        if let Some(snippet) = code_snippet_for_document(document, query) {
+            snippets.push(snippet);
+        }
+    }
+    snippets.sort_by_key(|snippet| snippet.line_number.unwrap_or(i64::MAX));
+    snippets
+}
+
+fn metadata_snippets(
+    metadata: &serde_json::Value,
+    query: &str,
+    path: &str,
+    branch: &str,
+    language: Option<String>,
+) -> Vec<SearchSnippet> {
+    let Some(values) = metadata
+        .get("snippets")
+        .or_else(|| metadata.get("matches"))
+        .and_then(serde_json::Value::as_array)
+    else {
+        return Vec::new();
+    };
+
+    values
+        .iter()
+        .filter_map(|value| {
+            let fragment = metadata_string(value, "fragment")
+                .or_else(|| metadata_string(value, "text"))
+                .or_else(|| metadata_string(value, "line"))?;
+            let fragment = fragment.trim();
+            if fragment.is_empty() {
+                return None;
+            }
+            let line_number = value
+                .get("lineNumber")
+                .and_then(serde_json::Value::as_i64)
+                .or_else(|| value.get("line_number").and_then(serde_json::Value::as_i64));
+            Some(SearchSnippet {
+                path: path.to_owned(),
+                branch: branch.to_owned(),
+                line_number,
+                fragment: fragment.to_owned(),
+                language: language.clone(),
+                match_ranges: match_ranges_for_fragment(fragment, query),
+            })
+        })
+        .collect()
+}
+
+fn body_snippets(
+    document: &SearchDocument,
+    query: &str,
+    path: &str,
+    branch: &str,
+    language: Option<String>,
+) -> Vec<SearchSnippet> {
+    let terms = query_terms(query);
+    document
+        .body
+        .lines()
+        .enumerate()
+        .filter_map(|(index, line)| {
+            let fragment = line.trim();
+            if fragment.is_empty() {
+                return None;
+            }
+            let lower = fragment.to_ascii_lowercase();
+            if !terms.is_empty() && !terms.iter().any(|term| lower.contains(term)) {
+                return None;
+            }
+            Some(SearchSnippet {
+                path: path.to_owned(),
+                branch: branch.to_owned(),
+                line_number: Some((index + 1) as i64),
+                fragment: fragment.to_owned(),
+                language: language.clone(),
+                match_ranges: match_ranges_for_fragment(fragment, query),
+            })
+        })
+        .take(20)
+        .collect()
+}
+
+fn query_terms(query: &str) -> Vec<String> {
+    query
+        .split_whitespace()
+        .filter(|token| !token.contains(':'))
+        .map(|token| {
+            token
+                .trim_matches(|character: char| {
+                    character == '"' || character == '\'' || !character.is_alphanumeric()
+                })
+                .to_ascii_lowercase()
+        })
+        .filter(|token| token.len() >= 2)
+        .collect()
+}
+
 fn commit_summary_for_document(document: &SearchDocument) -> Option<SearchCommitSummary> {
     if document.kind != SearchDocumentKind::Commit {
         return None;
@@ -1746,6 +1884,27 @@ fn commit_summary_for_document(document: &SearchDocument) -> Option<SearchCommit
         author_login: metadata_string(&document.metadata, "authorLogin"),
         committed_at: metadata_string(&document.metadata, "committedAt")
             .and_then(|value| value.parse::<DateTime<Utc>>().ok()),
+    })
+}
+
+fn code_blob_href(
+    document: &SearchDocument,
+    owner_login: Option<&str>,
+    repository_name: Option<&str>,
+) -> Option<String> {
+    if document.kind != SearchDocumentKind::Code {
+        return None;
+    }
+    owner_login.zip(repository_name).map(|(owner, repo)| {
+        let branch = document.branch.as_deref().unwrap_or("main");
+        let path = document.path.as_deref().unwrap_or("");
+        format!(
+            "/{}/{}/blob/{}/{}",
+            percent_encode_segment(owner),
+            percent_encode_segment(repo),
+            percent_encode_segment(branch),
+            percent_encode_path(path)
+        )
     })
 }
 

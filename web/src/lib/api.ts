@@ -1882,6 +1882,17 @@ export type GlobalSearchResult = {
     language: string | null;
     match_ranges: { start: number; end: number }[];
   } | null;
+  snippets: {
+    path: string;
+    branch: string;
+    line_number: number | null;
+    fragment: string;
+    language: string | null;
+    match_ranges: { start: number; end: number }[];
+  }[];
+  match_count: number;
+  hidden_match_count: number;
+  blob_href: string | null;
   commit: {
     oid: string;
     short_oid: string;
