@@ -2664,5 +2664,24 @@
       "Qualifier parsing intentionally supports the Phase 1 bounded set and rejects unsupported qualifiers; regex/boolean syntax should be revisited in later parser phases.",
       "Private leakage was tested with direct repository ownership; organization/team permission edge cases should be rechecked when the UI consumes this endpoint."
     ]
+  },
+  {
+    "feature_id": "search-003",
+    "tests_written": [
+      "Implemented Phase 2 Editorial code results shell for /search?q={query}&type=code.",
+      "Added CodeSearchResultsPage with two-pane filter rail, result type counts, language/path facets, active query chips, Save/view links, advanced filter form, inline errors, and dense code result cards.",
+      "Changed the Next.js search page to call the richer Rust code-search contract for type=code while preserving the shared generic shell for other search tabs.",
+      "Added URL helpers for code-search qualifier add/remove links and view/save state.",
+      "Added Vitest coverage for workspace structure, type-switch links, facet/chip URLs, line-anchor result links, API error state, and no inert links/buttons.",
+      "Extended Playwright search smoke for the dedicated code page and saved ralph/screenshots/build/search-003-phase2-code-results-shell.jpg.",
+      "Verification passed: focused search-code/search-results Vitest, TEST_DATABASE_URL-backed make check, same-env make test with Cargo tests plus 207 frontend tests, full same-env make test-e2e with 75 Playwright tests, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 renders one snippet per indexed file result; grouped multi-match expansion and collapse are Phase 3.",
+      "Facet and chip controls are URL-backed links, but advanced owner/symbol/archive controls are still a basic form until Phase 4 wires full URL-backed qualifier mutation.",
+      "Save currently deep-links to the saved-search state; the nested saved-search create flow integration belongs to Phase 4.",
+      "Browser smoke uses deterministic Rust-signed local sessions and seeded Postgres search data, not real Google OAuth.",
+      "Organization/team permission edges and large facet lists should be rechecked once richer search index data is available."
+    ]
   }
 ]

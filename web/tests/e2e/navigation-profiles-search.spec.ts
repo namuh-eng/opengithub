@@ -94,7 +94,7 @@ test("profile, organization, team, and search skeleton routes stay navigable", a
 
   await page.goto("/search?q=router&type=code");
   await expect(
-    page.getByRole("heading", { name: "Search opengithub" }),
+    page.getByRole("heading", { name: "Search indexed code" }),
   ).toBeVisible();
   await expect(page.getByText(/code results/)).toBeVisible();
   await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);

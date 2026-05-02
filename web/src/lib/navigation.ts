@@ -585,6 +585,35 @@ export function searchTypeHref(type: string, query: string | null | undefined) {
   return queryTabHref("/search", "type", type, { q: query });
 }
 
+export function codeSearchHref(
+  query: string,
+  extraParams: Record<string, string | null | undefined> = {},
+) {
+  return searchHref(query, "code", extraParams);
+}
+
+function quoteSearchQualifierValue(value: string) {
+  return /\s/.test(value) ? `"${value.replaceAll('"', '\\"')}"` : value;
+}
+
+export function addCodeSearchQualifierHref(
+  query: string,
+  qualifier: string,
+  value: string,
+) {
+  const nextQuery =
+    `${query.trim()} ${qualifier}:${quoteSearchQualifierValue(value)}`.trim();
+  return codeSearchHref(nextQuery);
+}
+
+export function removeCodeSearchQualifierHref(removeQuery: string) {
+  return codeSearchHref(removeQuery);
+}
+
+export function codeSearchViewHref(query: string, view: string) {
+  return codeSearchHref(query, { view });
+}
+
 export function searchQueryHref(query: string) {
   return searchTypeHref("repositories", query);
 }

@@ -109,6 +109,16 @@ test("code and commit search link to repository files and commits", async ({
   await signIn(page, seeded);
 
   await page.goto(`/search?q=${marker}&type=code`);
+  await expect(
+    page.getByRole("heading", { name: "Search indexed code" }),
+  ).toBeVisible();
+  await expect(page.getByText("Result types")).toBeVisible();
+  await expect(page.getByText("Languages")).toBeVisible();
+  await expect(page.getByText("Paths")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Save" })).toHaveAttribute(
+    "href",
+    `/search?q=${marker}&type=code&saved=1`,
+  );
   await expect(page.getByText(/1 code results/)).toBeVisible();
   const codeResult = page.getByRole("link", {
     name: /src\/search_phase_three\.rs/,
@@ -118,6 +128,11 @@ test("code and commit search link to repository files and commits", async ({
     /\/blob\/main\/src\/search_phase_three\.rs#L1/,
   );
   await expect(page.getByText(new RegExp(`pub fn ${marker}`))).toBeVisible();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/search-003-phase2-code-results-shell.jpg",
+  });
   await codeResult.click();
   await expect(page).toHaveURL(/\/blob\/main\/src\/search_phase_three\.rs/);
   await expect(
@@ -239,14 +254,23 @@ test("final search sweep covers header submit, all tabs, mobile layout, and empt
   for (const tab of expectedByType) {
     await page.goto(`/search?q=${marker}&type=${tab.type}`);
     await expect(
-      page.getByRole("heading", { name: "Search opengithub" }),
+      page.getByRole("heading", {
+        name: tab.type === "code" ? "Search indexed code" : "Search opengithub",
+      }),
     ).toBeVisible();
     await expect(page.getByText(tab.text)).toBeVisible();
-    await expect(
-      page
-        .getByRole("navigation", { name: "Search result types" })
-        .getByRole("link", { name: tab.label }),
-    ).toHaveAttribute("href", `/search?q=${marker}&type=${tab.type}`);
+    const tabLink =
+      tab.type === "code"
+        ? page
+            .getByRole("navigation", { name: "Search result types" })
+            .getByRole("link", { name: /Code/ })
+        : page
+            .getByRole("navigation", { name: "Search result types" })
+            .getByRole("link", { name: tab.label });
+    await expect(tabLink).toHaveAttribute(
+      "href",
+      `/search?q=${marker}&type=${tab.type}`,
+    );
     await expectNoDeadControls(page);
     const horizontalOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth > window.innerWidth,
@@ -261,7 +285,9 @@ test("final search sweep covers header submit, all tabs, mobile layout, and empt
   await expectNoDeadControls(page);
 
   await page.goto(`/search?q=no-result-${marker}&type=code`);
-  await expect(page.getByText(/Nothing matched/)).toBeVisible();
+  await expect(
+    page.getByText(/Nothing in indexed files matched/),
+  ).toBeVisible();
   await expect(page.getByText("language:", { exact: true })).toBeVisible();
 
   await page.screenshot({

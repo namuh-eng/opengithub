@@ -1,8 +1,10 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { CodeSearchResultsPage } from "@/components/CodeSearchResultsPage";
 import { QueryTabNavigation } from "@/components/QueryTabNavigation";
 import type {
   ApiErrorEnvelope,
+  CodeSearchResponse,
   GlobalSearchResult,
   ListEnvelope,
 } from "@/lib/api";
@@ -15,7 +17,11 @@ import {
 type SearchResultsPageProps = {
   activeType: string;
   query: string;
-  results: ListEnvelope<GlobalSearchResult> | ApiErrorEnvelope | null;
+  results:
+    | ListEnvelope<GlobalSearchResult>
+    | CodeSearchResponse
+    | ApiErrorEnvelope
+    | null;
 };
 
 const SEARCH_TYPE_LABELS = new Map<string, string>(
@@ -475,6 +481,10 @@ export function SearchResultsPage({
   results,
 }: SearchResultsPageProps) {
   const normalizedType = activeSearchType(activeType);
+  if (normalizedType === "code") {
+    return <CodeSearchResultsPage query={query} results={results} />;
+  }
+
   const activeTypeLabel =
     SEARCH_TYPE_LABELS.get(normalizedType) ?? "Repositories";
   const description = SEARCH_TYPE_DESCRIPTIONS.get(normalizedType);

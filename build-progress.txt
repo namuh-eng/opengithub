@@ -1822,3 +1822,13 @@
 - Verification passed: focused `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false cargo test --test search_code_results_contract -- --nocapture`; `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 204 frontend tests; mandatory Editorial banned-value scan passed with zero matches.
 - Browser smoke and `make test-e2e` were not run because Phase 1 is API-only and the structure outline marks browser smoke optional for this phase.
 - Marked Phase 1 as done in `.qrspi/search-003/structure.md`; `prd.json` remains `build_pass: false` because Phases 2-5 remain.
+
+2026-05-02 - search-003 phase 2 Editorial code results shell
+
+- Implemented Phase 2 from `.qrspi/search-003/structure.md`: `/search?q=...&type=code` now uses a dedicated Editorial two-pane code search workspace backed by the richer Phase 1 Rust code-search contract.
+- Added `web/src/components/CodeSearchResultsPage.tsx` with result type counts, language/path facets, active removable chips, Save/view links, advanced filter form, inline error/empty states, code result cards with highlighted snippets, and concrete line-anchor file links.
+- Updated `web/src/app/search/page.tsx` to call `searchCode` for `type=code` and kept `SearchResultsPage` as the generic shell for repositories, users, organizations, commits, issues, pull requests, and discussions.
+- Added code-search URL helpers in `web/src/lib/navigation.ts`; added focused Vitest coverage in `web/tests/search-code-results.test.tsx`; updated existing search and navigation Playwright expectations for the dedicated code heading.
+- Browser smoke screenshot saved at `ralph/screenshots/build/search-003-phase2-code-results-shell.jpg`.
+- Verification passed: focused `cd web && npx vitest run tests/search-code-results.test.tsx tests/search-results.test.tsx`; `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 207 frontend tests; full `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false SESSION_SECRET=playwright-session-secret-with-enough-entropy SESSION_COOKIE_NAME=og_session make test-e2e` with 75 Playwright tests; mandatory Editorial banned-value scan returned zero matches.
+- Marked Phase 2 as done in `.qrspi/search-003/structure.md`; `prd.json` remains `build_pass: false` because Phases 3-5 remain.

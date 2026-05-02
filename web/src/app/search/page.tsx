@@ -1,7 +1,11 @@
 import { AppShell } from "@/components/AppShell";
 import { SearchResultsPage } from "@/components/SearchResultsPage";
 import { activeSearchType } from "@/lib/navigation";
-import { getSessionAndShellContext, searchGlobal } from "@/lib/server-session";
+import {
+  getSessionAndShellContext,
+  searchCode,
+  searchGlobal,
+} from "@/lib/server-session";
 
 type SearchPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -22,12 +26,18 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const page = Number.isFinite(parsedPage) ? Math.max(1, parsedPage) : 1;
   const results =
     query.length > 0
-      ? await searchGlobal({
-          query,
-          type: activeType,
-          page,
-          pageSize: 30,
-        })
+      ? activeType === "code"
+        ? await searchCode({
+            query,
+            page,
+            pageSize: 30,
+          })
+        : await searchGlobal({
+            query,
+            type: activeType,
+            page,
+            pageSize: 30,
+          })
       : null;
 
   return (

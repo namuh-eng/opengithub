@@ -22,7 +22,7 @@
 
 ## Phase 2: Editorial Code Results Shell - `/search?type=code` becomes the two-pane code workspace
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the generic code tab rendering with the dedicated Editorial two-pane code search layout from `wf-search.jsx`: left filter rail, main code-result pane, header counts, query chips, Save button, type menu, and view controls. All controls must be real links/buttons with concrete behavior or disabled with clear state.
 
