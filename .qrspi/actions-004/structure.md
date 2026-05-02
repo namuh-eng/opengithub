@@ -74,7 +74,7 @@
 
 ## Phase 5: Final Job Log Guardrails and QA Handoff - complete actions-004 safely
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Harden the dedicated job log viewer before setting `actions-004.build_pass=true`. Validate permissions, deleted/expired logs, search bounds, keyboard/focus behavior, mobile layout, visual compliance, browser evidence, QA hints, and bookkeeping.
 

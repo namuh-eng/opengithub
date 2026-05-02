@@ -138,4 +138,40 @@ test("signed-in job log viewer renders job sidebar, steps, and annotations", asy
     fullPage: true,
     path: "../ralph/screenshots/build/actions-004-phase4-log-options.jpg",
   });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/actions-004-phase5-final-desktop.jpg",
+  });
+});
+
+test("job log viewer remains keyboard reachable and mobile safe", async ({
+  page,
+}) => {
+  const seeded = seedSession();
+  await signIn(page, seeded);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(seeded.actionsJobLogHref);
+  await expect(page.getByRole("heading", { name: "unit / web" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Search log" })).toBeVisible();
+  await expectNoDeadControls(page);
+  await expectNoHorizontalOverflow(page);
+
+  await page.keyboard.press("Tab");
+  await expect(page.locator(":focus")).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(page.locator(":focus")).toBeVisible();
+  await page.getByRole("button", { name: "Log options" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("menu")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.getByRole("textbox", { name: "Search log" }).fill("error");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/q=error/);
+  await expectNoHorizontalOverflow(page);
+
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/actions-004-phase5-final-mobile.jpg",
+  });
 });

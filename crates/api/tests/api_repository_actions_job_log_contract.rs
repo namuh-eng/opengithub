@@ -349,6 +349,11 @@ async fn job_log_detail_groups_steps_searches_lines_and_reads_options() {
         "/api/repos/{}/{}/actions/runs/{}/jobs/{}/detail",
         owner.email, repo_name, run_id, job_id
     );
+    let (anonymous_public_status, anonymous_public_body) =
+        get_json(app.clone(), &detail_uri, None).await;
+    assert_eq!(anonymous_public_status, StatusCode::OK);
+    assert_eq!(anonymous_public_body["viewerPermission"], "read");
+
     let (status, body) = get_json(app.clone(), &detail_uri, Some(&owner_cookie)).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["repository"]["name"], repo_name);
@@ -379,6 +384,11 @@ async fn job_log_detail_groups_steps_searches_lines_and_reads_options() {
         .as_str()
         .expect("archive href")
         .ends_with("/logs/archive"));
+    let serialized_body = body.to_string();
+    assert!(
+        !serialized_body.contains("actions/logs/job-detail.txt"),
+        "job log storage keys must not leak into viewer responses"
+    );
 
     let search_uri = format!("{detail_uri}?q=error&match=1&timestamps=true&raw=false");
     let (search_status, search_body) =
@@ -394,6 +404,14 @@ async fn job_log_detail_groups_steps_searches_lines_and_reads_options() {
     assert_eq!(search_body["options"]["showTimestamps"], true);
     assert_eq!(search_body["options"]["rawLogs"], false);
 
+    let bounded_search_uri = format!("{detail_uri}?q=error&match=-5&page=0&pageSize=9999");
+    let (bounded_status, bounded_body) =
+        get_json(app.clone(), &bounded_search_uri, Some(&owner_cookie)).await;
+    assert_eq!(bounded_status, StatusCode::OK);
+    assert_eq!(bounded_body["steps"][1]["lines"]["page"], 1);
+    assert_eq!(bounded_body["steps"][1]["lines"]["pageSize"], 100);
+    assert_eq!(bounded_body["search"]["selectedMatch"], Value::Null);
+
     let wrong_run_uri = format!(
         "/api/repos/{}/{}/actions/runs/{}/jobs/{}/detail",
         owner.email,
@@ -405,6 +423,45 @@ async fn job_log_detail_groups_steps_searches_lines_and_reads_options() {
         get_json(app.clone(), &wrong_run_uri, Some(&owner_cookie)).await;
     assert_eq!(wrong_run_status, StatusCode::NOT_FOUND);
     assert_eq!(wrong_run_body["error"]["code"], "not_found");
+
+    let missing_job_uri = format!(
+        "/api/repos/{}/{}/actions/runs/{}/jobs/{}/detail",
+        owner.email,
+        repo_name,
+        run_id,
+        Uuid::new_v4()
+    );
+    let (missing_job_status, missing_job_body) =
+        get_json(app.clone(), &missing_job_uri, Some(&owner_cookie)).await;
+    assert_eq!(missing_job_status, StatusCode::NOT_FOUND);
+    assert_eq!(missing_job_body["error"]["code"], "not_found");
+
+    sqlx::query(
+        r#"
+        UPDATE workflow_runs
+        SET status = 'in_progress', conclusion = NULL, completed_at = NULL
+        WHERE id = $1
+        "#,
+    )
+    .bind(run_id)
+    .execute(&pool)
+    .await
+    .expect("run should become live");
+    let (live_status, live_body) = get_json(app.clone(), &detail_uri, Some(&owner_cookie)).await;
+    assert_eq!(live_status, StatusCode::OK);
+    assert_eq!(live_body["logState"]["isLive"], true);
+    assert_eq!(live_body["logState"]["nextCursor"], 4);
+    sqlx::query(
+        r#"
+        UPDATE workflow_runs
+        SET status = 'completed', conclusion = 'failure', completed_at = now()
+        WHERE id = $1
+        "#,
+    )
+    .bind(run_id)
+    .execute(&pool)
+    .await
+    .expect("run should return to terminal state");
 
     let preferences_uri = format!(
         "/api/repos/{}/{}/actions/log-preferences",

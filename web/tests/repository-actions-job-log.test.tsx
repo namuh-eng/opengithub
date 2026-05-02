@@ -539,4 +539,37 @@ describe("RepositoryActionsJobLogPage", () => {
       screen.getByText("Workflow logs are unavailable for this job."),
     ).toBeVisible();
   });
+
+  it("keeps final keyboard and responsive guardrails in place", () => {
+    const { container } = render(
+      <RepositoryActionsJobLogPage
+        detail={jobLogDetail()}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(
+      container.querySelector(".max-lg\\:grid-cols-1"),
+    ).toBeInTheDocument();
+    expect(container.querySelector(".min-w-0")).toBeInTheDocument();
+
+    const search = screen.getByRole("textbox", { name: "Search log" });
+    search.focus();
+    expect(document.activeElement).toBe(search);
+
+    const options = screen.getByRole("button", { name: "Log options" });
+    options.focus();
+    expect(document.activeElement).toBe(options);
+    fireEvent.click(options);
+    const menu = screen.getByRole("menu");
+    expect(within(menu).getAllByRole("menuitemcheckbox")).toHaveLength(3);
+    expect(
+      within(menu).getByRole("menuitem", { name: "Copy job permalink" }),
+    ).toBeVisible();
+
+    const step = screen.getByRole("button", { name: /Install dependencies/ });
+    step.focus();
+    expect(document.activeElement).toBe(step);
+    expect(step).toHaveAttribute("aria-expanded", "true");
+  });
 });
