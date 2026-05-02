@@ -178,7 +178,7 @@ fn session_cookie_attributes_follow_local_and_production_security_policy() {
     assert!(local_cookie.contains("HttpOnly"));
     assert!(local_cookie.contains("SameSite=Lax"));
     assert!(local_cookie.contains("Path=/"));
-    assert!(!local_cookie.contains("Secure"));
+    assert!(local_cookie.contains("Secure"));
 
     let production_cookie =
         session::set_cookie_header(&production, "prod-session", expires_at).expect("prod cookie");

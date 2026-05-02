@@ -95,7 +95,7 @@ async fn callback_persistence_sets_a_signed_cookie_and_me_reads_the_session() {
     assert_eq!(completed.user.email, google_user.email);
     assert!(completed.cookie.contains("HttpOnly"));
     assert!(completed.cookie.contains("SameSite=Lax"));
-    assert!(!completed.cookie.contains("Secure"));
+    assert!(completed.cookie.contains("Secure"));
 
     let account = get_oauth_account(&pool, "google", &google_user.sub)
         .await

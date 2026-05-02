@@ -1,3 +1,12 @@
+2026-05-03 - auth-001 independent QA pass
+
+- Independently QAed auth-001 against the PRD: fixed /login to the required compact centered Editorial sign-in card with Octocat-style mark, exact `Sign in to opengithub` heading, one full-width `Continue with Google` action, terms/privacy links, and no email/password alternatives.
+- Hardened Rust session cookie issuance so `__Host-session` cookies always include `Secure` with `Path=/`, `HttpOnly`, and `SameSite=Lax`; logout clearing cookies use the same prefix-safe policy.
+- Fixed fresh-worktree E2E startup by making `make dev`/`make api-dev` fall back to `cargo run --bin api` when `cargo-watch` is unavailable.
+- Verification passed: focused auth Rust suites (`auth_oauth_start`, `auth_callback_session`, `auth_security`, `auth_route_guard`), focused auth Vitest, web typecheck, `make check`, `CARGO_INCREMENTAL=0 make test` with Cargo tests plus 245 frontend tests, and `make test-e2e` with 18 runnable Playwright tests.
+- API smoke passed against local Rust API: OAuth start 302 sanitized an external `next`, callback provider error redirected to `/login?error=oauth_failed`, invalid current-user returned JSON 401 without secret leakage, and logout emitted a Secure `__Host-session` clearing cookie.
+- Marked `auth-001.qa_pass=true` in `prd.json`; real Google consent/callback remains unexercised because this isolated QA lane only has dummy OAuth credentials.
+
 2026-05-03 - orgs-002 phase 3 URL-backed repository filters and pagination
 
 - Completed Phase 3 from `.qrspi/orgs-002/structure.md`: organization repository search, type, language, sort, density, and pagination controls now preserve concrete URL state and reset pagination only when filters change.

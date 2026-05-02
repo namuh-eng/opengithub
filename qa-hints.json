@@ -3122,7 +3122,10 @@
       "TEST_DATABASE_URL-backed full make test still exposes an unrelated PR compare owner-login fixture mismatch; the standard make test path passed and org-focused frontend/browser coverage passed.",
       "Phase 3 still needs hardening for composed query normalization, pagination preservation under all controls, compact/mobile layout stress, and filter-count consistency across larger visible repository sets.",
       "QA should stress very long organization/repository names, many topics/languages, fork-source links, direct admin permissions for non-members, hidden private/internal repositories, and empty result recovery from every filter control."
-"feature_id": "notifications-001",
+    ]
+  },
+  {
+    "feature_id": "notifications-001",
     "tests_written": [
       "Added Rust API contract coverage in crates/api/tests/api_notifications_inbox_contract.rs for authenticated /api/notifications, reason/repo filters, repository grouping, unread tab, repository buckets, subscribed row state, and PATCH mark-read behavior.",
       "Added Vitest coverage in web/tests/notifications-inbox.test.tsx for folders, default filters, repository buckets, All/Unread tabs, query search form, sort/group links, row open hrefs, unread/subscribed states, and editable empty states.",
@@ -3150,6 +3153,20 @@
       "The first full E2E run failed only because the API had been started with API_URL=http://localhost:3016, producing localhost clone URLs for an unrelated repository Code-tab assertion; rerunning with API_URL=https://opengithub.namuh.co passed all 90 E2E tests.",
       "Phase 4 still needs the organization people list API/UI and signed-out/member/admin people visibility coverage before orgs-002 can be marked build_pass=true.",
       "QA should stress many pages of organization repositories, unusual language casing and spacing, direct repository permissions for non-members, empty results after every chip removal path, and compact density with very long names/topics."
+    ]
+  },
+  {
+    "feature_id": "auth-001",
+    "tests_written": [
+      "QA fixed the /login page to match auth-001 acceptance criteria: centered narrow Editorial card, Octocat-style mark, exact 'Sign in to opengithub' heading, one full-width 'Continue with Google' action, terms/privacy links, and no email/password alternatives.",
+      "QA hardened __Host-session cookie issuance so prefixed session cookies always include Secure along with Path=/, HttpOnly, and SameSite=Lax; logout expiration uses the same attribute policy.",
+      "Focused auth validation passed: cargo test --test auth_oauth_start --test auth_callback_session --test auth_security --test auth_route_guard; cd web && npx vitest run tests/auth-login.test.tsx; cd web && npx tsc --noEmit.",
+      "Required validation passed: make check; CARGO_INCREMENTAL=0 make test with Cargo tests plus 245 frontend tests; make test-e2e with 18 runnable Playwright tests.",
+      "API smoke passed against local Rust API: OAuth start returned 302 to Google without the evil next host, callback provider error redirected to /login?error=oauth_failed, invalid current-user returned JSON 401, and logout emitted a Secure __Host-session clearing cookie."
+    ],
+    "needs_deeper_qa": [
+      "Real Google account selection/callback could not be completed because this isolated QA lane uses dummy local OAuth credentials, not a configured Google test account.",
+      "npm install reported 2 moderate transitive audit findings in frontend tooling; no production dependency change was made for auth-001."
     ]
   }
 ]

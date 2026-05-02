@@ -7,7 +7,7 @@ test("anonymous dashboard requests redirect to the login card", async ({
 
   await expect(page).toHaveURL(/\/login\?next=%2Fdashboard$/);
   await expect(
-    page.getByRole("heading", { name: "Welcome back." }),
+    page.getByRole("heading", { name: "Sign in to opengithub" }),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Continue with Google" }),
@@ -40,7 +40,7 @@ test("public sign-in CTA opens the shared Google-only login page", async ({
 
   await expect(page).toHaveURL("http://localhost:3015/login");
   await expect(
-    page.getByRole("heading", { name: "Welcome back." }),
+    page.getByRole("heading", { name: "Sign in to opengithub" }),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Continue with Google" }),

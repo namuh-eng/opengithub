@@ -53,6 +53,9 @@ describe("login page", () => {
     expect(screen.queryByLabelText(/email/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/continue with apple/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/passkey/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Sign in to opengithub" }),
+    ).toBeInTheDocument();
   });
 
   it("shows the callback failure inline", async () => {
