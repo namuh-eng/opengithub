@@ -1,5 +1,6 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -144,10 +145,30 @@ pub struct ProfileViewerState {
     pub can_report: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileActionState {
+    pub viewer_state: ProfileViewerState,
+    pub follower_count: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileReport {
+    pub id: Uuid,
+    pub viewer_state: ProfileViewerState,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ProfileError {
     #[error("user profile was not found")]
     NotFound,
+    #[error("profile action cannot target your own account")]
+    SelfAction,
+    #[error("profile action is not available for private profiles")]
+    PrivateProfile,
+    #[error("report reason is required")]
+    BlankReportReason,
     #[error("database error")]
     Sqlx(#[from] sqlx::Error),
 }
@@ -251,6 +272,171 @@ pub async fn public_user_profile(
         tab_counts,
         viewer_state,
     })
+}
+
+pub async fn follow_user(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    username: &str,
+) -> Result<ProfileActionState, ProfileError> {
+    let profile_user = action_target(pool, actor_user_id, username).await?;
+    sqlx::query(
+        r#"
+        INSERT INTO user_follows (follower_user_id, followed_user_id)
+        VALUES ($1, $2)
+        ON CONFLICT (follower_user_id, followed_user_id) DO NOTHING
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(profile_user.id)
+    .execute(pool)
+    .await?;
+    insert_profile_audit_event(pool, actor_user_id, "profile.follow", profile_user.id).await?;
+
+    profile_action_state(pool, actor_user_id, profile_user.id).await
+}
+
+pub async fn unfollow_user(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    username: &str,
+) -> Result<ProfileActionState, ProfileError> {
+    let profile_user = action_target(pool, actor_user_id, username).await?;
+    sqlx::query("DELETE FROM user_follows WHERE follower_user_id = $1 AND followed_user_id = $2")
+        .bind(actor_user_id)
+        .bind(profile_user.id)
+        .execute(pool)
+        .await?;
+    insert_profile_audit_event(pool, actor_user_id, "profile.unfollow", profile_user.id).await?;
+
+    profile_action_state(pool, actor_user_id, profile_user.id).await
+}
+
+pub async fn block_user(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    username: &str,
+    reason: Option<&str>,
+) -> Result<ProfileActionState, ProfileError> {
+    let profile_user = action_target(pool, actor_user_id, username).await?;
+    let normalized_reason = reason.and_then(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.chars().take(240).collect::<String>())
+    });
+    sqlx::query(
+        r#"
+        INSERT INTO user_blocks (blocker_user_id, blocked_user_id, reason)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (blocker_user_id, blocked_user_id)
+        DO UPDATE SET reason = COALESCE(EXCLUDED.reason, user_blocks.reason)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(profile_user.id)
+    .bind(normalized_reason)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        DELETE FROM user_follows
+        WHERE (follower_user_id = $1 AND followed_user_id = $2)
+           OR (follower_user_id = $2 AND followed_user_id = $1)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(profile_user.id)
+    .execute(pool)
+    .await?;
+    insert_profile_audit_event(pool, actor_user_id, "profile.block", profile_user.id).await?;
+
+    profile_action_state(pool, actor_user_id, profile_user.id).await
+}
+
+pub async fn report_user(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    username: &str,
+    reason: &str,
+    details: Option<&str>,
+) -> Result<ProfileReport, ProfileError> {
+    let profile_user = action_target(pool, actor_user_id, username).await?;
+    let normalized_reason = reason.trim();
+    if normalized_reason.is_empty() {
+        return Err(ProfileError::BlankReportReason);
+    }
+    let normalized_details = details.and_then(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.chars().take(2000).collect::<String>())
+    });
+    let report_id = sqlx::query_scalar(
+        r#"
+        INSERT INTO user_reports (reporter_user_id, reported_user_id, reason, details)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(profile_user.id)
+    .bind(normalized_reason.chars().take(120).collect::<String>())
+    .bind(normalized_details)
+    .fetch_one(pool)
+    .await?;
+    insert_profile_audit_event(pool, actor_user_id, "profile.report", profile_user.id).await?;
+    let viewer_state = viewer_state(pool, profile_user.id, Some(actor_user_id), false).await?;
+
+    Ok(ProfileReport {
+        id: report_id,
+        viewer_state,
+    })
+}
+
+async fn action_target(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    username: &str,
+) -> Result<ProfileUserRow, ProfileError> {
+    let profile_user = profile_user_by_login(pool, username)
+        .await?
+        .ok_or(ProfileError::NotFound)?;
+    if profile_user.id == actor_user_id {
+        return Err(ProfileError::SelfAction);
+    }
+    if profile_user.profile_visibility == "private" {
+        return Err(ProfileError::PrivateProfile);
+    }
+    Ok(profile_user)
+}
+
+async fn profile_action_state(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    profile_user_id: Uuid,
+) -> Result<ProfileActionState, ProfileError> {
+    Ok(ProfileActionState {
+        viewer_state: viewer_state(pool, profile_user_id, Some(actor_user_id), false).await?,
+        follower_count: Some(count_followers(pool, profile_user_id).await?),
+    })
+}
+
+async fn insert_profile_audit_event(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    event_type: &str,
+    profile_user_id: Uuid,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, $2, 'user', $3, $4)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(profile_user_id.to_string())
+    .bind(json!({ "profileUserId": profile_user_id }))
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 async fn profile_user_by_login(

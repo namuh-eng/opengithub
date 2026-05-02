@@ -2873,5 +2873,21 @@
       "Follow, block, and report controls remain intentionally unrendered in Phase 2 to avoid dead buttons; concrete action controls are Phase 3.",
       "The contribution graph is a compact summary in Phase 2; accessible heatmap cells, tooltips, year selector, and mobile overflow hardening remain Phase 4."
     ]
+  },
+  {
+    "feature_id": "profiles-001",
+    "tests_written": [
+      "Completed Phase 3 follow, block, and report controls without marking profiles-001 build_pass=true.",
+      "Added authenticated Rust write APIs for PUT/DELETE /api/users/{username}/follow, PUT /api/users/{username}/block, and POST /api/users/{username}/reports with standard error envelopes.",
+      "Added real Postgres contract coverage for anonymous 401, self/private validation, idempotent follow/unfollow, block persistence, follow cleanup after block, report validation, and report persistence.",
+      "Added same-origin Next.js route handlers and a UserProfileActions client component with optimistic follow rollback, signed-out login modal, More menu, block dialog, report form, and self/private suppression.",
+      "Added focused Vitest coverage for action UI states and focused Playwright smoke for anonymous login gate plus signed-in follow, report, and block flows."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke uses deterministic Rust-signed local sessions from dashboard_e2e_seed, not a real Google OAuth browser session.",
+      "Full E2E passed against an isolated local Postgres cluster under .scratch on localhost:55432 because Docker was unavailable and the shared test database was not running.",
+      "The existing profile_overview_contract has a pre-existing DB-backed assertion mismatch for Stars tab seed data when run against a real TEST_DATABASE_URL; this phase did not change that unrelated count behavior.",
+      "Contribution heatmap accessibility, year selector, and mobile overflow hardening remain Phase 4."
+    ]
   }
 ]

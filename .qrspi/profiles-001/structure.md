@@ -42,7 +42,7 @@
 
 ## Phase 3: Follow, Block, and Report Controls - visible profile actions write real records
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make every profile action concrete. The Follow button must toggle `user_follows` for signed-in viewers with optimistic UI and rollback. The block/report menu must open a real menu; signed-out users get a login-gated modal, and signed-in users can create block/report records with validation and feedback. The controls must be hidden or disabled for private profiles and self-profile states where the action is not meaningful.
 

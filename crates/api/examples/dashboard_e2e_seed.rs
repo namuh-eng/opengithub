@@ -33,6 +33,7 @@ static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 struct SeedOutput {
     cookie_name: String,
     cookie_value: String,
+    profile_action_cookie_value: String,
     first_repository_href: String,
     second_repository_href: String,
     social_source_repository_href: String,
@@ -137,6 +138,19 @@ async fn main() -> anyhow::Result<()> {
     sqlx::query("UPDATE users SET username = $1 WHERE id = $2")
         .bind(&username)
         .bind(user.id)
+        .execute(&pool)
+        .await?;
+    let profile_action_viewer_username = format!("profile-viewer-{}", &suffix[..12]);
+    let profile_action_viewer = upsert_user_by_email(
+        &pool,
+        &format!("{profile_action_viewer_username}@opengithub.local"),
+        Some("Profile Action Viewer"),
+        None,
+    )
+    .await?;
+    sqlx::query("UPDATE users SET username = $1 WHERE id = $2")
+        .bind(&profile_action_viewer_username)
+        .bind(profile_action_viewer.id)
         .execute(&pool)
         .await?;
     let source_owner_username = format!("source-{}", &suffix[..12]);
@@ -500,10 +514,25 @@ async fn main() -> anyhow::Result<()> {
     let set_cookie = session::set_cookie_header(&config, &session_id, expires_at)?;
     let cookie_value = session::cookie_value_from_set_cookie(&set_cookie)
         .ok_or_else(|| anyhow::anyhow!("set-cookie did not include a value"))?;
+    let profile_action_session_id = Uuid::new_v4().to_string();
+    upsert_session(
+        &pool,
+        &profile_action_session_id,
+        Some(profile_action_viewer.id),
+        serde_json::json!({ "provider": "google" }),
+        expires_at,
+    )
+    .await?;
+    let profile_action_set_cookie =
+        session::set_cookie_header(&config, &profile_action_session_id, expires_at)?;
+    let profile_action_cookie_value =
+        session::cookie_value_from_set_cookie(&profile_action_set_cookie)
+            .ok_or_else(|| anyhow::anyhow!("profile action set-cookie did not include a value"))?;
 
     let output = SeedOutput {
         cookie_name: config.session_cookie_name,
         cookie_value: cookie_value.to_owned(),
+        profile_action_cookie_value: profile_action_cookie_value.to_owned(),
         first_repository_href,
         second_repository_href,
         social_source_repository_href: format!(

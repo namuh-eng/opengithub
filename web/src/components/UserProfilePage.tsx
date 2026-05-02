@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { AppShellFrame } from "@/components/AppShellFrame";
 import { QueryTabNavigation } from "@/components/QueryTabNavigation";
+import { UserProfileActions } from "@/components/UserProfileActions";
 import type {
   AppShellContext,
   AuthSession,
@@ -31,10 +32,6 @@ function profileInitial(profile: PublicUserProfile) {
 
 function displayName(profile: PublicUserProfile) {
   return profile.identity.name?.trim() || profile.identity.login;
-}
-
-function countLabel(count: number, singular: string, plural = `${singular}s`) {
-  return `${count.toLocaleString()} ${count === 1 ? singular : plural}`;
 }
 
 function compactDate(value: string) {
@@ -161,12 +158,13 @@ function IdentityColumn({ profile }: { profile: PublicUserProfile }) {
           </div>
         </dl>
 
-        {identity.followerCount !== null && identity.followingCount !== null ? (
-          <p className="t-mono-sm mt-4" style={{ color: "var(--ink-3)" }}>
-            {countLabel(identity.followerCount, "follower")} ·{" "}
-            {countLabel(identity.followingCount, "following", "following")}
-          </p>
-        ) : null}
+        <UserProfileActions
+          followerCount={identity.followerCount}
+          followingCount={identity.followingCount}
+          isPrivate={identity.isPrivate}
+          login={identity.login}
+          viewerState={profile.viewerState}
+        />
       </div>
 
       {!identity.isPrivate && profile.organizations.length > 0 ? (

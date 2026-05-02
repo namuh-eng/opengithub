@@ -1970,3 +1970,15 @@
 - Verification passed: focused `web/tests/user-profile-page.test.tsx`; `cd web && npx tsc --noEmit`; `cargo check --example dashboard_e2e_seed -p opengithub-api`; `CARGO_INCREMENTAL=0 TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 219 frontend tests; mandatory Editorial banned-value scan returned zero matches.
 - Focused Playwright profile smoke was attempted with `TEST_DATABASE_URL`/`DATABASE_URL` on `localhost:55432`, but `dashboard_e2e_seed` failed with `pool timed out while waiting for an open connection`; no profile UI assertion failure was reached and no screenshot was captured.
 - Marked Phase 2 as done in `.qrspi/profiles-001/structure.md`; `prd.json` remains `build_pass: false` because Phases 3-5 remain.
+
+2026-05-02 - profiles-001 phase 3 follow, block, and report controls
+
+- Completed Phase 3 from `.qrspi/profiles-001/structure.md`: public profile actions now write real records through Rust APIs and same-origin Next.js action routes.
+- Added `PUT/DELETE /api/users/{username}/follow`, `PUT /api/users/{username}/block`, and `POST /api/users/{username}/reports` with authenticated session checks, self/private-profile validation, idempotent follow/unfollow, block persistence with follow cleanup, report validation, profile action state responses, and audit events.
+- Added `UserProfileActions` with optimistic follow/unfollow plus rollback, signed-out login gate, More menu, block confirmation dialog, report form, inline feedback, disabled blocked/self states, and private-profile suppression using Editorial primitives/tokens.
+- Extended `dashboard_e2e_seed` with a second signed profile-action session so Playwright can test actions against a non-self profile; added typed frontend action helpers and route handlers under `/{user}/actions/*`.
+- Added `crates/api/tests/profile_social_actions.rs`, `web/tests/user-profile-actions.test.tsx`, and extended `web/tests/e2e/profile-overview.spec.ts` for anonymous 401/login gate, self/private validation, real follow/block/report persistence, optimistic rollback, no inert anchors, and browser screenshots.
+- Browser smoke screenshot saved at `ralph/screenshots/build/profiles-001-phase3-actions.jpg`.
+- Verification passed: focused real-Postgres `profile_social_actions`; focused `web/tests/user-profile-actions.test.tsx` and `web/tests/user-profile-page.test.tsx`; `make check`; `make test` with Cargo tests plus 224 frontend tests; focused Playwright `profile-overview.spec.ts`; full local-Postgres `make test-e2e` with 84 Playwright tests; mandatory Editorial banned-value scan returned zero matches.
+- A local Postgres cluster was started under `.scratch/pg-profile-001` on `localhost:55432` because Docker was unavailable and no shared localhost Postgres was running. The existing `profile_overview_contract` still has an unrelated DB-backed Stars tab seed assertion mismatch when real DB tests are enabled.
+- Marked Phase 3 as done in `.qrspi/profiles-001/structure.md`; `prd.json` remains `build_pass: false` because Phases 4-5 remain.

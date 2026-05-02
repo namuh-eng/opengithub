@@ -1,7 +1,7 @@
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    routing::get,
+    routing::{get, post, put},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
@@ -9,11 +9,14 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    api_types::{database_unavailable, error_response, ErrorEnvelope},
+    api_types::{database_unavailable, error_response, ErrorEnvelope, RestJson},
     auth::extractor::AuthenticatedUser,
     domain::{
         identity::User,
-        profiles::{public_user_profile, ProfileError, PublicUserProfile},
+        profiles::{
+            block_user, follow_user, public_user_profile, report_user, unfollow_user,
+            ProfileActionState, ProfileError, ProfileReport, PublicUserProfile,
+        },
     },
     AppState,
 };
@@ -22,6 +25,9 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/user", get(current_api_user))
         .route("/api/users/:username/profile", get(public_profile))
+        .route("/api/users/:username/follow", put(follow).delete(unfollow))
+        .route("/api/users/:username/block", put(block))
+        .route("/api/users/:username/reports", post(report))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -91,6 +97,79 @@ pub async fn public_profile(
     Ok(Json(profile))
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockUserRequest {
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportUserRequest {
+    pub reason: String,
+    pub details: Option<String>,
+}
+
+async fn follow(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+) -> Result<Json<ProfileActionState>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let state = follow_user(pool, actor.id, &username)
+        .await
+        .map_err(map_profile_error)?;
+    Ok(Json(state))
+}
+
+async fn unfollow(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+) -> Result<Json<ProfileActionState>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let state = unfollow_user(pool, actor.id, &username)
+        .await
+        .map_err(map_profile_error)?;
+    Ok(Json(state))
+}
+
+async fn block(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+    RestJson(request): RestJson<BlockUserRequest>,
+) -> Result<Json<ProfileActionState>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let state = block_user(pool, actor.id, &username, request.reason.as_deref())
+        .await
+        .map_err(map_profile_error)?;
+    Ok(Json(state))
+}
+
+async fn report(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+    RestJson(request): RestJson<ReportUserRequest>,
+) -> Result<Json<ProfileReport>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let report = report_user(
+        pool,
+        actor.id,
+        &username,
+        &request.reason,
+        request.details.as_deref(),
+    )
+    .await
+    .map_err(map_profile_error)?;
+    Ok(Json(report))
+}
+
 fn fallback_login_from_email(email: &str) -> String {
     let local_part = email.split('@').next().unwrap_or("user");
     let normalized: String = local_part
@@ -117,6 +196,21 @@ fn map_profile_error(error: ProfileError) -> (StatusCode, Json<ErrorEnvelope>) {
             StatusCode::NOT_FOUND,
             "not_found",
             "user profile was not found",
+        ),
+        ProfileError::SelfAction => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            "profile action cannot target your own account",
+        ),
+        ProfileError::PrivateProfile => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            "profile action is not available for private profiles",
+        ),
+        ProfileError::BlankReportReason => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            "report reason is required",
         ),
         ProfileError::Sqlx(_) => error_response(
             StatusCode::INTERNAL_SERVER_ERROR,

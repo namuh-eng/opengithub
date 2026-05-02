@@ -127,6 +127,21 @@ export type ProfileViewerState = {
   canReport: boolean;
 };
 
+export type ProfileActionState = {
+  viewerState: ProfileViewerState;
+  followerCount: number | null;
+};
+
+export type ProfileReport = {
+  id: string;
+  viewerState: ProfileViewerState;
+};
+
+export type ReportUserRequest = {
+  reason: string;
+  details?: string;
+};
+
 export type SearchSuggestionToken = {
   prefix: string | null;
   value: string;
@@ -2251,6 +2266,92 @@ export async function getPublicUserProfileFromCookie(
   }
 
   return (await response.json()) as PublicUserProfile;
+}
+
+export async function setUserFollowFromCookie(
+  cookie: string | null | undefined,
+  username: string,
+  following: boolean,
+): Promise<ProfileActionState> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/users/${encodeURIComponent(username)}/follow`,
+    {
+      method: following ? "PUT" : "DELETE",
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const body = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(body?.error.message ?? "Profile follow update failed", {
+      cause: body,
+    });
+  }
+
+  return (await response.json()) as ProfileActionState;
+}
+
+export async function blockUserFromCookie(
+  cookie: string | null | undefined,
+  username: string,
+  reason?: string,
+): Promise<ProfileActionState> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/users/${encodeURIComponent(username)}/block`,
+    {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify({ reason }),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const body = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(body?.error.message ?? "Profile block failed", {
+      cause: body,
+    });
+  }
+
+  return (await response.json()) as ProfileActionState;
+}
+
+export async function reportUserFromCookie(
+  cookie: string | null | undefined,
+  username: string,
+  request: ReportUserRequest,
+): Promise<ProfileReport> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/users/${encodeURIComponent(username)}/reports`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const body = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(body?.error.message ?? "Profile report failed", {
+      cause: body,
+    });
+  }
+
+  return (await response.json()) as ProfileReport;
 }
 
 export function globalSearchPath(query: GlobalSearchQuery): string {

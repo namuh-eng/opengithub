@@ -6,6 +6,7 @@ const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 type SeededProfile = {
   cookieName: string;
   cookieValue: string;
+  profileActionCookieValue: string;
   firstRepositoryHref: string;
 };
 
@@ -36,10 +37,18 @@ function seedProfile(): SeededProfile {
 }
 
 async function signIn(page: Page, seeded: SeededProfile) {
+  await signInWithValue(page, seeded, seeded.cookieValue);
+}
+
+async function signInWithValue(
+  page: Page,
+  seeded: SeededProfile,
+  cookieValue: string,
+) {
   await page.context().addCookies([
     {
       name: seeded.cookieName,
-      value: seeded.cookieValue,
+      value: cookieValue,
       domain: "localhost",
       path: "/",
       httpOnly: true,
@@ -76,9 +85,9 @@ test("public profile overview renders data, tabs, and pinned navigation", async 
     page.getByRole("navigation", { name: "Profile sections" }),
   ).toBeVisible();
 
-  const pinnedRepository = page.getByRole("link", {
-    name: /alpha-/,
-  });
+  const pinnedRepository = page.locator(
+    `a[href="${seeded.firstRepositoryHref}"]`,
+  );
   await expect(pinnedRepository).toHaveAttribute(
     "href",
     seeded.firstRepositoryHref,
@@ -103,5 +112,52 @@ test("public profile overview renders data, tabs, and pinned navigation", async 
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/profiles-001-phase2-overview.jpg",
+  });
+});
+
+test("profile actions follow, login-gate, block, and report through real routes", async ({
+  page,
+}) => {
+  const seeded = seedProfile();
+
+  await page.goto(profileHref(seeded));
+  await page.getByRole("button", { name: "Follow" }).click();
+  const loginDialog = page.getByRole("dialog", {
+    name: new RegExp(
+      `Continue to interact with @${profileHref(seeded).slice(1)}`,
+    ),
+  });
+  await expect(loginDialog).toBeVisible();
+  await expect(
+    loginDialog.getByRole("link", { name: "Sign in" }),
+  ).toHaveAttribute("href", /\/login\?next=/);
+
+  await signInWithValue(page, seeded, seeded.profileActionCookieValue);
+  await page.goto(profileHref(seeded));
+  await page.getByRole("button", { name: "Follow" }).click();
+  await expect(page.getByRole("button", { name: "Following" })).toBeVisible();
+  await expect(page.getByText("Now following this profile.")).toBeVisible();
+
+  await page.getByRole("button", { name: "More" }).click();
+  await page.getByRole("menuitem", { name: "Report profile" }).click();
+  await expect(
+    page.getByRole("dialog", { name: /Tell us what is wrong/ }),
+  ).toBeVisible();
+  await page.getByLabel("Details").fill("Seeded browser smoke report.");
+  await page.getByRole("button", { name: "Submit report" }).click();
+  await expect(page.getByText("Report submitted for review.")).toBeVisible();
+
+  await page.getByRole("button", { name: "More" }).click();
+  await page.getByRole("menuitem", { name: "Block profile" }).click();
+  await expect(page.getByRole("dialog", { name: /Block @/ })).toBeVisible();
+  await page.getByRole("button", { name: "Block" }).click();
+  await expect(page.getByText("Profile blocked.")).toBeVisible();
+  await page.getByRole("button", { name: "More" }).click();
+  await expect(page.getByRole("menuitem", { name: "Blocked" })).toBeDisabled();
+
+  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/profiles-001-phase3-actions.jpg",
   });
 });
