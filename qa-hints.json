@@ -2756,5 +2756,21 @@
       "Sort metadata and basic sort ordering are present, but full URL-backed sort menu UX and pagination preservation remain later phases.",
       "Real Postgres validation used the reachable local database at localhost:55432 with existing namuh/namuh credentials because localhost:5432 was not available in this session."
     ]
+  },
+  {
+    "feature_id": "releases-001",
+    "tests_written": [
+      "Created .qrspi/releases-001/structure.md and completed the planned vertical slice for release list, latest detail, tag detail, assets, reactions, and pagination.",
+      "Added typed deterministic server/API layer in web/src/lib/releases.ts with seeded release history, latest non-prerelease resolution, release assets/source archives, contributor rows, and auth-gated reaction toggles.",
+      "Added Next API route handlers for GET /api/repos/{owner}/{repo}/releases, GET /api/repos/{owner}/{repo}/releases/latest, and POST /api/repos/{owner}/{repo}/releases/reactions.",
+      "Added RepositoryReleasesPage client UI with Editorial cards, Releases/Tags subnav, latest/pre-release/verified chips, searchable compare tag/branch form, rendered markdown sections with PR links, contributor avatars, assets disclosure, reaction buttons, and pagination.",
+      "Added Vitest coverage in web/tests/repository-releases.test.tsx for ordering, pagination, latest resolution, compare selector, reaction auth/toggle semantics, UI assets/notes/reactions, and API POST wiring.",
+      "Verification passed: mandatory Editorial banned-value scan returned zero matches; focused web release Vitest passed 5 tests; npx tsc --noEmit passed; make check passed; make test passed with Cargo tests and 218 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Release data is a deterministic typed Next/server seam rather than persisted release/release_assets/release_reactions tables; upgrade path is to replace web/src/lib/releases.ts seeded repository with DB-backed API reads/writes.",
+      "Reaction persistence is process-local for the deterministic build slice; independent QA should verify authenticated and anonymous reaction states in browser once a dev session/backend is running.",
+      "Manual browser/E2E smoke was not run in this build lane; run release list/latest pages under local dev server during QA."
+    ]
   }
 ]

@@ -996,8 +996,8 @@
       "repo-003",
       "git-001"
     ],
-    "needs_structure": true,
-    "build_pass": false,
+    "needs_structure": false,
+    "build_pass": true,
     "qa_pass": false
   },
   {
