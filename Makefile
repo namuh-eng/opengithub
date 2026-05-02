@@ -89,16 +89,16 @@ check-verbose:
 test-verbose:
 	@VERBOSE=1 $(MAKE) test
 
-# Dev: run API and (if present) Next.js together
+# Dev: run API (with hot reload via cargo-watch) and Next.js together
 dev:
 	@if [ -n "$(HAS_WEB)" ]; then \
-	  ( cargo run --bin api & API_PID=$$! ; cd web && npm run dev ; kill $$API_PID 2>/dev/null ) ; \
+	  ( cargo watch -q -x 'run --bin api' & API_PID=$$! ; cd web && npm run dev ; kill $$API_PID 2>/dev/null ) ; \
 	else \
-	  cargo run --bin api ; \
+	  cargo watch -q -x 'run --bin api' ; \
 	fi
 
 api-dev:
-	cargo run --bin api
+	cargo watch -q -x 'run --bin api'
 
 web-dev:
 	@if [ -n "$(HAS_WEB)" ]; then cd web && npm run dev; else echo "web/ not yet scaffolded"; exit 1; fi
