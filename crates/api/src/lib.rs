@@ -34,6 +34,7 @@ pub fn build_app_with_config(db: Option<DbPool>, config: AppConfig) -> Router {
     Router::new()
         .route("/", get(root))
         .route("/health", get(routes::health::health))
+        .merge(routes::rate_limit::router())
         .merge(routes::git::router())
         .merge(routes::auth::router())
         .merge(routes::app_shell::router())
@@ -54,6 +55,10 @@ pub fn build_app_with_config(db: Option<DbPool>, config: AppConfig) -> Router {
         .route_layer(axum_middleware::from_fn_with_state(
             state.clone(),
             middleware::request_log::log_request,
+        ))
+        .layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            middleware::rate_limit::enforce_rate_limit,
         ))
         .with_state(state)
 }

@@ -12,6 +12,7 @@ pub mod onboarding;
 pub mod organizations;
 pub mod packages;
 pub mod pulls;
+pub mod rate_limit;
 pub mod repositories;
 pub mod repository_imports;
 pub mod search;

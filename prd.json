@@ -2253,7 +2253,9 @@
       "auth-001",
       "infra-001"
     ],
-    "build_pass": false
+    "build_pass": true,
+    "needs_structure": false,
+    "qa_pass": false
   },
   {
     "id": "social-001",

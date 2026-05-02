@@ -2707,6 +2707,7 @@ export type CollaborationSearchResult = {
 };
 
 const DEFAULT_API_URL = "http://localhost:3016";
+export const GITHUB_API_VERSION = "2022-11-28";
 
 export function apiBaseUrl(): string {
   return (
@@ -2714,6 +2715,17 @@ export function apiBaseUrl(): string {
     process.env.NEXT_PUBLIC_API_URL ??
     DEFAULT_API_URL
   ).replace(/\/$/, "");
+}
+
+export function apiRequestHeaders(
+  cookie: string | null | undefined,
+  headers: Record<string, string> = {},
+): Record<string, string> {
+  return {
+    "x-github-api-version": GITHUB_API_VERSION,
+    ...(cookie ? { cookie } : {}),
+    ...headers,
+  };
 }
 
 export function sanitizeNextPath(value: string | string[] | undefined): string {
@@ -3673,7 +3685,7 @@ export async function getRepositoryIssuesFromCookie(
     response = await fetch(
       `${apiBaseUrl()}${repositoryIssuesPath(owner, repo, query)}`,
       {
-        headers: cookie ? { cookie } : undefined,
+        headers: apiRequestHeaders(cookie),
         cache: "no-store",
       },
     );

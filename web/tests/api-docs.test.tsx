@@ -39,6 +39,13 @@ describe("ApiDocsPage", () => {
     expect(
       screen.getByText("/api/orgs/{org}/people?q=member&page=1&pageSize=30"),
     ).toBeVisible();
+    expect(screen.getByText("/rate_limit")).toBeVisible();
+    expect(
+      screen.getByText(/Every routed API response includes X-RateLimit-Limit/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/current latest version is 2022-11-28/),
+    ).toBeVisible();
     expect(
       screen.getByText(/Private organizations return not_found/),
     ).toBeVisible();

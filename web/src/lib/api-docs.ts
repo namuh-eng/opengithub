@@ -1024,6 +1024,39 @@ run: #42
     response: `204 No Content`,
     notes: ["Unknown or unauthorized saved search IDs return 404."],
   },
+  {
+    id: "rate-limit",
+    method: "GET",
+    path: "/rate_limit",
+    title: "Rate limit status",
+    description:
+      "Returns the current core and search API bucket state for the detected bearer token, session, or anonymous IP caller.",
+    auth: "Optional bearer token or signed opengithub session cookie",
+    response: `{
+  "resources": {
+    "core": {
+      "limit": 5000,
+      "remaining": 4999,
+      "reset": 1777756800,
+      "used": 1,
+      "resource": "core"
+    },
+    "search": {
+      "limit": 30,
+      "remaining": 30,
+      "reset": 1777753260,
+      "used": 0,
+      "resource": "search"
+    }
+  },
+  "rate": { "resource": "core" }
+}`,
+    notes: [
+      "Every routed API response includes X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Used, and X-RateLimit-Resource.",
+      "Clients can pin X-GitHub-Api-Version; the current latest version is 2022-11-28.",
+      "Search endpoints use the 30/minute search bucket; anonymous core requests use 60/hour and authenticated core requests use 5000/hour.",
+    ],
+  },
 ];
 
 export const paginationExample = `GET /api/repos?page=2&pageSize=10

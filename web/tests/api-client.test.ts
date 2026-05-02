@@ -32,7 +32,10 @@ describe("API client issue list handling", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "http://api.test/api/repos/mona/octo-app/issues?state=open",
       {
-        headers: { cookie: "og_session=test" },
+        headers: {
+          cookie: "og_session=test",
+          "x-github-api-version": "2022-11-28",
+        },
         cache: "no-store",
       },
     );

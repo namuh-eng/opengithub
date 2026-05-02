@@ -3293,5 +3293,20 @@
       "Real Google account selection/callback could not be completed because this isolated QA lane uses dummy local OAuth credentials, not a configured Google test account.",
       "npm install reported 2 moderate transitive audit findings in frontend tooling; no production dependency change was made for auth-001."
     ]
+  },
+  {
+    "feature_id": "api-003",
+    "tests_written": [
+      "Rust contract test api_rate_limit_contract covers X-RateLimit-* headers and X-GitHub-Api-Version on routed responses.",
+      "Anonymous callers use the 60/hour core tier keyed by IP; bearer/session callers use the 5000/hour core tier keyed by a stable hash.",
+      "Search routes use the 30/minute search resource and return 403 with error.code=rate_limited after overage.",
+      "/rate_limit exposes current core/search bucket state for the detected caller.",
+      "Representative Next API client fetch pins X-GitHub-Api-Version: 2022-11-28."
+    ],
+    "needs_deeper_qa": [
+      "Run live Postgres/API curl probes to confirm the unlogged rate_limit_buckets table persists and resets bucket state across API worker requests.",
+      "Exercise reverse-proxy IP headers in staging so X-Forwarded-For is trusted only from expected infrastructure.",
+      "Add multi-worker/load tests if ECS scales beyond one task; process-local fallback is intentionally dev/degraded only."
+    ]
   }
 ]
