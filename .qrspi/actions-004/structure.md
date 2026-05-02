@@ -39,7 +39,7 @@
 
 ## Phase 3: Search, Navigation, and Step Interaction - log inspection controls work
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make the job viewer useful for inspection. Step chevrons expand/collapse chunks, the search input highlights matching lines, previous/next icon buttons jump between matches, result counts stay accurate, copy/permalink line actions work, and live in-progress logs refresh without resetting open steps or scroll position.
 

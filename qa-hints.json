@@ -2492,5 +2492,25 @@
       "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth.",
       "Log lines remain DB-backed fixtures; real Actions runner streaming, very large logs, S3 archives, retention expiry, and deletion race cases need later QA."
     ]
+  },
+  {
+    "feature_id": "actions-004",
+    "tests_written": [
+      "Implemented Phase 3 job log search and navigation controls on /{owner}/{repo}/actions/runs/{run_id}/jobs/{job_id}.",
+      "Added URL-backed q/match query forwarding from the Next.js route to the Rust job-log detail contract.",
+      "Replaced read-only search controls with a working search form, previous/next match navigation, selected-match count, highlighted matching log fragments, and selected-line scroll targeting.",
+      "Added line-level copy permalink actions with clipboard fallback and live feedback, plus live-run polling via router.refresh without resetting expanded step state.",
+      "Extended the Playwright seed fixture with a second searchable log match so browser smoke exercises match navigation.",
+      "Added Vitest coverage for search submission, match navigation, highlighted lines, copy permalink feedback, step collapse preservation, and no-dead-control checks.",
+      "Added Playwright smoke coverage for expanding steps, searching logs, jumping to the next result, copying a line permalink, and screenshot ralph/screenshots/build/actions-004-phase3-search-navigation.jpg.",
+      "Verification passed: focused api_repository_actions_job_log_contract, focused repository-actions-job-log Vitest, focused TEST_DATABASE_URL-backed Playwright job-log smoke, TEST_DATABASE_URL-backed make check, same-env make test with Cargo tests plus 197 frontend tests, full same-env make test-e2e with 70 Playwright tests, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Live polling refreshes the server component on a fixed interval for live runs; real runner streaming and scroll-position races during rapid appended logs still need deeper QA.",
+      "Search is backed by the existing bounded Rust detail query; very large logs, pagination beyond the first result window, and multi-step match ordering should be stressed later.",
+      "Clipboard behavior uses a textarea fallback when browser clipboard permission is denied; cross-browser clipboard permissions need QA.",
+      "The log options menu still does not persist preferences or expose archive downloads; those are Phase 4.",
+      "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth or real Actions runner execution."
+    ]
   }
 ]

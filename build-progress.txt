@@ -1699,3 +1699,12 @@
 - Verification passed: focused `api_repository_actions_job_log_contract`, `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`, same-env `make test` with Cargo tests plus 191 web tests, and mandatory Editorial banned-value scan passed with zero matches.
 - Browser smoke and `make test-e2e` were not run because Phase 1 is API-only and the structure outline marks browser smoke optional for this phase.
 - Marked Phase 1 as done in `.qrspi/actions-004/structure.md`; `prd.json` remains `build_pass: false` because Phases 2-5 remain.
+
+2026-05-02 - actions-004 phase 3 search navigation and permalink controls
+
+- Implemented Phase 3 from `.qrspi/actions-004/structure.md`: dedicated job logs now support URL-backed search, selected-match navigation, highlighted matches, copy/permalink line actions, and live-run polling refreshes.
+- Added job-log query forwarding through `web/src/app/[owner]/[repo]/actions/runs/[runId]/jobs/[jobId]/page.tsx`, `web/src/lib/server-session.ts`, and `web/src/lib/api.ts` so `q`, `match`, timestamp/raw, and page params reach the Rust detail contract.
+- Updated `RepositoryActionsJobLogPage` with a working search form, Previous/Next result buttons, selected match counts, selected-line scroll targeting, highlighted log fragments, line permalink copy feedback with a clipboard fallback, and polling via `router.refresh()` for live jobs without resetting expanded step state.
+- Extended the Playwright seed fixture and job-log Vitest/E2E coverage for match navigation, highlighted lines, copy permalink feedback, step collapse, no dead controls, and browser smoke screenshot `ralph/screenshots/build/actions-004-phase3-search-navigation.jpg`.
+- Verification passed: focused `api_repository_actions_job_log_contract`; focused `web/tests/repository-actions-job-log.test.tsx`; focused TEST_DATABASE_URL-backed `web/tests/e2e/repository-actions-job-log.spec.ts`; `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 197 frontend tests; full same-env `make test-e2e` with 70 Playwright tests; mandatory Editorial banned-value scan returned zero matches.
+- Marked Phase 3 as done in `.qrspi/actions-004/structure.md`; `prd.json` remains `build_pass: false` because Phases 4-5 remain.

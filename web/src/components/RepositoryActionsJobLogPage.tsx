@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { RepositoryShell } from "@/components/RepositoryShell";
 import type {
   ActionsJobLogStep,
@@ -121,13 +123,58 @@ export function RepositoryActionsJobLogPage({
   detail,
   validationError,
 }: RepositoryActionsJobLogPageProps) {
+  const router = useRouter();
   const basePath = `/${repository.owner_login}/${repository.name}`;
+  const jobPath = jobLogHref(basePath, detail.run.id, detail.job.id);
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(
     () => new Set(detail.steps.map((step) => step.id ?? "job-log")),
   );
   const [annotationsVisible, setAnnotationsVisible] = useState(true);
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [searchText, setSearchText] = useState(detail.search.query ?? "");
+  const [copyMessage, setCopyMessage] = useState("");
+  const selectedMatch = normalizeSelectedMatch(
+    detail.search.selectedMatch,
+    detail.search.totalMatches,
+  );
+  const currentMatch = selectedMatch
+    ? detail.search.matches[selectedMatch - 1]
+    : null;
+  const currentAnchorRef = useRef<string | null>(null);
   const groups = useMemo(() => groupedJobs(detail.jobs), [detail.jobs]);
+  const matchAnchors = useMemo(
+    () => new Set(detail.search.matches.map((match) => match.anchor)),
+    [detail.search.matches],
+  );
+
+  useEffect(() => {
+    setSearchText(detail.search.query ?? "");
+  }, [detail.search.query]);
+
+  useEffect(() => {
+    if (!detail.logState.isLive || !detail.logState.available) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      router.refresh();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [detail.logState.available, detail.logState.isLive, router]);
+
+  useEffect(() => {
+    if (!currentMatch || currentAnchorRef.current === currentMatch.anchor) {
+      return;
+    }
+    currentAnchorRef.current = currentMatch.anchor;
+    window.requestAnimationFrame(() => {
+      const matchElement = document.getElementById(
+        `log-${currentMatch.anchor}`,
+      );
+      if (typeof matchElement?.scrollIntoView === "function") {
+        matchElement.scrollIntoView({ block: "center" });
+      }
+    });
+  }, [currentMatch]);
 
   function toggleStep(stepKey: string) {
     setExpandedSteps((current) => {
@@ -139,6 +186,45 @@ export function RepositoryActionsJobLogPage({
       }
       return next;
     });
+  }
+
+  function searchHref(nextQuery: string, nextMatch = 1) {
+    const params = new URLSearchParams();
+    const trimmed = nextQuery.trim();
+    if (trimmed) {
+      params.set("q", trimmed);
+      params.set("match", String(nextMatch));
+    }
+    const queryString = params.toString();
+    return queryString ? `${jobPath}?${queryString}` : jobPath;
+  }
+
+  function goToMatch(nextMatch: number) {
+    if (!detail.search.query || detail.search.totalMatches < 1) {
+      return;
+    }
+    router.push(searchHref(detail.search.query, nextMatch));
+  }
+
+  async function copyPermalink(anchor?: string) {
+    const suffix = anchor ? `#log-${anchor}` : "";
+    const href = `${window.location.origin}${jobPath}${suffix}`;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(href);
+      } else {
+        fallbackCopyText(href);
+      }
+      setCopyMessage(anchor ? `Copied ${anchor}` : "Copied job permalink");
+    } catch {
+      try {
+        fallbackCopyText(href);
+        setCopyMessage(anchor ? `Copied ${anchor}` : "Copied job permalink");
+      } catch {
+        setCopyMessage("Copy failed");
+      }
+    }
+    window.setTimeout(() => setCopyMessage(""), 1800);
   }
 
   return (
@@ -323,26 +409,51 @@ export function RepositoryActionsJobLogPage({
                   <p className="t-label">Job log</p>
                   <h2 className="t-h2 mt-1">Steps and output</h2>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+                <form
+                  className="flex flex-wrap items-center gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    router.push(searchHref(searchText));
+                  }}
+                >
                   <div className="input h-9 min-w-[240px]">
                     <span aria-hidden="true">⌕</span>
                     <input
                       aria-label="Search log"
-                      defaultValue={detail.search.query ?? ""}
+                      onChange={(event) => setSearchText(event.target.value)}
                       placeholder="Search log"
-                      readOnly
+                      value={searchText}
                     />
                   </div>
-                  <button className="btn sm" disabled type="button">
+                  <button className="btn sm" type="submit">
+                    Search
+                  </button>
+                  <button
+                    className="btn sm"
+                    disabled={selectedMatch <= 1}
+                    onClick={() => goToMatch(selectedMatch - 1)}
+                    type="button"
+                  >
                     Previous result
                   </button>
-                  <button className="btn sm" disabled type="button">
+                  <button
+                    className="btn sm"
+                    disabled={
+                      selectedMatch < 1 ||
+                      selectedMatch >= detail.search.totalMatches
+                    }
+                    onClick={() => goToMatch(selectedMatch + 1)}
+                    type="button"
+                  >
                     Next result
                   </button>
                   <span className="chip soft t-num">
-                    {detail.search.totalMatches} matches
+                    {detail.search.totalMatches
+                      ? `${selectedMatch} of ${detail.search.totalMatches}`
+                      : "0"}{" "}
+                    matches
                   </span>
-                </div>
+                </form>
               </div>
 
               {!detail.logState.available ? (
@@ -368,8 +479,12 @@ export function RepositoryActionsJobLogPage({
                         expanded={expanded}
                         key={stepKey}
                         onToggle={() => toggleStep(stepKey)}
+                        onCopyPermalink={copyPermalink}
+                        query={detail.search.query}
                         showTimestamps={detail.options.showTimestamps}
                         step={step}
+                        currentAnchor={currentMatch?.anchor ?? null}
+                        matchingAnchors={matchAnchors}
                       />
                     );
                   })}
@@ -427,11 +542,29 @@ export function RepositoryActionsJobLogPage({
                 )}
               </section>
             ) : null}
+            <div aria-live="polite" className="t-xs min-h-4">
+              {copyMessage}
+            </div>
           </main>
         </div>
       </div>
     </RepositoryShell>
   );
+}
+
+function fallbackCopyText(value: string) {
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textarea);
+  if (!copied) {
+    throw new Error("copy_failed");
+  }
 }
 
 function MetadataRow({ label, value }: { label: string; value: string }) {
@@ -444,13 +577,21 @@ function MetadataRow({ label, value }: { label: string; value: string }) {
 }
 
 function JobLogStep({
+  currentAnchor,
   expanded,
+  matchingAnchors,
+  onCopyPermalink,
   onToggle,
+  query,
   showTimestamps,
   step,
 }: {
+  currentAnchor: string | null;
   expanded: boolean;
+  matchingAnchors: Set<string>;
+  onCopyPermalink: (anchor: string) => void;
   onToggle: () => void;
+  query: string | null;
   showTimestamps: boolean;
   step: ActionsJobLogStep;
 }) {
@@ -493,9 +634,15 @@ function JobLogStep({
           {step.lines.items.length ? (
             step.lines.items.map((line) => (
               <li
-                className="grid grid-cols-[72px_minmax(0,1fr)] gap-3 px-5 py-1"
+                className="grid grid-cols-[72px_minmax(0,1fr)_auto] gap-3 px-5 py-1"
                 id={`log-${line.anchor}`}
                 key={line.anchor}
+                style={{
+                  background:
+                    line.anchor === currentAnchor
+                      ? "var(--accent-soft)"
+                      : "transparent",
+                }}
               >
                 <a
                   className="t-mono-sm text-right hover:underline"
@@ -510,8 +657,20 @@ function JobLogStep({
                       {dateTimeLabel(line.timestamp)}{" "}
                     </span>
                   ) : null}
-                  {line.content}
+                  {renderHighlightedLogLine(
+                    line.content,
+                    query,
+                    matchingAnchors.has(line.anchor),
+                  )}
                 </code>
+                <button
+                  aria-label={`Copy permalink for line ${line.lineNumber}`}
+                  className="btn sm"
+                  onClick={() => onCopyPermalink(line.anchor)}
+                  type="button"
+                >
+                  Copy
+                </button>
               </li>
             ))
           ) : (
@@ -526,4 +685,57 @@ function JobLogStep({
       ) : null}
     </div>
   );
+}
+
+function normalizeSelectedMatch(
+  selectedMatch: number | null,
+  totalMatches: number,
+) {
+  if (totalMatches < 1) {
+    return 0;
+  }
+  if (!selectedMatch || selectedMatch < 1) {
+    return 1;
+  }
+  return Math.min(selectedMatch, totalMatches);
+}
+
+function renderHighlightedLogLine(
+  content: string,
+  query: string | null,
+  isMatchedLine: boolean,
+) {
+  const trimmed = query?.trim();
+  if (!trimmed || !isMatchedLine) {
+    return content;
+  }
+  const lowerContent = content.toLowerCase();
+  const lowerQuery = trimmed.toLowerCase();
+  const parts: ReactNode[] = [];
+  let cursor = 0;
+  let index = lowerContent.indexOf(lowerQuery);
+  while (index >= 0) {
+    if (index > cursor) {
+      parts.push(content.slice(cursor, index));
+    }
+    const end = index + trimmed.length;
+    parts.push(
+      <mark
+        key={`${index}-${end}`}
+        style={{
+          background: "var(--accent-soft)",
+          color: "var(--surface)",
+          outline: "1px solid var(--accent)",
+        }}
+      >
+        {content.slice(index, end)}
+      </mark>,
+    );
+    cursor = end;
+    index = lowerContent.indexOf(lowerQuery, cursor);
+  }
+  if (cursor < content.length) {
+    parts.push(content.slice(cursor));
+  }
+  return parts;
 }

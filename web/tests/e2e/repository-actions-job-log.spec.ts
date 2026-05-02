@@ -97,6 +97,18 @@ test("signed-in job log viewer renders job sidebar, steps, and annotations", asy
   await expect(
     page.getByText("error: Expected string, found number"),
   ).toBeHidden();
+  await page.getByRole("button", { name: /Job log/ }).click();
+  await page.getByRole("textbox", { name: "Search log" }).fill("error");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page).toHaveURL(/q=error/);
+  await expect(page.getByText(/1 of \d+ matches/)).toBeVisible();
+  await page.getByRole("button", { name: "Next result" }).click();
+  await expect(page).toHaveURL(/match=2/);
+  await page
+    .getByRole("button", { name: /Copy permalink for line/ })
+    .first()
+    .click();
+  await expect(page.getByText(/Copied L/)).toBeVisible();
   await page.getByRole("button", { name: "Hide annotations" }).click();
   await expect(page.getByText("Problems in this job")).toBeHidden();
   await page.getByRole("button", { name: "Log options" }).click();
@@ -109,6 +121,6 @@ test("signed-in job log viewer renders job sidebar, steps, and annotations", asy
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/actions-004-phase2-job-viewer.jpg",
+    path: "../ralph/screenshots/build/actions-004-phase3-search-navigation.jpg",
   });
 });

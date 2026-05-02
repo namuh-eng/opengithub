@@ -252,6 +252,14 @@ export async function getRepositoryActionsJobLogDetail(
   repo: string,
   runId: string,
   jobId: string,
+  query: {
+    q?: string | null;
+    selectedMatch?: number | null;
+    timestamps?: boolean | null;
+    raw?: boolean | null;
+    page?: number | null;
+    pageSize?: number | null;
+  } = {},
 ) {
   const requestHeaders = await headers();
   return getRepositoryActionsJobLogDetailFromCookie(
@@ -260,6 +268,7 @@ export async function getRepositoryActionsJobLogDetail(
     repo,
     runId,
     jobId,
+    query,
   );
 }
 

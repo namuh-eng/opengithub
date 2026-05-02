@@ -15,12 +15,21 @@ type ActionsJobLogPageProps = {
     runId: string;
     jobId: string;
   }>;
+  searchParams?: Promise<{
+    q?: string;
+    match?: string;
+    timestamps?: string;
+    raw?: string;
+    page?: string;
+  }>;
 };
 
 export default async function ActionsJobLogPage({
   params,
+  searchParams,
 }: ActionsJobLogPageProps) {
   const { owner, repo, runId, jobId } = await params;
+  const queryParams = (await searchParams) ?? {};
   const ownerLogin = decodeURIComponent(owner);
   const repositoryName = decodeURIComponent(repo);
   const decodedRunId = decodeURIComponent(runId);
@@ -33,6 +42,13 @@ export default async function ActionsJobLogPage({
       repositoryName,
       decodedRunId,
       decodedJobId,
+      {
+        q: queryParams.q ?? null,
+        selectedMatch: positiveInteger(queryParams.match),
+        timestamps: booleanParam(queryParams.timestamps),
+        raw: booleanParam(queryParams.raw),
+        page: positiveInteger(queryParams.page),
+      },
     ),
   ]);
 
@@ -56,6 +72,24 @@ export default async function ActionsJobLogPage({
       )}
     </AppShell>
   );
+}
+
+function positiveInteger(value: string | undefined) {
+  if (!value) {
+    return null;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function booleanParam(value: string | undefined) {
+  if (value === "true") {
+    return true;
+  }
+  if (value === "false") {
+    return false;
+  }
+  return null;
 }
 
 function emptyJobLogDetail(

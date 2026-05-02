@@ -709,6 +709,15 @@ export type RepositoryActionsJobLogDetail = {
   downloadHref: string;
 };
 
+export type RepositoryActionsJobLogDetailQuery = {
+  q?: string | null;
+  selectedMatch?: number | null;
+  timestamps?: boolean | null;
+  raw?: boolean | null;
+  page?: number | null;
+  pageSize?: number | null;
+};
+
 export type ActionsArtifactDownload = {
   artifactId: string;
   name: string;
@@ -2287,12 +2296,34 @@ export function repositoryActionsJobLogDetailPath(
   repo: string,
   runId: string,
   jobId: string,
+  query: RepositoryActionsJobLogDetailQuery = {},
 ): string {
-  return `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
+  const params = new URLSearchParams();
+  if (query.q) {
+    params.set("q", query.q);
+  }
+  if (query.selectedMatch) {
+    params.set("match", String(query.selectedMatch));
+  }
+  if (query.timestamps !== undefined && query.timestamps !== null) {
+    params.set("timestamps", String(query.timestamps));
+  }
+  if (query.raw !== undefined && query.raw !== null) {
+    params.set("raw", String(query.raw));
+  }
+  if (query.page) {
+    params.set("page", String(query.page));
+  }
+  if (query.pageSize) {
+    params.set("pageSize", String(query.pageSize));
+  }
+  const path = `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
     repo,
   )}/actions/runs/${encodeURIComponent(runId)}/jobs/${encodeURIComponent(
     jobId,
   )}/detail`;
+  const queryString = params.toString();
+  return queryString ? `${path}?${queryString}` : path;
 }
 
 export async function getRepositoryActionsDashboardFromCookie(
@@ -2430,6 +2461,7 @@ export async function getRepositoryActionsJobLogDetailFromCookie(
   repo: string,
   runId: string,
   jobId: string,
+  query: RepositoryActionsJobLogDetailQuery = {},
 ): Promise<RepositoryActionsJobLogDetail | ApiErrorEnvelope> {
   let response: Response;
   try {
@@ -2439,6 +2471,7 @@ export async function getRepositoryActionsJobLogDetailFromCookie(
         repo,
         runId,
         jobId,
+        query,
       )}`,
       {
         headers: cookie ? { cookie } : undefined,

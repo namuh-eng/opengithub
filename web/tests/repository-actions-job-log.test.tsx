@@ -1,10 +1,22 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RepositoryActionsJobLogPage } from "@/components/RepositoryActionsJobLogPage";
 import type {
   RepositoryActionsJobLogDetail,
   RepositoryOverview,
 } from "@/lib/api";
+
+const pushMock = vi.fn();
+const refreshMock = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: pushMock, refresh: refreshMock }),
+}));
+
+beforeEach(() => {
+  pushMock.mockClear();
+  refreshMock.mockClear();
+});
 
 function repositoryOverview(): RepositoryOverview {
   return {
@@ -181,13 +193,13 @@ function jobLogDetail(
         durationSeconds: 20,
         startedAt: "2026-05-01T00:04:00Z",
         completedAt: "2026-05-01T00:04:20Z",
-        matchCount: 0,
+        matchCount: 1,
         lines: {
           items: [
             {
               lineNumber: 1,
               timestamp: "2026-05-01T00:04:00Z",
-              content: "Installing dependencies",
+              content: "Installing dependencies after cache error",
               anchor: "L1",
             },
           ],
@@ -246,9 +258,16 @@ function jobLogDetail(
     },
     search: {
       query: "error",
-      totalMatches: 1,
+      totalMatches: 2,
       selectedMatch: 1,
       matches: [
+        {
+          lineNumber: 1,
+          stepId: "step-1",
+          stepNumber: 1,
+          anchor: "L1",
+          preview: "Installing dependencies after cache error",
+        },
         {
           lineNumber: 3,
           stepId: "step-2",
@@ -293,11 +312,25 @@ describe("RepositoryActionsJobLogPage", () => {
     expect(screen.getByRole("textbox", { name: "Search log" })).toHaveValue(
       "error",
     );
-    expect(screen.getByText("1 matches")).toBeVisible();
-    expect(screen.getByText("Installing dependencies")).toBeVisible();
+    expect(screen.getByText("1 of 2 matches")).toBeVisible();
     expect(
-      screen.getByText("error: Expected string, found number"),
-    ).toBeVisible();
+      screen.getAllByText((_content, element) =>
+        Boolean(
+          element?.textContent?.includes(
+            "Installing dependencies after cache error",
+          ),
+        ),
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText((_content, element) =>
+        Boolean(
+          element?.textContent?.includes(
+            "error: Expected string, found number",
+          ),
+        ),
+      ).length,
+    ).toBeGreaterThan(0);
     expect(screen.getByText("Type error")).toBeVisible();
     expect(screen.getByRole("link", { name: "Download log" })).toHaveAttribute(
       "href",
@@ -336,6 +369,57 @@ describe("RepositoryActionsJobLogPage", () => {
     for (const button of screen.getAllByRole("button")) {
       expect(button).toHaveAccessibleName(/.+/);
     }
+  });
+
+  it("submits URL-backed search and navigates between matches", () => {
+    render(
+      <RepositoryActionsJobLogPage
+        detail={jobLogDetail()}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search log" }), {
+      target: { value: "cache miss" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    expect(pushMock).toHaveBeenCalledWith(
+      "/mona/octo-app/actions/runs/run-1/jobs/job-1?q=cache+miss&match=1",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Next result" }));
+    expect(pushMock).toHaveBeenCalledWith(
+      "/mona/octo-app/actions/runs/run-1/jobs/job-1?q=error&match=2",
+    );
+    expect(
+      screen.getByRole("button", { name: "Previous result" }),
+    ).toBeDisabled();
+  });
+
+  it("renders highlighted matches and line permalink copy actions", async () => {
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    render(
+      <RepositoryActionsJobLogPage
+        detail={jobLogDetail()}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(screen.getAllByText("error")[0].tagName.toLowerCase()).toBe("mark");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy permalink for line 3" }),
+    );
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "/mona/octo-app/actions/runs/run-1/jobs/job-1#log-L3",
+      ),
+    );
+    expect(await screen.findByText("Copied L3")).toBeVisible();
   });
 
   it("renders deleted or unavailable logs as a 410-style state", () => {
