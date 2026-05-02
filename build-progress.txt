@@ -2287,3 +2287,10 @@
 - Verification passed: focused `CARGO_INCREMENTAL=0 cargo test -p opengithub-api --test personal_profile_settings_contract` (2 passed); focused `cd web && npm test -- --run tests/personal-profile-settings.test.tsx` (6 passed); `cd web && npx tsc --noEmit`; mandatory Editorial banned-value scan returned zero matches; `CARGO_INCREMENTAL=0 make check`; `CARGO_INCREMENTAL=0 make test` with Cargo tests plus 251 frontend tests.
 - `make check` initially reported the fresh-worktree setup guard; per task instruction, touched `.ralph-setup-done` and reran successfully. A first Rust run hit local target/temp-dir cache issues after disk cleanup; rerunning with `CARGO_INCREMENTAL=0` passed.
 - Set `personal-settings-001.build_pass=true`, `needs_structure=false`, and left `qa_pass=false` for independent QA.
+
+2026-05-03 - QA auth-002 session verification
+
+- Independently QAed auth-002 in isolated branch qa/opengithub-auth-002: protected Next.js redirects, Google-only sign-in CTA, OAuth next sanitization, logout/callback safe redirects, protected API JSON 401 envelopes, signed session cookie validation, and repository 403 authorization boundaries.
+- Fixed scoped QA harness issues found during smoke: Playwright auth setup now waits for Rust API /health before direct API/browser tests, and Vitest full-suite timeout is 15s to avoid load-related component-test timeouts without changing assertions.
+- Verification: `cd web && npx tsc --noEmit --pretty false` passed; `CARGO_INCREMENTAL=0 make check` passed; `CARGO_INCREMENTAL=0 make test` passed with 267 web tests plus Rust workspace tests; `CARGO_INCREMENTAL=0 make test-e2e` passed with 18 Playwright tests; focused auth Rust, Vitest, and Playwright suites passed.
+- Set `auth-002.qa_pass` to `true` in `prd.json`; no remaining auth-002 QA blockers recorded.

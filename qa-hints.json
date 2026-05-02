@@ -3293,5 +3293,34 @@
       "Real Google account selection/callback could not be completed because this isolated QA lane uses dummy local OAuth credentials, not a configured Google test account.",
       "npm install reported 2 moderate transitive audit findings in frontend tooling; no production dependency change was made for auth-001."
     ]
+  },
+  {
+    "feature_id": "auth-002",
+    "qa_result": "pass",
+    "qa_date": "2026-05-03",
+    "tests_run": [
+      "cd web && npx tsc --noEmit --pretty false",
+      "CARGO_INCREMENTAL=0 make check",
+      "CARGO_INCREMENTAL=0 make test",
+      "CARGO_INCREMENTAL=0 make test-e2e",
+      "CARGO_INCREMENTAL=0 cargo test --test auth_route_guard --test auth_security --test repository_authz -- --nocapture",
+      "cd web && npx vitest run tests/auth-login.test.tsx tests/app-shell.test.tsx",
+      "cd web && npx playwright test tests/e2e/auth.spec.ts"
+    ],
+    "evidence": [
+      "Protected Next.js routes redirect anonymous users to /login with preserved next paths.",
+      "Public Sign in CTA reaches the shared Google-only login page.",
+      "OAuth start sanitizes external next URLs before redirecting to Google.",
+      "Logout/callback error flows return to safe pages without leaking provider/session details.",
+      "Protected API probes return JSON 401 envelopes for missing/malformed sessions without leaking cookie values.",
+      "Rust auth/security/repository authz tests cover signed cookie validation, expired/revoked sessions, 401/403 envelopes, and private repository denial.",
+      "Playwright setup now waits for Rust API /health before API smoke tests so cold API compiles do not race browser tests.",
+      "Vitest timeout raised to 15s for the full component suite to avoid load-related timeouts without weakening assertions."
+    ],
+    "fixes": [
+      "Added API health readiness to Playwright auth setup before browser/API smoke tests.",
+      "Raised Vitest testTimeout to 15s for reliable full-suite execution in this worktree."
+    ],
+    "blockers": []
   }
 ]
