@@ -155,6 +155,15 @@ pub struct SearchSuggestionQuery {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct CreateSavedSearchInput {
+    pub actor_user_id: Uuid,
+    pub name: String,
+    pub query: String,
+    pub scope: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct SearchSuggestionDashboard {
     pub query: String,
     pub scope: String,
@@ -232,6 +241,12 @@ pub struct RecentSearchSuggestion {
 pub enum SearchError {
     #[error("search query must contain at least two non-whitespace characters")]
     QueryTooShort,
+    #[error("{0}")]
+    Validation(String),
+    #[error("saved search name already exists")]
+    DuplicateSavedSearchName,
+    #[error("saved search not found")]
+    SavedSearchNotFound,
     #[error("user does not have repository access")]
     RepositoryAccessDenied,
     #[error("invalid search document kind `{0}`")]
@@ -476,6 +491,111 @@ pub async fn search_documents(
         total,
         page,
         page_size,
+    })
+}
+
+pub async fn create_saved_search(
+    pool: &PgPool,
+    input: CreateSavedSearchInput,
+) -> Result<SavedSearchSuggestion, SearchError> {
+    let name = normalize_saved_search_name(&input.name)?;
+    let query = normalize_saved_search_query(&input.query)?;
+    let scope = normalize_saved_search_scope(input.scope.as_deref());
+
+    let row = sqlx::query(
+        r#"
+        INSERT INTO saved_searches (user_id, name, query, scope)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, name, query, scope, updated_at
+        "#,
+    )
+    .bind(input.actor_user_id)
+    .bind(&name)
+    .bind(&query)
+    .bind(&scope)
+    .fetch_one(pool)
+    .await
+    .map_err(|error| {
+        if let sqlx::Error::Database(database_error) = &error {
+            if database_error.constraint() == Some("saved_searches_user_name_lower_unique") {
+                return SearchError::DuplicateSavedSearchName;
+            }
+        }
+        SearchError::Sqlx(error)
+    })?;
+
+    record_recent_search(pool, input.actor_user_id, &query, &scope, Some(&scope)).await?;
+    saved_search_from_row(row)
+}
+
+pub async fn delete_saved_search(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    saved_search_id: Uuid,
+) -> Result<(), SearchError> {
+    let deleted = sqlx::query(
+        r#"
+        DELETE FROM saved_searches
+        WHERE id = $1 AND user_id = $2
+        "#,
+    )
+    .bind(saved_search_id)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?
+    .rows_affected();
+
+    if deleted == 0 {
+        return Err(SearchError::SavedSearchNotFound);
+    }
+
+    Ok(())
+}
+
+pub async fn record_recent_search(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    query: &str,
+    scope: &str,
+    result_type: Option<&str>,
+) -> Result<RecentSearchSuggestion, SearchError> {
+    let query = normalize_saved_search_query(query)?;
+    let scope = normalize_saved_search_scope(Some(scope));
+    let result_type = result_type
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.chars().take(80).collect::<String>());
+    let row = sqlx::query(
+        r#"
+        INSERT INTO recent_searches (user_id, query, scope, result_type, searched_at)
+        VALUES ($1, $2, $3, $4, now())
+        ON CONFLICT (user_id, lower(query), scope, COALESCE(result_type, ''))
+        DO UPDATE SET searched_at = now()
+        RETURNING id, query, scope, result_type, searched_at
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(&query)
+    .bind(&scope)
+    .bind(&result_type)
+    .fetch_one(pool)
+    .await?;
+
+    let query: String = row.get("query");
+    let scope: String = row.get("scope");
+    let result_type: Option<String> = row.get("result_type");
+    let selected_type = result_type.as_deref().unwrap_or(&scope);
+    Ok(RecentSearchSuggestion {
+        id: row.get("id"),
+        href: format!(
+            "/search?q={}&type={}",
+            percent_encode_query(&query),
+            percent_encode_query(selected_type)
+        ),
+        query,
+        scope,
+        result_type,
+        searched_at: row.get("searched_at"),
     })
 }
 
@@ -918,6 +1038,61 @@ async fn saved_search_suggestions(
             }
         })
         .collect())
+}
+
+fn saved_search_from_row(row: sqlx::postgres::PgRow) -> Result<SavedSearchSuggestion, SearchError> {
+    let query: String = row.get("query");
+    let scope: String = row.get("scope");
+    Ok(SavedSearchSuggestion {
+        id: row.get("id"),
+        name: row.get("name"),
+        href: format!(
+            "/search?q={}&type={}",
+            percent_encode_query(&query),
+            percent_encode_query(&scope)
+        ),
+        query,
+        scope,
+        updated_at: row.get("updated_at"),
+    })
+}
+
+fn normalize_saved_search_name(name: &str) -> Result<String, SearchError> {
+    let normalized = name.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.is_empty() {
+        return Err(SearchError::Validation(
+            "saved search name is required".to_owned(),
+        ));
+    }
+    if normalized.chars().count() > 80 {
+        return Err(SearchError::Validation(
+            "saved search name must be 80 characters or fewer".to_owned(),
+        ));
+    }
+    Ok(normalized)
+}
+
+fn normalize_saved_search_query(query: &str) -> Result<String, SearchError> {
+    let normalized = query.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.is_empty() {
+        return Err(SearchError::Validation(
+            "saved search query is required".to_owned(),
+        ));
+    }
+    if normalized.chars().count() > 256 {
+        return Err(SearchError::Validation(
+            "saved search query must be 256 characters or fewer".to_owned(),
+        ));
+    }
+    Ok(normalized)
+}
+
+fn normalize_saved_search_scope(scope: Option<&str>) -> String {
+    scope
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.chars().take(80).collect::<String>())
+        .unwrap_or_else(|| "repositories".to_owned())
 }
 
 async fn recent_search_suggestions(

@@ -76,6 +76,12 @@ export type SearchSuggestionsQuery = {
   limit?: number;
 };
 
+export type CreateSavedSearchRequest = {
+  name: string;
+  query: string;
+  scope?: string;
+};
+
 export type RepositoryOwnerType = "user" | "organization";
 
 export type RepositorySummary = {
@@ -1999,6 +2005,14 @@ export function searchSuggestionsPath(query: SearchSuggestionsQuery = {}) {
     : "/api/search/suggestions";
 }
 
+export function savedSearchesPath() {
+  return "/api/search/saved-searches";
+}
+
+export function savedSearchPath(id: string) {
+  return `/api/search/saved-searches/${encodeURIComponent(id)}`;
+}
+
 export async function getSearchSuggestionsFromCookie(
   cookie: string | null | undefined,
   query: SearchSuggestionsQuery = {},
@@ -2033,6 +2047,84 @@ export async function getSearchSuggestionsFromCookie(
   }
 
   return body as SearchSuggestionDashboard;
+}
+
+export async function createSavedSearchFromCookie(
+  cookie: string | null | undefined,
+  input: CreateSavedSearchRequest,
+): Promise<SavedSearchSuggestion | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${savedSearchesPath()}`, {
+      body: JSON.stringify(input),
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      method: "POST",
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Saved search could not be created.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "saved_search_failed",
+          message: "Saved search could not be created.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as SavedSearchSuggestion;
+}
+
+export async function deleteSavedSearchFromCookie(
+  cookie: string | null | undefined,
+  id: string,
+): Promise<{ deleted: true } | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${savedSearchPath(id)}`, {
+      headers: cookie ? { cookie } : undefined,
+      method: "DELETE",
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Saved search could not be deleted.",
+      },
+      status: 503,
+    };
+  }
+
+  if (response.status === 204) {
+    return { deleted: true };
+  }
+
+  const body = await response.json().catch(() => null);
+  return (
+    (body as ApiErrorEnvelope | null) ?? {
+      error: {
+        code: "saved_search_delete_failed",
+        message: "Saved search could not be deleted.",
+      },
+      status: response.status,
+    }
+  );
 }
 
 export async function searchGlobalFromCookie(

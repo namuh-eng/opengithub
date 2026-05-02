@@ -223,6 +223,62 @@ test("global search modal autocompletes qualifiers and follows direct jumps", as
   });
 });
 
+test("global search modal creates and manages saved searches", async ({
+  page,
+}) => {
+  const seeded = seedDashboard();
+  await signIn(page, seeded);
+
+  await page.goto("/dashboard");
+  await page.getByRole("searchbox", { name: "Search or jump to" }).focus();
+  const searchDialog = page.getByRole("dialog", { name: "Search" });
+  const combobox = searchDialog.getByRole("combobox", {
+    name: "Search opengithub",
+  });
+  await combobox.fill("searchmodal language:rust");
+
+  await searchDialog
+    .getByRole("button", { name: "Create saved search" })
+    .click();
+  const createDialog = page.getByRole("dialog", {
+    name: "Create saved search",
+  });
+  await expect(createDialog).toBeVisible();
+  await expect(
+    createDialog.getByRole("link", { name: /Saved search documentation/ }),
+  ).toHaveAttribute("href", "/docs/api#search-saved-create");
+
+  await createDialog
+    .getByRole("button", { name: "Create saved search" })
+    .click();
+  await expect(createDialog.getByRole("alert")).toContainText(
+    "Name is required.",
+  );
+
+  const savedName = `Saved search ${Date.now()}`;
+  await createDialog.getByLabel("Name").fill(savedName);
+  await createDialog.getByLabel("Query").fill("searchmodal language:rust");
+  await createDialog
+    .getByRole("button", { name: "Create saved search" })
+    .click();
+  await expect(searchDialog.getByRole("status")).toContainText(
+    `Saved "${savedName}".`,
+  );
+  await expect(
+    searchDialog.getByRole("option", { name: savedName }),
+  ).toBeVisible();
+  await expect(
+    searchDialog.getByRole("option", { name: savedName }),
+  ).toHaveAttribute("aria-selected", /true|false/);
+  await searchDialog.getByRole("button", { name: "Delete" }).first().click();
+  await expect(searchDialog.getByRole("status")).toContainText("Deleted");
+
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/search-002-phase4-saved-search.jpg",
+  });
+});
+
 test("signed-in mobile drawer exposes navigation and responsive frames", async ({
   page,
 }) => {

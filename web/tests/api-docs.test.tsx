@@ -12,7 +12,7 @@ describe("ApiDocsPage", () => {
         name: "Build against implemented opengithub APIs",
       }),
     ).toBeVisible();
-    expect(apiEndpointDocs.length).toBeGreaterThanOrEqual(31);
+    expect(apiEndpointDocs.length).toBeGreaterThanOrEqual(34);
 
     for (const endpoint of apiEndpointDocs) {
       const card = screen
@@ -136,6 +136,14 @@ describe("ApiDocsPage", () => {
     ).toBeVisible();
     expect(
       screen.getByText("/api/search?q=router&type=code&page=1&pageSize=30"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/search/suggestions?q=router&scope=all&limit=8"),
+    ).toBeVisible();
+    expect(screen.getByText("/api/search/saved-searches")).toBeVisible();
+    expect(screen.getByText("/api/search/saved-searches/{id}")).toBeVisible();
+    expect(
+      screen.getByText(/Duplicate names for the same viewer/),
     ).toBeVisible();
   });
 

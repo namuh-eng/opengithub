@@ -3197,9 +3197,11 @@ pub(crate) fn search_error_to_collaboration(error: SearchError) -> Collaboration
         SearchError::Repository(super::repositories::RepositoryError::Sqlx(error))
         | SearchError::Sqlx(error) => CollaborationError::Sqlx(error),
         SearchError::Repository(_) => CollaborationError::RepositoryNotFound,
-        SearchError::QueryTooShort | SearchError::InvalidKind(_) => {
-            CollaborationError::RepositoryAccessDenied
-        }
+        SearchError::QueryTooShort
+        | SearchError::InvalidKind(_)
+        | SearchError::Validation(_)
+        | SearchError::DuplicateSavedSearchName
+        | SearchError::SavedSearchNotFound => CollaborationError::RepositoryAccessDenied,
     }
 }
 

@@ -27,25 +27,16 @@ type GlobalSearchModalProps = {
   onClose: () => void;
 };
 
-type FlatSuggestion =
-  | {
-      action: SearchModalAction;
-      groupTitle: string;
-      href: string;
-      id: string;
-      title: string;
-      description: string | null;
-      kind: string;
-    }
-  | {
-      action: SearchModalAction;
-      groupTitle: string;
-      href: string;
-      id: string;
-      title: string;
-      description: string | null;
-      kind: "saved_search" | "recent_search";
-    };
+type FlatSuggestion = {
+  action: SearchModalAction;
+  groupTitle: string;
+  href: string;
+  id: string;
+  title: string;
+  description: string | null;
+  kind: string;
+  savedSearchId?: string;
+};
 
 function SearchIcon() {
   return (
@@ -121,6 +112,7 @@ function flattenSuggestions(
       href: item.href,
       id: `saved:${item.id}`,
       kind: "saved_search" as const,
+      savedSearchId: item.id,
       title: item.name,
     }),
   );
@@ -167,8 +159,19 @@ export function GlobalSearchModal({
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [savedName, setSavedName] = useState("");
+  const [savedQuery, setSavedQuery] = useState(initialQuery);
+  const [savedFeedback, setSavedFeedback] = useState<string | null>(null);
+  const [savedError, setSavedError] = useState<string | null>(null);
+  const [savingSearch, setSavingSearch] = useState(false);
+  const [deletingSavedSearchId, setDeletingSavedSearchId] = useState<
+    string | null
+  >(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const savedNameRef = useRef<HTMLInputElement | null>(null);
   const flatSuggestions = useMemo(
     () => flattenSuggestions(dashboard),
     [dashboard],
@@ -193,9 +196,11 @@ export function GlobalSearchModal({
 
   useEffect(() => {
     setQuery(initialQuery);
+    setSavedQuery(initialQuery);
   }, [initialQuery]);
 
   useEffect(() => {
+    void refreshKey;
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
       setLoading(true);
@@ -236,7 +241,7 @@ export function GlobalSearchModal({
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [query]);
+  }, [query, refreshKey]);
 
   useEffect(() => {
     if (selectedIndex >= flatSuggestions.length) {
@@ -254,7 +259,101 @@ export function GlobalSearchModal({
       window.requestAnimationFrame(() => inputRef.current?.focus());
       return;
     }
+    if (action.kind === "open_saved_search_dialog") {
+      openCreateDialog();
+      return;
+    }
     window.location.assign(searchModalActionHref(action, query));
+  }
+
+  function openCreateDialog() {
+    setSavedName("");
+    setSavedQuery(query.trim());
+    setSavedError(null);
+    setSavedFeedback(null);
+    setCreateDialogOpen(true);
+    window.requestAnimationFrame(() => savedNameRef.current?.focus());
+  }
+
+  function closeCreateDialog() {
+    setCreateDialogOpen(false);
+    setSavedError(null);
+    setSavingSearch(false);
+    window.requestAnimationFrame(() => inputRef.current?.focus());
+  }
+
+  async function createSavedSearch() {
+    const normalizedName = savedName.trim();
+    const normalizedQuery = savedQuery.trim();
+    setSavedFeedback(null);
+    if (!normalizedName) {
+      setSavedError("Name is required.");
+      return;
+    }
+    if (!normalizedQuery) {
+      setSavedError("Query is required.");
+      return;
+    }
+
+    setSavingSearch(true);
+    setSavedError(null);
+    try {
+      const response = await fetch("/search/saved-searches", {
+        body: JSON.stringify({
+          name: normalizedName,
+          query: normalizedQuery,
+          scope: "repositories",
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || body?.error) {
+        throw new Error(
+          body?.error?.message ?? "Saved search could not be created.",
+        );
+      }
+      setSavedFeedback(`Saved "${body.name}".`);
+      setQuery(normalizedQuery);
+      setRefreshKey((value) => value + 1);
+      setCreateDialogOpen(false);
+      window.requestAnimationFrame(() => inputRef.current?.focus());
+    } catch (createError) {
+      setSavedError(
+        createError instanceof Error
+          ? createError.message
+          : "Saved search could not be created.",
+      );
+    } finally {
+      setSavingSearch(false);
+    }
+  }
+
+  async function deleteSavedSearch(id: string, title: string) {
+    setDeletingSavedSearchId(id);
+    setSavedFeedback(null);
+    setSavedError(null);
+    try {
+      const response = await fetch(`/search/saved-searches/${id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(
+          body?.error?.message ?? "Saved search could not be deleted.",
+        );
+      }
+      setSavedFeedback(`Deleted "${title}".`);
+      setRefreshKey((value) => value + 1);
+    } catch (deleteError) {
+      setSavedError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Saved search could not be deleted.",
+      );
+    } finally {
+      setDeletingSavedSearchId(null);
+    }
   }
 
   function addQualifier(value: string) {
@@ -279,6 +378,10 @@ export function GlobalSearchModal({
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") {
       event.preventDefault();
+      if (createDialogOpen) {
+        closeCreateDialog();
+        return;
+      }
       onClose();
       return;
     }
@@ -342,6 +445,13 @@ export function GlobalSearchModal({
               >
                 Feedback
               </Link>
+              <button
+                className="btn sm"
+                onClick={openCreateDialog}
+                type="button"
+              >
+                Create saved search
+              </button>
             </div>
           </div>
         </div>
@@ -410,6 +520,24 @@ export function GlobalSearchModal({
               No suggestions match this query.
             </p>
           ) : null}
+          {savedFeedback ? (
+            <p
+              className="px-3 py-2 t-xs"
+              role="status"
+              style={{ color: "var(--ok)" }}
+            >
+              {savedFeedback}
+            </p>
+          ) : null}
+          {savedError && !createDialogOpen ? (
+            <p
+              className="px-3 py-2 t-xs"
+              role="alert"
+              style={{ color: "var(--err)" }}
+            >
+              {savedError}
+            </p>
+          ) : null}
           {groups.map((group) => (
             <div key={group.title}>
               <div className="palette-section">{group.title}</div>
@@ -437,6 +565,50 @@ export function GlobalSearchModal({
                       <span className="min-w-0 truncate">{item.title}</span>
                       <span className="desc">{item.description}</span>
                     </button>
+                  );
+                }
+                if (item.kind === "saved_search") {
+                  return (
+                    <div
+                      aria-selected={index === selectedIndex}
+                      className={`palette-item ${
+                        index === selectedIndex ? "selected" : ""
+                      }`}
+                      id={`global-search-${item.id}`}
+                      key={item.id}
+                      onMouseEnter={() => setSelectedIndex(index)}
+                      role="option"
+                      tabIndex={-1}
+                    >
+                      <span className="ico">
+                        <SearchIcon />
+                      </span>
+                      <Link
+                        className="min-w-0 flex-1 truncate"
+                        href={item.href}
+                        onClick={onClose}
+                      >
+                        {item.title}
+                      </Link>
+                      <span className="desc">{item.description}</span>
+                      {item.savedSearchId ? (
+                        <button
+                          className="btn sm ghost"
+                          disabled={
+                            deletingSavedSearchId === item.savedSearchId
+                          }
+                          onClick={() =>
+                            deleteSavedSearch(
+                              item.savedSearchId ?? "",
+                              item.title,
+                            )
+                          }
+                          type="button"
+                        >
+                          Delete
+                        </button>
+                      ) : null}
+                    </div>
                   );
                 }
                 return (
@@ -480,6 +652,85 @@ export function GlobalSearchModal({
             Manage saved searches
           </Link>
         </div>
+        {createDialogOpen ? (
+          <div
+            aria-label="Create saved search"
+            aria-modal="true"
+            className="absolute inset-x-4 top-20 z-[2] card p-4 shadow-lg"
+            role="dialog"
+            style={{ background: "var(--surface)" }}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="t-h3">Create saved search</h3>
+                <Link className="t-xs" href="/docs/api#search-saved-create">
+                  Saved search documentation
+                </Link>
+              </div>
+              <button
+                aria-label="Cancel saved search creation"
+                className="btn sm ghost"
+                onClick={closeCreateDialog}
+                type="button"
+              >
+                Cancel
+              </button>
+            </div>
+            <div className="mt-4 grid gap-3">
+              <label className="grid gap-1">
+                <span className="t-label">Name</span>
+                <input
+                  aria-invalid={
+                    savedError?.includes("Name") ? "true" : undefined
+                  }
+                  className="input"
+                  onChange={(event) => setSavedName(event.target.value)}
+                  ref={savedNameRef}
+                  required
+                  value={savedName}
+                />
+              </label>
+              <label className="grid gap-1">
+                <span className="t-label">Query</span>
+                <input
+                  aria-invalid={
+                    savedError?.includes("Query") ? "true" : undefined
+                  }
+                  className="input"
+                  onChange={(event) => setSavedQuery(event.target.value)}
+                  required
+                  value={savedQuery}
+                />
+              </label>
+              {savedError ? (
+                <p
+                  className="t-xs"
+                  role="alert"
+                  style={{ color: "var(--err)" }}
+                >
+                  {savedError}
+                </p>
+              ) : null}
+              <div className="flex justify-end gap-2">
+                <button
+                  className="btn sm ghost"
+                  onClick={closeCreateDialog}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn sm accent"
+                  disabled={savingSearch}
+                  onClick={createSavedSearch}
+                  type="button"
+                >
+                  {savingSearch ? "Creating..." : "Create saved search"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

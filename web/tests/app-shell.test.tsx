@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "@/components/AppShell";
 import type { AppShellContext, AuthSession } from "@/lib/api";
@@ -61,95 +67,141 @@ function renderShell() {
   );
 }
 
+function suggestionDashboard() {
+  return {
+    groups: [
+      {
+        id: "scopes",
+        title: "Search scopes",
+        items: [
+          {
+            id: "scope-repositories",
+            kind: "submit_search",
+            action: "submit_search",
+            title: "Repositories",
+            description: "Search repository names and descriptions",
+            href: "/search?q=&type=repositories",
+            nextQuery: "",
+            scope: "repositories",
+            ownerLogin: null,
+            repositoryName: null,
+            visibility: null,
+          },
+        ],
+      },
+      {
+        id: "repositories",
+        title: "Repositories and code",
+        items: [
+          {
+            id: "qualifier-language",
+            kind: "replace_token",
+            action: "replace_token",
+            title: "language:rust",
+            description: "Limit code results by language",
+            href: null,
+            nextQuery: "language:rust ",
+            scope: null,
+            ownerLogin: null,
+            repositoryName: null,
+            visibility: null,
+          },
+        ],
+      },
+      {
+        id: "repositories",
+        title: "Repositories and code",
+        items: [
+          {
+            id: "repo-1",
+            kind: "direct_repository_jump",
+            action: "navigate",
+            title: "mona/editorial",
+            description: "public repository",
+            href: "/mona/editorial",
+            nextQuery: null,
+            scope: null,
+            ownerLogin: "mona",
+            repositoryName: "editorial",
+            visibility: "public",
+          },
+        ],
+      },
+    ],
+    query: "",
+    recentSearches: [
+      {
+        id: "recent-1",
+        query: "router guards",
+        scope: "all",
+        resultType: "repositories",
+        href: "/search?q=router+guards&type=repositories",
+        searchedAt: "2026-05-02T00:00:00Z",
+      },
+    ],
+    savedSearches: [
+      {
+        id: "saved-1",
+        name: "Rust files",
+        query: "language:rust",
+        scope: "code",
+        href: "/search?q=language%3Arust&type=code",
+        updatedAt: "2026-05-02T00:00:00Z",
+      },
+    ],
+    scope: "all",
+    token: null,
+  };
+}
+
 beforeEach(() => {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () =>
-      Response.json({
-        groups: [
-          {
-            id: "scopes",
-            title: "Search scopes",
-            items: [
-              {
-                id: "scope-repositories",
-                kind: "submit_search",
-                action: "submit_search",
-                title: "Repositories",
-                description: "Search repository names and descriptions",
-                href: "/search?q=&type=repositories",
-                nextQuery: "",
-                scope: "repositories",
-                ownerLogin: null,
-                repositoryName: null,
-                visibility: null,
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (url === "/search/saved-searches" && init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        if (!body.name) {
+          return Response.json(
+            {
+              error: {
+                code: "validation_failed",
+                message: "saved search name is required",
               },
-            ],
-          },
-          {
-            id: "repositories",
-            title: "Repositories and code",
-            items: [
-              {
-                id: "qualifier-language",
-                kind: "replace_token",
-                action: "replace_token",
-                title: "language:rust",
-                description: "Limit code results by language",
-                href: null,
-                nextQuery: "language:rust ",
-                scope: null,
-                ownerLogin: null,
-                repositoryName: null,
-                visibility: null,
+              status: 422,
+            },
+            { status: 422 },
+          );
+        }
+        if (body.name === "Rust files") {
+          return Response.json(
+            {
+              error: {
+                code: "duplicate_saved_search",
+                message: "saved search name already exists",
               },
-            ],
-          },
-          {
-            id: "repositories",
-            title: "Repositories and code",
-            items: [
-              {
-                id: "repo-1",
-                kind: "direct_repository_jump",
-                action: "navigate",
-                title: "mona/editorial",
-                description: "public repository",
-                href: "/mona/editorial",
-                nextQuery: null,
-                scope: null,
-                ownerLogin: "mona",
-                repositoryName: "editorial",
-                visibility: "public",
-              },
-            ],
-          },
-        ],
-        query: "",
-        recentSearches: [
-          {
-            id: "recent-1",
-            query: "router guards",
-            scope: "all",
-            resultType: "repositories",
-            href: "/search?q=router+guards&type=repositories",
-            searchedAt: "2026-05-02T00:00:00Z",
-          },
-        ],
-        savedSearches: [
-          {
-            id: "saved-1",
-            name: "Rust files",
-            query: "language:rust",
-            scope: "code",
-            href: "/search?q=language%3Arust&type=code",
-            updatedAt: "2026-05-02T00:00:00Z",
-          },
-        ],
-        scope: "all",
-        token: null,
-      }),
-    ),
+              status: 409,
+            },
+            { status: 409 },
+          );
+        }
+        return Response.json({
+          id: "saved-2",
+          name: body.name,
+          query: body.query,
+          scope: body.scope,
+          href: "/search?q=router&type=repositories",
+          updatedAt: "2026-05-02T00:00:00Z",
+        });
+      }
+      if (
+        url === "/search/saved-searches/saved-1" &&
+        init?.method === "DELETE"
+      ) {
+        return new Response(null, { status: 204 });
+      }
+      return Response.json(suggestionDashboard());
+    }),
   );
 });
 
@@ -212,7 +264,7 @@ describe("AppShell desktop header", () => {
     expect(
       await screen.findByRole("option", { name: /mona\/editorial/ }),
     ).toHaveAttribute("href", "/mona/editorial");
-    expect(screen.getByRole("option", { name: /Rust files/ })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Rust files/ })).toHaveAttribute(
       "href",
       "/search?q=language%3Arust&type=code",
     );
@@ -282,6 +334,71 @@ describe("AppShell desktop header", () => {
     expect(
       await screen.findByRole("option", { name: /Repositories/ }),
     ).toBeVisible();
+  });
+
+  it("creates, validates, and deletes saved searches from the modal", async () => {
+    renderShell();
+
+    fireEvent.focus(
+      screen.getByRole("searchbox", { name: "Search or jump to" }),
+    );
+    await screen.findByRole("dialog", { name: "Search" });
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Search opengithub" }),
+      { target: { value: "router" } },
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create saved search" }),
+    );
+    const createDialog = await screen.findByRole("dialog", {
+      name: "Create saved search",
+    });
+    expect(createDialog).toBeVisible();
+    expect(
+      within(createDialog).getByRole("link", {
+        name: /Saved search documentation/,
+      }),
+    ).toHaveAttribute("href", "/docs/api#search-saved-create");
+
+    fireEvent.click(
+      within(createDialog).getByRole("button", {
+        name: "Create saved search",
+      }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Name is required.",
+    );
+
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Rust routers" },
+    });
+    fireEvent.change(screen.getByLabelText("Query"), {
+      target: { value: "router language:rust" },
+    });
+    fireEvent.click(
+      within(createDialog).getByRole("button", {
+        name: "Create saved search",
+      }),
+    );
+    expect(await screen.findByText('Saved "Rust routers".')).toBeVisible();
+    expect(fetch).toHaveBeenCalledWith(
+      "/search/saved-searches",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          name: "Rust routers",
+          query: "router language:rust",
+          scope: "repositories",
+        }),
+      }),
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    expect(await screen.findByText('Deleted "Rust files".')).toBeVisible();
+    expect(fetch).toHaveBeenCalledWith("/search/saved-searches/saved-1", {
+      method: "DELETE",
+    });
   });
 
   it("opens the global menu with recent repositories, teams, and real links", () => {

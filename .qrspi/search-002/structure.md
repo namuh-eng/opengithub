@@ -54,7 +54,7 @@
 
 ## Phase 4: Saved-Search Creation and Management - modal writes persist and validate
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement the `Create saved search` flow from the modal. Required Name and Query fields validate client-side and server-side, successful creation persists for the viewer, duplicate names return an inline error, and saved-search rows can be opened from the modal.
 

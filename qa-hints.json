@@ -2616,5 +2616,22 @@
       "Direct jump smoke uses seeded local Postgres search fixtures and deterministic Rust-signed sessions, not real Google OAuth.",
       "Rapid typing and stale token replacement are guarded in component and browser coverage, but high-latency production suggestion responses should still be stress-tested."
     ]
+  },
+  {
+    "feature_id": "search-002",
+    "tests_written": [
+      "Implemented Phase 4 saved-search creation and management in the global search modal.",
+      "Added POST /api/search/saved-searches, DELETE /api/search/saved-searches/{id}, and POST /api/search/recent backed by Rust/Postgres ownership checks, normalized validation, duplicate-name conflicts, and recent-search write-through.",
+      "Added same-origin Next.js saved-search proxy routes so modal writes use the existing Rust session cookie instead of JS-side auth.",
+      "Added the nested Editorial Create saved search dialog with required Name and Query inputs, docs link, Cancel/Create actions, pending/error/success feedback, refreshed saved-search rows, and delete controls.",
+      "Documented search suggestions, saved-search create, and saved-search delete endpoints on /docs/api.",
+      "Verification passed: focused search_suggestions_contract, focused app-shell/api-docs Vitest, TEST_DATABASE_URL-backed make check, same-env make test with Cargo tests plus 201 frontend tests, full same-env make test-e2e with 73 Playwright tests, screenshot ralph/screenshots/build/search-002-phase4-saved-search.jpg, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 verifies local Postgres and deterministic Rust-signed sessions; real Google OAuth session behavior remains broader auth QA.",
+      "Saved-search creation currently uses repository scope from the modal; richer user-selected saved-search scopes should be revisited if the product adds scope pickers.",
+      "Duplicate-name handling is covered in Rust and component tests; cross-tab concurrent creates/deletes and long saved-search lists need deeper QA.",
+      "Recent-search write-through is coupled to saved-search creation and /api/search; analytics retention and telemetry review are still future hardening."
+    ]
   }
 ]

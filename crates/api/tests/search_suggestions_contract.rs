@@ -102,6 +102,58 @@ async fn get_json(
     (status, headers, value)
 }
 
+async fn post_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, HeaderMap, Value) {
+    let mut builder = Request::builder()
+        .method(Method::POST)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_string()))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let headers = response.headers().clone();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = serde_json::from_slice(&bytes).unwrap_or_else(|_| json!({}));
+    (status, headers, value)
+}
+
+async fn delete_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+) -> (StatusCode, HeaderMap, Value) {
+    let mut builder = Request::builder().method(Method::DELETE).uri(uri);
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(builder.body(Body::empty()).expect("request should build"))
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let headers = response.headers().clone();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = serde_json::from_slice(&bytes).unwrap_or_else(|_| json!({}));
+    (status, headers, value)
+}
+
 fn assert_json(headers: &HeaderMap) {
     assert!(headers
         .get(header::CONTENT_TYPE)
@@ -351,4 +403,111 @@ async fn search_suggestions_include_people_teams_and_qualifier_replacements() {
             .len()
             >= 3
     );
+}
+
+#[tokio::test]
+async fn saved_search_mutations_validate_persist_and_enforce_ownership() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping saved search contract scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let actor = create_user(&pool, "saved-search-actor").await;
+    let outsider = create_user(&pool, "saved-search-outsider").await;
+    let actor_cookie = cookie_header(&pool, &config, &actor).await;
+    let outsider_cookie = cookie_header(&pool, &config, &outsider).await;
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let marker = format!("saved{}", Uuid::new_v4().simple());
+
+    let (invalid_status, invalid_headers, invalid_body) = post_json(
+        app.clone(),
+        "/api/search/saved-searches",
+        Some(&actor_cookie),
+        json!({ "name": "", "query": "" }),
+    )
+    .await;
+    assert_eq!(invalid_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_json(&invalid_headers);
+    assert_eq!(invalid_body["error"]["code"], "validation_failed");
+
+    let (created_status, created_headers, created_body) = post_json(
+        app.clone(),
+        "/api/search/saved-searches",
+        Some(&actor_cookie),
+        json!({
+            "name": format!("Rust routers {marker}"),
+            "query": format!("  router   language:rust   {marker} "),
+            "scope": "code"
+        }),
+    )
+    .await;
+    assert_eq!(created_status, StatusCode::OK);
+    assert_json(&created_headers);
+    assert_eq!(created_body["name"], format!("Rust routers {marker}"));
+    assert_eq!(
+        created_body["query"],
+        format!("router language:rust {marker}")
+    );
+    assert_eq!(created_body["scope"], "code");
+    assert!(created_body["href"]
+        .as_str()
+        .expect("href")
+        .contains("type=code"));
+
+    let (duplicate_status, _duplicate_headers, duplicate_body) = post_json(
+        app.clone(),
+        "/api/search/saved-searches",
+        Some(&actor_cookie),
+        json!({
+            "name": format!("rust routers {marker}"),
+            "query": format!("other {marker}"),
+            "scope": "repositories"
+        }),
+    )
+    .await;
+    assert_eq!(duplicate_status, StatusCode::CONFLICT);
+    assert_eq!(duplicate_body["error"]["code"], "duplicate_saved_search");
+
+    let (suggest_status, _suggest_headers, suggest_body) = get_json(
+        app.clone(),
+        "/api/search/suggestions?q=router&scope=all&limit=8",
+        Some(&actor_cookie),
+    )
+    .await;
+    assert_eq!(suggest_status, StatusCode::OK);
+    let rendered = suggest_body.to_string();
+    assert!(rendered.contains(&format!("Rust routers {marker}")));
+    assert!(rendered.contains("recentSearches"));
+    assert!(rendered.contains(&format!("router language:rust {marker}")));
+
+    let saved_id = created_body["id"].as_str().expect("saved id");
+    let (outsider_delete_status, _headers, outsider_delete_body) = delete_json(
+        app.clone(),
+        &format!("/api/search/saved-searches/{saved_id}"),
+        Some(&outsider_cookie),
+    )
+    .await;
+    assert_eq!(outsider_delete_status, StatusCode::NOT_FOUND);
+    assert_eq!(outsider_delete_body["error"]["code"], "not_found");
+
+    let (deleted_status, _headers, deleted_body) = delete_json(
+        app.clone(),
+        &format!("/api/search/saved-searches/{saved_id}"),
+        Some(&actor_cookie),
+    )
+    .await;
+    assert_eq!(deleted_status, StatusCode::NO_CONTENT);
+    assert_eq!(deleted_body, json!({}));
+
+    let (after_delete_status, _headers, after_delete_body) = get_json(
+        app,
+        "/api/search/suggestions?q=router&scope=all&limit=8",
+        Some(&actor_cookie),
+    )
+    .await;
+    assert_eq!(after_delete_status, StatusCode::OK);
+    assert!(!after_delete_body
+        .to_string()
+        .contains(&format!("Rust routers {marker}")));
 }

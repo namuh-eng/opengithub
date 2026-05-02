@@ -719,6 +719,65 @@ run: #42
 }`,
     notes: ["Short or malformed queries return 422 validation errors."],
   },
+  {
+    id: "search-suggestions",
+    method: "GET",
+    path: "/api/search/suggestions?q=router&scope=all&limit=8",
+    title: "Search suggestions",
+    description:
+      "Returns command-modal scopes, qualifier completions, direct jumps, saved searches, and recent searches visible to the signed-in viewer.",
+    auth: "Signed opengithub session cookie",
+    response: `{
+  "query": "router",
+  "scope": "all",
+  "groups": [
+    {
+      "id": "repositories",
+      "title": "Repositories and code",
+      "items": [{ "action": "navigate", "href": "/mona/octo-app" }]
+    }
+  ],
+  "savedSearches": [],
+  "recentSearches": []
+}`,
+    notes: ["Private repository and code suggestions require viewer access."],
+  },
+  {
+    id: "search-saved-create",
+    method: "POST",
+    path: "/api/search/saved-searches",
+    title: "Create saved search",
+    description:
+      "Persists a named search for the signed-in viewer and returns the row used by the global search modal.",
+    auth: "Signed opengithub session cookie",
+    request: `{
+  "name": "Rust routers",
+  "query": "router language:rust",
+  "scope": "code"
+}`,
+    response: `{
+  "id": "saved_01",
+  "name": "Rust routers",
+  "query": "router language:rust",
+  "scope": "code",
+  "href": "/search?q=router+language%3Arust&type=code"
+}`,
+    notes: [
+      "Name and query are required.",
+      "Duplicate names for the same viewer return 409 duplicate_saved_search.",
+    ],
+  },
+  {
+    id: "search-saved-delete",
+    method: "DELETE",
+    path: "/api/search/saved-searches/{id}",
+    title: "Delete saved search",
+    description:
+      "Deletes a saved search owned by the signed-in viewer. Other users' saved searches are not addressable.",
+    auth: "Signed opengithub session cookie",
+    response: `204 No Content`,
+    notes: ["Unknown or unauthorized saved search IDs return 404."],
+  },
 ];
 
 export const paginationExample = `GET /api/repos?page=2&pageSize=10
