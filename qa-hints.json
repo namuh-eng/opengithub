@@ -2840,5 +2840,21 @@
       "Repository, user, and commit qualifier handling is intentionally lightweight over the existing search_documents index; search-006 should harden dedicated index maintenance and richer qualifier-specific SQL.",
       "Verification used an isolated Homebrew Postgres 16 database on localhost:55432 because no shared localhost Postgres was running."
     ]
+  },
+  {
+    "feature_id": "profiles-001",
+    "tests_written": [
+      "Completed Phase 1 profile overview API contract without marking profiles-001 build_pass=true.",
+      "Added migration coverage for profile fields, profile README, pins, contribution days/events, achievements, blocks, and reports.",
+      "Added GET /api/users/{username}/profile with case-insensitive lookup, public identity card, README metadata, pinned repository rows, achievements, organizations, contribution summary, tab counts, viewer state, and private-profile redaction.",
+      "Added typed frontend PublicUserProfile DTOs and server cookie fetch helper for later UI phases.",
+      "Focused profile_overview_contract compiled and passed; make check passed; make test passed with Cargo tests and 216 frontend tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "The focused profile Postgres scenarios self-skipped because localhost:55432 was not reachable from this session; QA should rerun profile_overview_contract against a reachable TEST_DATABASE_URL.",
+      "Browser smoke and make test-e2e were skipped because Phase 1 is API-first and does not yet change the public profile UI.",
+      "Private-profile behavior intentionally suppresses pins, achievements, organizations, contribution graph data, follower/following counts, and secondary tab counts while still returning avatar/bio/README identity fields.",
+      "Profile action writes, contribution graph interactions, and full responsive Editorial UI remain for later profiles-001 phases."
+    ]
   }
 ]

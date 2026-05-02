@@ -1,3 +1,14 @@
+2026-05-02 - profiles-001 phase 1 profile overview API contract
+
+- Completed Phase 1 from `.qrspi/profiles-001/structure.md`: added the public profile overview API contract for `GET /api/users/{username}/profile`.
+- Added migration `202605020038_user_profiles` for profile fields on `users`, profile README, pinned repositories, contribution days/events, achievements, user achievements, blocks, and reports.
+- Added `crates/api/src/domain/profiles.rs` with case-insensitive username lookup, public identity/readme data, pinned repository permission filtering, language/star/fork summaries, achievements, organization memberships, contribution summaries, tab counts, signed/anonymous viewer state, and private-profile redaction.
+- Wired the profile route through `crates/api/src/routes/users.rs` and added frontend DTO/server fetch helpers in `web/src/lib/api.ts` and `web/src/lib/server-session.ts` for later UI phases.
+- Added `crates/api/tests/profile_overview_contract.rs` covering public profile shape, private repository pin redaction for anonymous viewers, owner-visible private pins, follower/following counts, README, achievements, organizations, contribution summaries, case-insensitive lookup, signed viewer state, private-profile redaction, and missing-user 404 behavior.
+- Verification passed: `CARGO_INCREMENTAL=0 TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:55432/opengithub_identity_test DB_SSL=false cargo test --test profile_overview_contract -- --nocapture` compiled and passed but self-skipped DB scenarios because localhost:55432 was unreachable; same-env `make check`; same-env `make test` with Cargo tests plus 216 frontend tests; mandatory Editorial banned-value scan with `rg -n -e ... web/src/ --glob '!**/og*.css'` returned zero matches.
+- Browser smoke and `make test-e2e` skipped because Phase 1 is API-first; `prd.json` remains `build_pass: false` because Phases 2-5 remain.
+- Marked Phase 1 as done in `.qrspi/profiles-001/structure.md`.
+
 2026-05-02 - profiles-001 structure planning
 
 - Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `prd.json`, `web/AGENTS.md`, `design/project/wf-profiles.jsx`, adjacent QRSPI outlines, current user/profile routes, current profile shell, identity/repository/social migrations, and current frontend route surfaces.

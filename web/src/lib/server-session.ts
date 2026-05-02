@@ -6,6 +6,7 @@ import {
   type GlobalSearchQuery,
   getAppShellContextFromCookie,
   getDashboardSummaryFromCookie,
+  getPublicUserProfileFromCookie,
   getPullRequestCompareFromCookie,
   getRepositoryActionsDashboardFromCookie,
   getRepositoryActionsJobLogDetailFromCookie,
@@ -58,6 +59,11 @@ export async function getSessionAndShellContext() {
 export async function getAppShellContext() {
   const requestHeaders = await headers();
   return getAppShellContextFromCookie(requestHeaders.get("cookie"));
+}
+
+export async function getPublicUserProfile(username: string) {
+  const requestHeaders = await headers();
+  return getPublicUserProfileFromCookie(requestHeaders.get("cookie"), username);
 }
 
 export async function searchGlobal(query: GlobalSearchQuery) {

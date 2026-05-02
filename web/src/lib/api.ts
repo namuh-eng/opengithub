@@ -12,6 +12,121 @@ export type AuthSession = {
 
 export type RepositoryVisibility = "public" | "private" | "internal";
 
+export type PublicUserProfile = {
+  identity: ProfileIdentity;
+  readme: ProfileReadme | null;
+  pinnedRepositories: ProfilePinnedRepository[];
+  achievements: ProfileAchievement[];
+  organizations: ProfileOrganization[];
+  contributionSummary: ProfileContributionSummary;
+  tabCounts: ProfileTabCounts;
+  viewerState: ProfileViewerState;
+};
+
+export type ProfileIdentity = {
+  id: string;
+  login: string;
+  name: string | null;
+  avatarUrl: string | null;
+  bio: string | null;
+  company: string | null;
+  location: string | null;
+  websiteUrl: string | null;
+  htmlUrl: string;
+  profileVisibility: "public" | "private" | string;
+  isPrivate: boolean;
+  joinedAt: string;
+  followerCount: number | null;
+  followingCount: number | null;
+};
+
+export type ProfileReadme = {
+  body: string;
+  renderedHtml: string | null;
+  updatedAt: string;
+};
+
+export type ProfilePinnedRepository = {
+  id: string;
+  owner: string;
+  name: string;
+  description: string | null;
+  visibility: RepositoryVisibility;
+  href: string;
+  defaultBranch: string;
+  primaryLanguage: ProfileRepositoryLanguage | null;
+  languages: ProfileRepositoryLanguage[];
+  starsCount: number;
+  forksCount: number;
+  updatedAt: string;
+};
+
+export type ProfileRepositoryLanguage = {
+  language: string;
+  color: string;
+  byteCount: number;
+};
+
+export type ProfileAchievement = {
+  slug: string;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  awardedAt: string;
+};
+
+export type ProfileOrganization = {
+  id: string;
+  slug: string;
+  name: string;
+  avatarUrl: string | null;
+  href: string;
+};
+
+export type ProfileContributionSummary = {
+  total: number;
+  days: ProfileContributionDay[];
+  recentEvents: ProfileContributionEvent[];
+};
+
+export type ProfileContributionDay = {
+  date: string;
+  count: number;
+  intensity: number;
+};
+
+export type ProfileContributionEvent = {
+  id: string;
+  eventType: string;
+  title: string;
+  targetHref: string | null;
+  occurredAt: string;
+  repository: ProfileEventRepository | null;
+};
+
+export type ProfileEventRepository = {
+  owner: string;
+  name: string;
+  href: string;
+};
+
+export type ProfileTabCounts = {
+  repositories: number;
+  projects: number;
+  packages: number;
+  stars: number;
+};
+
+export type ProfileViewerState = {
+  authenticated: boolean;
+  isSelf: boolean;
+  isFollowing: boolean;
+  isBlocking: boolean;
+  canFollow: boolean;
+  canBlock: boolean;
+  canReport: boolean;
+};
+
 export type SearchSuggestionToken = {
   prefix: string | null;
   value: string;
@@ -2112,6 +2227,30 @@ export async function getAppShellContextFromCookie(
   }
 
   return (await response.json()) as AppShellContext;
+}
+
+export async function getPublicUserProfileFromCookie(
+  cookie: string | null | undefined,
+  username: string,
+): Promise<PublicUserProfile | null> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/users/${encodeURIComponent(username)}/profile`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return null;
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return (await response.json()) as PublicUserProfile;
 }
 
 export function globalSearchPath(query: GlobalSearchQuery): string {

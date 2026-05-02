@@ -10,6 +10,7 @@ pub mod markdown;
 pub mod notifications;
 pub mod onboarding;
 pub mod permissions;
+pub mod profiles;
 pub mod pulls;
 pub mod repositories;
 pub mod repository_imports;

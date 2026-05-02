@@ -1,5 +1,5 @@
 use axum::{
-    extract::State,
+    extract::{Path, State},
     http::{HeaderMap, StatusCode},
     routing::get,
     Json, Router,
@@ -9,11 +9,19 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    api_types::ErrorEnvelope, auth::extractor::AuthenticatedUser, domain::identity::User, AppState,
+    api_types::{database_unavailable, error_response, ErrorEnvelope},
+    auth::extractor::AuthenticatedUser,
+    domain::{
+        identity::User,
+        profiles::{public_user_profile, ProfileError, PublicUserProfile},
+    },
+    AppState,
 };
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/api/user", get(current_api_user))
+    Router::new()
+        .route("/api/user", get(current_api_user))
+        .route("/api/users/:username/profile", get(public_profile))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -64,6 +72,25 @@ pub async fn current_api_user(
     Ok(Json(ApiUser::from_user(user, &state.config.app_url)))
 }
 
+pub async fn public_profile(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+) -> Result<Json<PublicUserProfile>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let profile = public_user_profile(
+        pool,
+        &username,
+        actor.map(|user| user.id),
+        &state.config.app_url,
+    )
+    .await
+    .map_err(map_profile_error)?;
+
+    Ok(Json(profile))
+}
+
 fn fallback_login_from_email(email: &str) -> String {
     let local_part = email.split('@').next().unwrap_or("user");
     let normalized: String = local_part
@@ -81,6 +108,21 @@ fn fallback_login_from_email(email: &str) -> String {
         "user".to_owned()
     } else {
         trimmed.to_owned()
+    }
+}
+
+fn map_profile_error(error: ProfileError) -> (StatusCode, Json<ErrorEnvelope>) {
+    match error {
+        ProfileError::NotFound => error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "user profile was not found",
+        ),
+        ProfileError::Sqlx(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "profile could not be loaded",
+        ),
     }
 }
 

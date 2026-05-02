@@ -6,7 +6,7 @@
 
 ## Phase 1: Profile Overview API Contract - public profile data, visibility boundaries, and pinned repository rows
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the placeholder profile route with a real Rust read contract for `/{user}`. The API should resolve usernames case-insensitively, return the profile identity card, README/body metadata, pinned repositories, achievements, organization memberships, contribution summary, tab counts, and viewer state. Private profiles must keep only the allowed public identity fields visible and suppress follower counts, secondary tabs, achievements, activity, and contribution graph.
 
