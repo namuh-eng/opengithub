@@ -1,3 +1,11 @@
+2026-05-02 - search-004 structure planning
+
+- Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `prd.json`, `web/AGENTS.md`, `design/project/og-screens-3.jsx`, `design/project/og-shell.jsx`, adjacent search QRSPI outlines, current search backend/frontend surfaces, current search tests, and target search docs.
+- Determined `search-004` requires structure planning before implementation because `needs_structure: true` and `.qrspi/search-004/structure.md` did not exist.
+- Added `.qrspi/search-004/structure.md` with five independently verifiable vertical phases: collaboration-search API contract, Editorial two-pane issue/PR result shell, advanced facets/qualifier controls, sort/save/pagination/navigation interactions, and final QA guardrails.
+- Did not change `prd.json`; `build_pass` remains `false` until all implementation phases pass verification.
+- Tests not run because this iteration only created the required planning artifact.
+
 2026-05-02 - infra-001 QA pass
 
 - Independent QA verified infra-001 against `prd.json`, `.qrspi/infra-001/structure.md`, migrations, Rust domain/routes/tests, API envelopes, request logging, and search-document visibility boundaries.
