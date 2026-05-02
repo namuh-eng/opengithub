@@ -4,7 +4,10 @@ import type {
   ProfileRepositoryList,
   ProfileRepositoryListItem,
 } from "@/lib/api";
-import { profileRepositoryTabHref } from "@/lib/navigation";
+import {
+  type ProfileRepositoryTabFilters,
+  profileRepositoryTabHref,
+} from "@/lib/navigation";
 
 type ProfileRepositoryTabsProps = {
   list: ProfileRepositoryList;
@@ -15,6 +18,12 @@ const REPOSITORY_SORT_LABELS: Record<string, string> = {
   "updated-desc": "Last updated",
   "name-asc": "Name",
   "stars-desc": "Stars",
+};
+
+const STAR_SORT_LABELS: Record<string, string> = {
+  "recently-starred": "Recently starred",
+  "recently-active": "Recently active",
+  "most-stars": "Most stars",
 };
 
 const REPOSITORY_TYPE_LABELS: Record<string, string> = {
@@ -34,6 +43,22 @@ function formatDate(value: string) {
   }
 
   return `Updated ${new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date)}`;
+}
+
+function formatStarredDate(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "Starred recently";
+  }
+
+  return `Starred ${new Intl.DateTimeFormat("en", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -75,10 +100,14 @@ function LanguageDot({ color }: { color: string }) {
 
 function RepositoryRow({
   repository,
+  mode,
 }: {
   repository: ProfileRepositoryListItem;
+  mode: string;
 }) {
   const badges = repositoryBadges(repository);
+  const starredDate =
+    mode === "stars" ? formatStarredDate(repository.starredAt) : null;
 
   return (
     <article className="list-row py-5">
@@ -99,7 +128,7 @@ function RepositoryRow({
           </p>
         </div>
         <span className="t-xs shrink-0">
-          {formatDate(repository.updatedAt)}
+          {starredDate ?? formatDate(repository.updatedAt)}
         </span>
       </div>
 
@@ -145,6 +174,11 @@ function RepositoryRow({
         <span className="t-mono-sm" style={{ color: "var(--ink-3)" }}>
           {repository.openPullRequestsCount.toLocaleString()} PRs
         </span>
+        {starredDate ? (
+          <span className="t-mono-sm" style={{ color: "var(--ink-3)" }}>
+            {formatDate(repository.updatedAt)}
+          </span>
+        ) : null}
       </div>
     </article>
   );
@@ -152,10 +186,20 @@ function RepositoryRow({
 
 function ActiveFilters({
   filters,
+  mode,
   owner,
+  sortLabels,
+  defaultSort,
 }: {
-  filters: ProfileRepositoryFilters;
+  filters: ProfileRepositoryTabFilters &
+    Pick<
+      ProfileRepositoryFilters,
+      "query" | "repositoryType" | "language" | "sort"
+    >;
   owner: string;
+  mode: string;
+  sortLabels: Record<string, string>;
+  defaultSort: string;
 }) {
   const chips = [
     filters.query
@@ -178,12 +222,12 @@ function ActiveFilters({
           label: filters.language,
         }
       : null,
-    filters.sort !== "updated-desc"
+    filters.sort !== defaultSort
       ? {
           href: profileRepositoryTabHref(owner, filters, {
-            sort: "updated-desc",
+            sort: defaultSort,
           }),
-          label: `Sort: ${REPOSITORY_SORT_LABELS[filters.sort] ?? filters.sort}`,
+          label: `Sort: ${sortLabels[filters.sort] ?? filters.sort}`,
         }
       : null,
   ].filter((chip): chip is { href: string; label: string } => Boolean(chip));
@@ -208,7 +252,7 @@ function ActiveFilters({
       ))}
       <Link
         className="chip soft no-underline"
-        href={profileRepositoryTabHref(owner)}
+        href={profileRepositoryTabHref(owner, { mode })}
       >
         Clear filters
       </Link>
@@ -221,6 +265,16 @@ export function ProfileRepositoryTabs({
   owner,
 }: ProfileRepositoryTabsProps) {
   const filters = list.filters;
+  const mode = list.mode === "stars" ? "stars" : "repositories";
+  const sortLabels =
+    mode === "stars" ? STAR_SORT_LABELS : REPOSITORY_SORT_LABELS;
+  const defaultSort = mode === "stars" ? "recently-starred" : "updated-desc";
+  const title = mode === "stars" ? "Starred repositories" : "Repositories";
+  const eyebrow = mode === "stars" ? "Stars tab" : "Repository tab";
+  const emptyTitle =
+    mode === "stars"
+      ? "No starred repositories matched these filters."
+      : "No repositories matched these filters.";
   const showingFrom =
     list.total === 0 ? 0 : (list.page - 1) * list.pageSize + 1;
   const showingTo = Math.min(list.page * list.pageSize, list.total);
@@ -234,10 +288,10 @@ export function ProfileRepositoryTabs({
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="t-label" style={{ color: "var(--ink-3)" }}>
-              Repository tab
+              {eyebrow}
             </p>
             <h2 className="t-h2 mt-1" id="profile-repositories">
-              Repositories
+              {title}
             </h2>
           </div>
           <p className="t-mono-sm" style={{ color: "var(--ink-3)" }}>
@@ -249,7 +303,7 @@ export function ProfileRepositoryTabs({
           action={`/${encodeURIComponent(owner)}`}
           className="mt-5 grid gap-3 lg:grid-cols-[minmax(180px,1fr)_160px_160px_170px_auto]"
         >
-          <input name="tab" type="hidden" value="repositories" />
+          <input name="tab" type="hidden" value={mode} />
           <label className="grid gap-1">
             <span className="t-label">Search</span>
             <input
@@ -261,22 +315,26 @@ export function ProfileRepositoryTabs({
               type="search"
             />
           </label>
-          <label className="grid gap-1">
-            <span className="t-label">Type</span>
-            <select
-              aria-label="Type"
-              className="input"
-              defaultValue={filters.repositoryType}
-              name="type"
-            >
-              <option value="all">All</option>
-              {list.availableTypes.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label} ({option.count})
-                </option>
-              ))}
-            </select>
-          </label>
+          {mode === "repositories" ? (
+            <label className="grid gap-1">
+              <span className="t-label">Type</span>
+              <select
+                aria-label="Type"
+                className="input"
+                defaultValue={filters.repositoryType}
+                name="type"
+              >
+                <option value="all">All</option>
+                {list.availableTypes.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label} ({option.count})
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <input name="type" type="hidden" value="all" />
+          )}
           <label className="grid gap-1">
             <span className="t-label">Language</span>
             <select
@@ -301,7 +359,7 @@ export function ProfileRepositoryTabs({
               defaultValue={filters.sort}
               name="sort"
             >
-              {Object.entries(REPOSITORY_SORT_LABELS).map(([value, label]) => (
+              {Object.entries(sortLabels).map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
@@ -316,26 +374,36 @@ export function ProfileRepositoryTabs({
         </form>
 
         <div className="mt-4">
-          <ActiveFilters filters={filters} owner={owner} />
+          <ActiveFilters
+            defaultSort={defaultSort}
+            filters={{ ...filters, mode }}
+            mode={mode}
+            owner={owner}
+            sortLabels={sortLabels}
+          />
         </div>
       </div>
 
       {list.items.length > 0 ? (
         <div className="px-5">
           {list.items.map((repository) => (
-            <RepositoryRow key={repository.id} repository={repository} />
+            <RepositoryRow
+              key={repository.id}
+              mode={mode}
+              repository={repository}
+            />
           ))}
         </div>
       ) : (
         <div className="p-8">
-          <p className="t-h3">No repositories matched these filters.</p>
+          <p className="t-h3">{emptyTitle}</p>
           <p className="t-body mt-2" style={{ color: "var(--ink-2)" }}>
             Clear the active filters to return to every visible repository for
             this profile.
           </p>
           <Link
             className="btn mt-4 inline-flex no-underline"
-            href={profileRepositoryTabHref(owner)}
+            href={profileRepositoryTabHref(owner, { mode })}
           >
             Clear filters
           </Link>

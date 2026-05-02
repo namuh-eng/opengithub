@@ -7,6 +7,7 @@ import {
 } from "@/lib/navigation";
 import {
   getProfileRepositories,
+  getProfileStars,
   getPublicUserProfile,
   getSessionAndShellContext,
 } from "@/lib/server-session";
@@ -51,10 +52,15 @@ export default async function ProfilePage({
     year: numericYear(queryParams?.year),
   });
   const repositoryList =
-    activeTab === "repositories"
-      ? await getProfileRepositories(ownerLogin, {
+    activeTab === "repositories" || activeTab === "stars"
+      ? await (activeTab === "stars"
+          ? getProfileStars
+          : getProfileRepositories)(ownerLogin, {
           q: firstParam(queryParams?.q),
-          type: firstParam(queryParams?.type),
+          type:
+            activeTab === "repositories"
+              ? firstParam(queryParams?.type)
+              : undefined,
           language: firstParam(queryParams?.language),
           sort: firstParam(queryParams?.sort),
           page: numericPositive(queryParams?.page),

@@ -112,7 +112,7 @@ test("public profile overview renders data, tabs, and pinned navigation", async 
     new RegExp(`${profileHref(seeded)}\\?tab=stars$`),
   );
   await expect(
-    page.getByRole("heading", { name: /Stars for dash-/ }),
+    page.getByRole("heading", { name: "Starred repositories" }),
   ).toBeVisible();
   await page.goto(
     `${profileHref(seeded)}?year=${new Date().getFullYear() - 1}`,

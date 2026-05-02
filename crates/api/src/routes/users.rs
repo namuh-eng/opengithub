@@ -15,8 +15,8 @@ use crate::{
         identity::User,
         profiles::{
             block_user, follow_user, profile_repositories, public_user_profile, report_user,
-            unfollow_user, ProfileActionState, ProfileError, ProfileReport, ProfileRepositoryList,
-            ProfileRepositoryListQuery, PublicUserProfile,
+            starred_repositories, unfollow_user, ProfileActionState, ProfileError, ProfileReport,
+            ProfileRepositoryList, ProfileRepositoryListQuery, PublicUserProfile,
         },
     },
     AppState,
@@ -30,6 +30,7 @@ pub fn router() -> Router<AppState> {
             "/api/users/:username/repositories",
             get(public_repositories),
         )
+        .route("/api/users/:username/stars", get(public_stars))
         .route("/api/users/:username/follow", put(follow).delete(unfollow))
         .route("/api/users/:username/block", put(block))
         .route("/api/users/:username/reports", post(report))
@@ -131,6 +132,33 @@ pub async fn public_repositories(
     Ok(Json(repositories))
 }
 
+pub async fn public_stars(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+    Query(query): Query<PublicStarsQuery>,
+) -> Result<Json<ProfileRepositoryList>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let repositories = starred_repositories(
+        pool,
+        &username,
+        actor.map(|user| user.id),
+        ProfileRepositoryListQuery {
+            query: query.q.as_deref(),
+            repository_type: None,
+            language: query.language.as_deref(),
+            sort: query.sort.as_deref(),
+            page: query.page,
+            page_size: query.page_size,
+        },
+    )
+    .await
+    .map_err(map_profile_error)?;
+
+    Ok(Json(repositories))
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct PublicProfileQuery {
     pub year: Option<i32>,
@@ -142,6 +170,16 @@ pub struct PublicRepositoriesQuery {
     pub q: Option<String>,
     #[serde(rename = "type")]
     pub repository_type: Option<String>,
+    pub language: Option<String>,
+    pub sort: Option<String>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicStarsQuery {
+    pub q: Option<String>,
     pub language: Option<String>,
     pub sort: Option<String>,
     pub page: Option<i64>,

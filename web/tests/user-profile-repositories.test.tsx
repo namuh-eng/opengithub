@@ -134,6 +134,7 @@ function repositoryList(
     total: 2,
     page: 1,
     pageSize: 30,
+    mode: "repositories",
     filters: {
       query: "quiet",
       repositoryType: "forks",
@@ -232,6 +233,58 @@ describe("profile repository tab", () => {
       "/ashley?tab=repositories",
     );
     expect(container.querySelector('a[href="#"], a:not([href])')).toBeNull();
+  });
+
+  it("renders starred repositories with stars-specific filters and metadata", () => {
+    render(
+      <UserProfilePage
+        activeTab="stars"
+        profile={profile()}
+        repositoryList={repositoryList({
+          mode: "stars",
+          filters: {
+            query: "open",
+            repositoryType: "all",
+            language: "Rust",
+            sort: "recently-starred",
+            page: 1,
+            pageSize: 30,
+          },
+          items: [
+            repository({
+              owner: "namuh",
+              name: "opengithub",
+              fullName: "namuh/opengithub",
+              href: "/namuh/opengithub",
+              starredAt: "2026-05-02T00:00:00Z",
+            }),
+          ],
+          total: 1,
+        })}
+        session={session}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Starred repositories" }),
+    ).toBeVisible();
+    expect(screen.queryByLabelText("Type")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Search")).toHaveValue("open");
+    expect(screen.getByLabelText("Language")).toHaveValue("Rust");
+    expect(screen.getByLabelText("Sort")).toHaveValue("recently-starred");
+    expect(screen.getByText("Starred May 2, 2026")).toBeVisible();
+    expect(screen.getByText("Updated May 1, 2026")).toBeVisible();
+    expect(screen.getByRole("link", { name: "opengithub" })).toHaveAttribute(
+      "href",
+      "/namuh/opengithub",
+    );
+    expect(
+      screen.getByRole("link", { name: "Search: open x" }),
+    ).toHaveAttribute("href", "/ashley?tab=stars&language=Rust");
+    expect(screen.getByRole("link", { name: "Clear filters" })).toHaveAttribute(
+      "href",
+      "/ashley?tab=stars",
+    );
   });
 
   it("renders an empty state with a working clear action", () => {

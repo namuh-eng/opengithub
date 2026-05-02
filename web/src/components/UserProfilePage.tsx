@@ -395,7 +395,9 @@ export function UserProfilePage({
               <div className="min-w-0">
                 {selectedTab === "overview" ? (
                   <Overview profile={profile} />
-                ) : selectedTab === "repositories" && repositoryList ? (
+                ) : (selectedTab === "repositories" ||
+                    selectedTab === "stars") &&
+                  repositoryList ? (
                   <ProfileRepositoryTabs
                     list={repositoryList}
                     owner={profile.identity.login}

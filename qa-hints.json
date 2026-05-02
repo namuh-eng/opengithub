@@ -2973,5 +2973,22 @@
       "Recent-visit write failures intentionally do not block repository navigation; QA should inspect dashboard recent repositories after opening rows.",
       "Stars tab remains unimplemented until Phase 4, so profiles-002 build_pass remains false."
     ]
+  },
+  {
+    "feature_id": "profiles-002",
+    "tests_written": [
+      "Completed Phase 4 Starred Repositories Tab without marking profiles-002 build_pass=true.",
+      "Added GET /api/users/{username}/stars backed by repository_stars, repository metadata, languages, star counts, viewer permission checks, search/language filters, and stars-specific sorts recently-starred, recently-active, and most-stars.",
+      "Extended the shared profile repository list contract with mode and optional starredAt metadata so the Editorial tab can reuse dense repository rows while rendering stars-specific headings, sort options, timestamps, active chips, clear filters, and empty states.",
+      "Added focused Rust contract coverage for sort ordering, private-starred repository redaction, collaborator visibility, filters, validation errors, and private-profile empty contracts.",
+      "Extended Vitest and Playwright coverage for stars-tab rendering, URL-backed filters, chip removal, row navigation, no inert anchors, and saved browser screenshot ralph/screenshots/build/profiles-002-phase4-stars.jpg.",
+      "Verification passed against local Postgres on localhost:55432 with the postgres role: focused profile_repositories_contract and profile_starred_repositories_contract, focused repository/navigation Vitest, focused profile Playwright, make check, make test with Cargo plus 229 frontend tests, full make test-e2e with 87 Playwright tests, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke uses deterministic Rust-signed local sessions from dashboard_e2e_seed rather than a live Google OAuth browser login.",
+      "Phase 5 still needs final privacy, accessibility, responsive, and no-dead-control guardrails before profiles-002 can be marked build_pass=true.",
+      "QA should stress private starred repository visibility for organization-owned repositories once organization profile surfaces are fully wired.",
+      "QA should verify large starred lists and language filter combinations beyond the deterministic seed size."
+    ]
   }
 ]

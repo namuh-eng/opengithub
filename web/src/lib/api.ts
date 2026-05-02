@@ -66,6 +66,7 @@ export type ProfileRepositoryList = {
   total: number;
   page: number;
   pageSize: number;
+  mode: "repositories" | "stars" | string;
   filters: ProfileRepositoryFilters;
   availableLanguages: ProfileRepositoryFilterOption[];
   availableTypes: ProfileRepositoryFilterOption[];
@@ -94,6 +95,7 @@ export type ProfileRepositoryListItem = {
   isMirror: boolean;
   canBeSponsored: boolean;
   forkSource: ProfileRepositoryForkSource | null;
+  starredAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -2360,6 +2362,46 @@ export async function getProfileRepositoriesFromCookie(
     }
     if (query.type) {
       url.searchParams.set("type", query.type);
+    }
+    if (query.language) {
+      url.searchParams.set("language", query.language);
+    }
+    if (query.sort) {
+      url.searchParams.set("sort", query.sort);
+    }
+    if (query.page) {
+      url.searchParams.set("page", String(query.page));
+    }
+    if (query.pageSize) {
+      url.searchParams.set("pageSize", String(query.pageSize));
+    }
+    response = await fetch(url, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return null;
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return (await response.json()) as ProfileRepositoryList;
+}
+
+export async function getProfileStarsFromCookie(
+  cookie: string | null | undefined,
+  username: string,
+  query: ProfileRepositoryListQuery = {},
+): Promise<ProfileRepositoryList | null> {
+  let response: Response;
+  try {
+    const url = new URL(
+      `${apiBaseUrl()}/api/users/${encodeURIComponent(username)}/stars`,
+    );
+    if (query.q) {
+      url.searchParams.set("q", query.q);
     }
     if (query.language) {
       url.searchParams.set("language", query.language);

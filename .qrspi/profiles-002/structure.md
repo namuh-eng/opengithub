@@ -57,7 +57,7 @@
 
 ## Phase 4: Starred Repositories Tab - starred-list API, stars-specific sort, and shared row UI
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add `/{user}?tab=stars` using the same profile identity shell and repository row component, but source rows from repositories the user starred. The Stars tab supports search, language, and sort options `recently-starred`, `recently-active`, and `most-stars`.
 

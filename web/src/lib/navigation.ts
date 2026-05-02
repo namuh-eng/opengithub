@@ -699,6 +699,7 @@ export type ProfileRepositoryTabFilters = {
   repositoryType?: string | null;
   language?: string | null;
   sort?: string | null;
+  mode?: string | null;
 };
 
 export function profileRepositoryTabHref(
@@ -709,7 +710,9 @@ export function profileRepositoryTabHref(
   > = {},
 ) {
   const params = new URLSearchParams();
-  params.set("tab", "repositories");
+  const tab = filters.mode === "stars" ? "stars" : "repositories";
+  const defaultSort = tab === "stars" ? "recently-starred" : "updated-desc";
+  params.set("tab", tab);
 
   const nextQuery =
     overrides.q === undefined ? filters.query : overrides.q?.trim() || null;
@@ -733,7 +736,7 @@ export function profileRepositoryTabHref(
   if (nextLanguage?.trim()) {
     params.set("language", nextLanguage.trim());
   }
-  if (nextSort?.trim() && nextSort !== "updated-desc") {
+  if (nextSort?.trim() && nextSort !== defaultSort) {
     params.set("sort", nextSort.trim());
   }
 

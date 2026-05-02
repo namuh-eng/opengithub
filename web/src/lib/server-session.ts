@@ -7,6 +7,7 @@ import {
   getAppShellContextFromCookie,
   getDashboardSummaryFromCookie,
   getProfileRepositoriesFromCookie,
+  getProfileStarsFromCookie,
   getPublicUserProfileFromCookie,
   getPullRequestCompareFromCookie,
   getRepositoryActionsDashboardFromCookie,
@@ -81,6 +82,18 @@ export async function getProfileRepositories(
 ) {
   const requestHeaders = await headers();
   return getProfileRepositoriesFromCookie(
+    requestHeaders.get("cookie"),
+    username,
+    query,
+  );
+}
+
+export async function getProfileStars(
+  username: string,
+  query: ProfileRepositoryListQuery = {},
+) {
+  const requestHeaders = await headers();
+  return getProfileStarsFromCookie(
     requestHeaders.get("cookie"),
     username,
     query,
