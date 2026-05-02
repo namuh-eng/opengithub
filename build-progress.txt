@@ -1937,3 +1937,12 @@
 - Verification passed: focused `cargo test -p opengithub-api --test api_notifications_inbox_contract`; focused `cd web && npx vitest run tests/notifications-inbox.test.tsx`; `cd web && npx tsc --noEmit --pretty false`; mandatory banned-value scan returned zero matches; `make check`; `CARGO_INCREMENTAL=0 make test` with Cargo tests plus 215 frontend tests.
 - `make test` initially hit disk exhaustion during Rust test linking; cleared local build/cache artifacts and reran successfully.
 - Set `notifications-001.build_pass=true`, `needs_structure=false`, and left `qa_pass=false` for independent QA.
+2026-05-02 - releases-001 releases list, latest detail, assets, reactions, and pagination
+
+- Created `.qrspi/releases-001/structure.md` and implemented the releases-001 vertical slice in this isolated worktree.
+- Added a typed deterministic release server/API seam with newest-first release history, latest non-prerelease resolution, tag detail lookup, assets/source archives, contributors, verified/pre-release/latest labels, searchable compare tag/branch form, public read behavior, and authenticated reaction toggles.
+- Added same-origin Next API routes for release history, latest release, and release reactions; added Editorial repository releases UI for `/releases`, `/releases/latest`, and `/releases/tag/[tagName]`.
+- Added focused Vitest coverage for data ordering/pagination/latest, reaction auth/toggle semantics, UI release cards/assets/notes/reactions, and reaction POST wiring.
+- Verification passed: mandatory banned-value scan returned zero matches; focused `cd web && npm test -- tests/repository-releases.test.tsx` passed 5 tests; `cd web && npx tsc --noEmit` passed; `make check` passed; `make test` passed with Cargo tests and 218 web tests.
+- Set `releases-001.build_pass=true`, `needs_structure=false`, and left `qa_pass=false` in `prd.json` for independent QA.
+- Known gaps for QA: deterministic release seam is not yet DB-backed, reaction state is process-local, and browser/E2E smoke was not run in this build lane.

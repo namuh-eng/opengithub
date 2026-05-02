@@ -1,38 +1,35 @@
 import { AppShell } from "@/components/AppShell";
 import { RepositoryReleasesPage } from "@/components/RepositoryReleasesPage";
 import { RepositoryUnavailablePage } from "@/components/RepositoryUnavailablePage";
-import { getRepositoryReleasesView } from "@/lib/releases";
+import { getRepositoryReleaseByTag } from "@/lib/releases";
 import { getRepository, getSession } from "@/lib/server-session";
 
-type ReleasesPageProps = {
-  params: Promise<{ owner: string; repo: string }>;
-  searchParams: Promise<{ page?: string }>;
+type ReleaseTagPageProps = {
+  params: Promise<{ owner: string; repo: string; tagName: string }>;
 };
 
-function parsePage(value: string | undefined) {
-  const page = Number(value);
-  return Number.isFinite(page) && page > 0 ? Math.floor(page) : 1;
-}
-
-export default async function ReleasesPage({
-  params,
-  searchParams,
-}: ReleasesPageProps) {
-  const [{ owner, repo }, query, session] = await Promise.all([
+export default async function ReleaseTagPage({ params }: ReleaseTagPageProps) {
+  const [{ owner, repo, tagName }, session] = await Promise.all([
     params,
-    searchParams,
     getSession(),
   ]);
   const ownerLogin = decodeURIComponent(owner);
   const repositoryName = decodeURIComponent(repo);
   const repository = await getRepository(ownerLogin, repositoryName);
-  const page = parsePage(query.page);
+  const releaseView = repository
+    ? getRepositoryReleaseByTag(
+        repository,
+        session,
+        decodeURIComponent(tagName),
+      )
+    : null;
 
   return (
     <AppShell session={session}>
-      {repository ? (
+      {repository && releaseView ? (
         <RepositoryReleasesPage
-          releases={getRepositoryReleasesView(repository, session, { page })}
+          mode="detail"
+          releases={releaseView}
           repository={repository}
         />
       ) : (
