@@ -1969,25 +1969,29 @@ export type CollaborationSearchSortOption = {
 
 export type CollaborationSearchFacetValue = CodeSearchFacetValue;
 
-export type CollaborationSearchResponse =
-  ListEnvelope<CollaborationSearchResult> & {
-    typeCounts: CodeSearchTypeCount[];
-    facets: {
-      states: CollaborationSearchFacetValue[];
-      owners: CollaborationSearchFacetValue[];
-      labels: CollaborationSearchFacetValue[];
-      milestones: CollaborationSearchFacetValue[];
-      assignees: CollaborationSearchFacetValue[];
-    };
-    activeChips: CodeSearchChip[];
-    sort: {
-      selected: string;
-      label: string;
-      options: CollaborationSearchSortOption[];
-    };
-    queryDurationMs: number;
-    diagnostics: CodeSearchDiagnostic[];
+export type CollaborationSearchResponse = ListEnvelope<
+  CollaborationSearchResult | GlobalSearchResult
+> & {
+  typeCounts: CodeSearchTypeCount[];
+  facets: {
+    states: CollaborationSearchFacetValue[];
+    owners?: CollaborationSearchFacetValue[];
+    labels: CollaborationSearchFacetValue[];
+    milestones: CollaborationSearchFacetValue[];
+    assignees: CollaborationSearchFacetValue[];
+    reviewers?: CollaborationSearchFacetValue[];
   };
+  activeChips: CodeSearchChip[];
+  sort?: {
+    selected: string;
+    label: string;
+    options: CollaborationSearchSortOption[];
+  };
+  sortOptions?: CollaborationSearchSortOption[];
+  activeSort?: string;
+  queryDurationMs: number;
+  diagnostics?: CodeSearchDiagnostic[];
+};
 
 export type CollaborationSearchResult = {
   id: string;

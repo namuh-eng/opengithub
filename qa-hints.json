@@ -2739,5 +2739,22 @@
       "Search indexing is still backed by search_documents body/metadata; production-scale ranking, binary/large-file indexing, and richer symbol index backfills need later search hardening.",
       "Saved-search duplicate-name and concurrent create/delete behavior is covered at the API/modal level from search-002/search-003, but should be rechecked manually under real multi-session usage."
     ]
+  },
+  {
+    "feature_id": "search-004",
+    "tests_written": [
+      "Implemented Phase 1 collaboration search API contract for /api/search type=issues and type=pull_requests aliases.",
+      "Added Rust response types for issue/PR result rows, type counts, active chips, facets, sort metadata, timing, diagnostics, snippets, and permission-safe repository metadata.",
+      "Added typed Next.js API helpers for CollaborationSearchResponse and server-session forwarding.",
+      "Added Postgres-backed contract coverage seeding real users, public/private repositories, issues, pull requests, labels, assignees, milestones, comments, reactions, and search documents.",
+      "Updated existing search contract assertions to accept the new issue/PR row shape while preserving code/commit generic search behavior.",
+      "Verification passed: focused search_collaboration_results_contract, focused api_repository_search_contract compatibility test, make check, make test with Cargo plus 213 frontend tests, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Phase 1 is API-first; browser smoke was skipped because the dedicated Editorial issue/PR search UI is a later phase.",
+      "Advanced qualifier execution is intentionally limited to state/is for Phase 1; label, assignee, milestone, reviewer, comments, interactions, and linked-PR filters remain later phases.",
+      "Sort metadata and basic sort ordering are present, but full URL-backed sort menu UX and pagination preservation remain later phases.",
+      "Real Postgres validation used the reachable local database at localhost:55432 with existing namuh/namuh credentials because localhost:5432 was not available in this session."
+    ]
   }
 ]

@@ -1,3 +1,14 @@
+2026-05-02 - search-004 phase 1 collaboration search API contract
+
+- Implemented Phase 1 from `.qrspi/search-004/structure.md`: `/api/search` now routes `type=issues`, `type=issue`, `type=pull_requests`, `type=pullrequests`, `type=pulls`, and `type=pull` through a richer collaboration-search contract.
+- Added Rust collaboration search DTOs and query path with result-type counts, facets, active chips, sort metadata, query timing, diagnostics, issue/PR row metadata, snippets, comment/interaction counts, labels, assignees, milestones, linked-PR presence, and permission-safe repository fields.
+- Added typed frontend API/server-session helpers for `CollaborationSearchResponse` without changing `searchGlobal` consumers.
+- Added `crates/api/tests/search_collaboration_results_contract.rs` with real Postgres scenarios for public/private repositories, issues, pull requests, labels, assignees, milestones, comments, reactions, alias normalization, snippets, facets, sort metadata, and private result redaction.
+- Updated existing search contract assertions for the new issue/PR row shape while preserving generic code/commit search expectations.
+- Verification passed against reachable local Postgres at `localhost:55432`: focused `search_collaboration_results_contract`, focused `api_repository_search_contract` compatibility test, `make check`, `make test` with Cargo plus 213 frontend tests, and the mandatory Editorial banned-value scan with zero matches.
+- Browser smoke and `make test-e2e` were not run because Phase 1 is API-first and the dedicated issue/PR Editorial search UI is a later phase.
+- Marked Phase 1 as done in `.qrspi/search-004/structure.md`; `prd.json` remains `build_pass: false` because Phases 2-5 remain.
+
 2026-05-02 - search-004 structure planning
 
 - Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `prd.json`, `web/AGENTS.md`, `design/project/og-screens-3.jsx`, `design/project/og-shell.jsx`, adjacent search QRSPI outlines, current search backend/frontend surfaces, current search tests, and target search docs.

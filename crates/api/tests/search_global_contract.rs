@@ -293,10 +293,12 @@ async fn search_route_clamps_pages_orders_deterministically_and_filters_private_
         .await;
         assert_eq!(outsider_status, StatusCode::OK);
         assert_eq!(outsider_body["total"], 1);
-        assert_eq!(
-            outsider_body["items"][0]["document"]["visibility"],
-            "public"
-        );
+        let visibility = if matches!(result_type, "issues" | "pull_requests") {
+            &outsider_body["items"][0]["repository"]["visibility"]
+        } else {
+            &outsider_body["items"][0]["document"]["visibility"]
+        };
+        assert_eq!(visibility, "public");
         assert!(!outsider_body.to_string().contains("private"));
     }
 }

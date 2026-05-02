@@ -1,10 +1,12 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { CodeSearchResultsPage } from "@/components/CodeSearchResultsPage";
+import { CollaborationSearchResultsPage } from "@/components/CollaborationSearchResultsPage";
 import { QueryTabNavigation } from "@/components/QueryTabNavigation";
 import type {
   ApiErrorEnvelope,
   CodeSearchResponse,
+  CollaborationSearchResponse,
   GlobalSearchResult,
   ListEnvelope,
 } from "@/lib/api";
@@ -22,6 +24,7 @@ type SearchResultsPageProps = {
   results:
     | ListEnvelope<GlobalSearchResult>
     | CodeSearchResponse
+    | CollaborationSearchResponse
     | ApiErrorEnvelope
     | null;
 };
@@ -489,9 +492,20 @@ export function SearchResultsPage({
     return (
       <CodeSearchResultsPage
         query={query}
-        results={results}
+        results={results as CodeSearchResponse | ApiErrorEnvelope | null}
         saved={saved}
         view={view}
+      />
+    );
+  }
+  if (normalizedType === "issues" || normalizedType === "pull_requests") {
+    return (
+      <CollaborationSearchResultsPage
+        activeType={normalizedType}
+        query={query}
+        results={
+          results as CollaborationSearchResponse | ApiErrorEnvelope | null
+        }
       />
     );
   }
@@ -501,7 +515,9 @@ export function SearchResultsPage({
   const description = SEARCH_TYPE_DESCRIPTIONS.get(normalizedType);
   const hasQuery = query.trim().length > 0;
   const successfulResults =
-    results && !isErrorEnvelope(results) ? results : null;
+    results && !isErrorEnvelope(results)
+      ? (results as ListEnvelope<GlobalSearchResult>)
+      : null;
 
   return (
     <section className="mx-auto max-w-[1240px] px-6 py-8">

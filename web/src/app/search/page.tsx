@@ -4,6 +4,7 @@ import { activeSearchType } from "@/lib/navigation";
 import {
   getSessionAndShellContext,
   searchCode,
+  searchCollaboration,
   searchGlobal,
 } from "@/lib/server-session";
 
@@ -70,12 +71,20 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
             page,
             pageSize: 30,
           })
-        : await searchGlobal({
-            query,
-            type: activeType,
-            page,
-            pageSize: 30,
-          })
+        : activeType === "issues" || activeType === "pull_requests"
+          ? await searchCollaboration({
+              query,
+              type: activeType,
+              page,
+              pageSize: 30,
+              sort: firstParam(params?.sort),
+            })
+          : await searchGlobal({
+              query,
+              type: activeType,
+              page,
+              pageSize: 30,
+            })
       : null;
 
   return (

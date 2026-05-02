@@ -6,7 +6,7 @@
 
 ## Phase 1: Collaboration Search API Contract - issues and pull requests return facets, counts, snippets, sort metadata, and permission-safe rows
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add a richer response contract for `type=issues` and `type=pull_requests` while preserving the existing `/api/search` list envelope for other result types. The API should expose result-type counts, active qualifier chips, advanced facet groups, sort state, query timing, highlighted text-match snippets, pagination, and dense issue/PR row metadata from real indexed issue and pull request documents. Private repository metadata must remain invisible to viewers without access.
 
