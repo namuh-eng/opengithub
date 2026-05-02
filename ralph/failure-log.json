@@ -1631,6 +1631,14 @@
       "exit_code": 0,
       "category": "unknown",
       "attempt": 135
+    },
+    {
+      "timestamp": "2026-05-02T14:17:51.181092",
+      "phase": "build",
+      "feature": "build_cycle_1",
+      "exit_code": 0,
+      "category": "test_failure",
+      "attempt": 136
     }
   ]
 }
