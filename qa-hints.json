@@ -2824,5 +2824,21 @@
       "Reviewer-specific PR facets remain display-compatible but backend reviewer filtering is still constrained by the current PR review data model and should be revisited when richer review indexing ships.",
       "Production-scale ranking, facet performance, and concurrent saved-search create/delete behavior still need later search hardening under larger datasets."
     ]
+  },
+  {
+    "feature_id": "search-005",
+    "tests_written": [
+      "Added REST-compatible scoped search endpoints: GET /api/search/code, /api/search/repositories, /api/search/issues, /api/search/users, and /api/search/commits.",
+      "Endpoints return GitHub-style envelopes with total_count, incomplete_results, items, page, and per_page while reusing the existing permission-aware search functions.",
+      "Added Postgres-backed Rust contract coverage for authenticated access, unauthenticated rejection, code language/path qualifiers, repository/user/commit/issue projections, state/is filters, private-code redaction, pagination aliases, and bounded validation errors.",
+      "Updated /docs/api metadata for all five scoped REST search endpoints.",
+      "Verification passed: focused search_rest_compat_contract against a temporary local Postgres database, focused api-docs Vitest, make check, and make test with Cargo plus 216 frontend tests."
+    ],
+    "needs_deeper_qa": [
+      "Feature is backend/API-first; browser smoke and make test-e2e were skipped because no product UI flow changed beyond static API docs metadata.",
+      "The REST /api/search/issues endpoint currently returns issue rows; pull request rows remain available through the existing /api/search?type=pull_requests product API and can be added as a separate compatibility endpoint later if needed.",
+      "Repository, user, and commit qualifier handling is intentionally lightweight over the existing search_documents index; search-006 should harden dedicated index maintenance and richer qualifier-specific SQL.",
+      "Verification used an isolated Homebrew Postgres 16 database on localhost:55432 because no shared localhost Postgres was running."
+    ]
   }
 ]

@@ -720,6 +720,120 @@ run: #42
     notes: ["Short or malformed queries return 422 validation errors."],
   },
   {
+    id: "search-rest-code",
+    method: "GET",
+    path: "/api/search/code?q=router+language:Rust&per_page=30",
+    title: "REST code search",
+    description:
+      "Returns GitHub-compatible code search envelopes for indexed code visible to the signed-in user.",
+    auth: "Signed opengithub session cookie",
+    response: `{
+  "total_count": 1,
+  "incomplete_results": false,
+  "items": [
+    {
+      "name": "src/router.rs",
+      "path": "src/router.rs",
+      "html_url": "/mona/octo-app/blob/main/src/router.rs#L4",
+      "repository": { "full_name": "mona/octo-app" }
+    }
+  ]
+}`,
+    notes: [
+      "Supports repo:, path:, user:, language:, and archived qualifiers.",
+    ],
+  },
+  {
+    id: "search-rest-repositories",
+    method: "GET",
+    path: "/api/search/repositories?q=router&sort=updated&order=desc",
+    title: "REST repository search",
+    description:
+      "Returns repository search results with total_count, incomplete_results, and GitHub-style item links.",
+    auth: "Signed opengithub session cookie",
+    response: `{
+  "total_count": 1,
+  "incomplete_results": false,
+  "items": [
+    {
+      "name": "octo-app",
+      "full_name": "mona/octo-app",
+      "private": false,
+      "html_url": "/mona/octo-app"
+    }
+  ]
+}`,
+    notes: [
+      "Private repositories are visible only to users with repository access.",
+    ],
+  },
+  {
+    id: "search-rest-issues",
+    method: "GET",
+    path: "/api/search/issues?q=router+state:open&sort=updated&order=desc",
+    title: "REST issue search",
+    description:
+      "Returns issue search rows with labels, repository metadata, state filters, and text matches.",
+    auth: "Signed opengithub session cookie",
+    response: `{
+  "total_count": 1,
+  "incomplete_results": false,
+  "items": [
+    {
+      "number": 42,
+      "title": "Router bug",
+      "state": "open",
+      "html_url": "/mona/octo-app/issues/42"
+    }
+  ]
+}`,
+    notes: [
+      "Supports state:/is:, repo:, user:/org:, label:, assignee:, and milestone qualifiers.",
+    ],
+  },
+  {
+    id: "search-rest-users",
+    method: "GET",
+    path: "/api/search/users?q=octocat+user:octocat",
+    title: "REST user search",
+    description:
+      "Returns user search results with stable login, avatar_url, html_url, and score fields.",
+    auth: "Signed opengithub session cookie",
+    response: `{
+  "total_count": 1,
+  "incomplete_results": false,
+  "items": [
+    { "login": "octocat", "type": "User", "html_url": "/octocat" }
+  ]
+}`,
+    notes: [
+      "Short or malformed queries return the standard validation envelope.",
+    ],
+  },
+  {
+    id: "search-rest-commits",
+    method: "GET",
+    path: "/api/search/commits?q=router+repo:mona/octo-app",
+    title: "REST commit search",
+    description:
+      "Returns indexed commit search results with sha, commit metadata, repository summary, and html_url.",
+    auth: "Signed opengithub session cookie",
+    response: `{
+  "total_count": 1,
+  "incomplete_results": false,
+  "items": [
+    {
+      "sha": "abcdef123456",
+      "html_url": "/mona/octo-app/commit/abcdef123456",
+      "commit": { "message": "Add router" }
+    }
+  ]
+}`,
+    notes: [
+      "Results are permission-aware and reuse the indexed search document store.",
+    ],
+  },
+  {
     id: "search-suggestions",
     method: "GET",
     path: "/api/search/suggestions?q=router&scope=all&limit=8",

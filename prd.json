@@ -773,7 +773,7 @@
     "dependent_on": [
       "search-006"
     ],
-    "build_pass": false
+    "build_pass": true
   },
   {
     "id": "profiles-001",

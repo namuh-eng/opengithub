@@ -1928,3 +1928,14 @@
 - Browser smoke screenshots saved at `ralph/screenshots/build/search-004-phase5-final-desktop-issues.jpg` and `ralph/screenshots/build/search-004-phase5-final-mobile-pulls.jpg`.
 - Verification passed against a temporary local Postgres 16 test database on `localhost:55432`: focused `search_collaboration_results_contract`; focused `web/tests/search-collaboration-results.test.tsx`; focused `web/tests/e2e/search-collaboration.spec.ts`; `TEST_DATABASE_URL=postgresql://namuh@localhost:55432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 216 frontend tests; full same-env `make test-e2e` with 82 Playwright tests; mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
 - Marked Phase 5 as done in `.qrspi/search-004/structure.md` and set `search-004.build_pass` to `true` in `prd.json`; `qa_pass` remains `false` for the QA agent.
+
+2026-05-02 - search-005 REST search compatibility endpoints
+
+- Built the first incomplete PRD feature, `search-005`: scoped REST search endpoints for `/api/search/code`, `/api/search/repositories`, `/api/search/issues`, `/api/search/users`, and `/api/search/commits`.
+- Reused existing permission-aware search contracts and projected GitHub-compatible envelopes with `total_count`, `incomplete_results`, `items`, `page`, and `per_page`; added code, repository, user, commit, and issue item fields such as `html_url`, `full_name`, `repository`, `sha`, `commit`, `state`, and `text_matches`.
+- Added lightweight REST query handling for `per_page`, `sort`, `order`, and supported qualifiers over the existing index; code and issue endpoints continue to use the richer code/collaboration parsers.
+- Updated `/docs/api` metadata for the five scoped REST endpoints.
+- Added `crates/api/tests/search_rest_compat_contract.rs` with real Postgres coverage for auth, validation, pagination aliases, code language/path qualifiers, repository/user/commit/issue projections, and private-result redaction.
+- Verification passed against a temporary local Postgres 16 database on `localhost:55432`: focused `search_rest_compat_contract`; focused `web/tests/api-docs.test.tsx`; `TEST_DATABASE_URL=postgresql://namuh@localhost:55432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 216 frontend tests.
+- Browser smoke and `make test-e2e` were skipped because `search-005` is backend/API-first and no product UI flow changed beyond static API docs metadata.
+- Set `search-005.build_pass` to `true` in `prd.json`; `qa_pass` remains untouched for the QA agent.
