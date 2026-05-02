@@ -1,3 +1,12 @@
+2026-05-03 - settings-004 phase 4 delivery worker integration
+
+- Completed Phase 4 from `.qrspi/settings-004/structure.md`: repository webhook deliveries now have a real Rust job-lease worker path without marking `settings-004.build_pass=true`.
+- Added `enqueue_repository_webhook_event` in the webhook domain to filter active hooks by subscribed event or wildcard subscription, insert queued delivery rows, and enqueue `webhook-delivery` leases for worker processing.
+- Added `crates/api/src/jobs/webhooks.rs` with single-delivery and next-delivery workers, bounded outbound HTTP timeouts, request header/body recording, HMAC `X-Hub-Signature-256` signing from stored secret material, response status/header/body/duration recording, inactive/unsubscribed skips, payload-size guardrails, bounded retry scheduling, terminal failure handling, and structured worker logs.
+- Added focused `crates/api/tests/webhook_delivery_worker.rs` coverage for subscription filtering, signature headers, successful delivery recording, retryable 503 handling, terminal failure, job lease completion, payload-too-large failure, and unsupported event rejection.
+- Verification passed: focused `webhook_delivery_worker` compiled/passed with DB assertions self-skipped because the shared local migration state still prevents the test migrator from running cleanly; focused webhook settings Vitest; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; `DB_SSL=false make test` with Cargo tests plus 292 frontend tests; mandatory Editorial banned-value scan returned zero matches.
+- Browser smoke and `make test-e2e` were not run for Phase 4 because this slice is Rust worker/domain behavior with no new UI surface; Phase 5 remains for final docs, screenshots, QA handoff, and `build_pass` bookkeeping.
+
 2026-05-03 - settings-004 phase 2 Editorial webhooks list/detail shell
 
 - Completed Phase 2 from `.qrspi/settings-004/structure.md`: `/[owner]/[repo]/settings/hooks` now fetches the Phase 1 Rust webhook settings contract server-side and renders a real Editorial Webhooks settings surface instead of a placeholder.

@@ -3540,5 +3540,24 @@
       "Verify keyboard traversal through Add/Edit/Delete/Test/Redeliver panels with a real browser and screen reader.",
       "Delivery worker behavior remains Phase 4: outbound HTTP, HMAC signing, retries, timeout handling, payload/body truncation, and retention cleanup still need deeper QA."
     ]
+  },
+  {
+    "feature_id": "settings-004",
+    "tests_written": [
+      "Completed Phase 4 Delivery Worker Integration without marking settings-004 build_pass=true.",
+      "Added repository webhook event enqueueing that filters active hooks by subscribed event, supports wildcard subscriptions, inserts delivery rows, and creates webhook-delivery job leases.",
+      "Added a Rust webhook delivery worker that acquires job leases, builds bounded JSON/form payloads, records request headers/body excerpts/storage keys, sends outbound HTTP with a configured timeout, signs requests with X-Hub-Signature-256 when secret material exists, records response status/headers/body excerpts/duration, and schedules bounded retries before terminal failure.",
+      "Added inactive/unsubscribed skip behavior, payload-size guardrails, retry backoff, terminal job completion, structured logs, and public helpers for running one delivery or the next due delivery.",
+      "Added focused webhook_delivery_worker coverage for subscription filtering, HMAC signature header generation, delivered response recording, retryable 503 handling, terminal failure, payload-too-large failure, job lease completion, and unsupported event rejection.",
+      "Verification passed: focused webhook_delivery_worker compiled/passed with DB assertions self-skipped on the dirty local migration state; focused webhook settings Vitest; TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check; DB_SSL=false make test with Cargo tests plus 292 frontend tests; mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Rerun webhook_delivery_worker against a clean reachable TEST_DATABASE_URL so the DB-backed receiver, retry, and payload assertions execute instead of self-skipping on the shared migration state.",
+      "Exercise real external receivers over HTTPS, including success, 4xx, 5xx, connection failure, and timeout behavior with live network conditions.",
+      "Verify downstream HMAC signature validation against the exact stored secret strategy; current worker signs with stored secret material without exposing it in API responses.",
+      "Stress large request/response bodies, response header redaction needs, retry backoff timing, duplicate worker acquisition, concurrent redelivery clicks, deleted/inactive hook delivery handling, and wildcard versus selected event subscriptions.",
+      "Confirm concrete event-source adapters are called from push, issue, PR, release, workflow, package, and Pages producers as those feature families mature; this phase exposes the adapter but does not wire every future producer.",
+      "Full API docs, final desktop/mobile screenshots, retention cleanup notes, and build_pass bookkeeping are deferred to Phase 5."
+    ]
   }
 ]

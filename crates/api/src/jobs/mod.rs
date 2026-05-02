@@ -5,6 +5,7 @@ use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 pub mod repository_imports;
+pub mod webhooks;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct JobLease {

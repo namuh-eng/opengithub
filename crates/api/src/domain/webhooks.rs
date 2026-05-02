@@ -6,6 +6,8 @@ use sqlx::{PgPool, Row};
 use url::Url;
 use uuid::Uuid;
 
+use crate::jobs::enqueue_job;
+
 use super::{
     permissions::RepositoryRole,
     repositories::{
@@ -165,6 +167,24 @@ pub struct WebhookDeliveryDetail {
     pub terminal_error: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct QueuedWebhookDelivery {
+    pub webhook_id: Uuid,
+    pub delivery_id: Uuid,
+    pub event: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct WebhookDeliveryWorkerResult {
+    pub status: DeliveryStatus,
+    pub response_status: Option<i32>,
+    pub response_headers: Value,
+    pub response_body_excerpt: Option<String>,
+    pub duration_ms: Option<i64>,
+    pub terminal_error: Option<String>,
+    pub retry_after_seconds: Option<i64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WebhookMutation {
@@ -261,8 +281,77 @@ pub enum WebhookError {
     InvalidWebhook(String),
     #[error("invalid delivery status `{0}`")]
     InvalidDeliveryStatus(String),
+    #[error("webhook delivery queue failed: {0}")]
+    DeliveryQueue(String),
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
+}
+
+pub async fn enqueue_repository_webhook_event(
+    pool: &PgPool,
+    repository_id: Uuid,
+    event: &str,
+    payload: Value,
+) -> Result<Vec<QueuedWebhookDelivery>, WebhookError> {
+    let event = event.trim();
+    if event.is_empty() {
+        return Err(WebhookError::InvalidWebhook(
+            "webhook event must not be blank".to_owned(),
+        ));
+    }
+    validate_event_for_delivery(event)?;
+
+    let rows = sqlx::query(
+        r#"
+        SELECT id
+        FROM webhooks
+        WHERE repository_id = $1
+          AND active = true
+          AND (events @> ARRAY[$2]::text[] OR events @> ARRAY['*']::text[])
+        ORDER BY created_at ASC
+        "#,
+    )
+    .bind(repository_id)
+    .bind(event)
+    .fetch_all(pool)
+    .await?;
+
+    let mut queued = Vec::with_capacity(rows.len());
+    for row in rows {
+        let hook_id: Uuid = row.get("id");
+        let delivery_id = insert_delivery(
+            pool,
+            hook_id,
+            event,
+            json!({
+                "event": event,
+                "repositoryId": repository_id,
+                "payload": payload
+            }),
+            None,
+        )
+        .await?;
+        enqueue_job(
+            pool,
+            "webhook-delivery",
+            &delivery_id.to_string(),
+            json!({
+                "deliveryId": delivery_id,
+                "webhookId": hook_id,
+                "repositoryId": repository_id,
+                "event": event
+            }),
+        )
+        .await
+        .map_err(|error| WebhookError::DeliveryQueue(error.to_string()))?;
+        queued.push(QueuedWebhookDelivery {
+            webhook_id: hook_id,
+            delivery_id,
+            event: event.to_owned(),
+        });
+    }
+
+    Ok(queued)
 }
 
 pub async fn repository_webhook_settings_for_actor_by_owner_name(
@@ -390,9 +479,18 @@ pub async fn create_repository_webhook_by_owner_name(
         repository.id,
         actor_user_id,
         "repository.webhook.create",
-        vec!["payloadUrl".to_owned(), "events".to_owned(), "active".to_owned()],
+        vec![
+            "payloadUrl".to_owned(),
+            "events".to_owned(),
+            "active".to_owned(),
+        ],
         json!(null),
-        audit_hook_state(&normalized.payload_url, &normalized.events, normalized.active, secret_hash.is_some()),
+        audit_hook_state(
+            &normalized.payload_url,
+            &normalized.events,
+            normalized.active,
+            secret_hash.is_some(),
+        ),
     )
     .await?;
     transaction.commit().await?;
@@ -478,7 +576,12 @@ pub async fn update_repository_webhook_by_owner_name(
             "active": before.active,
             "secretConfigured": before.secret_configured
         }),
-        audit_hook_state(&normalized.payload_url, &normalized.events, normalized.active, before.secret_configured || secret_hash.is_some()),
+        audit_hook_state(
+            &normalized.payload_url,
+            &normalized.events,
+            normalized.active,
+            before.secret_configured || secret_hash.is_some(),
+        ),
     )
     .await?;
     transaction.commit().await?;
@@ -535,8 +638,16 @@ pub async fn ping_repository_webhook_by_owner_name(
     name: &str,
     hook_id: Uuid,
 ) -> Result<Option<WebhookPingResult>, WebhookError> {
-    create_hook_delivery_by_owner_name(pool, actor_user_id, owner_login, name, hook_id, "ping", None)
-        .await
+    create_hook_delivery_by_owner_name(
+        pool,
+        actor_user_id,
+        owner_login,
+        name,
+        hook_id,
+        "ping",
+        None,
+    )
+    .await
 }
 
 pub async fn redeliver_repository_webhook_delivery_by_owner_name(
@@ -643,6 +754,71 @@ pub async fn record_webhook_delivery_attempt(
     delivery_from_row(row)
 }
 
+pub async fn record_webhook_delivery_worker_result(
+    pool: &PgPool,
+    delivery_id: Uuid,
+    result: WebhookDeliveryWorkerResult,
+) -> Result<WebhookDelivery, WebhookError> {
+    let row = sqlx::query(
+        r#"
+        UPDATE webhook_deliveries
+        SET status = $2,
+            response_status = $3,
+            response_headers = $4,
+            response_body = $5,
+            duration_ms = $6,
+            terminal_error = $7,
+            attempt_count = attempt_count + 1,
+            next_attempt_at = CASE
+                WHEN $8::bigint IS NULL THEN NULL
+                ELSE now() + ($8::bigint * interval '1 second')
+            END,
+            delivered_at = CASE WHEN $2 = 'delivered' THEN now() ELSE delivered_at END
+        WHERE id = $1
+        RETURNING id, webhook_id, event, payload, status, attempt_count, next_attempt_at,
+                  response_status, response_body, delivered_at, created_at, updated_at
+        "#,
+    )
+    .bind(delivery_id)
+    .bind(result.status.as_str())
+    .bind(result.response_status)
+    .bind(result.response_headers)
+    .bind(&result.response_body_excerpt)
+    .bind(result.duration_ms)
+    .bind(&result.terminal_error)
+    .bind(result.retry_after_seconds)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(WebhookError::DeliveryNotFound)?;
+
+    delivery_from_row(row)
+}
+
+pub async fn mark_webhook_delivery_request(
+    pool: &PgPool,
+    delivery_id: Uuid,
+    request_headers: Value,
+    request_body_excerpt: String,
+    request_body_storage_key: Option<String>,
+) -> Result<(), WebhookError> {
+    sqlx::query(
+        r#"
+        UPDATE webhook_deliveries
+        SET request_headers = $2,
+            request_body_excerpt = $3,
+            request_body_storage_key = $4
+        WHERE id = $1
+        "#,
+    )
+    .bind(delivery_id)
+    .bind(request_headers)
+    .bind(request_body_excerpt)
+    .bind(request_body_storage_key)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 async fn require_repository_role(
     pool: &PgPool,
     repository_id: Uuid,
@@ -730,12 +906,36 @@ async fn repository_permission_label(
 fn webhook_event_definitions() -> Vec<WebhookEventDefinition> {
     [
         ("push", "Pushes", "Git branch and tag updates."),
-        ("issues", "Issues", "Issue open, edit, close, label, and comment activity."),
-        ("pull_request", "Pull requests", "Pull request lifecycle and review activity."),
-        ("release", "Releases", "Release publish, edit, and delete activity."),
-        ("workflow_run", "Workflow runs", "Actions workflow run state changes."),
-        ("package", "Packages", "Package publish and delete activity."),
-        ("page_build", "Pages", "Pages build and deployment activity."),
+        (
+            "issues",
+            "Issues",
+            "Issue open, edit, close, label, and comment activity.",
+        ),
+        (
+            "pull_request",
+            "Pull requests",
+            "Pull request lifecycle and review activity.",
+        ),
+        (
+            "release",
+            "Releases",
+            "Release publish, edit, and delete activity.",
+        ),
+        (
+            "workflow_run",
+            "Workflow runs",
+            "Actions workflow run state changes.",
+        ),
+        (
+            "package",
+            "Packages",
+            "Package publish and delete activity.",
+        ),
+        (
+            "page_build",
+            "Pages",
+            "Pages build and deployment activity.",
+        ),
     ]
     .into_iter()
     .map(|(name, label, description)| WebhookEventDefinition {
@@ -932,6 +1132,48 @@ async fn insert_delivery_tx(
     Ok(id)
 }
 
+async fn insert_delivery(
+    pool: &PgPool,
+    hook_id: Uuid,
+    event: &str,
+    payload: Value,
+    redelivery_of_id: Option<Uuid>,
+) -> Result<Uuid, WebhookError> {
+    let id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO webhook_deliveries (
+            webhook_id, event, payload, request_headers, request_body_excerpt, redelivery_of_id
+        )
+        VALUES ($1, $2, $3, '{}'::jsonb, left($3::text, 4096), $4)
+        RETURNING id
+        "#,
+    )
+    .bind(hook_id)
+    .bind(event)
+    .bind(payload)
+    .bind(redelivery_of_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(id)
+}
+
+fn validate_event_for_delivery(event: &str) -> Result<(), WebhookError> {
+    if event == "ping" || event == "redelivery" {
+        return Ok(());
+    }
+    let supported = webhook_event_definitions()
+        .into_iter()
+        .map(|definition| definition.name)
+        .collect::<std::collections::BTreeSet<_>>();
+    if supported.contains(event) {
+        Ok(())
+    } else {
+        Err(WebhookError::InvalidWebhook(format!(
+            "unsupported webhook event `{event}`"
+        )))
+    }
+}
+
 async fn create_hook_delivery_by_owner_name(
     pool: &PgPool,
     actor_user_id: Uuid,
@@ -955,7 +1197,10 @@ async fn create_hook_delivery_by_owner_name(
         return Err(WebhookError::WebhookNotFound);
     }
     if let Some(original_id) = redelivery_of_id {
-        if delivery_summary_by_id(pool, hook_id, original_id).await?.is_none() {
+        if delivery_summary_by_id(pool, hook_id, original_id)
+            .await?
+            .is_none()
+        {
             return Err(WebhookError::DeliveryNotFound);
         }
     }
@@ -1135,7 +1380,9 @@ async fn delivery_detail(
     .transpose()
 }
 
-fn hook_summary_from_row(row: sqlx::postgres::PgRow) -> Result<RepositoryWebhookSummary, WebhookError> {
+fn hook_summary_from_row(
+    row: sqlx::postgres::PgRow,
+) -> Result<RepositoryWebhookSummary, WebhookError> {
     let latest_delivery = if row
         .try_get::<Option<Uuid>, _>("latest_delivery_id")?
         .is_some()
@@ -1161,7 +1408,9 @@ fn hook_summary_from_row(row: sqlx::postgres::PgRow) -> Result<RepositoryWebhook
         payload_url: row.get("url"),
         content_type: WebhookContentType::try_from(row.get::<String, _>("content_type").as_str())?,
         ssl_verify: row.get("ssl_verify"),
-        event_selection: WebhookEventSelection::try_from(row.get::<String, _>("event_selection").as_str())?,
+        event_selection: WebhookEventSelection::try_from(
+            row.get::<String, _>("event_selection").as_str(),
+        )?,
         events: row.get("events"),
         active: row.get("active"),
         disabled_reason: row.get("disabled_reason"),
@@ -1173,11 +1422,15 @@ fn hook_summary_from_row(row: sqlx::postgres::PgRow) -> Result<RepositoryWebhook
     })
 }
 
-fn delivery_summary_from_row(row: sqlx::postgres::PgRow) -> Result<WebhookDeliverySummary, WebhookError> {
+fn delivery_summary_from_row(
+    row: sqlx::postgres::PgRow,
+) -> Result<WebhookDeliverySummary, WebhookError> {
     delivery_summary_from_row_ref(&row)
 }
 
-fn delivery_summary_from_row_ref(row: &sqlx::postgres::PgRow) -> Result<WebhookDeliverySummary, WebhookError> {
+fn delivery_summary_from_row_ref(
+    row: &sqlx::postgres::PgRow,
+) -> Result<WebhookDeliverySummary, WebhookError> {
     Ok(WebhookDeliverySummary {
         id: row.get("id"),
         guid: row.get("delivery_guid"),

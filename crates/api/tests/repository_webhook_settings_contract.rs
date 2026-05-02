@@ -116,7 +116,10 @@ async fn repository_webhook_settings_cover_validation_redaction_delivery_and_aud
     .await;
     assert_eq!(create_status, StatusCode::CREATED);
     assert_eq!(create_body["delivery"]["event"], "ping");
-    assert_eq!(create_body["settings"]["hooks"][0]["secretConfigured"], true);
+    assert_eq!(
+        create_body["settings"]["hooks"][0]["secretConfigured"],
+        true
+    );
     assert_eq!(create_body["settings"]["hooks"][0]["events"][0], "issues");
     assert!(!create_body.to_string().contains("super-secret-value"));
     assert!(!create_body.to_string().contains("secret_hash"));
@@ -150,7 +153,10 @@ async fn repository_webhook_settings_cover_validation_redaction_delivery_and_aud
     )
     .await;
     assert_eq!(detail_status, StatusCode::OK);
-    assert_eq!(detail_body["hook"]["payloadUrl"], "https://receiver.opengithub.local/hook");
+    assert_eq!(
+        detail_body["hook"]["payloadUrl"],
+        "https://receiver.opengithub.local/hook"
+    );
     assert_eq!(detail_body["deliveries"][0]["id"], ping_delivery_id);
 
     let (delivery_status, _, delivery_body) = send_json(
@@ -184,7 +190,10 @@ async fn repository_webhook_settings_cover_validation_redaction_delivery_and_aud
     )
     .await;
     assert_eq!(update_status, StatusCode::OK);
-    assert_eq!(update_body["hooks"][0]["payloadUrl"], "https://receiver.opengithub.local/updated");
+    assert_eq!(
+        update_body["hooks"][0]["payloadUrl"],
+        "https://receiver.opengithub.local/updated"
+    );
     assert_eq!(update_body["hooks"][0]["events"][0], "push");
     assert_eq!(update_body["hooks"][0]["active"], false);
     assert_eq!(update_body["hooks"][0]["secretConfigured"], true);
@@ -197,7 +206,10 @@ async fn repository_webhook_settings_cover_validation_redaction_delivery_and_aud
     .fetch_one(&pool)
     .await
     .expect("secret hash should reload");
-    assert_eq!(secret_after_blank_update.as_deref(), Some(stored_secret.as_str()));
+    assert_eq!(
+        secret_after_blank_update.as_deref(),
+        Some(stored_secret.as_str())
+    );
 
     let (redeliver_status, _, redeliver_body) = send_json(
         app.clone(),
@@ -208,12 +220,17 @@ async fn repository_webhook_settings_cover_validation_redaction_delivery_and_aud
     )
     .await;
     assert_eq!(redeliver_status, StatusCode::OK);
-    assert_eq!(redeliver_body["delivery"]["redeliveryOfId"], ping_delivery_id);
+    assert_eq!(
+        redeliver_body["delivery"]["redeliveryOfId"],
+        ping_delivery_id
+    );
 
     let (outside_status, _, outside_body) =
         send_json(app.clone(), Method::GET, &uri, Some(&outsider_cookie), None).await;
     assert_eq!(outside_status, StatusCode::FORBIDDEN);
-    assert!(!outside_body.to_string().contains("receiver.opengithub.local"));
+    assert!(!outside_body
+        .to_string()
+        .contains("receiver.opengithub.local"));
 
     let (delete_status, _, delete_body) = send_json(
         app.clone(),

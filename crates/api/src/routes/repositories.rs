@@ -987,7 +987,12 @@ async fn webhook_delivery_detail(
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let detail = repository_webhook_delivery_for_actor_by_owner_name(
-        pool, actor.0.id, &owner, &repo, hook_id, delivery_id,
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        hook_id,
+        delivery_id,
     )
     .await
     .map_err(map_webhook_error)?
@@ -1054,16 +1059,17 @@ async fn delete_webhook(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
-    let settings = delete_repository_webhook_by_owner_name(pool, actor.0.id, &owner, &repo, hook_id)
-        .await
-        .map_err(map_webhook_error)?
-        .ok_or_else(|| {
-            error_response(
-                StatusCode::NOT_FOUND,
-                "not_found",
-                "repository was not found".to_owned(),
-            )
-        })?;
+    let settings =
+        delete_repository_webhook_by_owner_name(pool, actor.0.id, &owner, &repo, hook_id)
+            .await
+            .map_err(map_webhook_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
 
     Ok(Json(json!(settings)))
 }
@@ -1097,7 +1103,12 @@ async fn redeliver_webhook_delivery(
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let result = redeliver_repository_webhook_delivery_by_owner_name(
-        pool, actor.0.id, &owner, &repo, hook_id, delivery_id,
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        hook_id,
+        delivery_id,
     )
     .await
     .map_err(map_webhook_error)?
@@ -1324,13 +1335,13 @@ fn map_webhook_error(error: WebhookError) -> (StatusCode, Json<ErrorEnvelope>) {
         WebhookError::RepositoryAccessDenied => {
             error_response(StatusCode::FORBIDDEN, "forbidden", error.to_string())
         }
-        WebhookError::InvalidWebhook(_) | WebhookError::InvalidDeliveryStatus(_) => {
-            error_response(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "validation_failed",
-                error.to_string(),
-            )
-        }
+        WebhookError::InvalidWebhook(_)
+        | WebhookError::InvalidDeliveryStatus(_)
+        | WebhookError::DeliveryQueue(_) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            error.to_string(),
+        ),
         WebhookError::Sqlx(_) => error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal_error",

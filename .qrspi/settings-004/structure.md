@@ -66,7 +66,7 @@
 
 ## Phase 4: Delivery Worker Integration - signing, retries, bounded payloads, and event sources
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make webhook delivery operational beyond settings rows. Repository events should enqueue deliveries for subscribed active hooks, workers should deliver signed HTTP requests with bounded timeouts/retries, and delivery history should record request/response metadata without leaking secrets or unbounded bodies.
 
