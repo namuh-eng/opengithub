@@ -3319,6 +3319,26 @@
   {
     "feature_id": "settings-002",
     "tests_written": [
+      "Completed Phase 2 Editorial Access Settings Shell without marking settings-002 build_pass=true.",
+      "Added typed frontend RepositoryAccessSettings DTOs and cookie-backed server fetch helper for GET /api/repos/{owner}/{repo}/settings/access.",
+      "Replaced /{owner}/{repo}/settings/access placeholder with a real Editorial access settings page that renders people, teams, pending invitations, source-aware disabled controls, role definitions, invite target previews, URL-backed filtering, and forbidden/unavailable states.",
+      "Added web/tests/repository-access-settings-page.test.tsx for admin rows, inherited disabled controls, pending invitations, query filtering, forbidden/unavailable states, concrete links/buttons, and Editorial primitive/token usage.",
+      "Added focused Playwright smoke in web/tests/e2e/repository-settings-access.spec.ts; verified seeded admin access page, filter/clear flow, no dead controls, forbidden non-admin state, and saved ralph/screenshots/build/settings-002-phase2-access-shell.jpg.",
+      "Fixed the Rust access settings read queries to order by the login expression instead of the SELECT alias so Postgres does not return internal_error on access page reads.",
+      "Added DASHBOARD_E2E_SKIP_MIGRATIONS to the dashboard E2E seeder so pre-migrated local databases can be used when SQLx migration replay is blocked by existing checksum/version drift.",
+      "Verification passed: focused access Vitest, focused access Playwright smoke, TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check, DB_SSL=false make test with Cargo tests plus 272 frontend tests, make test-e2e with 18 passed, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "The local opengithub_identity_test database needed the already-committed 202605030042_repository_access_settings migration applied manually for browser smoke because older migration checksum/version drift blocks normal SQLx replay.",
+      "Direct role changes, collaborator removal, team grants, invitation creation/cancellation, and SES delivery are intentionally Phase 3 work; QA should not expect those writes to be complete from the Phase 2 read shell.",
+      "Run repository_access_settings_contract against a clean migration state once the duplicate 202605030041 migration versions are resolved so DB-backed access scenarios do not self-skip.",
+      "Stress long usernames, team names, and emails on mobile; verify inherited team rows stay read-only and source explanations remain accessible.",
+      "Real SES delivery, invite acceptance lifecycle, concurrent role edits, last-admin protection, organization base permissions, team membership changes after grants, pending invite expiry, and private repository leakage checks remain deeper QA targets for later phases."
+    ]
+  },
+  {
+    "feature_id": "settings-002",
+    "tests_written": [
       "Completed Phase 1 Access API Contract without marking settings-002 build_pass=true.",
       "Added additive access-management schema for repository_team_permissions and repository_invitations, and expanded repository role validation to include read, triage, write, maintain, admin, and owner.",
       "Added Rust access settings DTOs and endpoints for GET /api/repos/{owner}/{repo}/settings/access, user invitations, team grants, collaborator role changes/removal, team role changes/removal, and pending invitation cancellation.",

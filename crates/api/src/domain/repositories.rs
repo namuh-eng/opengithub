@@ -2909,7 +2909,7 @@ async fn repository_access_people(
                 WHEN 'triage' THEN 4
                 ELSE 5
             END,
-            lower(login)
+            lower(COALESCE(NULLIF(users.username, ''), users.email))
         "#,
     )
     .bind(repository.id)
@@ -2959,7 +2959,7 @@ async fn repository_access_people(
             JOIN users ON users.id = team_memberships.user_id
             WHERE repository_team_permissions.repository_id = $1
               AND teams.organization_id = $2
-            ORDER BY lower(teams.slug), lower(login)
+            ORDER BY lower(teams.slug), lower(COALESCE(NULLIF(users.username, ''), users.email))
             "#,
         )
         .bind(repository.id)
@@ -3121,7 +3121,7 @@ async fn repository_access_invite_targets(
             WHERE repository_permissions.repository_id = $1
               AND repository_permissions.user_id = users.id
         )
-        ORDER BY lower(login)
+        ORDER BY lower(COALESCE(NULLIF(users.username, ''), users.email))
         LIMIT 10
         "#,
     )

@@ -2314,3 +2314,15 @@
 - Verification passed: focused `repository_access_settings_contract` compiled and passed but self-skipped DB scenarios because localhost:55432 was unreachable; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; `DB_SSL=false make test` with Cargo tests plus 267 frontend tests; mandatory Editorial banned-value scan returned zero matches using `rg -n -e`.
 - Browser smoke and `make test-e2e` were not run because Phase 1 is API-first; the concrete Editorial page is Phase 2.
 - Marked Phase 1 as done in `.qrspi/settings-002/structure.md`; `prd.json` remains `build_pass: false` because Phases 2-5 remain.
+
+2026-05-03 - settings-002 phase 2 Editorial access settings shell
+
+- Completed Phase 2 from `.qrspi/settings-002/structure.md`: `/{owner}/{repo}/settings/access` now renders a real server-fetched Editorial access settings page instead of the placeholder.
+- Added typed frontend access DTOs and `getRepositoryAccessSettings` cookie-backed server helper for the Phase 1 Rust access contract.
+- Added `RepositoryAccessSettingsPage` with summary counts, URL-backed access filtering, People/Teams/Pending sections, source-aware role chips/selects, disabled inherited/owner controls with explanations, invite target previews, role definitions, and forbidden/unavailable states.
+- Added focused Vitest coverage for admin rows, teams, inherited disabled controls, pending invitations, query filtering, forbidden/unavailable states, no inert anchors/buttons, and Editorial primitive/token usage.
+- Added focused Playwright smoke for the seeded admin access page and forbidden non-admin state; saved `ralph/screenshots/build/settings-002-phase2-access-shell.jpg`.
+- Fixed a backend access read bug where Postgres rejected `ORDER BY lower(login)` against a SELECT alias; the queries now order by the login expression directly.
+- Added `DASHBOARD_E2E_SKIP_MIGRATIONS` to the dashboard E2E seeder so pre-migrated local databases can be used when existing SQLx migration checksum/version drift blocks migration replay.
+- Verification passed: focused `web/tests/repository-access-settings-page.test.tsx`; focused `web/tests/e2e/repository-settings-access.spec.ts`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; `DB_SSL=false make test` with Cargo tests plus 272 frontend tests; `make test-e2e` with 18 passed; mandatory Editorial banned-value scan returned zero matches.
+- For the browser smoke only, the local `opengithub_identity_test` database needed the already-committed `202605030042_repository_access_settings` migration applied manually because older `202605030041` migration checksum/version drift prevents normal SQLx replay. `prd.json` remains `build_pass: false` because Phases 3-5 remain.

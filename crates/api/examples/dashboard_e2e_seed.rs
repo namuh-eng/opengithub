@@ -53,6 +53,13 @@ fn seed_empty_dashboard() -> bool {
     )
 }
 
+fn skip_migrations() -> bool {
+    matches!(
+        std::env::var("DASHBOARD_E2E_SKIP_MIGRATIONS").as_deref(),
+        Ok("1" | "true" | "yes")
+    )
+}
+
 fn seed_tree_repository() -> bool {
     matches!(
         std::env::var("DASHBOARD_E2E_TREE_REFS").as_deref(),
@@ -132,7 +139,9 @@ async fn main() -> anyhow::Result<()> {
     let pool = opengithub_api::db::test_pool_options()
         .connect(&database_url)
         .await?;
-    MIGRATOR.run(&pool).await?;
+    if !skip_migrations() {
+        MIGRATOR.run(&pool).await?;
+    }
 
     let config = app_config();
     let suffix = Uuid::new_v4().simple().to_string();

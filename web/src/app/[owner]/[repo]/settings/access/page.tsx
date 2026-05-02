@@ -1,23 +1,49 @@
-import { RepositorySettingsSectionPage } from "@/components/RepositorySettingsSectionPage";
+import { AppShell } from "@/components/AppShell";
+import { RepositoryAccessSettingsPage } from "@/components/RepositoryAccessSettingsPage";
+import { RepositorySettingsShell } from "@/components/RepositorySettingsShell";
+import { RepositoryUnavailablePage } from "@/components/RepositoryUnavailablePage";
+import {
+  getRepository,
+  getRepositoryAccessSettings,
+  getSessionAndShellContext,
+} from "@/lib/server-session";
 
 type RepositorySettingsAccessPageProps = {
   params: Promise<{ owner: string; repo: string }>;
+  searchParams: Promise<{ q?: string | string[] }>;
 };
 
 export default async function RepositorySettingsAccessPage({
   params,
+  searchParams,
 }: RepositorySettingsAccessPageProps) {
   const { owner, repo } = await params;
-  const base = `/${decodeURIComponent(owner)}/${decodeURIComponent(repo)}`;
+  const query = (await searchParams).q;
+  const ownerLogin = decodeURIComponent(owner);
+  const repositoryName = decodeURIComponent(repo);
+  const { session, shellContext } = await getSessionAndShellContext();
+  const [repository, settingsResult] = await Promise.all([
+    getRepository(ownerLogin, repositoryName),
+    getRepositoryAccessSettings(ownerLogin, repositoryName),
+  ]);
 
   return (
-    <RepositorySettingsSectionPage
-      actions={[{ href: `${base}/settings`, label: "General settings" }]}
-      activeSection="access"
-      message="Collaborator invitations, team grants, and permission reviews will live here. Repository access still flows through the Rust permission model before these write controls ship."
-      owner={owner}
-      repo={repo}
-      title="Access"
-    />
+    <AppShell session={session} shellContext={shellContext}>
+      {repository ? (
+        <RepositorySettingsShell
+          activeSection="access"
+          repository={repository}
+          title="Access"
+        >
+          <RepositoryAccessSettingsPage
+            query={Array.isArray(query) ? query[0] : query}
+            repository={repository}
+            settingsResult={settingsResult}
+          />
+        </RepositorySettingsShell>
+      ) : (
+        <RepositoryUnavailablePage owner={ownerLogin} repo={repositoryName} />
+      )}
+    </AppShell>
   );
 }

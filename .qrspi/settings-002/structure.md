@@ -25,7 +25,7 @@
 
 ## Phase 2: Editorial Access Settings Shell - people, teams, sources, and pending invites
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the `/[owner]/[repo]/settings/access` placeholder with a real Editorial Access page backed by the Phase 1 API. The page must keep the existing repository settings shell, show People and Teams sections or tabs, and render permission sources clearly with no GitHub/Primer visual regressions.
 

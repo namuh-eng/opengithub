@@ -953,6 +953,101 @@ export type RepositorySettingsFetchResult =
   | { ok: true; settings: RepositorySettings }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type RepositoryAccessRole =
+  | "read"
+  | "triage"
+  | "write"
+  | "maintain"
+  | "admin"
+  | "owner";
+
+export type RepositoryAccessRoleDefinition = {
+  role: RepositoryAccessRole;
+  label: string;
+  description: string;
+  rank: number;
+};
+
+export type RepositoryAccessPerson = {
+  userId: string;
+  login: string;
+  displayName: string | null;
+  email: string;
+  avatarUrl: string | null;
+  role: RepositoryAccessRole;
+  source: "owner" | "direct" | "team" | "organization" | "inherited" | string;
+  sourceText: string;
+  teamSlug: string | null;
+  teamName: string | null;
+  canEdit: boolean;
+  canRemove: boolean;
+};
+
+export type RepositoryAccessTeam = {
+  teamId: string;
+  slug: string;
+  name: string;
+  role: RepositoryAccessRole;
+  source: "team" | "inherited" | string;
+  sourceText: string;
+  memberCount: number;
+  href: string;
+  canEdit: boolean;
+  canRemove: boolean;
+};
+
+export type RepositoryInvitation = {
+  id: string;
+  invitedUserId: string | null;
+  invitedEmail: string;
+  invitedLogin: string | null;
+  role: RepositoryAccessRole;
+  status: string;
+  emailDeliveryStatus: string;
+  invitedByUserId: string;
+  expiresAt: string;
+  createdAt: string;
+  canCancel: boolean;
+};
+
+export type RepositoryInviteUserTarget = {
+  userId: string;
+  login: string;
+  displayName: string | null;
+  email: string;
+  avatarUrl: string | null;
+};
+
+export type RepositoryInviteTeamTarget = {
+  teamId: string;
+  slug: string;
+  name: string;
+  memberCount: number;
+};
+
+export type RepositoryInviteTargets = {
+  users: RepositoryInviteUserTarget[];
+  teams: RepositoryInviteTeamTarget[];
+};
+
+export type RepositoryAccessSettings = {
+  id: string;
+  ownerLogin: string;
+  name: string;
+  visibility: RepositoryVisibility;
+  viewerPermission: string;
+  roles: RepositoryAccessRoleDefinition[];
+  people: RepositoryAccessPerson[];
+  teams: RepositoryAccessTeam[];
+  invitations: RepositoryInvitation[];
+  inviteTargets: RepositoryInviteTargets;
+  auditEvents: RepositorySettingsAuditEvent[];
+};
+
+export type RepositoryAccessSettingsFetchResult =
+  | { ok: true; settings: RepositoryAccessSettings }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type WritableRepositoryOwner = {
   ownerType: RepositoryOwnerType;
   id: string;
@@ -5249,6 +5344,50 @@ export async function updateRepositorySettingsFromCookie(
   }
 
   return (await response.json()) as RepositorySettings;
+}
+
+export async function getRepositoryAccessSettingsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+): Promise<RepositoryAccessSettingsFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/access`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository access settings are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Repository access settings are unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    settings: (await response.json()) as RepositoryAccessSettings,
+  };
 }
 
 export async function getRepositoryPathFromCookie(

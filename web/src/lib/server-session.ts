@@ -15,6 +15,7 @@ import {
   getPublicOrganizationProfileFromCookie,
   getPublicUserProfileFromCookie,
   getPullRequestCompareFromCookie,
+  getRepositoryAccessSettingsFromCookie,
   getRepositoryActionsDashboardFromCookie,
   getRepositoryActionsJobLogDetailFromCookie,
   getRepositoryActionsRunDetailFromCookie,
@@ -204,6 +205,15 @@ export async function getRepository(owner: string, repo: string) {
 export async function getRepositorySettings(owner: string, repo: string) {
   const requestHeaders = await headers();
   return getRepositorySettingsFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+  );
+}
+
+export async function getRepositoryAccessSettings(owner: string, repo: string) {
+  const requestHeaders = await headers();
+  return getRepositoryAccessSettingsFromCookie(
     requestHeaders.get("cookie"),
     owner,
     repo,
