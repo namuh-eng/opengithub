@@ -3482,5 +3482,25 @@
       "Stress overlapping wildcard policies, evaluate-only ruleset logging volume, concurrent admin edits while pushes occur, long pattern wrapping in PR detail, and CODEOWNERS-specific review semantics if that remains deferred.",
       "Full build-pass bookkeeping, docs, final desktop/mobile screenshots, and final all-suite E2E are deferred to Phase 5."
     ]
+  },
+  {
+    "feature_id": "settings-003",
+    "tests_written": [
+      "Completed Phase 5 Guardrails, Documentation, Browser Smoke, and Build-Pass Bookkeeping.",
+      "Documented branch settings read/write endpoints in /docs/api, including branch protection rules, rulesets, bypass actors, status-check requirements, audit events, evaluate-only logging, and push/merge enforcement responses.",
+      "Extended API docs tests so branch policy endpoint paths and enforcement notes are asserted as visible documentation.",
+      "Extended branch settings Playwright smoke to save final admin, mobile, and non-admin/read-only screenshots and check for no inert anchors or unnamed visible buttons.",
+      "Final browser screenshots are saved under ralph/screenshots/build/settings-003-final-branches-admin.jpg, settings-003-final-branches-mobile.jpg, and settings-003-final-branches-readonly.jpg.",
+      "settings-003 build_pass was set true only after all structure phases were marked complete."
+    ],
+    "needs_deeper_qa": [
+      "Run real Git force-push and branch deletion attempts through smart HTTP against protected branches in a clean database and inspect both API errors and bare-repository side effects.",
+      "Stress concurrent admin edits while PR mergeability and pushes are evaluated.",
+      "Verify CODEOWNERS-specific review semantics if still deferred from branch policy requirements.",
+      "Exercise ruleset evaluate-only reporting volume and retention in repository_rule_evaluations.",
+      "Change bypass actor permissions after policies exist and confirm push/merge enforcement updates immediately.",
+      "Check long branch patterns, long ruleset names, and dense bypass actor lists for wrapping on mobile and desktop.",
+      "Recheck private/internal repository leakage for anonymous users, non-member signed-in users, direct collaborators, and organization members."
+    ]
   }
 ]

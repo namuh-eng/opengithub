@@ -83,7 +83,7 @@
 
 ## Phase 5: Guardrails, Documentation, Browser Smoke, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `settings-003` as a complete vertical slice only after API, UI, mutation flows, PR mergeability, Git push enforcement, docs, screenshots, and QA handoff are verified. This phase should not add unrelated settings areas such as tags, webhooks, Pages, secrets, or security logs.
 

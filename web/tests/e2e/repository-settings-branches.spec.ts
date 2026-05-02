@@ -7,6 +7,7 @@ type SeededDashboard = {
   cookieName: string;
   cookieValue: string;
   firstRepositoryHref: string;
+  profileActionCookieValue: string;
 };
 
 function seedDashboard(): SeededDashboard {
@@ -127,5 +128,64 @@ test("admin can create, edit, and delete branch policies", async ({ page }) => {
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/settings-003-phase3-branches-mutations.jpg",
+  });
+
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/settings-003-final-branches-admin.jpg",
+  });
+
+  await page.setViewportSize({ width: 390, height: 860 });
+  await page.goto(`${seeded.firstRepositoryHref}/settings/branches`);
+  await expect(page.getByRole("heading", { name: "Branches" })).toBeVisible();
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  );
+  expect(overflow).toBe(false);
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/settings-003-final-branches-mobile.jpg",
+  });
+
+  await page.context().clearCookies();
+  await page.context().addCookies([
+    {
+      domain: "localhost",
+      httpOnly: true,
+      name: seeded.cookieName,
+      path: "/",
+      sameSite: "Lax",
+      secure: false,
+      value: seeded.profileActionCookieValue,
+    },
+  ]);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${seeded.firstRepositoryHref}/settings/branches`);
+  if (
+    (await page
+      .getByRole("heading", {
+        name: "Repository branch policies are restricted",
+      })
+      .count()) > 0
+  ) {
+    await expect(
+      page.getByRole("heading", {
+        name: "Repository branch policies are restricted",
+      }),
+    ).toBeVisible();
+  } else {
+    await expect(page.getByRole("heading", { name: "Branches" })).toBeVisible();
+    await expect(
+      page.getByText(/Read-only|editing requires admin access/i).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "New branch protection rule" }),
+    ).toHaveCount(0);
+  }
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/settings-003-final-branches-readonly.jpg",
   });
 });

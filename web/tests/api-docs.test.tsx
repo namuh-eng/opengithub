@@ -86,6 +86,28 @@ describe("ApiDocsPage", () => {
       screen.getByText(/Demoting the final owner\/admin access path/),
     ).toBeVisible();
     expect(screen.getByText(/emailDeliveryStatus=degraded/)).toBeVisible();
+    expect(
+      screen.getAllByText("/api/repos/{owner}/{repo}/settings/branches")[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/settings/branches/rules"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/settings/branches/rulesets"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Non-admin readers can see active and evaluate policy explanations/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/branch_policy_blocked for locked branches/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Matching previews use the same bounded fnmatch-style pattern matcher/,
+      ),
+    ).toBeVisible();
     expect(screen.getByText("/api/repos/{owner}/{repo}/pulls")).toBeVisible();
     expect(
       screen.getByText(

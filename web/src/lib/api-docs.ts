@@ -330,6 +330,123 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-branch-settings-read",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/settings/branches",
+    title: "Read repository branch policies",
+    description:
+      "Reads the Branches settings contract for default branch state, branch refs, branch protection rules, repository rulesets, matching branch previews, status-check suggestions, bypass actors, and viewer edit capability.",
+    auth: "Signed opengithub session cookie; repository admins receive editable state, non-admin readers receive active/evaluate policy explanations only",
+    response: `{
+  "repository": {
+    "ownerLogin": "mona",
+    "name": "octo-app",
+    "viewerPermission": "admin",
+    "canEdit": true
+  },
+  "defaultBranch": {
+    "name": "main",
+    "protected": true,
+    "matchingRuleCount": 1,
+    "matchingRulesetCount": 1
+  },
+  "rules": [
+    {
+      "id": "rule_01",
+      "pattern": "main",
+      "enforcement": "active",
+      "requirements": {
+        "requiredApprovingReviewCount": 2,
+        "requiredStatusChecks": ["ci", "biome"],
+        "requiresLinearHistory": true
+      },
+      "bypassActors": []
+    }
+  ],
+  "rulesets": [],
+  "auditEvents": []
+}`,
+    notes: [
+      "Anonymous callers receive 401; private repository outsiders receive 404 without branch policy counts.",
+      "Non-admin readers can see active and evaluate policy explanations, but mutation controls are omitted by viewer.canEdit=false.",
+      "Matching previews use the same bounded fnmatch-style pattern matcher as PR mergeability and Git push enforcement.",
+    ],
+  },
+  {
+    id: "repo-branch-rule-create",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/settings/branches/rules",
+    title: "Create branch protection rule",
+    description:
+      "Creates a branch protection rule and returns fresh Branches settings after validation and audit logging.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    request: `{
+  "pattern": "main",
+  "description": "Protect the release branch",
+  "enforcement": "active",
+  "requirements": {
+    "requiredApprovingReviewCount": 2,
+    "requiredStatusChecks": ["ci", "biome"],
+    "requiresConversationResolution": true,
+    "requiresSignedCommits": true,
+    "requiresLinearHistory": true,
+    "requiresMergeQueue": false,
+    "requiresDeployments": false,
+    "locked": false,
+    "restrictsPushes": true,
+    "allowsForcePushes": false,
+    "allowsDeletions": false
+  },
+  "bypassActors": []
+}`,
+    response: `{
+  "rules": [{ "pattern": "main", "enforcement": "active" }],
+  "auditEvents": [{ "eventType": "repository.branch_rule.create" }]
+}`,
+    notes: [
+      "PATCH /api/repos/{owner}/{repo}/settings/branches/rules/{rule_id} updates the same shape; DELETE removes the rule.",
+      "Blank or invalid patterns, duplicate exact patterns, negative review counts, blank status checks, invalid bypass actors, and unsafe default-branch deletion allowances return validation errors.",
+      "Every successful create, update, or delete writes repository_settings_audit_events with before/after branch policy context.",
+    ],
+  },
+  {
+    id: "repo-branch-ruleset-create",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/settings/branches/rulesets",
+    title: "Create repository ruleset",
+    description:
+      "Creates an active, evaluate, or disabled repository ruleset with branch target patterns, requirements, bypass actors, and audit logging.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    request: `{
+  "name": "Release branches",
+  "enforcement": "evaluate",
+  "patterns": ["release/*"],
+  "requirements": {
+    "requiredApprovingReviewCount": 1,
+    "requiredStatusChecks": ["release-smoke"],
+    "requiresDeployments": true,
+    "requiredDeploymentEnvironments": ["production"]
+  },
+  "bypassActors": [
+    { "actorType": "role", "actorId": "admin", "label": "Repository admins" }
+  ]
+}`,
+    response: `{
+  "rulesets": [
+    {
+      "name": "Release branches",
+      "enforcement": "evaluate",
+      "matchingBranches": ["release/2026-05"]
+    }
+  ]
+}`,
+    notes: [
+      "PATCH /api/repos/{owner}/{repo}/settings/branches/rulesets/{ruleset_id} updates the same shape; DELETE removes the ruleset.",
+      "Active rulesets block PR merges and Git pushes when requirements fail; evaluate rulesets insert repository_rule_evaluations without blocking.",
+      "Push enforcement returns branch_policy_blocked for locked branches, restricted pushes, force pushes, deletions, or missing bypass permissions.",
+    ],
+  },
+  {
     id: "org-repositories",
     method: "GET",
     path: "/api/orgs/{org}/repositories?q=router&type=public&language=Rust&page=1&pageSize=30",
