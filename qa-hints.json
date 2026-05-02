@@ -3266,5 +3266,19 @@
       "No browser E2E/manual Ever smoke was added in the build lane; independent QA should exercise /{owner}?tab=packages and /orgs/{org}/packages with signed-out, member, and collaborator viewers.",
       "Stress long package names, large download counts, mixed package_repository_links, direct package_permissions for non-members, and URL query preservation across all dropdowns."
     ]
+  },
+  {
+    "feature_id": "personal-settings-001",
+    "tests_written": [
+      "Added Rust API contract coverage in crates/api/tests/personal_profile_settings_contract.rs for authenticated profile settings read/write, optional field clearing, privacy side effects, social accounts, avatar type/size validation, avatar remove, and security_audit_events rows.",
+      "Added Vitest coverage in web/tests/personal-profile-settings.test.tsx for Public profile fields, dirty Update profile state, clearable optional fields, inline URL/avatar validation, privacy save, no inert links, and accessible buttons.",
+      "Added migration 202605030041_personal_profile_settings for users profile settings columns, user_email_addresses, user_social_accounts, user_avatars, and security_audit_events."
+    ],
+    "needs_deeper_qa": [
+      "Avatar upload is modeled as an S3 object contract with validated metadata and preview URL persistence; independent QA should verify the future real S3 adapter when storage credentials are wired.",
+      "Browser E2E coverage was not added for this slice; QA should manually exercise /settings/profile with a signed-in seeded user, including large images, long text, and rapid repeated privacy saves.",
+      "Time zone and preferred language use a conservative fixed option set; QA should confirm product requirements before expecting a full IANA/language catalog."
+
+    ]
   }
 ]

@@ -1,7 +1,7 @@
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    routing::{get, post, put},
+    routing::{get, patch, post, put},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
@@ -17,6 +17,11 @@ use crate::{
             owner_packages, OwnerPackageList, OwnerPackageListQuery, PackageListError,
             PackageOwnerKind,
         },
+        personal_settings::{
+            personal_profile_settings, update_personal_avatar, update_personal_profile_settings,
+            PersonalProfileSettings, PersonalSettingsError, UpdateAvatarInput,
+            UpdatePersonalProfileSettings,
+        },
         profiles::{
             block_user, follow_user, profile_repositories, public_user_profile, report_user,
             starred_repositories, unfollow_user, ProfileActionState, ProfileError, ProfileReport,
@@ -29,6 +34,14 @@ use crate::{
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/user", get(current_api_user))
+        .route(
+            "/api/user/settings/profile",
+            get(personal_profile_settings_route).patch(update_personal_profile_settings_route),
+        )
+        .route(
+            "/api/user/settings/profile/avatar",
+            patch(update_personal_avatar_route),
+        )
         .route("/api/users/:username/profile", get(public_profile))
         .route(
             "/api/users/:username/repositories",
@@ -191,6 +204,44 @@ pub async fn public_stars(
     .map_err(map_profile_error)?;
 
     Ok(Json(repositories))
+}
+
+async fn personal_profile_settings_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<PersonalProfileSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let settings = personal_profile_settings(pool, actor.id)
+        .await
+        .map_err(map_personal_settings_error)?;
+    Ok(Json(settings))
+}
+
+async fn update_personal_profile_settings_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    RestJson(request): RestJson<UpdatePersonalProfileSettings>,
+) -> Result<Json<PersonalProfileSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let settings = update_personal_profile_settings(pool, actor.id, request)
+        .await
+        .map_err(map_personal_settings_error)?;
+    Ok(Json(settings))
+}
+
+async fn update_personal_avatar_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    RestJson(request): RestJson<UpdateAvatarInput>,
+) -> Result<Json<PersonalProfileSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let settings = update_personal_avatar(pool, actor.id, request)
+        .await
+        .map_err(map_personal_settings_error)?;
+    Ok(Json(settings))
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -379,6 +430,26 @@ fn map_profile_error(error: ProfileError) -> (StatusCode, Json<ErrorEnvelope>) {
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal_error",
             "profile could not be loaded",
+        ),
+    }
+}
+
+fn map_personal_settings_error(error: PersonalSettingsError) -> (StatusCode, Json<ErrorEnvelope>) {
+    match error {
+        PersonalSettingsError::Validation(message) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            message,
+        ),
+        PersonalSettingsError::EmailNotFound => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            "public email must belong to the signed-in user",
+        ),
+        PersonalSettingsError::Sqlx(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "profile settings could not be saved",
         ),
     }
 }

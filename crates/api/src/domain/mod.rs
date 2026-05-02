@@ -12,6 +12,7 @@ pub mod onboarding;
 pub mod organizations;
 pub mod packages;
 pub mod permissions;
+pub mod personal_settings;
 pub mod profiles;
 pub mod pulls;
 pub mod repositories;

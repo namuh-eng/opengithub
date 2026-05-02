@@ -10,6 +10,76 @@ export type AuthSession = {
   user: AuthUser | null;
 };
 
+export type UserEmailAddress = {
+  id: string;
+  email: string;
+  isPrimary: boolean;
+  isPublic: boolean;
+  verified: boolean;
+};
+
+export type UserSocialAccount = {
+  provider: string;
+  handleOrUrl: string;
+  position: number;
+};
+
+export type UserAvatar = {
+  id: string;
+  url: string;
+  contentType: string;
+  byteSize: number;
+  createdAt: string;
+};
+
+export type PersonalProfileSettings = {
+  userId: string;
+  login: string;
+  displayName: string;
+  publicEmailId: string | null;
+  publicEmail: string | null;
+  emails: UserEmailAddress[];
+  bio: string;
+  pronouns: string;
+  websiteUrl: string;
+  company: string;
+  location: string;
+  displayLocalTime: boolean;
+  timeZone: string;
+  privateProfile: boolean;
+  showPrivateContributionCount: boolean;
+  achievementsEnabled: boolean;
+  preferredLanguage: string;
+  socialAccounts: UserSocialAccount[];
+  avatar: UserAvatar | null;
+  updatedAt: string;
+};
+
+export type UpdatePersonalProfileSettingsRequest = {
+  displayName?: string;
+  publicEmailId?: string | null;
+  bio?: string;
+  pronouns?: string;
+  websiteUrl?: string;
+  company?: string;
+  location?: string;
+  displayLocalTime?: boolean;
+  timeZone?: string;
+  privateProfile?: boolean;
+  showPrivateContributionCount?: boolean;
+  achievementsEnabled?: boolean;
+  preferredLanguage?: string;
+  socialAccounts?: UserSocialAccount[];
+};
+
+export type UpdateAvatarRequest = {
+  action: "upload" | "remove";
+  fileName?: string;
+  contentType?: string;
+  byteSize?: number;
+  previewUrl?: string;
+};
+
 export type RepositoryVisibility = "public" | "private" | "internal";
 
 export type PublicUserProfile = {
@@ -2710,6 +2780,81 @@ export async function getAppShellContextFromCookie(
   }
 
   return (await response.json()) as AppShellContext;
+}
+
+export async function getPersonalProfileSettingsFromCookie(
+  cookie: string | null | undefined,
+): Promise<PersonalProfileSettings | null> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}/api/user/settings/profile`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return null;
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return (await response.json()) as PersonalProfileSettings;
+}
+
+export async function updatePersonalProfileSettingsFromCookie(
+  cookie: string | null | undefined,
+  input: UpdatePersonalProfileSettingsRequest,
+): Promise<PersonalProfileSettings> {
+  const response = await fetch(`${apiBaseUrl()}/api/user/settings/profile`, {
+    method: "PATCH",
+    headers: {
+      "content-type": "application/json",
+      ...(cookie ? { cookie } : {}),
+    },
+    body: JSON.stringify(input),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const body = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(body?.error.message ?? "Profile settings update failed", {
+      cause: body,
+    });
+  }
+
+  return (await response.json()) as PersonalProfileSettings;
+}
+
+export async function updatePersonalAvatarFromCookie(
+  cookie: string | null | undefined,
+  input: UpdateAvatarRequest,
+): Promise<PersonalProfileSettings> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/user/settings/profile/avatar`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const body = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(body?.error.message ?? "Avatar update failed", {
+      cause: body,
+    });
+  }
+
+  return (await response.json()) as PersonalProfileSettings;
 }
 
 export async function getPublicUserProfileFromCookie(
