@@ -94,7 +94,9 @@ test("signed-in workflow run detail renders jobs, annotations, and artifacts", a
   ).toBeVisible();
   await expect(page.getByRole("link", { name: /Attempt 2/ })).toBeVisible();
   await expect(page.getByText("Type error")).toBeVisible();
-  await expect(page.getByText("Expected string, found number")).toBeVisible();
+  await expect(
+    page.getByText("Expected string, found number", { exact: true }),
+  ).toBeVisible();
   await expect(page.getByText("playwright-report")).toBeVisible();
   await expect(page.getByText("sha256:abc123")).toBeVisible();
   await expect(page.getByText("Installing dependencies")).toBeVisible();

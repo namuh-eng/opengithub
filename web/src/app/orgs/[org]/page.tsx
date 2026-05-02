@@ -1,3 +1,4 @@
+import { OrganizationProfilePage } from "@/components/OrganizationProfilePage";
 import { ProfileOrgShell } from "@/components/ProfileOrgShell";
 import {
   activeOrganizationTab,
@@ -6,7 +7,10 @@ import {
   organizationSettingsHref,
   organizationTabHref,
 } from "@/lib/navigation";
-import { getSessionAndShellContext } from "@/lib/server-session";
+import {
+  getPublicOrganizationProfile,
+  getSessionAndShellContext,
+} from "@/lib/server-session";
 
 type OrganizationPageProps = {
   params: Promise<{ org: string }>;
@@ -28,6 +32,19 @@ export default async function OrganizationPage({
   ]);
   const orgLogin = decodeURIComponent(org);
   const activeTab = activeOrganizationTab(firstParam(queryParams?.tab));
+  const profile = await getPublicOrganizationProfile(orgLogin);
+
+  if (profile) {
+    return (
+      <OrganizationProfilePage
+        activeTab={activeTab}
+        profile={profile}
+        session={session}
+        shellContext={shellContext}
+      />
+    );
+  }
+
   const activeTabLabel =
     ORGANIZATION_TABS.find((tab) => tab.value === activeTab)?.label ??
     "Overview";

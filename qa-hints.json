@@ -3022,5 +3022,23 @@
       "Later phases still need UI validation for tab navigation, verified-domain tooltip/explanation behavior, pinned/repository row navigation, empty states, mobile wrapping, and no inert controls.",
       "QA should stress large organization member lists, hidden public members, direct repository permissions for non-members, and topic/language aggregation over many repositories."
     ]
+  },
+  {
+    "feature_id": "orgs-001",
+    "tests_written": [
+      "Completed Phase 2 Editorial Organization Header and Overview Shell without marking orgs-001 build_pass=true.",
+      "Replaced /orgs/{org} placeholder rendering with the real OrganizationProfilePage whenever GET /api/orgs/{org}/profile returns data, while preserving the skeleton fallback for unavailable organizations.",
+      "Added an Editorial organization header with avatar/initial, display name, slug, description, verified-domain links, website/location chips, follower/member/repository counts, count-bearing tabs, admin-only Settings link, and disabled Sponsor state with explanatory copy.",
+      "Added an initial overview shell with API-backed pinned repository chips, repository preview rows, people links, language summary, and topic chips so all visible links/buttons are concrete.",
+      "Added ORG_PROFILE_E2E seed support in dashboard_e2e_seed and focused Playwright coverage for real Rust/Postgres org profile data plus screenshot ralph/screenshots/build/orgs-001-phase2-overview-shell.jpg.",
+      "Tightened an existing Actions run Playwright assertion from ambiguous text matching to exact annotation text after full E2E exposed a strict-locator conflict.",
+      "Verification passed: focused organization-profile Vitest, cargo check for dashboard_e2e_seed, focused organization-profile Playwright, make check, make test with Cargo plus 235 frontend tests, full make test-e2e with 89 Playwright tests, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke uses deterministic Rust-signed local sessions and direct local API/Next dev servers because make dev depends on cargo-watch, which is not installed in this environment.",
+      "Phase 2 intentionally keeps repository cards/rows lightweight; Phase 3 must fill repository metrics, pin ordering, topic/license/count details, and repository row navigation hardening.",
+      "Verified-domain hrefs currently point to the verified domain itself from the API contract; later QA should verify whether the product wants a dedicated verification explanation destination.",
+      "QA should stress long organization names/slugs/descriptions and empty org profiles on mobile once Phase 5 guardrails land."
+    ]
   }
 ]

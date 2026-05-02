@@ -13,10 +13,10 @@ use opengithub_api::{
         permissions::RepositoryRole,
         pulls::{create_pull_request, CreatePullRequest},
         repositories::{
-            create_repository, create_repository_with_bootstrap, insert_commit,
-            replace_repository_snapshot, upsert_git_ref, CreateCommit, CreateRepository,
-            RepositoryBootstrapRequest, RepositoryOwner, RepositorySnapshot,
-            RepositorySnapshotFile, RepositoryVisibility,
+            create_organization, create_repository, create_repository_with_bootstrap,
+            insert_commit, replace_repository_snapshot, upsert_git_ref, CreateCommit,
+            CreateOrganization, CreateRepository, RepositoryBootstrapRequest, RepositoryOwner,
+            RepositorySnapshot, RepositorySnapshotFile, RepositoryVisibility,
         },
         search::{upsert_search_document, SearchDocumentKind, UpsertSearchDocument},
     },
@@ -43,6 +43,7 @@ struct SeedOutput {
     pull_request_merge_href: String,
     actions_run_detail_href: String,
     actions_job_log_href: String,
+    organization_profile_href: String,
 }
 
 fn seed_empty_dashboard() -> bool {
@@ -90,6 +91,13 @@ fn seed_actions_run_detail() -> bool {
 fn seed_issue_templates_enabled() -> bool {
     matches!(
         std::env::var("ISSUE_TEMPLATE_E2E").as_deref(),
+        Ok("1" | "true" | "yes")
+    )
+}
+
+fn seed_organization_profile() -> bool {
+    matches!(
+        std::env::var("ORG_PROFILE_E2E").as_deref(),
         Ok("1" | "true" | "yes")
     )
 }
@@ -537,6 +545,11 @@ async fn main() -> anyhow::Result<()> {
     } else {
         (String::new(), String::new())
     };
+    let organization_profile_href = if seed_organization_profile() {
+        seed_organization_profile_fixture(&pool, user.id, &suffix).await?
+    } else {
+        String::new()
+    };
 
     let session_id = Uuid::new_v4().to_string();
     let expires_at = Utc::now() + Duration::hours(1);
@@ -582,9 +595,112 @@ async fn main() -> anyhow::Result<()> {
         pull_request_merge_href,
         actions_run_detail_href,
         actions_job_log_href,
+        organization_profile_href,
     };
     println!("{}", serde_json::to_string(&output)?);
     Ok(())
+}
+
+async fn seed_organization_profile_fixture(
+    pool: &PgPool,
+    owner_user_id: Uuid,
+    suffix: &str,
+) -> anyhow::Result<String> {
+    let slug = format!("org-profile-{}", &suffix[..12]);
+    let organization = create_organization(
+        pool,
+        CreateOrganization {
+            slug: slug.clone(),
+            display_name: "Namuh Engineering".to_owned(),
+            description: Some("Shipping side projects in the open.".to_owned()),
+            owner_user_id,
+        },
+    )
+    .await?;
+
+    sqlx::query(
+        r#"
+        UPDATE organizations
+        SET avatar_url = $1,
+            website_url = $2,
+            location = $3,
+            profile_visibility = 'public',
+            public_members_visible = true
+        WHERE id = $4
+        "#,
+    )
+    .bind(Option::<String>::None)
+    .bind("https://namuh.co")
+    .bind("Seoul")
+    .bind(organization.id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO organization_verified_domains (organization_id, domain)
+        VALUES ($1, 'namuh.co')
+        ON CONFLICT (organization_id, lower(domain)) DO NOTHING
+        "#,
+    )
+    .bind(organization.id)
+    .execute(pool)
+    .await?;
+
+    let repository = create_repository(
+        pool,
+        CreateRepository {
+            owner: RepositoryOwner::Organization {
+                id: organization.id,
+            },
+            name: format!("opengithub-{}", &suffix[..8]),
+            description: Some("A rust-first collaboration platform.".to_owned()),
+            visibility: RepositoryVisibility::Public,
+            default_branch: None,
+            created_by_user_id: owner_user_id,
+        },
+    )
+    .await?;
+    let preview_repository = create_repository(
+        pool,
+        CreateRepository {
+            owner: RepositoryOwner::Organization {
+                id: organization.id,
+            },
+            name: format!("ralph-{}", &suffix[..8]),
+            description: Some("Autonomous build loop tooling.".to_owned()),
+            visibility: RepositoryVisibility::Public,
+            default_branch: None,
+            created_by_user_id: owner_user_id,
+        },
+    )
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO organization_profile_pins (organization_id, repository_id, position)
+        VALUES ($1, $2, 1)
+        ON CONFLICT (organization_id, repository_id)
+        DO UPDATE SET position = EXCLUDED.position
+        "#,
+    )
+    .bind(organization.id)
+    .bind(repository.id)
+    .execute(pool)
+    .await?;
+    upsert_language(pool, repository.id, "Rust", "#b7410e", 9000).await?;
+    upsert_language(pool, preview_repository.id, "TypeScript", "#8c5a3c", 3000).await?;
+    sqlx::query(
+        r#"
+        INSERT INTO repository_topics (repository_id, topic)
+        VALUES ($1, 'developer-tools'), ($1, 'forge')
+        ON CONFLICT DO NOTHING
+        "#,
+    )
+    .bind(repository.id)
+    .execute(pool)
+    .await?;
+
+    Ok(format!("/orgs/{slug}"))
 }
 
 async fn seed_search_documents(

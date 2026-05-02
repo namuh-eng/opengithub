@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial Organization Header and Overview Shell - replace the placeholder route
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace `/orgs/{org}` placeholder content with a real Editorial organization overview using the Phase 1 profile contract. The page should render the org avatar/logo, display name, slug, description, verified badge with an explanation link/tooltip, website/social links, follower/member/repository counts, tabs, and non-inert top actions. Sponsor must be hidden or disabled with explicit unavailable state until sponsorships exist.
 
