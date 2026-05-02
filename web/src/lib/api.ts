@@ -437,6 +437,107 @@ export type ApiErrorEnvelope = {
   } | null;
 };
 
+export type ProfileIdentity = {
+  id: string;
+  login: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  bio: string | null;
+  company: string | null;
+  location: string | null;
+  websiteUrl: string | null;
+  privateProfile: boolean;
+  followerCount: number;
+  followingCount: number;
+  createdAt: string;
+};
+
+export type ProfileViewerState = {
+  authenticated: boolean;
+  isSelf: boolean;
+  following: boolean;
+  blocked: boolean;
+  canFollow: boolean;
+  canBlock: boolean;
+  canReport: boolean;
+};
+
+export type ProfileTabCounts = {
+  repositories: number;
+  projects: number;
+  packages: number;
+  stars: number;
+};
+
+export type ProfilePinnedItem = {
+  id: string;
+  kind: string;
+  title: string;
+  description: string | null;
+  href: string | null;
+  language: string | null;
+  starsCount: number;
+  forksCount: number;
+  updatedAt: string;
+};
+
+export type ProfileAchievement = {
+  slug: string;
+  name: string;
+  description: string;
+  awardedAt: string;
+};
+
+export type ProfileContributionDay = {
+  date: string;
+  count: number;
+  intensity: number;
+};
+
+export type ProfileContributionEvent = {
+  id: string;
+  eventType: string;
+  title: string;
+  repositoryName: string | null;
+  targetHref: string | null;
+  occurredAt: string;
+};
+
+export type ProfileContributionSummary = {
+  year: number;
+  total: number;
+  days: ProfileContributionDay[];
+  recentEvents: ProfileContributionEvent[];
+};
+
+export type PublicProfileView = {
+  identity: ProfileIdentity;
+  viewer: ProfileViewerState;
+  tabs: ProfileTabCounts;
+  readme: {
+    body: string;
+    renderedBody: string | null;
+    updatedAt: string;
+  } | null;
+  pinnedItems: ProfilePinnedItem[];
+  achievements: ProfileAchievement[];
+  contributions: ProfileContributionSummary;
+};
+
+export type ProfileFollowState = {
+  following: boolean;
+  followerCount: number;
+};
+
+export type ProfileBlockState = {
+  blocked: boolean;
+};
+
+export type ProfileReportReceipt = {
+  id: string;
+  status: string;
+};
+
 export type ActionsWorkflowLatestRun = {
   id: string;
   runNumber: number;
@@ -2490,6 +2591,121 @@ export async function resetDashboardFeedPreferences(
     feedPreferences: DashboardFeedPreferences;
   };
   return body.feedPreferences;
+}
+
+export function userProfilePath(login: string, year?: number): string {
+  const params = new URLSearchParams();
+  if (year) {
+    params.set("year", String(year));
+  }
+  const suffix = params.toString();
+  return `/api/users/${encodeURIComponent(login)}/profile${suffix ? `?${suffix}` : ""}`;
+}
+
+export async function getUserProfileFromCookie(
+  cookie: string | null | undefined,
+  login: string,
+  year?: number,
+): Promise<PublicProfileView | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${userProfilePath(login, year)}`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Profile is temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: { code: "profile_failed", message: "Profile request failed." },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as PublicProfileView;
+}
+
+async function mutateUserProfileRelationship<T>(
+  cookie: string | null | undefined,
+  login: string,
+  action: "follow" | "block" | "report",
+  method: "PUT" | "DELETE" | "POST",
+  body?: unknown,
+): Promise<T> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/users/${encodeURIComponent(login)}/${action}`,
+    {
+      method,
+      headers: {
+        ...(cookie ? { cookie } : {}),
+        ...(body ? { "content-type": "application/json" } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const envelope = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(envelope?.error.message ?? "Profile action failed", {
+      cause: envelope,
+    });
+  }
+
+  return (await response.json()) as T;
+}
+
+export function setUserFollowFromCookie(
+  cookie: string | null | undefined,
+  login: string,
+  following: boolean,
+): Promise<ProfileFollowState> {
+  return mutateUserProfileRelationship<ProfileFollowState>(
+    cookie,
+    login,
+    "follow",
+    following ? "PUT" : "DELETE",
+  );
+}
+
+export function setUserBlockFromCookie(
+  cookie: string | null | undefined,
+  login: string,
+  blocked: boolean,
+): Promise<ProfileBlockState> {
+  return mutateUserProfileRelationship<ProfileBlockState>(
+    cookie,
+    login,
+    "block",
+    blocked ? "PUT" : "DELETE",
+  );
+}
+
+export function reportUserFromCookie(
+  cookie: string | null | undefined,
+  login: string,
+  input: { reason: string; details?: string },
+): Promise<ProfileReportReceipt> {
+  return mutateUserProfileRelationship<ProfileReportReceipt>(
+    cookie,
+    login,
+    "report",
+    "POST",
+    input,
+  );
 }
 
 export function repositoryIssuesPath(

@@ -1,10 +1,15 @@
-import { ProfileOrgShell } from "@/components/ProfileOrgShell";
+import { notFound } from "next/navigation";
+import { UserProfileOverview } from "@/components/UserProfileOverview";
+import type { ApiErrorEnvelope } from "@/lib/api";
 import {
   activeProfileTab,
   PROFILE_TABS,
   profileTabHref,
 } from "@/lib/navigation";
-import { getSessionAndShellContext } from "@/lib/server-session";
+import {
+  getSessionAndShellContext,
+  getUserProfile,
+} from "@/lib/server-session";
 
 type ProfilePageProps = {
   params: Promise<{ owner: string }>;
@@ -13,6 +18,24 @@ type ProfilePageProps = {
 
 function firstParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function numericYear(value: string | string[] | undefined) {
+  const first = firstParam(value);
+  if (!first) return undefined;
+  const parsed = Number.parseInt(first, 10);
+  return Number.isFinite(parsed) && parsed >= 2005 && parsed <= 2100
+    ? parsed
+    : undefined;
+}
+
+function isApiError(value: unknown): value is ApiErrorEnvelope {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "error" in value &&
+    "status" in value
+  );
 }
 
 export default async function ProfilePage({
@@ -24,21 +47,26 @@ export default async function ProfilePage({
   );
   const ownerLogin = decodeURIComponent(owner);
   const activeTab = activeProfileTab(firstParam(queryParams?.tab));
-  const activeTabLabel =
-    PROFILE_TABS.find((tab) => tab.value === activeTab)?.label ?? "Overview";
+  const profile = await getUserProfile(
+    ownerLogin,
+    numericYear(queryParams?.year),
+  );
+
+  if (isApiError(profile)) {
+    if (profile.status === 404) {
+      notFound();
+    }
+    throw new Error(profile.error.message);
+  }
 
   return (
-    <ProfileOrgShell
+    <UserProfileOverview
       activeTab={activeTab}
-      eyebrow="Profile"
       hrefForTab={(value) => profileTabHref(ownerLogin, value)}
-      identityLabel={ownerLogin}
-      message={`${activeTabLabel} for ${ownerLogin} will connect to profile repositories, stars, packages, and activity once the profile data APIs land. This route is concrete now so owner links never fall through to a 404.`}
+      profile={profile}
       session={session}
       shellContext={shellContext}
-      tabLabel="Profile sections"
       tabs={PROFILE_TABS}
-      title={ownerLogin}
     />
   );
 }

@@ -361,6 +361,11 @@ export const PROFILE_TABS = [
     value: "stars",
     description: "Starred repositories",
   },
+  {
+    label: "More",
+    value: "more",
+    description: "Additional profile activity and social links",
+  },
 ] as const satisfies readonly QueryTab[];
 
 export const ORGANIZATION_TABS = [

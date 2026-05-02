@@ -30,6 +30,7 @@ import {
   getRepositoryRefsFromCookie,
   getSearchSuggestionsFromCookie,
   getSessionFromHeaders,
+  getUserProfileFromCookie,
   type RepositoryActionsDashboardQuery,
   type RepositoryIssueListQuery,
   type RepositoryPullRequestDiffQuery,
@@ -83,6 +84,11 @@ export async function getSearchSuggestions(query: SearchSuggestionsQuery = {}) {
 export async function getDashboardSummary(query: DashboardSummaryQuery = {}) {
   const requestHeaders = await headers();
   return getDashboardSummaryFromCookie(requestHeaders.get("cookie"), query);
+}
+
+export async function getUserProfile(login: string, year?: number) {
+  const requestHeaders = await headers();
+  return getUserProfileFromCookie(requestHeaders.get("cookie"), login, year);
 }
 
 export async function getRepository(owner: string, repo: string) {

@@ -2806,6 +2806,20 @@
       "make test-e2e passed only the non-DB/auth-public subset in this environment (18 tests); signed-in seeded collaboration-search scenarios need QA with a reachable TEST_DATABASE_URL.",
       "Full make test passed without TEST_DATABASE_URL: Cargo tests self-skipped DB scenarios and Vitest passed 214 frontend tests.",
       "Phase 5 still needs final privacy, responsive/mobile, accessibility, and full signed-in browser sweeps before search-004.build_pass can be set true."
+    "feature_id": "profiles-001",
+    "tests_written": [
+      "Implemented DB-backed user profile overview contract: users profile fields, profile_readmes, profile_pins, profile_contribution_days/events, achievements/user_achievements, user_blocks, and user_reports.",
+      "Added Rust endpoints GET /api/users/{login}/profile, PUT/DELETE /api/users/{login}/follow, PUT/DELETE /api/users/{login}/block, and POST /api/users/{login}/report with session-gated writes and standard error envelopes.",
+      "Replaced /{user} placeholder with Editorial profile overview: identity card, follow/block/report controls, URL tabs including More, pinned repository grid, achievements, private-profile hiding, and accessible contribution graph.",
+      "Added same-origin Next action routes and optimistic client controls for follow with rollback/error handling; block and report submit to real API-backed endpoints.",
+      "Verification passed: focused api_user_profiles_contract, focused web user-profile-overview Vitest, web typecheck, mandatory Editorial banned-value scan with zero matches, make check, and make test with Cargo plus 217 frontend tests."
+    ],
+    "needs_deeper_qa": [
+      "Build lane did not run browser/Ever smoke or Playwright E2E for profiles; independent QA should exercise signed-out, signed-in, self-profile, follow rollback, block/unblock, and report modal flows in a browser.",
+      "Profile pins support repository pins and fallback public repositories; gist pin UI is structurally represented but full gist backing remains a later data source.",
+      "Projects/packages tab counts are currently zero-backed until those domain slices land; tabs are concrete URL navigation placeholders preserving the identity column.",
+      "Contribution graph reads profile_contribution_days plus authored commits; production backfill/scheduled aggregation should populate days/events continuously.",
+      "Initial make test attempt failed after many passing suites because the identity_foundation test binary was missing from target; rerunning the targeted identity suite and then make test passed."
     ]
   }
 ]
