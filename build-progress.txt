@@ -1,3 +1,11 @@
+2026-05-03 - settings-002 structure planning
+
+- Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `prd.json`, `web/AGENTS.md`, `design/project/wf-settings.jsx`, `.qrspi/settings-001/structure.md`, current repository settings shell/routes, permission roles, repository access-related schema, and current repository settings API patterns.
+- Determined `settings-002` requires structure planning before implementation because `needs_structure: true` and `.qrspi/settings-002/structure.md` did not exist.
+- Added `.qrspi/settings-002/structure.md` with five independently verifiable vertical phases: access API contract, Editorial people/teams shell, invite/role/removal mutations with SES handoff, privacy and team/organization guardrails, and final QA/bookkeeping.
+- Did not change `prd.json`; `settings-002.build_pass` remains `false` until all implementation phases pass verification.
+- Tests not run because this iteration only created the required planning artifact.
+
 2026-05-03 - settings-001 phase 5 final QA handoff
 
 - Completed Phase 5 from `.qrspi/settings-001/structure.md`: repository General settings are now locked as a completed vertical slice and `settings-001.build_pass=true`.
