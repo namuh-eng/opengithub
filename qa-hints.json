@@ -2938,5 +2938,22 @@
       "Browser smoke and make test-e2e were skipped because Phase 1 is API-first and does not yet render the repository tab UI.",
       "Later phases still need UI validation for URL-backed controls, row navigation, empty-state clear actions, mobile wrapping, and no inert controls."
     ]
+  },
+  {
+    "feature_id": "profiles-002",
+    "tests_written": [
+      "Completed Phase 2 Editorial repository tab shell without marking profiles-002 build_pass=true.",
+      "Added ProfileRepositoryTabs rendering owned repository rows from GET /api/users/{username}/repositories with badges, fork source, language, stars/forks, license, issue/PR counts, and updated timestamps.",
+      "Threaded repository-tab query params through /{user}?tab=repositories and preserved the existing profile identity shell and tab navigation.",
+      "Added focused Vitest coverage for repository rows, badges, metadata, filter defaults, active chips, empty state, concrete links, and no inert anchors.",
+      "Added focused Playwright smoke for the repository tab and saved ralph/screenshots/build/profiles-002-phase2-repositories.jpg.",
+      "Verification passed: focused repository-tab Vitest, focused repository-tab Playwright against local Postgres on localhost:55432 with the postgres role, make check, make test with Cargo plus 228 frontend tests, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Full make test-e2e was attempted but failed because this restored local Postgres cluster lacks the namuh role used by the default E2E TEST_DATABASE_URL; the focused Phase 2 smoke passed with the cluster's available postgres role.",
+      "Phase 2 intentionally renders GET-backed filter controls and concrete query links; Phase 3 still needs full URL-backed filter interaction coverage for search/type/language/sort/chip removal.",
+      "Stars tab remains unimplemented until Phase 4.",
+      "QA should stress-test long repository names/descriptions and large repository counts once Phase 5 guardrails land."
+    ]
   }
 ]

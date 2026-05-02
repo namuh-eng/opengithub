@@ -1,3 +1,14 @@
+2026-05-02 - profiles-002 phase 2 Editorial repository tab shell
+
+- Completed Phase 2 from `.qrspi/profiles-002/structure.md`: `/{user}?tab=repositories` now renders a concrete Editorial repository results surface using the Phase 1 profile repository API.
+- Added `ProfileRepositoryTabs` with count summary, GET-backed filter form, active filter chips, clear-filter links, dense repository rows, visibility/archive/fork/template/mirror/sponsorable badges, fork-source links, description, primary language dot, stars/forks, license, issue/PR counts, and updated dates.
+- Updated `web/src/app/[owner]/page.tsx` to fetch repository-list data for the repositories tab while preserving anonymous public access and the existing profile identity shell.
+- Added focused Vitest coverage for row rendering, badges, metadata, filter defaults, active chips, empty states, concrete links, and no inert anchors.
+- Added focused Playwright browser smoke for the profile repositories tab; screenshot saved at `ralph/screenshots/build/profiles-002-phase2-repositories.jpg`.
+- Verification passed: focused `web/tests/user-profile-repositories.test.tsx`; focused `web/tests/e2e/profile-repositories.spec.ts` against local Postgres on `localhost:55432` using the available `postgres` role; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 228 frontend tests; mandatory Editorial banned-value scan returned zero matches.
+- A full `make test-e2e` attempt was accidentally run because the Make target does not forward test filters; it failed on existing seeded signed-in scenarios due to `role "namuh" does not exist` in the restored local Postgres cluster. The focused Phase 2 Playwright smoke passed with the cluster's available `postgres` role.
+- Marked Phase 2 as done in `.qrspi/profiles-002/structure.md`; `prd.json` remains `build_pass: false` because Phases 3-5 remain.
+
 2026-05-02 - profiles-002 phase 1 repository list API contract
 
 - Completed Phase 1 from `.qrspi/profiles-002/structure.md`: public profile repository tabs now have a real Rust/Postgres read contract for owned repositories.

@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial Repository Tab Shell - render owned repositories with dense result rows
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the current secondary-tab placeholder for `tab=repositories` with a full Editorial repository results surface while preserving the profile identity column and tabs from `profiles-001`. The UI must use `og.css` tokens and primitives, not GitHub Primer colors or chrome.
 

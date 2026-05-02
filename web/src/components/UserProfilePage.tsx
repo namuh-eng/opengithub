@@ -2,11 +2,13 @@ import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { AppShellFrame } from "@/components/AppShellFrame";
 import { ProfileContributionGraph } from "@/components/ProfileContributionGraph";
+import { ProfileRepositoryTabs } from "@/components/ProfileRepositoryTabs";
 import { QueryTabNavigation } from "@/components/QueryTabNavigation";
 import { UserProfileActions } from "@/components/UserProfileActions";
 import type {
   AppShellContext,
   AuthSession,
+  ProfileRepositoryList,
   PublicUserProfile,
 } from "@/lib/api";
 import {
@@ -19,6 +21,7 @@ import {
 type UserProfilePageProps = {
   activeTab: string;
   profile: PublicUserProfile;
+  repositoryList?: ProfileRepositoryList | null;
   session: AuthSession;
   shellContext?: AppShellContext | null;
 };
@@ -367,6 +370,7 @@ function SecondaryTab({
 export function UserProfilePage({
   activeTab,
   profile,
+  repositoryList,
   session,
   shellContext,
 }: UserProfilePageProps) {
@@ -391,6 +395,11 @@ export function UserProfilePage({
               <div className="min-w-0">
                 {selectedTab === "overview" ? (
                   <Overview profile={profile} />
+                ) : selectedTab === "repositories" && repositoryList ? (
+                  <ProfileRepositoryTabs
+                    list={repositoryList}
+                    owner={profile.identity.login}
+                  />
                 ) : (
                   <SecondaryTab activeTab={selectedTab} profile={profile} />
                 )}

@@ -6,6 +6,7 @@ import {
   profileTabHref,
 } from "@/lib/navigation";
 import {
+  getProfileRepositories,
   getPublicUserProfile,
   getSessionAndShellContext,
 } from "@/lib/server-session";
@@ -28,6 +29,15 @@ function numericYear(value: string | string[] | undefined) {
   return Number.isFinite(year) ? year : undefined;
 }
 
+function numericPositive(value: string | string[] | undefined) {
+  const first = firstParam(value);
+  if (!first) {
+    return undefined;
+  }
+  const number = Number.parseInt(first, 10);
+  return Number.isFinite(number) && number > 0 ? number : undefined;
+}
+
 export default async function ProfilePage({
   params,
   searchParams,
@@ -40,12 +50,24 @@ export default async function ProfilePage({
   const profile = await getPublicUserProfile(ownerLogin, {
     year: numericYear(queryParams?.year),
   });
+  const repositoryList =
+    activeTab === "repositories"
+      ? await getProfileRepositories(ownerLogin, {
+          q: firstParam(queryParams?.q),
+          type: firstParam(queryParams?.type),
+          language: firstParam(queryParams?.language),
+          sort: firstParam(queryParams?.sort),
+          page: numericPositive(queryParams?.page),
+          pageSize: numericPositive(queryParams?.pageSize),
+        })
+      : null;
 
   if (profile) {
     return (
       <UserProfilePage
         activeTab={activeTab}
         profile={profile}
+        repositoryList={repositoryList}
         session={session}
         shellContext={shellContext}
       />
