@@ -42,7 +42,7 @@
 
 ## Phase 3: Settings Mutations - forms, validation feedback, and confirmed writes
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make every editable General settings control submit to the Rust API and update UI only after confirmed persistence. Each section can have its own save action, but every control must map to the shared patch contract and show success/error feedback without dead `onClick` placeholders.
 

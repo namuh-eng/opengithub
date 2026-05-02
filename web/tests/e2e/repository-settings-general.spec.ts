@@ -62,7 +62,7 @@ test.skip(
   "repository settings general smoke needs TEST_DATABASE_URL or DATABASE_URL",
 );
 
-test("admin can load repository general settings read surface", async ({
+test("admin can load and mutate repository general settings", async ({
   page,
 }) => {
   const seeded = seedDashboard();
@@ -77,20 +77,70 @@ test("admin can load repository general settings read surface", async ({
   await expect(page.getByLabel("Repository name")).toHaveValue(/alpha-/);
   await expect(page.getByText("Repository state")).toBeVisible();
   await expect(page.getByText("Feature toggles")).toBeVisible();
-  await expect(page.getByText("Merge methods")).toBeVisible();
-  await expect(page.getByText("Destructive actions")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Merge methods" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Destructive actions" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "View branches" }),
   ).toHaveAttribute(
     "href",
     new RegExp(`${seeded.firstRepositoryHref}/branches$`),
   );
+
+  const description = `Phase 3 settings mutation ${Date.now()}`;
+  await page.getByLabel("Repository description").fill(description);
+  await page.getByRole("button", { name: "Save profile" }).click();
+  await expect(page.getByText("Repository profile saved.")).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Repository description")).toHaveValue(
+    description,
+  );
+
+  const issues = page.getByLabel("Issues");
+  const nextIssues = !(await issues.isChecked());
+  await issues.setChecked(nextIssues);
+  await page.getByRole("button", { name: "Save features" }).click();
+  await expect(page.getByText("Feature toggles saved.")).toBeVisible();
+  await page.reload();
+  if (nextIssues) {
+    await expect(page.getByLabel("Issues")).toBeChecked();
+  } else {
+    await expect(page.getByLabel("Issues")).not.toBeChecked();
+  }
+
+  await page.getByLabel("Allow squash merging").setChecked(false);
+  await page.getByLabel("Allow merge commits").setChecked(false);
+  await page.getByLabel("Allow rebase merging").setChecked(false);
+  await expect(
+    page.getByText("At least one merge method must remain enabled."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Save merge methods" }),
+  ).toBeDisabled();
+  await page.getByLabel("Allow squash merging").setChecked(true);
+  await page.getByLabel("Default merge method").selectOption("squash");
+  await page.getByRole("button", { name: "Save merge methods" }).click();
+  await expect(page.getByText("Merge methods saved.")).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Allow squash merging")).toBeChecked();
+  await expect(page.getByLabel("Default merge method")).toHaveValue("squash");
+
+  await page.getByRole("button", { name: "Archive repository" }).click();
+  await expect(page.getByText("Repository archived.")).toBeVisible();
+  await page.reload();
+  await expect(page.locator(".chip", { hasText: "Archived" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Unarchive repository" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Delete repository unavailable" }),
   ).toBeDisabled();
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/settings-001-phase2-general-settings.jpg",
+    path: "../ralph/screenshots/build/settings-001-phase3-general-mutations.jpg",
   });
 });

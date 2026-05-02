@@ -1,5 +1,11 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RepositoryGeneralSettingsPage } from "@/components/RepositoryGeneralSettingsPage";
 import type {
   RepositoryOverview,
@@ -110,6 +116,17 @@ function okResult(
   return { ok: true, settings: repositorySettings(overrides) };
 }
 
+function mockFetch(response: unknown, ok = true) {
+  return vi.fn().mockResolvedValue({
+    json: async () => response,
+    ok,
+  }) as unknown as typeof fetch;
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe("repository general settings page", () => {
   it("renders the real admin settings state with Editorial primitives", () => {
     const { container } = render(
@@ -126,10 +143,14 @@ describe("repository general settings page", () => {
     expect(screen.getByLabelText("Repository description")).toHaveValue(
       "A calmer place for code to live.",
     );
-    expect(screen.getByText("public")).toBeVisible();
+    expect(screen.getByLabelText("Repository visibility")).toHaveValue(
+      "public",
+    );
     expect(screen.getByLabelText("Default branch")).toHaveValue("main");
-    expect(screen.getByText("Forking enabled")).toBeVisible();
-    expect(screen.getByText("Web signoff optional")).toBeVisible();
+    expect(screen.getByLabelText("Allow forking")).toBeChecked();
+    expect(
+      screen.getByLabelText("Require web commit signoff"),
+    ).not.toBeChecked();
     expect(screen.getByText("Default method: Squash")).toBeVisible();
     expect(screen.getByText("repository.settings.update")).toBeVisible();
     expect(screen.getByRole("link", { name: "View branches" })).toHaveAttribute(
@@ -146,7 +167,7 @@ describe("repository general settings page", () => {
     );
   });
 
-  it("shows current feature, merge, archive, and branch values without editable local state", () => {
+  it("shows current feature, merge, archive, and branch values as editable controls", () => {
     render(
       <RepositoryGeneralSettingsPage
         repository={repositoryOverview()}
@@ -170,16 +191,184 @@ describe("repository general settings page", () => {
       />,
     );
 
-    expect(screen.getByText("Enabled")).toBeVisible();
     expect(screen.getByText("Archived")).toBeVisible();
-    expect(screen.getByText("Web signoff required")).toBeVisible();
+    expect(screen.getByLabelText("Template repository")).toBeChecked();
+    expect(screen.getByLabelText("Require web commit signoff")).toBeChecked();
     expect(screen.getByText("Default method: Merge commit")).toBeVisible();
     expect(screen.getByLabelText("Allow squash merging")).not.toBeChecked();
     expect(screen.getByLabelText("Allow merge commits")).toBeChecked();
     expect(screen.getByLabelText("Allow rebase merging")).not.toBeChecked();
     expect(
-      screen.getByRole("button", { name: "Unarchive repository unavailable" }),
+      screen.getByRole("button", { name: "Unarchive repository" }),
+    ).toBeEnabled();
+  });
+
+  it("submits profile, feature, behavior, and archive writes through the same-origin route", async () => {
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        json: async () =>
+          repositorySettings({
+            description: "Updated through the settings form.",
+            name: "opengithub-next",
+          }),
+        ok: true,
+      })
+      .mockResolvedValueOnce({
+        json: async () =>
+          repositorySettings({
+            features: {
+              issuesEnabled: true,
+              projectsEnabled: true,
+              wikiEnabled: false,
+            },
+          }),
+        ok: true,
+      })
+      .mockResolvedValueOnce({
+        json: async () =>
+          repositorySettings({
+            allowForking: false,
+            webCommitSignoffRequired: true,
+          }),
+        ok: true,
+      })
+      .mockResolvedValueOnce({
+        json: async () =>
+          repositorySettings({
+            danger: {
+              isArchived: true,
+              canArchive: false,
+              canUnarchive: true,
+              deleteSupported: false,
+              transferSupported: false,
+            },
+          }),
+        ok: true,
+      }) as unknown as typeof fetch;
+
+    render(
+      <RepositoryGeneralSettingsPage
+        repository={repositoryOverview()}
+        settingsResult={okResult()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Repository name"), {
+      target: { value: "opengithub-next" },
+    });
+    fireEvent.change(screen.getByLabelText("Repository description"), {
+      target: { value: "Updated through the settings form." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save profile" }));
+
+    await waitFor(() =>
+      expect(global.fetch).toHaveBeenCalledWith(
+        "/namuh/opengithub/settings/update",
+        {
+          body: JSON.stringify({
+            description: "Updated through the settings form.",
+            name: "opengithub-next",
+          }),
+          headers: { "content-type": "application/json" },
+          method: "PATCH",
+        },
+      ),
+    );
+    expect(screen.getByText("Repository profile saved.")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save features" }));
+
+    await waitFor(() =>
+      expect(global.fetch).toHaveBeenLastCalledWith(
+        "/namuh/opengithub/settings/update",
+        {
+          body: JSON.stringify({
+            features: {
+              issuesEnabled: false,
+              projectsEnabled: true,
+              wikiEnabled: true,
+            },
+          }),
+          headers: { "content-type": "application/json" },
+          method: "PATCH",
+        },
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Save behavior" }));
+
+    await waitFor(() =>
+      expect(global.fetch).toHaveBeenLastCalledWith(
+        "/namuh/opengithub/settings/update",
+        {
+          body: JSON.stringify({
+            allowForking: true,
+            webCommitSignoffRequired: false,
+          }),
+          headers: { "content-type": "application/json" },
+          method: "PATCH",
+        },
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Archive repository" }));
+
+    await waitFor(() =>
+      expect(global.fetch).toHaveBeenLastCalledWith(
+        "/namuh/opengithub/settings/update",
+        {
+          body: JSON.stringify({ isArchived: true }),
+          headers: { "content-type": "application/json" },
+          method: "PATCH",
+        },
+      ),
+    );
+    expect(screen.getByText("Repository archived.")).toBeVisible();
+  });
+
+  it("keeps server state after failed writes and blocks invalid merge submissions", async () => {
+    global.fetch = mockFetch(
+      {
+        error: {
+          code: "validation_failed",
+          message: "repository default branch `ghost` was not found",
+        },
+        status: 422,
+      },
+      false,
+    );
+
+    render(
+      <RepositoryGeneralSettingsPage
+        repository={repositoryOverview()}
+        settingsResult={okResult()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Repository visibility"), {
+      target: { value: "private" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save state" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("repository default branch `ghost` was not found"),
+      ).toBeVisible(),
+    );
+    expect(screen.getByLabelText("Repository visibility")).toHaveValue(
+      "public",
+    );
+
+    fireEvent.click(screen.getByLabelText("Allow squash merging"));
+    fireEvent.click(screen.getByLabelText("Allow merge commits"));
+    fireEvent.click(screen.getByLabelText("Allow rebase merging"));
+    expect(
+      screen.getByRole("button", { name: "Save merge methods" }),
     ).toBeDisabled();
+    expect(
+      screen.getByText("At least one merge method must remain enabled."),
+    ).toBeVisible();
   });
 
   it("renders forbidden and unavailable states without leaking settings", () => {
@@ -219,8 +408,12 @@ describe("repository general settings page", () => {
       .getByRole("heading", { name: "Destructive actions" })
       .closest("section");
     expect(dangerZone).not.toBeNull();
+    expect(
+      within(dangerZone as HTMLElement).getByRole("button", {
+        name: "Archive repository",
+      }),
+    ).toBeEnabled();
     for (const name of [
-      "Archive repository unavailable",
       "Transfer repository unavailable",
       "Delete repository unavailable",
     ]) {

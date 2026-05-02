@@ -3218,5 +3218,22 @@
       "Browser smoke used deterministic Rust-signed local sessions and direct local API/Next dev servers because make dev depends on cargo-watch, which is not installed in this environment.",
       "QA should stress non-admin direct /settings access, long descriptions and branch names, archived repositories, audit-event ordering, mobile wrapping, and screen reader clarity for disabled controls."
     ]
+  },
+  {
+    "feature_id": "settings-001",
+    "tests_written": [
+      "Completed Phase 3 Settings Mutations without marking settings-001 build_pass=true.",
+      "Added a same-origin Next.js PATCH route at /{owner}/{repo}/settings/update that forwards authenticated repository settings patches to the Rust API without introducing JS-side auth.",
+      "Converted the Editorial General settings page from a read-only shell into confirmed-write forms for profile, visibility/default branch/template, feature toggles, merge methods/default merge method, forking, web commit signoff, and archive/unarchive.",
+      "Extended Vitest coverage for concrete save buttons, same-origin request bodies, success/error notices, invalid merge prevention, failed-write rollback to server state, no inert controls, and disabled transfer/delete actions.",
+      "Extended Playwright browser smoke to mutate description, feature toggles, merge methods, and archive state through real routes, verify persisted reload state, and save ralph/screenshots/build/settings-001-phase3-general-mutations.jpg.",
+      "Verification passed: focused repository_settings_contract; focused repository-general-settings Vitest; web tsc; TEST_DATABASE_URL-backed make check; standard DB_SSL=false make test with Cargo tests plus 256 frontend tests; focused repository-settings-general Playwright; full TEST_DATABASE_URL-backed make test-e2e with 92 Playwright tests after restarting the API with API_URL=https://opengithub.namuh.co; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 still needs final admin/privacy/conflict/danger-zone hardening, API docs metadata, non-admin browser states, and mobile/keyboard guardrails before settings-001 can be marked build_pass=true.",
+      "Browser smoke used deterministic Rust-signed local sessions and direct local API/Next dev servers because make dev depends on cargo-watch, which is not installed in this environment.",
+      "The first full E2E attempt passed the new settings smoke but failed one unrelated Code-tab clone URL assertion because the API public clone host was localhost; restarting the API with API_URL=https://opengithub.namuh.co restored the suite and all 92 tests passed.",
+      "QA should stress concurrent section saves, rename route behavior after successful name changes, private/internal visibility transitions, archived repository write restrictions, default branch deletion races, long descriptions, and audit-event integrity."
+    ]
   }
 ]

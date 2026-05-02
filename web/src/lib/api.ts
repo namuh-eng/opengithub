@@ -793,6 +793,19 @@ export type RepositorySettings = {
   auditEvents: RepositorySettingsAuditEvent[];
 };
 
+export type RepositorySettingsPatch = {
+  name?: string;
+  description?: string | null;
+  visibility?: RepositoryVisibility;
+  defaultBranch?: string;
+  isTemplate?: boolean;
+  allowForking?: boolean;
+  webCommitSignoffRequired?: boolean;
+  isArchived?: boolean;
+  features?: Partial<RepositoryFeatureSettings>;
+  merge?: Partial<RepositoryMergeSettings>;
+};
+
 export type RepositorySettingsFetchResult =
   | { ok: true; settings: RepositorySettings }
   | { ok: false; status: number; code: string | null; message: string };
@@ -4916,6 +4929,40 @@ export async function getRepositorySettingsFromCookie(
     ok: true,
     settings: (await response.json()) as RepositorySettings,
   };
+}
+
+export async function updateRepositorySettingsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  patch: RepositorySettingsPatch,
+): Promise<RepositorySettings> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(patch),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const body = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      body?.error.message ?? "Repository settings failed to save",
+      {
+        cause: body,
+      },
+    );
+  }
+
+  return (await response.json()) as RepositorySettings;
 }
 
 export async function getRepositoryPathFromCookie(
