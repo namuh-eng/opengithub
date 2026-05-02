@@ -356,6 +356,79 @@ export type OrganizationPeopleListQuery = {
   pageSize?: number;
 };
 
+export type OwnerPackageList = {
+  items: OwnerPackageListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  owner: OwnerPackageOwner;
+  mode: "packages" | string;
+  filters: OwnerPackageFilters;
+  linkedArtifacts: LinkedArtifactsPlaceholder;
+};
+
+export type OwnerPackageOwner = {
+  id: string;
+  login: string;
+  kind: "user" | "organization" | string;
+  href: string;
+};
+
+export type OwnerPackageListItem = {
+  id: string;
+  name: string;
+  packageType: string;
+  typeLabel: string;
+  visibility: RepositoryVisibility;
+  href: string;
+  publishedAt: string;
+  publisher: OwnerPackagePublisher;
+  linkedRepository: OwnerPackageRepository | null;
+  downloadCount: number;
+  latestVersion: string | null;
+};
+
+export type OwnerPackagePublisher = {
+  id: string;
+  login: string;
+  name: string | null;
+  href: string;
+};
+
+export type OwnerPackageRepository = {
+  id: string;
+  owner: string;
+  name: string;
+  fullName: string;
+  href: string;
+  visibility: RepositoryVisibility;
+};
+
+export type OwnerPackageFilters = {
+  query: string | null;
+  packageType: string;
+  visibility: string;
+  sort: string;
+  artifactTab: string;
+  page: number;
+  pageSize: number;
+};
+
+export type LinkedArtifactsPlaceholder = {
+  enabled: boolean;
+  message: string;
+};
+
+export type OwnerPackageListQuery = {
+  q?: string;
+  type?: string;
+  visibility?: string;
+  sort?: string;
+  artifactTab?: string;
+  page?: number;
+  pageSize?: number;
+};
+
 export type ProfileAchievement = {
   slug: string;
   name: string;
@@ -2769,6 +2842,74 @@ export async function getOrganizationPeopleFromCookie(
   }
 
   return (await response.json()) as OrganizationPeopleList;
+}
+
+export async function getUserPackagesFromCookie(
+  cookie: string | null | undefined,
+  username: string,
+  query: OwnerPackageListQuery = {},
+): Promise<OwnerPackageList | null> {
+  return getOwnerPackagesFromCookie(
+    cookie,
+    `/api/users/${encodeURIComponent(username)}/packages`,
+    query,
+  );
+}
+
+export async function getOrganizationPackagesFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  query: OwnerPackageListQuery = {},
+): Promise<OwnerPackageList | null> {
+  return getOwnerPackagesFromCookie(
+    cookie,
+    `/api/orgs/${encodeURIComponent(org)}/packages`,
+    query,
+  );
+}
+
+async function getOwnerPackagesFromCookie(
+  cookie: string | null | undefined,
+  path: string,
+  query: OwnerPackageListQuery,
+): Promise<OwnerPackageList | null> {
+  let response: Response;
+  try {
+    const url = new URL(`${apiBaseUrl()}${path}`);
+    if (query.q) {
+      url.searchParams.set("q", query.q);
+    }
+    if (query.type) {
+      url.searchParams.set("type", query.type);
+    }
+    if (query.visibility) {
+      url.searchParams.set("visibility", query.visibility);
+    }
+    if (query.sort) {
+      url.searchParams.set("sort", query.sort);
+    }
+    if (query.artifactTab) {
+      url.searchParams.set("artifactTab", query.artifactTab);
+    }
+    if (query.page) {
+      url.searchParams.set("page", String(query.page));
+    }
+    if (query.pageSize) {
+      url.searchParams.set("pageSize", String(query.pageSize));
+    }
+    response = await fetch(url, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return null;
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return (await response.json()) as OwnerPackageList;
 }
 
 export async function getProfileRepositoriesFromCookie(

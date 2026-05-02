@@ -3253,5 +3253,18 @@
       "Browser smoke used deterministic Rust-signed local sessions and direct local API/Next dev servers because make dev depends on cargo-watch, which is not installed in this environment.",
       "QA should stress concurrent settings writes, rename route behavior after successful name changes, private/internal visibility transitions, many audit events, very long branch names, rapid archive/unarchive attempts, and unsupported transfer/delete affordance clarity."
     ]
+  },
+  {
+    "feature_id": "packages-001",
+    "tests_written": [
+      "Added owner package list contract coverage in crates/api/tests/owner_packages_contract.rs for user and organization package lists, search/type/visibility/sort filters, package downloads, linked repositories, public redaction, package permissions, and organization-member internal package visibility.",
+      "Added OwnerPackagesPage Vitest coverage for GitHub Packages and Linked artifacts tabs, type/visibility/sort/search controls, clear-filter and empty-state links, package metadata rows, linked repository links, download counts, and ownerPackagesHref serialization.",
+      "Verification passed: focused cargo test -p opengithub-api --test owner_packages_contract; focused npm --prefix web test -- owner-packages-page.test.tsx; web typecheck with npx tsc --noEmit --incremental false; mandatory Editorial banned-value scan on touched UI files; make check; CARGO_INCREMENTAL=0 make test with Cargo tests plus 249 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Linked artifacts is intentionally a placeholder tab until artifact provenance ships; QA should verify the explanatory copy and return link rather than expecting artifact rows.",
+      "No browser E2E/manual Ever smoke was added in the build lane; independent QA should exercise /{owner}?tab=packages and /orgs/{org}/packages with signed-out, member, and collaborator viewers.",
+      "Stress long package names, large download counts, mixed package_repository_links, direct package_permissions for non-members, and URL query preservation across all dropdowns."
+    ]
   }
 ]

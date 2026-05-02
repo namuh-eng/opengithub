@@ -8,6 +8,7 @@ import {
   organizationTabHref,
 } from "@/lib/navigation";
 import {
+  getOrganizationPackages,
   getOrganizationPeople,
   getOrganizationRepositories,
   getPublicOrganizationProfile,
@@ -43,7 +44,7 @@ export default async function OrganizationPage({
   ]);
   const orgLogin = decodeURIComponent(org);
   const activeTab = activeOrganizationTab(firstParam(queryParams?.tab));
-  const [profile, repositoryList, peopleList] = await Promise.all([
+  const [profile, repositoryList, peopleList, packageList] = await Promise.all([
     getPublicOrganizationProfile(orgLogin),
     activeTab === "repositories"
       ? getOrganizationRepositories(orgLogin, {
@@ -63,6 +64,17 @@ export default async function OrganizationPage({
           pageSize: numberParam(queryParams?.pageSize),
         })
       : Promise.resolve(null),
+    activeTab === "packages"
+      ? getOrganizationPackages(orgLogin, {
+          q: firstParam(queryParams?.q),
+          type: firstParam(queryParams?.type),
+          visibility: firstParam(queryParams?.visibility),
+          sort: firstParam(queryParams?.sort),
+          artifactTab: firstParam(queryParams?.artifactTab),
+          page: numberParam(queryParams?.page),
+          pageSize: numberParam(queryParams?.pageSize),
+        })
+      : Promise.resolve(null),
   ]);
 
   if (profile) {
@@ -71,6 +83,7 @@ export default async function OrganizationPage({
         activeTab={activeTab}
         peopleList={peopleList}
         profile={profile}
+        packageList={packageList}
         repositoryList={repositoryList}
         session={session}
         shellContext={shellContext}

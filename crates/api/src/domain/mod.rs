@@ -10,6 +10,7 @@ pub mod markdown;
 pub mod notifications;
 pub mod onboarding;
 pub mod organizations;
+pub mod packages;
 pub mod permissions;
 pub mod profiles;
 pub mod pulls;

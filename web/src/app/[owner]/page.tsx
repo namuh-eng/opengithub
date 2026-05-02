@@ -10,6 +10,7 @@ import {
   getProfileStars,
   getPublicUserProfile,
   getSessionAndShellContext,
+  getUserPackages,
 } from "@/lib/server-session";
 
 type ProfilePageProps = {
@@ -51,28 +52,42 @@ export default async function ProfilePage({
   const profile = await getPublicUserProfile(ownerLogin, {
     year: numericYear(queryParams?.year),
   });
-  const repositoryList =
+  const [repositoryList, packageList] = await Promise.all([
     activeTab === "repositories" || activeTab === "stars"
-      ? await (activeTab === "stars"
-          ? getProfileStars
-          : getProfileRepositories)(ownerLogin, {
+      ? (activeTab === "stars" ? getProfileStars : getProfileRepositories)(
+          ownerLogin,
+          {
+            q: firstParam(queryParams?.q),
+            type:
+              activeTab === "repositories"
+                ? firstParam(queryParams?.type)
+                : undefined,
+            language: firstParam(queryParams?.language),
+            sort: firstParam(queryParams?.sort),
+            page: numericPositive(queryParams?.page),
+            pageSize: numericPositive(queryParams?.pageSize),
+          },
+        )
+      : Promise.resolve(null),
+    activeTab === "packages"
+      ? getUserPackages(ownerLogin, {
           q: firstParam(queryParams?.q),
-          type:
-            activeTab === "repositories"
-              ? firstParam(queryParams?.type)
-              : undefined,
-          language: firstParam(queryParams?.language),
+          type: firstParam(queryParams?.type),
+          visibility: firstParam(queryParams?.visibility),
           sort: firstParam(queryParams?.sort),
+          artifactTab: firstParam(queryParams?.artifactTab),
           page: numericPositive(queryParams?.page),
           pageSize: numericPositive(queryParams?.pageSize),
         })
-      : null;
+      : Promise.resolve(null),
+  ]);
 
   if (profile) {
     return (
       <UserProfilePage
         activeTab={activeTab}
         profile={profile}
+        packageList={packageList}
         repositoryList={repositoryList}
         session={session}
         shellContext={shellContext}
