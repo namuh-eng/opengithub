@@ -1,3 +1,14 @@
+2026-05-02 - profiles-002 phase 1 repository list API contract
+
+- Completed Phase 1 from `.qrspi/profiles-002/structure.md`: public profile repository tabs now have a real Rust/Postgres read contract for owned repositories.
+- Added additive repository metadata migration fields for template, mirror, sponsorable, and license badges, plus owner/list indexes for the profile repository tab.
+- Added `GET /api/users/{username}/repositories` with case-insensitive profile lookup, private-profile redaction, viewer-aware public/private repository visibility, standard list pagination, filters metadata, available type/language options, tab counts, and validation errors for unsupported type/sort values.
+- Added dense repository rows with owner/name/href, visibility, default branch, language summaries, stars/forks, open issue/PR counts, archived/fork/template/mirror/sponsorable badges, fork source, license metadata, and timestamps.
+- Added typed Next.js API/server-session helpers for fetching profile repository lists in later UI phases.
+- Verification passed: focused `profile_repositories_contract` compiled and passed with DB scenarios self-skipped because localhost:55432 was unreachable; `make check`; `make test` without DB override with Cargo tests plus 226 frontend tests. A `make test` run with `TEST_DATABASE_URL=postgresql://namuh@localhost:55432/opengithub_identity_test` hung in an unrelated DB-backed profile social-actions test and was terminated after the local database remained unreachable.
+- Browser smoke and `make test-e2e` were not run because Phase 1 is API-first; `prd.json` remains `build_pass: false` because Phases 2-5 remain.
+- Marked Phase 1 as done in `.qrspi/profiles-002/structure.md`.
+
 2026-05-02 - profiles-001 phase 5 guardrails and feature completion
 
 - Completed Phase 5 from `.qrspi/profiles-001/structure.md`: public user profiles now have final privacy, API, visual, and browser-smoke guardrails and `profiles-001.build_pass` is `true`.

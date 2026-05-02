@@ -6,6 +6,7 @@ import {
   type GlobalSearchQuery,
   getAppShellContextFromCookie,
   getDashboardSummaryFromCookie,
+  getProfileRepositoriesFromCookie,
   getPublicUserProfileFromCookie,
   getPullRequestCompareFromCookie,
   getRepositoryActionsDashboardFromCookie,
@@ -31,6 +32,7 @@ import {
   getRepositoryRefsFromCookie,
   getSearchSuggestionsFromCookie,
   getSessionFromHeaders,
+  type ProfileRepositoryListQuery,
   type RepositoryActionsDashboardQuery,
   type RepositoryIssueListQuery,
   type RepositoryPullRequestDiffQuery,
@@ -70,6 +72,18 @@ export async function getPublicUserProfile(
     requestHeaders.get("cookie"),
     username,
     options,
+  );
+}
+
+export async function getProfileRepositories(
+  username: string,
+  query: ProfileRepositoryListQuery = {},
+) {
+  const requestHeaders = await headers();
+  return getProfileRepositoriesFromCookie(
+    requestHeaders.get("cookie"),
+    username,
+    query,
   );
 }
 

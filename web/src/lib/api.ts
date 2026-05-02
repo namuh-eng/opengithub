@@ -61,6 +61,78 @@ export type ProfilePinnedRepository = {
   updatedAt: string;
 };
 
+export type ProfileRepositoryList = {
+  items: ProfileRepositoryListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  filters: ProfileRepositoryFilters;
+  availableLanguages: ProfileRepositoryFilterOption[];
+  availableTypes: ProfileRepositoryFilterOption[];
+  tabCounts: ProfileTabCounts;
+};
+
+export type ProfileRepositoryListItem = {
+  id: string;
+  owner: string;
+  name: string;
+  fullName: string;
+  description: string | null;
+  visibility: RepositoryVisibility;
+  href: string;
+  defaultBranch: string;
+  primaryLanguage: ProfileRepositoryLanguage | null;
+  languages: ProfileRepositoryLanguage[];
+  starsCount: number;
+  forksCount: number;
+  openIssuesCount: number;
+  openPullRequestsCount: number;
+  license: ProfileRepositoryLicense | null;
+  isArchived: boolean;
+  isFork: boolean;
+  isTemplate: boolean;
+  isMirror: boolean;
+  canBeSponsored: boolean;
+  forkSource: ProfileRepositoryForkSource | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProfileRepositoryLicense = {
+  slug: string;
+  name: string;
+};
+
+export type ProfileRepositoryForkSource = {
+  owner: string;
+  name: string;
+  href: string;
+};
+
+export type ProfileRepositoryFilters = {
+  query: string | null;
+  repositoryType: string;
+  language: string | null;
+  sort: string;
+  page: number;
+  pageSize: number;
+};
+
+export type ProfileRepositoryFilterOption = {
+  value: string;
+  label: string;
+  count: number;
+};
+
+export type ProfileRepositoryListQuery = {
+  q?: string;
+  type?: string;
+  language?: string;
+  sort?: string;
+  page?: number;
+  pageSize?: number;
+};
+
 export type ProfileRepositoryLanguage = {
   language: string;
   color: string;
@@ -2271,6 +2343,49 @@ export async function getPublicUserProfileFromCookie(
   }
 
   return (await response.json()) as PublicUserProfile;
+}
+
+export async function getProfileRepositoriesFromCookie(
+  cookie: string | null | undefined,
+  username: string,
+  query: ProfileRepositoryListQuery = {},
+): Promise<ProfileRepositoryList | null> {
+  let response: Response;
+  try {
+    const url = new URL(
+      `${apiBaseUrl()}/api/users/${encodeURIComponent(username)}/repositories`,
+    );
+    if (query.q) {
+      url.searchParams.set("q", query.q);
+    }
+    if (query.type) {
+      url.searchParams.set("type", query.type);
+    }
+    if (query.language) {
+      url.searchParams.set("language", query.language);
+    }
+    if (query.sort) {
+      url.searchParams.set("sort", query.sort);
+    }
+    if (query.page) {
+      url.searchParams.set("page", String(query.page));
+    }
+    if (query.pageSize) {
+      url.searchParams.set("pageSize", String(query.pageSize));
+    }
+    response = await fetch(url, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return null;
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return (await response.json()) as ProfileRepositoryList;
 }
 
 export async function setUserFollowFromCookie(

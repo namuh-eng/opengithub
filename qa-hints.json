@@ -2921,5 +2921,22 @@
       "Profile contribution tooltips use native title text plus focusable contribution cells; QA should still spot-check assistive-technology announcements in target browsers.",
       "Final screenshots captured: profiles-001-final-public-desktop.jpg, profiles-001-final-public-mobile.jpg, profiles-001-final-actions.jpg, and profiles-001-final-private.jpg."
     ]
+  },
+  {
+    "feature_id": "profiles-002",
+    "tests_written": [
+      "Completed Phase 1 repository list API contract without marking profiles-002 build_pass=true.",
+      "Added additive repository metadata migration fields for template, mirror, sponsorable, and license badges.",
+      "Added GET /api/users/{username}/repositories with viewer-aware public/private visibility, q/type/language/sort/page/pageSize query handling, availableLanguages, availableTypes, tabCounts, and standard list envelope fields.",
+      "Added dense repository row metadata for visibility, languages, stars, forks, open issue/PR counts, fork source, license, archived/fork/template/mirror/sponsorable badges, and timestamps.",
+      "Added typed Next.js ProfileRepositoryList DTOs and cookie-backed server fetch helper for later UI phases.",
+      "Focused profile_repositories_contract compiled and passed with DB scenarios self-skipped; make check passed; make test passed without DB override with Cargo tests and 226 frontend tests."
+    ],
+    "needs_deeper_qa": [
+      "The focused profile repository Postgres scenarios self-skipped because localhost:55432 was not reachable; QA should rerun profile_repositories_contract against a reachable TEST_DATABASE_URL.",
+      "A full make test run with TEST_DATABASE_URL on localhost:55432 hung in an unrelated profile_social_actions DB-backed test and was terminated after the local database remained unreachable.",
+      "Browser smoke and make test-e2e were skipped because Phase 1 is API-first and does not yet render the repository tab UI.",
+      "Later phases still need UI validation for URL-backed controls, row navigation, empty-state clear actions, mobile wrapping, and no inert controls."
+    ]
   }
 ]

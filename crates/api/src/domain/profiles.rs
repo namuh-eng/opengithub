@@ -4,6 +4,8 @@ use serde_json::json;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
+use crate::api_types::{normalize_pagination, ListEnvelope};
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PublicUserProfile {
@@ -15,6 +17,79 @@ pub struct PublicUserProfile {
     pub contribution_summary: ProfileContributionSummary,
     pub tab_counts: ProfileTabCounts,
     pub viewer_state: ProfileViewerState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileRepositoryList {
+    #[serde(flatten)]
+    pub envelope: ListEnvelope<ProfileRepositoryListItem>,
+    pub filters: ProfileRepositoryFilters,
+    pub available_languages: Vec<ProfileRepositoryFilterOption>,
+    pub available_types: Vec<ProfileRepositoryFilterOption>,
+    pub tab_counts: ProfileTabCounts,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileRepositoryListItem {
+    pub id: Uuid,
+    pub owner: String,
+    pub name: String,
+    pub full_name: String,
+    pub description: Option<String>,
+    pub visibility: String,
+    pub href: String,
+    pub default_branch: String,
+    pub primary_language: Option<ProfileRepositoryLanguage>,
+    pub languages: Vec<ProfileRepositoryLanguage>,
+    pub stars_count: i64,
+    pub forks_count: i64,
+    pub open_issues_count: i64,
+    pub open_pull_requests_count: i64,
+    pub license: Option<ProfileRepositoryLicense>,
+    pub is_archived: bool,
+    pub is_fork: bool,
+    pub is_template: bool,
+    pub is_mirror: bool,
+    pub can_be_sponsored: bool,
+    pub fork_source: Option<ProfileRepositoryForkSource>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileRepositoryLicense {
+    pub slug: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileRepositoryForkSource {
+    pub owner: String,
+    pub name: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileRepositoryFilters {
+    pub query: Option<String>,
+    pub repository_type: String,
+    pub language: Option<String>,
+    pub sort: String,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileRepositoryFilterOption {
+    pub value: String,
+    pub label: String,
+    pub count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -170,6 +245,8 @@ pub enum ProfileError {
     PrivateProfile,
     #[error("report reason is required")]
     BlankReportReason,
+    #[error("{0}")]
+    InvalidRepositoryFilter(String),
     #[error("database error")]
     Sqlx(#[from] sqlx::Error),
 }
@@ -275,6 +352,66 @@ pub async fn public_user_profile(
         tab_counts,
         viewer_state,
     })
+}
+
+pub async fn profile_repositories(
+    pool: &PgPool,
+    username: &str,
+    viewer_user_id: Option<Uuid>,
+    query: ProfileRepositoryListQuery<'_>,
+) -> Result<ProfileRepositoryList, ProfileError> {
+    let profile_user = profile_user_by_login(pool, username)
+        .await?
+        .ok_or(ProfileError::NotFound)?;
+    if profile_user.profile_visibility == "private" {
+        return empty_profile_repository_list(
+            query,
+            ProfileTabCounts {
+                repositories: 0,
+                projects: 0,
+                packages: 0,
+                stars: 0,
+            },
+        );
+    }
+
+    let filters = normalize_repository_filters(query)?;
+    let mut repositories =
+        visible_profile_repository_rows(pool, profile_user.id, viewer_user_id).await?;
+    let available_languages = repository_language_options(&repositories);
+    let available_types = repository_type_options(&repositories);
+    let tab_counts = tab_counts(pool, profile_user.id, viewer_user_id).await?;
+
+    apply_repository_filters(&mut repositories, &filters);
+    sort_profile_repositories(&mut repositories, &filters.sort);
+
+    let total = repositories.len() as i64;
+    let offset = ((filters.page - 1) * filters.page_size) as usize;
+    let limit = filters.page_size as usize;
+    let items = repositories.into_iter().skip(offset).take(limit).collect();
+
+    Ok(ProfileRepositoryList {
+        envelope: ListEnvelope {
+            items,
+            total,
+            page: filters.page,
+            page_size: filters.page_size,
+        },
+        filters,
+        available_languages,
+        available_types,
+        tab_counts,
+    })
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ProfileRepositoryListQuery<'a> {
+    pub query: Option<&'a str>,
+    pub repository_type: Option<&'a str>,
+    pub language: Option<&'a str>,
+    pub sort: Option<&'a str>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
 }
 
 pub async fn follow_user(
@@ -668,6 +805,343 @@ async fn repository_languages(
             byte_count: row.get("byte_count"),
         })
         .collect())
+}
+
+fn empty_profile_repository_list(
+    query: ProfileRepositoryListQuery<'_>,
+    tab_counts: ProfileTabCounts,
+) -> Result<ProfileRepositoryList, ProfileError> {
+    let filters = normalize_repository_filters(query)?;
+    Ok(ProfileRepositoryList {
+        envelope: ListEnvelope {
+            items: Vec::new(),
+            total: 0,
+            page: filters.page,
+            page_size: filters.page_size,
+        },
+        filters,
+        available_languages: Vec::new(),
+        available_types: repository_type_options(&[]),
+        tab_counts,
+    })
+}
+
+fn normalize_repository_filters(
+    query: ProfileRepositoryListQuery<'_>,
+) -> Result<ProfileRepositoryFilters, ProfileError> {
+    let pagination = normalize_pagination(query.page, query.page_size);
+    let normalized_query = query.query.and_then(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.chars().take(120).collect::<String>())
+    });
+    let repository_type = match query.repository_type.unwrap_or("all").trim() {
+        "" | "all" => "all",
+        "source" | "sources" => "sources",
+        "fork" | "forks" => "forks",
+        "archived" => "archived",
+        "sponsorable" | "can-be-sponsored" | "can_be_sponsored" => "can-be-sponsored",
+        "mirror" | "mirrors" => "mirrors",
+        "template" | "templates" => "templates",
+        other => {
+            return Err(ProfileError::InvalidRepositoryFilter(format!(
+                "unsupported repository type filter: {other}"
+            )));
+        }
+    };
+    let language = query.language.and_then(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty() && trimmed != "all").then(|| trimmed.chars().take(80).collect())
+    });
+    let sort = match query.sort.unwrap_or("updated").trim() {
+        "" | "updated" | "last-updated" => "updated",
+        "name" => "name",
+        "stars" => "stars",
+        other => {
+            return Err(ProfileError::InvalidRepositoryFilter(format!(
+                "unsupported repository sort: {other}"
+            )));
+        }
+    };
+
+    Ok(ProfileRepositoryFilters {
+        query: normalized_query,
+        repository_type: repository_type.to_owned(),
+        language,
+        sort: sort.to_owned(),
+        page: pagination.page,
+        page_size: pagination.page_size,
+    })
+}
+
+async fn visible_profile_repository_rows(
+    pool: &PgPool,
+    user_id: Uuid,
+    viewer_user_id: Option<Uuid>,
+) -> Result<Vec<ProfileRepositoryListItem>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
+        SELECT repositories.id,
+               COALESCE(owner_user.username, organizations.slug) AS owner_login,
+               repositories.name,
+               repositories.description,
+               repositories.visibility,
+               repositories.default_branch,
+               repositories.is_archived,
+               repositories.is_template,
+               repositories.is_mirror,
+               repositories.can_be_sponsored,
+               repositories.license_template_slug,
+               license_templates.display_name AS license_name,
+               repositories.created_at,
+               repositories.updated_at,
+               COALESCE(star_counts.total, 0)::bigint AS stars_count,
+               COALESCE(fork_counts.total, 0)::bigint AS forks_count,
+               COALESCE(open_issue_counts.total, 0)::bigint AS open_issues_count,
+               COALESCE(open_pull_counts.total, 0)::bigint AS open_pull_requests_count,
+               source_repositories.name AS fork_source_name,
+               COALESCE(source_owner_user.username, source_organizations.slug) AS fork_source_owner
+        FROM repositories
+        LEFT JOIN users AS owner_user ON owner_user.id = repositories.owner_user_id
+        LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
+        LEFT JOIN license_templates ON license_templates.slug = repositories.license_template_slug
+        LEFT JOIN (
+            SELECT repository_id, COUNT(*) AS total
+            FROM repository_stars
+            GROUP BY repository_id
+        ) star_counts ON star_counts.repository_id = repositories.id
+        LEFT JOIN (
+            SELECT source_repository_id AS repository_id, COUNT(*) AS total
+            FROM repository_forks
+            GROUP BY source_repository_id
+        ) fork_counts ON fork_counts.repository_id = repositories.id
+        LEFT JOIN (
+            SELECT repository_id, COUNT(*) AS total
+            FROM issues
+            WHERE state = 'open'
+            GROUP BY repository_id
+        ) open_issue_counts ON open_issue_counts.repository_id = repositories.id
+        LEFT JOIN (
+            SELECT repository_id, COUNT(*) AS total
+            FROM pull_requests
+            WHERE state = 'open'
+            GROUP BY repository_id
+        ) open_pull_counts ON open_pull_counts.repository_id = repositories.id
+        LEFT JOIN repository_forks AS fork_edge
+          ON fork_edge.fork_repository_id = repositories.id
+        LEFT JOIN repositories AS source_repositories
+          ON source_repositories.id = fork_edge.source_repository_id
+        LEFT JOIN users AS source_owner_user
+          ON source_owner_user.id = source_repositories.owner_user_id
+        LEFT JOIN organizations AS source_organizations
+          ON source_organizations.id = source_repositories.owner_organization_id
+        WHERE repositories.owner_user_id = $1
+          AND (
+            repositories.visibility = 'public'
+            OR repositories.owner_user_id = $2
+            OR EXISTS (
+                SELECT 1
+                FROM repository_permissions
+                WHERE repository_permissions.repository_id = repositories.id
+                  AND repository_permissions.user_id = $2
+                  AND repository_permissions.role IN ('owner', 'admin', 'write', 'read')
+            )
+          )
+        ORDER BY repositories.updated_at DESC, lower(repositories.name) ASC
+        "#,
+    )
+    .bind(user_id)
+    .bind(viewer_user_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut repositories = Vec::with_capacity(rows.len());
+    for row in rows {
+        let repository_id = row.get("id");
+        let owner: String = row.get("owner_login");
+        let name: String = row.get("name");
+        let languages = repository_languages(pool, repository_id).await?;
+        let license_slug = row.try_get::<Option<String>, _>("license_template_slug")?;
+        let license = license_slug.map(|slug| ProfileRepositoryLicense {
+            slug,
+            name: row
+                .try_get::<Option<String>, _>("license_name")
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "License".to_owned()),
+        });
+        let fork_source_owner = row.try_get::<Option<String>, _>("fork_source_owner")?;
+        let fork_source_name = row.try_get::<Option<String>, _>("fork_source_name")?;
+        let fork_source = fork_source_owner
+            .zip(fork_source_name)
+            .map(|(owner, name)| ProfileRepositoryForkSource {
+                href: format!("/{owner}/{name}"),
+                owner,
+                name,
+            });
+
+        repositories.push(ProfileRepositoryListItem {
+            id: repository_id,
+            owner: owner.clone(),
+            name: name.clone(),
+            full_name: format!("{owner}/{name}"),
+            description: row.get("description"),
+            visibility: row.get("visibility"),
+            href: format!("/{owner}/{name}"),
+            default_branch: row.get("default_branch"),
+            primary_language: languages.first().cloned(),
+            languages,
+            stars_count: row.get("stars_count"),
+            forks_count: row.get("forks_count"),
+            open_issues_count: row.get("open_issues_count"),
+            open_pull_requests_count: row.get("open_pull_requests_count"),
+            license,
+            is_archived: row.get("is_archived"),
+            is_fork: fork_source.is_some(),
+            is_template: row.get("is_template"),
+            is_mirror: row.get("is_mirror"),
+            can_be_sponsored: row.get("can_be_sponsored"),
+            fork_source,
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+        });
+    }
+
+    Ok(repositories)
+}
+
+fn repository_language_options(
+    repositories: &[ProfileRepositoryListItem],
+) -> Vec<ProfileRepositoryFilterOption> {
+    let mut counts = std::collections::BTreeMap::<String, i64>::new();
+    for repository in repositories {
+        for language in &repository.languages {
+            *counts.entry(language.language.clone()).or_default() += 1;
+        }
+    }
+    counts
+        .into_iter()
+        .map(|(language, count)| ProfileRepositoryFilterOption {
+            value: language.clone(),
+            label: language,
+            count,
+        })
+        .collect()
+}
+
+fn repository_type_options(
+    repositories: &[ProfileRepositoryListItem],
+) -> Vec<ProfileRepositoryFilterOption> {
+    let mut options = vec![
+        ("all", "All", repositories.len() as i64),
+        (
+            "sources",
+            "Sources",
+            repositories.iter().filter(|repo| !repo.is_fork).count() as i64,
+        ),
+        (
+            "forks",
+            "Forks",
+            repositories.iter().filter(|repo| repo.is_fork).count() as i64,
+        ),
+        (
+            "archived",
+            "Archived",
+            repositories.iter().filter(|repo| repo.is_archived).count() as i64,
+        ),
+        (
+            "can-be-sponsored",
+            "Can be sponsored",
+            repositories
+                .iter()
+                .filter(|repo| repo.can_be_sponsored)
+                .count() as i64,
+        ),
+        (
+            "mirrors",
+            "Mirrors",
+            repositories.iter().filter(|repo| repo.is_mirror).count() as i64,
+        ),
+        (
+            "templates",
+            "Templates",
+            repositories.iter().filter(|repo| repo.is_template).count() as i64,
+        ),
+    ];
+    options
+        .drain(..)
+        .map(|(value, label, count)| ProfileRepositoryFilterOption {
+            value: value.to_owned(),
+            label: label.to_owned(),
+            count,
+        })
+        .collect()
+}
+
+fn apply_repository_filters(
+    repositories: &mut Vec<ProfileRepositoryListItem>,
+    filters: &ProfileRepositoryFilters,
+) {
+    if let Some(query) = &filters.query {
+        let needle = query.to_ascii_lowercase();
+        repositories.retain(|repo| {
+            repo.name.to_ascii_lowercase().contains(&needle)
+                || repo
+                    .description
+                    .as_deref()
+                    .unwrap_or_default()
+                    .to_ascii_lowercase()
+                    .contains(&needle)
+                || repo
+                    .languages
+                    .iter()
+                    .any(|language| language.language.to_ascii_lowercase().contains(&needle))
+        });
+    }
+    if let Some(language) = &filters.language {
+        repositories.retain(|repo| {
+            repo.languages
+                .iter()
+                .any(|repo_language| repo_language.language.eq_ignore_ascii_case(language))
+        });
+    }
+    match filters.repository_type.as_str() {
+        "all" => {}
+        "sources" => repositories.retain(|repo| !repo.is_fork),
+        "forks" => repositories.retain(|repo| repo.is_fork),
+        "archived" => repositories.retain(|repo| repo.is_archived),
+        "can-be-sponsored" => repositories.retain(|repo| repo.can_be_sponsored),
+        "mirrors" => repositories.retain(|repo| repo.is_mirror),
+        "templates" => repositories.retain(|repo| repo.is_template),
+        _ => {}
+    }
+}
+
+fn sort_profile_repositories(repositories: &mut [ProfileRepositoryListItem], sort: &str) {
+    match sort {
+        "name" => repositories.sort_by(|a, b| {
+            a.name
+                .to_ascii_lowercase()
+                .cmp(&b.name.to_ascii_lowercase())
+                .then_with(|| a.updated_at.cmp(&b.updated_at).reverse())
+        }),
+        "stars" => repositories.sort_by(|a, b| {
+            b.stars_count
+                .cmp(&a.stars_count)
+                .then_with(|| b.updated_at.cmp(&a.updated_at))
+                .then_with(|| {
+                    a.name
+                        .to_ascii_lowercase()
+                        .cmp(&b.name.to_ascii_lowercase())
+                })
+        }),
+        _ => repositories.sort_by(|a, b| {
+            b.updated_at.cmp(&a.updated_at).then_with(|| {
+                a.name
+                    .to_ascii_lowercase()
+                    .cmp(&b.name.to_ascii_lowercase())
+            })
+        }),
+    }
 }
 
 async fn achievements(

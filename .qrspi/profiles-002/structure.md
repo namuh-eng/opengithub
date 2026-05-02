@@ -6,7 +6,7 @@
 
 ## Phase 1: Profile Repository List API Contract - owned repositories, filters, sort, and tab counts
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add a real Rust/Postgres read contract for `/{user}?tab=repositories`. The endpoint must resolve usernames case-insensitively, honor public/private repository visibility for anonymous and signed-in viewers, support URL-backed query parameters, and return dense repository rows with badges and metadata.
 
