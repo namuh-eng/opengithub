@@ -26,7 +26,7 @@
 
 ## Phase 2: Editorial Webhooks List and Detail Shell - empty state, hook rows, and delivery panels
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the `/[owner]/[repo]/settings/hooks` placeholder with a real Editorial Webhooks settings surface backed by the Phase 1 API. The page must cover the empty state, hook list, hook detail, and recent delivery detail panels without GitHub/Primer visual regression.
 

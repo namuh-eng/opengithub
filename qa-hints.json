@@ -3502,5 +3502,24 @@
       "Check long branch patterns, long ruleset names, and dense bypass actor lists for wrapping on mobile and desktop.",
       "Recheck private/internal repository leakage for anonymous users, non-member signed-in users, direct collaborators, and organization members."
     ]
+  },
+  {
+    "feature_id": "settings-004",
+    "tests_written": [
+      "Completed Phase 2 Editorial Webhooks List and Detail Shell without marking settings-004 build_pass=true.",
+      "Added typed frontend webhook settings, hook detail, and delivery detail DTOs plus cookie-backed GET helpers for /api/repos/{owner}/{repo}/settings/hooks.",
+      "Replaced the Webhooks settings placeholder with a real RepositorySettingsShell page and added /settings/hooks/{hookId} detail routing with URL-backed delivery selection.",
+      "Added RepositoryWebhookSettingsPage with empty state, Add webhook route, hook rows, active/secret/status/event chips, detail tabs, delivery GUID rows, request/response panels, forbidden/unavailable states, and no inert anchors.",
+      "Added focused Vitest coverage for empty state, hook rows, detail delivery panels, forbidden redaction, add-event contract view, no dead controls, and Editorial primitive/token usage.",
+      "Added focused Playwright smoke that seeds an admin repository, creates a webhook through the Rust API, verifies list/detail/delivery panels, checks mobile no-overflow, and saves settings-004 phase 2 screenshots.",
+      "Verification passed: focused webhook Vitest, web tsc --noEmit, TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check, same-env make test with Cargo tests plus 289 frontend tests, focused Playwright repository-settings-hooks smoke, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "The focused browser smoke required manually applying the existing 202605030044_repository_webhook_settings migration to the shared local test database because that database was missing the Phase 1 webhook settings columns.",
+      "Full make test-e2e remains blocked by the pre-existing shared local DB checksum issue: migration 202605030041 was previously applied but has been modified; 22 tests passed and 73 signed-in seeded tests failed during seed startup.",
+      "Mutation UI is intentionally deferred to Phase 3; QA should revisit create/edit/delete/ping/redeliver server-confirmed UI flows after that phase.",
+      "Delivery worker behavior is deferred to Phase 4; queued ping rows are visible, but real outbound HTTP delivery, retries, HMAC signing, payload bounds, and retention cleanup need later QA.",
+      "Stress private repository leakage, long payload URLs, long headers/body excerpts, failed delivery panels, mobile wrapping, concurrent admin edits, and secret redaction in audit/API responses."
+    ]
   }
 ]

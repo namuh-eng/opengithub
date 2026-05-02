@@ -4,30 +4,43 @@ import { RepositoryUnavailablePage } from "@/components/RepositoryUnavailablePag
 import { RepositoryWebhookSettingsPage } from "@/components/RepositoryWebhookSettingsPage";
 import {
   getRepository,
+  getRepositoryWebhookDeliveryDetail,
+  getRepositoryWebhookDetail,
   getRepositoryWebhookSettings,
   getSessionAndShellContext,
 } from "@/lib/server-session";
 
-type RepositorySettingsHooksPageProps = {
-  params: Promise<{ owner: string; repo: string }>;
-  searchParams: Promise<{ new?: string | string[] }>;
+type RepositoryWebhookDetailPageProps = {
+  params: Promise<{ hookId: string; owner: string; repo: string }>;
+  searchParams: Promise<{ delivery?: string | string[] }>;
 };
 
-export default async function RepositorySettingsHooksPage({
+export default async function RepositoryWebhookDetailPage({
   params,
   searchParams,
-}: RepositorySettingsHooksPageProps) {
-  const { owner, repo } = await params;
+}: RepositoryWebhookDetailPageProps) {
+  const { hookId, owner, repo } = await params;
   const query = await searchParams;
+  const selectedDelivery = Array.isArray(query.delivery)
+    ? query.delivery[0]
+    : query.delivery;
   const ownerLogin = decodeURIComponent(owner);
   const repositoryName = decodeURIComponent(repo);
-  const newValue = Array.isArray(query.new) ? query.new[0] : query.new;
-  const mode = newValue === "webhook" ? "new" : undefined;
+  const webhookId = decodeURIComponent(hookId);
   const { session, shellContext } = await getSessionAndShellContext();
-  const [repository, settingsResult] = await Promise.all([
+  const [repository, settingsResult, detailResult] = await Promise.all([
     getRepository(ownerLogin, repositoryName),
     getRepositoryWebhookSettings(ownerLogin, repositoryName),
+    getRepositoryWebhookDetail(ownerLogin, repositoryName, webhookId),
   ]);
+  const deliveryResult = selectedDelivery
+    ? await getRepositoryWebhookDeliveryDetail(
+        ownerLogin,
+        repositoryName,
+        webhookId,
+        selectedDelivery,
+      )
+    : null;
 
   return (
     <AppShell session={session} shellContext={shellContext}>
@@ -38,7 +51,8 @@ export default async function RepositorySettingsHooksPage({
           title="Webhooks"
         >
           <RepositoryWebhookSettingsPage
-            mode={mode}
+            deliveryResult={deliveryResult}
+            detailResult={detailResult}
             repository={repository}
             settingsResult={settingsResult}
           />

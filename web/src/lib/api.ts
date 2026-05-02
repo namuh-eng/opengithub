@@ -1139,6 +1139,87 @@ export type RepositoryBranchSettingsFetchResult =
   | { ok: true; settings: RepositoryBranchSettings }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type WebhookContentType = "json" | "form" | string;
+
+export type WebhookEventSelection = "push" | "everything" | "selected" | string;
+
+export type WebhookDeliveryStatus = "queued" | "delivered" | "failed" | string;
+
+export type WebhookEventDefinition = {
+  name: string;
+  label: string;
+  description: string;
+};
+
+export type WebhookDeliverySummary = {
+  id: string;
+  guid: string;
+  event: string;
+  status: WebhookDeliveryStatus;
+  attemptCount: number;
+  responseStatus: number | null;
+  durationMs: number | null;
+  redeliveryOfId: string | null;
+  deliveredAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WebhookDeliveryDetail = {
+  summary: WebhookDeliverySummary;
+  requestHeaders: unknown;
+  requestBodyExcerpt: string | null;
+  requestBodyStorageKey: string | null;
+  responseHeaders: unknown;
+  responseBodyExcerpt: string | null;
+  responseBodyStorageKey: string | null;
+  terminalError: string | null;
+};
+
+export type RepositoryWebhookSummary = {
+  id: string;
+  payloadUrl: string;
+  contentType: WebhookContentType;
+  sslVerify: boolean;
+  eventSelection: WebhookEventSelection;
+  events: string[];
+  active: boolean;
+  disabledReason: string | null;
+  secretConfigured: boolean;
+  secretUpdatedAt: string | null;
+  latestDelivery: WebhookDeliverySummary | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RepositoryWebhookSettings = {
+  repositoryId: string;
+  ownerLogin: string;
+  name: string;
+  visibility: RepositoryVisibility;
+  viewerPermission: string;
+  canEdit: boolean;
+  eventDefinitions: WebhookEventDefinition[];
+  hooks: RepositoryWebhookSummary[];
+};
+
+export type RepositoryWebhookDetail = {
+  hook: RepositoryWebhookSummary;
+  deliveries: WebhookDeliverySummary[];
+};
+
+export type RepositoryWebhookSettingsFetchResult =
+  | { ok: true; settings: RepositoryWebhookSettings }
+  | { ok: false; status: number; code: string | null; message: string };
+
+export type RepositoryWebhookDetailFetchResult =
+  | { ok: true; detail: RepositoryWebhookDetail }
+  | { ok: false; status: number; code: string | null; message: string };
+
+export type WebhookDeliveryDetailFetchResult =
+  | { ok: true; delivery: WebhookDeliveryDetail }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type BranchPolicyMutationRequirements =
   Partial<BranchPolicyRequirements>;
 
@@ -5567,6 +5648,142 @@ export async function getRepositoryBranchSettingsFromCookie(
   return {
     ok: true,
     settings: (await response.json()) as RepositoryBranchSettings,
+  };
+}
+
+function repositorySettingsErrorResult(
+  response: Response,
+  fallback: string,
+): Promise<{
+  ok: false;
+  status: number;
+  code: string | null;
+  message: string;
+}> {
+  return response
+    .json()
+    .then((body: { error?: { code?: string; message?: string } }) => ({
+      ok: false as const,
+      status: response.status,
+      code: body.error?.code ?? null,
+      message: body.error?.message ?? fallback,
+    }))
+    .catch(() => ({
+      ok: false as const,
+      status: response.status,
+      code: null,
+      message: fallback,
+    }));
+}
+
+export async function getRepositoryWebhookSettingsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+): Promise<RepositoryWebhookSettingsFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/hooks`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository webhook settings are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    return repositorySettingsErrorResult(
+      response,
+      "Repository webhook settings are unavailable right now.",
+    );
+  }
+
+  return {
+    ok: true,
+    settings: (await response.json()) as RepositoryWebhookSettings,
+  };
+}
+
+export async function getRepositoryWebhookDetailFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  hookId: string,
+): Promise<RepositoryWebhookDetailFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/hooks/${encodeURIComponent(hookId)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository webhook detail is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    return repositorySettingsErrorResult(
+      response,
+      "Repository webhook detail is unavailable right now.",
+    );
+  }
+
+  return {
+    ok: true,
+    detail: (await response.json()) as RepositoryWebhookDetail,
+  };
+}
+
+export async function getRepositoryWebhookDeliveryDetailFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  hookId: string,
+  deliveryId: string,
+): Promise<WebhookDeliveryDetailFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/hooks/${encodeURIComponent(hookId)}/deliveries/${encodeURIComponent(deliveryId)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository webhook delivery is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    return repositorySettingsErrorResult(
+      response,
+      "Repository webhook delivery is unavailable right now.",
+    );
+  }
+
+  return {
+    ok: true,
+    delivery: (await response.json()) as WebhookDeliveryDetail,
   };
 }
 

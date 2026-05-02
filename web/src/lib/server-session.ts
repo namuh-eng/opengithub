@@ -39,6 +39,9 @@ import {
   getRepositoryPullRequestTimelineFromCookie,
   getRepositoryRefsFromCookie,
   getRepositorySettingsFromCookie,
+  getRepositoryWebhookDeliveryDetailFromCookie,
+  getRepositoryWebhookDetailFromCookie,
+  getRepositoryWebhookSettingsFromCookie,
   getSearchSuggestionsFromCookie,
   getSessionFromHeaders,
   getUserPackagesFromCookie,
@@ -227,6 +230,48 @@ export async function getRepositoryBranchSettings(owner: string, repo: string) {
     requestHeaders.get("cookie"),
     owner,
     repo,
+  );
+}
+
+export async function getRepositoryWebhookSettings(
+  owner: string,
+  repo: string,
+) {
+  const requestHeaders = await headers();
+  return getRepositoryWebhookSettingsFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+  );
+}
+
+export async function getRepositoryWebhookDetail(
+  owner: string,
+  repo: string,
+  hookId: string,
+) {
+  const requestHeaders = await headers();
+  return getRepositoryWebhookDetailFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    hookId,
+  );
+}
+
+export async function getRepositoryWebhookDeliveryDetail(
+  owner: string,
+  repo: string,
+  hookId: string,
+  deliveryId: string,
+) {
+  const requestHeaders = await headers();
+  return getRepositoryWebhookDeliveryDetailFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    hookId,
+    deliveryId,
   );
 }
 

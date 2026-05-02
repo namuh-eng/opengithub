@@ -1,3 +1,13 @@
+2026-05-03 - settings-004 phase 2 Editorial webhooks list/detail shell
+
+- Completed Phase 2 from `.qrspi/settings-004/structure.md`: `/[owner]/[repo]/settings/hooks` now fetches the Phase 1 Rust webhook settings contract server-side and renders a real Editorial Webhooks settings surface instead of a placeholder.
+- Added typed frontend DTOs and cookie-backed server helpers for webhook settings, hook detail, and delivery detail reads, including forbidden/unavailable result states.
+- Added `RepositoryWebhookSettingsPage` plus `/settings/hooks/[hookId]` routing with empty state, Add webhook route, hook rows, active/secret/status/event chips, content type/SSL metadata, detail tabs, delivery GUID rows, request/response panels, and redeliver entry links.
+- Added focused Vitest coverage for empty state, hook rows, detail delivery panels, forbidden redaction, new-webhook event contract view, no inert anchors/buttons, and Editorial primitive/token usage.
+- Added focused Playwright smoke for signed-in admin webhook list/detail/delivery panels; it seeds a repository, creates a webhook through the Rust API, verifies list/detail/mobile surfaces, and saves `ralph/screenshots/build/settings-004-phase2-hooks-list.jpg`, `settings-004-phase2-hooks-detail.jpg`, and `settings-004-phase2-hooks-mobile.jpg`.
+- Verification passed: focused webhook Vitest; `web` `tsc --noEmit`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 289 frontend tests; focused Playwright `repository-settings-hooks.spec.ts`; mandatory Editorial banned-value scan returned zero matches.
+- Focused browser smoke required manually applying existing migration `202605030044_repository_webhook_settings.up.sql` to the shared local test DB because that DB was missing Phase 1 webhook settings columns. Full `make test-e2e` was attempted and 22 tests passed, then 73 signed-in seeded tests failed before their scenarios because the shared local DB still reports `migration 202605030041 was previously applied but has been modified`. `prd.json` remains `build_pass:false` because Phases 3-5 remain.
+
 2026-05-03 - settings-003 phase 3 branch policy mutations
 
 - Completed Phase 3 from `.qrspi/settings-003/structure.md`: Branches settings now supports real server-confirmed branch protection rule and ruleset create/update/delete flows without marking `settings-003.build_pass=true`.
