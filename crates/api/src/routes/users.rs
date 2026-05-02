@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     routing::{get, post, put},
     Json, Router,
@@ -82,6 +82,7 @@ pub async fn public_profile(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(username): Path<String>,
+    Query(query): Query<PublicProfileQuery>,
 ) -> Result<Json<PublicUserProfile>, (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
@@ -90,11 +91,17 @@ pub async fn public_profile(
         &username,
         actor.map(|user| user.id),
         &state.config.app_url,
+        query.year,
     )
     .await
     .map_err(map_profile_error)?;
 
     Ok(Json(profile))
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PublicProfileQuery {
+    pub year: Option<i32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

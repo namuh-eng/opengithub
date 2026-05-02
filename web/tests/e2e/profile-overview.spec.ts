@@ -82,6 +82,12 @@ test("public profile overview renders data, tabs, and pinned navigation", async 
   await expect(page.getByRole("heading", { name: "README" })).toBeVisible();
   await expect(page.getByText(/Seeded profile overview/)).toBeVisible();
   await expect(
+    page.getByRole("heading", {
+      name: new RegExp(`contributions in ${new Date().getFullYear()}`),
+    }),
+  ).toBeVisible();
+  await expect(page.getByLabel(/contributions on/).first()).toBeVisible();
+  await expect(
     page.getByRole("navigation", { name: "Profile sections" }),
   ).toBeVisible();
 
@@ -107,11 +113,26 @@ test("public profile overview renders data, tabs, and pinned navigation", async 
   await expect(
     page.getByRole("heading", { name: /Stars for dash-/ }),
   ).toBeVisible();
+  await page.goto(
+    `${profileHref(seeded)}?year=${new Date().getFullYear() - 1}`,
+  );
+  await expect(
+    page.getByRole("link", { name: String(new Date().getFullYear() - 1) }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(
+    page.getByText(/No public contributions are visible/),
+  ).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(profileHref(seeded));
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  );
+  expect(overflow).toBe(false);
   await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
 
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/profiles-001-phase2-overview.jpg",
+    path: "../ralph/screenshots/build/profiles-001-phase4-contributions.jpg",
   });
 });
 

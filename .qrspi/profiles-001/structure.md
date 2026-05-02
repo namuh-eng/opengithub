@@ -59,7 +59,7 @@
 
 ## Phase 4: Contribution Graph and Accessibility - heatmap cells, tooltips, year selector, and responsive behavior
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Complete the contribution graph and profile overview ergonomics. Contribution cells must expose date/count labels to screen readers, hover/focus tooltips, month labels, intensity legend, annual total, and a year selector that updates URL/data. Private profiles must hide the graph entirely. Mobile layouts must avoid horizontal overflow while keeping the identity column and main content scannable.
 

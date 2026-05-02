@@ -104,6 +104,7 @@ function profile(overrides: ProfileOverrides = {}): PublicUserProfile {
     ],
     contributionSummary: {
       total: 84,
+      year: 2026,
       days: [
         { date: "2026-04-29", count: 0, intensity: 0 },
         { date: "2026-04-30", count: 3, intensity: 2 },
@@ -182,10 +183,11 @@ describe("UserProfilePage", () => {
     );
     expect(screen.getByText("Archive contributor")).toBeVisible();
     expect(
-      screen.getByRole("img", {
-        name: "8 contributions on 2026-05-01",
-      }),
+      screen.getByLabelText("8 contributions on May 1, 2026"),
     ).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "2026", current: "page" }),
+    ).toHaveAttribute("href", "/ashley?year=2026");
     expect(container.querySelector('a[href="#"], a:not([href])')).toBeNull();
   });
 
@@ -226,6 +228,7 @@ describe("UserProfilePage", () => {
           organizations: [],
           contributionSummary: {
             total: 0,
+            year: 2026,
             days: [],
             recentEvents: [],
           },

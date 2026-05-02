@@ -1,3 +1,13 @@
+2026-05-02 - profiles-001 phase 4 contribution graph accessibility and year navigation
+
+- Completed Phase 4 from `.qrspi/profiles-001/structure.md`: profile contribution data is now year-bounded and the public profile overview renders a dedicated accessible contribution graph.
+- Added `?year=` support to `GET /api/users/{username}/profile`; the Rust domain clamps requested years, filters contribution days/events by year, returns the selected year in `contributionSummary`, and preserves private-profile redaction.
+- Added `web/src/components/ProfileContributionGraph.tsx` with month labels, focusable labeled contribution cells, native title tooltip text, intensity legend, annual total, URL-backed year selector, and empty-year state using Editorial tokens only.
+- Updated the Next profile route and server fetch helper to forward the year query, and added focused Vitest coverage for graph accessibility, tooltip labels, year links, empty states, and no inert anchors.
+- Verification passed: focused `profile_overview_contract` compiled and passed with DB scenarios self-skipped because localhost:55432 was unreachable; focused `web/tests/user-profile-page.test.tsx` + `web/tests/user-profile-contributions.test.tsx`; `make check`; `make test` with Cargo tests plus 226 frontend tests; `make test-e2e` without DB override with 18 Playwright tests; mandatory Editorial banned-value scan returned zero matches.
+- Focused profile Playwright smoke was attempted with `TEST_DATABASE_URL`/`DATABASE_URL` on `localhost:55432`, but `dashboard_e2e_seed` failed with `pool timed out while waiting for an open connection`; localhost:55432 and localhost:5432 were not accepting Postgres connections, so no Phase 4 screenshot was captured.
+- Marked Phase 4 as done in `.qrspi/profiles-001/structure.md`; `prd.json` remains `build_pass: false` because Phase 5 remains.
+
 2026-05-02 - profiles-001 phase 1 profile overview API contract
 
 - Completed Phase 1 from `.qrspi/profiles-001/structure.md`: added the public profile overview API contract for `GET /api/users/{username}/profile`.

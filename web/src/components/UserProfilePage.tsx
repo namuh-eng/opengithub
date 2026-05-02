@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { AppShellFrame } from "@/components/AppShellFrame";
+import { ProfileContributionGraph } from "@/components/ProfileContributionGraph";
 import { QueryTabNavigation } from "@/components/QueryTabNavigation";
 import { UserProfileActions } from "@/components/UserProfileActions";
 import type {
@@ -323,64 +324,17 @@ function Achievements({ profile }: { profile: PublicUserProfile }) {
   );
 }
 
-function ContributionSummary({ profile }: { profile: PublicUserProfile }) {
-  if (profile.identity.isPrivate) {
-    return null;
-  }
-
-  const days = profile.contributionSummary.days.slice(-84);
-
-  return (
-    <section className="card p-5" aria-labelledby="profile-contributions">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="t-label" style={{ color: "var(--ink-3)" }}>
-            Contributions
-          </p>
-          <h2 className="t-h2 mt-1" id="profile-contributions">
-            {profile.contributionSummary.total.toLocaleString()} contributions
-            this year
-          </h2>
-        </div>
-        <span className="chip soft">Overview</span>
-      </div>
-      {days.length > 0 ? (
-        <fieldset className="mt-4 grid grid-cols-[repeat(12,minmax(0,1fr))] gap-1 border-0 p-0 sm:grid-cols-[repeat(21,minmax(0,1fr))]">
-          <legend className="sr-only">
-            {profile.contributionSummary.total.toLocaleString()} contributions
-            this year
-          </legend>
-          {days.map((day) => (
-            <span
-              aria-label={`${day.count} contributions on ${day.date}`}
-              className="h-3 rounded-[2px] border"
-              key={day.date}
-              role="img"
-              style={{
-                background:
-                  day.intensity > 0 ? "var(--accent-soft)" : "var(--surface-2)",
-                borderColor: "var(--line-soft)",
-                opacity: day.intensity > 0 ? 0.35 + day.intensity * 0.13 : 1,
-              }}
-              title={`${day.count} contributions on ${day.date}`}
-            />
-          ))}
-        </fieldset>
-      ) : (
-        <p className="t-body mt-4" style={{ color: "var(--ink-3)" }}>
-          No public contributions are visible for this period.
-        </p>
-      )}
-    </section>
-  );
-}
-
 function Overview({ profile }: { profile: PublicUserProfile }) {
   return (
     <div className="grid gap-6">
       <ReadmeCard profile={profile} />
       <PinnedRepositories profile={profile} />
-      <ContributionSummary profile={profile} />
+      {!profile.identity.isPrivate ? (
+        <ProfileContributionGraph
+          login={profile.identity.login}
+          summary={profile.contributionSummary}
+        />
+      ) : null}
     </div>
   );
 }

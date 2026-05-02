@@ -19,6 +19,15 @@ function firstParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function numericYear(value: string | string[] | undefined) {
+  const first = firstParam(value);
+  if (!first) {
+    return undefined;
+  }
+  const year = Number.parseInt(first, 10);
+  return Number.isFinite(year) ? year : undefined;
+}
+
 export default async function ProfilePage({
   params,
   searchParams,
@@ -28,7 +37,9 @@ export default async function ProfilePage({
   );
   const ownerLogin = decodeURIComponent(owner);
   const activeTab = activeProfileTab(firstParam(queryParams?.tab));
-  const profile = await getPublicUserProfile(ownerLogin);
+  const profile = await getPublicUserProfile(ownerLogin, {
+    year: numericYear(queryParams?.year),
+  });
 
   if (profile) {
     return (

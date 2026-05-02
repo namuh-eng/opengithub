@@ -61,9 +61,16 @@ export async function getAppShellContext() {
   return getAppShellContextFromCookie(requestHeaders.get("cookie"));
 }
 
-export async function getPublicUserProfile(username: string) {
+export async function getPublicUserProfile(
+  username: string,
+  options: { year?: number } = {},
+) {
   const requestHeaders = await headers();
-  return getPublicUserProfileFromCookie(requestHeaders.get("cookie"), username);
+  return getPublicUserProfileFromCookie(
+    requestHeaders.get("cookie"),
+    username,
+    options,
+  );
 }
 
 export async function searchGlobal(query: GlobalSearchQuery) {

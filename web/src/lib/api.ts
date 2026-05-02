@@ -85,6 +85,7 @@ export type ProfileOrganization = {
 
 export type ProfileContributionSummary = {
   total: number;
+  year: number;
   days: ProfileContributionDay[];
   recentEvents: ProfileContributionEvent[];
 };
@@ -2247,16 +2248,20 @@ export async function getAppShellContextFromCookie(
 export async function getPublicUserProfileFromCookie(
   cookie: string | null | undefined,
   username: string,
+  options: { year?: number } = {},
 ): Promise<PublicUserProfile | null> {
   let response: Response;
   try {
-    response = await fetch(
+    const url = new URL(
       `${apiBaseUrl()}/api/users/${encodeURIComponent(username)}/profile`,
-      {
-        headers: cookie ? { cookie } : undefined,
-        cache: "no-store",
-      },
     );
+    if (options.year) {
+      url.searchParams.set("year", String(options.year));
+    }
+    response = await fetch(url, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
   } catch {
     return null;
   }

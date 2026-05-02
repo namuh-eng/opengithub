@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx::{PgPool, Row};
@@ -93,6 +93,7 @@ pub struct ProfileOrganization {
 #[serde(rename_all = "camelCase")]
 pub struct ProfileContributionSummary {
     pub total: i64,
+    pub year: i32,
     pub days: Vec<ProfileContributionDay>,
     pub recent_events: Vec<ProfileContributionEvent>,
 }
@@ -191,6 +192,7 @@ pub async fn public_user_profile(
     username: &str,
     viewer_user_id: Option<Uuid>,
     app_url: &url::Url,
+    contribution_year: Option<i32>,
 ) -> Result<PublicUserProfile, ProfileError> {
     let profile_user = profile_user_by_login(pool, username)
         .await?
@@ -224,10 +226,11 @@ pub async fn public_user_profile(
         Vec::new()
     };
     let contribution_summary = if public_details_visible {
-        contribution_summary(pool, profile_user.id, viewer_user_id).await?
+        contribution_summary(pool, profile_user.id, viewer_user_id, contribution_year).await?
     } else {
         ProfileContributionSummary {
             total: 0,
+            year: clamped_contribution_year(contribution_year),
             days: Vec::new(),
             recent_events: Vec::new(),
         }
@@ -738,17 +741,24 @@ async fn contribution_summary(
     pool: &PgPool,
     user_id: Uuid,
     viewer_user_id: Option<Uuid>,
+    requested_year: Option<i32>,
 ) -> Result<ProfileContributionSummary, sqlx::Error> {
+    let year = clamped_contribution_year(requested_year);
+    let start = NaiveDate::from_ymd_opt(year, 1, 1).expect("valid contribution year start");
+    let end = NaiveDate::from_ymd_opt(year, 12, 31).expect("valid contribution year end");
     let day_rows = sqlx::query(
         r#"
         SELECT day, contribution_count::bigint AS contribution_count
         FROM profile_contribution_days
         WHERE user_id = $1
-          AND day >= (CURRENT_DATE - INTERVAL '370 days')
+          AND day >= $2
+          AND day <= $3
         ORDER BY day ASC
         "#,
     )
     .bind(user_id)
+    .bind(start)
+    .bind(end)
     .fetch_all(pool)
     .await?;
     let mut total = 0;
@@ -764,10 +774,12 @@ async fn contribution_summary(
             }
         })
         .collect();
-    let recent_events = recent_contribution_events(pool, user_id, viewer_user_id).await?;
+    let recent_events =
+        recent_contribution_events(pool, user_id, viewer_user_id, start, end).await?;
 
     Ok(ProfileContributionSummary {
         total,
+        year,
         days,
         recent_events,
     })
@@ -777,6 +789,8 @@ async fn recent_contribution_events(
     pool: &PgPool,
     user_id: Uuid,
     viewer_user_id: Option<Uuid>,
+    start: NaiveDate,
+    end: NaiveDate,
 ) -> Result<Vec<ProfileContributionEvent>, sqlx::Error> {
     let rows = sqlx::query(
         r#"
@@ -792,6 +806,8 @@ async fn recent_contribution_events(
         LEFT JOIN users AS owner_user ON owner_user.id = repositories.owner_user_id
         LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
         WHERE profile_contribution_events.user_id = $1
+          AND profile_contribution_events.occurred_at >= $3::date
+          AND profile_contribution_events.occurred_at < ($4::date + INTERVAL '1 day')
           AND (
             repositories.id IS NULL
             OR repositories.visibility = 'public'
@@ -810,6 +826,8 @@ async fn recent_contribution_events(
     )
     .bind(user_id)
     .bind(viewer_user_id)
+    .bind(start)
+    .bind(end)
     .fetch_all(pool)
     .await?;
 
@@ -885,4 +903,11 @@ fn contribution_intensity(count: i64) -> i64 {
         6..=9 => 3,
         _ => 4,
     }
+}
+
+fn clamped_contribution_year(requested_year: Option<i32>) -> i32 {
+    let current_year = Utc::now().date_naive().year();
+    requested_year
+        .unwrap_or(current_year)
+        .clamp(2008, current_year)
 }

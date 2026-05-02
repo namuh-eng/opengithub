@@ -2,7 +2,7 @@ use axum::{
     body::{to_bytes, Body},
     http::{header, HeaderMap, Method, Request, StatusCode},
 };
-use chrono::{Duration, Utc};
+use chrono::{Datelike, Duration, Utc};
 use opengithub_api::{
     auth::session,
     config::{AppConfig, AuthConfig},
@@ -254,6 +254,13 @@ async fn public_profile_returns_overview_pins_counts_and_viewer_state() {
     .await
     .expect("contribution day should insert");
     sqlx::query(
+        "INSERT INTO profile_contribution_days (user_id, day, contribution_count) VALUES ($1, DATE '2025-02-14', 3)",
+    )
+    .bind(owner.id)
+    .execute(&pool)
+    .await
+    .expect("prior-year contribution day should insert");
+    sqlx::query(
         "INSERT INTO profile_contribution_events (user_id, repository_id, event_type, title, target_href) VALUES ($1, $2, 'commit', 'Pushed profile contract', $3)",
     )
     .bind(owner.id)
@@ -262,6 +269,15 @@ async fn public_profile_returns_overview_pins_counts_and_viewer_state() {
     .execute(&pool)
     .await
     .expect("contribution event should insert");
+    sqlx::query(
+        "INSERT INTO profile_contribution_events (user_id, repository_id, event_type, title, target_href, occurred_at) VALUES ($1, $2, 'commit', 'Pushed prior-year profile contract', $3, TIMESTAMPTZ '2025-02-14 12:00:00Z')",
+    )
+    .bind(owner.id)
+    .bind(public_repo.id)
+    .bind(format!("/{}/{}/commit/def456", marker, public_repo.name))
+    .execute(&pool)
+    .await
+    .expect("prior-year contribution event should insert");
 
     let (status, headers, anonymous) =
         get_json(app.clone(), &format!("/api/users/{marker}/profile"), None).await;
@@ -283,6 +299,10 @@ async fn public_profile_returns_overview_pins_counts_and_viewer_state() {
     assert_eq!(anonymous["achievements"][0]["name"], "Shipper");
     assert_eq!(anonymous["organizations"][0]["name"], "Profile Org");
     assert_eq!(anonymous["contributionSummary"]["total"], 7);
+    assert_eq!(
+        anonymous["contributionSummary"]["year"],
+        Utc::now().date_naive().year()
+    );
     assert_eq!(anonymous["contributionSummary"]["days"][0]["intensity"], 3);
     assert_eq!(anonymous["tabCounts"]["repositories"], 1);
     assert_eq!(anonymous["tabCounts"]["stars"], 1);
@@ -305,7 +325,7 @@ async fn public_profile_returns_overview_pins_counts_and_viewer_state() {
     assert_eq!(owner_view["viewerState"]["canFollow"], false);
 
     let (status, _, follower_view) = get_json(
-        app,
+        app.clone(),
         &format!("/api/users/{marker}/profile"),
         Some(&follower_cookie),
     )
@@ -313,6 +333,24 @@ async fn public_profile_returns_overview_pins_counts_and_viewer_state() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(follower_view["viewerState"]["authenticated"], true);
     assert_eq!(follower_view["viewerState"]["isFollowing"], true);
+
+    let (status, _, year_view) = get_json(
+        app,
+        &format!("/api/users/{marker}/profile?year=2025"),
+        Some(&follower_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(year_view["contributionSummary"]["year"], 2025);
+    assert_eq!(year_view["contributionSummary"]["total"], 3);
+    assert_eq!(
+        year_view["contributionSummary"]["days"][0]["date"],
+        "2025-02-14"
+    );
+    assert_eq!(
+        year_view["contributionSummary"]["recentEvents"][0]["title"],
+        "Pushed prior-year profile contract"
+    );
 }
 
 #[tokio::test]

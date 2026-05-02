@@ -2889,5 +2889,22 @@
       "The existing profile_overview_contract has a pre-existing DB-backed assertion mismatch for Stars tab seed data when run against a real TEST_DATABASE_URL; this phase did not change that unrelated count behavior.",
       "Contribution heatmap accessibility, year selector, and mobile overflow hardening remain Phase 4."
     ]
+  },
+  {
+    "feature_id": "profiles-001",
+    "tests_written": [
+      "Completed Phase 4 contribution graph and accessibility without marking profiles-001 build_pass=true.",
+      "Added ?year= support to GET /api/users/{username}/profile with clamped year-bounded contribution days and recent events.",
+      "Added ProfileContributionGraph with focusable labeled contribution cells, month labels, intensity legend, annual total, empty-year state, and URL-backed year links.",
+      "Updated /{user} to forward the contribution year query to the Rust profile API.",
+      "Added focused Rust contract assertions for prior-year contribution totals/events and focused Vitest coverage for graph labels, title tooltips, year links, legend, empty state, and no inert anchors.",
+      "Verification passed: focused profile_overview_contract compiled and passed with DB scenarios self-skipped, focused user-profile-page/user-profile-contributions Vitest, make check, make test with Cargo plus 226 frontend tests, make test-e2e without DB override with 18 Playwright tests, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Focused profile Playwright smoke was attempted with TEST_DATABASE_URL/DATABASE_URL on localhost:55432 but dashboard_e2e_seed failed with `pool timed out while waiting for an open connection`; no profile UI assertion failure was reached and no Phase 4 screenshot was captured.",
+      "localhost:55432 and localhost:5432 were not accepting Postgres connections in this session; QA should rerun profile_overview_contract and profile-overview.spec.ts against a reachable seeded TEST_DATABASE_URL.",
+      "The graph uses browser-native title text plus keyboard focusable cells for tooltip access; QA should verify the exact assistive-tech announcement behavior in the target browsers.",
+      "Final privacy, visual, and no-dead-control hardening remains Phase 5 before profiles-001 can be marked build_pass=true."
+    ]
   }
 ]
