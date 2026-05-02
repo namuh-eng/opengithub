@@ -1394,6 +1394,44 @@ export type IssueListView = ListEnvelope<IssueListItem> & {
   preferences: IssueListPreferences;
 };
 
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function isIssueListView(value: unknown): value is IssueListView {
+  if (!isObjectRecord(value)) {
+    return false;
+  }
+
+  const filters = value.filters;
+  const filterOptions = value.filterOptions;
+  const preferences = value.preferences;
+  return (
+    Array.isArray(value.items) &&
+    typeof value.total === "number" &&
+    typeof value.page === "number" &&
+    typeof value.pageSize === "number" &&
+    typeof value.openCount === "number" &&
+    typeof value.closedCount === "number" &&
+    isObjectRecord(value.counts) &&
+    isObjectRecord(filters) &&
+    typeof filters.query === "string" &&
+    typeof filters.state === "string" &&
+    Array.isArray(filters.labels) &&
+    Array.isArray(filters.excludedLabels) &&
+    typeof filters.sort === "string" &&
+    isObjectRecord(filterOptions) &&
+    Array.isArray(filterOptions.labels) &&
+    Array.isArray(filterOptions.users) &&
+    Array.isArray(filterOptions.milestones) &&
+    Array.isArray(filterOptions.projects) &&
+    Array.isArray(filterOptions.issueTypes) &&
+    isObjectRecord(value.repository) &&
+    isObjectRecord(preferences) &&
+    typeof preferences.dismissedContributorBanner === "boolean"
+  );
+}
+
 export type PullRequestState = "open" | "closed" | "merged";
 
 export type PullRequestSort =
@@ -2990,7 +3028,21 @@ export async function getRepositoryIssuesFromCookie(
     );
   }
 
-  return body as IssueListView;
+  if (isIssueListView(body)) {
+    return body;
+  }
+  return {
+    error: {
+      code: "invalid_issues_response",
+      message:
+        "Issues are temporarily unavailable because the API returned an outdated response shape.",
+    },
+    status: 502,
+    details: {
+      reason:
+        "Restart the API server so the frontend receives issue filters and metadata.",
+    },
+  };
 }
 
 export function repositoryPullRequestsPath(
