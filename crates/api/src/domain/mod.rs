@@ -9,6 +9,7 @@ pub mod issues;
 pub mod markdown;
 pub mod notifications;
 pub mod onboarding;
+pub mod orgs;
 pub mod permissions;
 pub mod pulls;
 pub mod repositories;

@@ -1,0 +1,10 @@
+DROP INDEX IF EXISTS repository_topics_topic_idx;
+DROP TABLE IF EXISTS repository_topics;
+DROP TRIGGER IF EXISTS profile_pins_set_updated_at ON profile_pins;
+DROP INDEX IF EXISTS profile_pins_org_position_idx;
+DROP INDEX IF EXISTS profile_pins_org_repo_unique;
+DROP INDEX IF EXISTS profile_pins_user_repo_unique;
+DROP TABLE IF EXISTS profile_pins;
+DROP TRIGGER IF EXISTS organization_verified_domains_set_updated_at ON organization_verified_domains;
+DROP INDEX IF EXISTS organization_verified_domains_org_domain_unique;
+DROP TABLE IF EXISTS organization_verified_domains;

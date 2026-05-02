@@ -1,3 +1,4 @@
+import { OrganizationOverviewPage } from "@/components/OrganizationOverviewPage";
 import { ProfileOrgShell } from "@/components/ProfileOrgShell";
 import {
   activeOrganizationTab,
@@ -6,7 +7,10 @@ import {
   organizationSettingsHref,
   organizationTabHref,
 } from "@/lib/navigation";
-import { getSessionAndShellContext } from "@/lib/server-session";
+import {
+  getOrganizationOverview,
+  getSessionAndShellContext,
+} from "@/lib/server-session";
 
 type OrganizationPageProps = {
   params: Promise<{ org: string }>;
@@ -28,6 +32,19 @@ export default async function OrganizationPage({
   ]);
   const orgLogin = decodeURIComponent(org);
   const activeTab = activeOrganizationTab(firstParam(queryParams?.tab));
+  const organization = await getOrganizationOverview(orgLogin);
+
+  if (organization && activeTab === "overview") {
+    return (
+      <OrganizationOverviewPage
+        activeTab={activeTab}
+        organization={organization}
+        session={session}
+        shellContext={shellContext}
+      />
+    );
+  }
+
   const activeTabLabel =
     ORGANIZATION_TABS.find((tab) => tab.value === activeTab)?.label ??
     "Overview";
@@ -42,12 +59,16 @@ export default async function OrganizationPage({
       eyebrow="Organization"
       hrefForTab={(value) => organizationTabHref(orgLogin, value)}
       identityLabel={orgLogin}
-      message={`${activeTabLabel} for ${orgLogin} will show organization repositories, people, teams, and packages when the organization features are implemented. The skeleton keeps organization navigation grounded today.`}
+      message={
+        organization
+          ? `${activeTabLabel} for ${organization.displayName} is linked from the organization overview and will expand as project, package, people, and team routes are completed.`
+          : `${activeTabLabel} for ${orgLogin} will show organization repositories, people, teams, and packages when the organization APIs return data for this slug.`
+      }
       session={session}
       shellContext={shellContext}
       tabLabel="Organization sections"
       tabs={ORGANIZATION_TABS}
-      title={orgLogin}
+      title={organization?.displayName ?? orgLogin}
     />
   );
 }

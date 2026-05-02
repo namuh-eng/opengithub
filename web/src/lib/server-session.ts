@@ -6,6 +6,7 @@ import {
   type GlobalSearchQuery,
   getAppShellContextFromCookie,
   getDashboardSummaryFromCookie,
+  getOrganizationOverviewFromCookie,
   getPullRequestCompareFromCookie,
   getRepositoryActionsDashboardFromCookie,
   getRepositoryActionsJobLogDetailFromCookie,
@@ -83,6 +84,11 @@ export async function getSearchSuggestions(query: SearchSuggestionsQuery = {}) {
 export async function getDashboardSummary(query: DashboardSummaryQuery = {}) {
   const requestHeaders = await headers();
   return getDashboardSummaryFromCookie(requestHeaders.get("cookie"), query);
+}
+
+export async function getOrganizationOverview(org: string) {
+  const requestHeaders = await headers();
+  return getOrganizationOverviewFromCookie(requestHeaders.get("cookie"), org);
 }
 
 export async function getRepository(owner: string, repo: string) {

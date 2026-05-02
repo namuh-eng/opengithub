@@ -323,6 +323,77 @@ export type RepositoryOverview = RepositorySummary & {
   cloneUrls: RepositoryCloneUrls;
 };
 
+export type OrganizationVerifiedDomain = {
+  domain: string;
+  verifiedAt: string;
+  href: string;
+};
+
+export type OrganizationTopicSummary = {
+  topic: string;
+  repositoryCount: number;
+  href: string;
+};
+
+export type OrganizationRepositoryPreview = {
+  id: string;
+  name: string;
+  description: string | null;
+  visibility: RepositoryVisibility;
+  href: string;
+  primaryLanguage: RepositoryLanguageSummary | null;
+  topics: string[];
+  starsCount: number;
+  forksCount: number;
+  openIssuesCount: number;
+  openPullRequestsCount: number;
+  updatedAt: string;
+  isPinned: boolean;
+};
+
+export type OrganizationMemberPreview = {
+  id: string;
+  login: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  role: string;
+  href: string;
+};
+
+export type OrganizationSponsorshipSummary = {
+  enabled: boolean;
+  sponsorHref: string | null;
+  note: string;
+};
+
+export type OrganizationOverview = {
+  id: string;
+  slug: string;
+  displayName: string;
+  description: string | null;
+  avatarUrl: string | null;
+  websiteUrl: string | null;
+  location: string | null;
+  verifiedDomain: OrganizationVerifiedDomain | null;
+  viewerRole: string | null;
+  viewerCanAdmin: boolean;
+  followerCount: number;
+  memberCount: number;
+  repositoryCount: number;
+  pinnedRepositories: OrganizationRepositoryPreview[];
+  repositories: OrganizationRepositoryPreview[];
+  members: OrganizationMemberPreview[];
+  languages: RepositoryLanguageSummary[];
+  topics: OrganizationTopicSummary[];
+  sponsorship: OrganizationSponsorshipSummary;
+  projectsHref: string;
+  settingsHref: string | null;
+  peopleHref: string;
+  repositoriesHref: string;
+  packagesHref: string;
+  updatedAt: string;
+};
+
 export type WritableRepositoryOwner = {
   ownerType: RepositoryOwnerType;
   id: string;
@@ -4020,6 +4091,31 @@ export async function getRepositoryIssueTemplatesFromCookie(
 
   const body = (await response.json()) as IssueTemplateList;
   return body.items;
+}
+
+export function organizationOverviewPath(org: string) {
+  return `/api/orgs/${encodeURIComponent(org)}`;
+}
+
+export async function getOrganizationOverviewFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+): Promise<OrganizationOverview | null> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${organizationOverviewPath(org)}`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return null;
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return (await response.json()) as OrganizationOverview;
 }
 
 export async function getRepositoryFromCookie(
