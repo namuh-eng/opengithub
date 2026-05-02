@@ -2456,4 +2456,22 @@
       "Check-suite/check-run synchronization is seeded only enough for run detail presentation; full merge-gate integration needs later QA."
     ]
   }
+,
+  {
+    "feature_id": "actions-004",
+    "tests_written": [
+      "Implemented Phase 1 API read contract for GET /api/repos/{owner}/{repo}/actions/runs/{run_id}/jobs/{job_id}/detail.",
+      "Added additive migration support for workflow_job_log_lines.step_id and per-user actions_log_preferences defaults.",
+      "Added Rust DTO/helper coverage for selected job metadata, sibling jobs, workflow/run breadcrumb, grouped step log chunks, annotations, search matches, deleted-log state, and display options.",
+      "Added Rust contract tests for public reads, private repository denial, owner access, run/job mismatch errors, step grouping, search metadata, option overrides, and deleted-log unavailable state.",
+      "Verification passed: focused api_repository_actions_job_log_contract, TEST_DATABASE_URL-backed make check, same-env make test with Cargo tests plus 191 web tests, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "This phase is API-only; the dedicated job log UI, browser smoke screenshots, keyboard behavior, and no-dead-control checks are Phase 2 and later.",
+      "Search currently returns bounded grouped line chunks for the requested page; very large logs, match-window navigation, and scroll preservation are Phase 3.",
+      "Display preferences are read with query overrides in this phase; write persistence endpoints and menu behavior are Phase 4.",
+      "Archive downloads and real S3 signed URLs are not part of Phase 1; existing single-job text download remains local DB-backed.",
+      "The tests use local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth or real Actions runner execution."
+    ]
+  }
 ]

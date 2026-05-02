@@ -18,17 +18,17 @@ use crate::{
     auth::extractor::AuthenticatedUser,
     domain::{
         actions::{
-            actions_dashboard_for_viewer, actions_run_detail_for_viewer,
-            actions_workflow_detail_for_viewer, cancel_workflow_run, create_workflow,
-            create_workflow_run, delete_workflow_run_logs, dispatch_workflow_run,
+            actions_dashboard_for_viewer, actions_job_log_detail_for_viewer,
+            actions_run_detail_for_viewer, actions_workflow_detail_for_viewer, cancel_workflow_run,
+            create_workflow, create_workflow_run, delete_workflow_run_logs, dispatch_workflow_run,
             get_workflow_for_actor, get_workflow_run_for_actor, list_workflow_runs, list_workflows,
             record_actions_recent_view, repository_for_actor_by_name,
             repository_for_optional_actor_by_name, rerun_workflow_run, transition_workflow_run,
             workflow_artifact_download_for_viewer, workflow_job_log_download_for_viewer,
-            workflow_job_logs_for_viewer, ActionsDashboardQuery, ActionsWorkflowDetailQuery,
-            AutomationError, CreateWorkflow, CreateWorkflowRun, DispatchWorkflowRun,
-            MutateWorkflowRun, RecordActionsRecentView, RerunWorkflowRun, RunConclusion, RunStatus,
-            TransitionRun, WorkflowRunRerunMode,
+            workflow_job_logs_for_viewer, ActionsDashboardQuery, ActionsJobLogDetailQuery,
+            ActionsWorkflowDetailQuery, AutomationError, CreateWorkflow, CreateWorkflowRun,
+            DispatchWorkflowRun, MutateWorkflowRun, RecordActionsRecentView, RerunWorkflowRun,
+            RunConclusion, RunStatus, TransitionRun, WorkflowRunRerunMode,
         },
         permissions::RepositoryRole,
     },
@@ -82,6 +82,10 @@ pub fn router() -> Router<AppState> {
             delete(delete_workflow_run_logs_route),
         )
         .route(
+            "/api/repos/:owner/:repo/actions/runs/:run_id/jobs/:job_id/detail",
+            get(read_workflow_job_log_detail_route),
+        )
+        .route(
             "/api/repos/:owner/:repo/actions/jobs/:job_id/logs",
             get(read_workflow_job_logs_route),
         )
@@ -129,6 +133,19 @@ struct DashboardQuery {
 #[serde(rename_all = "camelCase")]
 struct LogQuery {
     q: Option<String>,
+    page: Option<i64>,
+    #[serde(alias = "page_size")]
+    page_size: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JobLogDetailQuery {
+    q: Option<String>,
+    #[serde(rename = "match", alias = "selected_match")]
+    selected_match: Option<i64>,
+    timestamps: Option<bool>,
+    raw: Option<bool>,
     page: Option<i64>,
     #[serde(alias = "page_size")]
     page_size: Option<i64>,
@@ -634,6 +651,44 @@ async fn delete_workflow_run_logs_route(
             repository_id,
             run_id,
             actor_user_id: actor.0.id,
+        },
+    )
+    .await
+    .map_err(map_automation_error)?;
+
+    Ok(Json(json!(detail)))
+}
+
+async fn read_workflow_job_log_detail_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, run_id, job_id)): Path<(String, String, Uuid, Uuid)>,
+    Query(query): Query<JobLogDetailQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let repository = repository_for_optional_actor_by_name(
+        pool,
+        &owner,
+        &repo,
+        actor.as_ref().map(|user| user.id),
+    )
+    .await
+    .map_err(map_automation_error)?;
+    let pagination = normalize_pagination(query.page, query.page_size);
+    let detail = actions_job_log_detail_for_viewer(
+        pool,
+        repository.id,
+        actor.as_ref().map(|user| user.id),
+        run_id,
+        job_id,
+        ActionsJobLogDetailQuery {
+            q: query.q,
+            selected_match: query.selected_match,
+            show_timestamps: query.timestamps,
+            raw_logs: query.raw,
+            page: pagination.page,
+            page_size: pagination.page_size,
         },
     )
     .await

@@ -221,6 +221,76 @@ pub struct ActionsRunDetail {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct ActionsJobLogDetail {
+    pub repository: ActionsDashboardRepository,
+    pub viewer_permission: Option<String>,
+    pub workflow: ActionsRunDetailWorkflow,
+    pub run: ActionsRunListItem,
+    pub jobs: Vec<ActionsRunJobDetail>,
+    pub job: ActionsRunJobDetail,
+    pub steps: Vec<ActionsJobLogStep>,
+    pub annotations: Vec<ActionsRunAnnotation>,
+    pub log_state: ActionsJobLogState,
+    pub search: ActionsJobLogSearch,
+    pub options: ActionsJobLogOptions,
+    pub download_href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsJobLogStep {
+    pub id: Option<Uuid>,
+    pub number: i32,
+    pub name: String,
+    pub status: String,
+    pub conclusion: Option<String>,
+    pub duration_seconds: Option<i64>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub lines: ListEnvelope<ActionsJobLogLine>,
+    pub match_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsJobLogState {
+    pub available: bool,
+    pub status: u16,
+    pub reason: Option<String>,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub is_live: bool,
+    pub next_cursor: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsJobLogSearch {
+    pub query: Option<String>,
+    pub total_matches: i64,
+    pub selected_match: Option<i64>,
+    pub matches: Vec<ActionsJobLogSearchMatch>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsJobLogSearchMatch {
+    pub line_number: i32,
+    pub step_id: Option<Uuid>,
+    pub step_number: i32,
+    pub anchor: String,
+    pub preview: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsJobLogOptions {
+    pub show_timestamps: bool,
+    pub raw_logs: bool,
+    pub wrap_lines: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct ActionsRunDetailWorkflow {
     pub id: Uuid,
     pub name: String,
@@ -558,6 +628,16 @@ pub struct ActionsWorkflowDetailQuery {
     pub status: Option<String>,
     pub branch: Option<String>,
     pub actor: Option<String>,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ActionsJobLogDetailQuery {
+    pub q: Option<String>,
+    pub selected_match: Option<i64>,
+    pub show_timestamps: Option<bool>,
+    pub raw_logs: Option<bool>,
     pub page: i64,
     pub page_size: i64,
 }
@@ -1008,6 +1088,220 @@ pub async fn actions_run_detail_for_viewer(
         annotations,
         artifacts,
         action_state,
+    })
+}
+
+pub async fn actions_job_log_detail_for_viewer(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Option<Uuid>,
+    run_id: Uuid,
+    job_id: Uuid,
+    query: ActionsJobLogDetailQuery,
+) -> Result<ActionsJobLogDetail, AutomationError> {
+    let detail = actions_run_detail_for_viewer(pool, repository_id, actor_user_id, run_id).await?;
+    let job = detail
+        .jobs
+        .iter()
+        .find(|job| job.id == job_id)
+        .cloned()
+        .ok_or(AutomationError::WorkflowJobNotFound)?;
+    let q = cleaned_filter(query.q);
+    let page = query.page.max(1);
+    let page_size = query.page_size.clamp(1, 500);
+    let offset = (page - 1) * page_size;
+    let like_query = q.as_ref().map(|value| format!("%{}%", escape_like(value)));
+    let options = actions_log_options(
+        pool,
+        repository_id,
+        actor_user_id,
+        query.show_timestamps,
+        query.raw_logs,
+    )
+    .await?;
+    let annotations = detail
+        .annotations
+        .iter()
+        .filter(|annotation| annotation.job_id == Some(job_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    let log_available = job.log_deleted_at.is_none();
+    let deleted_at = job.log_deleted_at;
+
+    let total_matches = if log_available {
+        sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT count(*)
+            FROM workflow_job_log_lines
+            WHERE job_id = $1
+              AND ($2::text IS NULL OR content ILIKE $2 ESCAPE '\')
+            "#,
+        )
+        .bind(job_id)
+        .bind(like_query.as_deref())
+        .fetch_one(pool)
+        .await?
+    } else {
+        0
+    };
+    let latest_line = if log_available {
+        sqlx::query_scalar::<_, Option<i32>>(
+            "SELECT max(line_number) FROM workflow_job_log_lines WHERE job_id = $1",
+        )
+        .bind(job_id)
+        .fetch_one(pool)
+        .await?
+    } else {
+        None
+    };
+    let line_rows = if log_available {
+        sqlx::query(
+            r#"
+            SELECT line_number, timestamp, content, step_id
+            FROM workflow_job_log_lines
+            WHERE job_id = $1
+              AND ($2::text IS NULL OR content ILIKE $2 ESCAPE '\')
+            ORDER BY line_number
+            LIMIT $3 OFFSET $4
+            "#,
+        )
+        .bind(job_id)
+        .bind(like_query.as_deref())
+        .bind(page_size)
+        .bind(offset)
+        .fetch_all(pool)
+        .await?
+    } else {
+        Vec::new()
+    };
+    let count_rows = if log_available {
+        sqlx::query(
+            r#"
+            SELECT step_id, count(*)::bigint AS total
+            FROM workflow_job_log_lines
+            WHERE job_id = $1
+              AND ($2::text IS NULL OR content ILIKE $2 ESCAPE '\')
+            GROUP BY step_id
+            "#,
+        )
+        .bind(job_id)
+        .bind(like_query.as_deref())
+        .fetch_all(pool)
+        .await?
+    } else {
+        Vec::new()
+    };
+    let mut totals_by_step = HashMap::<Option<Uuid>, i64>::new();
+    for row in count_rows {
+        totals_by_step.insert(row.get("step_id"), row.get("total"));
+    }
+
+    let mut lines_by_step = HashMap::<Option<Uuid>, Vec<ActionsJobLogLine>>::new();
+    let mut matches = Vec::new();
+    for row in line_rows {
+        let step_id: Option<Uuid> = row.get("step_id");
+        let line_number: i32 = row.get("line_number");
+        let content: String = row.get("content");
+        let anchor = format!("L{line_number}");
+        if q.is_some() {
+            matches.push(ActionsJobLogSearchMatch {
+                line_number,
+                step_id,
+                step_number: step_number_for_log_step(&job.steps, step_id),
+                anchor: anchor.clone(),
+                preview: content.chars().take(180).collect(),
+            });
+        }
+        lines_by_step
+            .entry(step_id)
+            .or_default()
+            .push(ActionsJobLogLine {
+                line_number,
+                timestamp: row.get("timestamp"),
+                content,
+                anchor,
+            });
+    }
+
+    let mut steps = job
+        .steps
+        .iter()
+        .map(|step| {
+            let key = Some(step.id);
+            let lines = lines_by_step.remove(&key).unwrap_or_default();
+            let total = totals_by_step.get(&key).copied().unwrap_or(0);
+            ActionsJobLogStep {
+                id: Some(step.id),
+                number: step.number,
+                name: step.name.clone(),
+                status: step.status.clone(),
+                conclusion: step.conclusion.clone(),
+                duration_seconds: step.duration_seconds,
+                started_at: step.started_at,
+                completed_at: step.completed_at,
+                lines: ListEnvelope {
+                    items: lines,
+                    total,
+                    page,
+                    page_size,
+                },
+                match_count: total,
+            }
+        })
+        .collect::<Vec<_>>();
+    let unassigned_lines = lines_by_step.remove(&None).unwrap_or_default();
+    let unassigned_total = totals_by_step.get(&None).copied().unwrap_or(0);
+    if unassigned_total > 0 || job.steps.is_empty() {
+        steps.insert(
+            0,
+            ActionsJobLogStep {
+                id: None,
+                number: 0,
+                name: "Job log".to_owned(),
+                status: job.status.clone(),
+                conclusion: job.conclusion.clone(),
+                duration_seconds: job.duration_seconds,
+                started_at: job.started_at,
+                completed_at: job.completed_at,
+                lines: ListEnvelope {
+                    items: unassigned_lines,
+                    total: unassigned_total,
+                    page,
+                    page_size,
+                },
+                match_count: unassigned_total,
+            },
+        );
+    }
+
+    Ok(ActionsJobLogDetail {
+        repository: detail.repository.clone(),
+        viewer_permission: detail.viewer_permission.clone(),
+        workflow: detail.workflow.clone(),
+        run: detail.run.clone(),
+        jobs: detail.jobs.clone(),
+        job,
+        steps,
+        annotations,
+        log_state: ActionsJobLogState {
+            available: log_available,
+            status: if log_available { 200 } else { 410 },
+            reason: (!log_available).then(|| "workflow logs are unavailable".to_owned()),
+            deleted_at,
+            is_live: matches!(detail.run.status.as_str(), "queued" | "in_progress"),
+            next_cursor: latest_line,
+        },
+        search: ActionsJobLogSearch {
+            query: q,
+            total_matches,
+            selected_match: query.selected_match.filter(|value| *value > 0),
+            matches,
+        },
+        options,
+        download_href: format!(
+            "/api/repos/{}/{}/actions/jobs/{}/logs/download",
+            detail.repository.owner_login, detail.repository.name, job_id
+        ),
     })
 }
 
@@ -2801,6 +3095,58 @@ async fn workflow_job_for_repository(
         conclusion: row.get("conclusion"),
         log_deleted_at: row.get("log_deleted_at"),
     })
+}
+
+async fn actions_log_options(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Option<Uuid>,
+    show_timestamps_override: Option<bool>,
+    raw_logs_override: Option<bool>,
+) -> Result<ActionsJobLogOptions, AutomationError> {
+    let stored = if let Some(user_id) = actor_user_id {
+        sqlx::query(
+            r#"
+            SELECT show_timestamps, raw_logs, wrap_lines
+            FROM actions_log_preferences
+            WHERE repository_id = $1 AND user_id = $2
+            "#,
+        )
+        .bind(repository_id)
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?
+        .map(|row| ActionsJobLogOptions {
+            show_timestamps: row.get("show_timestamps"),
+            raw_logs: row.get("raw_logs"),
+            wrap_lines: row.get("wrap_lines"),
+        })
+    } else {
+        None
+    };
+    let mut options = stored.unwrap_or(ActionsJobLogOptions {
+        show_timestamps: true,
+        raw_logs: false,
+        wrap_lines: false,
+    });
+    if let Some(show_timestamps) = show_timestamps_override {
+        options.show_timestamps = show_timestamps;
+    }
+    if let Some(raw_logs) = raw_logs_override {
+        options.raw_logs = raw_logs;
+    }
+    Ok(options)
+}
+
+fn step_number_for_log_step(steps: &[ActionsRunStepDetail], step_id: Option<Uuid>) -> i32 {
+    let Some(step_id) = step_id else {
+        return 0;
+    };
+    steps
+        .iter()
+        .find(|step| step.id == step_id)
+        .map(|step| step.number)
+        .unwrap_or(0)
 }
 
 #[derive(Debug, Clone)]

@@ -6,7 +6,7 @@
 
 ## Phase 1: Job Log Read Contract - one job can own its viewer page
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Build or extend the permission-aware backend contract for `/{owner}/{repo}/actions/runs/{run_id}/jobs/{job_id}` before changing the dedicated UI. A repository reader can fetch the run breadcrumb, selected job, job siblings for the left sidebar, ordered steps, annotations, log chunks, search metadata, display preferences, and unavailable/deleted-log state without leaking private repository data.
 
