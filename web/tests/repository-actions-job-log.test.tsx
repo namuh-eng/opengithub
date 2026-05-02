@@ -283,6 +283,7 @@ function jobLogDetail(
       wrapLines: true,
     },
     downloadHref: "/api/repos/mona/octo-app/actions/jobs/job-1/logs/download",
+    runArchiveHref: "/api/repos/mona/octo-app/actions/runs/run-1/logs/archive",
   };
 
   return { ...detail, ...overrides };
@@ -362,13 +363,70 @@ describe("RepositoryActionsJobLogPage", () => {
     expect(screen.getByText("Problems in this job")).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: "Log options" }));
-    expect(screen.getByRole("menu")).toHaveTextContent("rendered logs");
+    expect(screen.getByRole("menu")).toHaveTextContent("Raw logs");
     expect(
       container.querySelectorAll('a[href="#"], a:not([href])'),
     ).toHaveLength(0);
     for (const button of screen.getAllByRole("button")) {
       expect(button).toHaveAccessibleName(/.+/);
     }
+  });
+
+  it("saves log options, copies job permalinks, and exposes archive downloads", async () => {
+    Object.assign(navigator, {
+      clipboard: {
+        writeText: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            showTimestamps: true,
+            rawLogs: true,
+            wrapLines: true,
+          }),
+      }),
+    );
+
+    render(
+      <RepositoryActionsJobLogPage
+        detail={jobLogDetail()}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("link", { name: "Download run archive" }),
+    ).toHaveAttribute("href", "/mona/octo-app/actions/runs/run-1/logs/archive");
+
+    fireEvent.click(screen.getByRole("button", { name: "Log options" }));
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /Raw logs/ }));
+    expect(fetch).toHaveBeenCalledWith(
+      "/mona/octo-app/actions/log-preferences",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          showTimestamps: false,
+          rawLogs: true,
+          wrapLines: true,
+        }),
+      }),
+    );
+    expect(await screen.findByText("Saved log options")).toBeVisible();
+    expect(pushMock).toHaveBeenCalledWith(
+      "/mona/octo-app/actions/runs/run-1/jobs/job-1?q=error&match=1&timestamps=false&raw=true",
+    );
+
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Copy job permalink" }),
+    );
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      expect.stringContaining("/mona/octo-app/actions/runs/run-1/jobs/job-1"),
+    );
+    vi.unstubAllGlobals();
   });
 
   it("submits URL-backed search and navigates between matches", () => {
@@ -384,12 +442,12 @@ describe("RepositoryActionsJobLogPage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Search" }));
     expect(pushMock).toHaveBeenCalledWith(
-      "/mona/octo-app/actions/runs/run-1/jobs/job-1?q=cache+miss&match=1",
+      "/mona/octo-app/actions/runs/run-1/jobs/job-1?q=cache+miss&match=1&timestamps=false",
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Next result" }));
     expect(pushMock).toHaveBeenCalledWith(
-      "/mona/octo-app/actions/runs/run-1/jobs/job-1?q=error&match=2",
+      "/mona/octo-app/actions/runs/run-1/jobs/job-1?q=error&match=2&timestamps=false",
     );
     expect(
       screen.getByRole("button", { name: "Previous result" }),

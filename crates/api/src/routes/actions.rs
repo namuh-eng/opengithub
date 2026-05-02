@@ -3,7 +3,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{header, HeaderMap, StatusCode},
     response::Response,
-    routing::{delete, get, post},
+    routing::{delete, get, patch, post},
     Json, Router,
 };
 use serde::Deserialize;
@@ -24,11 +24,13 @@ use crate::{
             get_workflow_for_actor, get_workflow_run_for_actor, list_workflow_runs, list_workflows,
             record_actions_recent_view, repository_for_actor_by_name,
             repository_for_optional_actor_by_name, rerun_workflow_run, transition_workflow_run,
-            workflow_artifact_download_for_viewer, workflow_job_log_download_for_viewer,
-            workflow_job_logs_for_viewer, ActionsDashboardQuery, ActionsJobLogDetailQuery,
+            update_actions_log_preferences_for_viewer, workflow_artifact_download_for_viewer,
+            workflow_job_log_download_for_viewer, workflow_job_logs_for_viewer,
+            workflow_run_log_archive_for_viewer, ActionsDashboardQuery, ActionsJobLogDetailQuery,
             ActionsWorkflowDetailQuery, AutomationError, CreateWorkflow, CreateWorkflowRun,
             DispatchWorkflowRun, MutateWorkflowRun, RecordActionsRecentView, RerunWorkflowRun,
-            RunConclusion, RunStatus, TransitionRun, WorkflowRunRerunMode,
+            RunConclusion, RunStatus, TransitionRun, UpdateActionsLogPreferences,
+            WorkflowRunRerunMode,
         },
         permissions::RepositoryRole,
     },
@@ -82,8 +84,16 @@ pub fn router() -> Router<AppState> {
             delete(delete_workflow_run_logs_route),
         )
         .route(
+            "/api/repos/:owner/:repo/actions/runs/:run_id/logs/archive",
+            get(download_workflow_run_log_archive_route),
+        )
+        .route(
             "/api/repos/:owner/:repo/actions/runs/:run_id/jobs/:job_id/detail",
             get(read_workflow_job_log_detail_route),
+        )
+        .route(
+            "/api/repos/:owner/:repo/actions/log-preferences",
+            patch(update_log_preferences_route),
         )
         .route(
             "/api/repos/:owner/:repo/actions/jobs/:job_id/logs",
@@ -160,6 +170,14 @@ struct RecentViewRequest {
     status: Option<String>,
     branch: Option<String>,
     actor: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LogPreferencesRequest {
+    show_timestamps: bool,
+    raw_logs: bool,
+    wrap_lines: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -697,6 +715,34 @@ async fn read_workflow_job_log_detail_route(
     Ok(Json(json!(detail)))
 }
 
+async fn update_log_preferences_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<LogPreferencesRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id =
+        repository_for_actor_by_name(pool, &owner, &repo, actor.0.id, RepositoryRole::Read)
+            .await
+            .map_err(map_automation_error)?;
+    let options = update_actions_log_preferences_for_viewer(
+        pool,
+        UpdateActionsLogPreferences {
+            repository_id,
+            actor_user_id: actor.0.id,
+            show_timestamps: request.show_timestamps,
+            raw_logs: request.raw_logs,
+            wrap_lines: request.wrap_lines,
+        },
+    )
+    .await
+    .map_err(map_automation_error)?;
+
+    Ok(Json(json!(options)))
+}
+
 async fn read_workflow_job_logs_route(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -761,6 +807,41 @@ async fn download_workflow_job_logs_route(
             format!("attachment; filename=\"{filename}\""),
         )
         .body(Body::from(body))
+        .map_err(|_| database_unavailable())
+}
+
+async fn download_workflow_run_log_archive_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, run_id)): Path<(String, String, Uuid)>,
+) -> Result<Response<Body>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let repository = repository_for_optional_actor_by_name(
+        pool,
+        &owner,
+        &repo,
+        actor.as_ref().map(|user| user.id),
+    )
+    .await
+    .map_err(map_automation_error)?;
+    let archive = workflow_run_log_archive_for_viewer(
+        pool,
+        repository.id,
+        actor.as_ref().map(|user| user.id),
+        run_id,
+    )
+    .await
+    .map_err(map_automation_error)?;
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, archive.content_type)
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{}\"", archive.filename),
+        )
+        .body(Body::from(archive.body))
         .map_err(|_| database_unavailable())
 }
 

@@ -707,6 +707,7 @@ export type RepositoryActionsJobLogDetail = {
   search: ActionsJobLogSearch;
   options: ActionsJobLogOptions;
   downloadHref: string;
+  runArchiveHref: string;
 };
 
 export type RepositoryActionsJobLogDetailQuery = {

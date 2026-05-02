@@ -103,6 +103,52 @@ async fn get_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (Status
     (status, value)
 }
 
+async fn patch_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method(Method::PATCH)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let request = builder
+        .body(Body::from(body.to_string()))
+        .expect("request should build");
+    let response = app.oneshot(request).await.expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).expect("response should be json")
+    };
+    (status, value)
+}
+
+async fn get_text(app: axum::Router, uri: &str, cookie: Option<&str>) -> (StatusCode, String) {
+    let mut builder = Request::builder().method(Method::GET).uri(uri);
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let request = builder.body(Body::empty()).expect("request should build");
+    let response = app.oneshot(request).await.expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    (
+        status,
+        String::from_utf8(bytes.to_vec()).expect("body should be utf8"),
+    )
+}
+
 async fn seed_run_with_job_logs(
     pool: &PgPool,
     owner: &User,
@@ -329,6 +375,10 @@ async fn job_log_detail_groups_steps_searches_lines_and_reads_options() {
         .as_str()
         .expect("download href")
         .ends_with("/logs/download"));
+    assert!(body["runArchiveHref"]
+        .as_str()
+        .expect("archive href")
+        .ends_with("/logs/archive"));
 
     let search_uri = format!("{detail_uri}?q=error&match=1&timestamps=true&raw=false");
     let (search_status, search_body) =
@@ -356,11 +406,53 @@ async fn job_log_detail_groups_steps_searches_lines_and_reads_options() {
     assert_eq!(wrong_run_status, StatusCode::NOT_FOUND);
     assert_eq!(wrong_run_body["error"]["code"], "not_found");
 
-    sqlx::query("UPDATE workflow_jobs SET log_deleted_at = now() WHERE id = $1")
-        .bind(job_id)
+    let preferences_uri = format!(
+        "/api/repos/{}/{}/actions/log-preferences",
+        owner.email, repo_name
+    );
+    let (preferences_status, preferences_body) = patch_json(
+        app.clone(),
+        &preferences_uri,
+        Some(&owner_cookie),
+        json!({
+            "showTimestamps": true,
+            "rawLogs": false,
+            "wrapLines": false
+        }),
+    )
+    .await;
+    assert_eq!(preferences_status, StatusCode::OK);
+    assert_eq!(preferences_body["showTimestamps"], true);
+    assert_eq!(preferences_body["rawLogs"], false);
+    assert_eq!(preferences_body["wrapLines"], false);
+    let (persisted_status, persisted_body) =
+        get_json(app.clone(), &detail_uri, Some(&owner_cookie)).await;
+    assert_eq!(persisted_status, StatusCode::OK);
+    assert_eq!(persisted_body["options"]["showTimestamps"], true);
+    assert_eq!(persisted_body["options"]["rawLogs"], false);
+    assert_eq!(persisted_body["options"]["wrapLines"], false);
+
+    let archive_uri = format!(
+        "/api/repos/{}/{}/actions/runs/{}/logs/archive",
+        owner.email, repo_name, run_id
+    );
+    let (archive_status, archive_body) =
+        get_text(app.clone(), &archive_uri, Some(&owner_cookie)).await;
+    assert_eq!(archive_status, StatusCode::OK);
+    assert!(archive_body.contains("opengithub workflow log archive"));
+    assert!(archive_body.contains("unit / web"));
+    assert!(archive_body.contains("expected string"));
+
+    sqlx::query("UPDATE workflow_jobs SET log_deleted_at = now() WHERE run_id = $1")
+        .bind(run_id)
         .execute(&pool)
         .await
         .expect("log should delete");
+    let (deleted_archive_status, deleted_archive_body) =
+        get_json(app.clone(), &archive_uri, Some(&owner_cookie)).await;
+    assert_eq!(deleted_archive_status, StatusCode::GONE);
+    assert_eq!(deleted_archive_body["error"]["code"], "gone");
+
     let (deleted_status, deleted_body) = get_json(app, &detail_uri, Some(&owner_cookie)).await;
     assert_eq!(deleted_status, StatusCode::OK);
     assert_eq!(deleted_body["logState"]["available"], false);

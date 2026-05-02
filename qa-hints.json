@@ -2512,5 +2512,23 @@
       "The log options menu still does not persist preferences or expose archive downloads; those are Phase 4.",
       "The browser smoke uses local Postgres fixtures and deterministic Rust-signed sessions instead of real Google OAuth or real Actions runner execution."
     ]
+  },
+  {
+    "feature_id": "actions-004",
+    "tests_written": [
+      "Implemented Phase 4 log options and archive download for the dedicated job log viewer.",
+      "Added Rust PATCH /api/repos/{owner}/{repo}/actions/log-preferences and GET /api/repos/{owner}/{repo}/actions/runs/{run_id}/logs/archive with read-permission checks, preference persistence, 410-style unavailable behavior, and deterministic local-dev archive output.",
+      "Added same-origin Next.js proxy routes for log preference writes and run archive downloads.",
+      "Updated RepositoryActionsJobLogPage with accessible timestamp/raw/wrap toggles, saved-option feedback, copy job permalink, single-job download, run archive download, and disabled unavailable states.",
+      "Expanded /docs/api coverage for job-log detail, log preference writes, single-job log download, and run log archive endpoints.",
+      "Added Rust, Vitest, and Playwright coverage for preference persistence, archive output, docs entries, menu behavior, no dead controls, and screenshot ralph/screenshots/build/actions-004-phase4-log-options.jpg.",
+      "Verification passed: focused api_repository_actions_job_log_contract, focused repository-actions-job-log/api-docs Vitest, focused job-log Playwright smoke, focused api-docs Playwright after selector fix, TEST_DATABASE_URL-backed make check, same-env make test with Cargo tests plus 198 frontend tests, full same-env make test-e2e with 70 Playwright tests, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Run log archives are deterministic DB-backed text attachments for local development; real S3 signed URL generation, byte streaming, expiry, and object-key redaction still need deeper QA when storage is wired.",
+      "The options menu persists repository-level preferences for signed-in users, but anonymous query-param-only behavior and multi-tab preference races should be stress-tested later.",
+      "Very large logs, pagination beyond the first bounded page, and concurrent log deletion during archive/download requests need deeper QA.",
+      "Browser smoke uses deterministic Rust-signed sessions against local Postgres fixtures instead of real Google OAuth or a real Actions runner."
+    ]
   }
 ]

@@ -557,6 +557,83 @@ Subject: [PATCH] Improve docs
     ],
   },
   {
+    id: "actions-job-log-detail",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/actions/runs/{run_id}/jobs/{job_id}/detail?q=error&match=1&timestamps=true&raw=false",
+    title: "Read workflow job log detail",
+    description:
+      "Returns the dedicated job log viewer contract, including run breadcrumbs, sibling jobs, grouped steps, annotations, search matches, display options, and unavailable log state.",
+    auth: "Optional signed opengithub session cookie; private repositories require read access",
+    response: `{
+  "job": { "id": "job_01", "name": "unit / web", "logAvailable": true },
+  "steps": [{ "name": "Run tests", "matchCount": 1 }],
+  "search": { "query": "error", "totalMatches": 1, "selectedMatch": 1 },
+  "options": { "showTimestamps": true, "rawLogs": false, "wrapLines": true },
+  "downloadHref": "/api/repos/mona/octo-app/actions/jobs/job_01/logs/download",
+  "runArchiveHref": "/api/repos/mona/octo-app/actions/runs/run_01/logs/archive"
+}`,
+    notes: [
+      "Query params are q, match, timestamps, raw, page, and pageSize.",
+      "Deleted logs keep the page contract readable with logState.status=410 and no line leakage.",
+    ],
+  },
+  {
+    id: "actions-log-preferences",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/actions/log-preferences",
+    title: "Update Actions log preferences",
+    description:
+      "Persists per-user display preferences for the repository job log viewer.",
+    auth: "Signed opengithub session cookie with read access",
+    request: `{
+  "showTimestamps": true,
+  "rawLogs": false,
+  "wrapLines": true
+}`,
+    response: `{
+  "showTimestamps": true,
+  "rawLogs": false,
+  "wrapLines": true
+}`,
+    notes: [
+      "Anonymous viewers can still use query params for temporary display options, but preference writes require a signed session.",
+    ],
+  },
+  {
+    id: "actions-job-log-download",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/actions/jobs/{job_id}/logs/download",
+    title: "Download workflow job log",
+    description:
+      "Downloads one job log as a deterministic local-dev text attachment after repository read authorization.",
+    auth: "Optional signed opengithub session cookie; private repositories require read access",
+    response: `2026-05-01T00:00:00Z Installing dependencies
+2026-05-01T00:01:00Z Running unit tests`,
+    notes: [
+      "Deleted or expired logs return the standard 410 gone envelope.",
+      "Production storage can swap the body for a short-lived signed object URL while preserving the route contract.",
+    ],
+  },
+  {
+    id: "actions-run-log-archive",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/actions/runs/{run_id}/logs/archive",
+    title: "Download workflow run log archive",
+    description:
+      "Downloads a run-level log archive containing all available job logs for the run.",
+    auth: "Optional signed opengithub session cookie; private repositories require read access",
+    response: `opengithub workflow log archive
+repository: mona/octo-app
+run: #42
+
+== unit / web ==
+2026-05-01T00:00:00Z Running unit tests`,
+    notes: [
+      "The MVP returns a deterministic text archive for local development.",
+      "If every job log is deleted or unavailable, the endpoint returns 410 gone.",
+    ],
+  },
+  {
     id: "actions-runs-update",
     method: "PATCH",
     path: "/api/repos/{owner}/{repo}/actions/runs/{run_id}",

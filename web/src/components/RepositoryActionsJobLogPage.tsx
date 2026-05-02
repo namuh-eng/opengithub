@@ -109,6 +109,10 @@ function jobDownloadHref(basePath: string, jobId: string) {
   return `${basePath}/actions/jobs/${jobId}/logs/download`;
 }
 
+function runArchiveHref(basePath: string, runId: string) {
+  return `${basePath}/actions/runs/${runId}/logs/archive`;
+}
+
 function groupedJobs(jobs: ActionsRunJobDetail[]) {
   const groups = new Map<string, ActionsRunJobDetail[]>();
   for (const job of jobs) {
@@ -131,6 +135,8 @@ export function RepositoryActionsJobLogPage({
   );
   const [annotationsVisible, setAnnotationsVisible] = useState(true);
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [optionMessage, setOptionMessage] = useState("");
+  const [preferencesPending, setPreferencesPending] = useState(false);
   const [searchText, setSearchText] = useState(detail.search.query ?? "");
   const [copyMessage, setCopyMessage] = useState("");
   const selectedMatch = normalizeSelectedMatch(
@@ -188,12 +194,24 @@ export function RepositoryActionsJobLogPage({
     });
   }
 
-  function searchHref(nextQuery: string, nextMatch = 1) {
+  function searchHref(
+    nextQuery: string,
+    nextMatch = 1,
+    overrides: { timestamps?: boolean; raw?: boolean } = {},
+  ) {
     const params = new URLSearchParams();
     const trimmed = nextQuery.trim();
     if (trimmed) {
       params.set("q", trimmed);
       params.set("match", String(nextMatch));
+    }
+    const timestamps = overrides.timestamps ?? detail.options.showTimestamps;
+    const raw = overrides.raw ?? detail.options.rawLogs;
+    if (timestamps !== true) {
+      params.set("timestamps", String(timestamps));
+    }
+    if (raw) {
+      params.set("raw", String(raw));
     }
     const queryString = params.toString();
     return queryString ? `${jobPath}?${queryString}` : jobPath;
@@ -225,6 +243,40 @@ export function RepositoryActionsJobLogPage({
       }
     }
     window.setTimeout(() => setCopyMessage(""), 1800);
+  }
+
+  async function updatePreferences(
+    nextOptions: Partial<typeof detail.options>,
+  ) {
+    const merged = { ...detail.options, ...nextOptions };
+    setPreferencesPending(true);
+    setOptionMessage("");
+    try {
+      const response = await fetch(`${basePath}/actions/log-preferences`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          showTimestamps: merged.showTimestamps,
+          rawLogs: merged.rawLogs,
+          wrapLines: merged.wrapLines,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error("preference_write_failed");
+      }
+      const href = searchHref(detail.search.query ?? "", selectedMatch || 1, {
+        timestamps: merged.showTimestamps,
+        raw: merged.rawLogs,
+      });
+      setOptionMessage("Saved log options");
+      router.push(href);
+      router.refresh();
+    } catch {
+      setOptionMessage("Could not save log options");
+    } finally {
+      setPreferencesPending(false);
+      window.setTimeout(() => setOptionMessage(""), 2200);
+    }
   }
 
   return (
@@ -307,29 +359,95 @@ export function RepositoryActionsJobLogPage({
                     role="menu"
                   >
                     <p className="t-label mb-2">Display</p>
-                    <p className="t-sm" style={{ color: "var(--ink-2)" }}>
-                      Timestamps{" "}
-                      {detail.options.showTimestamps ? "shown" : "hidden"} ·{" "}
-                      {detail.options.rawLogs ? "raw" : "rendered"} logs
-                    </p>
-                    <p className="t-xs mt-2">
-                      Preference writes and archive actions land in the next
-                      phase.
-                    </p>
+                    <button
+                      className="list-row w-full justify-between gap-3 py-2 text-left"
+                      disabled={preferencesPending}
+                      onClick={() =>
+                        updatePreferences({
+                          showTimestamps: !detail.options.showTimestamps,
+                        })
+                      }
+                      role="menuitemcheckbox"
+                      aria-checked={detail.options.showTimestamps}
+                      type="button"
+                    >
+                      <span>Show timestamps</span>
+                      <span className="chip soft">
+                        {detail.options.showTimestamps ? "On" : "Off"}
+                      </span>
+                    </button>
+                    <button
+                      className="list-row w-full justify-between gap-3 py-2 text-left"
+                      disabled={preferencesPending}
+                      onClick={() =>
+                        updatePreferences({ rawLogs: !detail.options.rawLogs })
+                      }
+                      role="menuitemcheckbox"
+                      aria-checked={detail.options.rawLogs}
+                      type="button"
+                    >
+                      <span>Raw logs</span>
+                      <span className="chip soft">
+                        {detail.options.rawLogs ? "On" : "Off"}
+                      </span>
+                    </button>
+                    <button
+                      className="list-row w-full justify-between gap-3 py-2 text-left"
+                      disabled={preferencesPending}
+                      onClick={() =>
+                        updatePreferences({
+                          wrapLines: !detail.options.wrapLines,
+                        })
+                      }
+                      role="menuitemcheckbox"
+                      aria-checked={detail.options.wrapLines}
+                      type="button"
+                    >
+                      <span>Wrap lines</span>
+                      <span className="chip soft">
+                        {detail.options.wrapLines ? "On" : "Off"}
+                      </span>
+                    </button>
+                    <button
+                      className="list-row w-full py-2 text-left"
+                      onClick={() => copyPermalink()}
+                      role="menuitem"
+                      type="button"
+                    >
+                      Copy job permalink
+                    </button>
+                    {optionMessage ? (
+                      <p className="t-xs mt-2" role="status">
+                        {optionMessage}
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
               {detail.logState.available ? (
-                <a
-                  className="btn primary"
-                  href={jobDownloadHref(basePath, detail.job.id)}
-                >
-                  Download log
-                </a>
+                <>
+                  <a
+                    className="btn"
+                    href={runArchiveHref(basePath, detail.run.id)}
+                  >
+                    Download run archive
+                  </a>
+                  <a
+                    className="btn primary"
+                    href={jobDownloadHref(basePath, detail.job.id)}
+                  >
+                    Download log
+                  </a>
+                </>
               ) : (
-                <button className="btn primary" disabled type="button">
-                  Download log
-                </button>
+                <>
+                  <button className="btn" disabled type="button">
+                    Download run archive
+                  </button>
+                  <button className="btn primary" disabled type="button">
+                    Download log
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -482,6 +600,8 @@ export function RepositoryActionsJobLogPage({
                         onCopyPermalink={copyPermalink}
                         query={detail.search.query}
                         showTimestamps={detail.options.showTimestamps}
+                        rawLogs={detail.options.rawLogs}
+                        wrapLines={detail.options.wrapLines}
                         step={step}
                         currentAnchor={currentMatch?.anchor ?? null}
                         matchingAnchors={matchAnchors}
@@ -583,8 +703,10 @@ function JobLogStep({
   onCopyPermalink,
   onToggle,
   query,
+  rawLogs,
   showTimestamps,
   step,
+  wrapLines,
 }: {
   currentAnchor: string | null;
   expanded: boolean;
@@ -592,8 +714,10 @@ function JobLogStep({
   onCopyPermalink: (anchor: string) => void;
   onToggle: () => void;
   query: string | null;
+  rawLogs: boolean;
   showTimestamps: boolean;
   step: ActionsJobLogStep;
+  wrapLines: boolean;
 }) {
   return (
     <div>
@@ -651,10 +775,17 @@ function JobLogStep({
                 >
                   {line.lineNumber}
                 </a>
-                <code className="t-mono-sm whitespace-pre-wrap break-words">
+                <code
+                  className={`t-mono-sm ${wrapLines ? "whitespace-pre-wrap break-words" : "whitespace-pre"}`}
+                >
                   {showTimestamps && line.timestamp ? (
                     <span style={{ color: "var(--ink-4)" }}>
                       {dateTimeLabel(line.timestamp)}{" "}
+                    </span>
+                  ) : null}
+                  {rawLogs ? (
+                    <span style={{ color: "var(--ink-4)" }}>
+                      {line.anchor}{" "}
                     </span>
                   ) : null}
                   {renderHighlightedLogLine(

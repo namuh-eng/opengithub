@@ -234,6 +234,7 @@ pub struct ActionsJobLogDetail {
     pub search: ActionsJobLogSearch,
     pub options: ActionsJobLogOptions,
     pub download_href: String,
+    pub run_archive_href: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -418,6 +419,25 @@ pub struct ActionsArtifactDownload {
     pub download_url: String,
     pub storage_key: String,
     pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsRunLogArchive {
+    pub run_id: Uuid,
+    pub filename: String,
+    pub content_type: String,
+    pub body: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateActionsLogPreferences {
+    pub repository_id: Uuid,
+    pub actor_user_id: Uuid,
+    pub show_timestamps: bool,
+    pub raw_logs: bool,
+    pub wrap_lines: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1125,7 +1145,7 @@ pub async fn actions_job_log_detail_for_viewer(
         .filter(|annotation| annotation.job_id == Some(job_id))
         .cloned()
         .collect::<Vec<_>>();
-    let log_available = job.log_deleted_at.is_none();
+    let log_available = job.log_available;
     let deleted_at = job.log_deleted_at;
 
     let total_matches = if log_available {
@@ -1302,6 +1322,50 @@ pub async fn actions_job_log_detail_for_viewer(
             "/api/repos/{}/{}/actions/jobs/{}/logs/download",
             detail.repository.owner_login, detail.repository.name, job_id
         ),
+        run_archive_href: format!(
+            "/api/repos/{}/{}/actions/runs/{}/logs/archive",
+            detail.repository.owner_login, detail.repository.name, run_id
+        ),
+    })
+}
+
+pub async fn update_actions_log_preferences_for_viewer(
+    pool: &PgPool,
+    input: UpdateActionsLogPreferences,
+) -> Result<ActionsJobLogOptions, AutomationError> {
+    require_repository_role(
+        pool,
+        input.repository_id,
+        input.actor_user_id,
+        RepositoryRole::Read,
+    )
+    .await?;
+    let row = sqlx::query(
+        r#"
+        INSERT INTO actions_log_preferences (
+            repository_id, user_id, show_timestamps, raw_logs, wrap_lines
+        )
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (repository_id, user_id)
+        DO UPDATE SET
+            show_timestamps = EXCLUDED.show_timestamps,
+            raw_logs = EXCLUDED.raw_logs,
+            wrap_lines = EXCLUDED.wrap_lines
+        RETURNING show_timestamps, raw_logs, wrap_lines
+        "#,
+    )
+    .bind(input.repository_id)
+    .bind(input.actor_user_id)
+    .bind(input.show_timestamps)
+    .bind(input.raw_logs)
+    .bind(input.wrap_lines)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(ActionsJobLogOptions {
+        show_timestamps: row.get("show_timestamps"),
+        raw_logs: row.get("raw_logs"),
+        wrap_lines: row.get("wrap_lines"),
     })
 }
 
@@ -3024,6 +3088,67 @@ pub async fn workflow_job_log_download_for_viewer(
         .collect::<Vec<_>>()
         .join("\n");
     Ok((format!("{}.log", safe_filename(&log.job.name)), body))
+}
+
+pub async fn workflow_run_log_archive_for_viewer(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Option<Uuid>,
+    run_id: Uuid,
+) -> Result<ActionsRunLogArchive, AutomationError> {
+    let repository = require_repository_read_for_viewer(pool, repository_id, actor_user_id).await?;
+    let run = actions_run_items_by_run(pool, repository_id, run_id)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or(AutomationError::WorkflowRunNotFound)?;
+    let jobs = actions_run_jobs(pool, run_id).await?;
+    if jobs.iter().all(|job| !job.log_available) {
+        return Err(AutomationError::WorkflowLogsUnavailable);
+    }
+
+    let job_ids = jobs
+        .iter()
+        .filter(|job| job.log_available)
+        .map(|job| job.id)
+        .collect::<Vec<_>>();
+    let rows = sqlx::query(
+        r#"
+        SELECT workflow_jobs.id AS job_id,
+               workflow_jobs.name AS job_name,
+               workflow_job_log_lines.timestamp,
+               workflow_job_log_lines.content
+        FROM workflow_jobs
+        JOIN workflow_job_log_lines ON workflow_job_log_lines.job_id = workflow_jobs.id
+        WHERE workflow_jobs.id = ANY($1)
+        ORDER BY workflow_jobs.created_at, workflow_jobs.name, workflow_job_log_lines.line_number
+        "#,
+    )
+    .bind(&job_ids)
+    .fetch_all(pool)
+    .await?;
+
+    let mut body = format!(
+        "opengithub workflow log archive\nrepository: {}/{}\nrun: #{}\n\n",
+        repository.owner_login, repository.name, run.run_number
+    );
+    let mut current_job: Option<Uuid> = None;
+    for row in rows {
+        let job_id: Uuid = row.get("job_id");
+        if current_job != Some(job_id) {
+            current_job = Some(job_id);
+            body.push_str(&format!("\n== {} ==\n", row.get::<String, _>("job_name")));
+        }
+        body.push_str(&format_log_line(row.get("timestamp"), row.get("content")));
+        body.push('\n');
+    }
+
+    Ok(ActionsRunLogArchive {
+        run_id,
+        filename: format!("run-{}-logs.txt", run.run_number),
+        content_type: "text/plain; charset=utf-8".to_owned(),
+        body,
+    })
 }
 
 pub async fn workflow_artifact_download_for_viewer(

@@ -191,5 +191,6 @@ function emptyJobLogDetail(
       wrapLines: true,
     },
     downloadHref: `/api/repos/${ownerLogin}/${repositoryName}/actions/jobs/${jobId}/logs/download`,
+    runArchiveHref: `/api/repos/${ownerLogin}/${repositoryName}/actions/runs/${runId}/logs/archive`,
   };
 }

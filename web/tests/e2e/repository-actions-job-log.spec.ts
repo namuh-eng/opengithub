@@ -112,7 +112,22 @@ test("signed-in job log viewer renders job sidebar, steps, and annotations", asy
   await page.getByRole("button", { name: "Hide annotations" }).click();
   await expect(page.getByText("Problems in this job")).toBeHidden();
   await page.getByRole("button", { name: "Log options" }).click();
-  await expect(page.getByRole("menu")).toContainText("rendered logs");
+  await expect(page.getByRole("menu")).toContainText("Raw logs");
+  await page.getByRole("menuitemcheckbox", { name: /Raw logs/ }).click();
+  await expect(page.getByText("Saved log options")).toBeVisible();
+  await expect(page).toHaveURL(/raw=true/);
+  await page.getByRole("menuitem", { name: "Copy job permalink" }).click();
+  await expect(page.getByText("Copied job permalink")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Download run archive" }),
+  ).toHaveAttribute("href", /\/actions\/runs\/.*\/logs\/archive/);
+  const archiveResponse = await page.request.get(
+    `${new URL(page.url()).origin}${await page.getByRole("link", { name: "Download run archive" }).getAttribute("href")}`,
+  );
+  expect(archiveResponse.ok()).toBeTruthy();
+  expect(await archiveResponse.text()).toContain(
+    "opengithub workflow log archive",
+  );
   await expect(
     page.getByRole("link", { name: "Download log" }),
   ).toHaveAttribute("href", /\/actions\/jobs\/.*\/logs\/download/);
@@ -121,6 +136,6 @@ test("signed-in job log viewer renders job sidebar, steps, and annotations", asy
   await expectNoHorizontalOverflow(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/actions-004-phase3-search-navigation.jpg",
+    path: "../ralph/screenshots/build/actions-004-phase4-log-options.jpg",
   });
 });

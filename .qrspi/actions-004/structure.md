@@ -56,7 +56,7 @@
 
 ## Phase 4: Log Options and Archive Download - every toolbar action is data-backed
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire the log options dropdown and archive/download behavior. Users can toggle timestamps, switch raw/rendered log display, copy the job permalink, download a single-job log, and download the run log archive through signed URLs or deterministic local-dev responses. Expired/deleted logs render a 410-style unavailable state with no dead controls.
 

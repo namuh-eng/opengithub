@@ -72,7 +72,24 @@ test("api docs expose implemented REST surfaces and working examples", async ({
   ).toBeVisible();
   await expect(
     page.locator("code").filter({
-      hasText: "/api/repos/{owner}/{repo}/actions/runs/{run_id}/logs",
+      hasText:
+        /^\/api\/repos\/\{owner\}\/\{repo\}\/actions\/runs\/\{run_id\}\/logs$/,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.locator("code").filter({
+      hasText:
+        "/api/repos/{owner}/{repo}/actions/runs/{run_id}/jobs/{job_id}/detail?q=error&match=1&timestamps=true&raw=false",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.locator("code").filter({
+      hasText: "/api/repos/{owner}/{repo}/actions/log-preferences",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.locator("code").filter({
+      hasText: "/api/repos/{owner}/{repo}/actions/runs/{run_id}/logs/archive",
     }),
   ).toBeVisible();
   await expect(
