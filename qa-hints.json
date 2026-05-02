@@ -3090,5 +3090,22 @@
       "TEST_DATABASE_URL-backed cargo test still exposes broader stale owner-login expectations in unrelated PR/API contract suites; the standard make test path passed and the focused org contract passed against the same database.",
       "QA should stress hidden public members, unrelated signed-in users with direct repository permissions, many topics/languages/members, unusual language color values, future sponsorship-enabled data, and very long organization names/descriptions."
     ]
+  },
+  {
+    "feature_id": "orgs-002",
+    "tests_written": [
+      "Completed Phase 1 Organization Repository List API Contract without marking orgs-002 build_pass=true.",
+      "Added GET /api/orgs/{org}/repositories with optional signed-cookie viewer detection, standard list envelope, org-specific filters, available language/type counts, tab counts, and viewer state.",
+      "Implemented visibility-aware repository rows for anonymous users, organization members, direct repository collaborators, and private organizations, including topics, languages, license, fork source, issue/PR/star/fork counts, admin and contributed-by-viewer flags.",
+      "Added typed Next.js OrganizationRepositoryList DTOs plus cookie-backed server fetch helpers for later UI phases.",
+      "Added organization_repositories_contract coverage for public/private/internal redaction, member-visible rows, direct admin access, q/language/type/sort/density/page normalization, filter counts, pagination clamps, private organization 404 behavior, and redacted validation envelopes.",
+      "Verification passed: focused organization_repositories_contract against local Postgres on localhost:55432; TEST_DATABASE_URL-backed make check; standard env -u TEST_DATABASE_URL DB_SSL=false make test with Cargo tests plus 240 frontend tests."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke and make test-e2e were skipped because Phase 1 is API-first and does not yet render the organization repository list UI.",
+      "TEST_DATABASE_URL-backed full make test still exposes an unrelated PR compare owner-login fixture mismatch; the focused org repository contract passed against the same database and the standard make test path passed.",
+      "Later phases still need Editorial UI validation for repository tabs, density buttons, active chips, row navigation, no-overflow behavior, and canonical /orgs/{org}/repositories route parity.",
+      "QA should stress large organizations, mixed direct repository permissions for non-members, many topics/languages, archived template forks, private organizations, and unusual filter casing."
+    ]
   }
 ]

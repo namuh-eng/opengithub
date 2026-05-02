@@ -2133,3 +2133,15 @@
 - Added `.qrspi/orgs-002/structure.md` with five independently verifiable vertical phases: org repository list API, Editorial repository tab shell, URL-backed repository filters/pagination, public people list API/UI, and final privacy/visual/QA guardrails.
 - Did not change `prd.json`; `build_pass` remains `false` until all implementation phases pass verification.
 - Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches using `rg -n -e` after the local `rg -E` form failed to parse the pattern.
+
+2026-05-03 - orgs-002 phase 1 organization repository list API contract
+
+- Completed Phase 1 from `.qrspi/orgs-002/structure.md`: `GET /api/orgs/{org}/repositories` now serves an organization-owned repository list from Rust/Postgres.
+- Added org-specific list DTOs, filter DTOs, repository row metadata, fork source data, filter-count metadata, tab counts, viewer state, and normalization for `q`, `type`, `language`, `sort`, `density`, `page`, and `pageSize`.
+- Preserved `orgs-001` privacy rules: private organizations return 404 for non-members; anonymous users see public repositories only; org members can see internal/private rows; direct repository collaborators can see permitted private repositories without leaking unrelated membership.
+- Added typed Next.js API and server-session helpers for later UI phases.
+- Added `crates/api/tests/organization_repositories_contract.rs` covering visibility, direct admin access, language/type/search/sort/pagination filters, filter counts, private organization hiding, and redacted validation errors.
+- Verification passed: focused `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false cargo test -p opengithub-api --test organization_repositories_contract -- --nocapture`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; standard `env -u TEST_DATABASE_URL DB_SSL=false make test` with Cargo tests plus 240 frontend tests.
+- A TEST_DATABASE_URL-backed full `make test` still fails in unrelated `api_pull_request_compare_contract` owner-login expectations; the focused org repository contract passed against the same database and the standard make test path passed.
+- Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first and the structure outline marks browser smoke optional for this phase.
+- Marked Phase 1 as done in `.qrspi/orgs-002/structure.md`; `prd.json` remains `build_pass: false` because Phases 2-5 remain.

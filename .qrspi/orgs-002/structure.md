@@ -6,7 +6,7 @@
 
 ## Phase 1: Organization Repository List API Contract - filters, density state, pagination, and visibility
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the Rust read contract for organization-owned repositories so `/api/orgs/{org}/repositories` can serve the repositories tab and `/orgs/{org}/repositories` page from real Postgres data. The contract must preserve org visibility rules from `orgs-001`, expose URL-backed filter state, and return a standard list envelope with repository rows, available filter counts, tab counts, and viewer state. This phase writes no org data; repository open/visit writes stay with existing repository page behavior.
 

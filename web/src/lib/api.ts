@@ -250,6 +250,79 @@ export type OrganizationViewerState = {
   isFollowing: boolean;
 };
 
+export type OrganizationRepositoryList = {
+  items: OrganizationRepositoryListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  mode: "repositories" | string;
+  filters: OrganizationRepositoryFilters;
+  availableLanguages: OrganizationRepositoryFilterOption[];
+  availableTypes: OrganizationRepositoryFilterOption[];
+  tabCounts: OrganizationTabCounts;
+  viewerState: OrganizationViewerState;
+};
+
+export type OrganizationRepositoryListItem = {
+  id: string;
+  owner: string;
+  name: string;
+  fullName: string;
+  description: string | null;
+  visibility: RepositoryVisibility;
+  href: string;
+  defaultBranch: string;
+  primaryLanguage: OrganizationLanguageSummary | null;
+  languages: OrganizationLanguageSummary[];
+  topics: string[];
+  starsCount: number;
+  forksCount: number;
+  openIssuesCount: number;
+  openPullRequestsCount: number;
+  license: OrganizationRepositoryLicense | null;
+  isArchived: boolean;
+  isFork: boolean;
+  isTemplate: boolean;
+  isMirror: boolean;
+  canAdmin: boolean;
+  contributedByViewer: boolean;
+  forkSource: OrganizationRepositoryForkSource | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OrganizationRepositoryForkSource = {
+  owner: string;
+  name: string;
+  href: string;
+};
+
+export type OrganizationRepositoryFilters = {
+  query: string | null;
+  repositoryType: string;
+  language: string | null;
+  sort: string;
+  density: string;
+  page: number;
+  pageSize: number;
+};
+
+export type OrganizationRepositoryFilterOption = {
+  value: string;
+  label: string;
+  count: number;
+};
+
+export type OrganizationRepositoryListQuery = {
+  q?: string;
+  type?: string;
+  language?: string;
+  sort?: string;
+  density?: string;
+  page?: number;
+  pageSize?: number;
+};
+
 export type ProfileAchievement = {
   slug: string;
   name: string;
@@ -2516,6 +2589,52 @@ export async function getPublicOrganizationProfileFromCookie(
   }
 
   return (await response.json()) as PublicOrganizationProfile;
+}
+
+export async function getOrganizationRepositoriesFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  query: OrganizationRepositoryListQuery = {},
+): Promise<OrganizationRepositoryList | null> {
+  let response: Response;
+  try {
+    const url = new URL(
+      `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/repositories`,
+    );
+    if (query.q) {
+      url.searchParams.set("q", query.q);
+    }
+    if (query.type) {
+      url.searchParams.set("type", query.type);
+    }
+    if (query.language) {
+      url.searchParams.set("language", query.language);
+    }
+    if (query.sort) {
+      url.searchParams.set("sort", query.sort);
+    }
+    if (query.density) {
+      url.searchParams.set("density", query.density);
+    }
+    if (query.page) {
+      url.searchParams.set("page", String(query.page));
+    }
+    if (query.pageSize) {
+      url.searchParams.set("pageSize", String(query.pageSize));
+    }
+    response = await fetch(url, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return null;
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return (await response.json()) as OrganizationRepositoryList;
 }
 
 export async function getProfileRepositoriesFromCookie(
