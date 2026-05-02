@@ -12,6 +12,65 @@ export type AuthSession = {
 
 export type RepositoryVisibility = "public" | "private" | "internal";
 
+export type SearchSuggestionToken = {
+  prefix: string | null;
+  value: string;
+  replaceFrom: number;
+  replaceTo: number;
+};
+
+export type SearchSuggestionItem = {
+  id: string;
+  kind: string;
+  title: string;
+  description: string | null;
+  href: string | null;
+  nextQuery: string | null;
+  scope: string | null;
+  ownerLogin: string | null;
+  repositoryName: string | null;
+  visibility: RepositoryVisibility | null;
+};
+
+export type SearchSuggestionGroup = {
+  id: string;
+  title: string;
+  items: SearchSuggestionItem[];
+};
+
+export type SavedSearchSuggestion = {
+  id: string;
+  name: string;
+  query: string;
+  scope: string;
+  href: string;
+  updatedAt: string;
+};
+
+export type RecentSearchSuggestion = {
+  id: string;
+  query: string;
+  scope: string;
+  resultType: string | null;
+  href: string;
+  searchedAt: string;
+};
+
+export type SearchSuggestionDashboard = {
+  query: string;
+  scope: string;
+  token: SearchSuggestionToken | null;
+  groups: SearchSuggestionGroup[];
+  savedSearches: SavedSearchSuggestion[];
+  recentSearches: RecentSearchSuggestion[];
+};
+
+export type SearchSuggestionsQuery = {
+  query?: string;
+  scope?: string;
+  limit?: number;
+};
+
 export type RepositoryOwnerType = "user" | "organization";
 
 export type RepositorySummary = {
@@ -1916,6 +1975,59 @@ export function globalSearchPath(query: GlobalSearchQuery): string {
     params.set("pageSize", String(query.pageSize));
   }
   return `/api/search?${params.toString()}`;
+}
+
+export function searchSuggestionsPath(query: SearchSuggestionsQuery = {}) {
+  const params = new URLSearchParams();
+  if (query.query?.trim()) {
+    params.set("q", query.query.trim());
+  }
+  if (query.scope?.trim()) {
+    params.set("scope", query.scope.trim());
+  }
+  if (query.limit) {
+    params.set("limit", String(query.limit));
+  }
+  const paramString = params.toString();
+  return paramString
+    ? `/api/search/suggestions?${paramString}`
+    : "/api/search/suggestions";
+}
+
+export async function getSearchSuggestionsFromCookie(
+  cookie: string | null | undefined,
+  query: SearchSuggestionsQuery = {},
+): Promise<SearchSuggestionDashboard | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${searchSuggestionsPath(query)}`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Search suggestions are temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "suggestions_failed",
+          message: "Search suggestions failed.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as SearchSuggestionDashboard;
 }
 
 export async function searchGlobalFromCookie(

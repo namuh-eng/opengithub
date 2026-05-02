@@ -200,12 +200,16 @@ test("final search sweep covers header submit, all tabs, mobile layout, and empt
 
   await page.goto("/dashboard");
   await page.getByRole("searchbox", { name: "Search or jump to" }).focus();
-  await expect(page.getByRole("listbox")).toBeVisible();
-  await page.getByRole("searchbox", { name: "Search or jump to" }).fill(marker);
+  const searchDialog = page.getByRole("dialog", { name: "Search" });
+  await expect(searchDialog).toBeVisible();
+  await expect(searchDialog.getByRole("listbox")).toBeVisible();
+  await searchDialog
+    .getByRole("combobox", { name: "Search opengithub" })
+    .fill(marker);
   await expect(
-    page.getByRole("option", { name: /Search repositories for/ }),
+    searchDialog.getByRole("option", { name: /Repositories/ }).first(),
   ).toHaveAttribute("href", /\/search\?q=/);
-  await page.keyboard.press("Enter");
+  await searchDialog.getByRole("link", { exact: true, name: "Search" }).click();
   await expect(page).toHaveURL(
     new RegExp(`/search\\?q=${marker}&type=repositories$`),
   );

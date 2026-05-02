@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "@/components/AppShell";
 import type { AppShellContext, AuthSession } from "@/lib/api";
 import { isProtectedPath } from "@/lib/protected-routes";
@@ -61,6 +61,81 @@ function renderShell() {
   );
 }
 
+beforeEach(() => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      Response.json({
+        groups: [
+          {
+            id: "scopes",
+            title: "Search scopes",
+            items: [
+              {
+                id: "scope-repositories",
+                kind: "submit_search",
+                title: "Repositories",
+                description: "Search repository names and descriptions",
+                href: "/search?q=&type=repositories",
+                nextQuery: "",
+                scope: "repositories",
+                ownerLogin: null,
+                repositoryName: null,
+                visibility: null,
+              },
+            ],
+          },
+          {
+            id: "repositories",
+            title: "Repositories and code",
+            items: [
+              {
+                id: "repo-1",
+                kind: "direct_repository_jump",
+                title: "mona/editorial",
+                description: "public repository",
+                href: "/mona/editorial",
+                nextQuery: null,
+                scope: null,
+                ownerLogin: "mona",
+                repositoryName: "editorial",
+                visibility: "public",
+              },
+            ],
+          },
+        ],
+        query: "",
+        recentSearches: [
+          {
+            id: "recent-1",
+            query: "router guards",
+            scope: "all",
+            resultType: "repositories",
+            href: "/search?q=router+guards&type=repositories",
+            searchedAt: "2026-05-02T00:00:00Z",
+          },
+        ],
+        savedSearches: [
+          {
+            id: "saved-1",
+            name: "Rust files",
+            query: "language:rust",
+            scope: "code",
+            href: "/search?q=language%3Arust&type=code",
+            updatedAt: "2026-05-02T00:00:00Z",
+          },
+        ],
+        scope: "all",
+        token: null,
+      }),
+    ),
+  );
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("AppShell desktop header", () => {
   it("renders working global navigation, notifications, and search controls", () => {
     renderShell();
@@ -96,7 +171,7 @@ describe("AppShell desktop header", () => {
     );
   });
 
-  it("opens jump suggestions from shell context and keeps default search typed", () => {
+  it("opens the API-backed global search modal and keeps default search typed", async () => {
     renderShell();
 
     const search = screen.getByRole("searchbox", {
@@ -104,30 +179,66 @@ describe("AppShell desktop header", () => {
     });
     fireEvent.focus(search);
 
-    expect(screen.getByRole("listbox")).toHaveClass("app-shell-search-popover");
-    expect(
-      screen.getByRole("option", { name: /mona\/editorial/ }),
-    ).toHaveAttribute("href", "/mona/editorial");
-    expect(screen.getByRole("option", { name: /Namuh/ })).toHaveAttribute(
-      "href",
-      "/namuh",
+    expect(screen.getByRole("dialog", { name: "Search" })).toHaveClass(
+      "palette",
     );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "Search opengithub" }),
+      ).toHaveFocus(),
+    );
+    expect(await screen.findByRole("listbox")).toHaveClass("palette-list");
     expect(
-      screen.getByRole("option", { name: /namuh\/Platform/ }),
-    ).toHaveAttribute("href", "/orgs/namuh/teams/platform");
-    expect(
-      screen.getByRole("option", { name: /New repository/ }),
-    ).toHaveAttribute("href", "/new");
+      await screen.findByRole("option", { name: /mona\/editorial/ }),
+    ).toHaveAttribute("href", "/mona/editorial");
+    expect(screen.getByRole("option", { name: /Rust files/ })).toHaveAttribute(
+      "href",
+      "/search?q=language%3Arust&type=code",
+    );
+    expect(screen.getByRole("link", { name: "Syntax tips" })).toHaveAttribute(
+      "href",
+      "/docs/api#search",
+    );
+    expect(screen.getByRole("link", { name: "Feedback" })).toHaveAttribute(
+      "href",
+      "/issues/new?title=Search%20feedback",
+    );
 
-    fireEvent.change(search, { target: { value: "router guards" } });
-    expect(
-      screen.getByRole("option", {
-        name: /Search repositories for "router guards"/,
-      }),
-    ).toHaveAttribute("href", "/search?q=router+guards&type=repositories");
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Search opengithub" }),
+      {
+        target: { value: "router guards" },
+      },
+    );
+    await waitFor(() =>
+      expect(fetch).toHaveBeenLastCalledWith(
+        "/search/suggestions?q=router+guards&scope=all&limit=8",
+        expect.any(Object),
+      ),
+    );
+    expect(screen.getByRole("link", { name: "Search" })).toHaveAttribute(
+      "href",
+      "/search?q=router+guards&type=repositories",
+    );
 
-    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.keyDown(
+      screen.getByRole("combobox", { name: "Search opengithub" }),
+      {
+        key: "Escape",
+      },
+    );
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+
+  it("opens the global search modal from the keyboard shortcut", async () => {
+    renderShell();
+
+    fireEvent.keyDown(document, { key: "/" });
+
+    expect(await screen.findByRole("dialog", { name: "Search" })).toBeVisible();
+    expect(
+      await screen.findByRole("option", { name: /Repositories/ }),
+    ).toBeVisible();
   });
 
   it("opens the global menu with recent repositories, teams, and real links", () => {

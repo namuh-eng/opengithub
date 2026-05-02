@@ -29,6 +29,7 @@ function seedDashboard(): SeededDashboard {
       env: {
         ...process.env,
         DASHBOARD_E2E_EMPTY: "0",
+        SEARCH_E2E_MARKER: "searchmodal",
         SESSION_COOKIE_NAME: "og_session",
       },
     },
@@ -127,21 +128,36 @@ test("signed-in desktop header menus, links, search, and sign-out work", async (
   });
 
   await page.getByRole("searchbox", { name: "Search or jump to" }).focus();
-  await expect(page.getByRole("listbox")).toBeVisible();
+  const searchDialog = page.getByRole("dialog", { name: "Search" });
+  await expect(searchDialog).toBeVisible();
   await expect(
-    page.getByRole("option", {
-      name: new RegExp(seeded.firstRepositoryHref.slice(1)),
-    }),
-  ).toHaveAttribute("href", seeded.firstRepositoryHref);
+    searchDialog.getByRole("combobox", { name: "Search opengithub" }),
+  ).toBeFocused();
+  await expect(searchDialog.getByRole("listbox")).toBeVisible();
+  await expect(
+    searchDialog.getByRole("link", { name: "Syntax tips" }),
+  ).toHaveAttribute("href", "/docs/api#search");
+  await expect(
+    searchDialog.getByRole("link", { name: "Feedback" }),
+  ).toHaveAttribute("href", "/issues/new?title=Search%20feedback");
+  await expect(
+    searchDialog.getByRole("option", { name: /Repositories/ }).first(),
+  ).toBeVisible();
+  await expect(
+    searchDialog.getByRole("option", { name: /searchmodal/ }).first(),
+  ).toBeVisible();
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/search-001-phase1-header-suggestions.jpg",
+    path: "../ralph/screenshots/build/search-002-phase2-command-modal.jpg",
   });
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("listbox")).toHaveCount(0);
+  await expect(searchDialog).toHaveCount(0);
 
-  await page.getByRole("searchbox", { name: "Search or jump to" }).fill("rust");
-  await page.keyboard.press("Enter");
+  await page.getByRole("searchbox", { name: "Search or jump to" }).focus();
+  await searchDialog
+    .getByRole("combobox", { name: "Search opengithub" })
+    .fill("rust");
+  await searchDialog.getByRole("link", { exact: true, name: "Search" }).click();
   await expect(page).toHaveURL(/\/search\?q=rust&type=repositories$/);
   await expect(
     page.getByRole("heading", { name: "Search opengithub" }),

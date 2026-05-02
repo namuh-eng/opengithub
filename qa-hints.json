@@ -2582,5 +2582,21 @@
       "Recent searches are readable from the new table but automatic recording on search submit is not wired until a later phase.",
       "Private leakage was tested with repository and code suggestions; organization/team membership edge cases should be rechecked when the UI consumes this endpoint."
     ]
+  },
+  {
+    "feature_id": "search-002",
+    "tests_written": [
+      "Implemented Phase 2 Editorial command-style global search modal in the signed-in header.",
+      "Added typed frontend suggestion DTOs and cookie-forwarded getSearchSuggestions helpers plus a same-origin /search/suggestions proxy route.",
+      "Replaced the local header popover with GlobalSearchModal using Editorial palette primitives, API-backed grouped suggestions, syntax tips, feedback, saved/recent search rows, Escape close, outside click close, / and Cmd/Ctrl+K shortcuts, focused combobox, and concrete Search fallback navigation.",
+      "Updated app-shell and search Playwright coverage for the new modal, API-backed suggestions, no dead links/buttons, and screenshot ralph/screenshots/build/search-002-phase2-command-modal.jpg.",
+      "Verification passed: focused app-shell Vitest, TEST_DATABASE_URL-backed make check, same-env make test with Cargo tests plus 200 frontend tests, focused app-shell Playwright smoke, focused search Playwright suite, full same-env make test-e2e with 71 tests, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 reads saved searches but does not create or delete them; the nested Create saved search flow is Phase 4.",
+      "Qualifier replacement, direct jump keyboard selection, and query-builder chips are Phase 3; current modal rows primarily navigate or submit.",
+      "Browser smoke uses deterministic Rust-signed sessions and local Postgres fixtures instead of real Google OAuth.",
+      "Suggestion latency and rapid typing cancellation were covered by component behavior, but high-latency network behavior should be stressed once production deployment exists."
+    ]
   }
 ]

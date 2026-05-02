@@ -22,7 +22,7 @@
 
 ## Phase 2: Editorial Command Modal - header search opens the full search experience
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the desktop header's small suggestion popover with a full Editorial command-style search modal while preserving the existing mobile drawer and basic submit behavior. Clicking the header search or pressing the global shortcut opens the modal, focuses the combobox, and renders API-backed categorized suggestions.
 

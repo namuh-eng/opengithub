@@ -26,11 +26,13 @@ import {
   getRepositoryPullRequestsFromCookie,
   getRepositoryPullRequestTimelineFromCookie,
   getRepositoryRefsFromCookie,
+  getSearchSuggestionsFromCookie,
   getSessionFromHeaders,
   type RepositoryActionsDashboardQuery,
   type RepositoryIssueListQuery,
   type RepositoryPullRequestDiffQuery,
   type RepositoryPullRequestListQuery,
+  type SearchSuggestionsQuery,
   searchGlobalFromCookie,
 } from "@/lib/api";
 
@@ -57,6 +59,11 @@ export async function getAppShellContext() {
 export async function searchGlobal(query: GlobalSearchQuery) {
   const requestHeaders = await headers();
   return searchGlobalFromCookie(requestHeaders.get("cookie"), query);
+}
+
+export async function getSearchSuggestions(query: SearchSuggestionsQuery = {}) {
+  const requestHeaders = await headers();
+  return getSearchSuggestionsFromCookie(requestHeaders.get("cookie"), query);
 }
 
 export async function getDashboardSummary(query: DashboardSummaryQuery = {}) {

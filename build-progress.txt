@@ -1757,3 +1757,12 @@
 - Added `.qrspi/search-002/structure.md` with five independently verifiable phases: suggestion/saved-search API contract, Editorial command modal, autocomplete/query-builder/direct jumps, saved-search creation/management, and final guardrails/QA handoff.
 - Did not change `prd.json`; `build_pass` remains `false` until all implementation phases pass verification.
 - Tests not run because this iteration only created the required planning artifact.
+
+2026-05-02 - search-002 phase 2 Editorial command modal
+
+- Implemented Phase 2 from `.qrspi/search-002/structure.md`: the signed-in header now opens an Editorial command-style global search modal instead of the local-only jump popover.
+- Added typed frontend suggestion DTOs and cookie-forwarded helpers in `web/src/lib/api.ts` / `web/src/lib/server-session.ts`, plus a same-origin `GET /search/suggestions` proxy so browser requests use the Rust `/api/search/suggestions` contract with the session cookie.
+- Added `web/src/components/GlobalSearchModal.tsx` with Search heading, combobox focus, API-backed grouped suggestions, saved/recent search rows, syntax tips, feedback, concrete Search fallback, Escape/outside-click close, and `/` plus Cmd/Ctrl+K shortcuts from `AppHeader`.
+- Updated Vitest and Playwright coverage for modal opening, focus management, API suggestion rendering, concrete links, shortcut behavior, header submit replacement, no dead controls, and saved screenshot `ralph/screenshots/build/search-002-phase2-command-modal.jpg`.
+- Verification passed: focused `cd web && npx vitest run tests/app-shell.test.tsx`; `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 200 frontend tests; focused TEST_DATABASE_URL-backed `web/tests/e2e/app-shell.spec.ts`; focused `web/tests/e2e/search.spec.ts`; full same-env `make test-e2e` with 71 Playwright tests; mandatory Editorial banned-value scan returned zero matches.
+- Marked Phase 2 as done in `.qrspi/search-002/structure.md`; `prd.json` remains `build_pass: false` because Phases 3-5 remain.

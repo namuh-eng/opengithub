@@ -2,15 +2,10 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { GlobalSearchModal } from "@/components/GlobalSearchModal";
 import type { AppShellContext, AuthSession } from "@/lib/api";
-import {
-  CREATE_NAV_ITEMS,
-  createJumpSuggestions,
-  GLOBAL_NAV_ITEMS,
-  type JumpSuggestion,
-  queryJumpSuggestions,
-} from "@/lib/navigation";
+import { CREATE_NAV_ITEMS, GLOBAL_NAV_ITEMS } from "@/lib/navigation";
 
 type AppHeaderProps = {
   session: AuthSession;
@@ -23,12 +18,6 @@ type DrawerSectionLink = {
   label: string;
   detail?: string;
 };
-
-const SEARCH_SECTIONS: JumpSuggestion["section"][] = [
-  "Jump to",
-  "Create",
-  "Search",
-];
 
 function userLabel(session: AuthSession) {
   return session.user?.display_name ?? session.user?.email ?? "Sign in";
@@ -91,93 +80,6 @@ function Icon({ name }: { name: "menu" | "search" | "plus" | "bell" }) {
       />
     </svg>
   );
-}
-
-function suggestionIcon(kind: JumpSuggestion["kind"]) {
-  if (kind === "search") {
-    return <Icon name="search" />;
-  }
-  if (kind === "create") {
-    return <Icon name="plus" />;
-  }
-  return (
-    <svg aria-hidden="true" height="15" viewBox="0 0 16 16" width="15">
-      <path
-        d="M3 3.5h10v9H3zM5.2 6h5.6M5.2 8h5.6M5.2 10h3.4"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.3"
-      />
-    </svg>
-  );
-}
-
-function groupedSuggestions(suggestions: JumpSuggestion[]) {
-  return SEARCH_SECTIONS.map((section) => ({
-    section,
-    suggestions: suggestions.filter(
-      (suggestion) => suggestion.section === section,
-    ),
-  })).filter((group) => group.suggestions.length > 0);
-}
-
-function shellJumpSuggestions(
-  shellContext: AppShellContext | null | undefined,
-  query: string,
-): JumpSuggestion[] {
-  const normalized = query.trim().toLowerCase();
-  const matches = (value: string) =>
-    !normalized || value.toLowerCase().includes(normalized);
-  const repositories =
-    shellContext?.recentRepositories
-      .filter((repo) => matches(`${repo.ownerLogin}/${repo.name}`))
-      .slice(0, 5)
-      .map((repo) => ({
-        id: `repository:${repo.id}`,
-        kind: "repository" as const,
-        label: `${repo.ownerLogin}/${repo.name}`,
-        description: `${repo.visibility} repository`,
-        href: repo.href,
-        section: "Jump to" as const,
-      })) ?? [];
-  const organizations =
-    shellContext?.organizations
-      .filter((org) => matches(org.displayName) || matches(org.slug))
-      .slice(0, 3)
-      .map((org) => ({
-        id: `organization:${org.id}`,
-        kind: "organization" as const,
-        label: org.displayName,
-        description: `${org.role} organization`,
-        href: org.href,
-        section: "Jump to" as const,
-      })) ?? [];
-  const teams =
-    shellContext?.teams
-      .filter(
-        (team) =>
-          matches(`${team.organizationSlug}/${team.name}`) ||
-          matches(`${team.organizationSlug}/${team.slug}`),
-      )
-      .slice(0, 3)
-      .map((team) => ({
-        id: `team:${team.id}`,
-        kind: "team" as const,
-        label: `${team.organizationSlug}/${team.name}`,
-        description: `${team.role} team`,
-        href: team.href,
-        section: "Jump to" as const,
-      })) ?? [];
-
-  return [
-    ...repositories,
-    ...organizations,
-    ...teams,
-    ...createJumpSuggestions(),
-    ...queryJumpSuggestions(query),
-  ].slice(0, 12);
 }
 
 function MenuPanel({
@@ -281,11 +183,7 @@ export function AppHeader({ session, shellContext }: AppHeaderProps) {
   const [openMenu, setOpenMenu] = useState<MenuName>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
-  const [keyboardSuggestionActive, setKeyboardSuggestionActive] =
-    useState(false);
   const headerRef = useRef<HTMLElement | null>(null);
-  const searchFormRef = useRef<HTMLFormElement | null>(null);
   const mobileDrawerRef = useRef<HTMLDivElement | null>(null);
   const globalButtonId = useId();
   const createButtonId = useId();
@@ -299,14 +197,6 @@ export function AppHeader({ session, shellContext }: AppHeaderProps) {
   const organizations = shellContext?.organizations ?? [];
   const teams = shellContext?.teams ?? [];
   const quickLinks = shellContext?.quickLinks ?? [];
-  const jumpSuggestions = useMemo(
-    () => shellJumpSuggestions(shellContext, searchQuery),
-    [shellContext, searchQuery],
-  );
-  const jumpSuggestionGroups = useMemo(
-    () => groupedSuggestions(jumpSuggestions),
-    [jumpSuggestions],
-  );
   const mobilePrimaryLinks =
     quickLinks.length > 0
       ? quickLinks.map((link) => ({
@@ -347,14 +237,12 @@ export function AppHeader({ session, shellContext }: AppHeaderProps) {
     function onPointerDown(event: PointerEvent) {
       if (!headerRef.current?.contains(event.target as Node)) {
         setOpenMenu(null);
-        setSearchOpen(false);
       }
     }
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setOpenMenu(null);
-        setSearchOpen(false);
       }
     }
 
@@ -367,10 +255,33 @@ export function AppHeader({ session, shellContext }: AppHeaderProps) {
   }, []);
 
   useEffect(() => {
-    if (selectedSuggestionIndex >= jumpSuggestions.length) {
-      setSelectedSuggestionIndex(0);
+    if (!signedIn) {
+      return;
     }
-  }, [jumpSuggestions.length, selectedSuggestionIndex]);
+
+    function onGlobalSearchShortcut(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isEditable =
+        tagName === "input" ||
+        tagName === "textarea" ||
+        tagName === "select" ||
+        target?.isContentEditable;
+      const wantsSearch =
+        event.key === "/" ||
+        ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k");
+      if (!wantsSearch || isEditable) {
+        return;
+      }
+      event.preventDefault();
+      setOpenMenu(null);
+      setSearchOpen(true);
+    }
+
+    document.addEventListener("keydown", onGlobalSearchShortcut);
+    return () =>
+      document.removeEventListener("keydown", onGlobalSearchShortcut);
+  }, [signedIn]);
 
   useEffect(() => {
     if (openMenu !== "global") {
@@ -386,15 +297,6 @@ export function AppHeader({ session, shellContext }: AppHeaderProps) {
 
     return () => window.cancelAnimationFrame(frame);
   }, [openMenu]);
-
-  function openSuggestion(index: number) {
-    const suggestion = jumpSuggestions[index];
-    if (!suggestion) {
-      return;
-    }
-
-    window.location.assign(suggestion.href);
-  }
 
   return (
     <header
@@ -581,36 +483,6 @@ export function AppHeader({ session, shellContext }: AppHeaderProps) {
               action="/search"
               className="relative ml-auto hidden h-8 min-w-[220px] max-w-[360px] flex-1 items-center gap-2 rounded-md border px-2 lg:flex"
               onSubmit={() => setSearchOpen(false)}
-              onKeyDown={(event) => {
-                if (!searchOpen) {
-                  return;
-                }
-                if (event.key === "ArrowDown") {
-                  event.preventDefault();
-                  setKeyboardSuggestionActive(true);
-                  setSelectedSuggestionIndex(
-                    (current) => (current + 1) % jumpSuggestions.length,
-                  );
-                }
-                if (event.key === "ArrowUp") {
-                  event.preventDefault();
-                  setKeyboardSuggestionActive(true);
-                  setSelectedSuggestionIndex(
-                    (current) =>
-                      (current - 1 + jumpSuggestions.length) %
-                      jumpSuggestions.length,
-                  );
-                }
-                if (
-                  event.key === "Enter" &&
-                  keyboardSuggestionActive &&
-                  jumpSuggestions.length > 0
-                ) {
-                  event.preventDefault();
-                  openSuggestion(selectedSuggestionIndex);
-                }
-              }}
-              ref={searchFormRef}
               role="search"
               style={{
                 background: "var(--surface)",
@@ -627,9 +499,7 @@ export function AppHeader({ session, shellContext }: AppHeaderProps) {
                 name="q"
                 onChange={(event) => {
                   setSearchQuery(event.target.value);
-                  setSelectedSuggestionIndex(0);
                   setSearchOpen(true);
-                  setKeyboardSuggestionActive(false);
                 }}
                 onFocus={() => setSearchOpen(true)}
                 placeholder="Search or jump to..."
@@ -639,95 +509,13 @@ export function AppHeader({ session, shellContext }: AppHeaderProps) {
               />
               <input name="type" type="hidden" value="repositories" />
               <span className="kbd">/</span>
-              {searchOpen ? (
-                <div
-                  className="app-shell-search-popover absolute left-0 right-0 top-[calc(100%+8px)] z-50 overflow-hidden rounded-md border"
-                  id="app-shell-search-suggestions"
-                  role="listbox"
-                  style={{
-                    background: "var(--surface)",
-                    borderColor: "var(--line-strong)",
-                    boxShadow: "var(--shadow-lg)",
-                  }}
-                >
-                  <div className="max-h-[360px] overflow-y-auto p-1">
-                    {jumpSuggestionGroups.length > 0 ? (
-                      jumpSuggestionGroups.map((group) => {
-                        let sectionOffset = 0;
-                        for (const previousGroup of jumpSuggestionGroups) {
-                          if (previousGroup.section === group.section) {
-                            break;
-                          }
-                          sectionOffset += previousGroup.suggestions.length;
-                        }
-
-                        return (
-                          <div key={group.section}>
-                            <div className="palette-section">
-                              {group.section}
-                            </div>
-                            {group.suggestions.map((suggestion, index) => {
-                              const suggestionIndex = sectionOffset + index;
-                              return (
-                                <Link
-                                  aria-selected={
-                                    suggestionIndex === selectedSuggestionIndex
-                                  }
-                                  className={`palette-item ${
-                                    suggestionIndex === selectedSuggestionIndex
-                                      ? "selected"
-                                      : ""
-                                  }`}
-                                  href={suggestion.href}
-                                  key={suggestion.id}
-                                  onClick={() => setSearchOpen(false)}
-                                  onMouseEnter={() => {
-                                    setKeyboardSuggestionActive(true);
-                                    setSelectedSuggestionIndex(suggestionIndex);
-                                  }}
-                                  role="option"
-                                >
-                                  <span className="ico">
-                                    {suggestionIcon(suggestion.kind)}
-                                  </span>
-                                  <span className="min-w-0 truncate">
-                                    {suggestion.label}
-                                  </span>
-                                  <span className="desc">
-                                    {suggestion.description}
-                                  </span>
-                                </Link>
-                              );
-                            })}
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <p className="px-3 py-4 t-xs">
-                        No jump destinations match this query.
-                      </p>
-                    )}
-                  </div>
-                  <div
-                    className="flex gap-3 border-t px-3 py-2 t-xs"
-                    style={{
-                      borderColor: "var(--line)",
-                      color: "var(--ink-3)",
-                    }}
-                  >
-                    <span>
-                      <span className="kbd">↑↓</span> navigate
-                    </span>
-                    <span>
-                      <span className="kbd">↵</span> open
-                    </span>
-                    <span className="ml-auto">
-                      Search defaults to repositories
-                    </span>
-                  </div>
-                </div>
-              ) : null}
             </form>
+            {searchOpen ? (
+              <GlobalSearchModal
+                initialQuery={searchQuery}
+                onClose={() => setSearchOpen(false)}
+              />
+            ) : null}
 
             <div className="relative">
               <button
