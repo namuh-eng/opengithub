@@ -48,6 +48,19 @@ describe("ApiDocsPage", () => {
       ),
     ).toBeVisible();
     expect(screen.getByText("/api/repos/{owner}/{repo}/issues")).toBeVisible();
+    expect(
+      screen.getAllByText("/api/repos/{owner}/{repo}/settings")[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Every successful write inserts a repository.settings.update audit event/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Archived repositories reject every settings mutation except unarchive/,
+      ),
+    ).toBeVisible();
     expect(screen.getByText("/api/repos/{owner}/{repo}/pulls")).toBeVisible();
     expect(
       screen.getByText(

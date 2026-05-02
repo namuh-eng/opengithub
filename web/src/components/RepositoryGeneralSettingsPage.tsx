@@ -30,6 +30,7 @@ type SaveTarget =
   | "archive";
 
 type FormState = {
+  archiveConfirmation: string;
   allowForking: boolean;
   allowMergeCommit: boolean;
   allowRebase: boolean;
@@ -55,6 +56,7 @@ type Feedback = {
 
 function formStateFromSettings(settings: RepositorySettings): FormState {
   return {
+    archiveConfirmation: "",
     allowForking: settings.allowForking,
     allowMergeCommit: settings.merge.allowMergeCommit,
     allowRebase: settings.merge.allowRebase,
@@ -282,6 +284,7 @@ function RepositoryGeneralSettingsEditor({
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const basePath = `/${repository.owner_login}/${repository.name}`;
   const updatePath = `${basePath}/settings/update`;
+  const repositoryFullName = `${settings.ownerLogin}/${settings.name}`;
 
   useEffect(() => {
     setForm(formStateFromSettings(settings));
@@ -754,6 +757,19 @@ function RepositoryGeneralSettingsEditor({
 
           <SettingsCard kicker="Danger zone" title="Destructive actions">
             <form className="grid gap-2" onSubmit={saveArchive}>
+              <label className="grid gap-2">
+                <span className="t-sm font-semibold">
+                  Type {repositoryFullName} to confirm
+                </span>
+                <input
+                  aria-label="Archive confirmation"
+                  className="input w-full"
+                  onChange={(event) =>
+                    updateForm({ archiveConfirmation: event.target.value })
+                  }
+                  value={form.archiveConfirmation}
+                />
+              </label>
               <button
                 aria-label={
                   settings.danger.isArchived
@@ -763,6 +779,7 @@ function RepositoryGeneralSettingsEditor({
                 className="btn sm"
                 disabled={
                   pending === "archive" ||
+                  form.archiveConfirmation !== repositoryFullName ||
                   (!settings.danger.canArchive && !settings.danger.canUnarchive)
                 }
                 type="submit"
@@ -772,6 +789,10 @@ function RepositoryGeneralSettingsEditor({
               <FeedbackMessage feedback={feedback} target="archive" />
             </form>
             <div className="mt-2 grid gap-2">
+              <p className="t-xs" style={{ color: "var(--ink-3)" }}>
+                Transfer and delete confirmation flows stay disabled until the
+                Rust backend owns those operations.
+              </p>
               <button
                 aria-label="Transfer repository unavailable"
                 className="btn sm"

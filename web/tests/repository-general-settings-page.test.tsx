@@ -200,6 +200,12 @@ describe("repository general settings page", () => {
     expect(screen.getByLabelText("Allow rebase merging")).not.toBeChecked();
     expect(
       screen.getByRole("button", { name: "Unarchive repository" }),
+    ).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Archive confirmation"), {
+      target: { value: "namuh/opengithub" },
+    });
+    expect(
+      screen.getByRole("button", { name: "Unarchive repository" }),
     ).toBeEnabled();
   });
 
@@ -311,7 +317,18 @@ describe("repository general settings page", () => {
         },
       ),
     );
+    await waitFor(() =>
+      expect(screen.getByText("Repository behavior saved.")).toBeVisible(),
+    );
 
+    fireEvent.change(screen.getByLabelText("Archive confirmation"), {
+      target: { value: "namuh/opengithub" },
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Archive repository" }),
+      ).toBeEnabled(),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Archive repository" }));
 
     await waitFor(() =>
@@ -408,11 +425,26 @@ describe("repository general settings page", () => {
       .getByRole("heading", { name: "Destructive actions" })
       .closest("section");
     expect(dangerZone).not.toBeNull();
-    expect(
-      within(dangerZone as HTMLElement).getByRole("button", {
+    const archiveButton = within(dangerZone as HTMLElement).getByRole(
+      "button",
+      {
         name: "Archive repository",
-      }),
-    ).toBeEnabled();
+      },
+    );
+    expect(archiveButton).toBeDisabled();
+    expect(
+      within(dangerZone as HTMLElement).getByLabelText("Archive confirmation"),
+    ).toHaveValue("");
+    fireEvent.change(
+      within(dangerZone as HTMLElement).getByLabelText("Archive confirmation"),
+      { target: { value: "namuh/opengithub" } },
+    );
+    expect(archiveButton).toBeEnabled();
+    expect(
+      within(dangerZone as HTMLElement).getByText(
+        /Transfer and delete confirmation flows stay disabled/,
+      ),
+    ).toBeVisible();
     for (const name of [
       "Transfer repository unavailable",
       "Delete repository unavailable",
@@ -428,5 +460,31 @@ describe("repository general settings page", () => {
     for (const button of Array.from(container.querySelectorAll("button"))) {
       expect(button).toHaveAccessibleName(/.+/);
     }
+  });
+
+  it("wraps long repository metadata and preserves guarded archive controls", () => {
+    const longName = "opengithub-settings-guardrail-with-long-name";
+    const longDescription =
+      "Long repository descriptions stay readable inside the Editorial settings cards without forcing horizontal overflow on narrow screens.";
+
+    const { container } = render(
+      <RepositoryGeneralSettingsPage
+        repository={repositoryOverview({ name: longName })}
+        settingsResult={okResult({
+          description: longDescription,
+          name: longName,
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: `namuh/${longName}` }),
+    ).toBeVisible();
+    expect(screen.getByLabelText("Repository description")).toHaveValue(
+      longDescription,
+    );
+    expect(screen.getByText(`Type namuh/${longName} to confirm`)).toBeVisible();
+    expect(container.innerHTML).toContain("min-w-0");
+    expect(container.innerHTML).not.toMatch(/href="#"/);
   });
 });

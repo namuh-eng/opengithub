@@ -60,7 +60,7 @@
 
 ## Phase 4: Admin Privacy, Conflict, and Danger-Zone Guardrails
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Harden repository settings against unauthorized access, concurrent/conflicting writes, unsupported destructive actions, archive behavior, and UI regressions. This phase should complete behavior required by the PRD without adding repository access/branches/webhooks/secrets subfeatures.
 

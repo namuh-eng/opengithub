@@ -683,7 +683,7 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
             error_response(
                 StatusCode::CONFLICT,
                 "conflict",
-                database_error.message().to_owned(),
+                "repository already exists for this owner".to_owned(),
             )
         }
         RepositoryError::Sqlx(_) => error_response(

@@ -1,3 +1,15 @@
+2026-05-03 - settings-001 phase 4 admin/privacy/conflict guardrails
+
+- Completed Phase 4 from `.qrspi/settings-001/structure.md`: repository General settings now have stronger admin privacy, conflict, archive, unsupported destructive-action, docs, and browser guardrails without marking `settings-001.build_pass=true`.
+- Extended `repository_settings_contract` for private/internal repositories, organization-owned repositories, admin/outside viewers, archive read-only restrictions, unarchive recovery, default-branch missing conflicts, rename conflicts, unsupported delete/transfer flags, and redacted conflict errors.
+- Added typed archive/unarchive confirmation to `RepositoryGeneralSettingsPage`, explicit disabled transfer/delete unsupported-state copy, and focused Vitest coverage for confirmation gating, long metadata wrapping, forbidden states, no inert controls, and Editorial token/primitives.
+- Documented `GET /api/repos/{owner}/{repo}/settings` and `PATCH /api/repos/{owner}/{repo}/settings` in the API docs with permission, validation, audit, archive, conflict, and unsupported destructive-operation notes.
+- Extended Playwright settings smoke for persisted saves, validation errors, archive write blocking, unarchive recovery, non-admin forbidden state, mobile no-overflow, and screenshots `ralph/screenshots/build/settings-001-phase4-general-guardrails.jpg` and `ralph/screenshots/build/settings-001-phase4-forbidden.jpg`.
+- Fixed an unrelated notifications inbox contract assertion to use the repository owner login (`username` fallback) instead of stale email text when TEST_DATABASE_URL exposes username-derived owner labels.
+- Verification passed: focused `repository_settings_contract` against local Postgres; focused `api_notifications_inbox_contract`; focused `web/tests/repository-general-settings-page.test.tsx` and `web/tests/api-docs.test.tsx`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; standard `DB_SSL=false make test` with Cargo tests plus 257 frontend tests; focused `web/tests/e2e/repository-settings-general.spec.ts`; mandatory Editorial banned-value scan returned zero matches.
+- A TEST_DATABASE_URL-backed full `make test` still exposes broader unrelated username-vs-email fixture assumptions in other Rust contract tests. Full `make test-e2e -- repository-settings-general.spec.ts` ran all 92 Playwright tests successfully, then exited nonzero because the extra filename was treated as a missing Make target; the focused Playwright command passed cleanly.
+- Marked Phase 4 as done in `.qrspi/settings-001/structure.md`; `prd.json` remains `build_pass: false` because Phase 5 remains.
+
 2026-05-03 - settings-001 phase 2 Editorial general settings shell
 
 - Completed Phase 2 from `.qrspi/settings-001/structure.md`: `/[owner]/[repo]/settings` now fetches the Phase 1 Rust settings contract server-side and renders a real Editorial General settings page instead of a placeholder.

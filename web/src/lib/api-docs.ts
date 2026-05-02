@@ -102,6 +102,83 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     notes: ["Private repositories require explicit repository permission."],
   },
   {
+    id: "repo-settings-read",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/settings",
+    title: "Read repository settings",
+    description:
+      "Reads the General repository settings contract used by the Editorial settings page, including feature flags, merge methods, branch choices, danger-zone support, and recent audit events.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    response: `{
+  "ownerLogin": "mona",
+  "name": "octo-app",
+  "visibility": "public",
+  "defaultBranch": "main",
+  "features": {
+    "issuesEnabled": true,
+    "projectsEnabled": true,
+    "wikiEnabled": true
+  },
+  "merge": {
+    "allowSquash": true,
+    "allowMergeCommit": true,
+    "allowRebase": true,
+    "defaultMethod": "squash"
+  },
+  "danger": {
+    "isArchived": false,
+    "deleteSupported": false,
+    "transferSupported": false
+  },
+  "auditEvents": []
+}`,
+    notes: [
+      "Anonymous callers receive 401; non-admin repository viewers receive 403 without settings data.",
+      "Private and internal repositories use the same admin-only contract and never leak settings to outsiders.",
+    ],
+  },
+  {
+    id: "repo-settings-update",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/settings",
+    title: "Update repository settings",
+    description:
+      "Persists partial General settings changes and returns fresh server state only after the Rust API validates and records the write.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    request: `{
+  "description": "Calm collaboration workspace",
+  "visibility": "private",
+  "defaultBranch": "release",
+  "features": { "issuesEnabled": false },
+  "merge": {
+    "allowSquash": true,
+    "allowMergeCommit": false,
+    "allowRebase": true,
+    "defaultMethod": "squash"
+  },
+  "isArchived": false
+}`,
+    response: `{
+  "name": "octo-app",
+  "description": "Calm collaboration workspace",
+  "visibility": "private",
+  "defaultBranch": "release",
+  "auditEvents": [
+    {
+      "eventType": "repository.settings.update",
+      "changedFields": ["description", "visibility", "default_branch"]
+    }
+  ]
+}`,
+    notes: [
+      "Every successful write inserts a repository.settings.update audit event.",
+      "At least one merge method must remain enabled and the default merge method must be one of the enabled methods.",
+      "Missing default branches and owner/name conflicts return 409 conflict; validation errors return 422.",
+      "Archived repositories reject every settings mutation except unarchive.",
+      "Delete and transfer are intentionally unsupported until dedicated backend operations own those destructive flows.",
+    ],
+  },
+  {
     id: "org-repositories",
     method: "GET",
     path: "/api/orgs/{org}/repositories?q=router&type=public&language=Rust&page=1&pageSize=30",

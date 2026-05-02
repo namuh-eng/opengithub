@@ -213,7 +213,8 @@ async fn notifications_inbox_contract_filters_groups_and_marks_read() {
 
     let uri = format!(
         "/api/notifications?q=reason%3Amention&group=repository&repo={}%2F{}",
-        owner.email, repo_name
+        owner.username.as_deref().unwrap_or(&owner.email),
+        repo_name
     );
     let (status, body) = send_json(app.clone(), Method::GET, &uri, Some(&cookie)).await;
     assert_eq!(status, StatusCode::OK);
@@ -221,7 +222,11 @@ async fn notifications_inbox_contract_filters_groups_and_marks_read() {
     assert_eq!(body["unreadCount"], 1);
     assert_eq!(
         body["groups"][0]["label"],
-        format!("{}/{}", owner.email, repo_name)
+        format!(
+            "{}/{}",
+            owner.username.as_deref().unwrap_or(&owner.email),
+            repo_name
+        )
     );
     assert_eq!(
         body["groups"][0]["rows"][0]["title"],
@@ -234,7 +239,13 @@ async fn notifications_inbox_contract_filters_groups_and_marks_read() {
         .unwrap()
         .iter()
         .any(|bucket| {
-            bucket["label"] == format!("{}/{}", owner.email, repo_name) && bucket["count"] == 2
+            bucket["label"]
+                == format!(
+                    "{}/{}",
+                    owner.username.as_deref().unwrap_or(&owner.email),
+                    repo_name
+                )
+                && bucket["count"] == 2
         }));
 
     let (unread_status, unread_body) = send_json(

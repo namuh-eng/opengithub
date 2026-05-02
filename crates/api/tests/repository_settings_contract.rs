@@ -9,8 +9,8 @@ use opengithub_api::{
     domain::{
         identity::{upsert_session, upsert_user_by_email, User},
         repositories::{
-            create_repository, grant_repository_permission, CreateRepository, RepositoryOwner,
-            RepositoryVisibility,
+            create_organization, create_repository, grant_repository_permission,
+            CreateOrganization, CreateRepository, RepositoryOwner, RepositoryVisibility,
         },
     },
 };
@@ -34,6 +34,206 @@ async fn database_pool() -> Option<PgPool> {
         .ok()?;
     MIGRATOR.run(&pool).await.ok()?;
     Some(pool)
+}
+
+#[tokio::test]
+async fn repository_settings_guard_archives_conflicts_and_org_repositories() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping repository settings guardrail scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("guard{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let admin = create_user(&pool, &format!("{marker}-admin")).await;
+    let outside = create_user(&pool, &format!("{marker}-outside")).await;
+    let admin_cookie = cookie_header(&pool, &config, &admin).await;
+    let outside_cookie = cookie_header(&pool, &config, &outside).await;
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+
+    let private_repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("{marker}-private"),
+            description: Some("Private settings guardrail".to_owned()),
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("private repository should create");
+    let sibling = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("{marker}-sibling"),
+            description: None,
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("sibling repository should create");
+    insert_branch(&pool, private_repo.id, owner.id, "main").await;
+    insert_branch(&pool, sibling.id, owner.id, "main").await;
+    grant_repository_permission(
+        &pool,
+        private_repo.id,
+        admin.id,
+        opengithub_api::domain::permissions::RepositoryRole::Admin,
+        "direct",
+    )
+    .await
+    .expect("admin permission should grant");
+
+    let private_uri = format!("/api/repos/{}/{}/settings", owner.email, private_repo.name);
+    let (outside_status, _, outside_body) = send_json(
+        app.clone(),
+        Method::GET,
+        &private_uri,
+        Some(&outside_cookie),
+        None,
+    )
+    .await;
+    assert_eq!(outside_status, StatusCode::FORBIDDEN);
+    assert_eq!(outside_body["error"]["code"], "forbidden");
+    assert!(!outside_body
+        .to_string()
+        .contains(&private_repo.description.unwrap()));
+
+    let (admin_status, _, admin_body) = send_json(
+        app.clone(),
+        Method::GET,
+        &private_uri,
+        Some(&admin_cookie),
+        None,
+    )
+    .await;
+    assert_eq!(admin_status, StatusCode::OK);
+    assert_eq!(admin_body["visibility"], "private");
+    assert_eq!(admin_body["viewerPermission"], "admin");
+
+    let (archive_status, _, archive_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &private_uri,
+        Some(&admin_cookie),
+        Some(json!({ "isArchived": true })),
+    )
+    .await;
+    assert_eq!(archive_status, StatusCode::OK);
+    assert_eq!(archive_body["danger"]["isArchived"], true);
+
+    let (archived_write_status, _, archived_write_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &private_uri,
+        Some(&admin_cookie),
+        Some(json!({ "description": "Should be blocked while archived" })),
+    )
+    .await;
+    assert_eq!(archived_write_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(archived_write_body["error"]["code"], "validation_failed");
+    assert!(archived_write_body["error"]["message"]
+        .as_str()
+        .expect("message should be string")
+        .contains("archived repositories only allow unarchive"));
+
+    let (unarchive_status, _, unarchive_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &private_uri,
+        Some(&admin_cookie),
+        Some(json!({ "isArchived": false })),
+    )
+    .await;
+    assert_eq!(unarchive_status, StatusCode::OK);
+    assert_eq!(unarchive_body["danger"]["isArchived"], false);
+
+    sqlx::query(
+        "DELETE FROM repository_git_refs WHERE repository_id = $1 AND name = 'refs/heads/main'",
+    )
+    .bind(private_repo.id)
+    .execute(&pool)
+    .await
+    .expect("branch ref should delete");
+    let (missing_branch_status, _, missing_branch_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &private_uri,
+        Some(&admin_cookie),
+        Some(json!({ "defaultBranch": "main" })),
+    )
+    .await;
+    assert_eq!(missing_branch_status, StatusCode::CONFLICT);
+    assert_eq!(missing_branch_body["error"]["code"], "conflict");
+    assert!(!missing_branch_body.to_string().contains("DATABASE_URL"));
+
+    let (rename_conflict_status, _, rename_conflict_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &private_uri,
+        Some(&admin_cookie),
+        Some(json!({ "name": sibling.name })),
+    )
+    .await;
+    assert_eq!(rename_conflict_status, StatusCode::CONFLICT);
+    assert_eq!(rename_conflict_body["error"]["code"], "conflict");
+    assert!(!rename_conflict_body
+        .to_string()
+        .contains("duplicate key value"));
+
+    let organization = create_organization(
+        &pool,
+        CreateOrganization {
+            slug: format!("{marker}-org"),
+            display_name: "Settings Guardrail Org".to_owned(),
+            description: None,
+            owner_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("organization should create");
+    let org_repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::Organization {
+                id: organization.id,
+            },
+            name: format!("{marker}-org-repo"),
+            description: Some("Organization settings guardrail".to_owned()),
+            visibility: RepositoryVisibility::Internal,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("organization repository should create");
+    insert_branch(&pool, org_repo.id, owner.id, "main").await;
+    grant_repository_permission(
+        &pool,
+        org_repo.id,
+        admin.id,
+        opengithub_api::domain::permissions::RepositoryRole::Admin,
+        "direct",
+    )
+    .await
+    .expect("org repo admin should grant");
+    let org_uri = format!(
+        "/api/repos/{}/{}/settings",
+        organization.slug, org_repo.name
+    );
+    let (org_status, _, org_body) =
+        send_json(app, Method::GET, &org_uri, Some(&admin_cookie), None).await;
+    assert_eq!(org_status, StatusCode::OK);
+    assert_eq!(org_body["ownerLogin"], organization.slug);
+    assert_eq!(org_body["visibility"], "internal");
+    assert_eq!(org_body["danger"]["transferSupported"], false);
+    assert_eq!(org_body["danger"]["deleteSupported"], false);
 }
 
 fn app_config() -> AppConfig {

@@ -3235,5 +3235,23 @@
       "The first full E2E attempt passed the new settings smoke but failed one unrelated Code-tab clone URL assertion because the API public clone host was localhost; restarting the API with API_URL=https://opengithub.namuh.co restored the suite and all 92 tests passed.",
       "QA should stress concurrent section saves, rename route behavior after successful name changes, private/internal visibility transitions, archived repository write restrictions, default branch deletion races, long descriptions, and audit-event integrity."
     ]
+  },
+  {
+    "feature_id": "settings-001",
+    "tests_written": [
+      "Completed Phase 4 Admin Privacy, Conflict, and Danger-Zone Guardrails without marking settings-001 build_pass=true.",
+      "Extended repository_settings_contract for private/internal repositories, admin vs outside users, organization-owned repositories, archived repository write restrictions, unarchive-only recovery, missing default branch conflicts, owner/name conflicts, unsupported delete/transfer flags, and redacted structured errors.",
+      "Added archive/unarchive typed confirmation on the Editorial General settings page and kept transfer/delete disabled with explicit unsupported-state copy.",
+      "Documented GET and PATCH /api/repos/{owner}/{repo}/settings in /docs with permissions, validation, audit-event, archive, conflict, and unsupported destructive-operation notes.",
+      "Extended Vitest coverage for typed archive confirmation, long repository metadata, forbidden/unavailable states, disabled unsupported actions, docs visibility, no inert controls, and Editorial primitive/token guardrails.",
+      "Extended Playwright settings smoke for persisted saves, validation errors, archive write blocking, unarchive recovery, non-admin forbidden state, mobile overflow, and screenshots ralph/screenshots/build/settings-001-phase4-general-guardrails.jpg and settings-001-phase4-forbidden.jpg.",
+      "Verification passed: focused repository_settings_contract against local Postgres; focused repository-general-settings/api-docs Vitest; TEST_DATABASE_URL-backed make check; standard DB_SSL=false make test with Cargo tests plus 257 frontend tests; focused repository-settings-general Playwright; full make test-e2e ran 92 Playwright tests successfully before the extra filename argument caused a Makefile target lookup error; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Phase 5 still needs final combined QA handoff and build_pass bookkeeping for settings-001.",
+      "TEST_DATABASE_URL-backed full make test still exposes broader username-vs-email fixture assumptions outside this phase; the settings Rust contract passed against the same database and the standard make test path passed.",
+      "Browser smoke used deterministic Rust-signed local sessions and direct local API/Next dev servers because make dev depends on cargo-watch, which is not installed in this environment.",
+      "QA should stress concurrent settings writes, rename route behavior after successful name changes, private/internal visibility transitions, many audit events, very long branch names, rapid archive/unarchive attempts, and unsupported transfer/delete affordance clarity."
+    ]
   }
 ]

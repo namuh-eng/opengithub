@@ -7,6 +7,7 @@ type SeededDashboard = {
   cookieName: string;
   cookieValue: string;
   firstRepositoryHref: string;
+  profileActionCookieValue: string;
 };
 
 function seedDashboard(): SeededDashboard {
@@ -128,19 +129,62 @@ test("admin can load and mutate repository general settings", async ({
   await expect(page.getByLabel("Allow squash merging")).toBeChecked();
   await expect(page.getByLabel("Default merge method")).toHaveValue("squash");
 
+  await expect(
+    page.getByRole("button", { name: "Archive repository" }),
+  ).toBeDisabled();
+  const repositoryFullName = seeded.firstRepositoryHref.slice(1);
+  await page.getByLabel("Archive confirmation").fill(repositoryFullName);
   await page.getByRole("button", { name: "Archive repository" }).click();
   await expect(page.getByText("Repository archived.")).toBeVisible();
   await page.reload();
   await expect(page.locator(".chip", { hasText: "Archived" })).toBeVisible();
+  await page
+    .getByLabel("Repository description")
+    .fill("Blocked while archived");
+  await page.getByRole("button", { name: "Save profile" }).click();
+  await expect(
+    page.getByText(
+      /archived repositories only allow unarchive settings updates/,
+    ),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Unarchive repository" }),
-  ).toBeVisible();
+  ).toBeDisabled();
+  await page.getByLabel("Archive confirmation").fill(repositoryFullName);
+  await page.getByRole("button", { name: "Unarchive repository" }).click();
+  await expect(page.getByText("Repository unarchived.")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Delete repository unavailable" }),
   ).toBeDisabled();
+  await page.setViewportSize({ width: 390, height: 900 });
+  const horizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  );
+  expect(horizontalOverflow).toBe(false);
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/settings-001-phase3-general-mutations.jpg",
+    path: "../ralph/screenshots/build/settings-001-phase4-general-guardrails.jpg",
+  });
+
+  await page.context().clearCookies();
+  await page.context().addCookies([
+    {
+      name: seeded.cookieName,
+      value: seeded.profileActionCookieValue,
+      domain: "localhost",
+      path: "/",
+      httpOnly: true,
+      sameSite: "Lax",
+      secure: false,
+    },
+  ]);
+  await page.goto(`${seeded.firstRepositoryHref}/settings`);
+  await expect(
+    page.getByRole("heading", { name: "Repository settings are restricted" }),
+  ).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/settings-001-phase4-forbidden.jpg",
   });
 });
