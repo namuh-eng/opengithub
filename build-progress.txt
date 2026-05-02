@@ -1,3 +1,11 @@
+2026-05-02 - orgs-001 structure planning
+
+- Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `prd.json`, `web/AGENTS.md`, `design/project/wf-profiles.jsx`, current profile implementation, current organization placeholder route, navigation helpers, existing migrations, and profile API/frontend patterns.
+- Determined `orgs-001` requires structure planning before implementation because `needs_structure: true` and `.qrspi/orgs-001/structure.md` did not exist.
+- Added `.qrspi/orgs-001/structure.md` with five independently verifiable vertical phases: organization overview API contract, Editorial organization header/shell, pinned and repository previews, people/topics/languages/sponsoring/accessibility panels, and final privacy/visual QA guardrails.
+- Did not change `prd.json`; `build_pass` remains `false` until all implementation phases pass verification.
+- Tests not run because this iteration only created the required planning artifact.
+
 2026-05-02 - profiles-002 phase 5 guardrails and feature completion
 
 - Completed Phase 5 from `.qrspi/profiles-002/structure.md`: profile repository and starred repository tabs now have final privacy, accessibility, URL-state, responsive, no-dead-control, and QA handoff guardrails.
