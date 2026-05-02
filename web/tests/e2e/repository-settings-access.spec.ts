@@ -109,6 +109,19 @@ test("admin can load repository access settings shell", async ({ page }) => {
   const inviteDialog = page.getByRole("dialog", {
     name: "Invite a collaborator",
   });
+  await expect(inviteDialog).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByPlaceholder("octo@example.com or username"),
+  ).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(
+    page.getByRole("button", { name: "Send invitation" }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByPlaceholder("octo@example.com or username"),
+  ).toBeFocused();
   await page
     .getByPlaceholder("octo@example.com or username")
     .fill(`phase3-${Date.now()}@opengithub.local`);
@@ -144,7 +157,21 @@ test("admin can load repository access settings shell", async ({ page }) => {
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/settings-002-phase3-access-mutations.jpg",
+    path: "../ralph/screenshots/build/settings-002-phase4-access-admin.jpg",
+  });
+
+  await page.setViewportSize({ width: 390, height: 860 });
+  await page.goto(`${seeded.firstRepositoryHref}/settings/access`);
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Access" }),
+  ).toBeVisible();
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  );
+  expect(overflow).toBe(false);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/settings-002-phase4-access-mobile.jpg",
   });
 
   await page.context().clearCookies();
@@ -163,4 +190,8 @@ test("admin can load repository access settings shell", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Repository access is restricted" }),
   ).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/settings-002-phase4-access-forbidden.jpg",
+  });
 });

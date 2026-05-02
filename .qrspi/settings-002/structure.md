@@ -63,7 +63,7 @@
 
 ## Phase 4: Privacy, Role Semantics, and Team/Organization Guardrails
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Harden repository access management around authorization, role hierarchy, organization/team inheritance, pending invitation lifecycle, long content, and responsive/accessibility behavior. This phase should complete the PRD behavior without broadening into branch rules or personal access-token settings.
 

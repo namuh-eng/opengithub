@@ -169,7 +169,8 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         | RepositoryError::ArchivedRepositoryReadOnly
         | RepositoryError::UnknownTemplate(_)
         | RepositoryError::UnknownGitignoreTemplate(_)
-        | RepositoryError::UnknownLicenseTemplate(_) => error_response(
+        | RepositoryError::UnknownLicenseTemplate(_)
+        | RepositoryError::TeamAccessUnsupported => error_response(
             StatusCode::UNPROCESSABLE_ENTITY,
             "validation_failed",
             error.to_string(),
@@ -178,6 +179,9 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }
         RepositoryError::AccessGrantConflict => {
+            error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
+        RepositoryError::LastAdminAccess => {
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }
         RepositoryError::DefaultBranchNotFound(_) => {

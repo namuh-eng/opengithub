@@ -887,6 +887,14 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         RepositoryError::AccessGrantConflict => {
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }
+        RepositoryError::LastAdminAccess => {
+            error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
+        RepositoryError::TeamAccessUnsupported => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            error.to_string(),
+        ),
         RepositoryError::GitStorageFailed => error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             "git_storage_failed",

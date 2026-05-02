@@ -205,6 +205,7 @@ fn map_dashboard_error(error: DashboardError) -> (StatusCode, Json<ErrorEnvelope
         | DashboardError::Repositories(RepositoryError::UnknownTemplate(_))
         | DashboardError::Repositories(RepositoryError::UnknownGitignoreTemplate(_))
         | DashboardError::Repositories(RepositoryError::UnknownLicenseTemplate(_))
+        | DashboardError::Repositories(RepositoryError::TeamAccessUnsupported)
         | DashboardError::Onboarding(OnboardingError::BlankHintKey) => error_response(
             StatusCode::UNPROCESSABLE_ENTITY,
             "validation_failed",
@@ -218,6 +219,9 @@ fn map_dashboard_error(error: DashboardError) -> (StatusCode, Json<ErrorEnvelope
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }
         DashboardError::Repositories(RepositoryError::AccessGrantConflict) => {
+            error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
+        DashboardError::Repositories(RepositoryError::LastAdminAccess) => {
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }
         DashboardError::Repositories(RepositoryError::DefaultBranchNotFound(_)) => {

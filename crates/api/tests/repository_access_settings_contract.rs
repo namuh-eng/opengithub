@@ -52,6 +52,7 @@ async fn repository_access_settings_cover_admin_privacy_invites_and_team_grants(
     let outside = create_user(&pool, &format!("{marker}-outside")).await;
     let invitee = create_user(&pool, &format!("{marker}-invitee")).await;
     let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let admin_cookie = cookie_header(&pool, &config, &admin).await;
     let writer_cookie = cookie_header(&pool, &config, &writer).await;
     let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
 
@@ -166,6 +167,17 @@ async fn repository_access_settings_cover_admin_privacy_invites_and_team_grants(
     assert_eq!(duplicate_invite_body["error"]["code"], "conflict");
     assert!(!duplicate_invite_body.to_string().contains("token_hash"));
 
+    let (existing_user_invite_status, _, existing_user_invite_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &uri,
+        Some(&owner_cookie),
+        Some(json!({ "emailOrLogin": writer.email, "role": "read" })),
+    )
+    .await;
+    assert_eq!(existing_user_invite_status, StatusCode::CONFLICT);
+    assert_eq!(existing_user_invite_body["error"]["code"], "conflict");
+
     let (team_status, _, team_body) = send_json(
         app.clone(),
         Method::POST,
@@ -187,6 +199,17 @@ async fn repository_access_settings_cover_admin_privacy_invites_and_team_grants(
                 && person["canEdit"] == false
         ));
 
+    let (duplicate_team_status, _, duplicate_team_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("{uri}/teams"),
+        Some(&owner_cookie),
+        Some(json!({ "teamSlug": format!("{marker}-core"), "role": "write" })),
+    )
+    .await;
+    assert_eq!(duplicate_team_status, StatusCode::CONFLICT);
+    assert_eq!(duplicate_team_body["error"]["code"], "conflict");
+
     let (missing_team_status, _, missing_team_body) = send_json(
         app.clone(),
         Method::POST,
@@ -197,7 +220,37 @@ async fn repository_access_settings_cover_admin_privacy_invites_and_team_grants(
     .await;
     assert_eq!(missing_team_status, StatusCode::NOT_FOUND);
     assert_eq!(missing_team_body["error"]["code"], "not_found");
-    assert!(!missing_team_body.to_string().contains("Private access surface"));
+    assert!(!missing_team_body
+        .to_string()
+        .contains("Private access surface"));
+
+    let personal_repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("{marker}-personal"),
+            description: Some("Personal repository".to_owned()),
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("personal repository should create");
+    let personal_uri = format!(
+        "/api/repos/{}/{}/settings/access",
+        owner.email, personal_repo.name
+    );
+    let (personal_team_status, _, personal_team_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("{personal_uri}/teams"),
+        Some(&owner_cookie),
+        Some(json!({ "teamSlug": format!("{marker}-core"), "role": "write" })),
+    )
+    .await;
+    assert_eq!(personal_team_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(personal_team_body["error"]["code"], "validation_failed");
 
     let (role_status, _, role_body) = send_json(
         app.clone(),
@@ -213,6 +266,37 @@ async fn repository_access_settings_cover_admin_privacy_invites_and_team_grants(
         .expect("updated people should be present")
         .iter()
         .any(|person| person["userId"] == writer.id.to_string() && person["role"] == "maintain"));
+
+    sqlx::query("DELETE FROM repository_permissions WHERE repository_id = $1 AND user_id = $2")
+        .bind(repo.id)
+        .bind(owner.id)
+        .execute(&pool)
+        .await
+        .expect("owner path can be removed for last-admin guard scenario");
+    sqlx::query("DELETE FROM repository_permissions WHERE repository_id = $1 AND user_id = $2")
+        .bind(repo.id)
+        .bind(writer.id)
+        .execute(&pool)
+        .await
+        .expect("writer path can be reset before last-admin guard scenario");
+
+    let (last_admin_status, _, last_admin_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &format!("{uri}/collaborators/{}", admin.id),
+        Some(&admin_cookie),
+        Some(json!({ "role": "write" })),
+    )
+    .await;
+    assert_eq!(last_admin_status, StatusCode::CONFLICT);
+    assert_eq!(last_admin_body["error"]["code"], "conflict");
+
+    grant_repository_permission(&pool, repo.id, owner.id, RepositoryRole::Owner, "owner")
+        .await
+        .expect("owner grant should be restored");
+    grant_repository_permission(&pool, repo.id, writer.id, RepositoryRole::Write, "direct")
+        .await
+        .expect("writer grant should be restored");
 
     let (remove_status, _, remove_body) = send_json(
         app.clone(),

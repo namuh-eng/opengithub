@@ -830,6 +830,10 @@ pub enum RepositoryError {
     AccessTargetNotFound,
     #[error("repository access grant already exists")]
     AccessGrantConflict,
+    #[error("repository must keep at least one owner or admin access path")]
+    LastAdminAccess,
+    #[error("repository team access is only available for organization repositories")]
+    TeamAccessUnsupported,
     #[error("repository git storage failed")]
     GitStorageFailed,
     #[error(transparent)]
@@ -2079,6 +2083,14 @@ pub async fn invite_repository_access_by_owner_name(
         .as_ref()
         .map(|user| user.email.clone())
         .unwrap_or_else(|| target.clone());
+    if let Some(invited_user) = &invited_user {
+        if repository_permission_for_user(pool, repository.id, invited_user.user_id)
+            .await?
+            .is_some()
+        {
+            return Err(RepositoryError::AccessGrantConflict);
+        }
+    }
     let token_hash = format!("{:x}", Sha256::digest(Uuid::new_v4().as_bytes()));
 
     let inserted = sqlx::query(
@@ -2137,18 +2149,32 @@ pub async fn grant_repository_team_access_by_owner_name(
     require_access_admin(pool, &repository, actor_user_id).await?;
     validate_grant_role(request.role)?;
     let Some(organization_id) = repository.owner_organization_id else {
-        return Err(RepositoryError::AccessTargetNotFound);
+        return Err(RepositoryError::TeamAccessUnsupported);
     };
     let team = find_team_for_access_target(pool, organization_id, &request.team_slug)
         .await?
         .ok_or(RepositoryError::AccessTargetNotFound)?;
 
+    let existing = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS (
+            SELECT 1 FROM repository_team_permissions
+            WHERE repository_id = $1 AND team_id = $2
+        )
+        "#,
+    )
+    .bind(repository.id)
+    .bind(team.team_id)
+    .fetch_one(pool)
+    .await?;
+    if existing {
+        return Err(RepositoryError::AccessGrantConflict);
+    }
+
     sqlx::query(
         r#"
         INSERT INTO repository_team_permissions (repository_id, team_id, role, source, created_by_user_id)
         VALUES ($1, $2, $3, 'team', $4)
-        ON CONFLICT (repository_id, team_id)
-        DO UPDATE SET role = EXCLUDED.role, source = 'team'
         "#,
     )
     .bind(repository.id)
@@ -2192,6 +2218,9 @@ pub async fn update_repository_collaborator_access_by_owner_name(
     if existing.source != "direct" {
         return Err(RepositoryError::PermissionDenied);
     }
+    if existing.role.can_admin() && !patch.role.can_admin() {
+        ensure_admin_path_remains(pool, repository.id, Some(user_id), None).await?;
+    }
 
     sqlx::query(
         "UPDATE repository_permissions SET role = $3 WHERE repository_id = $1 AND user_id = $2 AND source = 'direct'",
@@ -2229,18 +2258,38 @@ pub async fn update_repository_team_access_by_owner_name(
     validate_grant_role(patch.role)?;
     let row = sqlx::query(
         r#"
+        SELECT role, source
+        FROM repository_team_permissions
+        WHERE repository_id = $1 AND team_id = $2
+        "#,
+    )
+    .bind(repository.id)
+    .bind(team_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(RepositoryError::AccessTargetNotFound)?;
+    let source: String = row.get("source");
+    if source != "team" {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    let current_role = RepositoryRole::try_from(row.get::<String, _>("role").as_str())
+        .map_err(|error| RepositoryError::Sqlx(sqlx::Error::Protocol(error.to_string())))?;
+    if current_role.can_admin() && !patch.role.can_admin() {
+        ensure_admin_path_remains(pool, repository.id, None, Some(team_id)).await?;
+    }
+
+    sqlx::query(
+        r#"
         UPDATE repository_team_permissions
         SET role = $3
         WHERE repository_id = $1 AND team_id = $2 AND source = 'team'
-        RETURNING role
         "#,
     )
     .bind(repository.id)
     .bind(team_id)
     .bind(patch.role.as_str())
-    .fetch_optional(pool)
-    .await?
-    .ok_or(RepositoryError::AccessTargetNotFound)?;
+    .execute(pool)
+    .await?;
 
     upsert_team_member_repository_permissions(pool, repository.id, team_id, patch.role).await?;
     insert_repository_access_audit_event(
@@ -2250,7 +2299,7 @@ pub async fn update_repository_team_access_by_owner_name(
         "repository.access.team_role_update",
         vec!["teams".to_owned()],
         json!({ "teamId": team_id }),
-        json!({ "teamId": team_id, "role": row.get::<String, _>("role") }),
+        json!({ "teamId": team_id, "role": patch.role }),
     )
     .await?;
     repository_access_settings_for_repository(pool, &repository, actor_user_id).await
@@ -2267,11 +2316,11 @@ pub async fn remove_repository_team_access_by_owner_name(
         return Ok(None);
     };
     require_access_admin(pool, &repository, actor_user_id).await?;
-    let deleted = sqlx::query(
+    let current = sqlx::query(
         r#"
-        DELETE FROM repository_team_permissions
-        WHERE repository_id = $1 AND team_id = $2 AND source = 'team'
-        RETURNING role
+        SELECT role, source
+        FROM repository_team_permissions
+        WHERE repository_id = $1 AND team_id = $2
         "#,
     )
     .bind(repository.id)
@@ -2279,6 +2328,26 @@ pub async fn remove_repository_team_access_by_owner_name(
     .fetch_optional(pool)
     .await?
     .ok_or(RepositoryError::AccessTargetNotFound)?;
+    let source: String = current.get("source");
+    if source != "team" {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    let deleted_role = RepositoryRole::try_from(current.get::<String, _>("role").as_str())
+        .map_err(|error| RepositoryError::Sqlx(sqlx::Error::Protocol(error.to_string())))?;
+    if deleted_role.can_admin() {
+        ensure_admin_path_remains(pool, repository.id, None, Some(team_id)).await?;
+    }
+
+    sqlx::query(
+        r#"
+        DELETE FROM repository_team_permissions
+        WHERE repository_id = $1 AND team_id = $2 AND source = 'team'
+        "#,
+    )
+    .bind(repository.id)
+    .bind(team_id)
+    .execute(pool)
+    .await?;
 
     sqlx::query(
         r#"
@@ -2301,7 +2370,7 @@ pub async fn remove_repository_team_access_by_owner_name(
         actor_user_id,
         "repository.access.team_remove",
         vec!["teams".to_owned()],
-        json!({ "teamId": team_id, "role": deleted.get::<String, _>("role") }),
+        json!({ "teamId": team_id, "role": deleted_role }),
         json!({}),
     )
     .await?;
@@ -2324,6 +2393,9 @@ pub async fn remove_repository_collaborator_access_by_owner_name(
         .ok_or(RepositoryError::AccessTargetNotFound)?;
     if existing.source != "direct" {
         return Err(RepositoryError::PermissionDenied);
+    }
+    if existing.role.can_admin() {
+        ensure_admin_path_remains(pool, repository.id, Some(user_id), None).await?;
     }
     sqlx::query(
         "DELETE FROM repository_permissions WHERE repository_id = $1 AND user_id = $2 AND source = 'direct'",
@@ -2784,6 +2856,47 @@ fn normalize_access_target(value: &str) -> Result<String, RepositoryError> {
         return Err(RepositoryError::AccessTargetNotFound);
     }
     Ok(target.chars().take(254).collect::<String>())
+}
+
+async fn ensure_admin_path_remains(
+    pool: &PgPool,
+    repository_id: Uuid,
+    excluded_user_id: Option<Uuid>,
+    excluded_team_id: Option<Uuid>,
+) -> Result<(), RepositoryError> {
+    let direct_admin_paths = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT count(*)::bigint
+        FROM repository_permissions
+        WHERE repository_id = $1
+          AND role IN ('owner', 'admin')
+          AND ($2::uuid IS NULL OR user_id <> $2)
+        "#,
+    )
+    .bind(repository_id)
+    .bind(excluded_user_id)
+    .fetch_one(pool)
+    .await?;
+    let team_admin_paths = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT count(*)::bigint
+        FROM repository_team_permissions
+        WHERE repository_id = $1
+          AND role = 'admin'
+          AND source = 'team'
+          AND ($2::uuid IS NULL OR team_id <> $2)
+        "#,
+    )
+    .bind(repository_id)
+    .bind(excluded_team_id)
+    .fetch_one(pool)
+    .await?;
+
+    if direct_admin_paths + team_admin_paths > 0 {
+        Ok(())
+    } else {
+        Err(RepositoryError::LastAdminAccess)
+    }
 }
 
 async fn repository_access_settings_for_repository(

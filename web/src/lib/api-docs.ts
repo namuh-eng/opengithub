@@ -179,6 +179,157 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-access-read",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/settings/access",
+    title: "Read repository access settings",
+    description:
+      "Reads the admin-only repository Access settings contract, including direct collaborators, team-derived access, inherited owner or organization rows, pending invitations, invite targets, role definitions, and recent audit events.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    response: `{
+  "ownerLogin": "mona",
+  "name": "octo-app",
+  "visibility": "private",
+  "viewerPermission": "admin",
+  "roles": [{ "role": "write", "label": "Write", "rank": 30 }],
+  "people": [
+    {
+      "login": "hubot",
+      "role": "write",
+      "source": "direct",
+      "sourceText": "Direct collaborator access",
+      "canEdit": true,
+      "canRemove": true
+    }
+  ],
+  "teams": [],
+  "invitations": [],
+  "inviteTargets": { "users": [], "teams": [] },
+  "auditEvents": []
+}`,
+    notes: [
+      "Anonymous callers receive 401; non-admin viewers receive 403 without collaborator, team, or invitation data.",
+      "Owner, organization-inherited, and team-derived rows are returned read-only with source text explaining where to manage them.",
+      "Public, private, and internal repositories use the same admin-only settings contract to avoid private access leakage.",
+    ],
+  },
+  {
+    id: "repo-access-invite",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/settings/access",
+    title: "Invite repository collaborator",
+    description:
+      "Creates a pending repository invitation for a user login or email address and returns fresh access settings after validation, audit logging, and the SES email handoff attempt.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    request: `{
+  "emailOrLogin": "hubot@example.com",
+  "role": "triage"
+}`,
+    response: `{
+  "invitations": [
+    {
+      "invitedEmail": "hubot@example.com",
+      "role": "triage",
+      "status": "pending",
+      "emailDeliveryStatus": "degraded",
+      "canCancel": true
+    }
+  ]
+}`,
+    notes: [
+      "Valid roles are read, triage, write, maintain, and admin; owner cannot be granted through this endpoint.",
+      "Duplicate direct collaborators and duplicate pending invitations return 409 conflict.",
+      "Local or missing SES credentials persist the invitation with emailDeliveryStatus=degraded instead of faking delivery.",
+      "Every successful invite inserts a repository.access.invite audit event.",
+    ],
+  },
+  {
+    id: "repo-access-team-grant",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/settings/access/teams",
+    title: "Grant repository team access",
+    description:
+      "Adds an organization team grant for a repository, mirrors the role to current team members through team-derived repository permissions, and returns fresh access settings.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    request: `{
+  "teamSlug": "platform",
+  "role": "write"
+}`,
+    response: `{
+  "teams": [
+    {
+      "slug": "platform",
+      "role": "write",
+      "source": "team",
+      "canEdit": true,
+      "canRemove": true
+    }
+  ]
+}`,
+    notes: [
+      "Team grants are available only for organization-owned repositories; user-owned repositories return validation_failed.",
+      "Duplicate team grants return 409 conflict; use the team role update endpoint for existing grants.",
+      "Inherited organization base permission rows are read-only from this endpoint.",
+    ],
+  },
+  {
+    id: "repo-access-update-remove",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/settings/access/collaborators/{user_id}",
+    title: "Update collaborator role",
+    description:
+      "Changes a direct collaborator role and returns confirmed server state after guardrails verify the row is directly managed on the repository.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    request: `{
+  "role": "maintain"
+}`,
+    response: `{
+  "people": [{ "userId": "user_01", "role": "maintain", "source": "direct" }]
+}`,
+    notes: [
+      "Owner, inherited organization, and team-derived rows cannot be demoted through direct collaborator updates.",
+      "Demoting the final owner/admin access path returns 409 conflict.",
+      "DELETE on the same path removes direct collaborator access and uses the same last-admin guardrail.",
+    ],
+  },
+  {
+    id: "repo-access-team-update-remove",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/settings/access/teams/{team_id}",
+    title: "Update team access role",
+    description:
+      "Changes or removes a direct team grant and refreshes team-derived member access after the Rust API accepts the mutation.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    request: `{
+  "role": "maintain"
+}`,
+    response: `{
+  "teams": [{ "teamId": "team_01", "role": "maintain", "source": "team" }]
+}`,
+    notes: [
+      "PATCH changes a direct team grant; DELETE removes the direct team grant.",
+      "Inherited team rows are read-only and return 403 if targeted for mutation.",
+      "Removing or demoting the final owner/admin access path returns 409 conflict.",
+    ],
+  },
+  {
+    id: "repo-access-invitation-cancel",
+    method: "DELETE",
+    path: "/api/repos/{owner}/{repo}/settings/access/invitations/{invitation_id}",
+    title: "Cancel repository invitation",
+    description:
+      "Cancels a pending repository invitation and returns fresh access settings without exposing invite token hashes.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    response: `{
+  "invitations": [],
+  "auditEvents": [{ "eventType": "repository.access.invite_cancel" }]
+}`,
+    notes: [
+      "Any current repository admin may cancel a pending invitation; already accepted, canceled, or expired invitations return 404.",
+      "Responses never include invitation token hashes or email provider secrets.",
+    ],
+  },
+  {
     id: "org-repositories",
     method: "GET",
     path: "/api/orgs/{org}/repositories?q=router&type=public&language=Rust&page=1&pageSize=30",

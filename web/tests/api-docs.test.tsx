@@ -61,6 +61,31 @@ describe("ApiDocsPage", () => {
         /Archived repositories reject every settings mutation except unarchive/,
       ),
     ).toBeVisible();
+    expect(
+      screen.getAllByText("/api/repos/{owner}/{repo}/settings/access")[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/settings/access/teams"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/settings/access/collaborators/{user_id}",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/settings/access/teams/{team_id}",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/settings/access/invitations/{invitation_id}",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Demoting the final owner\/admin access path/),
+    ).toBeVisible();
+    expect(screen.getByText(/emailDeliveryStatus=degraded/)).toBeVisible();
     expect(screen.getByText("/api/repos/{owner}/{repo}/pulls")).toBeVisible();
     expect(
       screen.getByText(

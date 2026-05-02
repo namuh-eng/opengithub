@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import type { KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   RepositoryAccessPerson,
   RepositoryAccessRole,
@@ -128,6 +129,56 @@ function AccessCard({
   );
 }
 
+function useDialogFocus(open: boolean, onClose: () => void) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const dialog = ref.current;
+    const previous = document.activeElement;
+    dialog?.focus();
+
+    return () => {
+      if (previous instanceof HTMLElement) {
+        previous.focus();
+      }
+    };
+  }, [open]);
+
+  function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+    if (event.key !== "Tab") return;
+
+    const dialog = ref.current;
+    if (!dialog) return;
+    const focusable = Array.from(
+      dialog.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((element) => !element.hasAttribute("disabled"));
+    if (focusable.length === 0) {
+      event.preventDefault();
+      return;
+    }
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
+  return { onKeyDown, ref };
+}
+
 function RepositoryAccessUnavailable({
   repository,
   result,
@@ -234,13 +285,17 @@ function ConfirmDialog({
     dialog.kind === "cancel-invitation"
       ? "Cancel pending invitation"
       : "Remove direct access";
+  const { onKeyDown, ref } = useDialogFocus(true, onClose);
 
   return (
     <div
       aria-labelledby="access-confirm-title"
       className="card fixed left-1/2 top-1/2 z-50 w-[min(92vw,440px)] -translate-x-1/2 -translate-y-1/2 p-5"
+      onKeyDown={onKeyDown}
+      ref={ref}
       role="dialog"
       style={{ background: "var(--surface)" }}
+      tabIndex={-1}
     >
       <p className="t-label" style={{ color: "var(--ink-3)" }}>
         Confirmation
@@ -293,12 +348,16 @@ function InviteDialog({
   const roles = roleOptions(settings);
   const defaultRole = "read" as WritableRole;
   const isPerson = dialog.kind === "person";
+  const { onKeyDown, ref } = useDialogFocus(true, onClose);
   return (
     <div
       aria-labelledby="access-invite-title"
       className="card fixed left-1/2 top-1/2 z-50 w-[min(92vw,520px)] -translate-x-1/2 -translate-y-1/2 p-5"
+      onKeyDown={onKeyDown}
+      ref={ref}
       role="dialog"
       style={{ background: "var(--surface)" }}
+      tabIndex={-1}
     >
       <p className="t-label" style={{ color: "var(--ink-3)" }}>
         {isPerson ? "Add people" : "Add teams"}

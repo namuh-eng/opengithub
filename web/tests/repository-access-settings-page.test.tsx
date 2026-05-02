@@ -449,4 +449,65 @@ describe("repository access settings page", () => {
       ),
     );
   });
+
+  it("wraps long access labels and keeps dialogs keyboard-contained", async () => {
+    const longLogin =
+      "avery-very-long-collaborator-name-without-spaces-for-mobile-layouts";
+    const { container } = render(
+      <RepositoryAccessSettingsPage
+        repository={repositoryOverview()}
+        settingsResult={okResult({
+          people: [
+            {
+              ...accessSettings().people[1],
+              login: longLogin,
+              displayName:
+                "A very long collaborator display name that should wrap cleanly inside the row",
+              email:
+                "avery-very-long-collaborator-email-address@subdomain.opengithub.local",
+            },
+          ],
+          teams: [
+            {
+              ...accessSettings().teams[0],
+              name: "Repository Platform Enablement Team With A Long Name",
+              slug: "repository-platform-enablement-team-with-a-long-slug",
+            },
+          ],
+          invitations: [
+            {
+              ...accessSettings().invitations[0],
+              invitedEmail:
+                "pending-invitation-with-a-long-address@subdomain.opengithub.local",
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: longLogin })).toBeVisible();
+    expect(container.querySelectorAll(".break-words").length).toBeGreaterThan(
+      5,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add people" }));
+    const dialog = screen.getByRole("dialog", {
+      name: "Invite a collaborator",
+    });
+    await waitFor(() => expect(dialog).toHaveFocus());
+
+    screen.getByRole("button", { name: "Send invitation" }).focus();
+    fireEvent.keyDown(dialog, { key: "Tab" });
+    expect(
+      screen.getByPlaceholderText("octo@example.com or username"),
+    ).toHaveFocus();
+    fireEvent.keyDown(dialog, { key: "Tab", shiftKey: true });
+    expect(
+      screen.getByRole("button", { name: "Send invitation" }),
+    ).toHaveFocus();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(
+      screen.queryByRole("dialog", { name: "Invite a collaborator" }),
+    ).not.toBeInTheDocument();
+  });
 });

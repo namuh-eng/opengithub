@@ -1,3 +1,15 @@
+2026-05-03 - settings-002 phase 4 privacy, role semantics, and team/org guardrails
+
+- Completed Phase 4 from `.qrspi/settings-002/structure.md`: repository Access settings now have stronger duplicate-grant, team/org, inherited-row, last-admin, API-docs, dialog accessibility, responsive, and forbidden-state guardrails without marking `settings-002.build_pass=true`.
+- Hardened the Rust access domain so duplicate collaborator invitations and duplicate team grants return 409, team grants on user-owned repositories return validation_failed, inherited team rows are not mutable, and direct collaborator/team demotion/removal cannot remove the final owner/admin access path.
+- Added exhaustive route mapping for the new access errors in repository, dashboard, and repository-import error mappers.
+- Documented access settings GET/mutation endpoints in `web/src/lib/api-docs.ts`, including role constraints, invitation degraded SES status, read-only inherited rows, audit notes, duplicate conflicts, and last-admin guardrails.
+- Extended `RepositoryAccessSettingsPage` with dialog focus containment/Escape close behavior and extended Vitest for long usernames/team names/emails, wrapping, focus trapping, no inert controls, and API docs coverage.
+- Extended focused Playwright smoke for keyboard dialog navigation, mobile no-overflow, admin access screenshot, and forbidden screenshot; saved `ralph/screenshots/build/settings-002-phase4-access-admin.jpg`, `settings-002-phase4-access-mobile.jpg`, and `settings-002-phase4-access-forbidden.jpg`.
+- Verification passed: focused `repository_access_settings_contract` harness compiled/passed but self-skipped DB assertions because the shared DB migration state is dirty; focused access/API-docs Vitest; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 274 frontend tests; focused access Playwright smoke; mandatory Editorial banned-value scan returned zero matches.
+- Full `make test-e2e` was attempted and 20 public/focused tests passed, but 73 signed-in seeded tests failed before exercising their scenarios because the shared local database reports `migration 202605030041 was previously applied but has been modified`. The focused access smoke passed by using the existing skip-migrations seed path.
+- Marked Phase 4 as done in `.qrspi/settings-002/structure.md`; `prd.json` remains `build_pass:false` because Phase 5 remains.
+
 2026-05-03 - settings-002 structure planning
 
 - Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `prd.json`, `web/AGENTS.md`, `design/project/wf-settings.jsx`, `.qrspi/settings-001/structure.md`, current repository settings shell/routes, permission roles, repository access-related schema, and current repository settings API patterns.

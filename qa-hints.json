@@ -3372,5 +3372,23 @@
       "Invite acceptance lifecycle, pending invite expiry, concurrent role edits, last-admin protection, organization base permissions, and team membership changes after grants remain deeper QA targets.",
       "Stress long usernames, team names, and email addresses in dialogs and row controls on mobile."
     ]
+  },
+  {
+    "feature_id": "settings-002",
+    "tests_written": [
+      "Completed Phase 4 Privacy, Role Semantics, and Team/Organization Guardrails without marking settings-002 build_pass=true.",
+      "Extended Rust access guardrails for duplicate collaborator invitations, duplicate team grants, user-owned repository team-grant rejection, inherited team row mutation rejection, and final owner/admin access-path protection.",
+      "Documented repository access GET, invite, team grant, collaborator update/remove, team update/remove, and invitation cancel endpoints in the API docs.",
+      "Extended access page tests for long collaborator/team/email wrapping, dialog focus trapping, Escape close behavior, and concrete Editorial controls.",
+      "Focused Playwright smoke passed for admin access mutations, dialog keyboard navigation, mobile no-overflow, and forbidden non-admin state; screenshots saved under ralph/screenshots/build/settings-002-phase4-access-*.jpg.",
+      "Verification passed: focused access Rust contract harness, focused access/API-docs Vitest, TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check, same-env make test with Cargo tests plus 274 frontend tests, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "The focused Rust contract compiled and passed, but its DB assertions self-skipped in this run when the SQLx migrator hit the shared database migration checksum state; rerun against a clean test database.",
+      "Full make test-e2e is blocked by a pre-existing local database issue: migration 202605030041 was previously applied but has been modified. The focused access Playwright smoke passed using the existing skip-migrations seed path.",
+      "Real SES delivery remains degraded/local-only; QA should verify queued/sent delivery after mail infrastructure is active.",
+      "Invite acceptance lifecycle, pending invite expiry, concurrent role edits, last-admin races, organization base permissions, and team membership changes after grants need deeper QA.",
+      "Recheck private/internal repository leakage and inherited organization/team rows with clean, production-like seeded data."
+    ]
   }
 ]
