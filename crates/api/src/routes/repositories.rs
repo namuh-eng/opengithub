@@ -16,24 +16,30 @@ use crate::{
     },
     auth::extractor::AuthenticatedUser,
     domain::repositories::{
-        cancel_repository_invitation_by_owner_name, create_repository_with_bootstrap,
+        cancel_repository_invitation_by_owner_name, create_repository_branch_rule_by_owner_name,
+        create_repository_ruleset_by_owner_name, create_repository_with_bootstrap,
+        delete_repository_branch_rule_by_owner_name, delete_repository_ruleset_by_owner_name,
         fork_repository_by_owner_name, grant_repository_team_access_by_owner_name,
         insert_repository_create_feed_event, invite_repository_access_by_owner_name,
         list_repositories_for_user, remove_repository_collaborator_access_by_owner_name,
         remove_repository_team_access_by_owner_name,
         repository_access_settings_for_actor_by_owner_name,
         repository_blame_for_actor_by_owner_name, repository_blob_for_actor_by_owner_name,
+        repository_branch_settings_for_actor_by_owner_name,
         repository_commit_history_for_actor_by_owner_name, repository_creation_options,
         repository_file_finder_for_actor_by_owner_name, repository_name_availability,
         repository_overview_for_viewer_by_owner_name,
         repository_path_overview_for_actor_by_owner_name, repository_refs_for_actor_by_owner_name,
         repository_settings_for_actor_by_owner_name, set_repository_star_by_owner_name,
-        set_repository_watch_by_owner_name, update_repository_collaborator_access_by_owner_name,
-        update_repository_settings_by_owner_name, update_repository_team_access_by_owner_name,
-        CreateRepository, RepositoryAccessInviteRequest, RepositoryAccessRolePatch,
-        RepositoryAccessTeamGrantRequest, RepositoryBootstrapRequest, RepositoryCommitHistoryQuery,
+        set_repository_watch_by_owner_name, update_repository_branch_rule_by_owner_name,
+        update_repository_collaborator_access_by_owner_name,
+        update_repository_ruleset_by_owner_name, update_repository_settings_by_owner_name,
+        update_repository_team_access_by_owner_name, CreateRepository,
+        RepositoryAccessInviteRequest, RepositoryAccessRolePatch, RepositoryAccessTeamGrantRequest,
+        RepositoryBootstrapRequest, RepositoryBranchRuleMutation, RepositoryCommitHistoryQuery,
         RepositoryError, RepositoryFileFinderQuery, RepositoryOwner, RepositoryPathQuery,
-        RepositoryRefsQuery, RepositorySettingsPatch, RepositoryVisibility,
+        RepositoryRefsQuery, RepositoryRulesetMutation, RepositorySettingsPatch,
+        RepositoryVisibility,
     },
     AppState,
 };
@@ -72,6 +78,23 @@ pub fn router() -> Router<AppState> {
         .route(
             "/:owner/:repo/settings/access/invitations/:invitation_id",
             delete(cancel_invitation),
+        )
+        .route("/:owner/:repo/settings/branches", get(branch_settings))
+        .route(
+            "/:owner/:repo/settings/branches/rules",
+            post(create_branch_rule),
+        )
+        .route(
+            "/:owner/:repo/settings/branches/rules/:rule_id",
+            patch(update_branch_rule).delete(delete_branch_rule),
+        )
+        .route(
+            "/:owner/:repo/settings/branches/rulesets",
+            post(create_ruleset),
+        )
+        .route(
+            "/:owner/:repo/settings/branches/rulesets/:ruleset_id",
+            patch(update_ruleset).delete(delete_ruleset),
         )
         .route("/:owner/:repo/star", put(star).delete(unstar))
         .route("/:owner/:repo/watch", put(watch).delete(unwatch))
@@ -722,6 +745,166 @@ async fn cancel_invitation(
     Ok(Json(json!(settings)))
 }
 
+async fn branch_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings =
+        repository_branch_settings_for_actor_by_owner_name(pool, actor.0.id, &owner, &repo)
+            .await
+            .map_err(map_repository_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn create_branch_rule(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<RepositoryBranchRuleMutation>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings =
+        create_repository_branch_rule_by_owner_name(pool, actor.0.id, &owner, &repo, request)
+            .await
+            .map_err(map_repository_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn update_branch_rule(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, rule_id)): Path<(String, String, Uuid)>,
+    RestJson(request): RestJson<RepositoryBranchRuleMutation>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = update_repository_branch_rule_by_owner_name(
+        pool, actor.0.id, &owner, &repo, rule_id, request,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn delete_branch_rule(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, rule_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings =
+        delete_repository_branch_rule_by_owner_name(pool, actor.0.id, &owner, &repo, rule_id)
+            .await
+            .map_err(map_repository_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn create_ruleset(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<RepositoryRulesetMutation>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings =
+        create_repository_ruleset_by_owner_name(pool, actor.0.id, &owner, &repo, request)
+            .await
+            .map_err(map_repository_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn update_ruleset(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, ruleset_id)): Path<(String, String, Uuid)>,
+    RestJson(request): RestJson<RepositoryRulesetMutation>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = update_repository_ruleset_by_owner_name(
+        pool, actor.0.id, &owner, &repo, ruleset_id, request,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn delete_ruleset(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, ruleset_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings =
+        delete_repository_ruleset_by_owner_name(pool, actor.0.id, &owner, &repo, ruleset_id)
+            .await
+            .map_err(map_repository_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
+
+    Ok(Json(json!(settings)))
+}
+
 async fn star(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -865,6 +1048,7 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         | RepositoryError::InvalidDescription(_)
         | RepositoryError::InvalidMergeMethod(_)
         | RepositoryError::InvalidAccessRole(_)
+        | RepositoryError::InvalidBranchPolicy(_)
         | RepositoryError::MergeMethodRequired
         | RepositoryError::DefaultMergeMethodDisabled
         | RepositoryError::ArchivedRepositoryReadOnly
@@ -889,6 +1073,12 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         }
         RepositoryError::LastAdminAccess => {
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
+        RepositoryError::BranchPolicyConflict => {
+            error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
+        RepositoryError::BranchPolicyNotFound => {
+            error_response(StatusCode::NOT_FOUND, "not_found", error.to_string())
         }
         RepositoryError::TeamAccessUnsupported => error_response(
             StatusCode::UNPROCESSABLE_ENTITY,

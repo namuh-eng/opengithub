@@ -6,7 +6,7 @@
 
 ## Phase 1: Branch Policy API Contract - rules, rulesets, refs, and admin visibility
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the Rust/Postgres read/write contract for repository branch policy settings under `/api/repos/{owner}/{repo}/settings/branches`. This phase should preserve the existing `repository_branch_protection_rules` and `repository_required_status_checks` behavior used by PR mergeability, while extending it into a complete settings contract with rulesets, default-branch context, matching refs, viewer capability metadata, and audit events.
 

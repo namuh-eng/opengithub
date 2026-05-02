@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
 use crate::api_types::ListEnvelope;
@@ -282,6 +282,178 @@ pub struct RepositoryAccessTeamGrantRequest {
 #[serde(rename_all = "camelCase")]
 pub struct RepositoryAccessRolePatch {
     pub role: RepositoryRole,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryBranchSettings {
+    pub id: Uuid,
+    pub owner_login: String,
+    pub name: String,
+    pub visibility: RepositoryVisibility,
+    pub default_branch: String,
+    pub default_branch_summary: RepositoryDefaultBranchSummary,
+    pub viewer_permission: String,
+    pub can_edit: bool,
+    pub refs: Vec<RepositoryBranchRefSummary>,
+    pub rules: Vec<RepositoryBranchRule>,
+    pub rulesets: Vec<RepositoryRuleset>,
+    pub status_check_suggestions: Vec<String>,
+    pub audit_events: Vec<RepositorySettingsAuditEvent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryDefaultBranchSummary {
+    pub name: String,
+    pub protected: bool,
+    pub matching_rule_count: i64,
+    pub matching_ruleset_count: i64,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryBranchRefSummary {
+    pub name: String,
+    pub protected: bool,
+    pub matching_rule_count: i64,
+    pub matching_ruleset_count: i64,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryBranchRule {
+    pub id: Uuid,
+    pub pattern: String,
+    pub description: Option<String>,
+    pub enforcement: BranchPolicyEnforcement,
+    pub matching_branches: Vec<String>,
+    pub matching_branch_count: i64,
+    pub requirements: BranchPolicyRequirements,
+    pub bypass_actors: Vec<BypassActor>,
+    pub can_edit: bool,
+    pub can_delete: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryRuleset {
+    pub id: Uuid,
+    pub name: String,
+    pub target: String,
+    pub enforcement: BranchPolicyEnforcement,
+    pub patterns: Vec<String>,
+    pub matching_branches: Vec<String>,
+    pub matching_branch_count: i64,
+    pub requirements: BranchPolicyRequirements,
+    pub bypass_actors: Vec<BypassActor>,
+    pub can_edit: bool,
+    pub can_delete: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BranchPolicyEnforcement {
+    Active,
+    Evaluate,
+    Disabled,
+}
+
+impl BranchPolicyEnforcement {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Evaluate => "evaluate",
+            Self::Disabled => "disabled",
+        }
+    }
+}
+
+impl TryFrom<&str> for BranchPolicyEnforcement {
+    type Error = RepositoryError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "active" => Ok(Self::Active),
+            "evaluate" => Ok(Self::Evaluate),
+            "disabled" => Ok(Self::Disabled),
+            other => Err(RepositoryError::InvalidBranchPolicy(format!(
+                "Unsupported enforcement state `{other}`."
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchPolicyRequirements {
+    pub required_approving_review_count: i64,
+    pub requires_up_to_date_branch: bool,
+    pub required_status_checks: Vec<String>,
+    pub requires_conversation_resolution: bool,
+    pub requires_signed_commits: bool,
+    pub requires_linear_history: bool,
+    pub requires_merge_queue: bool,
+    pub requires_deployments: bool,
+    pub required_deployment_environments: Vec<String>,
+    pub locked: bool,
+    pub restricts_pushes: bool,
+    pub allows_force_pushes: bool,
+    pub allows_deletions: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct BypassActor {
+    pub actor_type: String,
+    pub actor_id: Uuid,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryBranchRuleMutation {
+    pub pattern: String,
+    pub description: Option<String>,
+    pub enforcement: Option<BranchPolicyEnforcement>,
+    #[serde(flatten)]
+    pub requirements: BranchPolicyRequirementsPatch,
+    pub bypass_actors: Option<Vec<BypassActor>>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryRulesetMutation {
+    pub name: String,
+    pub enforcement: Option<BranchPolicyEnforcement>,
+    pub patterns: Vec<String>,
+    #[serde(flatten)]
+    pub requirements: BranchPolicyRequirementsPatch,
+    pub bypass_actors: Option<Vec<BypassActor>>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct BranchPolicyRequirementsPatch {
+    pub required_approving_review_count: Option<i64>,
+    pub requires_up_to_date_branch: Option<bool>,
+    pub required_status_checks: Option<Vec<String>>,
+    pub requires_conversation_resolution: Option<bool>,
+    pub requires_signed_commits: Option<bool>,
+    pub requires_linear_history: Option<bool>,
+    pub requires_merge_queue: Option<bool>,
+    pub requires_deployments: Option<bool>,
+    pub required_deployment_environments: Option<Vec<String>>,
+    pub locked: Option<bool>,
+    pub restricts_pushes: Option<bool>,
+    pub allows_force_pushes: Option<bool>,
+    pub allows_deletions: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -834,6 +1006,12 @@ pub enum RepositoryError {
     LastAdminAccess,
     #[error("repository team access is only available for organization repositories")]
     TeamAccessUnsupported,
+    #[error("invalid branch policy: {0}")]
+    InvalidBranchPolicy(String),
+    #[error("repository branch policy already exists")]
+    BranchPolicyConflict,
+    #[error("repository branch policy was not found")]
+    BranchPolicyNotFound,
     #[error("repository git storage failed")]
     GitStorageFailed,
     #[error(transparent)]
@@ -2632,6 +2810,373 @@ pub async fn update_repository_settings_by_owner_name(
     repository_settings_for_repository(pool, &updated, actor_user_id).await
 }
 
+pub async fn repository_branch_settings_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+) -> Result<Option<RepositoryBranchSettings>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    repository_branch_settings_for_repository(pool, &repository, actor_user_id).await
+}
+
+pub async fn create_repository_branch_rule_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    mutation: RepositoryBranchRuleMutation,
+) -> Result<Option<RepositoryBranchSettings>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    require_access_admin(pool, &repository, actor_user_id).await?;
+    let rule = normalize_branch_rule_mutation(mutation)?;
+    ensure_unique_branch_rule_pattern(pool, repository.id, &rule.pattern, None).await?;
+
+    let mut transaction = pool.begin().await?;
+    let row = sqlx::query(
+        r#"
+        INSERT INTO repository_branch_protection_rules (
+            repository_id, pattern, description, enforcement,
+            required_approving_review_count, requires_up_to_date_branch,
+            requires_conversation_resolution, requires_signed_commits, requires_linear_history,
+            requires_merge_queue, requires_deployments, required_deployment_environments,
+            locked, restricts_pushes, allows_force_pushes, allows_deletions, bypass_actors
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(&rule.pattern)
+    .bind(&rule.description)
+    .bind(rule.enforcement.as_str())
+    .bind(rule.requirements.required_approving_review_count)
+    .bind(rule.requirements.requires_up_to_date_branch)
+    .bind(rule.requirements.requires_conversation_resolution)
+    .bind(rule.requirements.requires_signed_commits)
+    .bind(rule.requirements.requires_linear_history)
+    .bind(rule.requirements.requires_merge_queue)
+    .bind(rule.requirements.requires_deployments)
+    .bind(&rule.requirements.required_deployment_environments)
+    .bind(rule.requirements.locked)
+    .bind(rule.requirements.restricts_pushes)
+    .bind(rule.requirements.allows_force_pushes)
+    .bind(rule.requirements.allows_deletions)
+    .bind(json!(rule.bypass_actors))
+    .fetch_one(&mut *transaction)
+    .await?;
+    let rule_id: Uuid = row.get("id");
+    replace_required_status_checks(
+        &mut transaction,
+        rule_id,
+        &rule.requirements.required_status_checks,
+    )
+    .await?;
+    insert_repository_settings_audit_event_tx(
+        &mut transaction,
+        repository.id,
+        actor_user_id,
+        "repository.branch_rule.create",
+        vec!["branch_rules".to_owned()],
+        json!({}),
+        json!({ "id": rule_id, "pattern": rule.pattern }),
+    )
+    .await?;
+    transaction.commit().await?;
+    repository_branch_settings_for_repository(pool, &repository, actor_user_id).await
+}
+
+pub async fn update_repository_branch_rule_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    rule_id: Uuid,
+    mutation: RepositoryBranchRuleMutation,
+) -> Result<Option<RepositoryBranchSettings>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    require_access_admin(pool, &repository, actor_user_id).await?;
+    let existing = branch_rule_exists(pool, repository.id, rule_id).await?;
+    let rule = normalize_branch_rule_mutation(mutation)?;
+    ensure_unique_branch_rule_pattern(pool, repository.id, &rule.pattern, Some(rule_id)).await?;
+
+    let mut transaction = pool.begin().await?;
+    let updated = sqlx::query(
+        r#"
+        UPDATE repository_branch_protection_rules
+        SET pattern = $3,
+            description = $4,
+            enforcement = $5,
+            required_approving_review_count = $6,
+            requires_up_to_date_branch = $7,
+            requires_conversation_resolution = $8,
+            requires_signed_commits = $9,
+            requires_linear_history = $10,
+            requires_merge_queue = $11,
+            requires_deployments = $12,
+            required_deployment_environments = $13,
+            locked = $14,
+            restricts_pushes = $15,
+            allows_force_pushes = $16,
+            allows_deletions = $17,
+            bypass_actors = $18
+        WHERE repository_id = $1 AND id = $2
+        "#,
+    )
+    .bind(repository.id)
+    .bind(rule_id)
+    .bind(&rule.pattern)
+    .bind(&rule.description)
+    .bind(rule.enforcement.as_str())
+    .bind(rule.requirements.required_approving_review_count)
+    .bind(rule.requirements.requires_up_to_date_branch)
+    .bind(rule.requirements.requires_conversation_resolution)
+    .bind(rule.requirements.requires_signed_commits)
+    .bind(rule.requirements.requires_linear_history)
+    .bind(rule.requirements.requires_merge_queue)
+    .bind(rule.requirements.requires_deployments)
+    .bind(&rule.requirements.required_deployment_environments)
+    .bind(rule.requirements.locked)
+    .bind(rule.requirements.restricts_pushes)
+    .bind(rule.requirements.allows_force_pushes)
+    .bind(rule.requirements.allows_deletions)
+    .bind(json!(rule.bypass_actors))
+    .execute(&mut *transaction)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(RepositoryError::BranchPolicyNotFound);
+    }
+    replace_required_status_checks(
+        &mut transaction,
+        rule_id,
+        &rule.requirements.required_status_checks,
+    )
+    .await?;
+    insert_repository_settings_audit_event_tx(
+        &mut transaction,
+        repository.id,
+        actor_user_id,
+        "repository.branch_rule.update",
+        vec!["branch_rules".to_owned()],
+        existing,
+        json!({ "id": rule_id, "pattern": rule.pattern }),
+    )
+    .await?;
+    transaction.commit().await?;
+    repository_branch_settings_for_repository(pool, &repository, actor_user_id).await
+}
+
+pub async fn delete_repository_branch_rule_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    rule_id: Uuid,
+) -> Result<Option<RepositoryBranchSettings>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    require_access_admin(pool, &repository, actor_user_id).await?;
+    let existing = branch_rule_exists(pool, repository.id, rule_id).await?;
+    let mut transaction = pool.begin().await?;
+    let deleted = sqlx::query(
+        "DELETE FROM repository_branch_protection_rules WHERE repository_id = $1 AND id = $2",
+    )
+    .bind(repository.id)
+    .bind(rule_id)
+    .execute(&mut *transaction)
+    .await?;
+    if deleted.rows_affected() == 0 {
+        return Err(RepositoryError::BranchPolicyNotFound);
+    }
+    insert_repository_settings_audit_event_tx(
+        &mut transaction,
+        repository.id,
+        actor_user_id,
+        "repository.branch_rule.delete",
+        vec!["branch_rules".to_owned()],
+        existing,
+        json!({}),
+    )
+    .await?;
+    transaction.commit().await?;
+    repository_branch_settings_for_repository(pool, &repository, actor_user_id).await
+}
+
+pub async fn create_repository_ruleset_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    mutation: RepositoryRulesetMutation,
+) -> Result<Option<RepositoryBranchSettings>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    require_access_admin(pool, &repository, actor_user_id).await?;
+    let ruleset = normalize_ruleset_mutation(mutation)?;
+    ensure_unique_ruleset_name(pool, repository.id, &ruleset.name, None).await?;
+    sqlx::query(
+        r#"
+        INSERT INTO repository_rulesets (
+            repository_id, name, enforcement, patterns, required_approving_review_count,
+            requires_up_to_date_branch, required_status_checks, requires_conversation_resolution,
+            requires_signed_commits, requires_linear_history, requires_merge_queue,
+            requires_deployments, required_deployment_environments, locked, restricts_pushes,
+            allows_force_pushes, allows_deletions, bypass_actors
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        "#,
+    )
+    .bind(repository.id)
+    .bind(&ruleset.name)
+    .bind(ruleset.enforcement.as_str())
+    .bind(&ruleset.patterns)
+    .bind(ruleset.requirements.required_approving_review_count)
+    .bind(ruleset.requirements.requires_up_to_date_branch)
+    .bind(&ruleset.requirements.required_status_checks)
+    .bind(ruleset.requirements.requires_conversation_resolution)
+    .bind(ruleset.requirements.requires_signed_commits)
+    .bind(ruleset.requirements.requires_linear_history)
+    .bind(ruleset.requirements.requires_merge_queue)
+    .bind(ruleset.requirements.requires_deployments)
+    .bind(&ruleset.requirements.required_deployment_environments)
+    .bind(ruleset.requirements.locked)
+    .bind(ruleset.requirements.restricts_pushes)
+    .bind(ruleset.requirements.allows_force_pushes)
+    .bind(ruleset.requirements.allows_deletions)
+    .bind(json!(ruleset.bypass_actors))
+    .execute(pool)
+    .await?;
+    insert_repository_access_audit_event(
+        pool,
+        repository.id,
+        actor_user_id,
+        "repository.ruleset.create",
+        vec!["rulesets".to_owned()],
+        json!({}),
+        json!({ "name": ruleset.name }),
+    )
+    .await?;
+    repository_branch_settings_for_repository(pool, &repository, actor_user_id).await
+}
+
+pub async fn update_repository_ruleset_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    ruleset_id: Uuid,
+    mutation: RepositoryRulesetMutation,
+) -> Result<Option<RepositoryBranchSettings>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    require_access_admin(pool, &repository, actor_user_id).await?;
+    let ruleset = normalize_ruleset_mutation(mutation)?;
+    ensure_unique_ruleset_name(pool, repository.id, &ruleset.name, Some(ruleset_id)).await?;
+    let updated = sqlx::query(
+        r#"
+        UPDATE repository_rulesets
+        SET name = $3,
+            enforcement = $4,
+            patterns = $5,
+            required_approving_review_count = $6,
+            requires_up_to_date_branch = $7,
+            required_status_checks = $8,
+            requires_conversation_resolution = $9,
+            requires_signed_commits = $10,
+            requires_linear_history = $11,
+            requires_merge_queue = $12,
+            requires_deployments = $13,
+            required_deployment_environments = $14,
+            locked = $15,
+            restricts_pushes = $16,
+            allows_force_pushes = $17,
+            allows_deletions = $18,
+            bypass_actors = $19
+        WHERE repository_id = $1 AND id = $2
+        "#,
+    )
+    .bind(repository.id)
+    .bind(ruleset_id)
+    .bind(&ruleset.name)
+    .bind(ruleset.enforcement.as_str())
+    .bind(&ruleset.patterns)
+    .bind(ruleset.requirements.required_approving_review_count)
+    .bind(ruleset.requirements.requires_up_to_date_branch)
+    .bind(&ruleset.requirements.required_status_checks)
+    .bind(ruleset.requirements.requires_conversation_resolution)
+    .bind(ruleset.requirements.requires_signed_commits)
+    .bind(ruleset.requirements.requires_linear_history)
+    .bind(ruleset.requirements.requires_merge_queue)
+    .bind(ruleset.requirements.requires_deployments)
+    .bind(&ruleset.requirements.required_deployment_environments)
+    .bind(ruleset.requirements.locked)
+    .bind(ruleset.requirements.restricts_pushes)
+    .bind(ruleset.requirements.allows_force_pushes)
+    .bind(ruleset.requirements.allows_deletions)
+    .bind(json!(ruleset.bypass_actors))
+    .execute(pool)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(RepositoryError::BranchPolicyNotFound);
+    }
+    insert_repository_access_audit_event(
+        pool,
+        repository.id,
+        actor_user_id,
+        "repository.ruleset.update",
+        vec!["rulesets".to_owned()],
+        json!({ "id": ruleset_id }),
+        json!({ "id": ruleset_id, "name": ruleset.name }),
+    )
+    .await?;
+    repository_branch_settings_for_repository(pool, &repository, actor_user_id).await
+}
+
+pub async fn delete_repository_ruleset_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    ruleset_id: Uuid,
+) -> Result<Option<RepositoryBranchSettings>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    require_access_admin(pool, &repository, actor_user_id).await?;
+    let deleted =
+        sqlx::query("DELETE FROM repository_rulesets WHERE repository_id = $1 AND id = $2")
+            .bind(repository.id)
+            .bind(ruleset_id)
+            .execute(pool)
+            .await?;
+    if deleted.rows_affected() == 0 {
+        return Err(RepositoryError::BranchPolicyNotFound);
+    }
+    insert_repository_access_audit_event(
+        pool,
+        repository.id,
+        actor_user_id,
+        "repository.ruleset.delete",
+        vec!["rulesets".to_owned()],
+        json!({ "id": ruleset_id }),
+        json!({}),
+    )
+    .await?;
+    repository_branch_settings_for_repository(pool, &repository, actor_user_id).await
+}
+
 async fn validate_settings_patch(
     pool: &PgPool,
     repository: &Repository,
@@ -3489,6 +4034,634 @@ async fn repository_settings_for_repository(
         updated_at: row.try_get("updated_at")?,
         audit_events,
     }))
+}
+
+async fn repository_branch_settings_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+) -> Result<Option<RepositoryBranchSettings>, RepositoryError> {
+    let Some(row) = sqlx::query(
+        r#"
+        SELECT repositories.id,
+               COALESCE(NULLIF(owner_user.username, ''), owner_user.email, organizations.slug) AS owner_login,
+               repositories.name,
+               repositories.visibility,
+               repositories.default_branch,
+               repository_permissions.role AS viewer_permission
+        FROM repositories
+        LEFT JOIN users owner_user
+          ON owner_user.id = repositories.owner_user_id
+        LEFT JOIN organizations
+          ON organizations.id = repositories.owner_organization_id
+        LEFT JOIN repository_permissions
+          ON repository_permissions.repository_id = repositories.id
+         AND repository_permissions.user_id = $2
+        WHERE repositories.id = $1
+        "#,
+    )
+    .bind(repository.id)
+    .bind(actor_user_id)
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Ok(None);
+    };
+
+    let viewer_permission: Option<String> = row.try_get("viewer_permission")?;
+    let viewer_permission = viewer_permission.unwrap_or_else(|| {
+        if repository.owner_user_id == Some(actor_user_id) {
+            RepositoryRole::Owner.as_str().to_owned()
+        } else {
+            RepositoryRole::Read.as_str().to_owned()
+        }
+    });
+    let can_edit = can_admin_repository(pool, repository, actor_user_id).await?;
+    let mut refs = repository_branch_ref_summaries(pool, repository.id).await?;
+    let rules = repository_branch_rules(pool, repository.id, &refs, can_edit).await?;
+    let rulesets = repository_rulesets(pool, repository.id, &refs, can_edit).await?;
+    for branch in &mut refs {
+        branch.matching_rule_count = rules
+            .iter()
+            .filter(|rule| rule.enforcement != BranchPolicyEnforcement::Disabled)
+            .filter(|rule| branch_pattern_matches(&rule.pattern, &branch.name))
+            .count() as i64;
+        branch.matching_ruleset_count = rulesets
+            .iter()
+            .filter(|ruleset| ruleset.enforcement != BranchPolicyEnforcement::Disabled)
+            .filter(|ruleset| {
+                ruleset
+                    .patterns
+                    .iter()
+                    .any(|pattern| branch_pattern_matches(pattern, &branch.name))
+            })
+            .count() as i64;
+        branch.protected = branch.matching_rule_count + branch.matching_ruleset_count > 0;
+    }
+    let status_check_suggestions = repository_status_check_suggestions(pool, repository.id).await?;
+    let audit_events = repository_settings_audit_events(pool, repository.id).await?;
+    let default_branch: String = row.try_get("default_branch")?;
+    let default_rule_count = rules
+        .iter()
+        .filter(|rule| rule.enforcement != BranchPolicyEnforcement::Disabled)
+        .filter(|rule| branch_pattern_matches(&rule.pattern, &default_branch))
+        .count() as i64;
+    let default_ruleset_count = rulesets
+        .iter()
+        .filter(|ruleset| ruleset.enforcement != BranchPolicyEnforcement::Disabled)
+        .filter(|ruleset| {
+            ruleset
+                .patterns
+                .iter()
+                .any(|pattern| branch_pattern_matches(pattern, &default_branch))
+        })
+        .count() as i64;
+    let owner_login: String = row.try_get("owner_login")?;
+    let repo_name: String = row.try_get("name")?;
+
+    Ok(Some(RepositoryBranchSettings {
+        id: row.try_get("id")?,
+        owner_login: owner_login.clone(),
+        name: repo_name.clone(),
+        visibility: RepositoryVisibility::try_from(
+            row.try_get::<String, _>("visibility")?.as_str(),
+        )?,
+        default_branch: default_branch.clone(),
+        default_branch_summary: RepositoryDefaultBranchSummary {
+            name: default_branch.clone(),
+            protected: default_rule_count + default_ruleset_count > 0,
+            matching_rule_count: default_rule_count,
+            matching_ruleset_count: default_ruleset_count,
+            href: format!("/{owner_login}/{repo_name}/tree/{default_branch}"),
+        },
+        viewer_permission,
+        can_edit,
+        refs,
+        rules,
+        rulesets,
+        status_check_suggestions,
+        audit_events,
+    }))
+}
+
+async fn repository_branch_ref_summaries(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<Vec<RepositoryBranchRefSummary>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT name, updated_at
+        FROM repository_git_refs
+        WHERE repository_id = $1 AND kind = 'branch'
+        ORDER BY lower(name)
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let name: String = row.get("name");
+            RepositoryBranchRefSummary {
+                name: name.strip_prefix("refs/heads/").unwrap_or(&name).to_owned(),
+                protected: false,
+                matching_rule_count: 0,
+                matching_ruleset_count: 0,
+                updated_at: row.get("updated_at"),
+            }
+        })
+        .collect())
+}
+
+async fn repository_branch_rules(
+    pool: &PgPool,
+    repository_id: Uuid,
+    refs: &[RepositoryBranchRefSummary],
+    can_edit: bool,
+) -> Result<Vec<RepositoryBranchRule>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, pattern, description, enforcement, required_approving_review_count,
+               requires_up_to_date_branch, requires_conversation_resolution,
+               requires_signed_commits, requires_linear_history, requires_merge_queue,
+               requires_deployments, required_deployment_environments, locked, restricts_pushes,
+               allows_force_pushes, allows_deletions, bypass_actors, created_at, updated_at
+        FROM repository_branch_protection_rules
+        WHERE repository_id = $1
+        ORDER BY lower(pattern), created_at
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut rules = Vec::new();
+    for row in rows {
+        let rule_id: Uuid = row.get("id");
+        let pattern: String = row.get("pattern");
+        let required_status_checks = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT context
+            FROM repository_required_status_checks
+            WHERE branch_protection_rule_id = $1
+            ORDER BY lower(context)
+            "#,
+        )
+        .bind(rule_id)
+        .fetch_all(pool)
+        .await?;
+        let matching_branches = matching_branches(refs, std::slice::from_ref(&pattern));
+        rules.push(RepositoryBranchRule {
+            id: rule_id,
+            pattern,
+            description: row.get("description"),
+            enforcement: BranchPolicyEnforcement::try_from(
+                row.get::<String, _>("enforcement").as_str(),
+            )?,
+            matching_branch_count: matching_branches.len() as i64,
+            matching_branches,
+            requirements: BranchPolicyRequirements {
+                required_approving_review_count: row.get("required_approving_review_count"),
+                requires_up_to_date_branch: row.get("requires_up_to_date_branch"),
+                required_status_checks,
+                requires_conversation_resolution: row.get("requires_conversation_resolution"),
+                requires_signed_commits: row.get("requires_signed_commits"),
+                requires_linear_history: row.get("requires_linear_history"),
+                requires_merge_queue: row.get("requires_merge_queue"),
+                requires_deployments: row.get("requires_deployments"),
+                required_deployment_environments: row.get("required_deployment_environments"),
+                locked: row.get("locked"),
+                restricts_pushes: row.get("restricts_pushes"),
+                allows_force_pushes: row.get("allows_force_pushes"),
+                allows_deletions: row.get("allows_deletions"),
+            },
+            bypass_actors: decode_bypass_actors(row.get("bypass_actors"))?,
+            can_edit,
+            can_delete: can_edit,
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+        });
+    }
+    Ok(rules)
+}
+
+async fn repository_rulesets(
+    pool: &PgPool,
+    repository_id: Uuid,
+    refs: &[RepositoryBranchRefSummary],
+    can_edit: bool,
+) -> Result<Vec<RepositoryRuleset>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, name, target, enforcement, patterns, required_approving_review_count,
+               requires_up_to_date_branch, required_status_checks,
+               requires_conversation_resolution, requires_signed_commits, requires_linear_history,
+               requires_merge_queue, requires_deployments, required_deployment_environments,
+               locked, restricts_pushes, allows_force_pushes, allows_deletions,
+               bypass_actors, created_at, updated_at
+        FROM repository_rulesets
+        WHERE repository_id = $1
+        ORDER BY lower(name), created_at
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            let patterns: Vec<String> = row.get("patterns");
+            let matching_branches = matching_branches(refs, &patterns);
+            Ok(RepositoryRuleset {
+                id: row.get("id"),
+                name: row.get("name"),
+                target: row.get("target"),
+                enforcement: BranchPolicyEnforcement::try_from(
+                    row.get::<String, _>("enforcement").as_str(),
+                )?,
+                patterns,
+                matching_branch_count: matching_branches.len() as i64,
+                matching_branches,
+                requirements: BranchPolicyRequirements {
+                    required_approving_review_count: row.get("required_approving_review_count"),
+                    requires_up_to_date_branch: row.get("requires_up_to_date_branch"),
+                    required_status_checks: row.get("required_status_checks"),
+                    requires_conversation_resolution: row.get("requires_conversation_resolution"),
+                    requires_signed_commits: row.get("requires_signed_commits"),
+                    requires_linear_history: row.get("requires_linear_history"),
+                    requires_merge_queue: row.get("requires_merge_queue"),
+                    requires_deployments: row.get("requires_deployments"),
+                    required_deployment_environments: row.get("required_deployment_environments"),
+                    locked: row.get("locked"),
+                    restricts_pushes: row.get("restricts_pushes"),
+                    allows_force_pushes: row.get("allows_force_pushes"),
+                    allows_deletions: row.get("allows_deletions"),
+                },
+                bypass_actors: decode_bypass_actors(row.get("bypass_actors"))?,
+                can_edit,
+                can_delete: can_edit,
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+            })
+        })
+        .collect()
+}
+
+async fn repository_status_check_suggestions(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<Vec<String>, RepositoryError> {
+    let rows = sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT DISTINCT repository_required_status_checks.context
+        FROM repository_required_status_checks
+        JOIN repository_branch_protection_rules
+          ON repository_branch_protection_rules.id = repository_required_status_checks.branch_protection_rule_id
+        WHERE repository_branch_protection_rules.repository_id = $1
+          AND length(trim(repository_required_status_checks.context)) > 0
+        ORDER BY repository_required_status_checks.context
+        LIMIT 20
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+    Ok(rows)
+}
+
+fn matching_branches(refs: &[RepositoryBranchRefSummary], patterns: &[String]) -> Vec<String> {
+    refs.iter()
+        .filter(|branch| {
+            patterns
+                .iter()
+                .any(|pattern| branch_pattern_matches(pattern, &branch.name))
+        })
+        .map(|branch| branch.name.clone())
+        .collect()
+}
+
+fn branch_pattern_matches(pattern: &str, branch: &str) -> bool {
+    if pattern == branch {
+        return true;
+    }
+    let mut remainder = branch;
+    let mut first = true;
+    for part in pattern.split('*') {
+        if part.is_empty() {
+            first = false;
+            continue;
+        }
+        let Some(index) = remainder.find(part) else {
+            return false;
+        };
+        if first && !pattern.starts_with('*') && index != 0 {
+            return false;
+        }
+        remainder = &remainder[index + part.len()..];
+        first = false;
+    }
+    pattern.ends_with('*') || remainder.is_empty()
+}
+
+fn decode_bypass_actors(value: serde_json::Value) -> Result<Vec<BypassActor>, RepositoryError> {
+    serde_json::from_value(value)
+        .map_err(|error| RepositoryError::InvalidBranchPolicy(error.to_string()))
+}
+
+struct NormalizedBranchRuleMutation {
+    pattern: String,
+    description: Option<String>,
+    enforcement: BranchPolicyEnforcement,
+    requirements: BranchPolicyRequirements,
+    bypass_actors: Vec<BypassActor>,
+}
+
+struct NormalizedRulesetMutation {
+    name: String,
+    enforcement: BranchPolicyEnforcement,
+    patterns: Vec<String>,
+    requirements: BranchPolicyRequirements,
+    bypass_actors: Vec<BypassActor>,
+}
+
+fn normalize_branch_rule_mutation(
+    mutation: RepositoryBranchRuleMutation,
+) -> Result<NormalizedBranchRuleMutation, RepositoryError> {
+    let pattern = normalize_branch_pattern(&mutation.pattern)?;
+    let requirements = normalize_branch_requirements(mutation.requirements)?;
+    if pattern == "main" && requirements.allows_deletions {
+        return Err(RepositoryError::InvalidBranchPolicy(
+            "The default branch cannot allow deletion in this phase.".to_owned(),
+        ));
+    }
+    Ok(NormalizedBranchRuleMutation {
+        pattern,
+        description: mutation.description.and_then(|value| {
+            let value = value.trim().chars().take(240).collect::<String>();
+            (!value.is_empty()).then_some(value)
+        }),
+        enforcement: mutation
+            .enforcement
+            .unwrap_or(BranchPolicyEnforcement::Active),
+        requirements,
+        bypass_actors: normalize_bypass_actors(mutation.bypass_actors.unwrap_or_default())?,
+    })
+}
+
+fn normalize_ruleset_mutation(
+    mutation: RepositoryRulesetMutation,
+) -> Result<NormalizedRulesetMutation, RepositoryError> {
+    let name = mutation.name.trim().chars().take(120).collect::<String>();
+    if name.is_empty() {
+        return Err(RepositoryError::InvalidBranchPolicy(
+            "Ruleset name is required.".to_owned(),
+        ));
+    }
+    let mut patterns = Vec::new();
+    let mut seen = BTreeSet::new();
+    for pattern in mutation.patterns {
+        let pattern = normalize_branch_pattern(&pattern)?;
+        if seen.insert(pattern.to_lowercase()) {
+            patterns.push(pattern);
+        }
+    }
+    if patterns.is_empty() {
+        return Err(RepositoryError::InvalidBranchPolicy(
+            "At least one branch pattern is required.".to_owned(),
+        ));
+    }
+    Ok(NormalizedRulesetMutation {
+        name,
+        enforcement: mutation
+            .enforcement
+            .unwrap_or(BranchPolicyEnforcement::Active),
+        patterns,
+        requirements: normalize_branch_requirements(mutation.requirements)?,
+        bypass_actors: normalize_bypass_actors(mutation.bypass_actors.unwrap_or_default())?,
+    })
+}
+
+fn normalize_branch_requirements(
+    patch: BranchPolicyRequirementsPatch,
+) -> Result<BranchPolicyRequirements, RepositoryError> {
+    let required_approving_review_count = patch.required_approving_review_count.unwrap_or(0);
+    if required_approving_review_count < 0 {
+        return Err(RepositoryError::InvalidBranchPolicy(
+            "Required approving review count cannot be negative.".to_owned(),
+        ));
+    }
+    Ok(BranchPolicyRequirements {
+        required_approving_review_count,
+        requires_up_to_date_branch: patch.requires_up_to_date_branch.unwrap_or(false),
+        required_status_checks: normalize_nonempty_strings(
+            patch.required_status_checks.unwrap_or_default(),
+            "status check context",
+        )?,
+        requires_conversation_resolution: patch.requires_conversation_resolution.unwrap_or(false),
+        requires_signed_commits: patch.requires_signed_commits.unwrap_or(false),
+        requires_linear_history: patch.requires_linear_history.unwrap_or(false),
+        requires_merge_queue: patch.requires_merge_queue.unwrap_or(false),
+        requires_deployments: patch.requires_deployments.unwrap_or(false),
+        required_deployment_environments: normalize_nonempty_strings(
+            patch.required_deployment_environments.unwrap_or_default(),
+            "deployment environment",
+        )?,
+        locked: patch.locked.unwrap_or(false),
+        restricts_pushes: patch.restricts_pushes.unwrap_or(false),
+        allows_force_pushes: patch.allows_force_pushes.unwrap_or(false),
+        allows_deletions: patch.allows_deletions.unwrap_or(false),
+    })
+}
+
+fn normalize_nonempty_strings(
+    values: Vec<String>,
+    label: &str,
+) -> Result<Vec<String>, RepositoryError> {
+    let mut normalized = Vec::new();
+    let mut seen = BTreeSet::new();
+    for value in values {
+        let trimmed = value.trim().chars().take(120).collect::<String>();
+        if trimmed.is_empty() {
+            return Err(RepositoryError::InvalidBranchPolicy(format!(
+                "{label} cannot be blank."
+            )));
+        }
+        if seen.insert(trimmed.to_lowercase()) {
+            normalized.push(trimmed);
+        }
+    }
+    Ok(normalized)
+}
+
+fn normalize_branch_pattern(pattern: &str) -> Result<String, RepositoryError> {
+    let pattern = pattern.trim().trim_start_matches("refs/heads/").to_owned();
+    if pattern.is_empty() {
+        return Err(RepositoryError::InvalidBranchPolicy(
+            "Branch pattern is required.".to_owned(),
+        ));
+    }
+    if pattern.len() > 160 || pattern.contains("..") || pattern.contains('\\') {
+        return Err(RepositoryError::InvalidBranchPolicy(
+            "Branch pattern contains unsupported characters.".to_owned(),
+        ));
+    }
+    Ok(pattern)
+}
+
+fn normalize_bypass_actors(actors: Vec<BypassActor>) -> Result<Vec<BypassActor>, RepositoryError> {
+    let mut normalized = Vec::new();
+    let mut seen = BTreeSet::new();
+    for actor in actors {
+        let actor_type = actor.actor_type.trim().to_lowercase();
+        if !matches!(actor_type.as_str(), "user" | "team" | "role") {
+            return Err(RepositoryError::InvalidBranchPolicy(
+                "Bypass actors must be users, teams, or roles.".to_owned(),
+            ));
+        }
+        if seen.insert((actor_type.clone(), actor.actor_id)) {
+            normalized.push(BypassActor {
+                actor_type,
+                actor_id: actor.actor_id,
+                label: actor.label.trim().chars().take(120).collect(),
+            });
+        }
+    }
+    Ok(normalized)
+}
+
+async fn ensure_unique_branch_rule_pattern(
+    pool: &PgPool,
+    repository_id: Uuid,
+    pattern: &str,
+    excluding_rule_id: Option<Uuid>,
+) -> Result<(), RepositoryError> {
+    let exists = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS (
+            SELECT 1
+            FROM repository_branch_protection_rules
+            WHERE repository_id = $1
+              AND lower(pattern) = lower($2)
+              AND ($3::uuid IS NULL OR id <> $3)
+        )
+        "#,
+    )
+    .bind(repository_id)
+    .bind(pattern)
+    .bind(excluding_rule_id)
+    .fetch_one(pool)
+    .await?;
+    if exists {
+        Err(RepositoryError::BranchPolicyConflict)
+    } else {
+        Ok(())
+    }
+}
+
+async fn ensure_unique_ruleset_name(
+    pool: &PgPool,
+    repository_id: Uuid,
+    name: &str,
+    excluding_ruleset_id: Option<Uuid>,
+) -> Result<(), RepositoryError> {
+    let exists = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS (
+            SELECT 1
+            FROM repository_rulesets
+            WHERE repository_id = $1
+              AND lower(name) = lower($2)
+              AND ($3::uuid IS NULL OR id <> $3)
+        )
+        "#,
+    )
+    .bind(repository_id)
+    .bind(name)
+    .bind(excluding_ruleset_id)
+    .fetch_one(pool)
+    .await?;
+    if exists {
+        Err(RepositoryError::BranchPolicyConflict)
+    } else {
+        Ok(())
+    }
+}
+
+async fn branch_rule_exists(
+    pool: &PgPool,
+    repository_id: Uuid,
+    rule_id: Uuid,
+) -> Result<serde_json::Value, RepositoryError> {
+    let row = sqlx::query(
+        "SELECT id, pattern, enforcement FROM repository_branch_protection_rules WHERE repository_id = $1 AND id = $2",
+    )
+    .bind(repository_id)
+    .bind(rule_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(RepositoryError::BranchPolicyNotFound)?;
+    Ok(json!({
+        "id": row.get::<Uuid, _>("id"),
+        "pattern": row.get::<String, _>("pattern"),
+        "enforcement": row.get::<String, _>("enforcement")
+    }))
+}
+
+async fn replace_required_status_checks(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    rule_id: Uuid,
+    contexts: &[String],
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        "DELETE FROM repository_required_status_checks WHERE branch_protection_rule_id = $1",
+    )
+    .bind(rule_id)
+    .execute(&mut **transaction)
+    .await?;
+    for context in contexts {
+        sqlx::query(
+            r#"
+            INSERT INTO repository_required_status_checks (branch_protection_rule_id, context)
+            VALUES ($1, $2)
+            "#,
+        )
+        .bind(rule_id)
+        .bind(context)
+        .execute(&mut **transaction)
+        .await?;
+    }
+    Ok(())
+}
+
+async fn insert_repository_settings_audit_event_tx(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    repository_id: Uuid,
+    actor_user_id: Uuid,
+    event_type: &str,
+    changed_fields: Vec<String>,
+    before_state: serde_json::Value,
+    after_state: serde_json::Value,
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        r#"
+        INSERT INTO repository_settings_audit_events (
+            repository_id, actor_user_id, event_type, changed_fields, before_state, after_state
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+        "#,
+    )
+    .bind(repository_id)
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(changed_fields)
+    .bind(before_state)
+    .bind(after_state)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
 }
 
 async fn repository_merge_settings_for_repository(
@@ -5433,7 +6606,10 @@ fn clone_url_hosts() -> (String, String) {
         .filter(|s| {
             url::Url::parse(s)
                 .ok()
-                .and_then(|u| u.host_str().map(|host| !matches!(host, "localhost" | "127.0.0.1")))
+                .and_then(|u| {
+                    u.host_str()
+                        .map(|host| !matches!(host, "localhost" | "127.0.0.1"))
+                })
                 .unwrap_or(true)
         })
         .unwrap_or_else(|| "https://opengithub.namuh.co".to_owned());

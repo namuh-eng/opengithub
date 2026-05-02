@@ -2368,3 +2368,13 @@
 - Added `.qrspi/settings-003/structure.md` with five independently verifiable phases: branch policy API contract, Editorial Branches settings shell, branch rule/ruleset mutations, PR mergeability plus Git push enforcement integration, and final docs/browser/QA/build-pass bookkeeping.
 - Did not change `prd.json`; `settings-003.build_pass` remains `false` until all implementation phases pass verification.
 - Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
+
+2026-05-03 - settings-003 phase 1 branch policy API contract
+
+- Completed Phase 1 from `.qrspi/settings-003/structure.md`: repository Branches settings now have an API-first Rust/Postgres contract for branch protection rules, rulesets, refs, read-only policy visibility, and audit events.
+- Added additive migration `202605030043_repository_branch_settings` extending `repository_branch_protection_rules` with enforcement, requirements, bypass actors, deployment/lock/push flags, plus new `repository_rulesets` and `repository_rule_evaluations` tables while preserving the existing required-status-check table used by PR mergeability.
+- Added branch settings DTOs and route handlers for `GET /api/repos/{owner}/{repo}/settings/branches`, branch rule create/update/delete, and ruleset create/update/delete, including duplicate pattern/name, invalid pattern, negative review count, blank status check, invalid bypass actor, and default-branch deletion validation.
+- Added `crates/api/tests/repository_branch_settings_contract.rs` covering anonymous rejection, admin create/update/delete, non-admin read-only policy visibility, duplicate/conflict validation, ruleset evaluate mode, private repository privacy, and branch/ruleset audit events.
+- Verification passed: focused `repository_branch_settings_contract` compiled and passed but self-skipped DB assertions because the configured `TEST_DATABASE_URL` could not connect or replay migrations; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; `DB_SSL=false make test` with Cargo tests plus 274 frontend tests; mandatory Editorial banned-value scan returned zero matches.
+- Browser smoke and `make test-e2e` were not run because Phase 1 is API-first; the concrete Editorial page is Phase 2.
+- Marked Phase 1 as done in `.qrspi/settings-003/structure.md`; `prd.json` remains `build_pass:false` because Phases 2-5 remain.

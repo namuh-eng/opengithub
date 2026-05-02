@@ -164,6 +164,7 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         | RepositoryError::InvalidDescription(_)
         | RepositoryError::InvalidMergeMethod(_)
         | RepositoryError::InvalidAccessRole(_)
+        | RepositoryError::InvalidBranchPolicy(_)
         | RepositoryError::MergeMethodRequired
         | RepositoryError::DefaultMergeMethodDisabled
         | RepositoryError::ArchivedRepositoryReadOnly
@@ -181,8 +182,14 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         RepositoryError::AccessGrantConflict => {
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }
+        RepositoryError::BranchPolicyConflict => {
+            error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
         RepositoryError::LastAdminAccess => {
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
+        RepositoryError::BranchPolicyNotFound => {
+            error_response(StatusCode::NOT_FOUND, "not_found", error.to_string())
         }
         RepositoryError::DefaultBranchNotFound(_) => {
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
