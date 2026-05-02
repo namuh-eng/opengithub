@@ -6,6 +6,16 @@
 - Did not change `prd.json`; `build_pass` remains `false` until all implementation phases pass verification.
 - Tests not run because this iteration only created the required planning artifact.
 
+2026-05-02 - search-002 phase 1 suggestion and saved-search API contract
+
+- Implemented Phase 1 from `.qrspi/search-002/structure.md`: `GET /api/search/suggestions?q=...&scope=...` now returns authenticated, permission-aware modal data without changing the existing `/api/search` result contract.
+- Added additive migration `202605020037_search_suggestions` for `saved_searches`, `recent_searches`, and `search_telemetry_events` with user ownership, uniqueness, recency/query indexes, and delete-safe foreign keys.
+- Added Rust suggestion DTOs/helpers for search scopes, qualifier token parsing/replacement (`repo:`, `org:`, `user:`, `language:`, `path:`, `symbol:`, `is:`, `state:`), direct repository/code jumps, people/org/team suggestions, saved-search rows, and recent-search rows.
+- Added `crates/api/tests/search_suggestions_contract.rs` with real Postgres scenarios for saved/recent rows, direct jumps, qualifier completions, team/org suggestions, authentication, and no private repository/code leakage to outsiders.
+- Verification passed: focused `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false cargo test --test search_suggestions_contract -- --nocapture`; `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 199 frontend tests.
+- Browser smoke and `make test-e2e` were not run because Phase 1 is API-only and the structure outline marks browser smoke optional for this phase.
+- Marked Phase 1 as done in `.qrspi/search-002/structure.md`; `prd.json` remains `build_pass: false` because Phases 2-5 remain.
+
 2026-05-02 - actions-004 phase 2 Editorial job viewer page
 
 - Implemented Phase 2 from `.qrspi/actions-004/structure.md`: dedicated `/{owner}/{repo}/actions/runs/{run_id}/jobs/{job_id}` route and Editorial job log workspace.

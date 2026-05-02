@@ -12,12 +12,17 @@ use crate::{
         database_unavailable, error_response, normalize_pagination, ErrorEnvelope, ListEnvelope,
     },
     auth::extractor::AuthenticatedUser,
-    domain::search::{search_documents, SearchDocumentKind, SearchError, SearchQuery},
+    domain::search::{
+        search_documents, search_suggestions, SearchDocumentKind, SearchError, SearchQuery,
+        SearchSuggestionQuery,
+    },
     AppState,
 };
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/api/search", get(search))
+    Router::new()
+        .route("/api/search", get(search))
+        .route("/api/search/suggestions", get(suggestions))
 }
 
 #[derive(Debug, Deserialize)]
@@ -30,6 +35,36 @@ struct SearchRequest {
     page: Option<i64>,
     #[serde(alias = "page_size")]
     page_size: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SuggestionsRequest {
+    q: Option<String>,
+    scope: Option<String>,
+    limit: Option<i64>,
+}
+
+async fn suggestions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(request): Query<SuggestionsRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let dashboard = search_suggestions(
+        pool,
+        SearchSuggestionQuery {
+            actor_user_id: actor.0.id,
+            query: request.q.unwrap_or_default(),
+            scope: request.scope,
+            limit: request.limit.unwrap_or(8),
+        },
+    )
+    .await
+    .map_err(map_search_error)?;
+
+    Ok(Json(json!(dashboard)))
 }
 
 async fn search(

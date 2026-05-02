@@ -6,7 +6,7 @@
 
 ## Phase 1: Suggestion and Saved-Search API Contract - modal data is real and permission-aware
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the backend contract that powers the global search modal without changing the existing `/api/search` result contract. The endpoint should return categorized suggestions for repositories, organizations, users, teams, code/path jumps, query qualifier completions, recent searches, and saved searches. Private repository/code suggestions must only appear for viewers with access.
 

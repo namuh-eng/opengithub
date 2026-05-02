@@ -2566,5 +2566,21 @@
       "Concurrency group metadata is persisted and included in queued payloads; active-run cancellation/serialization semantics should be tested when the worker scheduler consumes it.",
       "Integration was verified against local Postgres contract tests, not a live git receive-pack browser or CLI smoke."
     ]
+  },
+  {
+    "feature_id": "search-002",
+    "tests_written": [
+      "Implemented Phase 1 suggestion and saved-search API contract for the global search modal.",
+      "Added saved_searches, recent_searches, and search_telemetry_events tables with user ownership, uniqueness, recency/query indexes, and delete-safe foreign keys.",
+      "Added GET /api/search/suggestions?q=...&scope=... with authenticated, permission-aware grouped suggestions for scopes, qualifiers, repositories, code jumps, people, organizations, teams, saved searches, and recent searches.",
+      "Added real Postgres Rust contract coverage for saved/recent rows, direct repository/code jumps, qualifier token replacement, team/org suggestions, authentication, and private repository/code suggestion filtering.",
+      "Verification passed: focused search_suggestions_contract, TEST_DATABASE_URL-backed make check, same-env make test with Cargo tests plus 199 frontend tests."
+    ],
+    "needs_deeper_qa": [
+      "Phase 1 is API-only; the browser modal, keyboard behavior, and saved-search write flow are still later search-002 phases.",
+      "Suggestions are backed by existing search_documents/repository metadata; dedicated symbol index and richer query parser behavior remain future hardening.",
+      "Recent searches are readable from the new table but automatic recording on search submit is not wired until a later phase.",
+      "Private leakage was tested with repository and code suggestions; organization/team membership edge cases should be rechecked when the UI consumes this endpoint."
+    ]
   }
 ]

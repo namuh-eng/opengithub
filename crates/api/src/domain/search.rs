@@ -144,6 +144,80 @@ pub struct SearchResult {
     pub commit: Option<SearchCommitSummary>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchSuggestionQuery {
+    pub actor_user_id: Uuid,
+    pub query: String,
+    pub scope: Option<String>,
+    pub limit: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchSuggestionDashboard {
+    pub query: String,
+    pub scope: String,
+    pub token: Option<SearchSuggestionToken>,
+    pub groups: Vec<SearchSuggestionGroup>,
+    pub saved_searches: Vec<SavedSearchSuggestion>,
+    pub recent_searches: Vec<RecentSearchSuggestion>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchSuggestionToken {
+    pub prefix: Option<String>,
+    pub value: String,
+    pub replace_from: usize,
+    pub replace_to: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchSuggestionGroup {
+    pub id: String,
+    pub title: String,
+    pub items: Vec<SearchSuggestionItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchSuggestionItem {
+    pub id: String,
+    pub kind: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub href: Option<String>,
+    pub next_query: Option<String>,
+    pub scope: Option<String>,
+    pub owner_login: Option<String>,
+    pub repository_name: Option<String>,
+    pub visibility: Option<RepositoryVisibility>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedSearchSuggestion {
+    pub id: Uuid,
+    pub name: String,
+    pub query: String,
+    pub scope: String,
+    pub href: String,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentSearchSuggestion {
+    pub id: Uuid,
+    pub query: String,
+    pub scope: String,
+    pub result_type: Option<String>,
+    pub href: String,
+    pub searched_at: DateTime<Utc>,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum SearchError {
     #[error("search query must contain at least two non-whitespace characters")]
@@ -395,6 +469,476 @@ pub async fn search_documents(
     })
 }
 
+pub async fn search_suggestions(
+    pool: &PgPool,
+    input: SearchSuggestionQuery,
+) -> Result<SearchSuggestionDashboard, SearchError> {
+    let query = input.query.trim().chars().take(256).collect::<String>();
+    let scope = input
+        .scope
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("all")
+        .chars()
+        .take(120)
+        .collect::<String>();
+    let limit = input.limit.clamp(1, 12);
+    let token = suggestion_token(&query);
+    let mut groups = Vec::new();
+
+    groups.push(SearchSuggestionGroup {
+        id: "scopes".to_owned(),
+        title: "Search scopes".to_owned(),
+        items: scoped_search_suggestions(&query, &scope),
+    });
+
+    let qualifier_items = qualifier_suggestions(&query, token.as_ref());
+    if !qualifier_items.is_empty() {
+        groups.push(SearchSuggestionGroup {
+            id: "qualifiers".to_owned(),
+            title: "Query qualifiers".to_owned(),
+            items: qualifier_items,
+        });
+    }
+
+    let repository_items =
+        repository_and_code_suggestions(pool, input.actor_user_id, &query, limit).await?;
+    if !repository_items.is_empty() {
+        groups.push(SearchSuggestionGroup {
+            id: "repositories".to_owned(),
+            title: "Repositories and code".to_owned(),
+            items: repository_items,
+        });
+    }
+
+    let people_items = people_and_org_suggestions(pool, &query, limit).await?;
+    if !people_items.is_empty() {
+        groups.push(SearchSuggestionGroup {
+            id: "people".to_owned(),
+            title: "People and organizations".to_owned(),
+            items: people_items,
+        });
+    }
+
+    let team_items = team_suggestions(pool, input.actor_user_id, &query, limit).await?;
+    if !team_items.is_empty() {
+        groups.push(SearchSuggestionGroup {
+            id: "teams".to_owned(),
+            title: "Teams".to_owned(),
+            items: team_items,
+        });
+    }
+
+    Ok(SearchSuggestionDashboard {
+        query,
+        scope,
+        token,
+        groups,
+        saved_searches: saved_search_suggestions(pool, input.actor_user_id, limit).await?,
+        recent_searches: recent_search_suggestions(pool, input.actor_user_id, limit).await?,
+    })
+}
+
+fn scoped_search_suggestions(query: &str, scope: &str) -> Vec<SearchSuggestionItem> {
+    let encoded = percent_encode_query(query);
+    [
+        (
+            "all",
+            "All opengithub",
+            "Search across every repository you can read",
+        ),
+        (
+            "repositories",
+            "Repositories",
+            "Search repository names and descriptions",
+        ),
+        (
+            "code",
+            "Code",
+            "Search indexed file paths and code snippets",
+        ),
+        (
+            "issues",
+            "Issues",
+            "Search issues and pull request discussions",
+        ),
+    ]
+    .into_iter()
+    .map(|(id, title, description)| SearchSuggestionItem {
+        id: format!("scope-{id}"),
+        kind: "submit_search".to_owned(),
+        title: title.to_owned(),
+        description: Some(description.to_owned()),
+        href: Some(format!("/search?q={encoded}&type={id}")),
+        next_query: Some(query.to_owned()),
+        scope: Some(if id == "all" {
+            scope.to_owned()
+        } else {
+            id.to_owned()
+        }),
+        owner_login: None,
+        repository_name: None,
+        visibility: None,
+    })
+    .collect()
+}
+
+fn qualifier_suggestions(
+    query: &str,
+    token: Option<&SearchSuggestionToken>,
+) -> Vec<SearchSuggestionItem> {
+    const QUALIFIERS: [(&str, &str, &str); 8] = [
+        ("repo", "repo:owner/name", "Limit results to a repository"),
+        ("org", "org:name", "Limit results to an organization"),
+        ("user", "user:name", "Limit results to a user"),
+        (
+            "language",
+            "language:rust",
+            "Limit code results by language",
+        ),
+        ("path", "path:src/", "Limit code results by path"),
+        ("symbol", "symbol:name", "Search indexed symbols"),
+        ("is", "is:open", "Filter by issue or pull request state"),
+        ("state", "state:open", "Filter by open or closed state"),
+    ];
+    let typed = token
+        .map(|token| token.value.as_str())
+        .unwrap_or(query)
+        .trim()
+        .trim_start_matches(|c: char| c == '/' || c.is_whitespace());
+    if typed.is_empty() {
+        return QUALIFIERS
+            .iter()
+            .take(5)
+            .map(|(prefix, title, description)| {
+                qualifier_item(query, token, prefix, title, description)
+            })
+            .collect();
+    }
+    QUALIFIERS
+        .iter()
+        .filter(|(prefix, title, _)| {
+            prefix.starts_with(typed.trim_end_matches(':'))
+                || title.starts_with(typed)
+                || format!("{prefix}:").starts_with(typed)
+        })
+        .take(6)
+        .map(|(prefix, title, description)| {
+            qualifier_item(query, token, prefix, title, description)
+        })
+        .collect()
+}
+
+fn qualifier_item(
+    query: &str,
+    token: Option<&SearchSuggestionToken>,
+    prefix: &str,
+    title: &str,
+    description: &str,
+) -> SearchSuggestionItem {
+    let replacement = format!("{prefix}:");
+    SearchSuggestionItem {
+        id: format!("qualifier-{prefix}"),
+        kind: "replace_token".to_owned(),
+        title: title.to_owned(),
+        description: Some(description.to_owned()),
+        href: None,
+        next_query: Some(replace_token(query, token, &replacement)),
+        scope: None,
+        owner_login: None,
+        repository_name: None,
+        visibility: None,
+    }
+}
+
+async fn repository_and_code_suggestions(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    query: &str,
+    limit: i64,
+) -> Result<Vec<SearchSuggestionItem>, SearchError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT search_documents.id,
+               search_documents.kind,
+               search_documents.title,
+               search_documents.path,
+               search_documents.branch,
+               search_documents.visibility,
+               search_documents.metadata,
+               repositories.name AS repository_name,
+               COALESCE(repo_owner_user.username, repo_owner_user.email, repo_owner_org.slug) AS owner_login,
+               COALESCE(NULLIF(search_documents.metadata->>'description', ''), repositories.description, search_documents.body) AS description
+        FROM search_documents
+        LEFT JOIN repositories ON repositories.id = search_documents.repository_id
+        LEFT JOIN users repo_owner_user ON repo_owner_user.id = repositories.owner_user_id
+        LEFT JOIN organizations repo_owner_org ON repo_owner_org.id = repositories.owner_organization_id
+        LEFT JOIN repository_permissions
+          ON repository_permissions.repository_id = search_documents.repository_id
+         AND repository_permissions.user_id = $1
+        WHERE search_documents.kind IN ('repository', 'code')
+          AND (
+              search_documents.visibility = 'public'
+              OR repository_permissions.user_id IS NOT NULL
+              OR search_documents.owner_user_id = $1
+          )
+          AND (
+              $2 = ''
+              OR search_documents.title ILIKE '%' || $2 || '%'
+              OR search_documents.path ILIKE '%' || $2 || '%'
+              OR repositories.name ILIKE '%' || $2 || '%'
+              OR COALESCE(repo_owner_user.username, repo_owner_user.email, repo_owner_org.slug) ILIKE '%' || $2 || '%'
+          )
+        ORDER BY
+          CASE search_documents.kind WHEN 'repository' THEN 0 ELSE 1 END,
+          similarity(search_documents.title, NULLIF($2, '')) DESC NULLS LAST,
+          search_documents.updated_at DESC
+        LIMIT $3
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(query)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let id: Uuid = row.get("id");
+            let kind: String = row.get("kind");
+            let title: String = row.get("title");
+            let path: Option<String> = row.get("path");
+            let branch: Option<String> = row.get("branch");
+            let owner_login: Option<String> = row.get("owner_login");
+            let repository_name: Option<String> = row.get("repository_name");
+            let visibility =
+                RepositoryVisibility::try_from(row.get::<String, _>("visibility").as_str()).ok();
+            let metadata: Value = row.get("metadata");
+            let href = metadata
+                .get("href")
+                .and_then(Value::as_str)
+                .filter(|href| href.starts_with('/') && !href.starts_with("//"))
+                .map(ToOwned::to_owned)
+                .or_else(|| {
+                    suggestion_href(
+                        &kind,
+                        owner_login.as_deref(),
+                        repository_name.as_deref(),
+                        branch.as_deref(),
+                        path.as_deref(),
+                    )
+                });
+            SearchSuggestionItem {
+                id: id.to_string(),
+                kind: if kind == "code" {
+                    "direct_code_jump"
+                } else {
+                    "direct_repository_jump"
+                }
+                .to_owned(),
+                title: if kind == "code" {
+                    path.clone().unwrap_or(title)
+                } else {
+                    title
+                },
+                description: row.get("description"),
+                href,
+                next_query: None,
+                scope: None,
+                owner_login,
+                repository_name,
+                visibility,
+            }
+        })
+        .collect())
+}
+
+async fn people_and_org_suggestions(
+    pool: &PgPool,
+    query: &str,
+    limit: i64,
+) -> Result<Vec<SearchSuggestionItem>, SearchError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id::text AS id,
+               'user' AS kind,
+               COALESCE(username, email) AS slug,
+               COALESCE(display_name, username, email) AS title,
+               email AS description,
+               '/' || COALESCE(username, email) AS href,
+               updated_at
+        FROM users
+        WHERE $1 = '' OR username ILIKE '%' || $1 || '%' OR display_name ILIKE '%' || $1 || '%' OR email ILIKE '%' || $1 || '%'
+        UNION ALL
+        SELECT id::text AS id,
+               'organization' AS kind,
+               slug,
+               display_name AS title,
+               description,
+               '/orgs/' || slug AS href,
+               updated_at
+        FROM organizations
+        WHERE $1 = '' OR slug ILIKE '%' || $1 || '%' OR display_name ILIKE '%' || $1 || '%'
+        ORDER BY updated_at DESC
+        LIMIT $2
+        "#,
+    )
+    .bind(query)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| SearchSuggestionItem {
+            id: row.get("id"),
+            kind: row.get("kind"),
+            title: row.get("title"),
+            description: row.get("description"),
+            href: row.get("href"),
+            next_query: None,
+            scope: None,
+            owner_login: Some(row.get("slug")),
+            repository_name: None,
+            visibility: None,
+        })
+        .collect())
+}
+
+async fn team_suggestions(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    query: &str,
+    limit: i64,
+) -> Result<Vec<SearchSuggestionItem>, SearchError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT teams.id,
+               organizations.slug AS org_slug,
+               teams.slug,
+               teams.name,
+               teams.description
+        FROM teams
+        JOIN organizations ON organizations.id = teams.organization_id
+        JOIN organization_memberships
+          ON organization_memberships.organization_id = organizations.id
+         AND organization_memberships.user_id = $1
+        WHERE $2 = '' OR teams.slug ILIKE '%' || $2 || '%' OR teams.name ILIKE '%' || $2 || '%'
+        ORDER BY teams.updated_at DESC
+        LIMIT $3
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(query)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let org_slug: String = row.get("org_slug");
+            let slug: String = row.get("slug");
+            SearchSuggestionItem {
+                id: row.get::<Uuid, _>("id").to_string(),
+                kind: "team".to_owned(),
+                title: row.get("name"),
+                description: row.get("description"),
+                href: Some(format!("/orgs/{org_slug}/teams/{slug}")),
+                next_query: None,
+                scope: Some(format!("org:{org_slug}")),
+                owner_login: Some(org_slug),
+                repository_name: None,
+                visibility: None,
+            }
+        })
+        .collect())
+}
+
+async fn saved_search_suggestions(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    limit: i64,
+) -> Result<Vec<SavedSearchSuggestion>, SearchError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, name, query, scope, updated_at
+        FROM saved_searches
+        WHERE user_id = $1
+        ORDER BY updated_at DESC
+        LIMIT $2
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let query: String = row.get("query");
+            let scope: String = row.get("scope");
+            SavedSearchSuggestion {
+                id: row.get("id"),
+                name: row.get("name"),
+                href: format!(
+                    "/search?q={}&type={}",
+                    percent_encode_query(&query),
+                    percent_encode_query(&scope)
+                ),
+                query,
+                scope,
+                updated_at: row.get("updated_at"),
+            }
+        })
+        .collect())
+}
+
+async fn recent_search_suggestions(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    limit: i64,
+) -> Result<Vec<RecentSearchSuggestion>, SearchError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, query, scope, result_type, searched_at
+        FROM recent_searches
+        WHERE user_id = $1
+        ORDER BY searched_at DESC
+        LIMIT $2
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let query: String = row.get("query");
+            let scope: String = row.get("scope");
+            let result_type: Option<String> = row.get("result_type");
+            let selected_type = result_type.as_deref().unwrap_or(&scope);
+            RecentSearchSuggestion {
+                id: row.get("id"),
+                href: format!(
+                    "/search?q={}&type={}",
+                    percent_encode_query(&query),
+                    percent_encode_query(selected_type)
+                ),
+                query,
+                scope,
+                result_type,
+                searched_at: row.get("searched_at"),
+            }
+        })
+        .collect())
+}
+
 fn code_snippet_for_document(document: &SearchDocument, query: &str) -> Option<SearchSnippet> {
     if document.kind != SearchDocumentKind::Code {
         return None;
@@ -614,6 +1158,83 @@ fn percent_encode_path(path: &str) -> String {
         .map(percent_encode_segment)
         .collect::<Vec<_>>()
         .join("/")
+}
+
+fn suggestion_href(
+    kind: &str,
+    owner_login: Option<&str>,
+    repository_name: Option<&str>,
+    branch: Option<&str>,
+    path: Option<&str>,
+) -> Option<String> {
+    match kind {
+        "repository" => owner_login
+            .zip(repository_name)
+            .map(|(owner, repo)| format!("/{owner}/{repo}")),
+        "code" => owner_login.zip(repository_name).map(|(owner, repo)| {
+            format!(
+                "/{}/{}/blob/{}/{}",
+                percent_encode_segment(owner),
+                percent_encode_segment(repo),
+                percent_encode_segment(branch.unwrap_or("main")),
+                percent_encode_path(path.unwrap_or_default())
+            )
+        }),
+        _ => None,
+    }
+}
+
+fn suggestion_token(query: &str) -> Option<SearchSuggestionToken> {
+    let trimmed_end = query.trim_end();
+    if trimmed_end.is_empty() {
+        return None;
+    }
+    let replace_to = trimmed_end.len();
+    let replace_from = trimmed_end
+        .char_indices()
+        .rev()
+        .find(|(_, ch)| ch.is_whitespace())
+        .map(|(index, ch)| index + ch.len_utf8())
+        .unwrap_or(0);
+    let value = trimmed_end[replace_from..replace_to].to_owned();
+    let prefix = value
+        .split_once(':')
+        .map(|(prefix, _)| prefix)
+        .filter(|prefix| !prefix.is_empty())
+        .map(ToOwned::to_owned);
+    Some(SearchSuggestionToken {
+        prefix,
+        value,
+        replace_from,
+        replace_to,
+    })
+}
+
+fn replace_token(query: &str, token: Option<&SearchSuggestionToken>, replacement: &str) -> String {
+    let Some(token) = token else {
+        return replacement.to_owned();
+    };
+    let mut next = String::new();
+    next.push_str(&query[..token.replace_from]);
+    next.push_str(replacement);
+    if token.replace_to < query.len() {
+        next.push_str(&query[token.replace_to..]);
+    }
+    next
+}
+
+fn percent_encode_query(value: &str) -> String {
+    let mut encoded = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            encoded.push(byte as char);
+        } else if byte == b' ' {
+            encoded.push('+');
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
 }
 
 fn percent_encode_segment(segment: &str) -> String {
