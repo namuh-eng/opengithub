@@ -69,6 +69,7 @@ function response(items: GlobalSearchResult[]): CollaborationSearchResponse {
     ],
     facets: {
       states: [{ value: "open", label: "open", count: 18, selected: true }],
+      owners: [{ value: "mona", label: "mona", count: 9, selected: false }],
       labels: [{ value: "urgent", label: "urgent", count: 5, selected: false }],
       assignees: [{ value: "mona", label: "mona", count: 3, selected: false }],
       reviewers: [
@@ -115,6 +116,22 @@ describe("CollaborationSearchResultsPage", () => {
     expect(screen.getByText("@mona")).toBeVisible();
     expect(screen.getByText("Milestone: M1")).toBeVisible();
     expect(screen.getByText("7 comments")).toBeVisible();
+    expect(screen.getByRole("link", { name: "mona9" })).toHaveAttribute(
+      "href",
+      "/search?q=search004+state%3Aopen+owner%3Amona&type=issues&sort=comments-desc",
+    );
+    expect(screen.getByRole("link", { name: "urgent5" })).toHaveAttribute(
+      "href",
+      "/search?q=search004+state%3Aopen+label%3Aurgent&type=issues&sort=comments-desc",
+    );
+    expect(screen.getByRole("link", { name: "open18" })).toHaveAttribute(
+      "href",
+      "/search?q=search004&type=issues&sort=comments-desc",
+    );
+    expect(screen.getByRole("link", { name: "comments:>10" })).toHaveAttribute(
+      "href",
+      "/search?q=search004+state%3Aopen+comments%3A%3E10&type=issues&sort=comments-desc",
+    );
     expect(screen.getByRole("link", { name: "state:open ×" })).toHaveAttribute(
       "href",
       "/search?q=search004&type=issues&sort=comments-desc",

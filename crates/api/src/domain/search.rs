@@ -335,7 +335,29 @@ struct ParsedCodeSearchQuery {
 struct ParsedCollaborationSearchQuery {
     terms: String,
     chips: Vec<CodeSearchChip>,
+    diagnostics: Vec<CodeSearchDiagnostic>,
     state: Option<String>,
+    owner: Option<String>,
+    repo_owner: Option<String>,
+    repo_name: Option<String>,
+    close_reason: Option<String>,
+    linked_pull_request: Option<bool>,
+    author: Option<String>,
+    assignee: Option<String>,
+    mentioned: Option<String>,
+    team: Option<String>,
+    commenter: Option<String>,
+    involved: Option<String>,
+    label: Option<String>,
+    milestone: Option<String>,
+    comments: NumericQualifier,
+    interactions: NumericQualifier,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct NumericQualifier {
+    min: Option<i64>,
+    max: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -964,6 +986,23 @@ pub async fn search_collaboration_results(
     let selected_sort = normalize_collaboration_sort(input.sort.as_deref());
     let document_kind = input.result_type.document_kind();
     let state_filter = parsed.state.as_deref();
+    let owner_filter = parsed.owner.as_deref();
+    let repo_owner_filter = parsed.repo_owner.as_deref();
+    let repo_name_filter = parsed.repo_name.as_deref();
+    let close_reason_filter = parsed.close_reason.as_deref();
+    let linked_filter = parsed.linked_pull_request;
+    let author_filter = parsed.author.as_deref();
+    let assignee_filter = parsed.assignee.as_deref();
+    let mentioned_filter = parsed.mentioned.as_deref();
+    let team_filter = parsed.team.as_deref();
+    let commenter_filter = parsed.commenter.as_deref();
+    let involved_filter = parsed.involved.as_deref();
+    let label_filter = parsed.label.as_deref();
+    let milestone_filter = parsed.milestone.as_deref();
+    let comments_min = parsed.comments.min;
+    let comments_max = parsed.comments.max;
+    let interactions_min = parsed.interactions.min;
+    let interactions_max = parsed.interactions.max;
 
     let total = sqlx::query_scalar::<_, i64>(
         r#"
@@ -981,6 +1020,34 @@ pub async fn search_collaboration_results(
           ON search_documents.kind = 'pull_request'
          AND pull_requests.repository_id = search_documents.repository_id
          AND pull_requests.number = NULLIF(split_part(search_documents.resource_id, ':', 2), '')::bigint
+        LEFT JOIN milestones ON milestones.id = COALESCE(issues.milestone_id, (
+            SELECT pr_issue.milestone_id FROM issues pr_issue WHERE pr_issue.id = pull_requests.issue_id
+        ))
+        LEFT JOIN users repo_owner_user ON repo_owner_user.id = repositories.owner_user_id
+        LEFT JOIN organizations repo_owner_org ON repo_owner_org.id = repositories.owner_organization_id
+        LEFT JOIN users author ON author.id = COALESCE(issues.author_user_id, pull_requests.author_user_id)
+        LEFT JOIN LATERAL (
+            SELECT count(*) AS comment_count
+            FROM comments
+            WHERE comments.issue_id = issues.id
+               OR comments.pull_request_id = pull_requests.id
+        ) comment_counts ON true
+        LEFT JOIN LATERAL (
+            SELECT count(*) AS reaction_count
+            FROM reactions
+            WHERE reactions.issue_id = issues.id
+               OR reactions.pull_request_id = pull_requests.id
+        ) reaction_counts ON true
+        LEFT JOIN LATERAL (
+            SELECT EXISTS (
+                SELECT 1 FROM pull_requests linked_pr WHERE linked_pr.issue_id = issues.id
+                UNION ALL
+                SELECT 1
+                FROM issue_cross_references refs
+                JOIN pull_requests linked_pr ON linked_pr.issue_id = refs.source_issue_id
+                WHERE refs.target_issue_id = issues.id
+            ) AS linked
+        ) linked_pull_requests ON true
         WHERE search_documents.kind = $2
           AND (
               search_documents.visibility = 'public'
@@ -996,12 +1063,109 @@ pub async fn search_collaboration_results(
               $4::text IS NULL
               OR COALESCE(issues.state, pull_requests.state, search_documents.metadata->>'state') = $4
           )
+          AND (
+              $5::text IS NULL
+              OR lower(COALESCE(NULLIF(repo_owner_user.username, ''), repo_owner_user.email, repo_owner_org.slug, search_documents.metadata->>'ownerLogin')) = lower($5)
+          )
+          AND (
+              $6::text IS NULL
+              OR lower(COALESCE(NULLIF(repo_owner_user.username, ''), repo_owner_user.email, repo_owner_org.slug, search_documents.metadata->>'ownerLogin')) = lower($6)
+          )
+          AND ($7::text IS NULL OR lower(repositories.name) = lower($7))
+          AND (
+              $8::text IS NULL
+              OR lower(COALESCE(search_documents.metadata->>'closeReason', search_documents.metadata->>'close_reason', '')) = lower($8)
+          )
+          AND ($9::boolean IS NULL OR COALESCE(linked_pull_requests.linked, false) = $9)
+          AND (
+              $10::text IS NULL
+              OR lower(COALESCE(NULLIF(author.username, ''), author.email)) = lower($10)
+          )
+          AND (
+              $11::text IS NULL
+              OR EXISTS (
+                  SELECT 1
+                  FROM issue_assignees
+                  JOIN users assignee ON assignee.id = issue_assignees.user_id
+                  WHERE issue_assignees.issue_id = COALESCE(issues.id, pull_requests.issue_id)
+                    AND lower(COALESCE(NULLIF(assignee.username, ''), assignee.email)) = lower($11)
+              )
+          )
+          AND (
+              $12::text IS NULL
+              OR search_documents.body ILIKE '%' || $12 || '%'
+              OR search_documents.title ILIKE '%' || $12 || '%'
+          )
+          AND (
+              $13::text IS NULL
+              OR search_documents.body ILIKE '%' || $13 || '%'
+          )
+          AND (
+              $14::text IS NULL
+              OR EXISTS (
+                  SELECT 1
+                  FROM comments
+                  JOIN users commenter ON commenter.id = comments.author_user_id
+                  WHERE (comments.issue_id = issues.id OR comments.pull_request_id = pull_requests.id)
+                    AND lower(COALESCE(NULLIF(commenter.username, ''), commenter.email)) = lower($14)
+              )
+          )
+          AND (
+              $15::text IS NULL
+              OR lower(COALESCE(NULLIF(author.username, ''), author.email)) = lower($15)
+              OR EXISTS (
+                  SELECT 1
+                  FROM issue_assignees
+                  JOIN users involved_assignee ON involved_assignee.id = issue_assignees.user_id
+                  WHERE issue_assignees.issue_id = COALESCE(issues.id, pull_requests.issue_id)
+                    AND lower(COALESCE(NULLIF(involved_assignee.username, ''), involved_assignee.email)) = lower($15)
+              )
+              OR EXISTS (
+                  SELECT 1
+                  FROM comments
+                  JOIN users involved_commenter ON involved_commenter.id = comments.author_user_id
+                  WHERE (comments.issue_id = issues.id OR comments.pull_request_id = pull_requests.id)
+                    AND lower(COALESCE(NULLIF(involved_commenter.username, ''), involved_commenter.email)) = lower($15)
+              )
+          )
+          AND (
+              $16::text IS NULL
+              OR EXISTS (
+                  SELECT 1
+                  FROM issue_labels
+                  JOIN labels ON labels.id = issue_labels.label_id
+                  WHERE issue_labels.issue_id = COALESCE(issues.id, pull_requests.issue_id)
+                    AND lower(labels.name) = lower($16)
+              )
+          )
+          AND ($17::text IS NULL OR lower(milestones.title) = lower($17))
+          AND ($18::bigint IS NULL OR COALESCE(comment_counts.comment_count, 0) >= $18)
+          AND ($19::bigint IS NULL OR COALESCE(comment_counts.comment_count, 0) <= $19)
+          AND ($20::bigint IS NULL OR COALESCE(reaction_counts.reaction_count, 0) >= $20)
+          AND ($21::bigint IS NULL OR COALESCE(reaction_counts.reaction_count, 0) <= $21)
         "#,
     )
     .bind(input.actor_user_id)
     .bind(document_kind)
     .bind(&parsed.terms)
     .bind(state_filter)
+    .bind(owner_filter)
+    .bind(repo_owner_filter)
+    .bind(repo_name_filter)
+    .bind(close_reason_filter)
+    .bind(linked_filter)
+    .bind(author_filter)
+    .bind(assignee_filter)
+    .bind(mentioned_filter)
+    .bind(team_filter)
+    .bind(commenter_filter)
+    .bind(involved_filter)
+    .bind(label_filter)
+    .bind(milestone_filter)
+    .bind(comments_min)
+    .bind(comments_max)
+    .bind(interactions_min)
+    .bind(interactions_max)
     .fetch_one(pool)
     .await?;
 
@@ -1130,27 +1294,124 @@ pub async fn search_collaboration_results(
               $4::text IS NULL
               OR COALESCE(issues.state, pull_requests.state, search_documents.metadata->>'state') = $4
           )
+          AND (
+              $5::text IS NULL
+              OR lower(COALESCE(NULLIF(repo_owner_user.username, ''), repo_owner_user.email, repo_owner_org.slug, search_documents.metadata->>'ownerLogin')) = lower($5)
+          )
+          AND (
+              $6::text IS NULL
+              OR lower(COALESCE(NULLIF(repo_owner_user.username, ''), repo_owner_user.email, repo_owner_org.slug, search_documents.metadata->>'ownerLogin')) = lower($6)
+          )
+          AND ($7::text IS NULL OR lower(repositories.name) = lower($7))
+          AND (
+              $8::text IS NULL
+              OR lower(COALESCE(search_documents.metadata->>'closeReason', search_documents.metadata->>'close_reason', '')) = lower($8)
+          )
+          AND ($9::boolean IS NULL OR COALESCE(linked_pull_requests.linked, false) = $9)
+          AND (
+              $10::text IS NULL
+              OR lower(COALESCE(NULLIF(author.username, ''), author.email)) = lower($10)
+          )
+          AND (
+              $11::text IS NULL
+              OR EXISTS (
+                  SELECT 1
+                  FROM issue_assignees
+                  JOIN users assignee ON assignee.id = issue_assignees.user_id
+                  WHERE issue_assignees.issue_id = COALESCE(issues.id, pull_requests.issue_id)
+                    AND lower(COALESCE(NULLIF(assignee.username, ''), assignee.email)) = lower($11)
+              )
+          )
+          AND (
+              $12::text IS NULL
+              OR search_documents.body ILIKE '%' || $12 || '%'
+              OR search_documents.title ILIKE '%' || $12 || '%'
+          )
+          AND (
+              $13::text IS NULL
+              OR search_documents.body ILIKE '%' || $13 || '%'
+          )
+          AND (
+              $14::text IS NULL
+              OR EXISTS (
+                  SELECT 1
+                  FROM comments
+                  JOIN users commenter ON commenter.id = comments.author_user_id
+                  WHERE (comments.issue_id = issues.id OR comments.pull_request_id = pull_requests.id)
+                    AND lower(COALESCE(NULLIF(commenter.username, ''), commenter.email)) = lower($14)
+              )
+          )
+          AND (
+              $15::text IS NULL
+              OR lower(COALESCE(NULLIF(author.username, ''), author.email)) = lower($15)
+              OR EXISTS (
+                  SELECT 1
+                  FROM issue_assignees
+                  JOIN users involved_assignee ON involved_assignee.id = issue_assignees.user_id
+                  WHERE issue_assignees.issue_id = COALESCE(issues.id, pull_requests.issue_id)
+                    AND lower(COALESCE(NULLIF(involved_assignee.username, ''), involved_assignee.email)) = lower($15)
+              )
+              OR EXISTS (
+                  SELECT 1
+                  FROM comments
+                  JOIN users involved_commenter ON involved_commenter.id = comments.author_user_id
+                  WHERE (comments.issue_id = issues.id OR comments.pull_request_id = pull_requests.id)
+                    AND lower(COALESCE(NULLIF(involved_commenter.username, ''), involved_commenter.email)) = lower($15)
+              )
+          )
+          AND (
+              $16::text IS NULL
+              OR EXISTS (
+                  SELECT 1
+                  FROM issue_labels
+                  JOIN labels ON labels.id = issue_labels.label_id
+                  WHERE issue_labels.issue_id = COALESCE(issues.id, pull_requests.issue_id)
+                    AND lower(labels.name) = lower($16)
+              )
+          )
+          AND ($17::text IS NULL OR lower(milestones.title) = lower($17))
+          AND ($18::bigint IS NULL OR COALESCE(comment_counts.comment_count, 0) >= $18)
+          AND ($19::bigint IS NULL OR COALESCE(comment_counts.comment_count, 0) <= $19)
+          AND ($20::bigint IS NULL OR COALESCE(reaction_counts.reaction_count, 0) >= $20)
+          AND ($21::bigint IS NULL OR COALESCE(reaction_counts.reaction_count, 0) <= $21)
         ORDER BY
-          CASE WHEN $5 = 'most_commented' THEN COALESCE(comment_counts.comment_count, 0) END DESC,
-          CASE WHEN $5 = 'least_commented' THEN COALESCE(comment_counts.comment_count, 0) END ASC,
-          CASE WHEN $5 = 'newest' THEN COALESCE(issues.created_at, pull_requests.created_at, search_documents.created_at) END DESC,
-          CASE WHEN $5 = 'oldest' THEN COALESCE(issues.created_at, pull_requests.created_at, search_documents.created_at) END ASC,
-          CASE WHEN $5 = 'recently_updated' THEN COALESCE(issues.updated_at, pull_requests.updated_at, search_documents.updated_at) END DESC,
-          CASE WHEN $5 = 'least_recently_updated' THEN COALESCE(issues.updated_at, pull_requests.updated_at, search_documents.updated_at) END ASC,
-          CASE WHEN $5 = 'best_match' THEN (
+          CASE WHEN $22 = 'most_commented' THEN COALESCE(comment_counts.comment_count, 0) END DESC,
+          CASE WHEN $22 = 'least_commented' THEN COALESCE(comment_counts.comment_count, 0) END ASC,
+          CASE WHEN $22 = 'newest' THEN COALESCE(issues.created_at, pull_requests.created_at, search_documents.created_at) END DESC,
+          CASE WHEN $22 = 'oldest' THEN COALESCE(issues.created_at, pull_requests.created_at, search_documents.created_at) END ASC,
+          CASE WHEN $22 = 'recently_updated' THEN COALESCE(issues.updated_at, pull_requests.updated_at, search_documents.updated_at) END DESC,
+          CASE WHEN $22 = 'least_recently_updated' THEN COALESCE(issues.updated_at, pull_requests.updated_at, search_documents.updated_at) END ASC,
+          CASE WHEN $22 = 'best_match' THEN (
               ts_rank(search_documents.search_vector, plainto_tsquery('simple', $3))
               + similarity(search_documents.title, $3)
               + similarity(search_documents.body, $3)
           ) END DESC,
           COALESCE(issues.updated_at, pull_requests.updated_at, search_documents.updated_at) DESC,
           COALESCE(issues.number, pull_requests.number, (search_documents.metadata->>'number')::bigint) DESC
-        LIMIT $6 OFFSET $7
+        LIMIT $23 OFFSET $24
         "#,
     )
     .bind(input.actor_user_id)
     .bind(document_kind)
     .bind(&parsed.terms)
     .bind(state_filter)
+    .bind(owner_filter)
+    .bind(repo_owner_filter)
+    .bind(repo_name_filter)
+    .bind(close_reason_filter)
+    .bind(linked_filter)
+    .bind(author_filter)
+    .bind(assignee_filter)
+    .bind(mentioned_filter)
+    .bind(team_filter)
+    .bind(commenter_filter)
+    .bind(involved_filter)
+    .bind(label_filter)
+    .bind(milestone_filter)
+    .bind(comments_min)
+    .bind(comments_max)
+    .bind(interactions_min)
+    .bind(interactions_max)
     .bind(&selected_sort)
     .bind(page_size)
     .bind(offset)
@@ -1235,13 +1496,13 @@ pub async fn search_collaboration_results(
             input.actor_user_id,
             document_kind,
             &parsed.terms,
-            state_filter,
+            &parsed,
         )
         .await?,
-        active_chips: parsed.chips,
+        active_chips: parsed.chips.clone(),
         sort: collaboration_search_sort(&selected_sort),
         query_duration_ms: started_at.elapsed().as_millis().min(i64::MAX as u128) as i64,
-        diagnostics: Vec::new(),
+        diagnostics: parsed.diagnostics.clone(),
     })
 }
 
@@ -2150,8 +2411,9 @@ async fn collaboration_search_facets(
     actor_user_id: Uuid,
     document_kind: &str,
     terms: &str,
-    state_filter: Option<&str>,
+    parsed: &ParsedCollaborationSearchQuery,
 ) -> Result<CollaborationSearchFacets, SearchError> {
+    let state_filter = parsed.state.as_deref();
     let state_sql = collaboration_facet_sql(
         "COALESCE(issues.state, pull_requests.state, search_documents.metadata->>'state')",
         false,
@@ -2279,10 +2541,10 @@ async fn collaboration_search_facets(
 
     Ok(CollaborationSearchFacets {
         states: facet_values_from_rows(state_rows, state_filter),
-        owners: facet_values_from_rows(owner_rows, None),
-        labels: facet_values_from_rows(label_rows, None),
-        milestones: facet_values_from_rows(milestone_rows, None),
-        assignees: facet_values_from_rows(assignee_rows, None),
+        owners: facet_values_from_rows(owner_rows, parsed.owner.as_deref()),
+        labels: facet_values_from_rows(label_rows, parsed.label.as_deref()),
+        milestones: facet_values_from_rows(milestone_rows, parsed.milestone.as_deref()),
+        assignees: facet_values_from_rows(assignee_rows, parsed.assignee.as_deref()),
     })
 }
 
@@ -2357,7 +2619,8 @@ fn facet_values_from_rows(
 fn parse_collaboration_search_query(
     query: &str,
 ) -> Result<ParsedCollaborationSearchQuery, SearchError> {
-    let normalized = query.split_whitespace().collect::<Vec<_>>().join(" ");
+    let tokens = tokenize_search_query(query);
+    let normalized = tokens.join(" ");
     if normalized.chars().count() > 256 {
         return Err(SearchError::Validation(
             "collaboration search query must be 256 characters or fewer".to_owned(),
@@ -2369,10 +2632,26 @@ fn parse_collaboration_search_query(
     let mut parsed = ParsedCollaborationSearchQuery {
         terms: String::new(),
         chips: Vec::new(),
+        diagnostics: Vec::new(),
         state: None,
+        owner: None,
+        repo_owner: None,
+        repo_name: None,
+        close_reason: None,
+        linked_pull_request: None,
+        author: None,
+        assignee: None,
+        mentioned: None,
+        team: None,
+        commenter: None,
+        involved: None,
+        label: None,
+        milestone: None,
+        comments: NumericQualifier::default(),
+        interactions: NumericQualifier::default(),
     };
 
-    for token in normalized.split_whitespace() {
+    for token in tokens {
         if let Some((qualifier, value)) = token.split_once(':') {
             let qualifier = qualifier.to_ascii_lowercase();
             let value = value.trim();
@@ -2387,15 +2666,84 @@ fn parse_collaboration_search_query(
                     "is" if matches!(value, "open" | "closed" | "merged") => {
                         parsed.state = Some(normalize_collaboration_state(value)?);
                     }
-                    // Phase 1 exposes chips for the richer UI contract; later phases make
-                    // the full advanced qualifier matrix executable.
-                    _ => {}
+                    "is" if matches!(
+                        value,
+                        "issue" | "issues" | "pr" | "pull" | "pull_request" | "pull_requests"
+                    ) => {}
+                    "owner" | "org" | "user" => parsed.owner = Some(value.to_owned()),
+                    "repo" => {
+                        if let Some((owner, name)) = value.split_once('/') {
+                            if owner.trim().is_empty() || name.trim().is_empty() {
+                                parsed.diagnostics.push(collaboration_diagnostic(
+                                    "invalid_repo_qualifier",
+                                    "repo: expects owner/name",
+                                    &qualifier,
+                                ));
+                            } else {
+                                parsed.repo_owner = Some(owner.trim().to_owned());
+                                parsed.repo_name = Some(name.trim().to_owned());
+                            }
+                        } else {
+                            parsed.diagnostics.push(collaboration_diagnostic(
+                                "invalid_repo_qualifier",
+                                "repo: expects owner/name",
+                                &qualifier,
+                            ));
+                        }
+                    }
+                    "closed" | "reason" => parsed.close_reason = Some(value.to_owned()),
+                    "linked"
+                        if matches!(value, "pr" | "pull" | "pull_request" | "true" | "yes") =>
+                    {
+                        parsed.linked_pull_request = Some(true);
+                    }
+                    "linked" if matches!(value, "false" | "no" | "none") => {
+                        parsed.linked_pull_request = Some(false);
+                    }
+                    "linked" => parsed.diagnostics.push(collaboration_diagnostic(
+                        "unsupported_linked_qualifier",
+                        "linked: supports pr, true, false, yes, no, and none",
+                        &qualifier,
+                    )),
+                    "author" => parsed.author = Some(value.to_owned()),
+                    "assignee" => parsed.assignee = Some(value.to_owned()),
+                    "mentions" | "mentioned" => parsed.mentioned = Some(value.to_owned()),
+                    "team" => parsed.team = Some(value.to_owned()),
+                    "commenter" => parsed.commenter = Some(value.to_owned()),
+                    "involves" | "involved" => parsed.involved = Some(value.to_owned()),
+                    "label" => parsed.label = Some(value.to_owned()),
+                    "milestone" => parsed.milestone = Some(value.to_owned()),
+                    "comments" => {
+                        if let Err(message) = apply_numeric_qualifier(value, &mut parsed.comments) {
+                            parsed.diagnostics.push(collaboration_diagnostic(
+                                "invalid_comments_qualifier",
+                                &message,
+                                &qualifier,
+                            ));
+                        }
+                    }
+                    "interactions" => {
+                        if let Err(message) =
+                            apply_numeric_qualifier(value, &mut parsed.interactions)
+                        {
+                            parsed.diagnostics.push(collaboration_diagnostic(
+                                "invalid_interactions_qualifier",
+                                &message,
+                                &qualifier,
+                            ));
+                        }
+                    }
+                    _ => parsed.diagnostics.push(collaboration_diagnostic(
+                        "unsupported_collaboration_qualifier",
+                        &format!("{qualifier}: is not supported for issue and pull request search"),
+                        &qualifier,
+                    )),
                 }
                 qualifiers.push((qualifier, value.to_owned()));
                 continue;
             }
         }
-        terms.push(token.to_owned());
+        terms.push(token);
     }
 
     parsed.terms = terms.join(" ");
@@ -2409,6 +2757,82 @@ fn parse_collaboration_search_query(
         })
         .collect();
     Ok(parsed)
+}
+
+fn tokenize_search_query(query: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut escaped = false;
+
+    for character in query.chars() {
+        if escaped {
+            current.push(character);
+            escaped = false;
+            continue;
+        }
+        if character == '\\' && in_quotes {
+            escaped = true;
+            continue;
+        }
+        if character == '"' {
+            in_quotes = !in_quotes;
+            continue;
+        }
+        if character.is_whitespace() && !in_quotes {
+            if !current.trim().is_empty() {
+                tokens.push(current.trim().to_owned());
+                current.clear();
+            }
+            continue;
+        }
+        current.push(character);
+    }
+
+    if !current.trim().is_empty() {
+        tokens.push(current.trim().to_owned());
+    }
+    tokens
+}
+
+fn collaboration_diagnostic(code: &str, message: &str, qualifier: &str) -> CodeSearchDiagnostic {
+    CodeSearchDiagnostic {
+        code: code.to_owned(),
+        message: message.to_owned(),
+        qualifier: Some(qualifier.to_owned()),
+    }
+}
+
+fn apply_numeric_qualifier(value: &str, qualifier: &mut NumericQualifier) -> Result<(), String> {
+    let trimmed = value.trim();
+    let (operator, raw_number) = if let Some(number) = trimmed.strip_prefix(">=") {
+        (">=", number)
+    } else if let Some(number) = trimmed.strip_prefix("<=") {
+        ("<=", number)
+    } else if let Some(number) = trimmed.strip_prefix('>') {
+        (">", number)
+    } else if let Some(number) = trimmed.strip_prefix('<') {
+        ("<", number)
+    } else {
+        ("=", trimmed)
+    };
+    let number = raw_number
+        .parse::<i64>()
+        .map_err(|_| format!("{trimmed} must compare against a whole number"))?;
+    if number < 0 {
+        return Err(format!("{trimmed} cannot be negative"));
+    }
+    match operator {
+        ">" => qualifier.min = Some(number + 1),
+        ">=" => qualifier.min = Some(number),
+        "<" => qualifier.max = Some(number - 1),
+        "<=" => qualifier.max = Some(number),
+        _ => {
+            qualifier.min = Some(number);
+            qualifier.max = Some(number);
+        }
+    }
+    Ok(())
 }
 
 fn normalize_collaboration_state(value: &str) -> Result<String, SearchError> {

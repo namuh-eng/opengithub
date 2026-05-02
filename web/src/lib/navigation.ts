@@ -471,6 +471,33 @@ export function searchHref(
   return `/search?${params.toString()}`;
 }
 
+export function addSearchQualifier(
+  query: string,
+  qualifier: string,
+  value: string,
+) {
+  return `${query.trim()} ${qualifier}:${quoteSearchQualifierValue(value)}`.trim();
+}
+
+export function removeSearchQualifier(
+  query: string,
+  qualifier: string,
+  value: string,
+) {
+  return removeCodeSearchQualifier(query, qualifier, value);
+}
+
+export function toggleSearchQualifier(
+  query: string,
+  qualifier: string,
+  value: string,
+) {
+  const removed = removeSearchQualifier(query, qualifier, value);
+  return removed === query.trim()
+    ? addSearchQualifier(query, qualifier, value)
+    : removed;
+}
+
 export function replaceSearchQueryToken(
   query: string,
   replaceFrom: number,
@@ -592,8 +619,9 @@ export function codeSearchHref(
   return searchHref(query, "code", extraParams);
 }
 
-function quoteSearchQualifierValue(value: string) {
-  return /\s/.test(value) ? `"${value.replaceAll('"', '\\"')}"` : value;
+export function quoteSearchQualifierValue(value: string) {
+  const trimmed = value.trim();
+  return /\s/.test(trimmed) ? `"${trimmed.replaceAll('"', '\\"')}"` : trimmed;
 }
 
 function searchQualifierTokenPattern(qualifier: string, value?: string) {

@@ -2771,5 +2771,24 @@
       "Advanced facet controls remain Phase 3; sort/save/pagination hardening remains Phase 4.",
       "Browser smoke uses deterministic Rust-signed local sessions and seeded Postgres data, not a real Google OAuth browser session."
     ]
+  },
+  {
+    "feature_id": "search-004",
+    "tests_written": [
+      "Completed Phase 3 advanced collaboration search facets and qualifier controls.",
+      "Backend collaboration search now parses and applies owner/org/user, repo, state/is, closed/reason, linked, author, assignee, mentions, team, commenter, involves, label, milestone, comments, and interactions qualifiers with diagnostics for malformed numeric ranges or unsupported qualifiers.",
+      "Left-rail issue/PR search facets now toggle URL-backed owner, state, label, assignee, reviewer, and milestone qualifiers while preserving sort state.",
+      "Added advanced qualifier shortcut chips for author, commenter, involved, mentioned, comments, interactions, linked PR, and closed-reason searches.",
+      "Extended collaboration search contract coverage for label, assignee, milestone, comments, interactions, missing-label, and malformed-range query behavior.",
+      "Extended collaboration search Vitest coverage for facet URL generation, selected facet removal, advanced qualifier links, chips, sort links, pagination, and no dead controls.",
+      "Verification passed: make check; make test with Cargo plus 213 frontend tests; focused web/tests/search-collaboration-results.test.tsx."
+    ],
+    "needs_deeper_qa": [
+      "Focused Rust collaboration-search contract binary compiled and passed, but its Postgres scenarios self-skipped because the configured localhost:55432 TEST_DATABASE_URL timed out while acquiring a DB pool in this session.",
+      "Full make test-e2e was attempted with TEST_DATABASE_URL/DATABASE_URL on localhost:55432 and passed 19 public/auth/docs tests, then all signed-in seeded scenarios failed in dashboard_e2e_seed with `pool timed out while waiting for an open connection`; no search assertion failure was reached.",
+      "Browser screenshot for Phase 3 could not be captured for the same seeded DB pool-timeout reason.",
+      "Reviewer-specific facets are still display-compatible but backend reviewer semantics remain for later PR review phases; Phase 3 filters commenter/involved/assignee/author with current collaboration tables.",
+      "Sort/save/pagination completion remains Phase 4; final privacy/accessibility/mobile guardrails remain Phase 5."
+    ]
   }
 ]

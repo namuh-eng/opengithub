@@ -38,7 +38,7 @@
 
 ## Phase 3: Advanced Facets and Qualifier Controls - filters mutate URL-backed collaboration search results
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make the left rail filters real. Owner, state, close reason, linked pull request, author, assignee, mentioned user, mentioned team, commenter, involved user, label, milestone, number of comments, number of interactions, and advanced search controls should add/remove qualifiers and refresh results through concrete URLs. Empty/unsupported facet values should be disabled or absent, never inert.
 

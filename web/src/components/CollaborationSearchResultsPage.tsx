@@ -6,7 +6,13 @@ import type {
   CollaborationSearchResponse,
   GlobalSearchResult,
 } from "@/lib/api";
-import { SEARCH_TABS, searchHref, searchTypeHref } from "@/lib/navigation";
+import {
+  addSearchQualifier,
+  SEARCH_TABS,
+  searchHref,
+  searchTypeHref,
+  toggleSearchQualifier,
+} from "@/lib/navigation";
 
 type Props = {
   activeType: "issues" | "pull_requests" | string;
@@ -87,18 +93,20 @@ function stateChipClass(activeType: string, state: string | null) {
   return activeType === "pull_requests" ? "chip warn" : "chip ok";
 }
 
-function addQualifier(query: string, qualifier: string, value: string) {
-  const quoted = /\s/.test(value) ? `"${value.replaceAll('"', '\\"')}"` : value;
-  return `${query.trim()} ${qualifier}:${quoted}`.trim();
-}
-
 function facetHref(
   activeType: string,
   query: string,
   qualifier: string,
   value: string,
+  sort?: string,
 ) {
-  return searchHref(addQualifier(query, qualifier, value), activeType);
+  return searchHref(
+    toggleSearchQualifier(query, qualifier, value),
+    activeType,
+    {
+      sort,
+    },
+  );
 }
 
 function pageHref(
@@ -118,12 +126,14 @@ function FacetGroup({
   facets,
   query,
   qualifier,
+  sort,
   title,
 }: {
   activeType: string;
   facets: CodeSearchFacetValue[];
   query: string;
   qualifier: string;
+  sort?: string;
   title: string;
 }) {
   if (facets.length === 0) {
@@ -139,13 +149,61 @@ function FacetGroup({
         {facets.map((facet) => (
           <Link
             className={`flex items-center justify-between gap-3 rounded-[var(--radius)] px-2 py-1 t-sm ${facet.selected ? "chip active" : ""}`}
-            href={facetHref(activeType, query, qualifier, facet.value)}
+            href={facetHref(activeType, query, qualifier, facet.value, sort)}
             key={`${qualifier}-${facet.value}`}
           >
             <span className="truncate">{facet.label}</span>
             <span className="t-num" style={{ color: "var(--ink-3)" }}>
               {facet.count}
             </span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AdvancedQualifierLinks({
+  activeType,
+  query,
+  sort,
+}: {
+  activeType: string;
+  query: string;
+  sort?: string;
+}) {
+  const controls = [
+    ["author", "@author"],
+    ["commenter", "@commenter"],
+    ["involves", "@involved"],
+    ["mentions", "@mentioned"],
+    ["comments", ">10"],
+    ["interactions", ">10"],
+    ...(activeType === "issues"
+      ? ([
+          ["linked", "pr"],
+          ["closed", "completed"],
+        ] satisfies [string, string][])
+      : ([] satisfies [string, string][])),
+  ];
+
+  return (
+    <div>
+      <p className="t-label" style={{ color: "var(--ink-4)" }}>
+        Advanced search
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {controls.map(([qualifier, value]) => (
+          <Link
+            className="chip soft"
+            href={searchHref(
+              addSearchQualifier(query, qualifier, value),
+              activeType,
+              { sort },
+            )}
+            key={`${qualifier}-${value}`}
+          >
+            {qualifier}:{value}
           </Link>
         ))}
       </div>
@@ -356,13 +414,23 @@ export function CollaborationSearchResultsPage({
               facets={facets.states}
               query={query}
               qualifier="state"
+              sort={activeSort}
               title="State"
+            />
+            <FacetGroup
+              activeType={activeType}
+              facets={facets.owners ?? []}
+              query={query}
+              qualifier="owner"
+              sort={activeSort}
+              title="Owner"
             />
             <FacetGroup
               activeType={activeType}
               facets={facets.labels}
               query={query}
               qualifier="label"
+              sort={activeSort}
               title="Labels"
             />
             <FacetGroup
@@ -370,6 +438,7 @@ export function CollaborationSearchResultsPage({
               facets={facets.assignees}
               query={query}
               qualifier="assignee"
+              sort={activeSort}
               title="Assignees"
             />
             {activeType === "pull_requests" ? (
@@ -378,6 +447,7 @@ export function CollaborationSearchResultsPage({
                 facets={facets.reviewers ?? []}
                 query={query}
                 qualifier="reviewer"
+                sort={activeSort}
                 title="Reviewers"
               />
             ) : null}
@@ -386,7 +456,13 @@ export function CollaborationSearchResultsPage({
               facets={facets.milestones}
               query={query}
               qualifier="milestone"
+              sort={activeSort}
               title="Milestones"
+            />
+            <AdvancedQualifierLinks
+              activeType={activeType}
+              query={query}
+              sort={activeSort}
             />
             <div>
               <p className="t-label" style={{ color: "var(--ink-4)" }}>
@@ -411,6 +487,19 @@ export function CollaborationSearchResultsPage({
                   ? `${successful.total} ${label.toLowerCase()} results in ${queryDurationMs}ms`
                   : `${label} results`}
               </p>
+              {successful?.diagnostics?.length ? (
+                <div className="mt-2 space-y-1">
+                  {successful.diagnostics.map((diagnostic) => (
+                    <p
+                      className="t-xs"
+                      key={`${diagnostic.code}-${diagnostic.message}`}
+                      style={{ color: "var(--warn)" }}
+                    >
+                      {diagnostic.message}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
               {activeChips.length ? (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {activeChips.map((chip) => (

@@ -1,3 +1,14 @@
+2026-05-02 - search-004 phase 3 advanced collaboration facets and qualifiers
+
+- Completed Phase 3 from `.qrspi/search-004/structure.md`: issue and pull request search facets now add/remove URL-backed collaboration qualifiers instead of rendering display-only controls.
+- Extended `crates/api/src/domain/search.rs` collaboration parsing and query execution for owner/org/user, repo, state/is, closed/reason, linked, author, assignee, mentions, team, commenter, involves, label, milestone, comments, and interactions qualifiers, including structured diagnostics for unsupported qualifiers and malformed numeric ranges.
+- Updated collaboration search facets to mark selected owner, state, label, assignee, and milestone values, and updated `CollaborationSearchResultsPage` to preserve sort state through facet toggles, active-chip removal, advanced qualifier links, pagination, and sort links.
+- Added reusable search qualifier helpers in `web/src/lib/navigation.ts` and extended `web/tests/search-collaboration-results.test.tsx` for selected facet removal, owner/label facet URLs, advanced qualifier shortcuts, active chips, sort links, pagination, and no dead controls.
+- Extended `crates/api/tests/search_collaboration_results_contract.rs` with contract assertions for label, assignee, milestone, comments, interactions, missing-label, and malformed-range query behavior.
+- Verification passed: `CARGO_INCREMENTAL=0 TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 213 frontend tests; focused `web/tests/search-collaboration-results.test.tsx`; mandatory Editorial banned-value scan passed with zero matches.
+- Focused `search_collaboration_results_contract` compiled and passed its test harness, but the real Postgres scenarios self-skipped because the configured local test DB timed out while opening a pool. Full `make test-e2e` was attempted with `TEST_DATABASE_URL`/`DATABASE_URL` on `localhost:55432`; 19 public/auth/docs tests passed, then all signed-in seeded scenarios failed in `dashboard_e2e_seed` with `pool timed out while waiting for an open connection`, so no Phase 3 browser screenshot was captured.
+- Marked Phase 3 as done in `.qrspi/search-004/structure.md`; `prd.json` remains `build_pass: false` because Phases 4-5 remain.
+
 2026-05-02 - search-004 phase 1 collaboration search API contract
 
 - Implemented Phase 1 from `.qrspi/search-004/structure.md`: `/api/search` now routes `type=issues`, `type=issue`, `type=pull_requests`, `type=pullrequests`, `type=pulls`, and `type=pull` through a richer collaboration-search contract.

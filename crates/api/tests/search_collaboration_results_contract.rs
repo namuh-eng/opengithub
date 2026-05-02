@@ -17,7 +17,7 @@ use opengithub_api::{
 use serde_json::{json, Value};
 use sqlx::PgPool;
 use tower::ServiceExt;
-use url::Url;
+use url::{form_urlencoded, Url};
 use uuid::Uuid;
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
@@ -107,6 +107,10 @@ fn assert_json(headers: &HeaderMap) {
         .get(header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .is_some_and(|value| value.starts_with("application/json")));
+}
+
+fn encode_query_component(value: &str) -> String {
+    form_urlencoded::byte_serialize(value.as_bytes()).collect()
 }
 
 #[tokio::test]
@@ -326,6 +330,54 @@ async fn issue_search_returns_facets_snippets_counts_and_private_redaction() {
         .as_array()
         .expect("snippets")
         .is_empty());
+
+    for (qualifier, expected_chip) in [
+        (format!("label:bug-{marker}"), "label"),
+        (
+            format!("assignee:{}", assignee.username.as_deref().unwrap()),
+            "assignee",
+        ),
+        (format!("milestone:\"Release {marker}\""), "milestone"),
+        ("comments:>0".to_owned(), "comments"),
+        ("interactions:1".to_owned(), "interactions"),
+    ] {
+        let encoded = encode_query_component(&format!("{marker} {qualifier}"));
+        let (filter_status, _headers, filter_body) = get_json(
+            app.clone(),
+            &format!("/api/search?q={encoded}&type=issues&pageSize=10"),
+            Some(&owner_cookie),
+        )
+        .await;
+        assert_eq!(filter_status, StatusCode::OK);
+        assert_eq!(filter_body["total"], 1, "filter {qualifier} should match");
+        assert!(filter_body["activeChips"]
+            .as_array()
+            .expect("active chips")
+            .iter()
+            .any(|chip| chip["qualifier"] == expected_chip));
+    }
+
+    let missing_label_query = encode_query_component(&format!("{marker} label:not-{marker}"));
+    let (_status, _headers, missing_label_body) = get_json(
+        app.clone(),
+        &format!("/api/search?q={missing_label_query}&type=issues&pageSize=10"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(missing_label_body["total"], 0);
+
+    let invalid_range_query = encode_query_component(&format!("{marker} comments:many"));
+    let (_status, _headers, invalid_range_body) = get_json(
+        app.clone(),
+        &format!("/api/search?q={invalid_range_query}&type=issues&pageSize=10"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert!(invalid_range_body["diagnostics"]
+        .as_array()
+        .expect("diagnostics")
+        .iter()
+        .any(|diagnostic| diagnostic["code"] == "invalid_comments_qualifier"));
 
     let (outsider_status, _headers, outsider_body) = get_json(
         app,
