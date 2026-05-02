@@ -949,6 +949,71 @@ export type RepositorySettingsPatch = {
   merge?: Partial<RepositoryMergeSettings>;
 };
 
+export type WebhookEventName =
+  | "push"
+  | "pull_request"
+  | "pull_request_review"
+  | "issues"
+  | "issue_comment"
+  | "release"
+  | "workflow_run"
+  | "check_run"
+  | "ping";
+
+export type WebhookDelivery = {
+  id: string;
+  webhookId: string;
+  event: WebhookEventName | string;
+  requestHeaders: Record<string, string>;
+  requestBody: string;
+  responseStatus: number | null;
+  responseHeaders: Record<string, string>;
+  responseBody: string | null;
+  durationMs: number | null;
+  redeliveryOf: string | null;
+  deliveredAt: string | null;
+  status: "queued" | "delivered" | "failed";
+  attemptCount: number;
+  nextAttemptAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Webhook = {
+  id: string;
+  scopeType: "repository" | "organization";
+  scopeId: string;
+  repositoryId: string | null;
+  url: string;
+  contentType: "json" | "form" | string;
+  hasSecret: boolean;
+  events: string[];
+  active: boolean;
+  sslVerify: boolean;
+  createdByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+  deliveries: WebhookDelivery[];
+};
+
+export type WebhookCatalog = {
+  supportedEvents: WebhookEventName[];
+  hooks: Webhook[];
+};
+
+export type CreateWebhookRequest = {
+  url: string;
+  contentType: "json" | "form";
+  secret?: string | null;
+  events: string[];
+  active?: boolean;
+  sslVerify?: boolean;
+};
+
+export type UpdateWebhookRequest = {
+  active?: boolean;
+};
+
 export type RepositorySettingsFetchResult =
   | { ok: true; settings: RepositorySettings }
   | { ok: false; status: number; code: string | null; message: string };
@@ -5887,4 +5952,175 @@ export async function markNotificationReadFromCookie(
   } catch {
     return false;
   }
+}
+
+export async function getRepositoryWebhooksFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+): Promise<WebhookCatalog | null> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/hooks`,
+    { headers: cookie ? { cookie } : undefined, cache: "no-store" },
+  ).catch(() => null);
+  if (!response?.ok) return null;
+  return (await response.json()) as WebhookCatalog;
+}
+
+export async function getOrganizationWebhooksFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+): Promise<WebhookCatalog | null> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/hooks`,
+    { headers: cookie ? { cookie } : undefined, cache: "no-store" },
+  ).catch(() => null);
+  if (!response?.ok) return null;
+  return (await response.json()) as WebhookCatalog;
+}
+
+export async function createRepositoryWebhookFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  input: CreateWebhookRequest,
+): Promise<Webhook> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/hooks`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    },
+  );
+  if (!response.ok)
+    throw await apiError(response, "Webhook could not be created");
+  return (await response.json()) as Webhook;
+}
+
+export async function createOrganizationWebhookFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  input: CreateWebhookRequest,
+): Promise<Webhook> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/hooks`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    },
+  );
+  if (!response.ok)
+    throw await apiError(response, "Webhook could not be created");
+  return (await response.json()) as Webhook;
+}
+
+export async function updateRepositoryWebhookFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  hookId: string,
+  input: UpdateWebhookRequest,
+): Promise<Webhook> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/hooks/${encodeURIComponent(hookId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    },
+  );
+  if (!response.ok)
+    throw await apiError(response, "Webhook could not be updated");
+  return (await response.json()) as Webhook;
+}
+
+export async function updateOrganizationWebhookFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  hookId: string,
+  input: UpdateWebhookRequest,
+): Promise<Webhook> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/hooks/${encodeURIComponent(hookId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    },
+  );
+  if (!response.ok)
+    throw await apiError(response, "Webhook could not be updated");
+  return (await response.json()) as Webhook;
+}
+
+export async function redeliverRepositoryWebhookFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  hookId: string,
+  deliveryId?: string | null,
+): Promise<WebhookDelivery> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/hooks/${encodeURIComponent(hookId)}/redeliveries`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify({ deliveryId }),
+      cache: "no-store",
+    },
+  );
+  if (!response.ok)
+    throw await apiError(response, "Webhook delivery could not be retried");
+  return (await response.json()) as WebhookDelivery;
+}
+
+export async function redeliverOrganizationWebhookFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  hookId: string,
+  deliveryId?: string | null,
+): Promise<WebhookDelivery> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/hooks/${encodeURIComponent(hookId)}/redeliveries`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify({ deliveryId }),
+      cache: "no-store",
+    },
+  );
+  if (!response.ok)
+    throw await apiError(response, "Webhook delivery could not be retried");
+  return (await response.json()) as WebhookDelivery;
+}
+
+async function apiError(response: Response, fallback: string) {
+  const body = (await response
+    .json()
+    .catch(() => null)) as ApiErrorEnvelope | null;
+  return new Error(body?.error.message ?? fallback, { cause: body });
 }

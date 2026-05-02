@@ -17,6 +17,17 @@ async fn main() -> anyhow::Result<()> {
             None
         }
     };
+    if let Some(pool) = db.clone() {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+            loop {
+                interval.tick().await;
+                if let Err(error) = opengithub_api::domain::webhooks::process_due_deliveries(&pool, 25).await {
+                    tracing::warn!(%error, "webhook delivery worker tick failed");
+                }
+            }
+        });
+    }
     let app = opengithub_api::build_app(db);
 
     let addr: SocketAddr = "0.0.0.0:3016".parse()?;

@@ -3293,5 +3293,22 @@
       "Real Google account selection/callback could not be completed because this isolated QA lane uses dummy local OAuth credentials, not a configured Google test account.",
       "npm install reported 2 moderate transitive audit findings in frontend tooling; no production dependency change was made for auth-001."
     ]
+  },
+  {
+    "feature_id": "api-002",
+    "tests_written": [
+      "Added Rust webhook contract tests in crates/api/tests/api_webhooks_contract.rs for the supported event catalog and X-Hub-Signature-256 HMAC-SHA256 over exact raw request bytes.",
+      "Added WebhooksSettingsPage Vitest coverage for event catalog rendering, hooks table, delivery payload viewer, selected event create payloads, and active toggle persistence.",
+      "Verification passed: focused webhook cargo test, focused webhooks Vitest, cd web && npx tsc --noEmit --pretty false, Editorial banned-value scan, CARGO_INCREMENTAL=0 make check, and CARGO_INCREMENTAL=0 make test with Cargo tests plus 269 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Run a real HTTP receiver smoke test to verify outbound POST headers/body and independent HMAC calculation from captured raw bytes.",
+      "Probe repo/org non-admin access to confirm webhook settings deny unauthorized users.",
+      "Force 5xx receiver responses to validate 3 retry attempts with exponential backoff and redelivery linkage in the UI."
+    ],
+    "risk_areas": [
+      "External receiver network failures are recorded as failed/queued deliveries; QA should verify timing in an integration environment.",
+      "Secrets are stored in the requested secret_ciphertext field but this slice does not add a KMS envelope adapter."
+    ]
   }
 ]

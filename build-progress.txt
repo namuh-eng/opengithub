@@ -2287,3 +2287,13 @@
 - Verification passed: focused `CARGO_INCREMENTAL=0 cargo test -p opengithub-api --test personal_profile_settings_contract` (2 passed); focused `cd web && npm test -- --run tests/personal-profile-settings.test.tsx` (6 passed); `cd web && npx tsc --noEmit`; mandatory Editorial banned-value scan returned zero matches; `CARGO_INCREMENTAL=0 make check`; `CARGO_INCREMENTAL=0 make test` with Cargo tests plus 251 frontend tests.
 - `make check` initially reported the fresh-worktree setup guard; per task instruction, touched `.ralph-setup-done` and reran successfully. A first Rust run hit local target/temp-dir cache issues after disk cleanup; rerunning with `CARGO_INCREMENTAL=0` passed.
 - Set `personal-settings-001.build_pass=true`, `needs_structure=false`, and left `qa_pass=false` for independent QA.
+
+2026-05-03 - api-002 webhook catalog and signed deliveries build
+
+- Completed api-002 end-to-end: repo and organization webhook settings pages now render an Editorial event catalog, hooks table with active toggle/content type/last delivery state, add-webhook form with push/everything/select modes, recent deliveries viewer, and redelivery controls.
+- Added webhook schema migration `202605030042_webhook_catalog` for repo/org scopes, content type, secret ciphertext, SSL verify, signed request headers/body, response capture, duration, and redelivery lineage.
+- Added Rust webhook domain/routes for supported event validation, repo/org admin authorization, HMAC-SHA256 `X-Hub-Signature-256` over raw body, `X-GitHub-Event`, UUID `X-GitHub-Delivery`, outbound POST dispatch, redelivery, and 3-attempt exponential retry metadata; API worker ticks due deliveries when DB is configured.
+- Added Next API bridge routes for repo/org webhook create/toggle/redeliver and typed API/server-session helpers.
+- Added focused Rust and Vitest coverage: `api_webhooks_contract.rs` and `webhooks-settings-page.test.tsx`.
+- Verification passed: `cd web && npx tsc --noEmit --pretty false`; focused webhooks Vitest; focused webhook Cargo test; mandatory Editorial banned-value scan returned zero matches; `CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 make check`; `CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 make test` with Cargo tests and 269 web tests.
+- Created `.qrspi/api-002/structure.md`; set `api-002.build_pass=true`, `needs_structure=false`, and `qa_pass=false` for independent QA.

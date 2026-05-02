@@ -30,7 +30,8 @@ export function isProtectedPath(pathname: string): boolean {
 
   return (
     /^\/[^/]+\/[^/]+\/settings(?:\/|$)/.test(pathname) ||
-    /^\/orgs\/[^/]+\/settings(?:\/|$)/.test(pathname)
+    /^\/orgs\/[^/]+\/settings(?:\/|$)/.test(pathname) ||
+    /^\/organizations\/[^/]+\/settings(?:\/|$)/.test(pathname)
   );
 }
 

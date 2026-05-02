@@ -9,6 +9,7 @@ import {
   getOrganizationPackagesFromCookie,
   getOrganizationPeopleFromCookie,
   getOrganizationRepositoriesFromCookie,
+  getOrganizationWebhooksFromCookie,
   getPersonalProfileSettingsFromCookie,
   getProfileRepositoriesFromCookie,
   getProfileStarsFromCookie,
@@ -37,6 +38,7 @@ import {
   getRepositoryPullRequestTimelineFromCookie,
   getRepositoryRefsFromCookie,
   getRepositorySettingsFromCookie,
+  getRepositoryWebhooksFromCookie,
   getSearchSuggestionsFromCookie,
   getSessionFromHeaders,
   getUserPackagesFromCookie,
@@ -506,4 +508,18 @@ export async function getRepositoryIssueTimeline(
     repo,
     issueNumber,
   );
+}
+
+export async function getRepositoryWebhooks(owner: string, repo: string) {
+  const requestHeaders = await headers();
+  return getRepositoryWebhooksFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+  );
+}
+
+export async function getOrganizationWebhooks(org: string) {
+  const requestHeaders = await headers();
+  return getOrganizationWebhooksFromCookie(requestHeaders.get("cookie"), org);
 }

@@ -1,4 +1,12 @@
-import { RepositorySettingsSectionPage } from "@/components/RepositorySettingsSectionPage";
+import { AppShell } from "@/components/AppShell";
+import { RepositorySettingsShell } from "@/components/RepositorySettingsShell";
+import { RepositoryUnavailablePage } from "@/components/RepositoryUnavailablePage";
+import { WebhooksSettingsPage } from "@/components/WebhooksSettingsPage";
+import {
+  getRepository,
+  getRepositoryWebhooks,
+  getSessionAndShellContext,
+} from "@/lib/server-session";
 
 type RepositorySettingsHooksPageProps = {
   params: Promise<{ owner: string; repo: string }>;
@@ -8,16 +16,31 @@ export default async function RepositorySettingsHooksPage({
   params,
 }: RepositorySettingsHooksPageProps) {
   const { owner, repo } = await params;
-  const base = `/${decodeURIComponent(owner)}/${decodeURIComponent(repo)}`;
+  const ownerLogin = decodeURIComponent(owner);
+  const repositoryName = decodeURIComponent(repo);
+  const [{ session, shellContext }, repository, catalog] = await Promise.all([
+    getSessionAndShellContext(),
+    getRepository(ownerLogin, repositoryName),
+    getRepositoryWebhooks(ownerLogin, repositoryName),
+  ]);
 
   return (
-    <RepositorySettingsSectionPage
-      actions={[{ href: `${base}/settings`, label: "General settings" }]}
-      activeSection="hooks"
-      message="Webhook endpoints, delivery logs, retries, and secret rotation will appear here once webhook management reaches its repository settings phase."
-      owner={owner}
-      repo={repo}
-      title="Webhooks"
-    />
+    <AppShell session={session} shellContext={shellContext}>
+      {repository ? (
+        <RepositorySettingsShell
+          activeSection="hooks"
+          repository={repository}
+          title="Webhooks"
+        >
+          <WebhooksSettingsPage
+            catalog={catalog}
+            endpointBase={`/api/repos/${encodeURIComponent(ownerLogin)}/${encodeURIComponent(repositoryName)}/hooks`}
+            ownerLabel={`${ownerLogin} / ${repositoryName}`}
+          />
+        </RepositorySettingsShell>
+      ) : (
+        <RepositoryUnavailablePage owner={ownerLogin} repo={repositoryName} />
+      )}
+    </AppShell>
   );
 }
