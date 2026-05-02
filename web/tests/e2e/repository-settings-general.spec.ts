@@ -156,6 +156,10 @@ test("admin can load and mutate repository general settings", async ({
   await expect(
     page.getByRole("button", { name: "Delete repository unavailable" }),
   ).toBeDisabled();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/settings-001-final-general-desktop.jpg",
+  });
   await page.setViewportSize({ width: 390, height: 900 });
   const horizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,
@@ -164,7 +168,7 @@ test("admin can load and mutate repository general settings", async ({
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/settings-001-phase4-general-guardrails.jpg",
+    path: "../ralph/screenshots/build/settings-001-final-general-mobile.jpg",
   });
 
   await page.context().clearCookies();
@@ -185,6 +189,6 @@ test("admin can load and mutate repository general settings", async ({
   ).toBeVisible();
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/settings-001-phase4-forbidden.jpg",
+    path: "../ralph/screenshots/build/settings-001-final-forbidden.jpg",
   });
 });

@@ -1,3 +1,12 @@
+2026-05-03 - settings-001 phase 5 final QA handoff
+
+- Completed Phase 5 from `.qrspi/settings-001/structure.md`: repository General settings are now locked as a completed vertical slice and `settings-001.build_pass=true`.
+- Kept scope to final guardrails/bookkeeping: API docs, admin-only read/write contract, Editorial settings UI, confirmed mutation forms, audit events, archive/unarchive guardrails, disabled transfer/delete states, QA hints, and final screenshots.
+- Added final Playwright screenshot outputs at `ralph/screenshots/build/settings-001-final-general-desktop.jpg`, `settings-001-final-general-mobile.jpg`, and `settings-001-final-forbidden.jpg`.
+- Verification passed: focused `repository_settings_contract`; focused `web/tests/repository-general-settings-page.test.tsx` and `web/tests/api-docs.test.tsx`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; standard `DB_SSL=false make test` with Cargo tests plus 257 frontend tests; `cd web && npm run build`; focused repository-settings Playwright smoke against both dev and production Next servers; mandatory Editorial banned-value scan returned zero matches.
+- Full `make test-e2e` was attempted twice. The default target failed because `make dev` still invokes missing `cargo watch` and stopped the server mid-suite; a stable-server rerun reached 15/92 passed before Next exited with signal 143 and the remainder cascaded into `ERR_CONNECTION_REFUSED`. The selected settings smoke passed cleanly and saved final screenshots.
+- Marked Phase 5 as done in `.qrspi/settings-001/structure.md` and set `settings-001.build_pass` to `true` in `prd.json`; `qa_pass` remains `false` for the QA agent.
+
 2026-05-03 - settings-001 phase 4 admin/privacy/conflict guardrails
 
 - Completed Phase 4 from `.qrspi/settings-001/structure.md`: repository General settings now have stronger admin privacy, conflict, archive, unsupported destructive-action, docs, and browser guardrails without marking `settings-001.build_pass=true`.

@@ -3255,6 +3255,28 @@
     ]
   },
   {
+    "feature_id": "settings-001",
+    "tests_written": [
+      "Completed Phase 5 Final QA Handoff and Build-Pass Bookkeeping and marked settings-001 build_pass=true.",
+      "Kept repository General settings scoped to the existing vertical slice: admin-only read/write API, Editorial UI, confirmed mutation forms, audit events, archive/unarchive guardrails, disabled transfer/delete states, and API docs.",
+      "Focused Rust repository_settings_contract passed against TEST_DATABASE_URL on localhost:55432.",
+      "Focused Vitest coverage passed for repository-general-settings and api-docs.",
+      "TEST_DATABASE_URL-backed make check passed, and standard DB_SSL=false make test passed with Cargo tests plus 257 frontend tests.",
+      "Production Next build passed with npm run build.",
+      "Focused Playwright browser smoke saves final screenshots: ralph/screenshots/build/settings-001-final-general-desktop.jpg, settings-001-final-general-mobile.jpg, and settings-001-final-forbidden.jpg.",
+      "Mandatory Editorial banned-value scan returned zero matches under web/src outside og*.css."
+    ],
+    "needs_deeper_qa": [
+      "Full make test-e2e could not complete in this environment: the default Playwright webServer path invokes make dev, which depends on missing cargo-watch; a stable-server rerun later lost the Next server with signal 143 and cascaded into ERR_CONNECTION_REFUSED. The settings-specific smoke passed cleanly.",
+      "Stress concurrent settings writes from multiple browser sessions and verify the latest server state plus audit event ordering.",
+      "Exercise successful repository rename behavior and route refresh after the settings API returns a new name.",
+      "Probe private/internal visibility transitions, direct collaborators, organization-owned repositories, and non-admin forbidden views with real user sessions.",
+      "Recheck archived repository behavior under rapid archive/unarchive attempts and failed writes while archived.",
+      "Inspect very long repository names, descriptions, and branch names across desktop/mobile and screen readers.",
+      "Confirm unsupported transfer/delete controls stay clearly disabled until their dedicated backend operations ship."
+    ]
+  },
+  {
     "feature_id": "packages-001",
     "tests_written": [
       "Added owner package list contract coverage in crates/api/tests/owner_packages_contract.rs for user and organization package lists, search/type/visibility/sort filters, package downloads, linked repositories, public redaction, package permissions, and organization-member internal package visibility.",

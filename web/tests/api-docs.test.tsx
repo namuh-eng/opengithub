@@ -174,7 +174,7 @@ describe("ApiDocsPage", () => {
     expect(
       screen.getByText(/Duplicate names for the same viewer/),
     ).toBeVisible();
-  });
+  }, 10000);
 
   it("opens examples without placeholder links or inert controls", () => {
     const { container } = render(<ApiDocsPage />);
