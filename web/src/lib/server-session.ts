@@ -22,6 +22,7 @@ import {
   getRepositoryActionsWorkflowDashboardFromCookie,
   getRepositoryBlameFromCookie,
   getRepositoryBlobFromCookie,
+  getRepositoryBranchSettingsFromCookie,
   getRepositoryCommitHistoryFromCookie,
   getRepositoryCreationOptionsFromCookie,
   getRepositoryFileFinderFromCookie,
@@ -214,6 +215,15 @@ export async function getRepositorySettings(owner: string, repo: string) {
 export async function getRepositoryAccessSettings(owner: string, repo: string) {
   const requestHeaders = await headers();
   return getRepositoryAccessSettingsFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+  );
+}
+
+export async function getRepositoryBranchSettings(owner: string, repo: string) {
+  const requestHeaders = await headers();
+  return getRepositoryBranchSettingsFromCookie(
     requestHeaders.get("cookie"),
     owner,
     repo,

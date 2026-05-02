@@ -1,3 +1,14 @@
+2026-05-03 - settings-003 phase 2 Editorial branches settings shell
+
+- Completed Phase 2 from `.qrspi/settings-003/structure.md`: `/[owner]/[repo]/settings/branches` now fetches the Phase 1 Rust branch-policy contract server-side and renders a real Editorial Branches settings page instead of a placeholder.
+- Added typed frontend branch-settings DTOs and cookie-backed server helpers for `GET /api/repos/{owner}/{repo}/settings/branches`, including unavailable/error states.
+- Added `RepositoryBranchSettingsPage` with default branch summary, protected branch refs, rule and ruleset cards, active/evaluate/disabled chips, matching branch counts, requirement chips, bypass actor summaries, status-check suggestions, read-only non-admin explanations, empty states, and concrete New rule/New ruleset entry links for Phase 3.
+- Added focused Vitest coverage for admin policy rendering, read-only non-admin views, empty states, Phase 3 entry state, unavailable recovery, no inert anchors/buttons, and Editorial primitive/token usage.
+- Browser smoke passed against local API/Next dev servers after applying the existing Phase 1 branch-settings migration to the shared test DB; saved `ralph/screenshots/build/settings-003-phase2-branches-shell.jpg` and `settings-003-phase2-branches-mobile.jpg`.
+- Verification passed: focused `repository_branch_settings_contract`; focused branch settings Vitest; web `tsc --noEmit`; focused Biome check; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; same-env `make test` with Cargo tests plus 280 frontend tests; mandatory Editorial banned-value scan returned zero matches.
+- Full `make test-e2e` was attempted and 20 tests passed, but 73 signed-in seeded tests failed before exercising their scenarios because the shared local database still reports `migration 202605030041 was previously applied but has been modified`.
+- Marked Phase 2 as done in `.qrspi/settings-003/structure.md`; `prd.json` remains `build_pass:false` because Phases 3-5 remain.
+
 2026-05-03 - settings-002 phase 4 privacy, role semantics, and team/org guardrails
 
 - Completed Phase 4 from `.qrspi/settings-002/structure.md`: repository Access settings now have stronger duplicate-grant, team/org, inherited-row, last-admin, API-docs, dialog accessibility, responsive, and forbidden-state guardrails without marking `settings-002.build_pass=true`.

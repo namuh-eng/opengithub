@@ -26,7 +26,7 @@
 
 ## Phase 2: Editorial Branches Settings Shell - default branch card, rules list, and read-only explanations
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the `/[owner]/[repo]/settings/branches` placeholder with a real Editorial Branches settings page backed by the Phase 1 API. The page must show the default branch card, branch protection rules, rulesets, matching branch counts, and non-admin read-only policy explanations without GitHub/Primer visual regression.
 

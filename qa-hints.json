@@ -3424,5 +3424,24 @@
       "CODEOWNERS-specific review requirements, real force-push/deletion attempts, bypass actor permission changes, and evaluate-only reporting need deeper QA in later phases.",
       "Stress conflicting wildcard patterns, concurrent admin edits, long branch/ruleset names, and private repository leakage checks against production-like data."
     ]
+  },
+  {
+    "feature_id": "settings-003",
+    "tests_written": [
+      "Completed Phase 2 Editorial Branches Settings Shell without marking settings-003 build_pass=true.",
+      "Added typed frontend branch settings DTOs and a cookie-backed GET helper for /api/repos/{owner}/{repo}/settings/branches.",
+      "Replaced the Branches settings placeholder with a real AppShell/RepositorySettingsShell page backed by the Phase 1 API contract.",
+      "Added RepositoryBranchSettingsPage with default branch summary, branch refs, rule/ruleset policy cards, requirement chips, bypass summaries, read-only explanations, unavailable states, and concrete New rule/New ruleset entry links.",
+      "Added focused Vitest coverage for admin policy rendering, read-only non-admin explanations, empty states, Phase 3 entry state, unavailable recovery links, no inert anchors/buttons, and Editorial primitive/token usage.",
+      "Browser smoke passed against local dev servers for signed-in Branches settings load, New branch protection rule entry, no inert anchors, mobile no-overflow, and screenshots ralph/screenshots/build/settings-003-phase2-branches-shell.jpg and settings-003-phase2-branches-mobile.jpg.",
+      "Verification passed: focused branch settings Vitest, web TypeScript, focused Biome check, TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check, same-env make test with Cargo tests plus 280 frontend tests, focused repository_branch_settings_contract, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Full make test-e2e is still blocked by the pre-existing local migration checksum issue: migration 202605030041 was previously applied but has been modified; 20 tests passed before signed-in seeded tests failed at seed startup.",
+      "The local browser smoke required manually applying the existing 202605030043_repository_branch_settings migration to the shared test database because it was missing from that DB state.",
+      "Mutation editors are intentionally deferred to Phase 3; QA should revisit create/edit/delete validation, server-confirmed state, and conflict handling after that phase.",
+      "PR mergeability and Git push enforcement integration remains deferred to Phase 4.",
+      "Stress long branch patterns, long ruleset names, evaluate-only explanations, private repository leakage, and non-admin read-only states with production-like data."
+    ]
   }
 ]

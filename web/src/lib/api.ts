@@ -1048,6 +1048,97 @@ export type RepositoryAccessSettingsFetchResult =
   | { ok: true; settings: RepositoryAccessSettings }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type BranchPolicyEnforcement = "active" | "evaluate" | "disabled";
+
+export type BranchPolicyRequirements = {
+  requiredApprovingReviewCount: number;
+  requiresUpToDateBranch: boolean;
+  requiredStatusChecks: string[];
+  requiresConversationResolution: boolean;
+  requiresSignedCommits: boolean;
+  requiresLinearHistory: boolean;
+  requiresMergeQueue: boolean;
+  requiresDeployments: boolean;
+  requiredDeploymentEnvironments: string[];
+  locked: boolean;
+  restrictsPushes: boolean;
+  allowsForcePushes: boolean;
+  allowsDeletions: boolean;
+};
+
+export type BypassActor = {
+  actorType: string;
+  actorId: string;
+  label: string;
+};
+
+export type RepositoryDefaultBranchSummary = {
+  name: string;
+  protected: boolean;
+  matchingRuleCount: number;
+  matchingRulesetCount: number;
+  href: string;
+};
+
+export type RepositoryBranchRefSummary = {
+  name: string;
+  protected: boolean;
+  matchingRuleCount: number;
+  matchingRulesetCount: number;
+  updatedAt: string;
+};
+
+export type RepositoryBranchRule = {
+  id: string;
+  pattern: string;
+  description: string | null;
+  enforcement: BranchPolicyEnforcement;
+  matchingBranches: string[];
+  matchingBranchCount: number;
+  requirements: BranchPolicyRequirements;
+  bypassActors: BypassActor[];
+  canEdit: boolean;
+  canDelete: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RepositoryRuleset = {
+  id: string;
+  name: string;
+  target: string;
+  enforcement: BranchPolicyEnforcement;
+  patterns: string[];
+  matchingBranches: string[];
+  matchingBranchCount: number;
+  requirements: BranchPolicyRequirements;
+  bypassActors: BypassActor[];
+  canEdit: boolean;
+  canDelete: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RepositoryBranchSettings = {
+  id: string;
+  ownerLogin: string;
+  name: string;
+  visibility: RepositoryVisibility;
+  defaultBranch: string;
+  defaultBranchSummary: RepositoryDefaultBranchSummary;
+  viewerPermission: string;
+  canEdit: boolean;
+  refs: RepositoryBranchRefSummary[];
+  rules: RepositoryBranchRule[];
+  rulesets: RepositoryRuleset[];
+  statusCheckSuggestions: string[];
+  auditEvents: RepositorySettingsAuditEvent[];
+};
+
+export type RepositoryBranchSettingsFetchResult =
+  | { ok: true; settings: RepositoryBranchSettings }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type WritableRepositoryOwner = {
   ownerType: RepositoryOwnerType;
   id: string;
@@ -5387,6 +5478,50 @@ export async function getRepositoryAccessSettingsFromCookie(
   return {
     ok: true,
     settings: (await response.json()) as RepositoryAccessSettings,
+  };
+}
+
+export async function getRepositoryBranchSettingsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+): Promise<RepositoryBranchSettingsFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/branches`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository branch settings are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Repository branch settings are unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    settings: (await response.json()) as RepositoryBranchSettings,
   };
 }
 
