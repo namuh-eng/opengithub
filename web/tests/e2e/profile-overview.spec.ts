@@ -8,6 +8,7 @@ type SeededProfile = {
   cookieValue: string;
   profileActionCookieValue: string;
   firstRepositoryHref: string;
+  privateProfileHref: string;
 };
 
 function seedProfile(): SeededProfile {
@@ -132,7 +133,26 @@ test("public profile overview renders data, tabs, and pinned navigation", async 
 
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/profiles-001-phase4-contributions.jpg",
+    path: "../ralph/screenshots/build/profiles-001-final-public-desktop.jpg",
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(profileHref(seeded));
+  await expect(
+    page.getByRole("heading", { name: "Dashboard Tester" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: new RegExp(`contributions in ${new Date().getFullYear()}`),
+    }),
+  ).toBeVisible();
+  const mobileOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  );
+  expect(mobileOverflow).toBe(false);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/profiles-001-final-public-mobile.jpg",
   });
 });
 
@@ -179,6 +199,40 @@ test("profile actions follow, login-gate, block, and report through real routes"
   await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/profiles-001-phase3-actions.jpg",
+    path: "../ralph/screenshots/build/profiles-001-final-actions.jpg",
+  });
+});
+
+test("private profile redacts secondary surfaces and keeps README visible", async ({
+  page,
+}) => {
+  const seeded = seedProfile();
+
+  await page.goto(seeded.privateProfileHref);
+  await expect(
+    page.getByRole("heading", { name: "Private Profile Tester" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Private profile readme stays visible."),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Private profile", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Follow" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "More" })).toHaveCount(0);
+  await expect(
+    page
+      .getByRole("navigation", { name: "Profile sections" })
+      .getByRole("link"),
+  ).toHaveCount(1);
+  await expect(
+    page.getByRole("heading", { name: "Pinned repositories" }),
+  ).toHaveCount(0);
+  await expect(page.getByText(/contributions in/)).toHaveCount(0);
+  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
+
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/profiles-001-final-private.jpg",
   });
 });

@@ -35,6 +35,7 @@ struct SeedOutput {
     cookie_value: String,
     profile_action_cookie_value: String,
     first_repository_href: String,
+    private_profile_href: String,
     second_repository_href: String,
     social_source_repository_href: String,
     tree_repository_href: String,
@@ -153,6 +154,42 @@ async fn main() -> anyhow::Result<()> {
         .bind(profile_action_viewer.id)
         .execute(&pool)
         .await?;
+    let private_profile_username = format!("private-profile-{}", &suffix[..12]);
+    let private_profile_user = upsert_user_by_email(
+        &pool,
+        &format!("{private_profile_username}@opengithub.local"),
+        Some("Private Profile Tester"),
+        None,
+    )
+    .await?;
+    sqlx::query(
+        r#"
+        UPDATE users
+        SET username = $1,
+            bio = 'Private profile smoke fixture.',
+            profile_visibility = 'private'
+        WHERE id = $2
+        "#,
+    )
+    .bind(&private_profile_username)
+    .bind(private_profile_user.id)
+    .execute(&pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO user_profile_readmes (user_id, body, rendered_html, updated_by_user_id)
+        VALUES ($1, $2, $3, $1)
+        ON CONFLICT (user_id)
+        DO UPDATE SET body = EXCLUDED.body,
+                      rendered_html = EXCLUDED.rendered_html,
+                      updated_by_user_id = EXCLUDED.updated_by_user_id
+        "#,
+    )
+    .bind(private_profile_user.id)
+    .bind("Private profile readme stays visible.")
+    .bind("<p>Private profile readme stays visible.</p>")
+    .execute(&pool)
+    .await?;
     let source_owner_username = format!("source-{}", &suffix[..12]);
     let source_owner = upsert_user_by_email(
         &pool,
@@ -534,6 +571,7 @@ async fn main() -> anyhow::Result<()> {
         cookie_value: cookie_value.to_owned(),
         profile_action_cookie_value: profile_action_cookie_value.to_owned(),
         first_repository_href,
+        private_profile_href: format!("/{private_profile_username}"),
         second_repository_href,
         social_source_repository_href: format!(
             "/{}/{}",

@@ -76,7 +76,7 @@
 
 ## Phase 5: Profile Guardrails and QA Handoff - finish profiles-001
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Harden privacy, accessibility, API contracts, visual consistency, and bookkeeping. Mark `profiles-001.build_pass=true` only after the public profile overview uses real API data, pinned repositories navigate to real repository pages, actions persist, private-profile redaction is proven, and no visible controls are dead.
 

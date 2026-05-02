@@ -1,3 +1,12 @@
+2026-05-02 - profiles-001 phase 5 guardrails and feature completion
+
+- Completed Phase 5 from `.qrspi/profiles-001/structure.md`: public user profiles now have final privacy, API, visual, and browser-smoke guardrails and `profiles-001.build_pass` is `true`.
+- Extended `dashboard_e2e_seed` with a private-profile fixture so Playwright verifies private profile redaction against real persisted data while keeping README/avatar/bio visible.
+- Corrected the DB-backed profile overview contract seed so the Stars tab count covers repositories starred by the profile user; pinned repository star counts still verify received stars.
+- Extended `web/tests/e2e/profile-overview.spec.ts` for final public desktop/mobile, action, and private-profile screenshots; the smoke covers profile tabs, pinned repository navigation, contribution year navigation, follow/login gate/report/block flows, private redaction, mobile no-overflow, and no inert anchors.
+- Verification passed: focused `profile_overview_contract` and `profile_social_actions` against temporary local Postgres on `localhost:55432`; focused profile Vitest; focused profile Playwright; `make check`; `make test` with Cargo tests plus 226 frontend tests; `make test-e2e` with 85 Playwright tests; mandatory Editorial banned-value scan returned zero matches.
+- Saved final screenshots under `ralph/screenshots/build/profiles-001-final-public-desktop.jpg`, `profiles-001-final-public-mobile.jpg`, `profiles-001-final-actions.jpg`, and `profiles-001-final-private.jpg`.
+
 2026-05-02 - profiles-001 phase 4 contribution graph accessibility and year navigation
 
 - Completed Phase 4 from `.qrspi/profiles-001/structure.md`: profile contribution data is now year-bounded and the public profile overview renders a dedicated accessible contribution graph.

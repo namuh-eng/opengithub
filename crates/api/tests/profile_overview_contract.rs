@@ -211,6 +211,25 @@ async fn public_profile_returns_overview_pins_counts_and_viewer_state() {
         .execute(&pool)
         .await
         .expect("star should insert");
+    let starred_repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: follower.id },
+            name: format!("{marker}-starred"),
+            description: Some("repo starred by profile owner".to_owned()),
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: follower.id,
+        },
+    )
+    .await
+    .expect("starred repo should create");
+    sqlx::query("INSERT INTO repository_stars (user_id, repository_id) VALUES ($1, $2)")
+        .bind(owner.id)
+        .bind(starred_repo.id)
+        .execute(&pool)
+        .await
+        .expect("profile owner star should insert");
 
     let organization_id: Uuid = sqlx::query_scalar(
         "INSERT INTO organizations (slug, display_name, owner_user_id) VALUES ($1, $2, $3) RETURNING id",

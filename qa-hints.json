@@ -2906,5 +2906,20 @@
       "The graph uses browser-native title text plus keyboard focusable cells for tooltip access; QA should verify the exact assistive-tech announcement behavior in the target browsers.",
       "Final privacy, visual, and no-dead-control hardening remains Phase 5 before profiles-001 can be marked build_pass=true."
     ]
+  },
+  {
+    "feature_id": "profiles-001",
+    "tests_written": [
+      "Completed Phase 5 profile guardrails and marked profiles-001 build_pass=true.",
+      "Extended dashboard_e2e_seed with a private-profile fixture so browser smoke proves redaction against real persisted profile data.",
+      "Corrected the profile_overview_contract starred-tab seed so the Stars count verifies repositories starred by the profile user, while pinned repository star counts still verify received stars.",
+      "Extended profile-overview Playwright smoke for final public desktop/mobile screenshots, action menu/follow/block/report evidence, private-profile redaction, tab navigation, pinned repository navigation, year selector behavior, no mobile overflow, and no inert anchors.",
+      "Verification passed against a temporary local Postgres on localhost:55432: focused profile_overview_contract and profile_social_actions, focused profile Vitest, focused profile Playwright, make check, make test with Cargo plus 226 frontend tests, make test-e2e with 85 Playwright tests, and mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke uses deterministic Rust-signed local sessions from dashboard_e2e_seed rather than a live Google OAuth browser login.",
+      "Profile contribution tooltips use native title text plus focusable contribution cells; QA should still spot-check assistive-technology announcements in target browsers.",
+      "Final screenshots captured: profiles-001-final-public-desktop.jpg, profiles-001-final-public-mobile.jpg, profiles-001-final-actions.jpg, and profiles-001-final-private.jpg."
+    ]
   }
 ]
