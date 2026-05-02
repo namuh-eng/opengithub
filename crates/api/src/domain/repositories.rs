@@ -3602,14 +3602,29 @@ async fn copy_repository_snapshot(
 
 fn repository_clone_urls(repository: &Repository) -> RepositoryCloneUrls {
     let path = format!("{}/{}", repository.owner_login, repository.name);
+    let (https_base, ssh_host) = clone_url_hosts();
     RepositoryCloneUrls {
-        https: format!("https://opengithub.namuh.co/{path}.git"),
-        git: format!("git@opengithub.namuh.co:{path}.git"),
+        https: format!("{https_base}/{path}.git"),
+        git: format!("git@{ssh_host}:{path}.git"),
         zip: format!(
             "/{path}/archive/refs/heads/{}.zip",
             repository.default_branch
         ),
     }
+}
+
+fn clone_url_hosts() -> (String, String) {
+    let raw = std::env::var("API_URL")
+        .ok()
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "https://opengithub.namuh.co".to_owned());
+    let https_base = raw.trim_end_matches('/').to_owned();
+    let ssh_host = url::Url::parse(&https_base)
+        .ok()
+        .and_then(|u| u.host_str().map(String::from))
+        .unwrap_or_else(|| "opengithub.namuh.co".to_owned());
+    (https_base, ssh_host)
 }
 
 async fn ensure_owner_can_create(
