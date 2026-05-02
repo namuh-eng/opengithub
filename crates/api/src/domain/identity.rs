@@ -87,7 +87,83 @@ pub async fn upsert_user_by_email(
     .fetch_one(pool)
     .await?;
 
-    Ok(user_from_row(row))
+    let mut user = user_from_row(row);
+
+    if user.username.is_none() {
+        user.username = Some(ensure_user_username(pool, user.id, email).await?);
+    }
+
+    Ok(user)
+}
+
+async fn ensure_user_username(
+    pool: &PgPool,
+    user_id: Uuid,
+    email: &str,
+) -> Result<String, sqlx::Error> {
+    let base = derive_username_slug(email);
+    for attempt in 0..8 {
+        let candidate = if attempt == 0 {
+            base.clone()
+        } else {
+            let suffix = Uuid::new_v4().simple().to_string();
+            format!("{base}-{}", &suffix[..6])
+        };
+        let result = sqlx::query(
+            "UPDATE users SET username = $1 WHERE id = $2 AND username IS NULL",
+        )
+        .bind(&candidate)
+        .bind(user_id)
+        .execute(pool)
+        .await;
+
+        match result {
+            Ok(rows) if rows.rows_affected() == 1 => return Ok(candidate),
+            Ok(_) => {
+                if let Some(existing) = sqlx::query_scalar::<_, Option<String>>(
+                    "SELECT username FROM users WHERE id = $1",
+                )
+                .bind(user_id)
+                .fetch_one(pool)
+                .await?
+                {
+                    return Ok(existing);
+                }
+            }
+            Err(sqlx::Error::Database(db)) if db.code().as_deref() == Some("23505") => {
+                continue;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Err(sqlx::Error::Protocol(
+        "could not assign unique username after retries".into(),
+    ))
+}
+
+fn derive_username_slug(email: &str) -> String {
+    let local = email.split('@').next().unwrap_or("user");
+    let mut slug: String = local
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    while matches!(slug.chars().next(), Some('-') | Some('_')) {
+        slug.remove(0);
+    }
+    while matches!(slug.chars().next_back(), Some('-') | Some('_')) {
+        slug.pop();
+    }
+    if slug.is_empty() {
+        "user".to_owned()
+    } else {
+        slug
+    }
 }
 
 pub async fn get_user(pool: &PgPool, id: Uuid) -> Result<Option<User>, sqlx::Error> {
