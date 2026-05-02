@@ -2001,3 +2001,11 @@
 - Verification passed: focused real-Postgres `profile_social_actions`; focused `web/tests/user-profile-actions.test.tsx` and `web/tests/user-profile-page.test.tsx`; `make check`; `make test` with Cargo tests plus 224 frontend tests; focused Playwright `profile-overview.spec.ts`; full local-Postgres `make test-e2e` with 84 Playwright tests; mandatory Editorial banned-value scan returned zero matches.
 - A local Postgres cluster was started under `.scratch/pg-profile-001` on `localhost:55432` because Docker was unavailable and no shared localhost Postgres was running. The existing `profile_overview_contract` still has an unrelated DB-backed Stars tab seed assertion mismatch when real DB tests are enabled.
 - Marked Phase 3 as done in `.qrspi/profiles-001/structure.md`; `prd.json` remains `build_pass: false` because Phases 4-5 remain.
+
+2026-05-02 - profiles-002 structure planning
+
+- Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `web/AGENTS.md`, the first incomplete `prd.json` entry, `.qrspi/profiles-001/structure.md`, `design/project/wf-profiles.jsx`, `design/project/og-screens-2.jsx`, current profile frontend components, current profile backend domain/routes, and repository/star schema references.
+- Determined `profiles-002` requires structure planning before implementation because `needs_structure: true` and `.qrspi/profiles-002/structure.md` did not exist.
+- Added `.qrspi/profiles-002/structure.md` with five independently verifiable vertical phases: repository list API, Editorial repository tab shell, URL-backed repository filters, starred repositories tab, and final guardrails/QA handoff.
+- Did not change `prd.json`; `build_pass` remains `false` until all implementation phases pass verification.
+- Tests not run because this iteration only created the required planning artifact.
