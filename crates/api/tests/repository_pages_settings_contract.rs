@@ -14,6 +14,7 @@ use opengithub_api::{
             RepositoryVisibility,
         },
     },
+    jobs::pages::run_pages_build_deployment_once,
 };
 use serde_json::{json, Value};
 use sqlx::{PgPool, Row};
@@ -139,6 +140,86 @@ async fn repository_pages_settings_validate_privacy_mutations_and_audit() {
     .await
     .expect("job lookup should run");
     assert!(queued);
+    sqlx::query(
+        r#"
+        INSERT INTO webhooks (
+            repository_id, url, events, event_selection, created_by_user_id
+        )
+        VALUES ($1, 'https://hooks.example.com/pages', ARRAY['page_build']::text[], 'selected', $2)
+        "#,
+    )
+    .bind(repo.id)
+    .bind(owner.id)
+    .execute(&pool)
+    .await
+    .expect("Pages webhook should persist");
+    let pages_result = run_pages_build_deployment_once(
+        &pool,
+        Uuid::parse_str(deployment_id).expect("deployment id should parse"),
+        "pages-worker-test",
+    )
+    .await
+    .expect("Pages worker should run")
+    .expect("Pages worker should return result");
+    assert_eq!(pages_result.status, "deployed");
+    assert_eq!(pages_result.artifact_count, 1);
+    let published = sqlx::query(
+        r#"
+        SELECT pages_deployments.status,
+               pages_deployments.conclusion,
+               pages_deployments.artifact_storage_key,
+               pages_deployments.artifact_manifest,
+               pages_deployments.build_log_excerpt,
+               pages_sites.provisioning_status
+        FROM pages_deployments
+        JOIN pages_sites ON pages_sites.id = pages_deployments.site_id
+        WHERE pages_deployments.id = $1
+        "#,
+    )
+    .bind(Uuid::parse_str(deployment_id).expect("deployment id should parse"))
+    .fetch_one(&pool)
+    .await
+    .expect("published deployment should load");
+    assert_eq!(published.get::<String, _>("status"), "deployed");
+    assert_eq!(
+        published.get::<Option<String>, _>("conclusion").as_deref(),
+        Some("success")
+    );
+    assert_eq!(published.get::<String, _>("provisioning_status"), "ready");
+    assert!(published
+        .get::<Option<String>, _>("artifact_storage_key")
+        .expect("artifact storage key should persist")
+        .starts_with("pages/"));
+    let manifest = published.get::<Value, _>("artifact_manifest");
+    assert_eq!(manifest["artifactCount"], 1);
+    assert_eq!(manifest["files"][0]["path"], "index.html");
+    assert!(published
+        .get::<Option<String>, _>("build_log_excerpt")
+        .expect("build log should persist")
+        .contains("Published 1 Pages artifact"));
+    let artifact_count = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM pages_build_artifacts WHERE deployment_id = $1 AND path = 'index.html'",
+    )
+    .bind(Uuid::parse_str(deployment_id).expect("deployment id should parse"))
+    .fetch_one(&pool)
+    .await
+    .expect("artifact count should load");
+    assert_eq!(artifact_count, 1);
+    let page_build_delivery = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT count(*)
+        FROM webhook_deliveries
+        JOIN webhooks ON webhooks.id = webhook_deliveries.webhook_id
+        WHERE webhooks.repository_id = $1
+          AND webhook_deliveries.event = 'page_build'
+          AND webhook_deliveries.payload->'payload'->>'status' = 'deployed'
+        "#,
+    )
+    .bind(repo.id)
+    .fetch_one(&pool)
+    .await
+    .expect("page_build delivery count should load");
+    assert_eq!(page_build_delivery, 1);
 
     let (invalid_domain_status, _, invalid_domain_body) = send_json(
         app.clone(),
@@ -238,6 +319,74 @@ async fn repository_pages_settings_validate_privacy_mutations_and_audit() {
     .await;
     assert_eq!(conflict_status, StatusCode::CONFLICT);
     assert_eq!(conflict_body["error"]["code"], "conflict");
+
+    let workflow_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO actions_workflows (repository_id, name, path, trigger_events)
+        VALUES ($1, 'Pages deploy', '.github/workflows/pages.yml', ARRAY['workflow_dispatch']::text[])
+        RETURNING id
+        "#,
+    )
+    .bind(repo.id)
+    .fetch_one(&pool)
+    .await
+    .expect("workflow should persist");
+    let run_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO workflow_runs (
+            repository_id, workflow_id, actor_user_id, run_number, status,
+            conclusion, head_branch, event, completed_at
+        )
+        VALUES ($1, $2, $3, 7, 'completed', 'success', 'main', 'workflow_dispatch', now())
+        RETURNING id
+        "#,
+    )
+    .bind(repo.id)
+    .bind(workflow_id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("workflow run should persist");
+    let artifact_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO workflow_artifacts (run_id, name, digest, size_bytes, storage_key)
+        VALUES ($1, 'github-pages', 'sha256:pages-artifact', 2048, 'actions/artifacts/github-pages.zip')
+        RETURNING id
+        "#,
+    )
+    .bind(run_id)
+    .fetch_one(&pool)
+    .await
+    .expect("workflow artifact should persist");
+    let (actions_deploy_status, _, actions_deploy_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("{uri}/actions-deployments"),
+        Some(&owner_cookie),
+        Some(json!({ "workflowRunId": run_id, "workflowArtifactId": artifact_id })),
+    )
+    .await;
+    assert_eq!(actions_deploy_status, StatusCode::OK);
+    let actions_deployment_id = actions_deploy_body["deployment"]["id"]
+        .as_str()
+        .expect("Actions deployment id should serialize");
+    let actions_result = run_pages_build_deployment_once(
+        &pool,
+        Uuid::parse_str(actions_deployment_id).expect("Actions deployment id should parse"),
+        "pages-worker-test",
+    )
+    .await
+    .expect("Actions Pages worker should run")
+    .expect("Actions Pages worker should return result");
+    assert_eq!(actions_result.status, "deployed");
+    let actions_artifact_path = sqlx::query_scalar::<_, String>(
+        "SELECT path FROM pages_build_artifacts WHERE deployment_id = $1",
+    )
+    .bind(Uuid::parse_str(actions_deployment_id).expect("Actions deployment id should parse"))
+    .fetch_one(&pool)
+    .await
+    .expect("Actions Pages artifact should persist");
+    assert_eq!(actions_artifact_path, "github-pages.zip");
 
     let (unpublish_status, _, unpublish_body) = send_json(
         app.clone(),

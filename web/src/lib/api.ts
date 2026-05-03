@@ -1353,6 +1353,9 @@ export type PagesDeploymentSummary = {
   customDomainUrl: string | null;
   workflowRunId: string | null;
   workflowArtifactId: string | null;
+  artifactStorageKey: string | null;
+  artifactManifest: Record<string, unknown>;
+  buildLogExcerpt: string | null;
   failureReason: string | null;
   queuedAt: string;
   completedAt: string | null;

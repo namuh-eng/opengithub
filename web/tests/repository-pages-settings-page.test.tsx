@@ -75,6 +75,15 @@ function deployment(
     customDomainUrl: "https://docs.namuh.co",
     workflowRunId: null,
     workflowArtifactId: null,
+    artifactStorageKey: "pages/repo/deployment-1",
+    artifactManifest: {
+      artifactCount: 2,
+      storageMode: "local_metadata",
+      storagePrefix: "pages/repo/deployment-1",
+      totalBytes: 512,
+    },
+    buildLogExcerpt:
+      "Published 2 Pages artifact(s) to pages/repo/deployment-1 using local_metadata storage metadata.",
     failureReason: null,
     queuedAt: "2026-05-03T00:00:00Z",
     completedAt: "2026-05-03T00:02:00Z",
@@ -182,6 +191,10 @@ describe("repository Pages settings page", () => {
       "href",
       "/namuh-eng/opengithub/settings/pages#deployment-deployment-1",
     );
+    expect(screen.getByText(/Published 2 Pages artifact/)).toBeVisible();
+    expect(
+      screen.getAllByText(/pages\/repo\/deployment-1/).length,
+    ).toBeGreaterThan(0);
     expect(container.querySelectorAll(".card").length).toBeGreaterThan(0);
     expect(container.innerHTML).toContain("var(--ink-2)");
     expect(container.innerHTML).not.toMatch(

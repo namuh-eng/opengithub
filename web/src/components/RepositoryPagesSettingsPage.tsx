@@ -627,6 +627,11 @@ function deploymentHref(
   return `/${repository.owner_login}/${repository.name}/settings/pages#deployment-${deployment.id}`;
 }
 
+function deploymentArtifactCount(deployment: PagesDeploymentSummary) {
+  const value = deployment.artifactManifest?.artifactCount;
+  return typeof value === "number" ? value : null;
+}
+
 function DeploymentHistory({
   busy,
   onMutate,
@@ -721,6 +726,22 @@ function DeploymentHistory({
                     style={{ color: "var(--err)" }}
                   >
                     {deployment.failureReason}
+                  </span>
+                ) : null}
+                {deployment.buildLogExcerpt ? (
+                  <span className="t-xs mt-1 block">
+                    {deployment.buildLogExcerpt}
+                  </span>
+                ) : null}
+                {deployment.artifactStorageKey ? (
+                  <span
+                    className="t-mono-sm mt-1 block break-all"
+                    style={{ color: "var(--ink-3)" }}
+                  >
+                    {deployment.artifactStorageKey}
+                    {deploymentArtifactCount(deployment) !== null
+                      ? ` · ${deploymentArtifactCount(deployment)} artifact(s)`
+                      : ""}
                   </span>
                 ) : null}
               </span>

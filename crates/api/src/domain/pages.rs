@@ -161,6 +161,9 @@ pub struct PagesDeploymentSummary {
     pub custom_domain_url: Option<String>,
     pub workflow_run_id: Option<Uuid>,
     pub workflow_artifact_id: Option<Uuid>,
+    pub artifact_storage_key: Option<String>,
+    pub artifact_manifest: serde_json::Value,
+    pub build_log_excerpt: Option<String>,
     pub failure_reason: Option<String>,
     pub queued_at: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,
@@ -963,7 +966,8 @@ async fn create_pages_deployment(
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         RETURNING id, source_kind, source_branch, source_folder, status, conclusion,
                   default_url, custom_domain_url, workflow_run_id, workflow_artifact_id,
-                  failure_reason, queued_at, completed_at, created_at
+                  artifact_storage_key, artifact_manifest, build_log_excerpt, failure_reason,
+                  queued_at, completed_at, created_at
         "#,
     )
     .bind(repository.id)
@@ -1158,7 +1162,8 @@ async fn pages_deployments(
         r#"
         SELECT id, source_kind, source_branch, source_folder, workflow_run_id,
                workflow_artifact_id, status, conclusion, default_url, custom_domain_url,
-               failure_reason, queued_at, completed_at, created_at
+               artifact_storage_key, artifact_manifest, build_log_excerpt, failure_reason,
+               queued_at, completed_at, created_at
         FROM pages_deployments
         WHERE repository_id = $1
         ORDER BY created_at DESC
@@ -1331,6 +1336,9 @@ fn deployment_from_row(row: sqlx::postgres::PgRow) -> Result<PagesDeploymentSumm
         custom_domain_url: row.try_get("custom_domain_url")?,
         workflow_run_id: row.try_get("workflow_run_id")?,
         workflow_artifact_id: row.try_get("workflow_artifact_id")?,
+        artifact_storage_key: row.try_get("artifact_storage_key")?,
+        artifact_manifest: row.try_get("artifact_manifest")?,
+        build_log_excerpt: row.try_get("build_log_excerpt")?,
         failure_reason: row.try_get("failure_reason")?,
         queued_at: row.try_get("queued_at")?,
         completed_at: row.try_get("completed_at")?,

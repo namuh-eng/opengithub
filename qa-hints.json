@@ -3710,5 +3710,24 @@
       "Actions artifact deployment linking is API-shaped but needs deeper QA with real workflow artifacts during Phase 4.",
       "Verify custom-domain removal, CNAME behavior, and domain takeover prevention against real DNS/provider state."
     ]
+  },
+  {
+    "feature_id": "settings-006",
+    "tests_written": [
+      "Completed Phase 4 Pages build and serving integration without marking settings-006 build_pass=true.",
+      "Added a Rust Pages build worker for pages-build-deploy leases that publishes branch-source repository files into pages_build_artifacts metadata and records deployment artifact manifests, storage keys, bounded build logs, and ready/failed site provisioning status.",
+      "The worker now links successful Actions workflow artifacts into Pages deployments, rejects missing/expired/unbacked artifacts, and keeps repository source files untouched.",
+      "Pages deployment summaries now expose artifactStorageKey, artifactManifest, and buildLogExcerpt to the settings UI, and the Editorial deployment history renders confirmed worker state.",
+      "Focused Rust contract covers branch artifact publication, Actions artifact publication, page_build webhook queueing, persisted artifact rows, and source preservation.",
+      "Verification included focused Rust/Vitest checks, make check, make test, full make test-e2e with 97 Playwright tests, and the mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Run Pages publication against real AWS S3 and CloudFront rather than the local metadata storage mode used in tests.",
+      "Verify real Cloudflare DNS, ACM/certificate readiness, CloudFront alias activation, and cache invalidation before production hardening.",
+      "Exercise missing /docs, missing index.html, large file sets, binary assets, CNAME file behavior, and bounded build-log redaction with a clean migrated database.",
+      "Confirm Actions artifact provenance with real workflow artifact archives and ensure unrelated artifacts cannot create Pages deployments.",
+      "Verify page_build webhook payloads against external receivers and retry behavior after worker success/failure.",
+      "Probe private repository leakage for artifact storage keys, CloudFront aliases, build logs, and custom-domain metadata in non-admin views."
+    ]
   }
 ]

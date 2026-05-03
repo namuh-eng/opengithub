@@ -65,7 +65,7 @@
 
 ## Phase 4: Pages Build and Serving Integration - branch artifacts, Actions artifacts, CloudFront/S3, and status
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make Pages operational beyond settings rows. Branch-source and Actions-source deployments should create durable static artifacts, update deployment status, expose a live/public URL state, and model CloudFront/S3/Cloudflare integration without deleting repository code.
 
