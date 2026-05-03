@@ -3860,5 +3860,23 @@
       "Verify webhook/activity delivery with multiple active hooks, wildcard hooks, disabled hooks, and failing delivery retries.",
       "Probe private repository leakage, immutable release restrictions, archived repository blocking, and audit redaction on a clean migrated database."
     ]
+  },
+  {
+    "feature_id": "releases-002",
+    "tests_written": [
+      "Completed Phase 2 Dedicated Editorial Release Form Pages without marking releases-002 build_pass=true.",
+      "Added typed frontend release management context helpers and dedicated App Router pages for /{owner}/{repo}/releases/new and /{owner}/{repo}/releases/edit/{id}.",
+      "Added RepositoryReleaseFormPage with tag/new-tag selection, target ref selector, previous-tag selector, Markdown editor/preview, generated-notes preview state, latest policy radios, draft/prerelease options, asset upload shell, existing asset rows, immutable/archived disabled states, and danger-zone delete-tag UI.",
+      "Updated release list/detail pages so writer actions navigate to the dedicated management routes instead of opening the compact inline manager.",
+      "Focused Vitest covers new/edit rendering, permission state, generated-notes preview sanitization, selectors, disabled action controls, assets, immutable state, danger controls, no dead controls, and concrete links.",
+      "Focused Playwright smoke covers seeded release list/latest/tags plus the new and edit management pages, no dead visible controls, and screenshots for releases-002-phase2-new-form.jpg and releases-002-phase2-edit-form.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 still needs server-confirmed create, update, publish, delete, generated-notes insertion, duplicate-tag rejection, and rollback-on-error flows.",
+      "Phase 4 still needs real upload intent completion/cancel behavior, progress rows, file validation, removal before publish, and provider-backed S3 signed upload checks.",
+      "Re-test generated notes against complex commit histories, merge commits, squash merges, empty ranges, tags with slashes, and long contributor lists.",
+      "Verify mobile keyboard traversal and screen-reader flow through the dedicated form once mutation controls become enabled.",
+      "Stress private repository leakage, immutable release restrictions, archived repository blocking, and concurrent release edits on a clean migrated database."
+    ]
   }
 ]

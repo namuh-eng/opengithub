@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { RepositoryReleaseFormPage } from "@/components/RepositoryReleaseFormPage";
 import {
   RepositoryReleaseDetailPage,
   RepositoryReleasesPage,
@@ -7,6 +8,7 @@ import {
 } from "@/components/RepositoryReleasesPage";
 import type {
   ListEnvelope,
+  ReleaseManagementContext,
   ReleaseTagSummary,
   RepositoryOverview,
   RepositoryReleaseDetail,
@@ -168,6 +170,61 @@ function tagEnvelope(
   return { items, page: 1, pageSize: 30, total: items.length };
 }
 
+function releaseRef(
+  overrides: Partial<ReleaseManagementContext["availableRefs"][number]> = {},
+): ReleaseManagementContext["availableRefs"][number] {
+  return {
+    name: "main",
+    shortName: "main",
+    kind: "branch",
+    targetOid: "abcdef1234567890",
+    shortOid: "abcdef1",
+    committedAt: "2026-05-03T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function managementContext(
+  overrides: Partial<ReleaseManagementContext> = {},
+): ReleaseManagementContext {
+  const tagRef = releaseRef({
+    kind: "tag",
+    name: "v2.0.0",
+    shortName: "v2.0.0",
+  });
+  return {
+    repositoryId: "repo-1",
+    ownerLogin: "mona",
+    name: "octo-app",
+    canWrite: true,
+    archived: false,
+    release: null,
+    availableTags: [tagRef],
+    availableRefs: [releaseRef(), tagRef],
+    defaultTarget: "main",
+    previousTagCandidates: [tagRef],
+    latestPolicyOptions: [
+      {
+        value: "automatic",
+        label: "Automatic",
+        description: "Use the newest stable published release.",
+      },
+      {
+        value: "legacy",
+        label: "Legacy",
+        description: "Keep the existing latest marker unchanged.",
+      },
+    ],
+    uploadLimits: {
+      maxAssetBytes: 2_147_483_648,
+      maxAssetCount: 100,
+      allowedStorageKinds: ["local", "s3"],
+      expiresInSeconds: 900,
+    },
+    ...overrides,
+  };
+}
+
 function expectNoDeadControls(container: HTMLElement) {
   expect(container.querySelectorAll('a[href="#"], a:not([href])')).toHaveLength(
     0,
@@ -266,15 +323,10 @@ describe("RepositoryReleasesPage", () => {
         repository={repositoryOverview({ viewerPermission: "write" })}
       />,
     );
-    expect(screen.getByText("Draft or publish a release")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "New release" }));
-    expect(screen.getByLabelText("Tag")).toHaveValue("");
-    expect(screen.getByLabelText("Target branch, tag, or SHA")).toHaveValue(
-      "main",
+    expect(screen.getByRole("link", { name: "New release" })).toHaveAttribute(
+      "href",
+      "/mona/octo-app/releases/new",
     );
-    expect(
-      screen.getByRole("button", { name: "Create release" }),
-    ).toBeVisible();
   });
 });
 
@@ -302,7 +354,7 @@ describe("RepositoryReleaseDetailPage", () => {
     expectNoDeadControls(container);
   });
 
-  it("renders edit, publish, delete, and asset controls for write viewers", () => {
+  it("links write viewers to the dedicated edit and publish surface", () => {
     const detail: RepositoryReleaseDetail = {
       ...release({ draft: true, latest: false }),
       body: "Draft notes",
@@ -318,15 +370,96 @@ describe("RepositoryReleaseDetailPage", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    expect(screen.getByDisplayValue("Stable Editorial release")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Save release" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Publish draft" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Edit release" })).toHaveAttribute(
+      "href",
+      "/mona/octo-app/releases/edit/release-1",
+    );
+    expect(screen.getByRole("link", { name: "Publish draft" })).toHaveAttribute(
+      "href",
+      "/mona/octo-app/releases/edit/release-1",
+    );
+  });
+});
+
+describe("RepositoryReleaseFormPage", () => {
+  it("renders the dedicated new release form with selectors, preview, policy, and disabled submit actions", () => {
+    const { container } = render(
+      <RepositoryReleaseFormPage
+        context={managementContext()}
+        mode="new"
+        repository={repositoryOverview({ viewerPermission: "write" })}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "New release" })).toBeVisible();
+    expect(screen.getByLabelText("Existing tag")).toHaveValue("v2.0.0");
+    expect(screen.getByLabelText("Target branch, tag, or SHA")).toHaveValue(
+      "main",
+    );
+    expect(screen.getByLabelText("Previous tag")).toHaveValue("v2.0.0");
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "Release <script>" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Preview generated notes" }),
+    );
+    expect(screen.getByText("Release <script>")).toBeVisible();
+    expect(screen.queryByText("<script>")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Preview" })).toBeVisible();
+    expect(screen.getByLabelText("Release asset files")).toBeEnabled();
+    expect(screen.getByLabelText("Release asset files")).toHaveAttribute(
+      "type",
+      "file",
+    );
+    expect(
+      screen.getByRole("button", { name: "Publish release" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save draft" })).toBeDisabled();
+    expectNoDeadControls(container);
+  });
+
+  it("renders edit, immutable, danger, and existing asset states", () => {
+    const detail: RepositoryReleaseDetail = {
+      ...release({ draft: true, latest: false }),
+      body: "Draft notes",
+      bodyHtml: "<p>Draft notes</p>",
+      immutable: true,
+      tagSignatureSummary: null,
+    };
+    render(
+      <RepositoryReleaseFormPage
+        context={managementContext({ release: detail })}
+        mode="edit"
+        repository={repositoryOverview({ viewerPermission: "write" })}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Edit release" })).toBeVisible();
+    expect(screen.getByText("Immutable release")).toBeVisible();
+    expect(screen.getByDisplayValue("Stable Editorial release")).toBeDisabled();
+    expect(screen.getByText("opengithub.tar.gz")).toBeVisible();
     expect(
       screen.getByRole("button", { name: "Delete release" }),
-    ).toBeVisible();
-    expect(screen.getByRole("button", { name: "Upload asset" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Remove" })).toBeVisible();
+    ).toBeDisabled();
+    expect(screen.getByLabelText("Also delete the git tag")).toBeDisabled();
+  });
+
+  it("renders release management forbidden and unavailable states", () => {
+    render(
+      <RepositoryReleaseFormPage
+        context={{
+          error: { code: "permission_denied", message: "forbidden" },
+          status: 403,
+        }}
+        mode="new"
+        repository={repositoryOverview({ viewerPermission: "read" })}
+      />,
+    );
+
+    expect(screen.getByText("Write access required")).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Back to releases" }),
+    ).toHaveAttribute("href", "/mona/octo-app/releases");
   });
 });
 

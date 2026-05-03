@@ -41,6 +41,7 @@ import {
   getRepositoryPullRequestTimelineFromCookie,
   getRepositoryRefsFromCookie,
   getRepositoryReleaseDetailFromCookie,
+  getRepositoryReleaseManagementContextFromCookie,
   getRepositoryReleasesFromCookie,
   getRepositoryReleaseTagsFromCookie,
   getRepositorySettingsFromCookie,
@@ -251,6 +252,20 @@ export async function getRepositoryReleaseTags(
     owner,
     repo,
     query,
+  );
+}
+
+export async function getRepositoryReleaseManagementContext(
+  owner: string,
+  repo: string,
+  releaseId?: string | null,
+) {
+  const requestHeaders = await headers();
+  return getRepositoryReleaseManagementContextFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    releaseId,
   );
 }
 

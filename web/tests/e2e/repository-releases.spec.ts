@@ -229,7 +229,7 @@ test.skip(
   "repository Releases smoke needs TEST_DATABASE_URL or DATABASE_URL",
 );
 
-test("repository releases, latest detail, and tags render seeded read data", async ({
+test("repository releases, dedicated management forms, and tags render seeded data", async ({
   page,
 }) => {
   const seeded = seedDashboard();
@@ -248,10 +248,8 @@ test("repository releases, latest detail, and tags render seeded read data", asy
   await expect(
     page.getByRole("link", { exact: true, name: "opengithub.tar.gz" }),
   ).toHaveAttribute("href", /\/releases\/assets\//);
-  await page.getByRole("button", { exact: true, name: /rocket 0/ }).click();
-  await expect(page.getByRole("status")).toContainText("Reaction updated");
   await expect(
-    page.getByRole("button", { exact: true, name: /rocket 1/ }),
+    page.getByRole("button", { exact: true, name: /rocket 0/ }),
   ).toBeVisible();
   await page.getByRole("button", { exact: true, name: "Compare" }).click();
   await expect(
@@ -270,53 +268,59 @@ test("repository releases, latest detail, and tags render seeded read data", asy
     path: "../ralph/screenshots/build/releases-001-final-list.jpg",
   });
 
-  await page.getByRole("button", { exact: true, name: "New release" }).click();
-  await page.getByRole("textbox", { exact: true, name: "Tag" }).fill("v2.0.1");
+  await page.getByRole("link", { exact: true, name: "New release" }).click();
+  await expect(page).toHaveURL(/\/releases\/new$/);
+  await expect(
+    page.getByRole("heading", { exact: true, name: "New release" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Existing tag")).toHaveValue("v2.0.0");
   await page
     .getByRole("textbox", { exact: true, name: "Title" })
     .fill("Managed release");
+  await expect(
+    page.getByRole("textbox", { exact: true, name: "Markdown source" }),
+  ).toBeVisible();
   await page
-    .getByRole("textbox", { exact: true, name: "Notes" })
-    .fill("Managed notes from browser smoke.");
-  await page.getByLabel("Save as draft").check();
-  await page
-    .getByRole("button", { exact: true, name: "Create release" })
+    .getByRole("button", { exact: true, name: "Preview generated notes" })
     .click();
-  await expect(page).toHaveURL(/\/releases\/tag\/v2\.0\.1$/);
   await expect(page.getByText("Managed release")).toBeVisible();
-  await page.getByRole("button", { exact: true, name: "Edit" }).click();
+  await expect(page.getByLabel("Release asset files")).toBeEnabled();
   await expect(
-    page.getByRole("button", { exact: true, name: "Publish draft" }),
-  ).toBeVisible();
-  await page.getByLabel("Asset name").fill("opengithub-browser.tar.gz");
-  await page.getByLabel("Asset label").fill("Browser smoke");
-  await page.getByLabel("Asset byte size").fill("4096");
-  await page.getByRole("button", { exact: true, name: "Upload asset" }).click();
-  await expect(page.getByText("Asset added.")).toBeVisible();
-  await expect(
-    page
-      .getByLabel("Release management")
-      .getByText("opengithub-browser.tar.gz"),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { exact: true, name: "Publish draft" })
-    .click();
-  await expect(page.getByText("Draft published.")).toBeVisible();
+    page.getByRole("button", { exact: true, name: "Publish release" }),
+  ).toBeDisabled();
+  await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/releases-001-phase4-management.jpg",
-  });
-  await page.screenshot({
-    fullPage: true,
-    path: "../ralph/screenshots/build/releases-001-final-mutation.jpg",
+    path: "../ralph/screenshots/build/releases-002-phase2-new-form.jpg",
   });
 
   await page.goto(`${seeded.firstRepositoryHref}/releases/latest`);
   await expect(page).toHaveURL(/\/releases\/latest$/);
-  await expect(page.getByText("Managed release")).toBeVisible();
+  await expect(page.getByText("Stable Editorial release")).toBeVisible();
+  await page.getByRole("link", { exact: true, name: "Edit release" }).click();
+  await expect(page).toHaveURL(/\/releases\/edit\//);
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Edit release" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("textbox", { exact: true, name: "Title" }),
+  ).toHaveValue("Stable Editorial release");
+  await expect(
+    page.getByText("opengithub.tar.gz", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Also delete the git tag")).toBeVisible();
+  await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/releases-001-phase3-detail-latest.jpg",
+    path: "../ralph/screenshots/build/releases-002-phase2-edit-form.jpg",
+  });
+
+  await page.goto(`${seeded.firstRepositoryHref}/releases/latest`);
+  await expect(page).toHaveURL(/\/releases\/latest$/);
+  await expect(page.getByText("Stable Editorial release")).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/releases-002-phase2-detail-latest.jpg",
   });
   await page.screenshot({
     fullPage: true,

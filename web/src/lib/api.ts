@@ -949,6 +949,8 @@ export type ReleaseMutation = {
   body?: string;
   draft?: boolean;
   prerelease?: boolean;
+  latestPolicy?: string;
+  deleteTag?: boolean;
 };
 
 export type ReleaseAssetMutation = {
@@ -977,6 +979,66 @@ export type ReleaseTagSummary = {
 export type RepositoryReleaseListQuery = {
   page?: number;
   pageSize?: number;
+};
+
+export type ReleaseRefOption = {
+  name: string;
+  shortName: string;
+  kind: string;
+  targetOid: string | null;
+  shortOid: string | null;
+  committedAt: string | null;
+};
+
+export type ReleaseLatestPolicyOption = {
+  value: string;
+  label: string;
+  description: string;
+};
+
+export type ReleaseUploadLimits = {
+  maxAssetBytes: number;
+  maxAssetCount: number;
+  allowedStorageKinds: string[];
+  expiresInSeconds: number;
+};
+
+export type ReleaseManagementContext = {
+  repositoryId: string;
+  ownerLogin: string;
+  name: string;
+  canWrite: boolean;
+  archived: boolean;
+  release: RepositoryReleaseDetail | null;
+  availableTags: ReleaseRefOption[];
+  availableRefs: ReleaseRefOption[];
+  defaultTarget: string;
+  previousTagCandidates: ReleaseRefOption[];
+  latestPolicyOptions: ReleaseLatestPolicyOption[];
+  uploadLimits: ReleaseUploadLimits;
+};
+
+export type GeneratedReleaseNotesPreview = {
+  title: string;
+  body: string;
+  target: ReleaseRefOption;
+  previousTag: ReleaseRefOption | null;
+  commitCount: number;
+  mergedPullRequestCount: number;
+  contributors: ReleaseContributorSummary[];
+};
+
+export type ReleaseUploadIntent = {
+  id: string;
+  assetName: string;
+  contentType: string;
+  byteSize: number;
+  checksumSha256: string | null;
+  storageKind: string;
+  uploadUrl: string;
+  handoffToken: string;
+  status: string;
+  expiresAt: string;
 };
 
 export type RepositoryFileFinderItem = {
@@ -6002,6 +6064,43 @@ export async function getRepositoryReleaseTagsFromCookie(
     );
   }
   return body as ListEnvelope<ReleaseTagSummary>;
+}
+
+export async function getRepositoryReleaseManagementContextFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  releaseId?: string | null,
+): Promise<ReleaseManagementContext | ApiErrorEnvelope> {
+  const suffix = releaseId ? `/${encodeURIComponent(releaseId)}` : "";
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/manage${suffix}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Release management is temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return repositoryReleaseError(
+      body,
+      response.status,
+      "Release management could not be loaded.",
+    );
+  }
+  return body as ReleaseManagementContext;
 }
 
 export async function toggleRepositoryReleaseReactionFromCookie(

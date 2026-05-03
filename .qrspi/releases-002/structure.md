@@ -29,7 +29,7 @@
 
 ## Phase 2: Dedicated Editorial Release Form Pages - new/edit routes, selectors, preview, and validation
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the compact inline manager as the primary authoring surface with dedicated Editorial pages at `/{owner}/{repo}/releases/new` and `/{owner}/{repo}/releases/edit/{id}` while keeping read-only release pages clean.
 

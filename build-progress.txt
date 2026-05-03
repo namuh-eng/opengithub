@@ -2689,3 +2689,15 @@
 - Added `.qrspi/releases-002/structure.md` with five independently verifiable phases: release management API hardening, dedicated Editorial new/edit form pages, server-confirmed create/edit/publish/delete flow, asset upload lifecycle, and final docs/browser/QA/build-pass bookkeeping.
 - Did not change `prd.json`; `releases-002.build_pass` remains `false` until all implementation phases pass verification.
 - Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches.
+
+2026-05-03 - releases-002 phase 2 Dedicated Editorial release form pages
+
+- Completed Phase 2 from `.qrspi/releases-002/structure.md`: dedicated `/{owner}/{repo}/releases/new` and `/{owner}/{repo}/releases/edit/{id}` App Router pages now fetch the release management context and render the Editorial authoring shell.
+- Added typed frontend contracts for release management context, refs, latest policy options, upload limits, generated-notes previews, and upload intents in `web/src/lib/api.ts`, plus cookie-backed server-session helpers.
+- Added `RepositoryReleaseFormPage` with tag/new-tag selection, target ref selector, previous-tag selector, title input, Markdown editor/Preview tab, generated-notes preview state, latest policy radios, draft/prerelease options, asset upload shell, existing asset rows, immutable/archived disabled states, and delete-tag danger UI.
+- Updated release list/detail pages so writer actions navigate to the dedicated management routes; the compact inline manager is no longer the primary authoring experience.
+- Added/updated focused Vitest and Playwright coverage for new/edit rendering, permission-gated states, generated-notes preview sanitization, selectors, disabled action controls, asset shell, no dead controls, and concrete release management links.
+- Browser smoke screenshots saved at `ralph/screenshots/build/releases-002-phase2-new-form.jpg`, `releases-002-phase2-edit-form.jpg`, and `releases-002-phase2-detail-latest.jpg`.
+- Verification passed: focused `web/tests/repository-releases-page.test.tsx`; `cd web && npx tsc --noEmit --pretty false`; focused same-env Playwright `repository-releases.spec.ts`; mandatory Editorial banned-value scan returned zero matches; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 315 web tests.
+- Full same-env Playwright was attempted; 25 tests passed and 73 seeded suites failed on the pre-existing local database migration checksum issue: `migration 202605030041 was previously applied but has been modified`.
+- Marked Phase 2 as done in `.qrspi/releases-002/structure.md`; `prd.json` remains `build_pass:false` because Phases 3-5 remain.

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { RepositoryReleaseInteractions } from "@/components/RepositoryReleaseInteractions";
-import { RepositoryReleaseManager } from "@/components/RepositoryReleaseManager";
 import { RepositoryShell } from "@/components/RepositoryShell";
 import type {
   ApiErrorEnvelope,
@@ -64,6 +63,12 @@ function compareHref(repository: RepositoryOverview, tagName: string) {
     repository.name,
     tagName,
     repository.default_branch,
+  );
+}
+
+function canWrite(repository: RepositoryOverview) {
+  return ["owner", "admin", "write"].includes(
+    repository.viewerPermission ?? "",
   );
 }
 
@@ -280,14 +285,23 @@ export function RepositoryReleasesPage({
             <p className="t-label">Repository releases</p>
             <h1 className="t-h1 mt-2">Releases</h1>
           </div>
-          <Link
-            className="btn"
-            href={`${basePath(repository)}/releases/latest`}
-          >
-            Latest release
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            {canWrite(repository) ? (
+              <Link
+                className="btn accent"
+                href={`${basePath(repository)}/releases/new`}
+              >
+                New release
+              </Link>
+            ) : null}
+            <Link
+              className="btn"
+              href={`${basePath(repository)}/releases/latest`}
+            >
+              Latest release
+            </Link>
+          </div>
         </div>
-        <RepositoryReleaseManager repository={repository} />
         {isApiError(releases) ? (
           <ReleaseUnavailable
             error={releases}
@@ -349,19 +363,33 @@ export function RepositoryReleaseDetailPage({
               <Link className="btn" href={`${basePath(repository)}/releases`}>
                 Back to releases
               </Link>
-              {release.immutable ? (
-                <span className="chip soft">Immutable</span>
-              ) : null}
+              <div className="flex flex-wrap gap-2">
+                {canWrite(repository) ? (
+                  <Link
+                    className="btn"
+                    href={`${basePath(repository)}/releases/edit/${release.id}`}
+                  >
+                    Edit release
+                  </Link>
+                ) : null}
+                {release.draft && canWrite(repository) ? (
+                  <Link
+                    className="btn accent"
+                    href={`${basePath(repository)}/releases/edit/${release.id}`}
+                  >
+                    Publish draft
+                  </Link>
+                ) : null}
+                {release.immutable ? (
+                  <span className="chip soft">Immutable</span>
+                ) : null}
+              </div>
             </div>
             <ReleaseCard
               authenticated={authenticated}
               detailHtml={release.bodyHtml}
               release={release}
               repository={repository}
-            />
-            <RepositoryReleaseManager
-              repository={repository}
-              release={release}
             />
             {release.tagSignatureSummary ? (
               <p className="t-xs mt-3">{release.tagSignatureSummary}</p>
