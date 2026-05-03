@@ -4069,5 +4069,24 @@
       "Stress nested image names, organization namespaces, private/internal package leakage, expired/revoked PATs, large manifests, manifest lists, and content-length accuracy against real clients.",
       "The /v2/token exchange currently returns the PAT as the bearer token for compatibility inside the local contract; persisted short-lived registry bearer-token issuance remains a later hardening point."
     ]
+  },
+  {
+    "feature_id": "packages-003",
+    "tests_written": [
+      "Completed Phase 2 Blob Upload, Manifest Push, Tag Listing, and Download Accounting without marking packages-003 build_pass=true.",
+      "Added additive package_registry_uploads migration plus local/S3-compatible storage metadata fields for registry blob lifecycle handoff.",
+      "Implemented POST/PATCH/PUT/DELETE /v2/{namespace}/{image}/blobs/uploads/ with packages:write PAT enforcement, local byte storage, SHA-256 digest validation, cancel/expiry state, and redaction-safe audit events.",
+      "Implemented PUT /v2/{namespace}/{image}/manifests/{reference} to validate uploaded config/layer blobs, upsert package_versions by tag, persist manifest digest/media/config/size metadata, and attach blobs to the version.",
+      "Implemented GET/HEAD /v2/{namespace}/{image}/blobs/{digest} and GET /v2/{namespace}/{image}/tags/list with package visibility checks, Docker registry headers, byte serving, and download accounting on manifest/blob transfers.",
+      "Focused Rust registry contract covers upload start, chunk append, digest completion, manifest push, tag listing, blob pull, digest manifest pull, package_downloads increments, and storage-key/audit redaction.",
+      "Verification passed: focused DB-backed package_registry_contract, make check, make test, and mandatory Editorial banned-value scan. Browser smoke was skipped because this phase is API-first and the structure outline marks browser smoke optional."
+    ],
+    "needs_deeper_qa": [
+      "Run Docker CLI login/push/pull/tag-list compatibility against the local API in Phase 5; Phase 2 uses Docker-compatible HTTP contract tests but not the Docker binary.",
+      "Probe upload resume/cancel with multiple PATCH chunks, interrupted clients, expired uploads, checksum mismatches, duplicate blob reuse, and concurrent tag updates.",
+      "Stress large layer files, manifest lists and multi-arch indexes, nested image names that Docker clients commonly use, and Content-Range behavior.",
+      "Verify private/internal package leakage across anonymous users, read-only package grants, write package grants, owner tokens, linked repository permissions, and org namespaces.",
+      "Confirm S3-backed storage health in production; Phase 2 stores bytes under OPENGITHUB_PACKAGE_REGISTRY_STORAGE_DIR locally and records storage_kind for S3 handoff."
+    ]
   }
 ]

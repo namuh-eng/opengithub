@@ -2830,3 +2830,14 @@
 - Added `.qrspi/packages-003/structure.md` with five independently verifiable phases: OCI registry auth and manifest reads, blob upload/manifest push/tag listing/download accounting, Actions publishing and repository linking, package admin mutations/delete/restore/settings enablement, and final developer docs/Docker smoke/QA/build-pass bookkeeping.
 - Did not change `prd.json`; `packages-003.build_pass` remains `false` until all implementation phases pass verification.
 - Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
+2026-05-03 - packages-003 phase 2 blob upload, manifest push, tag list, and download accounting
+
+- Completed Phase 2 from `.qrspi/packages-003/structure.md`: OCI registry clients now have real blob upload/download bytes, manifest push, tag listing, and transfer accounting without marking `packages-003.build_pass=true`.
+- Added additive migration `202605032120_package_registry_blob_uploads` for `package_registry_uploads`, local/S3-compatible storage metadata, upload status/expiry, and blob byte-size/storage-kind fields.
+- Extended registry auth so PATs with `packages:write` can push while `packages:read` still pulls; write routes require package ownership, package write/admin grant, linked repository write/admin, or org owner/admin access.
+- Implemented Docker Registry v2 upload lifecycle routes: start, append, complete by SHA-256 digest, and cancel. Local development bytes are stored under `OPENGITHUB_PACKAGE_REGISTRY_STORAGE_DIR` or a temp fallback.
+- Implemented manifest push with uploaded config/layer validation, tag upsert into `package_versions`, manifest digest/media/config/size persistence, blob-to-version attachment, and redaction-safe registry audit events.
+- Implemented blob GET/HEAD and tag listing with package visibility checks, Docker registry headers, and `package_downloads` increments only for manifest/blob transfer bodies.
+- Extended `package_registry_contract` to cover upload start/patch/complete, manifest push, tag listing, blob pull, digest manifest pull, download accounting, and storage-key/audit redaction.
+- Verification passed: focused DB-backed `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 cargo test -p opengithub-api --test package_registry_contract`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 329 web tests; mandatory Editorial banned-value scan returned zero matches using `rg -n -e`.
+- Browser smoke and `make test-e2e` were skipped because Phase 2 is API-first and the structure outline marks browser smoke optional for this phase. `prd.json` remains `build_pass:false` because Phases 3-5 remain.

@@ -47,6 +47,15 @@ impl VerifiedPersonalAccessToken {
             )
         })
     }
+
+    pub fn allows_package_write(&self) -> bool {
+        self.scopes.iter().any(|scope| {
+            matches!(
+                scope.as_str(),
+                "packages:write" | "packages:admin" | "write:packages" | "admin:packages"
+            )
+        })
+    }
 }
 
 pub async fn verify_personal_access_token(

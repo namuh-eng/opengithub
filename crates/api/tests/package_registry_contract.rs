@@ -15,12 +15,16 @@ use opengithub_api::{
     },
 };
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use sqlx::PgPool;
+use std::sync::LazyLock;
 use tower::ServiceExt;
 use url::Url;
 use uuid::Uuid;
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+static REGISTRY_STORAGE_ENV_LOCK: LazyLock<tokio::sync::Mutex<()>> =
+    LazyLock::new(|| tokio::sync::Mutex::new(()));
 
 async fn database_pool() -> Option<PgPool> {
     let database_url = std::env::var("TEST_DATABASE_URL")
@@ -204,6 +208,16 @@ async fn request(
     uri: &str,
     headers: HeaderMap,
 ) -> (StatusCode, HeaderMap, Vec<u8>) {
+    request_with_body(app, method, uri, headers, Body::empty()).await
+}
+
+async fn request_with_body(
+    app: axum::Router,
+    method: Method,
+    uri: &str,
+    headers: HeaderMap,
+    body: Body,
+) -> (StatusCode, HeaderMap, Vec<u8>) {
     let mut builder = Request::builder().method(method).uri(uri);
     for (name, value) in headers {
         if let Some(name) = name {
@@ -211,7 +225,7 @@ async fn request(
         }
     }
     let response = app
-        .oneshot(builder.body(Body::empty()).expect("request should build"))
+        .oneshot(builder.body(body).expect("request should build"))
         .await
         .expect("request should run");
     let status = response.status();
@@ -223,12 +237,229 @@ async fn request(
     (status, headers, bytes)
 }
 
+fn sha256_digest(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        use std::fmt::Write as _;
+        let _ = write!(&mut hex, "{byte:02x}");
+    }
+    format!("sha256:{hex}")
+}
+
 fn basic_auth(token: &str) -> HeaderValue {
     HeaderValue::from_str(&format!(
         "Basic {}",
         base64::engine::general_purpose::STANDARD.encode(format!("opengithub:{token}"))
     ))
     .expect("basic auth should build")
+}
+
+#[tokio::test]
+async fn registry_blob_upload_manifest_push_tag_list_and_pull_record_downloads() {
+    let _env_guard = REGISTRY_STORAGE_ENV_LOCK.lock().await;
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping package registry contract; set TEST_DATABASE_URL");
+        return;
+    };
+    let storage_dir = std::env::temp_dir().join(format!("opengithub-registry-{}", Uuid::new_v4()));
+    std::env::set_var("OPENGITHUB_PACKAGE_REGISTRY_STORAGE_DIR", &storage_dir);
+
+    let marker = format!("push{}", Uuid::new_v4().simple());
+    let namespace = format!("{marker}-owner");
+    let owner = create_user(&pool, &namespace).await;
+    let image = format!("{marker}-image");
+    let (package_id, _) = insert_container_package(&pool, &owner, &image, "private").await;
+    let write_token = create_pat(&pool, owner.id, &["packages:write"]).await;
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), app_config());
+
+    let upload_blob = |app: axum::Router,
+                       token: String,
+                       namespace: String,
+                       image: String,
+                       bytes: Vec<u8>| async move {
+        let digest = sha256_digest(&bytes);
+        let mut headers = HeaderMap::new();
+        headers.insert(header::AUTHORIZATION, basic_auth(&token));
+        let (status, headers, _) = request(
+            app.clone(),
+            Method::POST,
+            &format!("/v2/{namespace}/{image}/blobs/uploads/"),
+            headers,
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED);
+        let upload_location = headers
+            .get(header::LOCATION)
+            .and_then(|value| value.to_str().ok())
+            .expect("upload location")
+            .to_owned();
+
+        let mut headers = HeaderMap::new();
+        headers.insert(header::AUTHORIZATION, basic_auth(&token));
+        let (status, headers, _) = request_with_body(
+            app.clone(),
+            Method::PATCH,
+            &upload_location,
+            headers,
+            Body::from(bytes),
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED);
+        assert!(headers.contains_key(header::RANGE));
+
+        let mut headers = HeaderMap::new();
+        headers.insert(header::AUTHORIZATION, basic_auth(&token));
+        let (status, headers, body) = request(
+            app,
+            Method::PUT,
+            &format!("{upload_location}?digest={digest}"),
+            headers,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+        assert_eq!(
+            headers
+                .get("docker-content-digest")
+                .and_then(|value| value.to_str().ok())
+                .expect("blob digest"),
+            digest
+        );
+        assert!(!String::from_utf8(body)
+            .expect("utf8 body")
+            .contains("storage"));
+        digest
+    };
+
+    let config_bytes = br#"{"architecture":"amd64","os":"linux"}"#.to_vec();
+    let layer_bytes = b"container layer bytes".to_vec();
+    let config_digest = upload_blob(
+        app.clone(),
+        write_token.clone(),
+        namespace.clone(),
+        image.clone(),
+        config_bytes.clone(),
+    )
+    .await;
+    let layer_digest = upload_blob(
+        app.clone(),
+        write_token.clone(),
+        namespace.clone(),
+        image.clone(),
+        layer_bytes.clone(),
+    )
+    .await;
+    let manifest = json!({
+        "schemaVersion": 2,
+        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "config": {
+            "mediaType": "application/vnd.oci.image.config.v1+json",
+            "digest": config_digest,
+            "size": config_bytes.len()
+        },
+        "layers": [{
+            "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+            "digest": layer_digest,
+            "size": layer_bytes.len()
+        }]
+    });
+    let mut headers = HeaderMap::new();
+    headers.insert(header::AUTHORIZATION, basic_auth(&write_token));
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/vnd.oci.image.manifest.v1+json"),
+    );
+    let (status, headers, _) = request_with_body(
+        app.clone(),
+        Method::PUT,
+        &format!("/v2/{namespace}/{image}/manifests/v2"),
+        headers,
+        Body::from(serde_json::to_vec(&manifest).expect("manifest json")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let manifest_digest = headers
+        .get("docker-content-digest")
+        .and_then(|value| value.to_str().ok())
+        .expect("manifest digest")
+        .to_owned();
+    assert!(manifest_digest.starts_with("sha256:"));
+
+    let mut headers = HeaderMap::new();
+    headers.insert(header::AUTHORIZATION, basic_auth(&write_token));
+    let (status, _, body) = request(
+        app.clone(),
+        Method::GET,
+        &format!("/v2/{namespace}/{image}/tags/list"),
+        headers,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let tags = json_body(&body);
+    assert!(tags["tags"]
+        .as_array()
+        .expect("tags array")
+        .iter()
+        .any(|tag| tag == "v2"));
+
+    let mut headers = HeaderMap::new();
+    headers.insert(header::AUTHORIZATION, basic_auth(&write_token));
+    let (status, headers, body) = request(
+        app.clone(),
+        Method::GET,
+        &format!("/v2/{namespace}/{image}/blobs/{layer_digest}"),
+        headers,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, layer_bytes);
+    assert_eq!(
+        headers
+            .get("docker-content-digest")
+            .and_then(|value| value.to_str().ok())
+            .expect("pulled digest"),
+        layer_digest
+    );
+
+    let mut headers = HeaderMap::new();
+    headers.insert(header::AUTHORIZATION, basic_auth(&write_token));
+    let (status, _, body) = request(
+        app.clone(),
+        Method::GET,
+        &format!("/v2/{namespace}/{image}/manifests/{manifest_digest}"),
+        headers,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json_body(&body)["schemaVersion"], 2);
+
+    let download_count: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(download_count), 0)::bigint FROM package_downloads WHERE package_id = $1",
+    )
+    .bind(package_id)
+    .fetch_one(&pool)
+    .await
+    .expect("download count should load");
+    assert!(download_count >= 2);
+
+    let manifest_version_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM package_versions WHERE package_id = $1 AND version = 'v2' AND digest = $2",
+    )
+    .bind(package_id)
+    .bind(&manifest_digest)
+    .fetch_one(&pool)
+    .await
+    .expect("manifest version count should load");
+    assert_eq!(manifest_version_count, 1);
+
+    let storage_key_leaks: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM package_registry_audit_events WHERE package_id = $1 AND COALESCE(reference, '') LIKE '%opengithub-registry%'",
+    )
+    .bind(package_id)
+    .fetch_one(&pool)
+    .await
+    .expect("audit leak count should load");
+    assert_eq!(storage_key_leaks, 0);
 }
 
 fn json_body(bytes: &[u8]) -> Value {

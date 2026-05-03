@@ -23,7 +23,7 @@
 
 ## Phase 2: Blob Upload, Manifest Push, Tag Listing, and Download Accounting
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement real container push and pull byte flows. Clients must upload blobs by digest, complete uploads only after checksum validation, push manifests that create or update package versions/tags, list tags, pull blobs with permission checks, and increment `package_downloads` only on actual blob/manifest transfer.
 
