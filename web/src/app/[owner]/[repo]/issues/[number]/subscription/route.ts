@@ -19,6 +19,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     typeof body === "object" && body !== null && "subscribed" in body
       ? Boolean(body.subscribed)
       : false;
+  const customEvents =
+    typeof body === "object" &&
+    body !== null &&
+    Array.isArray(body.customEvents)
+      ? body.customEvents.filter(
+          (event: unknown): event is string => typeof event === "string",
+        )
+      : [];
 
   try {
     const subscription = await updateRepositoryIssueSubscriptionFromCookie(
@@ -27,6 +35,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       decodeURIComponent(repo),
       decodeURIComponent(number),
       subscribed,
+      customEvents,
     );
     return NextResponse.json(subscription);
   } catch (error) {

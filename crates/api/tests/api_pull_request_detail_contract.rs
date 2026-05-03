@@ -569,13 +569,40 @@ async fn pull_request_detail_contract_returns_screen_ready_metadata() {
     assert_eq!(unsubscribe_status, StatusCode::OK);
     assert_eq!(unsubscribe_body["subscribed"], false);
     assert_eq!(unsubscribe_body["reason"], "ignored");
+    assert_eq!(unsubscribe_body["customEvents"], json!([]));
+    assert_eq!(unsubscribe_body["canCustomize"], true);
+
+    let (customize_status, customize_body) = patch_json(
+        app.clone(),
+        &format!("{uri}/subscription"),
+        Some(&owner_cookie),
+        json!({ "subscribed": true, "customEvents": ["merged", "closed"] }),
+    )
+    .await;
+    assert_eq!(customize_status, StatusCode::OK);
+    assert_eq!(customize_body["subscribed"], true);
+    assert_eq!(customize_body["customEvents"], json!(["merged", "closed"]));
+
+    let (invalid_custom_status, invalid_custom_body) = patch_json(
+        app.clone(),
+        &format!("{uri}/subscription"),
+        Some(&owner_cookie),
+        json!({ "subscribed": true, "customEvents": ["assigned"] }),
+    )
+    .await;
+    assert_eq!(invalid_custom_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(invalid_custom_body["error"]["code"], "validation_failed");
 
     let (owner_after_unsubscribe_status, owner_after_unsubscribe_body) =
         get_json(app.clone(), &uri, Some(&owner_cookie)).await;
     assert_eq!(owner_after_unsubscribe_status, StatusCode::OK);
     assert_eq!(
         owner_after_unsubscribe_body["subscription"]["subscribed"],
-        false
+        true
+    );
+    assert_eq!(
+        owner_after_unsubscribe_body["subscription"]["customEvents"],
+        json!(["merged", "closed"])
     );
 
     let (timeline_after_status, timeline_after_body) =

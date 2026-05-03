@@ -143,6 +143,8 @@ struct ReactionRequest {
 #[serde(rename_all = "camelCase")]
 struct UpdateIssueSubscriptionRequest {
     subscribed: bool,
+    #[serde(default)]
+    custom_events: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -746,6 +748,7 @@ async fn update_subscription(
         UpdateIssueSubscription {
             actor_user_id: actor.0.id,
             subscribed: request.subscribed,
+            custom_events: request.custom_events,
         },
     )
     .await

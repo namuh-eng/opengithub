@@ -129,6 +129,7 @@ pub struct UpdatePullRequestReviewRequests {
 pub struct UpdatePullRequestSubscription {
     pub actor_user_id: Uuid,
     pub subscribed: bool,
+    pub custom_events: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -323,6 +324,8 @@ pub struct PullRequestReviewStatus {
 pub struct PullRequestSubscriptionState {
     pub subscribed: bool,
     pub reason: String,
+    pub custom_events: Vec<String>,
+    pub can_customize: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -3204,12 +3207,18 @@ pub async fn update_pull_request_subscription(
         RepositoryRole::Read,
     )
     .await?;
+    let custom_events = super::issues::normalize_thread_subscription_events(&input.custom_events)?;
     sqlx::query(
         r#"
-        INSERT INTO pull_request_subscriptions (pull_request_id, user_id, subscribed, reason)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO pull_request_subscriptions (
+            pull_request_id, user_id, subscribed, reason, custom_events
+        )
+        VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (pull_request_id, user_id)
-        DO UPDATE SET subscribed = EXCLUDED.subscribed, reason = EXCLUDED.reason
+        DO UPDATE SET
+            subscribed = EXCLUDED.subscribed,
+            reason = EXCLUDED.reason,
+            custom_events = EXCLUDED.custom_events
         "#,
     )
     .bind(pull_request.id)
@@ -3220,6 +3229,7 @@ pub async fn update_pull_request_subscription(
     } else {
         "ignored"
     })
+    .bind(&custom_events)
     .execute(pool)
     .await?;
     pull_request_subscription_state(pool, &pull_request, Some(input.actor_user_id)).await
@@ -5690,11 +5700,13 @@ async fn pull_request_subscription_state(
         return Ok(PullRequestSubscriptionState {
             subscribed: false,
             reason: "anonymous".to_owned(),
+            custom_events: Vec::new(),
+            can_customize: false,
         });
     };
     let explicit = sqlx::query(
         r#"
-        SELECT subscribed, reason
+        SELECT subscribed, reason, custom_events
         FROM pull_request_subscriptions
         WHERE pull_request_id = $1 AND user_id = $2
         "#,
@@ -5707,6 +5719,8 @@ async fn pull_request_subscription_state(
         return Ok(PullRequestSubscriptionState {
             subscribed: row.get("subscribed"),
             reason: row.get("reason"),
+            custom_events: row.get("custom_events"),
+            can_customize: true,
         });
     }
     let participating = pull_request.author_user_id == actor_user_id
@@ -5742,6 +5756,8 @@ async fn pull_request_subscription_state(
         } else {
             "not_subscribed".to_owned()
         },
+        custom_events: Vec::new(),
+        can_customize: true,
     })
 }
 

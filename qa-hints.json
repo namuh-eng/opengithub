@@ -4308,5 +4308,23 @@
       "Phase 4 still needs notification fanout wiring for repository watch levels and thread overrides.",
       "The shared opengithub_identity_test database required the additive 202605040004 repository watch settings migration to be applied manually for browser smoke because its migration history still has the known pre-existing 202605030041 checksum issue."
     ]
+  },
+  {
+    "feature_id": "notifications-004",
+    "tests_written": [
+      "Completed Phase 3 Thread-Level Customize Dialog for Issues and Pull Requests without marking notifications-004 build_pass=true.",
+      "Added additive issue_subscriptions.subscribed and issue/pull custom_events migration columns with closed, reopened, and merged validation.",
+      "Extended Rust issue and pull request subscription contracts with subscribed, reason, customEvents, and canCustomize state.",
+      "Updated authenticated issue and pull request subscription PATCH endpoints plus same-origin Next route forwarding to persist customEvents.",
+      "Replaced issue and PR sidebar notification controls with an Editorial Subscribe/Unsubscribe plus Customize dialog using live checkboxes and server-confirmed feedback.",
+      "Extended focused Rust contract tests, Vitest detail tests, and Playwright issue/PR detail smokes for subscribe, unsubscribe, custom event saves, persistence after reload, no dead controls, and screenshots notifications-004-phase3-issue-customize.jpg and notifications-004-phase3-pr-customize.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Probe keyboard-only traversal through the issue and PR customize dialogs, including Escape close, backdrop close, Save/Cancel focus order, and screen reader announcements.",
+      "Exercise issue and PR customEvents with closed, reopened, and merged combinations across closed, reopened, and merged state transitions once Phase 4 fanout wiring lands.",
+      "Probe concurrent thread subscription saves from two tabs and confirm last-write behavior and inline feedback.",
+      "Verify unauthenticated and no-access private/internal issue and PR detail pages do not leak subscription state or custom event names.",
+      "The shared opengithub_identity_test database required the additive 202605040005 thread subscription custom events migration to be applied manually for browser smoke because make db-migrate is blocked by missing sqlx-cli."
+    ]
   }
 ]

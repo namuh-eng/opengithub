@@ -158,7 +158,12 @@ function pullRequestDetail(
       deletions: 32,
       comments: 3,
     },
-    subscription: { subscribed: true, reason: "participating" },
+    subscription: {
+      subscribed: true,
+      reason: "participating",
+      customEvents: [],
+      canCustomize: true,
+    },
     mergeability: {
       state: "ready",
       canMerge: true,
@@ -1086,7 +1091,12 @@ describe("RepositoryPullRequestDetailPage", () => {
         if (url.endsWith("/subscription")) {
           return {
             ok: true,
-            json: async () => ({ subscribed: false, reason: "ignored" }),
+            json: async () => ({
+              subscribed: false,
+              reason: "ignored",
+              customEvents: [],
+              canCustomize: true,
+            }),
           };
         }
         throw new Error(`unexpected fetch ${url} ${init?.method ?? "GET"}`);
@@ -1155,12 +1165,65 @@ describe("RepositoryPullRequestDetailPage", () => {
         "/mona/octo-app/pull/42/subscription",
         expect.objectContaining({
           method: "PATCH",
-          body: JSON.stringify({ subscribed: false }),
+          body: JSON.stringify({ subscribed: false, customEvents: [] }),
         }),
       );
     });
     expect(await screen.findByText("Unsubscribed.")).toBeVisible();
     expect(screen.getByText("Not subscribed")).toBeVisible();
+  });
+
+  it("customizes pull request thread notification events", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/subscription")) {
+        return {
+          ok: true,
+          json: async () => ({
+            subscribed: true,
+            reason: "subscribed",
+            customEvents: ["merged", "closed"],
+            canCustomize: true,
+          }),
+        };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryPullRequestDetailPage
+        pullRequest={pullRequestDetail()}
+        repository={repositoryOverview()}
+        timeline={pullRequestTimeline()}
+        viewerAuthenticated={true}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Customize" }));
+    expect(
+      screen.getByRole("heading", { name: "Customize updates" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("checkbox", { name: /Merged/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Closed/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mona/octo-app/pull/42/subscription",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({
+            subscribed: true,
+            customEvents: ["merged", "closed"],
+          }),
+        }),
+      );
+    });
+    expect(
+      await screen.findByText("Subscribed to notifications."),
+    ).toBeVisible();
+    expect(screen.getByText("Custom events: merged, closed")).toBeVisible();
   });
 
   it("renders merge blockers and posts state and merge actions", async () => {

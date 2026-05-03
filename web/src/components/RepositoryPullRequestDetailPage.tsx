@@ -6,6 +6,7 @@ import { useState } from "react";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { PullRequestTimeline } from "@/components/PullRequestTimeline";
 import { RepositoryShell } from "@/components/RepositoryShell";
+import { ThreadNotificationCard } from "@/components/ThreadNotificationCard";
 import type {
   ApiErrorEnvelope,
   IssueListLabel,
@@ -16,6 +17,7 @@ import type {
   PullRequestSubscriptionState,
   PullRequestTimelineItem,
   RepositoryOverview,
+  ThreadSubscriptionEvent,
 } from "@/lib/api";
 
 type RepositoryPullRequestDetailPageProps = {
@@ -407,14 +409,17 @@ export function RepositoryPullRequestDetailPage({
     );
   }
 
-  async function toggleSubscription() {
+  async function saveSubscription(
+    subscribed: boolean,
+    customEvents: ThreadSubscriptionEvent[],
+  ) {
     setMessage(null);
     setIsMutating(true);
     try {
       const response = await fetch(`${activePath}/subscription`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ subscribed: !subscription.subscribed }),
+        body: JSON.stringify({ subscribed, customEvents }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
@@ -1202,28 +1207,14 @@ export function RepositoryPullRequestDetailPage({
             </SidebarSection>
 
             <SidebarSection title="Notifications">
-              <p className="t-xs">
-                {subscription.subscribed
-                  ? `Subscribed: ${subscription.reason}`
-                  : "Not subscribed"}
-              </p>
-              {viewerAuthenticated ? (
-                <button
-                  className="btn sm mt-3"
-                  disabled={isMutating}
-                  onClick={() => void toggleSubscription()}
-                  type="button"
-                >
-                  {subscription.subscribed ? "Unsubscribe" : "Subscribe"}
-                </button>
-              ) : (
-                <Link
-                  className="btn sm mt-3"
-                  href={`/login?next=${encodeURIComponent(activePath)}`}
-                >
-                  Sign in to subscribe
-                </Link>
-              )}
+              <ThreadNotificationCard
+                activePath={activePath}
+                disabled={false}
+                isMutating={isMutating}
+                onSave={saveSubscription}
+                subscription={subscription}
+                viewerAuthenticated={viewerAuthenticated}
+              />
             </SidebarSection>
 
             <SidebarSection title="Participants">

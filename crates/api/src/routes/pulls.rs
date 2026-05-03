@@ -223,6 +223,8 @@ struct UpdatePullMetadataRequest {
 #[serde(rename_all = "camelCase")]
 struct UpdatePullSubscriptionRequest {
     subscribed: bool,
+    #[serde(default)]
+    custom_events: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1438,6 +1440,7 @@ async fn update_subscription(
         UpdatePullRequestSubscription {
             actor_user_id: actor.0.id,
             subscribed: request.subscribed,
+            custom_events: request.custom_events,
         },
     )
     .await

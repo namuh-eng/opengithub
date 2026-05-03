@@ -622,6 +622,32 @@ async fn issue_detail_contract_returns_public_read_model_and_redacts_private_acc
     assert_eq!(subscribe_status, StatusCode::OK);
     assert_eq!(subscribe_body["subscribed"], true);
     assert_eq!(subscribe_body["reason"], "subscribed");
+    assert_eq!(subscribe_body["customEvents"], json!([]));
+    assert_eq!(subscribe_body["canCustomize"], true);
+
+    let (customize_status, customize_body) = patch_json(
+        app.clone(),
+        &format!("{uri}/subscription"),
+        Some(&owner_cookie),
+        json!({ "subscribed": true, "customEvents": ["closed", "reopened"] }),
+    )
+    .await;
+    assert_eq!(customize_status, StatusCode::OK);
+    assert_eq!(customize_body["subscribed"], true);
+    assert_eq!(
+        customize_body["customEvents"],
+        json!(["closed", "reopened"])
+    );
+
+    let (invalid_custom_status, invalid_custom_body) = patch_json(
+        app.clone(),
+        &format!("{uri}/subscription"),
+        Some(&owner_cookie),
+        json!({ "subscribed": true, "customEvents": ["assigned"] }),
+    )
+    .await;
+    assert_eq!(invalid_custom_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(invalid_custom_body["error"]["code"], "validation_failed");
 
     let (react_status, react_body) = post_json(
         app.clone(),

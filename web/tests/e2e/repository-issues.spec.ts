@@ -184,6 +184,19 @@ test("signed-in repository Issues tab renders real issues and row navigation", a
   await page.getByRole("button", { name: "Subscribe" }).click();
   await expect(page.getByText("Subscribed to notifications.")).toBeVisible();
   await expect(page.getByText("Subscribed: subscribed")).toBeVisible();
+  await page.getByRole("button", { name: "Customize" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Customize updates" }),
+  ).toBeVisible();
+  await page.getByRole("checkbox", { name: /Closed/ }).check();
+  await page.getByRole("checkbox", { name: /Reopened/ }).check();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Subscribed to notifications.")).toBeVisible();
+  await expect(page.getByText("Custom events: closed, reopened")).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/notifications-004-phase3-issue-customize.jpg",
+  });
   await page.getByRole("button", { name: "Thumbs up 0" }).click();
   await expect(
     page.getByRole("button", { name: "Thumbs up 1" }),
@@ -230,15 +243,17 @@ test("signed-in repository Issues tab renders real issues and row navigation", a
     anonymousPage.getByRole("heading", { name: new RegExp(issueTitle) }),
   ).toBeVisible();
   await expect(
-    anonymousPage.locator(
-      `a[href="/login?next=%2F${ownerLogin}%2F${repoName}%2Fissues%2F${issue.number}"]`,
-    ),
-  ).toHaveCount(1);
+    anonymousPage
+      .locator(
+        `a[href="/login?next=%2F${ownerLogin}%2F${repoName}%2Fissues%2F${issue.number}"]`,
+      )
+      .first(),
+  ).toBeVisible();
   await expect(
     anonymousPage.getByRole("link", { name: "Sign in to subscribe" }),
   ).toHaveAttribute(
     "href",
-    `/login?next=/${ownerLogin}/${repoName}/issues/${issue.number}`,
+    `/login?next=%2F${ownerLogin}%2F${repoName}%2Fissues%2F${issue.number}`,
   );
   await expectNoDeadControls(anonymousPage);
   await anonymousPage.close();

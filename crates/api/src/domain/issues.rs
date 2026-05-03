@@ -165,6 +165,8 @@ pub struct IssueAttachmentMetadata {
 pub struct IssueSubscriptionState {
     pub subscribed: bool,
     pub reason: String,
+    pub custom_events: Vec<String>,
+    pub can_customize: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -460,6 +462,7 @@ pub struct UpdateIssueState {
 pub struct UpdateIssueSubscription {
     pub actor_user_id: Uuid,
     pub subscribed: bool,
+    pub custom_events: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1520,26 +1523,29 @@ pub async fn update_issue_subscription(
     )
     .await?;
 
-    if input.subscribed {
-        sqlx::query(
-            r#"
-            INSERT INTO issue_subscriptions (issue_id, user_id, reason)
-            VALUES ($1, $2, 'subscribed')
-            ON CONFLICT (issue_id, user_id)
-            DO UPDATE SET reason = EXCLUDED.reason
-            "#,
-        )
-        .bind(issue_id)
-        .bind(input.actor_user_id)
-        .execute(pool)
-        .await?;
+    let custom_events = normalize_thread_subscription_events(&input.custom_events)?;
+    sqlx::query(
+        r#"
+        INSERT INTO issue_subscriptions (issue_id, user_id, subscribed, reason, custom_events)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (issue_id, user_id)
+        DO UPDATE SET
+            subscribed = EXCLUDED.subscribed,
+            reason = EXCLUDED.reason,
+            custom_events = EXCLUDED.custom_events
+        "#,
+    )
+    .bind(issue_id)
+    .bind(input.actor_user_id)
+    .bind(input.subscribed)
+    .bind(if input.subscribed {
+        "subscribed"
     } else {
-        sqlx::query("DELETE FROM issue_subscriptions WHERE issue_id = $1 AND user_id = $2")
-            .bind(issue_id)
-            .bind(input.actor_user_id)
-            .execute(pool)
-            .await?;
-    }
+        "ignored"
+    })
+    .bind(&custom_events)
+    .execute(pool)
+    .await?;
 
     issue_subscription_state(pool, issue_id, Some(input.actor_user_id)).await
 }
@@ -1842,21 +1848,59 @@ async fn issue_subscription_state(
         return Ok(IssueSubscriptionState {
             subscribed: false,
             reason: "anonymous".to_owned(),
+            custom_events: Vec::new(),
+            can_customize: false,
         });
     };
 
-    let reason = sqlx::query_scalar::<_, String>(
-        "SELECT reason FROM issue_subscriptions WHERE issue_id = $1 AND user_id = $2",
+    let row = sqlx::query(
+        r#"
+        SELECT subscribed, reason, custom_events
+        FROM issue_subscriptions
+        WHERE issue_id = $1 AND user_id = $2
+        "#,
     )
     .bind(issue_id)
     .bind(user_id)
     .fetch_optional(pool)
     .await?;
 
+    let Some(row) = row else {
+        return Ok(IssueSubscriptionState {
+            subscribed: false,
+            reason: "not_subscribed".to_owned(),
+            custom_events: Vec::new(),
+            can_customize: true,
+        });
+    };
+
     Ok(IssueSubscriptionState {
-        subscribed: reason.is_some(),
-        reason: reason.unwrap_or_else(|| "not_subscribed".to_owned()),
+        subscribed: row.get("subscribed"),
+        reason: row.get("reason"),
+        custom_events: row.get("custom_events"),
+        can_customize: true,
     })
+}
+
+pub(crate) fn normalize_thread_subscription_events(
+    events: &[String],
+) -> Result<Vec<String>, CollaborationError> {
+    let mut normalized = Vec::new();
+    for event in events {
+        let event = event.trim().to_ascii_lowercase();
+        let event = event.replace('-', "_");
+        if event.is_empty() || normalized.iter().any(|existing| existing == &event) {
+            continue;
+        }
+        if !matches!(event.as_str(), "closed" | "reopened" | "merged") {
+            return Err(CollaborationError::InvalidIssueField {
+                field_key: "customEvents".to_owned(),
+                message: format!("unsupported notification event `{event}`"),
+            });
+        }
+        normalized.push(event);
+    }
+    Ok(normalized)
 }
 
 pub(crate) async fn reaction_summaries(
@@ -1912,7 +1956,8 @@ async fn notify_issue_participants(
             UNION
             SELECT author_user_id AS user_id FROM comments WHERE issue_id = $1
             UNION
-            SELECT user_id FROM issue_subscriptions WHERE issue_id = $1
+            SELECT user_id FROM issue_subscriptions
+            WHERE issue_id = $1 AND subscribed = true
         ) participants
         WHERE user_id <> $2
         "#,

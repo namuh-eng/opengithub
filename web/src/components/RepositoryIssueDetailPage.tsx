@@ -6,6 +6,7 @@ import { useState } from "react";
 import { IssueTimeline, ReactionToolbar } from "@/components/IssueTimeline";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { RepositoryShell } from "@/components/RepositoryShell";
+import { ThreadNotificationCard } from "@/components/ThreadNotificationCard";
 import type {
   ApiErrorEnvelope,
   IssueDetailView,
@@ -15,6 +16,7 @@ import type {
   IssueTimelineItem,
   ReactionContent,
   RepositoryOverview,
+  ThreadSubscriptionEvent,
 } from "@/lib/api";
 import {
   repositoryIssueDetailHref,
@@ -231,14 +233,17 @@ export function RepositoryIssueDetailPage({
     }
   }
 
-  async function toggleSubscription() {
+  async function saveSubscription(
+    subscribed: boolean,
+    customEvents: ThreadSubscriptionEvent[],
+  ) {
     setMessage(null);
     setIsMutating(true);
     try {
       const response = await fetch(`${issueHref}/subscription`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ subscribed: !subscription.subscribed }),
+        body: JSON.stringify({ subscribed, customEvents }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
@@ -619,25 +624,14 @@ export function RepositoryIssueDetailPage({
             </SidebarSection>
 
             <SidebarSection title="Notifications">
-              <p className="t-xs">
-                {subscription.subscribed
-                  ? `Subscribed: ${subscription.reason}`
-                  : "Not subscribed"}
-              </p>
-              {viewerAuthenticated ? (
-                <button
-                  className="btn sm mt-3"
-                  disabled={isMutating}
-                  onClick={() => void toggleSubscription()}
-                  type="button"
-                >
-                  {subscription.subscribed ? "Unsubscribe" : "Subscribe"}
-                </button>
-              ) : (
-                <Link className="btn sm mt-3" href={`/login?next=${issueHref}`}>
-                  Sign in to subscribe
-                </Link>
-              )}
+              <ThreadNotificationCard
+                activePath={issueHref}
+                disabled={false}
+                isMutating={isMutating}
+                onSave={saveSubscription}
+                subscription={subscription}
+                viewerAuthenticated={viewerAuthenticated}
+              />
             </SidebarSection>
 
             <SidebarSection title="Participants">

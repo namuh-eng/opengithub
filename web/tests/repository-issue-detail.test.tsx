@@ -149,6 +149,8 @@ function issueDetail(
     subscription: {
       subscribed: false,
       reason: "not_subscribed",
+      customEvents: [],
+      canCustomize: true,
     },
     reactions: [
       {
@@ -341,7 +343,7 @@ describe("RepositoryIssueDetailPage", () => {
     expect(screen.getByText("No participants yet")).toBeVisible();
     expect(
       screen.getByRole("link", { name: "Sign in to subscribe" }),
-    ).toHaveAttribute("href", "/login?next=/mona/octo-app/issues/42");
+    ).toHaveAttribute("href", "/login?next=%2Fmona%2Focto-app%2Fissues%2F42");
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute(
       "href",
       "/login?next=%2Fmona%2Focto-app%2Fissues%2F42",
@@ -453,7 +455,12 @@ describe("RepositoryIssueDetailPage", () => {
       if (url.endsWith("/subscription")) {
         return {
           ok: true,
-          json: async () => ({ subscribed: true, reason: "subscribed" }),
+          json: async () => ({
+            subscribed: true,
+            reason: "subscribed",
+            customEvents: ["closed", "reopened"],
+            canCustomize: true,
+          }),
         };
       }
       if (url.endsWith("/reactions")) {
@@ -499,9 +506,66 @@ describe("RepositoryIssueDetailPage", () => {
       await screen.findByText("Subscribed to notifications."),
     ).toBeVisible();
     expect(screen.getByText("Subscribed: subscribed")).toBeVisible();
+    expect(screen.getByText("Custom events: closed, reopened")).toBeVisible();
 
     fireEvent.click(screen.getAllByRole("button", { name: "Close issue" })[0]);
     expect(await screen.findByText("Issue closed.")).toBeVisible();
     expect(screen.getByText("Closed")).toBeVisible();
+  });
+
+  it("customizes issue thread notification events", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/subscription")) {
+        return {
+          ok: true,
+          json: async () => ({
+            subscribed: true,
+            reason: "subscribed",
+            customEvents: ["closed", "reopened"],
+            canCustomize: true,
+          }),
+        };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryIssueDetailPage
+        issue={issueDetail()}
+        repository={repositoryOverview()}
+        timeline={issueTimeline()}
+        viewerAuthenticated={true}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Customize" }));
+    expect(
+      screen.getByRole("heading", { name: "Customize updates" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("checkbox", { name: /Closed/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Reopened/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mona/octo-app/issues/42/subscription",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({
+            subscribed: true,
+            customEvents: ["closed", "reopened"],
+          }),
+        }),
+      );
+    });
+    expect(
+      await screen.findByText("Subscribed to notifications."),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "Customize updates" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Custom events: closed, reopened")).toBeVisible();
   });
 });

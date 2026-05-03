@@ -329,11 +329,25 @@ test("signed-in user updates pull request sidebar metadata and notifications", a
   await page.getByRole("button", { exact: true, name: "Subscribe" }).click();
   await expect(page.getByText("Subscribed to notifications.")).toBeVisible();
   await expect(page.getByText("Subscribed: subscribed")).toBeVisible();
+  await page.getByRole("button", { name: "Customize" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Customize updates" }),
+  ).toBeVisible();
+  await page.getByRole("checkbox", { name: /Merged/ }).check();
+  await page.getByRole("checkbox", { name: /Closed/ }).check();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Subscribed to notifications.")).toBeVisible();
+  await expect(page.getByText("Custom events: merged, closed")).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/notifications-004-phase3-pr-customize.jpg",
+  });
 
   await page.reload();
   await expect(page.getByText("Open", { exact: true })).toBeVisible();
   await expect(page.getByText("bug")).toBeVisible();
   await expect(page.getByText("Subscribed: subscribed")).toBeVisible();
+  await expect(page.getByText("Custom events: merged, closed")).toBeVisible();
   await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
 
   await page.screenshot({

@@ -1,3 +1,13 @@
+2026-05-04 - notifications-004 phase 3 issue/PR thread notification customize dialogs
+
+- Completed Phase 3 from `.qrspi/notifications-004/structure.md`: issue and pull request detail sidebars now have real thread-level subscription customization without marking `notifications-004.build_pass=true`.
+- Added additive migration `202605040005_thread_subscription_custom_events` for issue subscription `subscribed` state and issue/PR `custom_events` arrays, constrained to `closed`, `reopened`, and `merged`.
+- Extended Rust issue and pull request subscription DTOs and PATCH handlers to persist `subscribed`, `reason`, `customEvents`, and `canCustomize`, including invalid event validation and issue unsubscribe persistence instead of row deletion.
+- Added same-origin Next forwarding for custom event saves and replaced the basic issue/PR sidebar buttons with an Editorial Subscribe/Unsubscribe plus Customize dialog with event checkboxes, Escape/backdrop close, and server-confirmed success/error feedback.
+- Extended focused Rust contract tests, issue/PR Vitest detail tests, and Playwright smoke coverage for custom event saves, reload persistence, sign-in affordances, no dead controls, and screenshots `ralph/screenshots/build/notifications-004-phase3-issue-customize.jpg` and `notifications-004-phase3-pr-customize.jpg`.
+- Verification passed: focused Rust issue and PR contract tests compiled/ran with no-DB fallback; focused issue/PR Vitest with 20 tests; `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 341 web tests; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; focused Playwright issue and PR detail smokes; mandatory Editorial banned-value scan.
+- `make db-migrate` is still blocked because `sqlx-cli` is not installed, so the additive `202605040005` migration was applied to the shared local Playwright DB with `psql` before browser smoke. `prd.json` remains `build_pass:false` because Phase 4 fanout integration and Phase 5 docs/QA bookkeeping remain.
+
 2026-05-04 - notifications-004 phase 2 Editorial repository watch menu
 
 - Completed Phase 2 from `.qrspi/notifications-004/structure.md`: repository headers now have a real Editorial watch settings menu without marking `notifications-004.build_pass=true`.

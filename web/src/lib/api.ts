@@ -2617,7 +2617,11 @@ export type IssueAttachmentMetadata = {
 export type IssueSubscriptionState = {
   subscribed: boolean;
   reason: string;
+  customEvents: ThreadSubscriptionEvent[];
+  canCustomize: boolean;
 };
+
+export type ThreadSubscriptionEvent = "closed" | "reopened" | "merged";
 
 export type ReactionContent =
   | "thumbs_up"
@@ -3173,6 +3177,8 @@ export type PullRequestDetailView = {
   subscription: {
     subscribed: boolean;
     reason: string;
+    customEvents: ThreadSubscriptionEvent[];
+    canCustomize: boolean;
   };
   mergeability: {
     state: "ready" | "blocked" | "closed" | "merged" | string;
@@ -5692,6 +5698,7 @@ export async function updateRepositoryPullRequestSubscriptionFromCookie(
   repo: string,
   number: number | string,
   subscribed: boolean,
+  customEvents: string[] = [],
 ): Promise<PullRequestSubscriptionState> {
   const response = await fetch(
     `${apiBaseUrl()}${repositoryPullRequestPath(owner, repo, number)}/subscription`,
@@ -5701,7 +5708,7 @@ export async function updateRepositoryPullRequestSubscriptionFromCookie(
         "content-type": "application/json",
         ...(cookie ? { cookie } : {}),
       },
-      body: JSON.stringify({ subscribed }),
+      body: JSON.stringify({ subscribed, customEvents }),
       cache: "no-store",
     },
   );
@@ -6142,6 +6149,7 @@ export async function updateRepositoryIssueSubscriptionFromCookie(
   repo: string,
   issueNumber: number | string,
   subscribed: boolean,
+  customEvents: string[] = [],
 ): Promise<IssueSubscriptionState> {
   const response = await fetch(
     `${apiBaseUrl()}${repositoryIssuePath(owner, repo, issueNumber)}/subscription`,
@@ -6151,7 +6159,7 @@ export async function updateRepositoryIssueSubscriptionFromCookie(
         "content-type": "application/json",
         ...(cookie ? { cookie } : {}),
       },
-      body: JSON.stringify({ subscribed }),
+      body: JSON.stringify({ subscribed, customEvents }),
       cache: "no-store",
     },
   );

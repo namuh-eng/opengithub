@@ -41,7 +41,7 @@
 
 ## Phase 3: Thread-Level Customize Dialog for Issues and Pull Requests
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Upgrade the issue and pull request sidebar notification cards from basic Subscribe/Unsubscribe buttons to real thread-level subscription controls. Users can subscribe, unsubscribe, and customize state-change events for the specific issue/PR without mutating repository-wide watch settings.
 
