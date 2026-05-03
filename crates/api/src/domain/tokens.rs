@@ -33,6 +33,20 @@ impl VerifiedPersonalAccessToken {
             .iter()
             .any(|scope| matches!(scope.as_str(), "repo" | "repo:write" | "repository:write"))
     }
+
+    pub fn allows_package_read(&self) -> bool {
+        self.scopes.iter().any(|scope| {
+            matches!(
+                scope.as_str(),
+                "packages:read"
+                    | "packages:write"
+                    | "packages:admin"
+                    | "read:packages"
+                    | "write:packages"
+                    | "admin:packages"
+            )
+        })
+    }
 }
 
 pub async fn verify_personal_access_token(

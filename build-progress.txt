@@ -2359,6 +2359,18 @@
 - Did not change `prd.json`; `build_pass` remains `false` until all implementation phases pass verification.
 - Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
 
+2026-05-03 - packages-003 phase 1 OCI registry manifest reads
+
+- Completed Phase 1 from `.qrspi/packages-003/structure.md`: opengithub now exposes a minimal Docker Registry HTTP API v2 read surface without marking `packages-003.build_pass=true`.
+- Added additive migration `202605032020_package_registry_manifest_reads` for package version manifest media type, config digest, manifest byte size, manifest digest index, and redaction-safe `package_registry_audit_events`.
+- Added `crates/api/src/domain/packages_registry.rs` with OCI namespace/image/reference validation, digest parsing, manifest media-type negotiation, PAT Basic/Bearer auth resolution, `packages:read` scope enforcement, package visibility/permission checks, private package redaction, and manifest read audit rows.
+- Mounted `/v2/` challenge handling, `/v2/token` Basic-PAT exchange, and `GET`/`HEAD /v2/{namespace}/{image}/manifests/{reference}` with Docker-compatible auth challenge, content type, digest, registry-version, and content-length headers.
+- Extended PAT scope semantics so registry reads require package scopes instead of accepting repository scopes.
+- Added focused `crates/api/tests/package_registry_contract.rs` coverage for `/v2/` challenge, `/v2/token` exchange, anonymous public manifest reads, private denial, PAT read success, invalid token denial, insufficient scope denial, malformed digest validation, Accept negotiation, HEAD reads, audit rows, and no storage-key leakage.
+- Verification passed: `cargo fmt --all`; focused `DB_SSL=false CARGO_INCREMENTAL=0 cargo test -p opengithub-api --test package_registry_contract`; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 329 web tests; mandatory Editorial banned-value scan returned zero matches using `rg -n -e`.
+- Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first and `.qrspi/packages-003/structure.md` marks browser smoke optional for this phase.
+- Marked Phase 1 as done in `.qrspi/packages-003/structure.md`; `prd.json` remains `build_pass:false` because Phases 2-5 remain.
+
 2026-05-03 - settings-001 phase 1 repository settings API contract
 
 - Completed Phase 1 from `.qrspi/settings-001/structure.md`: repository General settings now have an admin-only Rust/Postgres read/write contract at `GET /api/repos/{owner}/{repo}/settings` and `PATCH /api/repos/{owner}/{repo}/settings`.

@@ -4049,4 +4049,25 @@
       "Confirm package settings redaction never leaks explicit permissions, inherited repository access, activity, or storage metadata to readable non-admin viewers."
     ]
   }
+  ,
+  {
+    "feature_id": "packages-003",
+    "tests_written": [
+      "Completed Phase 1 OCI Registry Auth, Routing, and Manifest Read Contract without marking packages-003 build_pass=true.",
+      "Added additive registry manifest metadata migration for package_versions manifest media type, config digest, manifest size, and package_registry_audit_events.",
+      "Added /v2/ registry challenge handling, /v2/token Basic-PAT exchange, and GET/HEAD /v2/{namespace}/{image}/manifests/{reference} manifest reads.",
+      "Implemented PAT Basic and Bearer auth resolution with packages:read scope enforcement; repo-only tokens are denied for registry reads.",
+      "Manifest reads support anonymous public pulls, private package redaction, tag/digest reference validation, OCI/Docker Accept negotiation, Docker registry response headers, and storage-key redaction.",
+      "Focused Rust contract covers /v2/ challenge, /v2/token exchange, anonymous public manifest read, HEAD digest read, private denial, invalid token denial, insufficient scope denial, PAT read success, media negotiation failure, malformed digest validation, and audit rows.",
+      "Full make check and make test passed after Phase 1 changes; browser smoke was skipped because this is API-first and the structure outline marks it optional."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 still needs real blob upload/download byte flows, manifest push, tag listing, and package_downloads accounting.",
+      "Phase 3 still needs workflow-token publishing, OCI source-label repository linking, webhook/activity events, and Actions provenance.",
+      "Phase 4 still needs package admin mutations, delete/restore lifecycle, and settings enablement.",
+      "Run Docker CLI login/pull/push compatibility once Phase 2 implements byte-transfer routes.",
+      "Stress nested image names, organization namespaces, private/internal package leakage, expired/revoked PATs, large manifests, manifest lists, and content-length accuracy against real clients.",
+      "The /v2/token exchange currently returns the PAT as the bearer token for compatibility inside the local contract; persisted short-lived registry bearer-token issuance remains a later hardening point."
+    ]
+  }
 ]

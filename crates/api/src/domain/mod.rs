@@ -13,6 +13,7 @@ pub mod notifications;
 pub mod onboarding;
 pub mod organizations;
 pub mod packages;
+pub mod packages_registry;
 pub mod pages;
 pub mod permissions;
 pub mod personal_settings;

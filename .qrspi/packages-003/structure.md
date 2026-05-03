@@ -6,7 +6,7 @@
 
 ## Phase 1: OCI Registry Auth, Routing, and Manifest Read Contract
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the minimal Docker Registry HTTP API v2 surface for authentication challenges and manifest reads without yet accepting blob uploads. Docker/OCI clients should receive correct `WWW-Authenticate` challenges, PAT or workflow-token bearer credentials should map to package read permission, public packages should pull anonymously, and private/internal packages should avoid metadata leaks.
 
