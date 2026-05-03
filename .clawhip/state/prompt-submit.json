@@ -1,8 +1,8 @@
 {
-  "observed_at": "2026-05-03T02:55:37.717Z",
+  "observed_at": "2026-05-03T03:09:13.847Z",
   "provider": "claude-code",
   "event_name": "UserPromptSubmit",
-  "session_id": "92298111-a8dd-4498-82e9-7a8ee7cff38c",
+  "session_id": "1d09b2ea-109f-404d-806c-27f3db9a4b14",
   "turn_id": null,
-  "prompt_summary": "then what about ⎿  UserPromptSubmit hook error                                               ⎿  Failed with non-blocking status code: No stderr output ??? still showing up??"
+  "prompt_summary": "what is the watchdo loop process now"
 }
