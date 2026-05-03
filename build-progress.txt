@@ -3082,3 +3082,13 @@
 - Created `.qrspi/credentials-002/structure.md` for the first incomplete PRD feature, splitting SSH keys, GPG keys, vigilant mode, commit/signature integration, docs, QA hints, and build-pass bookkeeping into five vertical phases.
 - No source implementation was started because `credentials-002.needs_structure=true` and the build-loop contract requires structure first, then `<promise>NEXT</promise>`.
 - Verified `credentials-002.build_pass=false`, `qa_pass=false`, and all structure phases remain unchecked for the next invocation.
+
+2026-05-04 - credentials-002 phase 1 key settings API foundation
+
+- Completed Phase 1 from `.qrspi/credentials-002/structure.md`: backend storage and authenticated settings-key API contracts now exist without marking `credentials-002.build_pass=true`.
+- Added additive migration `202605040008_personal_signing_keys` for `ssh_keys`, `gpg_keys`, `gpg_key_emails`, `users.vigilant_mode`, active per-user fingerprint uniqueness, revoke retention metadata, and signing-key audit indexes.
+- Added `domain::signing_keys` with SSH public-key validation/fingerprint derivation, armored GPG validation/metadata extraction, key settings summaries that redact raw key material, sudo-gated revoke operations, and vigilant-mode persistence.
+- Added `/api/settings/keys`, `/api/settings/keys/ssh`, `/api/settings/keys/ssh/{key_id}`, `/api/settings/keys/gpg`, `/api/settings/keys/gpg/{key_id}`, and `/api/settings/keys/vigilant-mode` route contracts.
+- Extended Rust contract coverage for anonymous 401, empty settings payloads, SSH/GPG validation, duplicate fingerprint rejection, sudo-gated revoke, audit rows, vigilant-mode persistence, and no raw public-key/armor leakage in responses.
+- Verification passed: `cargo fmt --all --check`; focused `personal_signing_keys_contract`; `cargo check -p opengithub-api`; mandatory Editorial banned-value scan returned zero matches; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 350 web tests.
+- Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first and the structure outline marks browser smoke optional for this phase. `prd.json` remains `build_pass:false` because Phases 2-5 remain.

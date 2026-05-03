@@ -4478,5 +4478,23 @@
       "Run full Git clone/fetch/push and Docker login/pull/push smokes against real repository refs and registry blobs.",
       "Complete keyboard and screen-reader traversal for sudo, generation, copy, reveal, and revoke dialog flows."
     ]
+  },
+  {
+    "feature_id": "credentials-002",
+    "tests_written": [
+      "Completed Phase 1 Key Settings API Foundation without marking credentials-002 build_pass=true.",
+      "Added additive storage for ssh_keys, gpg_keys, gpg_key_emails, users.vigilant_mode, active fingerprint uniqueness, revoke retention, and signing-key audit indexes.",
+      "Added authenticated Rust API contracts for GET /api/settings/keys, SSH create/revoke, GPG create/revoke, and vigilant-mode PATCH.",
+      "Added SSH public-key validation with declared/body key-type matching and SHA256 fingerprint derivation; responses redact raw public key material.",
+      "Added armored GPG public-key validation with derived primary fingerprint/key ID and email extraction; responses redact armored key material.",
+      "Focused Rust contract passed for anonymous 401, empty settings payload, invalid SSH/GPG inputs, duplicate SSH fingerprint rejection, sudo-gated revoke, vigilant-mode persistence, audit rows, and redaction."
+    ],
+    "needs_deeper_qa": [
+      "Phase 1 is API-first; /settings/keys UI creation/deletion flows are not implemented until Phases 2 and 3.",
+      "GPG parsing currently validates armored public-key shape and derives metadata from the decoded public payload; QA should probe real-world GPG exports, multi-identity keys, subkeys, and malformed armor edge cases when UI is wired.",
+      "SSH validation should be stressed with rsa, ecdsa, security-key, comments, whitespace variants, duplicate races, revoked-then-readded keys, and very large invalid payloads.",
+      "Revoke is sudo-gated using the existing email-confirmation sudo mode; real Google reauth parity remains a production-hardening concern.",
+      "Browser smoke and make test-e2e were skipped for this API-first phase per the structure outline."
+    ]
   }
 ]

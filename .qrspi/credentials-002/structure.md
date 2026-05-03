@@ -6,7 +6,7 @@
 
 ## Phase 1: Key Settings API Foundation
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add durable storage and authenticated API contracts for SSH keys, GPG keys, and the user's vigilant-mode preference. This phase should make the backend authoritative before replacing the placeholder UI.
 

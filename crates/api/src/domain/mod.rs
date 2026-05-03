@@ -23,5 +23,6 @@ pub mod releases;
 pub mod repositories;
 pub mod repository_imports;
 pub mod search;
+pub mod signing_keys;
 pub mod tokens;
 pub mod webhooks;
