@@ -390,6 +390,94 @@ async fn notifications_inbox_contract_filters_groups_and_marks_read() {
     assert_eq!(move_body["folderCounts"]["inbox"], 2);
     assert_eq!(move_body["folderCounts"]["done"], 0);
 
+    let (unsubscribe_status, unsubscribe_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &format!("/api/notifications/{}/unsubscribe", mention.id),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(unsubscribe_status, StatusCode::OK);
+    assert_eq!(unsubscribe_body["subscribed"], false);
+    assert_eq!(unsubscribe_body["folderCounts"]["inbox"], 0);
+    assert_eq!(unsubscribe_body["unreadCount"], 0);
+
+    let (inbox_after_unsubscribe_status, inbox_after_unsubscribe_body) = send_json(
+        app.clone(),
+        Method::GET,
+        "/api/notifications",
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(inbox_after_unsubscribe_status, StatusCode::OK);
+    assert_eq!(inbox_after_unsubscribe_body["total"], 0);
+
+    create_notification(
+        &pool,
+        CreateNotification {
+            user_id: viewer.id,
+            repository_id: Some(repository.id),
+            subject_type: "issue".to_owned(),
+            subject_id: Some(issue.id),
+            title: "Suppressed subscribed notification".to_owned(),
+            reason: "subscribed".to_owned(),
+        },
+    )
+    .await
+    .expect("suppressed notification should create for retention");
+
+    let (suppressed_status, suppressed_body) = send_json(
+        app.clone(),
+        Method::GET,
+        "/api/notifications",
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(suppressed_status, StatusCode::OK);
+    assert_eq!(suppressed_body["total"], 0);
+
+    create_notification(
+        &pool,
+        CreateNotification {
+            user_id: viewer.id,
+            repository_id: Some(repository.id),
+            subject_type: "issue".to_owned(),
+            subject_id: Some(issue.id),
+            title: "Mention reactivates notification thread".to_owned(),
+            reason: "mention".to_owned(),
+        },
+    )
+    .await
+    .expect("reactivating notification should create");
+
+    let (reactivated_status, reactivated_body) = send_json(
+        app.clone(),
+        Method::GET,
+        "/api/notifications",
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(reactivated_status, StatusCode::OK);
+    assert!(reactivated_body["total"].as_i64().unwrap_or_default() >= 1);
+    assert!(reactivated_body["groups"][0]["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(
+            |row| row["title"] == "Mention reactivates notification thread"
+                && row["subscribed"] == true
+        ));
+
+    let (resubscribe_status, resubscribe_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &format!("/api/notifications/{}/subscribe", mention.id),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(resubscribe_status, StatusCode::OK);
+    assert_eq!(resubscribe_body["subscribed"], true);
+
     let (forbidden_status, forbidden_body) = send_json(
         app.clone(),
         Method::PATCH,

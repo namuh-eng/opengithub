@@ -26,6 +26,8 @@ pub fn router() -> Router<AppState> {
         .route("/api/notifications/:id/unsave", patch(unsave))
         .route("/api/notifications/:id/done", patch(done))
         .route("/api/notifications/:id/inbox", patch(move_to_inbox))
+        .route("/api/notifications/:id/subscribe", patch(subscribe))
+        .route("/api/notifications/:id/unsubscribe", patch(unsubscribe))
 }
 
 #[derive(Debug, Deserialize)]
@@ -114,6 +116,22 @@ async fn move_to_inbox(
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     triage(state, headers, id, NotificationTriageAction::Inbox).await
+}
+
+async fn subscribe(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    triage(state, headers, id, NotificationTriageAction::Subscribe).await
+}
+
+async fn unsubscribe(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    triage(state, headers, id, NotificationTriageAction::Unsubscribe).await
 }
 
 async fn triage(

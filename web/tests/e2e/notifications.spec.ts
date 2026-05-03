@@ -132,4 +132,28 @@ test("signed-in user marks notifications read and toggles saved state", async ({
 
   await page.goto("/notifications?folder=saved");
   await expect(rowLink).toBeVisible();
+
+  await page
+    .getByRole("button", {
+      name: "Unsubscribe from Triage dashboard setup workflow",
+    })
+    .click();
+  await expect(page.getByRole("status")).toHaveText("Thread unsubscribed.");
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/notifications-002-phase3-unsubscribed.jpg",
+  });
+
+  await page.goto("/notifications");
+  await expect(rowLink).toHaveCount(0);
+
+  await page.goto("/notifications?folder=saved");
+  await page
+    .getByRole("button", {
+      name: "Subscribe to Triage dashboard setup workflow",
+    })
+    .click();
+  await expect(page.getByRole("status")).toHaveText("Thread subscribed.");
+  await page.goto("/notifications");
+  await expect(rowLink).toBeVisible();
 });

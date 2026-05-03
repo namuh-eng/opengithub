@@ -49,6 +49,8 @@ pub enum NotificationTriageAction {
     Unsave,
     Done,
     Inbox,
+    Subscribe,
+    Unsubscribe,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -58,6 +60,7 @@ pub struct NotificationTriageResponse {
     pub unread: bool,
     pub saved: bool,
     pub done: bool,
+    pub subscribed: bool,
     pub last_read_at: Option<DateTime<Utc>>,
     pub saved_at: Option<DateTime<Utc>>,
     pub unread_count: i64,
@@ -76,18 +79,30 @@ pub async fn create_notification(
     pool: &PgPool,
     input: CreateNotification,
 ) -> Result<Notification, NotificationError> {
+    let thread_id = ensure_notification_thread(
+        pool,
+        input.repository_id,
+        &input.subject_type,
+        input.subject_id,
+        None,
+    )
+    .await?;
+    reactivate_notification_subscription_if_needed(pool, thread_id, input.user_id, &input.reason)
+        .await?;
+
     let row = sqlx::query(
         r#"
         INSERT INTO notifications (
-            user_id, repository_id, subject_type, subject_id, title, reason
+            user_id, repository_id, thread_id, subject_type, subject_id, title, reason
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING id, user_id, repository_id, subject_type, subject_id, title, reason,
                   unread, saved, done_at, last_read_at, saved_at, created_at, updated_at
         "#,
     )
     .bind(input.user_id)
     .bind(input.repository_id)
+    .bind(thread_id)
     .bind(&input.subject_type)
     .bind(input.subject_id)
     .bind(&input.title)
@@ -152,7 +167,19 @@ pub async fn unread_notification_count(
     user_id: Uuid,
 ) -> Result<i64, NotificationError> {
     let total = sqlx::query_scalar::<_, i64>(
-        "SELECT count(*) FROM notifications WHERE user_id = $1 AND unread = true AND done_at IS NULL",
+        r#"
+        SELECT count(*)
+        FROM notifications
+        WHERE user_id = $1
+          AND unread = true
+          AND done_at IS NULL
+          AND NOT EXISTS (
+              SELECT 1 FROM notification_subscriptions
+              WHERE notification_subscriptions.thread_id = notifications.thread_id
+                AND notification_subscriptions.user_id = notifications.user_id
+                AND notification_subscriptions.state = 'unsubscribed'
+          )
+        "#,
     )
     .bind(user_id)
     .fetch_one(pool)
@@ -166,7 +193,15 @@ pub async fn notification_folder_counts(
 ) -> Result<NotificationFolderCounts, NotificationError> {
     let row = sqlx::query(
         r#"
-        SELECT count(*) FILTER (WHERE done_at IS NULL) AS inbox,
+        SELECT count(*) FILTER (
+                   WHERE done_at IS NULL
+                     AND NOT EXISTS (
+                         SELECT 1 FROM notification_subscriptions
+                         WHERE notification_subscriptions.thread_id = notifications.thread_id
+                           AND notification_subscriptions.user_id = notifications.user_id
+                           AND notification_subscriptions.state = 'unsubscribed'
+                     )
+               ) AS inbox,
                count(*) FILTER (WHERE saved = true) AS saved,
                count(*) FILTER (WHERE done_at IS NOT NULL) AS done
         FROM notifications
@@ -297,19 +332,206 @@ pub async fn triage_notification(
             .fetch_optional(pool)
             .await?
         }
+        NotificationTriageAction::Subscribe => {
+            set_notification_subscription(pool, notification_id, user_id, "subscribed").await?;
+            select_notification_triage_row(pool, notification_id, user_id).await?
+        }
+        NotificationTriageAction::Unsubscribe => {
+            set_notification_subscription(pool, notification_id, user_id, "unsubscribed").await?;
+            select_notification_triage_row(pool, notification_id, user_id).await?
+        }
     }
     .ok_or(NotificationError::NotFound)?;
 
+    let subscribed = notification_subscribed(pool, notification_id, user_id).await?;
     Ok(NotificationTriageResponse {
         id: row.get("id"),
         unread: row.get("unread"),
         saved: row.get("saved"),
         done: row.get::<Option<DateTime<Utc>>, _>("done_at").is_some(),
+        subscribed,
         last_read_at: row.get("last_read_at"),
         saved_at: row.get("saved_at"),
         unread_count: unread_notification_count(pool, user_id).await?,
         folder_counts: notification_folder_counts(pool, user_id).await?,
     })
+}
+
+async fn select_notification_triage_row(
+    pool: &PgPool,
+    notification_id: Uuid,
+    user_id: Uuid,
+) -> Result<Option<sqlx::postgres::PgRow>, NotificationError> {
+    Ok(sqlx::query(
+        r#"
+        SELECT id, unread, saved, done_at, last_read_at, saved_at
+        FROM notifications
+        WHERE id = $1 AND user_id = $2
+        "#,
+    )
+    .bind(notification_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?)
+}
+
+async fn ensure_notification_thread(
+    pool: &PgPool,
+    repository_id: Option<Uuid>,
+    subject_type: &str,
+    subject_id: Option<Uuid>,
+    fallback_subject_key: Option<Uuid>,
+) -> Result<Uuid, NotificationError> {
+    let repository_key = repository_id
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| "global".to_owned());
+    let subject_key = subject_id
+        .or(fallback_subject_key)
+        .map(|id| id.to_string())
+        .unwrap_or_else(|| format!("{repository_key}:{subject_type}"));
+    let id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO notification_threads (repository_id, repository_key, subject_type, subject_id, subject_key)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (repository_key, subject_type, subject_key)
+        DO UPDATE SET updated_at = notification_threads.updated_at
+        RETURNING id
+        "#,
+    )
+    .bind(repository_id)
+    .bind(repository_key)
+    .bind(subject_type)
+    .bind(subject_id)
+    .bind(subject_key)
+    .fetch_one(pool)
+    .await?;
+    Ok(id)
+}
+
+async fn set_notification_subscription(
+    pool: &PgPool,
+    notification_id: Uuid,
+    user_id: Uuid,
+    state: &str,
+) -> Result<(), NotificationError> {
+    let row = sqlx::query(
+        r#"
+        SELECT repository_id, thread_id, subject_type, subject_id
+        FROM notifications
+        WHERE id = $1 AND user_id = $2
+        "#,
+    )
+    .bind(notification_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(NotificationError::NotFound)?;
+
+    let thread_id = if let Some(thread_id) = row.get::<Option<Uuid>, _>("thread_id") {
+        thread_id
+    } else {
+        let subject_type: String = row.get("subject_type");
+        let thread_id = ensure_notification_thread(
+            pool,
+            row.get("repository_id"),
+            &subject_type,
+            row.get("subject_id"),
+            Some(notification_id),
+        )
+        .await?;
+        sqlx::query("UPDATE notifications SET thread_id = $1 WHERE id = $2")
+            .bind(thread_id)
+            .bind(notification_id)
+            .execute(pool)
+            .await?;
+        thread_id
+    };
+
+    sqlx::query(
+        r#"
+        INSERT INTO notification_subscriptions (thread_id, user_id, state, reason)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (thread_id, user_id)
+        DO UPDATE SET state = EXCLUDED.state, reason = EXCLUDED.reason
+        "#,
+    )
+    .bind(thread_id)
+    .bind(user_id)
+    .bind(state)
+    .bind(if state == "unsubscribed" {
+        "manual_unsubscribe"
+    } else {
+        "manual_subscribe"
+    })
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn notification_subscribed(
+    pool: &PgPool,
+    notification_id: Uuid,
+    user_id: Uuid,
+) -> Result<bool, NotificationError> {
+    let subscribed = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT COALESCE(
+            (
+                SELECT notification_subscriptions.state <> 'unsubscribed'
+                FROM notification_subscriptions
+                WHERE notification_subscriptions.thread_id = notifications.thread_id
+                  AND notification_subscriptions.user_id = notifications.user_id
+            ),
+            EXISTS (
+                SELECT 1 FROM repository_watches
+                WHERE repository_watches.user_id = notifications.user_id
+                  AND repository_watches.repository_id = notifications.repository_id
+            ),
+            false
+        )
+        FROM notifications
+        WHERE notifications.id = $1 AND notifications.user_id = $2
+        "#,
+    )
+    .bind(notification_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(NotificationError::NotFound)?;
+    Ok(subscribed)
+}
+
+async fn reactivate_notification_subscription_if_needed(
+    pool: &PgPool,
+    thread_id: Uuid,
+    user_id: Uuid,
+    reason: &str,
+) -> Result<(), NotificationError> {
+    let state = match reason {
+        "mention" | "team_mention" | "review_requested" => Some("subscribed"),
+        "participating" | "comment" | "review_submitted" | "merged" | "closed" | "reopened" => {
+            Some("participating")
+        }
+        _ => None,
+    };
+    let Some(state) = state else {
+        return Ok(());
+    };
+    sqlx::query(
+        r#"
+        INSERT INTO notification_subscriptions (thread_id, user_id, state, reason)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (thread_id, user_id)
+        DO UPDATE SET state = EXCLUDED.state, reason = EXCLUDED.reason
+        "#,
+    )
+    .bind(thread_id)
+    .bind(user_id)
+    .bind(state)
+    .bind(reason)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -621,15 +843,22 @@ fn base_select_sql() -> &'static str {
            notifications.updated_at,
            issues.number AS issue_number, pull_requests.number AS pull_number,
            workflow_runs.run_number AS run_number, releases.tag_name AS release_tag,
-           EXISTS (
-               SELECT 1 FROM repository_watches
-               WHERE repository_watches.user_id = notifications.user_id
-                 AND repository_watches.repository_id = notifications.repository_id
+           COALESCE(
+               notification_subscriptions.state <> 'unsubscribed',
+               EXISTS (
+                   SELECT 1 FROM repository_watches
+                   WHERE repository_watches.user_id = notifications.user_id
+                     AND repository_watches.repository_id = notifications.repository_id
+               ),
+               false
            ) AS subscribed
     FROM notifications
     LEFT JOIN repositories ON repositories.id = notifications.repository_id
     LEFT JOIN users owner_user ON owner_user.id = repositories.owner_user_id
     LEFT JOIN organizations owner_org ON owner_org.id = repositories.owner_organization_id
+    LEFT JOIN notification_subscriptions
+           ON notification_subscriptions.thread_id = notifications.thread_id
+          AND notification_subscriptions.user_id = notifications.user_id
     LEFT JOIN issues ON notifications.subject_type = 'issue' AND issues.id = notifications.subject_id
     LEFT JOIN pull_requests ON notifications.subject_type = 'pull_request' AND pull_requests.id = notifications.subject_id
     LEFT JOIN workflow_runs ON notifications.subject_type = 'workflow_run' AND workflow_runs.id = notifications.subject_id
@@ -659,6 +888,16 @@ fn push_filters<'a>(
         } else {
             " AND notifications.done_at IS NULL"
         });
+        if !done {
+            builder.push(
+                " AND NOT EXISTS (
+                    SELECT 1 FROM notification_subscriptions hidden_subscriptions
+                    WHERE hidden_subscriptions.thread_id = notifications.thread_id
+                      AND hidden_subscriptions.user_id = notifications.user_id
+                      AND hidden_subscriptions.state = 'unsubscribed'
+                )",
+            );
+        }
     }
     if let Some(reason) = &parsed.reason {
         builder

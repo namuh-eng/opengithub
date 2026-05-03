@@ -4188,5 +4188,24 @@
       "Verify screen reader labels, keyboard focus recovery after optimistic row removal, and mobile touch targets for Done/Move to inbox controls.",
       "The shared opengithub_identity_test database still has the pre-existing migration checksum issue for 202605030041; browser proof used a fresh migrated database with DASHBOARD_E2E_SKIP_MIGRATIONS=1."
     ]
+  },
+  {
+    "feature_id": "notifications-002",
+    "tests_written": [
+      "Completed Phase 3 Subscribe and Unsubscribe Triage without marking notifications-002 build_pass=true.",
+      "Added notification_threads and notification_subscriptions tables, backfilled existing notifications, and preserved repository-watch fallback state.",
+      "Added authenticated PATCH /api/notifications/:id/subscribe and /unsubscribe endpoints through the existing triage response envelope.",
+      "Updated inbox queries, unread counts, and folder counts so manually unsubscribed threads disappear from Inbox until a reactivating notification recreates subscribed/participating state.",
+      "Converted the row subscription chip into a server-confirmed Editorial Subscribe/Unsubscribe button with optimistic removal, status feedback, and rollback reuse.",
+      "Focused Vitest covers unsubscribe removal and resubscribe payloads; focused Playwright covers signed-in unsubscribe/resubscribe and saved notifications-002-phase3-unsubscribed.jpg.",
+      "Verification passed: Biome focused check, focused notification Vitest, focused Playwright notification smoke, make check, make test, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 still needs bulk selection, group select-all, partial-failure rollback, keyboard traversal, and per-row rollback under mixed authorization.",
+      "Exercise real reactivation sources from issue comments, direct mentions, team mentions, and pull-request review requests, not only the notification creation contract path.",
+      "Probe unsubscribe races across two tabs, stale notification IDs, saved-folder resubscribe, repository-watch fallback after manual unsubscribe, and private repository redaction.",
+      "Verify screen reader labels and mobile touch targets for Subscribe/Unsubscribe buttons across dense notification groups.",
+      "The Rust contract test still self-skips under sqlx migrator because the repository has pre-existing duplicate 202605030041 migration versions; Playwright used the shared DB after manually applying additive notification migrations."
+    ]
   }
 ]

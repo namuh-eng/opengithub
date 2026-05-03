@@ -8035,7 +8035,9 @@ export type NotificationTriageAction =
   | "save"
   | "unsave"
   | "done"
-  | "inbox";
+  | "inbox"
+  | "subscribe"
+  | "unsubscribe";
 
 export type NotificationFolderCounts = {
   inbox: number;
@@ -8048,6 +8050,7 @@ export type NotificationTriageResponse = {
   unread: boolean;
   saved: boolean;
   done: boolean;
+  subscribed: boolean;
   lastReadAt: string | null;
   savedAt: string | null;
   unreadCount: number;

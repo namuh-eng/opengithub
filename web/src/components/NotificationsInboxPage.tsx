@@ -28,7 +28,8 @@ function applyOptimisticTriage(
   const savedDelta = action === "save" ? 1 : action === "unsave" ? -1 : 0;
   const removeFromCurrentFolder =
     (action === "done" && view.query.folder === "inbox") ||
-    (action === "inbox" && view.query.folder === "done");
+    (action === "inbox" && view.query.folder === "done") ||
+    (action === "unsubscribe" && view.query.folder === "inbox");
 
   return mapNotificationRows(
     view,
@@ -39,6 +40,12 @@ function applyOptimisticTriage(
         action === "read" ? false : action === "unread" ? true : row.unread,
       saved: action === "save" ? true : action === "unsave" ? false : row.saved,
       done: action === "done" ? true : action === "inbox" ? false : row.done,
+      subscribed:
+        action === "subscribe"
+          ? true
+          : action === "unsubscribe"
+            ? false
+            : row.subscribed,
     }),
     {
       unreadDelta,
@@ -60,6 +67,7 @@ function applyConfirmedTriage(
       unread: response.unread,
       saved: response.saved,
       done: response.done,
+      subscribed: response.subscribed,
     }),
     {
       unreadCount: response.unreadCount,
@@ -149,6 +157,12 @@ function notificationActionLabel(
   }
   if (action === "inbox") {
     return "Notification moved to Inbox.";
+  }
+  if (action === "subscribe") {
+    return "Thread subscribed.";
+  }
+  if (action === "unsubscribe") {
+    return "Thread unsubscribed.";
   }
   if (action === "save" || (action === "unsave" && response.saved)) {
     return "Notification saved.";
@@ -508,11 +522,32 @@ export function NotificationsInboxPage({
                         >
                           {row.done ? "Move to inbox" : "Done"}
                         </button>
-                        <span
-                          className={row.subscribed ? "chip info" : "chip soft"}
+                        <button
+                          aria-label={
+                            row.subscribed
+                              ? `Unsubscribe from ${row.title}`
+                              : `Subscribe to ${row.title}`
+                          }
+                          className={
+                            row.subscribed ? "btn sm primary" : "btn sm ghost"
+                          }
+                          disabled={
+                            pendingId ===
+                            `${row.id}:${
+                              row.subscribed ? "unsubscribe" : "subscribe"
+                            }`
+                          }
+                          onClick={() =>
+                            runAction(
+                              row,
+                              row.subscribed ? "unsubscribe" : "subscribe",
+                            )
+                          }
+                          title={row.subscribed ? "Unsubscribe" : "Subscribe"}
+                          type="button"
                         >
-                          {row.subscribed ? "Subscribed" : "Unsubscribed"}
-                        </span>
+                          {row.subscribed ? "Subscribed" : "Subscribe"}
+                        </button>
                       </div>
                     </article>
                   ))}

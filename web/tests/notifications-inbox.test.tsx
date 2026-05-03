@@ -221,6 +221,11 @@ describe("NotificationsInboxPage", () => {
         name: "Move Inbox search keeps mention filters to Done",
       }),
     ).toBeVisible();
+    expect(
+      within(group).getByRole("button", {
+        name: "Unsubscribe from Inbox search keeps mention filters",
+      }),
+    ).toBeVisible();
   });
 
   it("keeps filters editable in an empty state", () => {
@@ -252,6 +257,7 @@ describe("NotificationsInboxPage", () => {
         unread: true,
         saved: true,
         done: false,
+        subscribed: true,
         lastReadAt: null,
         savedAt: "2026-05-03T00:00:00Z",
         unreadCount: 1,
@@ -331,6 +337,7 @@ describe("NotificationsInboxPage", () => {
           unread: true,
           saved: false,
           done: true,
+          subscribed: true,
           lastReadAt: null,
           savedAt: null,
           unreadCount: 0,
@@ -348,6 +355,7 @@ describe("NotificationsInboxPage", () => {
           unread: true,
           saved: false,
           done: false,
+          subscribed: true,
           lastReadAt: null,
           savedAt: null,
           unreadCount: 1,
@@ -454,5 +462,102 @@ describe("NotificationsInboxPage", () => {
       "Notification moved to Inbox.",
     );
     expect(screen.getByText("No matching notifications")).toBeVisible();
+  });
+
+  it("unsubscribes inbox rows and can resubscribe a visible thread", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: "notif-1",
+          unread: true,
+          saved: false,
+          done: false,
+          subscribed: false,
+          lastReadAt: null,
+          savedAt: null,
+          unreadCount: 0,
+          folderCounts: {
+            inbox: 0,
+            saved: 0,
+            done: 0,
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: "notif-1",
+          unread: true,
+          saved: false,
+          done: false,
+          subscribed: true,
+          lastReadAt: null,
+          savedAt: null,
+          unreadCount: 1,
+          folderCounts: {
+            inbox: 1,
+            saved: 0,
+            done: 0,
+          },
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { unmount } = render(<NotificationsInboxPage view={inboxView()} />);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Unsubscribe from Inbox search keeps mention filters",
+      }),
+    );
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/notifications/notif-1/triage", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "unsubscribe" }),
+      });
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Thread unsubscribed.",
+    );
+    expect(screen.getByText("No matching notifications")).toBeVisible();
+
+    unmount();
+    render(
+      <NotificationsInboxPage
+        view={inboxView({
+          groups: [
+            {
+              ...inboxView().groups[0],
+              rows: [
+                {
+                  ...inboxView().groups[0].rows[0],
+                  subscribed: false,
+                },
+              ],
+            },
+          ],
+        })}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Subscribe to Inbox search keeps mention filters",
+      }),
+    );
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        "/notifications/notif-1/triage",
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "subscribe" }),
+        },
+      );
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Thread subscribed.",
+    );
   });
 });

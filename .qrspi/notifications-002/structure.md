@@ -41,7 +41,7 @@
 
 ## Phase 3: Subscribe and Unsubscribe Triage
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Connect row-level Subscribe/Unsubscribe actions to repository/thread subscription state. Unsubscribe should remove the notification from the inbox and suppress future thread notifications until participation, mention, team mention, or review request re-subscribes the user.
 
