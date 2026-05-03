@@ -1,8 +1,8 @@
 {
-  "observed_at": "2026-05-03T05:34:02.835Z",
+  "observed_at": "2026-05-03T05:59:55.563Z",
   "provider": "claude-code",
   "event_name": "UserPromptSubmit",
-  "session_id": "1d09b2ea-109f-404d-806c-27f3db9a4b14",
+  "session_id": "f94fa1e6-a40b-4521-b41e-9be0d1ba7287",
   "turn_id": null,
-  "prompt_summary": "is it serviceable??"
+  "prompt_summary": "Failed with non-blocking status code: clawhip error: daemon\n                                                                          request failed with 503 Service Unavailable: {\"error\":\"event\n     …"
 }
