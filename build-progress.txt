@@ -3076,3 +3076,9 @@
 - Browser smoke screenshots saved at `ralph/screenshots/build/credentials-001-final-token-list-mobile.jpg`, `credentials-001-final-docs-git.jpg`, and `credentials-001-final-docs-api.jpg`.
 - Added final `credentials-001` QA hints covering real Google reauth parity, token leak redaction, large selected-repository sets, concurrent revoke/use races, real Git/OCI smokes, and accessibility traversal.
 - Verification passed before bookkeeping: `cd web && npm test -- --run tests/api-docs.test.tsx tests/developer-experience.test.tsx`; `cd web && npx tsc --noEmit --pretty false`; focused Playwright `developer-experience.spec.ts` with `DASHBOARD_E2E_SKIP_MIGRATIONS=1`; targeted Biome check. Full `make check`, `make test`, `make test-e2e`, and Editorial banned-value scan will run as the final gate for this commit.
+
+2026-05-04 - credentials-002 structure outline
+
+- Created `.qrspi/credentials-002/structure.md` for the first incomplete PRD feature, splitting SSH keys, GPG keys, vigilant mode, commit/signature integration, docs, QA hints, and build-pass bookkeeping into five vertical phases.
+- No source implementation was started because `credentials-002.needs_structure=true` and the build-loop contract requires structure first, then `<promise>NEXT</promise>`.
+- Verified `credentials-002.build_pass=false`, `qa_pass=false`, and all structure phases remain unchecked for the next invocation.
