@@ -6,7 +6,7 @@
 
 ## Phase 1: Pages Settings API Contract - site, source, deployments, domains, and audit
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the Rust/Postgres contract for repository Pages settings under `/api/repos/{owner}/{repo}/settings/pages`. Repository admins can read and configure Pages publishing source, view deployment status, manage custom domain metadata, request DNS verification, and unpublish the site. Non-admin readers receive only non-sensitive live/status metadata when policy allows it, and private repository behavior remains non-leaky.
 

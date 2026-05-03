@@ -2550,3 +2550,14 @@
 - Added `.qrspi/settings-006/structure.md` with five independently verifiable phases: Pages settings API contract, Editorial Pages settings shell, source/domain mutations, Pages build/serving integration, and final docs/browser/QA/build-pass bookkeeping.
 - Did not change `prd.json`; `settings-006.build_pass` remains `false` until all implementation phases pass verification.
 - Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
+
+2026-05-03 - settings-006 phase 1 Pages settings API contract
+
+- Completed Phase 1 from `.qrspi/settings-006/structure.md`: repository Pages settings now have a Rust/Postgres API contract under `/api/repos/{owner}/{repo}/settings/pages`.
+- Added additive migration `202605030046_repository_pages_settings` for `pages_sites`, `pages_deployments`, `pages_domain_verifications`, and `pages_build_artifacts`, including source kind, branch/folder, Actions workflow/artifact linkage, default/custom URLs, DNS challenge state, HTTPS/certificate/provisioning state, CloudFront/S3 metadata, deployment history, and artifact manifests.
+- Added `crates/api/src/domain/pages.rs` with admin-gated source/domain/HTTPS/deployment/unpublish mutations, read-only non-admin visibility, custom domain normalization and conflict checks, branch and `/docs` validation, pending/verified DNS check modeling, deployment job enqueueing, unpublish-without-source-deletion behavior, and repository settings audit events.
+- Wired route handlers for Pages read, source update, domain save/remove/recheck, HTTPS toggle, branch deployment request, Actions artifact deployment connection, and unpublish.
+- Added `crates/api/tests/repository_pages_settings_contract.rs` covering anonymous rejection, private repository privacy, admin/read-only visibility, branch `/docs` validation, deployment job queueing, custom-domain validation/conflict, DNS recheck, HTTPS prerequisite enforcement, unpublish semantics, source file preservation, and audit rows.
+- Verification passed: focused `repository_pages_settings_contract` compiled and passed but self-skipped DB assertions because the local `TEST_DATABASE_URL` could not connect or replay migrations; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; `DB_SSL=false make test` with Cargo tests plus 298 frontend tests; mandatory Editorial banned-value scan returned zero matches using `rg -n -e`.
+- Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first and the structure outline marks browser smoke optional for this phase.
+- Marked Phase 1 as done in `.qrspi/settings-006/structure.md`; `prd.json` remains `build_pass:false` because Phases 2-5 remain.

@@ -25,6 +25,16 @@ use crate::{
         update_repository_actions_variable_by_owner_name, ActionsSecretMutation,
         ActionsSecretsError, ActionsVariableMutation,
     },
+    domain::pages::{
+        connect_repository_pages_actions_deployment_by_owner_name,
+        recheck_repository_pages_dns_by_owner_name, remove_repository_pages_domain_by_owner_name,
+        repository_pages_settings_for_actor_by_owner_name,
+        request_repository_pages_deployment_by_owner_name,
+        save_repository_pages_domain_by_owner_name, unpublish_repository_pages_by_owner_name,
+        update_repository_pages_https_by_owner_name, update_repository_pages_source_by_owner_name,
+        PagesActionsDeploymentMutation, PagesDomainMutation, PagesError, PagesHttpsMutation,
+        PagesSourceMutation,
+    },
     domain::repositories::{
         cancel_repository_invitation_by_owner_name, create_repository_branch_rule_by_owner_name,
         create_repository_ruleset_by_owner_name, create_repository_with_bootstrap,
@@ -155,6 +165,35 @@ pub fn router() -> Router<AppState> {
         .route(
             "/:owner/:repo/settings/secrets/variables/:variable_name",
             patch(update_actions_variable).delete(delete_actions_variable),
+        )
+        .route("/:owner/:repo/settings/pages", get(pages_settings))
+        .route(
+            "/:owner/:repo/settings/pages/source",
+            patch(update_pages_source),
+        )
+        .route(
+            "/:owner/:repo/settings/pages/domain",
+            post(save_pages_domain).delete(remove_pages_domain),
+        )
+        .route(
+            "/:owner/:repo/settings/pages/domain/recheck",
+            post(recheck_pages_dns),
+        )
+        .route(
+            "/:owner/:repo/settings/pages/https",
+            patch(update_pages_https),
+        )
+        .route(
+            "/:owner/:repo/settings/pages/deployments",
+            post(request_pages_deployment),
+        )
+        .route(
+            "/:owner/:repo/settings/pages/actions-deployments",
+            post(connect_pages_actions_deployment),
+        )
+        .route(
+            "/:owner/:repo/settings/pages/unpublish",
+            post(unpublish_pages),
         )
         .route("/:owner/:repo/star", put(star).delete(unstar))
         .route("/:owner/:repo/watch", put(watch).delete(unwatch))
@@ -1334,6 +1373,205 @@ async fn delete_actions_variable(
     Ok(Json(json!(settings)))
 }
 
+async fn pages_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings =
+        repository_pages_settings_for_actor_by_owner_name(pool, actor.0.id, &owner, &repo)
+            .await
+            .map_err(map_pages_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn update_pages_source(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<PagesSourceMutation>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings =
+        update_repository_pages_source_by_owner_name(pool, actor.0.id, &owner, &repo, request)
+            .await
+            .map_err(map_pages_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn save_pages_domain(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<PagesDomainMutation>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings =
+        save_repository_pages_domain_by_owner_name(pool, actor.0.id, &owner, &repo, request)
+            .await
+            .map_err(map_pages_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn remove_pages_domain(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = remove_repository_pages_domain_by_owner_name(pool, actor.0.id, &owner, &repo)
+        .await
+        .map_err(map_pages_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "repository was not found".to_owned(),
+            )
+        })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn recheck_pages_dns(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = recheck_repository_pages_dns_by_owner_name(pool, actor.0.id, &owner, &repo)
+        .await
+        .map_err(map_pages_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "repository was not found".to_owned(),
+            )
+        })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn update_pages_https(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<PagesHttpsMutation>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings =
+        update_repository_pages_https_by_owner_name(pool, actor.0.id, &owner, &repo, request)
+            .await
+            .map_err(map_pages_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn request_pages_deployment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let result = request_repository_pages_deployment_by_owner_name(pool, actor.0.id, &owner, &repo)
+        .await
+        .map_err(map_pages_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "repository was not found".to_owned(),
+            )
+        })?;
+
+    Ok(Json(json!(result)))
+}
+
+async fn connect_pages_actions_deployment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<PagesActionsDeploymentMutation>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let result = connect_repository_pages_actions_deployment_by_owner_name(
+        pool, actor.0.id, &owner, &repo, request,
+    )
+    .await
+    .map_err(map_pages_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(result)))
+}
+
+async fn unpublish_pages(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = unpublish_repository_pages_by_owner_name(pool, actor.0.id, &owner, &repo)
+        .await
+        .map_err(map_pages_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "repository was not found".to_owned(),
+            )
+        })?;
+
+    Ok(Json(json!(settings)))
+}
+
 async fn star(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1579,6 +1817,36 @@ fn map_actions_secrets_error(error: ActionsSecretsError) -> (StatusCode, Json<Er
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal_error",
             "Actions secrets operation failed".to_owned(),
+        ),
+    }
+}
+
+fn map_pages_error(error: PagesError) -> (StatusCode, Json<ErrorEnvelope>) {
+    match error {
+        PagesError::Repository(error) => map_repository_error(error),
+        PagesError::Invalid(_) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            error.to_string(),
+        ),
+        PagesError::Conflict => error_response(StatusCode::CONFLICT, "conflict", error.to_string()),
+        PagesError::NotFound => {
+            error_response(StatusCode::NOT_FOUND, "not_found", error.to_string())
+        }
+        PagesError::Job(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "job_enqueue_failed",
+            "Pages deployment could not be queued".to_owned(),
+        ),
+        PagesError::Sqlx(sqlx::Error::Database(ref database_error))
+            if database_error.is_unique_violation() =>
+        {
+            error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
+        PagesError::Sqlx(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "Pages settings operation failed".to_owned(),
         ),
     }
 }
