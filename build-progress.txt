@@ -2606,3 +2606,11 @@
 - Added final `settings-006` QA hints covering real AWS S3/CloudFront publication, real Cloudflare DNS verification, ACM/certificate readiness, custom-domain removal and CNAME behavior, cache invalidation, Actions artifact provenance, missing `/docs` failures, concurrent admin edits, private repository leakage, and accessibility traversal.
 - Verification passed: `cd web && npx tsc --noEmit --pretty false`; focused `web/tests/api-docs.test.tsx` and `web/tests/repository-pages-settings-page.test.tsx`; focused same-env Playwright `repository-settings-pages.spec.ts`; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test`; full same-env `make test-e2e`; mandatory Editorial banned-value scan returned zero matches.
 - Left `qa_pass=false` for the QA agent. Deeper QA should use real AWS/Cloudflare resources and a clean migrated database for provider health checks and edge-case Pages publication scenarios.
+
+2026-05-03 - releases-001 structure planning
+
+- Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `web/AGENTS.md`, the first incomplete `prd.json` entry, current Releases/Tags placeholders, repository shell/navigation references, compare route helpers, `design/project/og-screens-2.jsx`, and target release/tag docs.
+- Determined `releases-001` requires structure planning before implementation because `needs_structure: true` and `.qrspi/releases-001/structure.md` did not exist.
+- Added `.qrspi/releases-001/structure.md` with five independently verifiable phases: releases read contract, Editorial releases/tags UI, assets/reactions/latest/compare interactions, release management mutations, and final docs/browser/QA/build-pass bookkeeping.
+- Did not change `prd.json`; `releases-001.build_pass` remains `false` until all implementation phases pass verification.
+- Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
