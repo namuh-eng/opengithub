@@ -4496,5 +4496,25 @@
       "Revoke is sudo-gated using the existing email-confirmation sudo mode; real Google reauth parity remains a production-hardening concern.",
       "Browser smoke and make test-e2e were skipped for this API-first phase per the structure outline."
     ]
+  },
+  {
+    "feature_id": "credentials-002",
+    "tests_written": [
+      "Completed Phase 2 Editorial SSH Key Management UI without marking credentials-002 build_pass=true.",
+      "Replaced /settings/keys placeholder with a signed-in Editorial SSH key settings page backed by GET /api/settings/keys.",
+      "Added typed Next/Rust API helpers and same-origin /settings/keys/actions forwarding for SSH create and sudo-gated delete.",
+      "Added SSH key rows with key type, title, SHA256 fingerprint, added source/date, last-used state, access mode, active/deleted chips, and typed delete confirmation.",
+      "Added sudo email-confirmation flow in the delete dialog so the destructive Rust revoke endpoint is reachable from the UI.",
+      "Focused Vitest passed for empty/populated/unavailable states, SSH create, delete confirmation, redaction, no inert links, and Editorial guardrails.",
+      "Focused Playwright smoke passed for signed-in SSH create/delete and saved ralph/screenshots/build/credentials-002-phase2-ssh-keys.jpg.",
+      "Full make check, make test, and make test-e2e passed after applying existing personal profile and notification delivery migrations to the local Playwright DB."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 intentionally leaves GPG key creation/deletion and vigilant-mode toggling for Phase 3.",
+      "Run keyboard and screen-reader traversal on the SSH create form, sudo confirmation panel, delete alertdialog, status announcements, and cancel paths.",
+      "Stress SSH parser/UI behavior with rsa, ecdsa, security-key, comments, whitespace variants, duplicate races, revoked-then-readded keys, and very long titles.",
+      "Validate real Google reauth parity when sudo mode moves beyond email confirmation.",
+      "Exercise mobile density and wrapping with many SSH keys and long SHA256 fingerprints."
+    ]
   }
 ]

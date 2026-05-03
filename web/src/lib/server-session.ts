@@ -6,6 +6,7 @@ import {
   type GlobalSearchQuery,
   getAppShellContextFromCookie,
   getDashboardSummaryFromCookie,
+  getKeySettingsFromCookie,
   getNotificationDeliverySettingsFromCookie,
   getNotificationFilterSettingsFromCookie,
   getOrganizationPackageDetailFromCookie,
@@ -59,6 +60,7 @@ import {
   getUserPackageDetailFromCookie,
   getUserPackageSettingsFromCookie,
   getUserPackagesFromCookie,
+  type KeySettingsFetchResult,
   type OrganizationPeopleListQuery,
   type OrganizationRepositoryListQuery,
   type OwnerPackageListQuery,
@@ -125,6 +127,11 @@ export async function getPersonalAccessTokenNewContext(): Promise<PersonalAccess
   return getPersonalAccessTokenNewContextFromCookie(
     requestHeaders.get("cookie"),
   );
+}
+
+export async function getKeySettings(): Promise<KeySettingsFetchResult> {
+  const requestHeaders = await headers();
+  return getKeySettingsFromCookie(requestHeaders.get("cookie"));
 }
 
 export async function getPublicUserProfile(

@@ -105,6 +105,57 @@ export type RevokePersonalAccessTokenResponse = {
   revokedAt: string;
 };
 
+export type SshKeySummary = {
+  id: string;
+  title: string;
+  keyType: string;
+  fingerprintSha256: string;
+  accessMode: "read_write" | "read_only" | string;
+  source: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+};
+
+export type GpgKeySummary = {
+  id: string;
+  title: string;
+  primaryFingerprint: string;
+  keyId: string | null;
+  emails: string[];
+  source: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+};
+
+export type KeySettings = {
+  sshKeys: SshKeySummary[];
+  gpgKeys: GpgKeySummary[];
+  vigilantMode: boolean;
+  sudo: PersonalAccessTokenSudoState;
+};
+
+export type KeySettingsFetchResult =
+  | { ok: true; settings: KeySettings }
+  | { ok: false; status: number; code: string | null; message: string };
+
+export type CreateSshKeyRequest = {
+  title: string;
+  keyType?: string;
+  publicKey: string;
+  accessMode?: "read_write" | "read_only";
+};
+
+export type CreateSshKeyResponse = {
+  sshKey: SshKeySummary;
+};
+
+export type RevokeSshKeyResponse = {
+  sshKey: SshKeySummary;
+  revokedAt: string;
+};
+
 export type UserEmailAddress = {
   id: string;
   email: string;
@@ -3975,6 +4026,103 @@ export async function createSudoGrantFromCookie(
   }
 
   return (await response.json()) as { sudo: PersonalAccessTokenSudoState };
+}
+
+export async function getKeySettingsFromCookie(
+  cookie: string | null | undefined,
+): Promise<KeySettingsFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}/api/settings/keys`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Signing key settings are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Signing key settings are unavailable right now.";
+    try {
+      const body = (await response.json()) as ApiErrorEnvelope;
+      code = body.error.code ?? null;
+      message = body.error.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    settings: (await response.json()) as KeySettings,
+  };
+}
+
+export async function createSshKeyFromCookie(
+  cookie: string | null | undefined,
+  input: CreateSshKeyRequest,
+): Promise<CreateSshKeyResponse> {
+  const response = await fetch(`${apiBaseUrl()}/api/settings/keys/ssh`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(cookie ? { cookie } : {}),
+    },
+    body: JSON.stringify(input),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    let envelope: ApiErrorEnvelope | null = null;
+    try {
+      envelope = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      envelope = null;
+    }
+    throw new Error(envelope?.error.message ?? "SSH key could not be added.", {
+      cause: envelope,
+    });
+  }
+
+  return (await response.json()) as CreateSshKeyResponse;
+}
+
+export async function revokeSshKeyFromCookie(
+  cookie: string | null | undefined,
+  keyId: string,
+): Promise<RevokeSshKeyResponse> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/settings/keys/ssh/${encodeURIComponent(keyId)}`,
+    {
+      method: "DELETE",
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    let envelope: ApiErrorEnvelope | null = null;
+    try {
+      envelope = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      envelope = null;
+    }
+    throw new Error(
+      envelope?.error.message ?? "SSH key could not be deleted.",
+      {
+        cause: envelope,
+      },
+    );
+  }
+
+  return (await response.json()) as RevokeSshKeyResponse;
 }
 
 export async function getAppShellContextFromCookie(

@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial SSH Key Management UI
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace `/settings/keys` placeholder with a real signed-in settings page for SSH authentication/signing keys using the Editorial design system.
 

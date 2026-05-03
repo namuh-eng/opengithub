@@ -1,3 +1,14 @@
+2026-05-04 - credentials-002 phase 2 Editorial SSH key management UI
+
+- Completed Phase 2 from `.qrspi/credentials-002/structure.md`: `/settings/keys` now renders a real signed-in Editorial SSH key management page without marking `credentials-002.build_pass=true`.
+- Added typed key settings DTOs/helpers in `web/src/lib/api.ts` and `web/src/lib/server-session.ts`, plus a same-origin `/settings/keys/actions` route that forwards SSH create/delete mutations to the Rust API with session cookies and stable error envelopes.
+- Added `DeveloperKeysPage` with SSH key rows for title, key type, SHA256 fingerprint, added source/date, last-used state, read/write access, active/deleted status, New SSH key form, server-confirmed append, typed delete confirmation, and sudo email-confirmation before destructive revoke.
+- Added focused Vitest coverage for empty/populated/unavailable SSH key states, create submission, delete confirmation, redaction, no inert links/buttons, and Editorial guardrails.
+- Added focused Playwright browser smoke for signed-in SSH create/delete, no dead controls, and screenshot `ralph/screenshots/build/credentials-002-phase2-ssh-keys.jpg`.
+- Verification passed: focused `developer-keys-page` Vitest; web `tsc --noEmit`; focused Biome; focused Playwright `developer-keys.spec.ts`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 355 web tests; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false DASHBOARD_E2E_SKIP_MIGRATIONS=1 make test-e2e` with 108 Playwright tests; mandatory Editorial banned-value scan.
+- Full E2E initially exposed local DB drift: `notification_delivery_preferences` and its `user_email_addresses` dependency were missing from `opengithub_identity_test`. Applying existing migrations `202605030041_personal_profile_settings.up.sql` and `202605040006_notification_delivery_preferences.up.sql` fixed the unrelated notification settings failures; the rerun passed.
+- Marked Phase 2 as done in `.qrspi/credentials-002/structure.md`; `prd.json` remains `build_pass:false` because GPG/vigilant UI, signing integration, and final docs/bookkeeping phases remain.
+
 2026-05-04 - credentials-001 phase 1 token settings API foundation
 
 - Completed Phase 1 from `.qrspi/credentials-001/structure.md`: personal access token settings now have a real Rust API foundation without marking `credentials-001.build_pass=true`.

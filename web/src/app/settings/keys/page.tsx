@@ -1,15 +1,29 @@
-import { SettingsSectionPage } from "@/components/SettingsSectionPage";
+import { DeveloperKeysPage } from "@/components/DeveloperKeysPage";
+import { SettingsShell } from "@/components/SettingsShell";
+import {
+  getKeySettings,
+  getSessionAndShellContext,
+} from "@/lib/server-session";
 
 export default async function KeySettingsPage() {
+  const [{ session, shellContext }, keySettings] = await Promise.all([
+    getSessionAndShellContext(),
+    getKeySettings(),
+  ]);
+
   return (
-    <SettingsSectionPage
-      actions={[
-        { href: "/docs/git", label: "Read Git guide", primary: true },
-        { href: "/settings/tokens", label: "Developer tokens" },
-      ]}
+    <SettingsShell
       activeSection="keys"
-      message="SSH and signing key management is reserved for the developer credential phases. Git over HTTPS and personal access tokens are the supported credential path first."
-      title="Keys"
-    />
+      eyebrow="Developer settings"
+      session={session}
+      shellContext={shellContext}
+      title="SSH keys"
+    >
+      <DeveloperKeysPage
+        keySettings={keySettings}
+        showHeading={false}
+        userEmail={session.user?.email}
+      />
+    </SettingsShell>
   );
 }
