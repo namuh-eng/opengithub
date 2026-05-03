@@ -4009,5 +4009,25 @@
       "Stress long digests, duplicate tags, selected digest URLs, packages with many blobs/platforms, and registry byte-transfer behavior once packages-003 implements the full protocol.",
       "Full same-env Playwright remains blocked by the pre-existing local migration checksum issue: migration 202605030041 was previously applied but has been modified."
     ]
+  },
+  {
+    "feature_id": "packages-002",
+    "tests_written": [
+      "Completed Phase 4 Admin Settings Entry Surface without marking packages-002 build_pass=true.",
+      "Added admin-gated user/org package settings API endpoints that expose package visibility, latest version/digest, linked repositories, direct package grants, inherited repository access, recent package activity, and disabled registry write capability flags.",
+      "Settings endpoints return 404 for unreadable private/internal packages and 403 without package metadata for readable non-admin viewers.",
+      "Rendered canonical user and organization package settings pages with Editorial access, provenance, current-state, activity, and danger/future-write placeholder sections.",
+      "Focused Rust contract covers settings redaction, admin package grants, explicit permission summaries, linked repository summaries, inherited repository access, disabled packages-003 capability reasons, and storage-key redaction.",
+      "Focused Vitest covers settings page links, admin-only content, disabled-control reasons, empty access states, forbidden redaction, and no inert anchors.",
+      "Focused Playwright covers real seeded package settings navigation from the detail page, disabled controls, storage-key redaction, no dead anchors, mobile no-overflow, and screenshot ralph/screenshots/build/packages-002-phase4-settings.jpg.",
+      "Full make check and make test passed after Phase 4 changes."
+    ],
+    "needs_deeper_qa": [
+      "Phase 5 still needs API docs, final screenshots, final QA handoff, and packages-002.build_pass=true bookkeeping.",
+      "Verify non-admin settings redaction in browser fixtures for anonymous users, package read grants, linked repository read/write grants, org members, and repository admins.",
+      "Stress package settings rendering with many direct grants, many linked repositories, org-owned internal packages, packages without linked repositories, and long names/digests on mobile.",
+      "Exercise accessibility traversal through the settings page cards and disabled future-write controls.",
+      "Confirm packages-003 later replaces disabled placeholders with real package access, visibility, delete/restore, and registry protocol mutations without weakening current redaction."
+    ]
   }
 ]

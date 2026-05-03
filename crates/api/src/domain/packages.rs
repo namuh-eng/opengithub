@@ -181,6 +181,74 @@ pub struct PackageAdminState {
     pub reason: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PackageSettings {
+    pub package: PackageSettingsSummary,
+    pub owner: OwnerPackageOwner,
+    pub linked_repositories: Vec<OwnerPackageRepository>,
+    pub explicit_permissions: Vec<PackagePermissionSummary>,
+    pub inherited_repository_access: Vec<PackageRepositoryAccessSummary>,
+    pub recent_activity: Vec<PackageActivitySummary>,
+    pub registry_write_capabilities: Vec<PackageCapabilitySummary>,
+    pub admin: PackageAdminState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PackageSettingsSummary {
+    pub id: Uuid,
+    pub name: String,
+    pub package_type: String,
+    pub type_label: String,
+    pub visibility: String,
+    pub href: String,
+    pub download_count: i64,
+    pub latest_version: Option<String>,
+    pub latest_digest: Option<String>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PackagePermissionSummary {
+    pub user_id: Uuid,
+    pub login: String,
+    pub display_name: Option<String>,
+    pub role: String,
+    pub href: String,
+    pub granted_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PackageRepositoryAccessSummary {
+    pub repository: OwnerPackageRepository,
+    pub user_id: Uuid,
+    pub login: String,
+    pub role: String,
+    pub source: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PackageActivitySummary {
+    pub kind: String,
+    pub label: String,
+    pub actor: Option<OwnerPackagePublisher>,
+    pub occurred_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PackageCapabilitySummary {
+    pub key: String,
+    pub label: String,
+    pub enabled: bool,
+    pub reason: String,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct OwnerPackageListQuery<'a> {
     pub query: Option<&'a str>,
@@ -211,6 +279,8 @@ pub enum PackageListError {
 pub enum PackageDetailError {
     #[error("package was not found")]
     NotFound,
+    #[error("package settings require admin access")]
+    Forbidden,
     #[error("{0}")]
     InvalidSelection(String),
     #[error("markdown rendering failed")]
@@ -646,6 +716,63 @@ pub async fn record_package_download_metadata(
     })
 }
 
+pub async fn package_settings(
+    pool: &PgPool,
+    owner_login: &str,
+    owner_kind: PackageOwnerKind,
+    package_type: &str,
+    package_name: &str,
+    actor_user_id: Option<Uuid>,
+) -> Result<PackageSettings, PackageDetailError> {
+    let detail = package_detail(
+        pool,
+        owner_login,
+        owner_kind,
+        package_type,
+        package_name,
+        actor_user_id,
+        PackageDetailQuery { version: None },
+    )
+    .await?;
+
+    if !detail.admin.can_admin {
+        return Err(PackageDetailError::Forbidden);
+    }
+
+    let linked_repositories = package_linked_repositories(pool, detail.id).await?;
+    let explicit_permissions = package_permission_summaries(pool, detail.id).await?;
+    let inherited_repository_access = package_repository_access_summaries(pool, detail.id).await?;
+    let recent_activity = package_recent_activity(pool, detail.id).await?;
+
+    Ok(PackageSettings {
+        package: PackageSettingsSummary {
+            id: detail.id,
+            name: detail.name,
+            package_type: detail.package_type,
+            type_label: detail.type_label,
+            visibility: detail.visibility,
+            href: detail.href,
+            download_count: detail.download_count,
+            latest_version: detail
+                .selected_version
+                .as_ref()
+                .map(|version| version.version.clone()),
+            latest_digest: detail
+                .selected_version
+                .as_ref()
+                .and_then(|version| version.digest.clone()),
+            updated_at: detail.updated_at,
+        },
+        owner: detail.owner,
+        linked_repositories,
+        explicit_permissions,
+        inherited_repository_access,
+        recent_activity,
+        registry_write_capabilities: package_registry_capabilities(),
+        admin: detail.admin,
+    })
+}
+
 async fn resolve_owner(
     pool: &PgPool,
     owner_login: &str,
@@ -1018,6 +1145,232 @@ async fn package_blobs(
             })
         })
         .collect()
+}
+
+async fn package_linked_repositories(
+    pool: &PgPool,
+    package_id: Uuid,
+) -> Result<Vec<OwnerPackageRepository>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
+        SELECT repo.id,
+               COALESCE(owner_user.username, owner_org.slug) AS owner,
+               repo.name,
+               repo.visibility
+        FROM packages p
+        JOIN repositories repo ON repo.id = p.repository_id
+        LEFT JOIN users owner_user ON owner_user.id = repo.owner_user_id
+        LEFT JOIN organizations owner_org ON owner_org.id = repo.owner_organization_id
+        WHERE p.id = $1
+        UNION
+        SELECT linked_repo.id,
+               COALESCE(linked_owner_user.username, linked_owner_org.slug) AS owner,
+               linked_repo.name,
+               linked_repo.visibility
+        FROM package_repository_links pr
+        JOIN repositories linked_repo ON linked_repo.id = pr.repository_id
+        LEFT JOIN users linked_owner_user ON linked_owner_user.id = linked_repo.owner_user_id
+        LEFT JOIN organizations linked_owner_org ON linked_owner_org.id = linked_repo.owner_organization_id
+        WHERE pr.package_id = $1
+        ORDER BY id
+        "#,
+    )
+    .bind(package_id)
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            let owner: String = row.try_get("owner")?;
+            let name: String = row.try_get("name")?;
+            Ok(OwnerPackageRepository {
+                id: row.try_get("id")?,
+                full_name: format!("{owner}/{name}"),
+                href: format!("/{}/{}", url_component(&owner), url_component(&name)),
+                owner,
+                name,
+                visibility: row.try_get("visibility")?,
+            })
+        })
+        .collect()
+}
+
+async fn package_permission_summaries(
+    pool: &PgPool,
+    package_id: Uuid,
+) -> Result<Vec<PackagePermissionSummary>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
+        SELECT pp.user_id,
+               COALESCE(NULLIF(u.username, ''), split_part(u.email, '@', 1)) AS login,
+               u.display_name,
+               pp.role,
+               pp.created_at AS granted_at
+        FROM package_permissions pp
+        JOIN users u ON u.id = pp.user_id
+        WHERE pp.package_id = $1
+        ORDER BY
+            CASE pp.role WHEN 'admin' THEN 1 WHEN 'write' THEN 2 ELSE 3 END,
+            lower(COALESCE(NULLIF(u.username, ''), split_part(u.email, '@', 1)))
+        LIMIT 50
+        "#,
+    )
+    .bind(package_id)
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            let login: String = row.try_get("login")?;
+            Ok(PackagePermissionSummary {
+                user_id: row.try_get("user_id")?,
+                href: format!("/{}", url_component(&login)),
+                login,
+                display_name: row.try_get("display_name")?,
+                role: row.try_get("role")?,
+                granted_at: row.try_get("granted_at")?,
+            })
+        })
+        .collect()
+}
+
+async fn package_repository_access_summaries(
+    pool: &PgPool,
+    package_id: Uuid,
+) -> Result<Vec<PackageRepositoryAccessSummary>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
+        WITH linked AS (
+            SELECT p.repository_id
+            FROM packages p
+            WHERE p.id = $1
+            UNION
+            SELECT pr.repository_id
+            FROM package_repository_links pr
+            WHERE pr.package_id = $1
+        )
+        SELECT repo.id AS repository_id,
+               COALESCE(owner_user.username, owner_org.slug) AS repository_owner,
+               repo.name AS repository_name,
+               repo.visibility AS repository_visibility,
+               rp.user_id,
+               COALESCE(NULLIF(u.username, ''), split_part(u.email, '@', 1)) AS login,
+               rp.role,
+               rp.source
+        FROM linked
+        JOIN repositories repo ON repo.id = linked.repository_id
+        JOIN repository_permissions rp ON rp.repository_id = repo.id
+        JOIN users u ON u.id = rp.user_id
+        LEFT JOIN users owner_user ON owner_user.id = repo.owner_user_id
+        LEFT JOIN organizations owner_org ON owner_org.id = repo.owner_organization_id
+        ORDER BY lower(repo.name), CASE rp.role WHEN 'owner' THEN 1 WHEN 'admin' THEN 2 WHEN 'write' THEN 3 ELSE 4 END, lower(COALESCE(NULLIF(u.username, ''), split_part(u.email, '@', 1)))
+        LIMIT 50
+        "#,
+    )
+    .bind(package_id)
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            let owner: String = row.try_get("repository_owner")?;
+            let name: String = row.try_get("repository_name")?;
+            let login: String = row.try_get("login")?;
+            Ok(PackageRepositoryAccessSummary {
+                repository: OwnerPackageRepository {
+                    id: row.try_get("repository_id")?,
+                    full_name: format!("{owner}/{name}"),
+                    href: format!("/{}/{}", url_component(&owner), url_component(&name)),
+                    owner,
+                    name,
+                    visibility: row.try_get("repository_visibility")?,
+                },
+                user_id: row.try_get("user_id")?,
+                href: format!("/{}", url_component(&login)),
+                login,
+                role: row.try_get("role")?,
+                source: row.try_get("source")?,
+            })
+        })
+        .collect()
+}
+
+async fn package_recent_activity(
+    pool: &PgPool,
+    package_id: Uuid,
+) -> Result<Vec<PackageActivitySummary>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
+        SELECT 'version' AS kind,
+               'Published ' || pv.version AS label,
+               pv.created_at AS occurred_at,
+               pv.published_by_user_id AS actor_id,
+               COALESCE(NULLIF(u.username, ''), split_part(u.email, '@', 1)) AS actor_login,
+               u.display_name AS actor_name
+        FROM package_versions pv
+        JOIN users u ON u.id = pv.published_by_user_id
+        WHERE pv.package_id = $1
+        UNION ALL
+        SELECT 'download' AS kind,
+               'Recorded ' || COALESCE(SUM(pd.download_count), 0)::text || ' downloads' AS label,
+               MAX(pd.downloaded_at) AS occurred_at,
+               NULL::uuid AS actor_id,
+               NULL::text AS actor_login,
+               NULL::text AS actor_name
+        FROM package_downloads pd
+        WHERE pd.package_id = $1
+        GROUP BY pd.package_id
+        ORDER BY occurred_at DESC
+        LIMIT 8
+        "#,
+    )
+    .bind(package_id)
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            let actor_id: Option<Uuid> = row.try_get("actor_id")?;
+            let actor_login: Option<String> = row.try_get("actor_login")?;
+            let actor_name: Option<String> = row.try_get("actor_name")?;
+            Ok(PackageActivitySummary {
+                kind: row.try_get("kind")?,
+                label: row.try_get("label")?,
+                occurred_at: row.try_get("occurred_at")?,
+                actor: actor_id
+                    .zip(actor_login)
+                    .map(|(id, login)| OwnerPackagePublisher {
+                        id,
+                        href: format!("/{}", url_component(&login)),
+                        login,
+                        name: actor_name,
+                    }),
+            })
+        })
+        .collect()
+}
+
+fn package_registry_capabilities() -> Vec<PackageCapabilitySummary> {
+    vec![
+        PackageCapabilitySummary {
+            key: "visibility".to_owned(),
+            label: "Change package visibility".to_owned(),
+            enabled: false,
+            reason: "Visibility writes are reserved for the package registry management slice.".to_owned(),
+        },
+        PackageCapabilitySummary {
+            key: "access".to_owned(),
+            label: "Manage package access".to_owned(),
+            enabled: false,
+            reason: "Access mutation APIs are intentionally not enabled until package registry auth lands.".to_owned(),
+        },
+        PackageCapabilitySummary {
+            key: "delete".to_owned(),
+            label: "Delete or restore package versions".to_owned(),
+            enabled: false,
+            reason: "Deletion and restore require OCI registry audit semantics from packages-003.".to_owned(),
+        },
+    ]
 }
 
 fn install_commands(

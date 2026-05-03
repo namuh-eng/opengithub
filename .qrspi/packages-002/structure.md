@@ -60,7 +60,7 @@
 
 ## Phase 4: Admin Settings Entry Surface - access, visibility, repository link, and provenance overview
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Ensure the visible package Settings entry opens a real admin-only surface instead of a placeholder. This phase does not need full package registry mutation parity, but it must show current access/visibility/source-link state, concrete navigation, safe disabled explanations for not-yet-supported writes, and non-admin redaction.
 

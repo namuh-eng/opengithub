@@ -7,6 +7,7 @@ import {
   getAppShellContextFromCookie,
   getDashboardSummaryFromCookie,
   getOrganizationPackageDetailFromCookie,
+  getOrganizationPackageSettingsFromCookie,
   getOrganizationPackagesFromCookie,
   getOrganizationPeopleFromCookie,
   getOrganizationRepositoriesFromCookie,
@@ -52,11 +53,13 @@ import {
   getSearchSuggestionsFromCookie,
   getSessionFromHeaders,
   getUserPackageDetailFromCookie,
+  getUserPackageSettingsFromCookie,
   getUserPackagesFromCookie,
   type OrganizationPeopleListQuery,
   type OrganizationRepositoryListQuery,
   type OwnerPackageListQuery,
   type PackageDetailFetchResult,
+  type PackageSettingsFetchResult,
   type ProfileRepositoryListQuery,
   type RepositoryActionsDashboardQuery,
   type RepositoryIssueListQuery,
@@ -178,6 +181,20 @@ export async function getUserPackageDetail(
   );
 }
 
+export async function getUserPackageSettings(
+  username: string,
+  packageType: string,
+  packageName: string,
+): Promise<PackageSettingsFetchResult> {
+  const requestHeaders = await headers();
+  return getUserPackageSettingsFromCookie(
+    requestHeaders.get("cookie"),
+    username,
+    packageType,
+    packageName,
+  );
+}
+
 export async function getOrganizationPackageDetail(
   org: string,
   packageType: string,
@@ -191,6 +208,20 @@ export async function getOrganizationPackageDetail(
     packageType,
     packageName,
     version,
+  );
+}
+
+export async function getOrganizationPackageSettings(
+  org: string,
+  packageType: string,
+  packageName: string,
+): Promise<PackageSettingsFetchResult> {
+  const requestHeaders = await headers();
+  return getOrganizationPackageSettingsFromCookie(
+    requestHeaders.get("cookie"),
+    org,
+    packageType,
+    packageName,
   );
 }
 

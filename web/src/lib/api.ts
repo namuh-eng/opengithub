@@ -462,6 +462,10 @@ export type PackageDetailFetchResult =
   | { ok: true; package: PackageDetail }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type PackageSettingsFetchResult =
+  | { ok: true; settings: PackageSettings }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type PackageDetail = {
   id: string;
   name: string;
@@ -526,6 +530,62 @@ export type PackageAdminState = {
   canAdmin: boolean;
   settingsHref: string | null;
   reason: string | null;
+};
+
+export type PackageSettings = {
+  package: PackageSettingsSummary;
+  owner: OwnerPackageOwner;
+  linkedRepositories: OwnerPackageRepository[];
+  explicitPermissions: PackagePermissionSummary[];
+  inheritedRepositoryAccess: PackageRepositoryAccessSummary[];
+  recentActivity: PackageActivitySummary[];
+  registryWriteCapabilities: PackageCapabilitySummary[];
+  admin: PackageAdminState;
+};
+
+export type PackageSettingsSummary = {
+  id: string;
+  name: string;
+  packageType: string;
+  typeLabel: string;
+  visibility: RepositoryVisibility;
+  href: string;
+  downloadCount: number;
+  latestVersion: string | null;
+  latestDigest: string | null;
+  updatedAt: string;
+};
+
+export type PackagePermissionSummary = {
+  userId: string;
+  login: string;
+  displayName: string | null;
+  role: string;
+  href: string;
+  grantedAt: string;
+};
+
+export type PackageRepositoryAccessSummary = {
+  repository: OwnerPackageRepository;
+  userId: string;
+  login: string;
+  role: string;
+  source: string;
+  href: string;
+};
+
+export type PackageActivitySummary = {
+  kind: string;
+  label: string;
+  actor: OwnerPackagePublisher | null;
+  occurredAt: string;
+};
+
+export type PackageCapabilitySummary = {
+  key: string;
+  label: string;
+  enabled: boolean;
+  reason: string;
 };
 
 export type OwnerPackagePublisher = {
@@ -3865,6 +3925,18 @@ export async function getUserPackageDetailFromCookie(
   );
 }
 
+export async function getUserPackageSettingsFromCookie(
+  cookie: string | null | undefined,
+  username: string,
+  packageType: string,
+  packageName: string,
+): Promise<PackageSettingsFetchResult> {
+  return getPackageSettingsFromCookie(
+    cookie,
+    `/api/users/${encodeURIComponent(username)}/packages/${encodeURIComponent(packageType)}/${encodeURIComponent(packageName)}/settings`,
+  );
+}
+
 export async function getOrganizationPackageDetailFromCookie(
   cookie: string | null | undefined,
   org: string,
@@ -3876,6 +3948,18 @@ export async function getOrganizationPackageDetailFromCookie(
     cookie,
     `/api/orgs/${encodeURIComponent(org)}/packages/${encodeURIComponent(packageType)}/${encodeURIComponent(packageName)}`,
     version,
+  );
+}
+
+export async function getOrganizationPackageSettingsFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  packageType: string,
+  packageName: string,
+): Promise<PackageSettingsFetchResult> {
+  return getPackageSettingsFromCookie(
+    cookie,
+    `/api/orgs/${encodeURIComponent(org)}/packages/${encodeURIComponent(packageType)}/${encodeURIComponent(packageName)}/settings`,
   );
 }
 
@@ -3919,6 +4003,43 @@ async function getPackageDetailFromCookie(
   }
 
   return { ok: true, package: (await response.json()) as PackageDetail };
+}
+
+async function getPackageSettingsFromCookie(
+  cookie: string | null | undefined,
+  path: string,
+): Promise<PackageSettingsFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${path}`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "packages_unavailable",
+      message: "Package settings could not be reached.",
+    };
+  }
+
+  if (!response.ok) {
+    let body: ApiErrorEnvelope | null = null;
+    try {
+      body = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      body = null;
+    }
+    return {
+      ok: false,
+      status: body?.status ?? response.status,
+      code: body?.error.code ?? null,
+      message: body?.error.message ?? "Package settings could not be loaded.",
+    };
+  }
+
+  return { ok: true, settings: (await response.json()) as PackageSettings };
 }
 
 async function getOwnerPackagesFromCookie(

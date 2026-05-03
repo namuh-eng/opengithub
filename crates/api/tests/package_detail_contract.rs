@@ -454,13 +454,77 @@ async fn private_detail_redacts_until_package_or_linked_repository_permission_gr
         format!("{marker}-owner/{marker}-repo")
     );
 
-    let (status, _, owner_body) = get_json(app, &path, Some(&owner_cookie)).await;
+    let (status, _, owner_body) = get_json(app.clone(), &path, Some(&owner_cookie)).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(owner_body["admin"]["canAdmin"], true);
     assert_eq!(
         owner_body["admin"]["settingsHref"],
         format!("/{marker}-owner/npm/{marker}-private/settings")
     );
+
+    let (status, _, settings_public_body) =
+        get_json(app.clone(), &format!("{path}/settings"), None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(!settings_public_body.to_string().contains(marker.as_str()));
+
+    let (status, _, settings_reader_body) = get_json(
+        app.clone(),
+        &format!("{path}/settings"),
+        Some(&package_reader_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(!settings_reader_body.to_string().contains(marker.as_str()));
+
+    sqlx::query(
+        r#"
+        INSERT INTO package_permissions (package_id, user_id, role)
+        VALUES ($1, $2, 'admin')
+        ON CONFLICT (package_id, user_id)
+        DO UPDATE SET role = EXCLUDED.role
+        "#,
+    )
+    .bind(package_id)
+    .bind(package_reader.id)
+    .execute(&pool)
+    .await
+    .expect("package admin permission should insert");
+    let (status, headers, settings_body) = get_json(
+        app,
+        &format!("{path}/settings"),
+        Some(&package_reader_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_json(&headers);
+    assert_eq!(
+        settings_body["package"]["name"],
+        format!("{marker}-private")
+    );
+    assert_eq!(settings_body["package"]["visibility"], "private");
+    assert_eq!(
+        settings_body["explicitPermissions"][0]["login"],
+        format!("{marker}-package-reader")
+    );
+    assert_eq!(settings_body["explicitPermissions"][0]["role"], "admin");
+    assert_eq!(
+        settings_body["linkedRepositories"][0]["fullName"],
+        format!("{marker}-owner/{marker}-repo")
+    );
+    assert_eq!(
+        settings_body["inheritedRepositoryAccess"][0]["login"],
+        format!("{marker}-repo-reader")
+    );
+    assert!(settings_body["registryWriteCapabilities"]
+        .as_array()
+        .expect("capabilities")
+        .iter()
+        .any(|capability| capability["enabled"] == false
+            && capability["reason"]
+                .as_str()
+                .expect("reason")
+                .contains("packages-003")));
+    assert!(!settings_body.to_string().contains("secret-package-bucket"));
 }
 
 #[tokio::test]

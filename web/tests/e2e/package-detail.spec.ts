@@ -269,18 +269,31 @@ test("package detail renders install, versions, about, and mobile-safe layout", 
     "href",
     /\/settings$/,
   );
+  await page.getByRole("link", { name: "Settings" }).click();
+  await expect(page.getByText("Package settings")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Explicit package access" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Linked repositories" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Not available" }).first(),
+  ).toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByText(/packages-003/).first()).toBeVisible();
   await expect(page.locator("body")).not.toContainText(
     "redacted-package-layer",
   );
+  await expect(page.locator("body")).not.toContainText("s3://");
   await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
 
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/packages-002-phase3-version-copy.jpg",
+    path: "../ralph/screenshots/build/packages-002-phase4-settings.jpg",
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(packageHref);
+  await page.goto(`${packageHref}/settings`);
   const mobileOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,
   );

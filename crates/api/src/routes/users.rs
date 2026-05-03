@@ -14,9 +14,10 @@ use crate::{
     domain::{
         identity::User,
         packages::{
-            owner_packages, package_detail, record_package_download_metadata, OwnerPackageList,
-            OwnerPackageListQuery, PackageDetail, PackageDetailError, PackageDetailQuery,
-            PackageDownloadMetadata, PackageListError, PackageOwnerKind,
+            owner_packages, package_detail, package_settings, record_package_download_metadata,
+            OwnerPackageList, OwnerPackageListQuery, PackageDetail, PackageDetailError,
+            PackageDetailQuery, PackageDownloadMetadata, PackageListError, PackageOwnerKind,
+            PackageSettings,
         },
         personal_settings::{
             personal_profile_settings, update_personal_avatar, update_personal_profile_settings,
@@ -52,6 +53,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/users/:username/packages/:package_type/:package_name",
             get(public_package_detail),
+        )
+        .route(
+            "/api/users/:username/packages/:package_type/:package_name/settings",
+            get(public_package_settings),
         )
         .route(
             "/api/users/:username/packages/:package_type/:package_name/download",
@@ -236,6 +241,27 @@ async fn public_package_download_metadata(
     .map_err(map_package_detail_error)?;
 
     Ok(Json(metadata))
+}
+
+async fn public_package_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((username, package_type, package_name)): Path<(String, String, String)>,
+) -> Result<Json<PackageSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let settings = package_settings(
+        pool,
+        &username,
+        PackageOwnerKind::User,
+        &package_type,
+        &package_name,
+        actor.map(|user| user.id),
+    )
+    .await
+    .map_err(map_package_detail_error)?;
+
+    Ok(Json(settings))
 }
 
 pub async fn public_stars(
@@ -469,6 +495,11 @@ fn map_package_detail_error(error: PackageDetailError) -> (StatusCode, Json<Erro
         PackageDetailError::NotFound => {
             error_response(StatusCode::NOT_FOUND, "not_found", "package was not found")
         }
+        PackageDetailError::Forbidden => error_response(
+            StatusCode::FORBIDDEN,
+            "forbidden",
+            "package settings require admin access",
+        ),
         PackageDetailError::InvalidSelection(message) => error_response(
             StatusCode::UNPROCESSABLE_ENTITY,
             "validation_failed",
