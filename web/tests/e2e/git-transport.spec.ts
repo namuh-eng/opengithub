@@ -77,7 +77,7 @@ test("git docs and repository controls expose working HTTPS flows", async ({
     page.getByRole("heading", { name: "Work with repositories over HTTPS" }),
   ).toBeVisible();
   await expect(
-    page.getByText(/git clone https:\/\/opengithub\.namuh\.co/),
+    page.getByText(/git clone https:\/\/opengithub\.namuh\.co/).first(),
   ).toBeVisible();
   await expect(page.getByText("curl -L -o octo-app.zip")).toBeVisible();
   await expect(page.locator("article")).not.toContainText("api.github.com");

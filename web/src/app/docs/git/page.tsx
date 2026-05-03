@@ -15,6 +15,18 @@ git branch -M main
 git push -u origin main`;
 const rawArchiveCommands = `curl -L ${rawUrl}
 curl -L -o octo-app.zip ${archiveUrl}`;
+const authenticatedGitCommands = `git clone https://opengithub.namuh.co/mona/private-app.git
+# Username: your opengithub login
+# Password: paste an oghp_ personal access token with repo:read
+
+git -c credential.helper= \
+  clone https://mona:oghp_your_token@opengithub.namuh.co/mona/private-app.git`;
+const restPackageCommands = `curl -H "Authorization: Bearer oghp_your_token" \\
+  https://opengithub.namuh.co/api/user
+
+echo "$OPENGITHUB_TOKEN" | docker login opengithub.namuh.co \\
+  -u "$OPENGITHUB_ACTOR" --password-stdin
+docker pull opengithub.namuh.co/mona/octo-image:latest`;
 
 export default async function GitDocsPage() {
   const session = await getSession();
@@ -60,6 +72,59 @@ export default async function GitDocsPage() {
             access token as the HTTPS password. Tokens are stored hashed by the
             API and are never returned after creation.
           </p>
+        </section>
+
+        <section className="mt-8 space-y-3">
+          <h2 className="t-h3" style={{ color: "var(--ink-1)" }}>
+            Authenticate with a token
+          </h2>
+          <p className="t-body" style={{ color: "var(--ink-3)" }}>
+            Create fine-grained tokens for selected repositories whenever
+            possible. Classic tokens remain available for older automation that
+            expects broad legacy scopes. The token secret is shown once, then
+            only the prefix, status, last-used time, and expiration remain
+            visible in Developer Settings.
+          </p>
+          <DeveloperCommandBlock
+            copyLabel="Copy authenticated clone"
+            label="Token-backed Git"
+            value={authenticatedGitCommands}
+          />
+          <ul
+            className="list-inside list-disc space-y-1 t-sm leading-6"
+            style={{ color: "var(--ink-3)" }}
+          >
+            <li>
+              Use <span className="t-mono-sm">repo:read</span> for clone/fetch
+              and <span className="t-mono-sm">repo:write</span> for push.
+            </li>
+            <li>
+              Selected-repository fine-grained tokens work only for the
+              repositories chosen during creation.
+            </li>
+            <li>
+              Revoked or expired tokens fail immediately for Git, REST, and
+              package registry requests.
+            </li>
+          </ul>
+        </section>
+
+        <section className="mt-8 space-y-3">
+          <h2 className="t-h3" style={{ color: "var(--ink-1)" }}>
+            REST and packages
+          </h2>
+          <p className="t-body" style={{ color: "var(--ink-3)" }}>
+            The same personal access token can authorize REST API calls and OCI
+            package pulls or pushes when its scopes include the matching
+            permissions. Successful use refreshes the token last-used timestamp
+            after the Rust API validates the hash, expiration, revocation state,
+            scopes, and repository selection.
+          </p>
+          <DeveloperCommandBlock
+            copyLabel="Copy automation auth"
+            label="REST and registry"
+            value={restPackageCommands}
+          />
         </section>
 
         <section className="mt-8 space-y-3">

@@ -128,9 +128,10 @@ test("fine-grained token creation reveals the secret once and persists prefix me
 }) => {
   const seeded = seedSession();
   await signIn(page, seeded);
+  const tokenName = `E2E deploy ${Date.now().toString(36)}`;
 
   await page.goto(
-    "/settings/personal-access-tokens/new?name=E2E%20deploy&contents=read",
+    `/settings/personal-access-tokens/new?name=${encodeURIComponent(tokenName)}&contents=read`,
   );
 
   await expect(
@@ -159,24 +160,42 @@ test("fine-grained token creation reveals the secret once and persists prefix me
   await expect(page.getByText(/Copied|Copy unavailable/)).toBeVisible();
 
   await page.getByRole("link", { name: "Return to token list" }).click();
-  await expect(page.getByText("E2E deploy")).toBeVisible();
+  await expect(page.getByText(tokenName)).toBeVisible();
   await expect(page.locator("main")).toContainText(plainTextToken.slice(0, 17));
   await expect(page.locator("main")).not.toContainText(plainTextToken);
 
-  await page.getByRole("button", { name: "Revoke" }).click();
-  await expect(page.getByText("Revoke E2E deploy")).toBeVisible();
+  const tokenRow = page.locator(".list-row", { hasText: tokenName });
+  await tokenRow.getByRole("button", { name: "Revoke" }).click();
+  await expect(page.getByText(`Revoke ${tokenName}`)).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Revoke token" }),
   ).toBeDisabled();
-  await page.getByLabel("Confirm revoke E2E deploy").fill("E2E deploy");
+  await page.getByLabel(`Confirm revoke ${tokenName}`).fill(tokenName);
   await page.getByRole("button", { name: "Revoke token" }).click();
-  await expect(page.getByRole("status")).toContainText("E2E deploy revoked.");
+  await expect(page.getByRole("status")).toContainText(`${tokenName} revoked.`);
   await expect(page.getByText("Revoked", { exact: true })).toBeVisible();
   await expectNoDeadControls(page);
 
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/credentials-001-phase4-token-revoke.jpg",
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/settings/tokens");
+  await expect(
+    page.getByRole("heading", {
+      exact: true,
+      name: "Personal access tokens",
+    }),
+  ).toBeVisible();
+  const horizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth + 2,
+  );
+  expect(horizontalOverflow).toBeFalsy();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/credentials-001-final-token-list-mobile.jpg",
   });
 });
 
@@ -215,6 +234,20 @@ test("developer docs snippets are copyable and internal-only", async ({
   page,
 }) => {
   await page.goto("/docs/api");
+  await expect(
+    page.locator("code").filter({ hasText: /^\/api\/settings\/tokens\/new$/ }),
+  ).toBeVisible();
+  await expect(
+    page.locator("code").filter({ hasText: /^\/api\/settings\/sudo$/ }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator("code")
+      .filter({ hasText: /^\/api\/settings\/tokens\/\{token_id\}$/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/returns the plaintext secret exactly once/i),
+  ).toBeVisible();
   await page.getByText("Request and response examples").first().click();
   await page.getByRole("button", { name: "Copy request" }).first().click();
   await expect(page.getByRole("status")).toContainText(/Copied|unavailable/);
@@ -225,8 +258,25 @@ test("developer docs snippets are copyable and internal-only", async ({
   await expect(page.locator("article")).not.toContainText("api.github.com");
 
   await page.goto("/docs/git");
+  await expect(page.getByText("Authenticate with a token")).toBeVisible();
+  await expect(page.getByText("REST and packages")).toBeVisible();
+  await expect(page.getByText("repo:read").last()).toBeVisible();
+  await expect(page.getByText("repo:write")).toBeVisible();
+  await expect(
+    page.getByText(/Revoked or expired tokens fail immediately/),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Copy clone" }).click();
-  await expect(page.getByRole("status")).toContainText(/Copied|unavailable/);
+  await expect(page.getByRole("status").last()).toContainText(
+    /Copied|unavailable/,
+  );
+  await page.getByRole("button", { name: "Copy authenticated clone" }).click();
+  await expect(page.getByRole("status").last()).toContainText(
+    /Copied|unavailable/,
+  );
+  await page.getByRole("button", { name: "Copy automation auth" }).click();
+  await expect(page.getByRole("status").last()).toContainText(
+    /Copied|unavailable/,
+  );
   await expect(
     page.getByRole("link", { name: "Token settings" }),
   ).toHaveAttribute("href", "/settings/tokens");
@@ -235,6 +285,12 @@ test("developer docs snippets are copyable and internal-only", async ({
 
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/dx-001-docs-copy.jpg",
+    path: "../ralph/screenshots/build/credentials-001-final-docs-git.jpg",
+  });
+
+  await page.goto("/docs/api");
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/credentials-001-final-docs-api.jpg",
   });
 });

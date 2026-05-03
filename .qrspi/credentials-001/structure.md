@@ -71,7 +71,7 @@
 
 ## Phase 5: Docs, Browser QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Lock `credentials-001` as a completed feature after docs, end-to-end evidence, security notes, and final bookkeeping are current.
 

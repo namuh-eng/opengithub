@@ -56,8 +56,9 @@ export function ApiDocsPage() {
           <h2 className="t-h3">Authentication</h2>
           <p className="mt-2 t-body" style={{ color: "var(--ink-3)" }}>
             Browser clients use the signed opengithub session cookie created by
-            Google OAuth. Personal access tokens are stored hashed and are
-            reserved for Git, automation, and later token-management surfaces.
+            Google OAuth. Personal access tokens are stored hashed and are used
+            for Git over HTTPS, REST automation, package registry auth, and
+            Developer Settings token management.
           </p>
         </div>
         <div className="card p-4">

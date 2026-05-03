@@ -34,6 +34,161 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     notes: ["Anonymous callers receive a standard 401 error envelope."],
   },
   {
+    id: "personal-access-tokens-list",
+    method: "GET",
+    path: "/api/settings/tokens",
+    title: "List personal access tokens",
+    description:
+      "Returns the signed-in user's personal access tokens with prefix-only metadata for Developer Settings.",
+    auth: "Signed opengithub session cookie",
+    response: `{
+  "sudo": {
+    "active": true,
+    "expiresAt": "2026-05-04T12:30:00Z",
+    "requiredFor": ["create_personal_access_token", "revoke_personal_access_token"]
+  },
+  "tokens": [
+    {
+      "id": "token_01",
+      "name": "Deploy token",
+      "type": "fine_grained",
+      "prefix": "oghp_12345678",
+      "scopes": ["repo:read", "packages:write"],
+      "repositoryAccess": "selected",
+      "selectedRepositories": [
+        { "fullName": "mona/octo-app", "visibility": "private" }
+      ],
+      "status": "active",
+      "lastUsedAt": null,
+      "expiresAt": "2026-06-04T00:00:00Z"
+    }
+  ]
+}`,
+    notes: [
+      "The response never includes token_hash or plaintext token material.",
+      "Revoked and expired tokens are included with status metadata so users can audit stale automation credentials.",
+      "Successful REST, Git, and package-registry token use updates lastUsedAt after scope and repository checks pass.",
+    ],
+  },
+  {
+    id: "personal-access-token-context",
+    method: "GET",
+    path: "/api/settings/tokens/new",
+    title: "Read token creation context",
+    description:
+      "Returns resource owners, visible repositories, permission choices, expiration bounds, and sudo state for the new-token form.",
+    auth: "Signed opengithub session cookie",
+    response: `{
+  "sudo": { "active": false, "expiresAt": null },
+  "resourceOwners": [
+    { "kind": "user", "login": "mona", "displayName": "Mona Lisa" },
+    { "kind": "organization", "login": "namuh", "displayName": "Namuh" }
+  ],
+  "repositories": [
+    { "id": "repo_01", "fullName": "mona/octo-app", "visibility": "private" }
+  ],
+  "permissionGroups": [
+    {
+      "key": "repositories",
+      "permissions": [
+        { "key": "contents", "levels": ["none", "read", "write"] }
+      ]
+    }
+  ],
+  "defaultExpirationDays": 30,
+  "maxExpirationDays": 366
+}`,
+    notes: [
+      "Only repositories visible to the current user are returned.",
+      "Organization owners require owner/admin membership before they appear as token resource owners.",
+      "Query parameters on the browser page prefill the form, but the Rust API validates the submitted owner, repositories, scopes, and expiration.",
+    ],
+  },
+  {
+    id: "sudo-grant",
+    method: "POST",
+    path: "/api/settings/sudo",
+    title: "Create sudo grant",
+    description:
+      "Creates a short-lived session-bound sudo grant required before sensitive token creation or revocation.",
+    auth: "Signed opengithub session cookie",
+    request: `{
+  "email": "mona@example.com"
+}`,
+    response: `{
+  "active": true,
+  "expiresAt": "2026-05-04T12:30:00Z",
+  "requiredFor": ["create_personal_access_token", "revoke_personal_access_token"]
+}`,
+    notes: [
+      "Local development confirms the current account email; production should replace this with the Google reauthentication ceremony.",
+      "Invalid confirmation returns validation_failed without creating a sudo grant.",
+      "Sudo grants are tied to the current Rust session and expire automatically.",
+    ],
+  },
+  {
+    id: "personal-access-token-create",
+    method: "POST",
+    path: "/api/settings/tokens",
+    title: "Create personal access token",
+    description:
+      "Creates fine-grained or classic personal access tokens and returns the plaintext secret exactly once.",
+    auth: "Signed opengithub session cookie with active sudo grant",
+    request: `{
+  "type": "fine_grained",
+  "name": "Deploy token",
+  "description": "Release automation",
+  "resourceOwnerId": "owner_01",
+  "repositoryAccess": "selected",
+  "repositoryIds": ["repo_01"],
+  "expiresInDays": 30,
+  "permissions": {
+    "contents": "read",
+    "packages": "write",
+    "api": "read"
+  }
+}`,
+    response: `{
+  "plainTextToken": "oghp_generated_secret",
+  "token": {
+    "id": "token_01",
+    "name": "Deploy token",
+    "prefix": "oghp_generated_s",
+    "type": "fine_grained",
+    "scopes": ["repo:read", "packages:write", "api:read"]
+  }
+}`,
+    notes: [
+      "The Rust API stores only a sha256-prefixed hash and a collision-resistant display prefix.",
+      "Classic tokens use broad legacy repository access; fine-grained tokens can be limited to selected repositories.",
+      "Validation rejects invalid expirations, invisible repositories, unauthorized resource owners, and empty permission matrices.",
+      "Security audit events store redacted token metadata only.",
+    ],
+  },
+  {
+    id: "personal-access-token-revoke",
+    method: "DELETE",
+    path: "/api/settings/tokens/{token_id}",
+    title: "Revoke personal access token",
+    description:
+      "Revokes one owned token so REST, Git over HTTPS, and package registry authentication fail immediately.",
+    auth: "Signed opengithub session cookie with active sudo grant",
+    response: `{
+  "revokedAt": "2026-05-04T13:00:00Z",
+  "token": {
+    "id": "token_01",
+    "name": "Deploy token",
+    "status": "revoked",
+    "prefix": "oghp_12345678"
+  }
+}`,
+    notes: [
+      "Unknown, already-revoked, or cross-user token IDs return stable error envelopes without token material.",
+      "The browser requires typed confirmation before forwarding the delete request.",
+      "Revocation writes a redacted security audit event and preserves historical prefix/status rows for user review.",
+    ],
+  },
+  {
     id: "repos-list",
     method: "GET",
     path: "/api/repos?page=1&pageSize=30",

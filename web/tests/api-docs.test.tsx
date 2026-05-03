@@ -516,6 +516,24 @@ describe("ApiDocsPage", () => {
     expect(
       screen.getByText(/Duplicate names for the same viewer/),
     ).toBeVisible();
+    expect(screen.getAllByText("/api/settings/tokens").length).toBeGreaterThan(
+      1,
+    );
+    expect(screen.getByText("/api/settings/tokens/new")).toBeVisible();
+    expect(screen.getByText("/api/settings/sudo")).toBeVisible();
+    expect(screen.getByText("/api/settings/tokens/{token_id}")).toBeVisible();
+    expect(
+      screen.getByText(/returns the plaintext secret exactly once/i),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/The response never includes token_hash/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/REST, Git, and package-registry token use updates/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/fine-grained tokens can be limited to selected/),
+    ).toBeVisible();
   });
 
   it("opens examples without placeholder links or inert controls", () => {

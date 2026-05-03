@@ -587,7 +587,7 @@ pub async fn revoke_personal_access_token(
         "#,
     )
     .bind(user_id)
-    .bind(token_id.to_string())
+    .bind(token_id)
     .bind(json!({ "revokedAt": revoked_at, "reason": "user_revoked" }))
     .execute(pool)
     .await?;

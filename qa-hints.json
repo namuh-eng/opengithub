@@ -4459,5 +4459,24 @@
       "Verify long token names/descriptions and many selected repositories do not overflow the Editorial token rows on mobile.",
       "Real Google reauthentication is still represented by email-confirmation sudo mode; QA should validate future Google reauth parity."
     ]
+  },
+  {
+    "feature_id": "credentials-001",
+    "tests_written": [
+      "Completed Phase 5 Docs, Browser QA Handoff, and Build-Pass Bookkeeping; credentials-001.build_pass is now true while qa_pass remains false.",
+      "Documented PAT list/context/create/revoke and sudo endpoints in /docs/api, including one-time reveal, redaction, selected repository scope, and last-used behavior.",
+      "Expanded /docs/git with token-backed Git over HTTPS, REST bearer auth, package registry login, scope guidance, revocation/expiration behavior, and one-time secret visibility.",
+      "Focused Vitest coverage passed for API docs and Developer Settings token surfaces.",
+      "Focused Playwright credentials smoke passed for /settings/tokens, /settings/personal-access-tokens/new, token create/reveal, revoke, classic creation, /docs/git, and /docs/api.",
+      "Final screenshots saved: ralph/screenshots/build/credentials-001-final-token-list-mobile.jpg, credentials-001-final-docs-git.jpg, and credentials-001-final-docs-api.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Real Google reauthentication is still represented by email-confirmation sudo mode; validate Google reauth parity before production hardening.",
+      "Probe leaked-token redaction across logs, traces, screenshots, API errors, audit rows, and browser back/refresh after the one-time reveal.",
+      "Stress long token names/descriptions, large selected-repository lists, organization owners, and mobile wrapping in the Editorial token rows.",
+      "Exercise concurrent revoke/use races across REST, Git, and OCI package auth with live requests in flight.",
+      "Run full Git clone/fetch/push and Docker login/pull/push smokes against real repository refs and registry blobs.",
+      "Complete keyboard and screen-reader traversal for sudo, generation, copy, reveal, and revoke dialog flows."
+    ]
   }
 ]

@@ -3066,3 +3066,13 @@
 - Extended focused Rust, Vitest, and Playwright coverage for classic create scopes, bearer REST auth, last-used updates, revoke invalidation, audit rows, UI revoke confirmation, strict no-secret list rendering, classic browser creation, and screenshot `ralph/screenshots/build/credentials-001-phase4-token-revoke.jpg`.
 - Verification passed: focused `personal_access_tokens_contract`; `cd web && npx tsc --noEmit --pretty false`; focused `web/tests/developer-experience.test.tsx`; focused Playwright credentials smoke for create/revoke/classic creation using `SESSION_COOKIE_NAME=og_session`, `SESSION_SECRET=playwright-session-secret-with-enough-entropy`, and the shared local Postgres DB; full `make check`; full `make test` with Cargo tests plus 350 web tests; mandatory Editorial banned-value scan returned zero matches.
 - `prd.json` remains `build_pass:false` because Phase 5 remains.
+
+2026-05-04 - credentials-001 phase 5 docs, browser QA handoff, and build pass
+
+- Completed Phase 5 from `.qrspi/credentials-001/structure.md`: PAT docs, final browser evidence, QA hints, and `credentials-001.build_pass=true`.
+- Added `/docs/api` endpoint coverage for `GET /api/settings/tokens`, `GET /api/settings/tokens/new`, `POST /api/settings/sudo`, `POST /api/settings/tokens`, and `DELETE /api/settings/tokens/{token_id}` with one-time reveal, hash-only storage, selected repository scope, revocation, audit redaction, and last-used behavior.
+- Expanded `/docs/git` with token-backed Git over HTTPS, REST bearer auth, package registry login, fine-grained/classic scope guidance, revocation/expiration behavior, and copyable commands.
+- Extended API docs Vitest assertions and the credentials Playwright smoke to cover `/settings/tokens`, `/settings/personal-access-tokens/new`, token create/reveal, revoke, classic creation, `/docs/git`, `/docs/api`, no dead controls, and mobile no-overflow.
+- Browser smoke screenshots saved at `ralph/screenshots/build/credentials-001-final-token-list-mobile.jpg`, `credentials-001-final-docs-git.jpg`, and `credentials-001-final-docs-api.jpg`.
+- Added final `credentials-001` QA hints covering real Google reauth parity, token leak redaction, large selected-repository sets, concurrent revoke/use races, real Git/OCI smokes, and accessibility traversal.
+- Verification passed before bookkeeping: `cd web && npm test -- --run tests/api-docs.test.tsx tests/developer-experience.test.tsx`; `cd web && npx tsc --noEmit --pretty false`; focused Playwright `developer-experience.spec.ts` with `DASHBOARD_E2E_SKIP_MIGRATIONS=1`; targeted Biome check. Full `make check`, `make test`, `make test-e2e`, and Editorial banned-value scan will run as the final gate for this commit.
