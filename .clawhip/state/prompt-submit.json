@@ -1,8 +1,8 @@
 {
-  "observed_at": "2026-05-03T05:59:55.563Z",
+  "observed_at": "2026-05-03T06:07:56.194Z",
   "provider": "claude-code",
   "event_name": "UserPromptSubmit",
   "session_id": "f94fa1e6-a40b-4521-b41e-9be0d1ba7287",
   "turn_id": null,
-  "prompt_summary": "Failed with non-blocking status code: clawhip error: daemon\n                                                                          request failed with 503 Service Unavailable: {\"error\":\"event\n     …"
+  "prompt_summary": "i don't always want to restart everytime this kind of thing happen, can you check and see what is the root cause please?"
 }
