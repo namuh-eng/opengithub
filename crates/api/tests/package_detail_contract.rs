@@ -320,7 +320,7 @@ async fn public_package_detail_returns_versions_blobs_install_commands_and_readm
     assert!(!body.to_string().contains("secret-package-bucket"));
 
     let (status, _, selected_body) = get_json(
-        app,
+        app.clone(),
         &format!("/api/users/{marker}/packages/container/{marker}-image?version=1.0.0"),
         None,
     )
@@ -328,6 +328,48 @@ async fn public_package_detail_returns_versions_blobs_install_commands_and_readm
     assert_eq!(status, StatusCode::OK);
     assert_eq!(selected_body["selectedVersion"]["version"], "1.0.0");
     assert_eq!(selected_body["blobs"][0]["platformArch"], "amd64");
+
+    let (status, _, digest_body) = get_json(
+        app.clone(),
+        &format!(
+            "/api/users/{marker}/packages/container/{marker}-image?version=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(digest_body["selectedVersion"]["version"], "1.0.0");
+
+    let before_downloads: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(download_count), 0)::bigint FROM package_downloads WHERE package_id = $1",
+    )
+    .bind(body["id"].as_str().expect("package id").parse::<Uuid>().expect("uuid"))
+    .fetch_one(&pool)
+    .await
+    .expect("downloads should count");
+    let (status, _, download_body) = get_json(
+        app.clone(),
+        &format!("/api/users/{marker}/packages/container/{marker}-image/download?version=1.0.0"),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(download_body["version"], "1.0.0");
+    assert!(download_body["command"]
+        .as_str()
+        .expect("command")
+        .contains("@sha256:aaaaaaaa"));
+    assert_eq!(download_body["storageAvailable"], false);
+    assert_eq!(download_body["downloadCount"], before_downloads + 1);
+
+    let (status, _, invalid_body) = get_json(
+        app,
+        &format!("/api/users/{marker}/packages/container/{marker}-image/download?version=sha256:not-real"),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(invalid_body["error"]["code"], "validation_failed");
 }
 
 #[tokio::test]
@@ -377,6 +419,11 @@ async fn private_detail_redacts_until_package_or_linked_repository_permission_gr
     let (status, _, public_body) = get_json(app.clone(), &path, None).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert!(!public_body.to_string().contains(marker.as_str()));
+
+    let (status, _, download_body) =
+        get_json(app.clone(), &format!("{path}/download?version=2.0.0"), None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(!download_body.to_string().contains(marker.as_str()));
 
     sqlx::query(
         "INSERT INTO package_permissions (package_id, user_id, role) VALUES ($1, $2, 'read')",

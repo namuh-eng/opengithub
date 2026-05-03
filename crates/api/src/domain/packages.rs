@@ -114,6 +114,20 @@ pub struct PackageDetail {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct PackageDownloadMetadata {
+    pub package_id: Uuid,
+    pub version_id: Option<Uuid>,
+    pub version: Option<String>,
+    pub digest: Option<String>,
+    pub short_digest: Option<String>,
+    pub command: Option<String>,
+    pub download_count: i64,
+    pub storage_available: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct PackageDetailVersion {
     pub id: Uuid,
     pub version: String,
@@ -360,11 +374,11 @@ pub async fn package_detail(
                linked_repo.visibility AS linked_repository_visibility,
                COALESCE(downloads.download_count, 0)::bigint AS download_count,
                (p.visibility = 'public') AS public_readable,
-               (p.owner_user_id = "#,
+               COALESCE((p.owner_user_id = "#,
     );
     package_builder.push_bind(actor_user_id);
     package_builder.push(
-        r#") AS actor_owns_user_package,
+        r#"), false) AS actor_owns_user_package,
                EXISTS (
                    SELECT 1
                    FROM organization_memberships om
@@ -569,6 +583,66 @@ pub async fn package_detail(
                     .to_owned()
             }),
         },
+    })
+}
+
+pub async fn record_package_download_metadata(
+    pool: &PgPool,
+    owner_login: &str,
+    owner_kind: PackageOwnerKind,
+    package_type: &str,
+    package_name: &str,
+    actor_user_id: Option<Uuid>,
+    query: PackageDetailQuery<'_>,
+) -> Result<PackageDownloadMetadata, PackageDetailError> {
+    let detail = package_detail(
+        pool,
+        owner_login,
+        owner_kind,
+        package_type,
+        package_name,
+        actor_user_id,
+        query,
+    )
+    .await?;
+    let selected_version = detail.selected_version.as_ref();
+    sqlx::query(
+        r#"
+        INSERT INTO package_downloads (package_id, package_version_id, downloaded_by_user_id)
+        VALUES ($1, $2, $3)
+        "#,
+    )
+    .bind(detail.id)
+    .bind(selected_version.map(|version| version.id))
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
+    let download_count = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT COALESCE(SUM(download_count), 0)::bigint
+        FROM package_downloads
+        WHERE package_id = $1
+        "#,
+    )
+    .bind(detail.id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(PackageDownloadMetadata {
+        package_id: detail.id,
+        version_id: selected_version.map(|version| version.id),
+        version: selected_version.map(|version| version.version.clone()),
+        digest: selected_version.and_then(|version| version.digest.clone()),
+        short_digest: selected_version.and_then(|version| version.short_digest.clone()),
+        command: detail
+            .install_commands
+            .iter()
+            .find(|command| command.digest.is_some())
+            .or_else(|| detail.install_commands.first())
+            .map(|command| command.command.clone()),
+        download_count,
+        storage_available: false,
+        message: "Download metadata was recorded. Registry blob transfer is implemented in the package registry protocol slice.".to_owned(),
     })
 }
 

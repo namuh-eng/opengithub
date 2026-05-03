@@ -14,8 +14,9 @@ use crate::{
     domain::{
         identity::User,
         packages::{
-            owner_packages, package_detail, OwnerPackageList, OwnerPackageListQuery, PackageDetail,
-            PackageDetailError, PackageDetailQuery, PackageListError, PackageOwnerKind,
+            owner_packages, package_detail, record_package_download_metadata, OwnerPackageList,
+            OwnerPackageListQuery, PackageDetail, PackageDetailError, PackageDetailQuery,
+            PackageDownloadMetadata, PackageListError, PackageOwnerKind,
         },
         personal_settings::{
             personal_profile_settings, update_personal_avatar, update_personal_profile_settings,
@@ -51,6 +52,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/users/:username/packages/:package_type/:package_name",
             get(public_package_detail),
+        )
+        .route(
+            "/api/users/:username/packages/:package_type/:package_name/download",
+            get(public_package_download_metadata),
         )
         .route("/api/users/:username/stars", get(public_stars))
         .route("/api/users/:username/follow", put(follow).delete(unfollow))
@@ -206,6 +211,31 @@ async fn public_package_detail(
     .map_err(map_package_detail_error)?;
 
     Ok(Json(package))
+}
+
+async fn public_package_download_metadata(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((username, package_type, package_name)): Path<(String, String, String)>,
+    Query(query): Query<PackageDetailRouteQuery>,
+) -> Result<Json<PackageDownloadMetadata>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let metadata = record_package_download_metadata(
+        pool,
+        &username,
+        PackageOwnerKind::User,
+        &package_type,
+        &package_name,
+        actor.map(|user| user.id),
+        PackageDetailQuery {
+            version: query.version.as_deref(),
+        },
+    )
+    .await
+    .map_err(map_package_detail_error)?;
+
+    Ok(Json(metadata))
 }
 
 pub async fn public_stars(

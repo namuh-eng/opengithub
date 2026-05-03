@@ -3990,5 +3990,24 @@
       "Stress long package names, very long digests, many platforms/blobs, missing selected versions, packages without linked repositories, and empty README/about content on mobile.",
       "Verify registry download accounting remains unchanged by page rendering and only increments from explicit download endpoints once Phase 3 adds them."
     ]
+  },
+  {
+    "feature_id": "packages-002",
+    "tests_written": [
+      "Completed Phase 3 Version Selection, Copy Commands, Immutable Version Details, and Download Metadata without marking packages-002 build_pass=true.",
+      "Added explicit user/org package download metadata routes that preserve package visibility checks, redact storage keys, resolve selected versions by tag or digest, and increment package_downloads only when the /download endpoint is called.",
+      "Fixed anonymous public package detail reads by making owner/admin permission flags non-null when no viewer cookie is present.",
+      "Moved install/version/blob controls into a client interaction component with version selector state, copy buttons with Clipboard API plus selection fallback, immutable digest pull disclosure, digest-backed version links, and keyboard-accessible artifact disclosures.",
+      "Focused Rust contract covers digest selection, explicit download count increments, invalid digest validation, private package denial for download metadata, and no storage-key leakage.",
+      "Focused Vitest covers version switching and copy success. Focused Playwright covers real seeded package rendering, version switching, copy feedback, digest command disclosure, no render-time download increment, explicit download metadata increment, no dead anchors, mobile no-overflow, and screenshot ralph/screenshots/build/packages-002-phase3-version-copy.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 still needs the package Settings surface for access, visibility, linked repository, and provenance overview.",
+      "Phase 5 still needs API docs, final browser screenshots, final QA handoff, and packages-002.build_pass=true bookkeeping.",
+      "Run private/internal browser fixtures for download metadata across anonymous, package-grant, linked-repository grant, org-member, and non-admin viewers.",
+      "Exercise clipboard behavior in Safari/Firefox and screen-reader traversal through the version selector, copy buttons, digest disclosure, and artifact details.",
+      "Stress long digests, duplicate tags, selected digest URLs, packages with many blobs/platforms, and registry byte-transfer behavior once packages-003 implements the full protocol.",
+      "Full same-env Playwright remains blocked by the pre-existing local migration checksum issue: migration 202605030041 was previously applied but has been modified."
+    ]
   }
 ]

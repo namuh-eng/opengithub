@@ -42,7 +42,7 @@
 
 ## Phase 3: Version Selection, Copy Commands, Immutable Version Details, and Download Metadata
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make every interactive detail-page control real. Selecting a version updates metadata and install commands, copy buttons write to the clipboard with temporary success feedback, version rows route to immutable detail URLs, and registry/download metadata routes record `package_downloads` only when an actual registry/source download endpoint is hit.
 

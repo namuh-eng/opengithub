@@ -22,6 +22,17 @@ function runSql(sql: string) {
   });
 }
 
+function queryScalar(sql: string) {
+  if (!databaseUrl) {
+    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
+  }
+  return execFileSync("psql", [databaseUrl, "-tAc", sql], {
+    env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
+  })
+    .toString()
+    .trim();
+}
+
 function ensurePackageDetailSchema() {
   if (!databaseUrl) {
     throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
@@ -208,6 +219,7 @@ test("package detail renders install, versions, about, and mobile-safe layout", 
   const seeded = seedDashboard();
   await signIn(page, seeded);
   const packageHref = seedPackage(seeded.firstRepositoryHref);
+  const packageName = packageHref.split("/").at(-1) ?? "";
 
   await page.goto(`${packageHref}?version=2.0.0`);
   await expect(page.getByRole("heading", { name: /detail-/ })).toBeVisible();
@@ -220,12 +232,38 @@ test("package detail renders install, versions, about, and mobile-safe layout", 
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "2.0.0" })).toHaveAttribute(
     "href",
-    /version=2\.0\.0/,
+    /version=sha256%3Abbbbb/,
   );
   await expect(page.getByRole("link", { name: "1.0.0" })).toHaveAttribute(
     "href",
-    /version=1\.0\.0/,
+    /version=sha256%3Aaaaaa/,
   );
+  await page.getByLabel("Package version").selectOption({ label: "1.0.0" });
+  await expect(
+    page.getByText(/docker pull ghcr\.io\/.*:1\.0\.0@sha256:aaaaa/),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Copy install command" }).click();
+  await expect(page.getByText("Command copied")).toBeVisible();
+  await page.getByText("Pull this immutable digest").click();
+  await expect(
+    page
+      .locator("details")
+      .filter({ hasText: "Pull this immutable digest" })
+      .getByText(/docker pull ghcr\.io\/[^:]+@sha256:aaaaaaaa/),
+  ).toBeVisible();
+
+  const downloadsAfterRender = Number(
+    queryScalar(
+      `SELECT COALESCE(SUM(pd.download_count), 0)::bigint FROM package_downloads pd JOIN packages p ON p.id = pd.package_id WHERE p.name = ${sqlLiteral(packageName)}`,
+    ),
+  );
+  expect(downloadsAfterRender).toBe(27);
+  const metadataResponse = await page.request.get(
+    `http://localhost:3016/api/users/${packageHref.split("/")[1]}/packages/container/${packageName}/download?version=1.0.0`,
+  );
+  expect(metadataResponse.ok()).toBe(true);
+  const metadata = await metadataResponse.json();
+  expect(metadata.downloadCount).toBe(downloadsAfterRender + 1);
   await expect(page.getByRole("heading", { name: "README" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Settings" })).toHaveAttribute(
     "href",
@@ -238,7 +276,7 @@ test("package detail renders install, versions, about, and mobile-safe layout", 
 
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/packages-002-phase2-detail.jpg",
+    path: "../ralph/screenshots/build/packages-002-phase3-version-copy.jpg",
   });
 
   await page.setViewportSize({ width: 390, height: 844 });

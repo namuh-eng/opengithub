@@ -1,5 +1,5 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { PackageDetailPage } from "@/components/PackageDetailPage";
 import type { PackageDetail, PackageDetailFetchResult } from "@/lib/api";
 
@@ -165,17 +165,45 @@ describe("PackageDetailPage", () => {
     const scoped = within(versions as HTMLElement);
     expect(scoped.getByRole("link", { name: "1.0.0" })).toHaveAttribute(
       "href",
-      "/ashley/container/opengithub-web?version=1.0.0",
+      "/ashley/container/opengithub-web?version=sha256%3Aabcdef1234567890",
     );
     expect(scoped.getByRole("link", { name: "0.9.0" })).toHaveAttribute(
       "href",
-      "/ashley/container/opengithub-web?version=0.9.0",
+      "/ashley/container/opengithub-web?version=sha256%3A9999999999999999",
     );
     expect(screen.getByRole("heading", { name: "Package README" }));
     expect(screen.getByText("Install it safely.")).toBeInTheDocument();
     expect(
       document.querySelectorAll('a[href="#"], a:not([href])'),
     ).toHaveLength(0);
+  });
+
+  it("switches selected version metadata and copies install commands", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    renderDetail();
+
+    fireEvent.change(screen.getByLabelText("Package version"), {
+      target: { value: "version-2" },
+    });
+
+    expect(
+      screen.getByText(
+        "docker pull ghcr.io/ashley/opengithub-web:0.9.0@sha256:9999999999999999",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Selected")).toHaveLength(1);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Copy install command" }),
+    );
+
+    expect(writeText).toHaveBeenCalledWith(
+      "docker pull ghcr.io/ashley/opengithub-web:0.9.0@sha256:9999999999999999",
+    );
+    expect(await screen.findByText("Command copied")).toBeInTheDocument();
   });
 
   it("renders organization canonical links and hides Settings for non-admins", () => {
