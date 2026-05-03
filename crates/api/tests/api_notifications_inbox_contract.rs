@@ -38,11 +38,15 @@ async fn database_pool() -> Option<PgPool> {
         .await
         .ok()?;
     if MIGRATOR.run(&pool).await.is_err() {
-        let schema_ready =
-            sqlx::query_scalar::<_, bool>("SELECT to_regclass('public.notifications') IS NOT NULL")
-                .fetch_one(&pool)
-                .await
-                .ok()?;
+        let schema_ready = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT to_regclass('public.notifications') IS NOT NULL
+               AND to_regclass('public.notification_delivery_preferences') IS NOT NULL
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .ok()?;
         if !schema_ready {
             return None;
         }
@@ -603,6 +607,107 @@ async fn notifications_inbox_contract_filters_groups_and_marks_read() {
     .await
     .expect("bulk done count should load");
     assert_eq!(done_bulk_count, 2);
+}
+
+#[tokio::test]
+async fn notification_delivery_preferences_validate_verified_email_and_audit() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping notification delivery scenario; set TEST_DATABASE_URL or DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let viewer = create_user(&pool, "delivery-viewer").await;
+    let cookie = cookie_header(&pool, &config, &viewer).await;
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+
+    let (status, body) = send_json(
+        app.clone(),
+        Method::GET,
+        "/api/notifications/delivery-preferences",
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["emailChannelAvailable"], true);
+    assert_eq!(body["preferences"][0]["key"], "watching");
+    assert_eq!(body["preferences"][0]["channels"][0], "web");
+    assert_eq!(
+        body["customRoutingHref"],
+        "/settings/notifications#custom-routing"
+    );
+    let verified_email_id = body["emails"][0]["id"].as_str().expect("email id");
+
+    let (status, body) = send_json_body(
+        app.clone(),
+        Method::PATCH,
+        "/api/notifications/delivery-preferences",
+        Some(&cookie),
+        json!({
+            "defaultEmailId": verified_email_id,
+            "preferences": [
+                { "key": "watching", "channels": ["web", "email", "cli"] }
+            ]
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let watching = body["preferences"]
+        .as_array()
+        .expect("preferences")
+        .iter()
+        .find(|preference| preference["key"] == "watching")
+        .expect("watching preference");
+    assert_eq!(watching["channels"], json!(["web", "email", "cli"]));
+
+    let audit_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM security_audit_events WHERE actor_user_id = $1 AND event_type = 'notifications.delivery_preferences.update'",
+    )
+    .bind(viewer.id)
+    .fetch_one(&pool)
+    .await
+    .expect("audit should count");
+    assert!(audit_count >= 1);
+
+    let unverified_email_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO user_email_addresses (user_id, email, is_primary, is_public, verified_at) VALUES ($1, $2, false, false, NULL) RETURNING id",
+    )
+    .bind(viewer.id)
+    .bind(format!("unverified-{}@opengithub.local", Uuid::new_v4()))
+    .fetch_one(&pool)
+    .await
+    .expect("unverified email should insert");
+
+    let (status, body) = send_json_body(
+        app.clone(),
+        Method::PATCH,
+        "/api/notifications/delivery-preferences",
+        Some(&cookie),
+        json!({
+            "defaultEmailId": unverified_email_id,
+            "preferences": [
+                { "key": "actions", "channels": ["email"] }
+            ]
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["error"]["code"], "validation_failed");
+
+    let (status, body) = send_json_body(
+        app,
+        Method::PATCH,
+        "/api/notifications/delivery-preferences",
+        Some(&cookie),
+        json!({
+            "preferences": [
+                { "key": "dependabot", "channels": ["email"] }
+            ]
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["error"]["code"], "validation_failed");
 }
 
 #[tokio::test]

@@ -2438,6 +2438,58 @@ docker-content-digest: sha256:manifest...`,
     ],
   },
   {
+    id: "notifications-delivery-preferences",
+    method: "PATCH",
+    path: "/api/notifications/delivery-preferences",
+    title: "Update notification delivery preferences",
+    description:
+      "Reads or saves personal notification delivery channels for web, email, and CLI delivery across subscription and system event categories.",
+    auth: "Signed opengithub session cookie",
+    request: `{
+  "defaultEmailId": "email_01",
+  "preferences": [
+    { "key": "watching", "channels": ["web", "email"] },
+    { "key": "actions", "channels": ["web", "cli"] }
+  ]
+}`,
+    response: `{
+  "defaultEmailId": "email_01",
+  "emailChannelAvailable": true,
+  "sesSenderReady": true,
+  "emails": [
+    {
+      "id": "email_01",
+      "email": "mona@example.com",
+      "verified": true,
+      "isPrimary": true
+    }
+  ],
+  "preferences": [
+    {
+      "key": "watching",
+      "label": "Watching",
+      "section": "subscriptions",
+      "channels": ["web", "email"],
+      "supportedChannels": ["web", "email", "cli"],
+      "disabled": false
+    },
+    {
+      "key": "dependabot",
+      "label": "Dependabot",
+      "disabled": true,
+      "disabledReason": "Dependabot alerts are not built yet."
+    }
+  ]
+}`,
+    notes: [
+      "GET /api/notifications/delivery-preferences returns the same settings payload without changing preferences.",
+      "Email channels require a verified user_email_addresses row selected as defaultEmailId.",
+      "Successful writes insert notifications.delivery_preferences.update security audit events.",
+      "Dependabot and security advisory categories are returned as disabled placeholders until those products exist.",
+      "notification_email_deliveries stores future SES delivery attempts without exposing provider secrets to the browser.",
+    ],
+  },
+  {
     id: "search",
     method: "GET",
     path: "/api/search?q=router&type=code&page=1&pageSize=30",

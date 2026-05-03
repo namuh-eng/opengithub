@@ -1,8 +1,10 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::{PgPool, QueryBuilder, Row};
 use uuid::Uuid;
 
+use super::personal_settings::{personal_profile_settings, UserEmailAddress};
 use super::repositories::{
     can_read_repository, get_repository, get_repository_by_owner_name, RepositoryWatchEvent,
     RepositoryWatchLevel,
@@ -149,6 +151,117 @@ pub struct UpsertNotificationCustomFilter {
     pub name: String,
     pub query_string: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationDeliverySettings {
+    pub default_email_id: Option<Uuid>,
+    pub default_email: Option<String>,
+    pub email_channel_available: bool,
+    pub ses_sender_ready: bool,
+    pub emails: Vec<UserEmailAddress>,
+    pub preferences: Vec<NotificationDeliveryPreference>,
+    pub custom_routing_href: String,
+    pub watched_repositories_href: String,
+    pub ignored_repositories_href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationDeliveryPreference {
+    pub key: String,
+    pub label: String,
+    pub section: String,
+    pub description: String,
+    pub channels: Vec<String>,
+    pub supported_channels: Vec<String>,
+    pub disabled: bool,
+    pub disabled_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateNotificationDeliverySettings {
+    pub default_email_id: Option<Option<Uuid>>,
+    pub preferences: Option<Vec<NotificationDeliveryPreferencePatch>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationDeliveryPreferencePatch {
+    pub key: String,
+    pub channels: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct DeliveryPreferenceDefinition {
+    key: &'static str,
+    label: &'static str,
+    section: &'static str,
+    description: &'static str,
+    default_channels: &'static [&'static str],
+    disabled_reason: Option<&'static str>,
+}
+
+const DELIVERY_CHANNELS: [&str; 3] = ["web", "email", "cli"];
+const DELIVERY_PREFERENCE_DEFINITIONS: [DeliveryPreferenceDefinition; 7] = [
+    DeliveryPreferenceDefinition {
+        key: "watching",
+        label: "Watching",
+        section: "subscriptions",
+        description: "Repositories you watch directly or through organization activity.",
+        default_channels: &["web"],
+        disabled_reason: None,
+    },
+    DeliveryPreferenceDefinition {
+        key: "participating",
+        label: "Participating, @mentions, and review requests",
+        section: "subscriptions",
+        description: "Threads where you are participating or directly requested.",
+        default_channels: &["web", "email"],
+        disabled_reason: None,
+    },
+    DeliveryPreferenceDefinition {
+        key: "custom",
+        label: "Custom routing",
+        section: "subscriptions",
+        description: "Saved notification filters and custom repository event routing.",
+        default_channels: &["web"],
+        disabled_reason: None,
+    },
+    DeliveryPreferenceDefinition {
+        key: "actions",
+        label: "Actions",
+        section: "system",
+        description: "Workflow run failures, manual dispatches, and deployment activity.",
+        default_channels: &["web"],
+        disabled_reason: None,
+    },
+    DeliveryPreferenceDefinition {
+        key: "digest",
+        label: "Email digest",
+        section: "system",
+        description: "A compact email rollup of unread activity.",
+        default_channels: &["email"],
+        disabled_reason: None,
+    },
+    DeliveryPreferenceDefinition {
+        key: "dependabot",
+        label: "Dependabot",
+        section: "system",
+        description: "Dependency update and vulnerability notification controls.",
+        default_channels: &["web"],
+        disabled_reason: Some("Dependabot alerts are not built yet."),
+    },
+    DeliveryPreferenceDefinition {
+        key: "security",
+        label: "Security advisories",
+        section: "system",
+        description: "Repository security alerts and private advisory activity.",
+        default_channels: &["web"],
+        disabled_reason: Some("Security advisory notifications are not built yet."),
+    },
+];
 
 pub async fn create_notification(
     pool: &PgPool,
@@ -533,6 +646,158 @@ pub async fn notification_filter_settings(
     })
 }
 
+pub async fn notification_delivery_settings(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<NotificationDeliverySettings, NotificationError> {
+    let profile = personal_profile_settings(pool, user_id)
+        .await
+        .map_err(|error| match error {
+            super::personal_settings::PersonalSettingsError::Sqlx(error) => {
+                NotificationError::Sqlx(error)
+            }
+            other => NotificationError::Validation(format!("{other:?}")),
+        })?;
+    let emails = profile.emails;
+    let stored = stored_delivery_preferences(pool, user_id).await?;
+    let default_email_id = stored
+        .iter()
+        .find_map(|preference| preference.default_email_id)
+        .or_else(|| {
+            emails
+                .iter()
+                .find(|email| email.is_primary && email.verified)
+                .map(|email| email.id)
+        });
+    let default_email = default_email_id
+        .and_then(|id| emails.iter().find(|email| email.id == id))
+        .map(|email| email.email.clone());
+    let email_channel_available = emails.iter().any(|email| email.verified);
+
+    Ok(NotificationDeliverySettings {
+        default_email_id,
+        default_email,
+        email_channel_available,
+        ses_sender_ready: email_channel_available,
+        emails,
+        preferences: DELIVERY_PREFERENCE_DEFINITIONS
+            .iter()
+            .map(|definition| {
+                let channels = stored
+                    .iter()
+                    .find(|preference| preference.key == definition.key)
+                    .map(|preference| preference.channels.clone())
+                    .unwrap_or_else(|| channels_from_static(definition.default_channels));
+                delivery_preference_from_definition(definition, channels)
+            })
+            .collect(),
+        custom_routing_href: "/settings/notifications#custom-routing".to_owned(),
+        watched_repositories_href: "/notifications/subscriptions?filter=watching".to_owned(),
+        ignored_repositories_href: "/notifications/subscriptions?filter=ignored".to_owned(),
+    })
+}
+
+pub async fn update_notification_delivery_settings(
+    pool: &PgPool,
+    user_id: Uuid,
+    input: UpdateNotificationDeliverySettings,
+) -> Result<NotificationDeliverySettings, NotificationError> {
+    let current = notification_delivery_settings(pool, user_id).await?;
+    let default_email_id = match input.default_email_id {
+        Some(email_id) => email_id,
+        None => current.default_email_id,
+    };
+    if let Some(email_id) = default_email_id {
+        if !current
+            .emails
+            .iter()
+            .any(|email| email.id == email_id && email.verified)
+        {
+            return Err(NotificationError::Validation(
+                "Email notifications require a verified email address.".to_owned(),
+            ));
+        }
+    }
+
+    let patches = input.preferences.unwrap_or_default();
+    for patch in patches {
+        let definition = delivery_preference_definition(&patch.key)?;
+        if definition.disabled_reason.is_some() {
+            return Err(NotificationError::Validation(format!(
+                "{} notifications are not configurable yet.",
+                definition.label
+            )));
+        }
+        let channels = normalize_delivery_channels(patch.channels)?;
+        if channels.iter().any(|channel| channel == "email") && default_email_id.is_none() {
+            return Err(NotificationError::Validation(
+                "Choose a verified default notifications email before enabling email delivery."
+                    .to_owned(),
+            ));
+        }
+        sqlx::query(
+            r#"
+            INSERT INTO notification_delivery_preferences (
+                user_id, preference_key, channels, default_email_id
+            )
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (user_id, preference_key)
+            DO UPDATE SET channels = EXCLUDED.channels,
+                          default_email_id = EXCLUDED.default_email_id
+            "#,
+        )
+        .bind(user_id)
+        .bind(definition.key)
+        .bind(&channels)
+        .bind(default_email_id)
+        .execute(pool)
+        .await?;
+    }
+
+    if input.default_email_id.is_some() {
+        for definition in DELIVERY_PREFERENCE_DEFINITIONS
+            .iter()
+            .filter(|definition| definition.disabled_reason.is_none())
+        {
+            let channels = current
+                .preferences
+                .iter()
+                .find(|preference| preference.key == definition.key)
+                .map(|preference| preference.channels.clone())
+                .unwrap_or_else(|| channels_from_static(definition.default_channels));
+            sqlx::query(
+                r#"
+                INSERT INTO notification_delivery_preferences (
+                    user_id, preference_key, channels, default_email_id
+                )
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (user_id, preference_key)
+                DO UPDATE SET default_email_id = EXCLUDED.default_email_id
+                "#,
+            )
+            .bind(user_id)
+            .bind(definition.key)
+            .bind(&channels)
+            .bind(default_email_id)
+            .execute(pool)
+            .await?;
+        }
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO security_audit_events (actor_user_id, event_type, target_id, metadata)
+        VALUES ($1, 'notifications.delivery_preferences.update', $1, $2)
+        "#,
+    )
+    .bind(user_id)
+    .bind(json!({ "preferenceCount": current.preferences.len() }))
+    .execute(pool)
+    .await?;
+
+    notification_delivery_settings(pool, user_id).await
+}
+
 pub async fn list_notification_custom_filters(
     pool: &PgPool,
     user_id: Uuid,
@@ -659,6 +924,93 @@ fn notification_action_name(action: NotificationTriageAction) -> &'static str {
 struct NormalizedCustomFilter {
     name: String,
     query_string: String,
+}
+
+#[derive(Debug, Clone)]
+struct StoredDeliveryPreference {
+    key: String,
+    channels: Vec<String>,
+    default_email_id: Option<Uuid>,
+}
+
+async fn stored_delivery_preferences(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<Vec<StoredDeliveryPreference>, NotificationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT preference_key, channels, default_email_id
+        FROM notification_delivery_preferences
+        WHERE user_id = $1
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| StoredDeliveryPreference {
+            key: row.get("preference_key"),
+            channels: row.get("channels"),
+            default_email_id: row.get("default_email_id"),
+        })
+        .collect())
+}
+
+fn delivery_preference_definition(
+    key: &str,
+) -> Result<&'static DeliveryPreferenceDefinition, NotificationError> {
+    DELIVERY_PREFERENCE_DEFINITIONS
+        .iter()
+        .find(|definition| definition.key == key)
+        .ok_or_else(|| NotificationError::Validation("Unknown notification preference.".to_owned()))
+}
+
+fn delivery_preference_from_definition(
+    definition: &DeliveryPreferenceDefinition,
+    channels: Vec<String>,
+) -> NotificationDeliveryPreference {
+    NotificationDeliveryPreference {
+        key: definition.key.to_owned(),
+        label: definition.label.to_owned(),
+        section: definition.section.to_owned(),
+        description: definition.description.to_owned(),
+        channels,
+        supported_channels: DELIVERY_CHANNELS.into_iter().map(str::to_owned).collect(),
+        disabled: definition.disabled_reason.is_some(),
+        disabled_reason: definition.disabled_reason.map(str::to_owned),
+    }
+}
+
+fn channels_from_static(channels: &[&str]) -> Vec<String> {
+    channels
+        .iter()
+        .map(|channel| (*channel).to_owned())
+        .collect()
+}
+
+fn normalize_delivery_channels(channels: Vec<String>) -> Result<Vec<String>, NotificationError> {
+    let mut normalized = Vec::new();
+    for allowed in DELIVERY_CHANNELS {
+        if channels.iter().any(|channel| channel == allowed) {
+            normalized.push(allowed.to_owned());
+        }
+    }
+    if normalized.is_empty() {
+        return Err(NotificationError::Validation(
+            "Choose at least one notification channel.".to_owned(),
+        ));
+    }
+    if channels
+        .iter()
+        .any(|channel| !DELIVERY_CHANNELS.contains(&channel.as_str()))
+    {
+        return Err(NotificationError::Validation(
+            "Unsupported notification channel.".to_owned(),
+        ));
+    }
+    Ok(normalized)
 }
 
 async fn validate_custom_filter_input(

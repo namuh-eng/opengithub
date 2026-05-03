@@ -12,10 +12,11 @@ use crate::{
     auth::extractor::AuthenticatedUser,
     domain::notifications::{
         bulk_triage_notifications, create_notification_custom_filter,
-        delete_notification_custom_filter, notification_filter_settings, notification_inbox_view,
-        triage_notification, update_notification_custom_filter, NotificationError,
-        NotificationInboxQuery, NotificationInboxView, NotificationTriageAction,
-        UpsertNotificationCustomFilter,
+        delete_notification_custom_filter, notification_delivery_settings,
+        notification_filter_settings, notification_inbox_view, triage_notification,
+        update_notification_custom_filter, update_notification_delivery_settings,
+        NotificationError, NotificationInboxQuery, NotificationInboxView, NotificationTriageAction,
+        UpdateNotificationDeliverySettings, UpsertNotificationCustomFilter,
     },
     AppState,
 };
@@ -29,6 +30,10 @@ pub fn router() -> Router<AppState> {
             get(filter_settings).post(create_filter),
         )
         .route(
+            "/api/notifications/delivery-preferences",
+            get(delivery_settings).patch(update_delivery_settings),
+        )
+        .route(
             "/api/notifications/custom-filters/:id",
             patch(update_filter).delete(delete_filter),
         )
@@ -40,6 +45,35 @@ pub fn router() -> Router<AppState> {
         .route("/api/notifications/:id/inbox", patch(move_to_inbox))
         .route("/api/notifications/:id/subscribe", patch(subscribe))
         .route("/api/notifications/:id/unsubscribe", patch(unsubscribe))
+}
+
+async fn delivery_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let response = notification_delivery_settings(pool, actor.0.id)
+        .await
+        .map_err(map_notification_error)?;
+    Ok(Json(
+        serde_json::to_value(response).expect("delivery settings should serialize"),
+    ))
+}
+
+async fn update_delivery_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<UpdateNotificationDeliverySettings>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let response = update_notification_delivery_settings(pool, actor.0.id, body)
+        .await
+        .map_err(map_notification_error)?;
+    Ok(Json(
+        serde_json::to_value(response).expect("delivery settings should serialize"),
+    ))
 }
 
 async fn filter_settings(

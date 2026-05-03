@@ -450,6 +450,9 @@ describe("ApiDocsPage", () => {
     expect(screen.getByText("/api/notifications/bulk")).toBeVisible();
     expect(screen.getByText("/api/notifications/custom-filters")).toBeVisible();
     expect(
+      screen.getByText("/api/notifications/delivery-preferences"),
+    ).toBeVisible();
+    expect(
       screen.getByText(/folder=inbox excludes done notifications/),
     ).toBeVisible();
     expect(
@@ -462,6 +465,16 @@ describe("ApiDocsPage", () => {
     ).toBeVisible();
     expect(
       screen.getByText(/Failed rows stay selected in the browser/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Email channels require a verified user_email_addresses row/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /notifications.delivery_preferences.update security audit events/,
+      ),
     ).toBeVisible();
     expect(
       screen.getByText(/Each user can store at most 15 custom filters/),

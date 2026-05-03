@@ -4368,5 +4368,22 @@
       "Mobile placement of the watch menu and customize dialogs on narrow screens with long repository names and long event labels.",
       "The shared opengithub_identity_test database still has the known pre-existing 202605030041 migration checksum issue; fresh psql-applied database validation passed."
     ]
+  },
+  {
+    "feature_id": "personal-settings-002",
+    "tests_written": [
+      "Added Rust contract coverage for GET/PATCH /api/notifications/delivery-preferences, verified-email enforcement, disabled category rejection, channel persistence, and security audit writes.",
+      "Added Vitest coverage for the Editorial notification delivery settings page, concrete links, disabled placeholders, default email save, channel Save/Cancel behavior, and no dead anchors.",
+      "Added Playwright smoke for signed-in /settings/notifications default email save, Watching channel selection, disabled Dependabot placeholder, concrete Ignored repositories link, and screenshot ralph/screenshots/build/personal-settings-002-notifications-delivery.jpg.",
+      "Extended /docs/api coverage for delivery-preference read/write semantics, verified email requirements, audit events, disabled placeholders, and future notification_email_deliveries storage."
+    ],
+    "needs_deeper_qa": [
+      "Run keyboard-only and screen-reader traversal through the Notify me select panel, including checkbox labels, Cancel, Save, focus return, and error announcement.",
+      "Probe concurrent saves from two browser tabs for default email and channel preferences; last-write behavior is expected but not stress-tested.",
+      "Exercise accounts with no verified email and multiple verified emails; unit coverage checks disabled/unverified state, but QA should confirm full browser copy and disabled controls.",
+      "Verify real SES sender readiness in deployed AWS environments; local build treats verified email as channel-ready and does not send provider email.",
+      "Exercise CLI channel downstream behavior once CLI notification delivery exists; this feature stores the preference only.",
+      "Full Playwright on a fresh migrated database was attempted, but the dev server/API became unreachable after the auth suite; the focused personal-settings-002 smoke passed before that cascade."
+    ]
   }
 ]

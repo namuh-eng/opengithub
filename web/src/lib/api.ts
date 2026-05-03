@@ -8234,6 +8234,42 @@ export type UpsertNotificationCustomFilterRequest = {
   queryString: string;
 };
 
+export type NotificationDeliveryEmail = {
+  id: string;
+  email: string;
+  isPrimary: boolean;
+  isPublic: boolean;
+  verified: boolean;
+};
+
+export type NotificationDeliveryPreference = {
+  key: string;
+  label: string;
+  section: "subscriptions" | "system" | string;
+  description: string;
+  channels: string[];
+  supportedChannels: string[];
+  disabled: boolean;
+  disabledReason: string | null;
+};
+
+export type NotificationDeliverySettings = {
+  defaultEmailId: string | null;
+  defaultEmail: string | null;
+  emailChannelAvailable: boolean;
+  sesSenderReady: boolean;
+  emails: NotificationDeliveryEmail[];
+  preferences: NotificationDeliveryPreference[];
+  customRoutingHref: string;
+  watchedRepositoriesHref: string;
+  ignoredRepositoriesHref: string;
+};
+
+export type UpdateNotificationDeliverySettingsRequest = {
+  defaultEmailId?: string | null;
+  preferences?: { key: string; channels: string[] }[];
+};
+
 export function notificationsPath(query: NotificationInboxQuery = {}): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
@@ -8277,6 +8313,66 @@ export async function getNotificationFilterSettingsFromCookie(
     );
   }
   return body as NotificationFilterSettings;
+}
+
+export async function getNotificationDeliverySettingsFromCookie(
+  cookie: string | null | undefined,
+): Promise<NotificationDeliverySettings | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/notifications/delivery-preferences`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Notification delivery settings are temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "notification_delivery_failed",
+          message: "Notification delivery settings could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+  return body as NotificationDeliverySettings;
+}
+
+export async function updateNotificationDeliverySettingsFromCookie(
+  cookie: string | null | undefined,
+  input: UpdateNotificationDeliverySettingsRequest,
+): Promise<NotificationDeliverySettings> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/notifications/delivery-preferences`,
+    {
+      method: "PATCH",
+      headers: {
+        ...(cookie ? { cookie } : {}),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    },
+  );
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw notificationDeliveryError(body, response.status);
+  }
+  return body as NotificationDeliverySettings;
 }
 
 export async function createNotificationCustomFilterFromCookie(
@@ -8354,6 +8450,19 @@ function notificationFilterError(body: unknown, status: number) {
     status,
   };
   return new Error("Notification filter operation failed", {
+    cause: (body as ApiErrorEnvelope | null) ?? fallback,
+  });
+}
+
+function notificationDeliveryError(body: unknown, status: number) {
+  const fallback: ApiErrorEnvelope = {
+    error: {
+      code: "notification_delivery_failed",
+      message: "Notification delivery settings could not be saved.",
+    },
+    status,
+  };
+  return new Error("Notification delivery operation failed", {
     cause: (body as ApiErrorEnvelope | null) ?? fallback,
   });
 }

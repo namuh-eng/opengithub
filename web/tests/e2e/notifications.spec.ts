@@ -353,3 +353,46 @@ test("signed-in user creates and deletes custom notification filters", async ({
   await expect(page.getByRole("status")).toHaveText("Filter deleted.");
   await expect(page.getByText("Mention queue")).toHaveCount(0);
 });
+
+test("signed-in user saves notification delivery channels", async ({
+  page,
+}) => {
+  const seeded = seedDashboard();
+  await signIn(page, seeded);
+
+  await page.goto("/settings/notifications");
+  await expect(
+    page.getByRole("heading", { name: "Default notifications email" }),
+  ).toBeVisible();
+  await expect(page.getByText("SES ready")).toBeVisible();
+  await page.getByRole("button", { name: "Save email" }).click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Default notifications email saved.",
+  );
+
+  const watchingRow = page.locator(".list-row", { hasText: "Watching" });
+  await watchingRow.getByRole("button", { name: "Notify me" }).click();
+  const panel = page.getByRole("dialog", { name: "Watching" });
+  await expect(panel).toBeVisible();
+  await panel.getByLabel("Email").check();
+  await panel.getByLabel("CLI").check();
+  await panel.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Notification channels saved.",
+  );
+  await expect(watchingRow.getByText("Email")).toBeVisible();
+  await expect(watchingRow.getByText("CLI")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Ignored repositories" }),
+  ).toHaveAttribute("href", "/notifications/subscriptions?filter=ignored");
+  await expect(
+    page.locator(".list-row", { hasText: "Dependabot" }).getByRole("button", {
+      name: "Notify me",
+    }),
+  ).toBeDisabled();
+  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/personal-settings-002-notifications-delivery.jpg",
+  });
+});

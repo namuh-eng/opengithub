@@ -1,15 +1,19 @@
+import { NotificationDeliverySettingsPage } from "@/components/NotificationDeliverySettingsPage";
 import { NotificationFilterSettingsPage } from "@/components/NotificationFilterSettingsPage";
 import { SettingsShell } from "@/components/SettingsShell";
 import {
+  getNotificationDeliverySettings,
   getNotificationFilterSettings,
   getSessionAndShellContext,
 } from "@/lib/server-session";
 
 export default async function NotificationSettingsPage() {
-  const [{ session, shellContext }, filterSettings] = await Promise.all([
-    getSessionAndShellContext(),
-    getNotificationFilterSettings(),
-  ]);
+  const [{ session, shellContext }, deliverySettings, filterSettings] =
+    await Promise.all([
+      getSessionAndShellContext(),
+      getNotificationDeliverySettings(),
+      getNotificationFilterSettings(),
+    ]);
 
   return (
     <SettingsShell
@@ -19,18 +23,26 @@ export default async function NotificationSettingsPage() {
       shellContext={shellContext}
       title="Notifications"
     >
-      {"error" in filterSettings ? (
+      {"error" in deliverySettings || "error" in filterSettings ? (
         <div className="card p-6">
           <p className="t-label">Unavailable</p>
           <h3 className="t-h2 mt-2">
-            Notification filters could not be loaded
+            Notification settings could not be loaded
           </h3>
           <p className="t-body mt-2" style={{ color: "var(--ink-3)" }}>
-            Refresh after signing in again. No filter changes were made.
+            Refresh after signing in again. No notification preference changes
+            were made.
           </p>
         </div>
       ) : (
-        <NotificationFilterSettingsPage initialSettings={filterSettings} />
+        <div className="grid gap-6">
+          <NotificationDeliverySettingsPage
+            initialSettings={deliverySettings}
+          />
+          <div id="custom-routing">
+            <NotificationFilterSettingsPage initialSettings={filterSettings} />
+          </div>
+        </div>
       )}
     </SettingsShell>
   );
