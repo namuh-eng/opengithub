@@ -1378,6 +1378,22 @@ export type RepositoryPagesSettingsFetchResult =
   | { ok: true; settings: RepositoryPagesSettings }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type RepositoryPagesMutation =
+  | {
+      action: "update-source";
+      branch?: string | null;
+      folder?: string | null;
+      kind: "none" | "branch" | "actions";
+      workflowArtifactName?: string | null;
+      workflowId?: string | null;
+    }
+  | { action: "save-domain"; domain: string }
+  | { action: "remove-domain" }
+  | { action: "recheck-dns" }
+  | { action: "update-https"; enforced: boolean }
+  | { action: "request-deployment" }
+  | { action: "unpublish-pages" };
+
 export type RepositoryActionsSecretMutationPayload = {
   name?: string;
   value: string;
@@ -6005,6 +6021,75 @@ export async function getRepositoryPagesSettingsFromCookie(
     ok: true,
     settings: (await response.json()) as RepositoryPagesSettings,
   };
+}
+
+export async function mutateRepositoryPagesSettingsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  mutation: RepositoryPagesMutation,
+): Promise<RepositoryPagesSettings> {
+  const base = `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/pages`;
+  let path = base;
+  let method = "POST";
+  let body: unknown;
+
+  switch (mutation.action) {
+    case "update-source": {
+      const { action: _action, ...payload } = mutation;
+      path = `${base}/source`;
+      method = "PATCH";
+      body = payload;
+      break;
+    }
+    case "save-domain":
+      path = `${base}/domain`;
+      body = { domain: mutation.domain };
+      break;
+    case "remove-domain":
+      path = `${base}/domain`;
+      method = "DELETE";
+      break;
+    case "recheck-dns":
+      path = `${base}/domain/recheck`;
+      break;
+    case "update-https":
+      path = `${base}/https`;
+      method = "PATCH";
+      body = { enforced: mutation.enforced };
+      break;
+    case "request-deployment":
+      path = `${base}/deployments`;
+      break;
+    case "unpublish-pages":
+      path = `${base}/unpublish`;
+      break;
+  }
+
+  const response = await fetch(path, {
+    method,
+    headers: {
+      ...(body ? { "content-type": "application/json" } : {}),
+      ...(cookie ? { cookie } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const envelope = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Repository Pages settings update failed.",
+      { cause: envelope },
+    );
+  }
+
+  const payload = (await response.json()) as
+    | RepositoryPagesSettings
+    | { settings: RepositoryPagesSettings };
+  return "settings" in payload ? payload.settings : payload;
 }
 
 export async function mutateRepositoryActionsSecretsSettingsFromCookie(

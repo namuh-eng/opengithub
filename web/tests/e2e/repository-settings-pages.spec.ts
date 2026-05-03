@@ -67,7 +67,7 @@ test.skip(
   "repository Pages smoke needs TEST_DATABASE_URL or DATABASE_URL",
 );
 
-test("admin can view the Pages settings shell and forbidden users do not see private metadata", async ({
+test("admin can mutate Pages settings and forbidden users do not see private metadata", async ({
   page,
 }) => {
   const seeded = seedDashboard();
@@ -81,10 +81,53 @@ test("admin can view the Pages settings shell and forbidden users do not see pri
     page.getByRole("heading", { name: /Pages$/ }).first(),
   ).toBeVisible();
   await expect(page.getByText("Publishing source")).toBeVisible();
-  await expect(page.getByLabel("Source", { exact: true })).toBeDisabled();
-  await expect(page.getByLabel("Branch", { exact: true })).toBeDisabled();
-  await expect(page.getByLabel("Folder", { exact: true })).toBeDisabled();
+  await page.getByLabel("Source", { exact: true }).selectOption("branch");
+  const branchOption = await page
+    .getByLabel("Branch", { exact: true })
+    .locator("option")
+    .evaluateAll((options) =>
+      options
+        .map((option) => option.getAttribute("value") ?? "")
+        .find((value) => value.length > 0),
+    );
+  expect(branchOption).toBeTruthy();
+  await page
+    .getByLabel("Branch", { exact: true })
+    .selectOption(branchOption ?? "");
+  await page.getByLabel("Folder", { exact: true }).selectOption("/");
+  await page.getByRole("button", { name: "Save source" }).click();
+  await expect(
+    page.getByText("Branch source saved and a Pages deployment was queued."),
+  ).toBeVisible();
+  await expect(
+    page.getByText(`${branchOption} · /(root)`).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Deploy saved source" }),
+  ).toBeEnabled();
+  await page.getByRole("button", { name: "Deploy saved source" }).click();
+  await expect(
+    page.getByText("Pages deployment queued from the saved branch source."),
+  ).toBeVisible();
   await expect(page.getByText("Domain and HTTPS")).toBeVisible();
+  await page
+    .getByLabel("Domain", { exact: true })
+    .fill(`docs-${Date.now()}.example.com`);
+  await page.getByRole("button", { name: "Save domain" }).click();
+  await expect(page.getByText("Custom domain saved.")).toBeVisible();
+  await expect(page.getByText("og-pages-", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Recheck DNS" }).click();
+  await expect(
+    page.getByText("DNS verification rechecked from the Pages API."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Enforce HTTPS" }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Unpublish Pages" }).click();
+  await page.getByRole("button", { name: "Confirm unpublish" }).click();
+  await expect(
+    page.getByText("Pages unpublished. Repository files were preserved."),
+  ).toBeVisible();
   await expect(page.getByText("Recent activity")).toBeVisible();
   await expect(
     page
@@ -95,7 +138,7 @@ test("admin can view the Pages settings shell and forbidden users do not see pri
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/settings-006-phase2-pages-shell.jpg",
+    path: "../ralph/screenshots/build/settings-006-phase3-pages-mutations.jpg",
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -112,7 +155,7 @@ test("admin can view the Pages settings shell and forbidden users do not see pri
     .toBe(true);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/settings-006-phase2-pages-mobile.jpg",
+    path: "../ralph/screenshots/build/settings-006-phase3-pages-mobile.jpg",
   });
 
   await page.context().clearCookies();
@@ -126,6 +169,6 @@ test("admin can view the Pages settings shell and forbidden users do not see pri
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/settings-006-phase2-pages-reader.jpg",
+    path: "../ralph/screenshots/build/settings-006-phase3-pages-reader.jpg",
   });
 });

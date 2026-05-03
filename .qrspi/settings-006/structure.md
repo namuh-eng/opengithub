@@ -44,7 +44,7 @@
 
 ## Phase 3: Source and Domain Mutations - confirmed forms, DNS checks, and HTTPS controls
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire every visible Pages settings action to real server-confirmed writes. Admins must be able to configure source, trigger deployment, manage custom domains, recheck DNS, toggle HTTPS when eligible, and unpublish Pages with inline success/error feedback. Invalid inputs must never update local UI optimistically.
 

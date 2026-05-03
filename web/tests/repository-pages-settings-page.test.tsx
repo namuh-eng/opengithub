@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RepositoryPagesSettingsPage } from "@/components/RepositoryPagesSettingsPage";
 import type {
   PagesDeploymentSummary,
@@ -153,6 +153,11 @@ function settings(
 }
 
 describe("repository Pages settings page", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
   it("renders branch publishing, live status, domain verification, and deployments", () => {
     const { container } = render(
       <RepositoryPagesSettingsPage
@@ -171,7 +176,7 @@ describe("repository Pages settings page", () => {
     expect(screen.getByDisplayValue("docs.namuh.co")).toBeVisible();
     expect(screen.getByText("_opengithub-pages.docs.namuh.co")).toBeVisible();
     expect(screen.getByText("og-pages-secret-token")).toBeVisible();
-    expect(screen.getByText("Static HTML")).toBeVisible();
+    expect(screen.getAllByText("Static HTML").length).toBeGreaterThan(0);
     expect(screen.getByText("public")).toBeVisible();
     expect(screen.getByRole("link", { name: /gh-pages ·/i })).toHaveAttribute(
       "href",
@@ -224,9 +229,257 @@ describe("repository Pages settings page", () => {
     for (const link of container.querySelectorAll("a")) {
       expect(link.getAttribute("href")).not.toBe("#");
     }
-    for (const button of screen.getAllByRole("button")) {
-      expect(button).toBeDisabled();
-    }
+    expect(screen.getByRole("button", { name: "Save source" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save domain" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Remove domain" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Unpublish Pages" }),
+    ).toBeDisabled();
+  });
+
+  it("saves branch source through the same-origin action and refreshes only from confirmed state", async () => {
+    const nextSettings = settings({
+      site: {
+        ...settings().site,
+        source: {
+          branch: "main",
+          folder: "/docs",
+          kind: "branch",
+          workflowArtifactName: null,
+          workflowId: null,
+        },
+      },
+      deployments: [
+        deployment({
+          id: "deployment-queued",
+          source: {
+            branch: "main",
+            folder: "/docs",
+            kind: "branch",
+            workflowArtifactName: null,
+            workflowId: null,
+          },
+          status: "queued",
+        }),
+      ],
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: () => Promise.resolve(nextSettings),
+      ok: true,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryPagesSettingsPage
+        repository={repositoryOverview()}
+        settingsResult={{ ok: true, settings: settings() }}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Branch"), {
+      target: { value: "main" },
+    });
+    fireEvent.change(screen.getByLabelText("Folder"), {
+      target: { value: "/docs" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save source" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/namuh-eng/opengithub/settings/pages/actions",
+        expect.objectContaining({
+          body: JSON.stringify({
+            action: "update-source",
+            branch: "main",
+            folder: "/docs",
+            kind: "branch",
+            workflowArtifactName: null,
+            workflowId: null,
+          }),
+          method: "POST",
+        }),
+      ),
+    );
+    expect(
+      await screen.findByText(
+        "Branch source saved and a Pages deployment was queued.",
+      ),
+    ).toBeVisible();
+    expect(screen.getAllByText("main · /docs").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("queued").length).toBeGreaterThan(0);
+  });
+
+  it("keeps invalid source changes local and surfaces API errors without replacing confirmed state", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: () =>
+        Promise.resolve({
+          error: {
+            code: "validation_failed",
+            message: "selected branch does not contain a /docs folder",
+          },
+          status: 422,
+        }),
+      ok: false,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryPagesSettingsPage
+        repository={repositoryOverview()}
+        settingsResult={{ ok: true, settings: settings() }}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Folder"), {
+      target: { value: "/docs" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save source" }));
+
+    expect(
+      await screen.findByText(
+        "selected branch does not contain a /docs folder",
+      ),
+    ).toBeVisible();
+    expect(screen.getAllByText("gh-pages · /(root)").length).toBeGreaterThan(0);
+    expect(screen.queryByText("gh-pages · /docs")).not.toBeInTheDocument();
+  });
+
+  it("supports domain save, DNS recheck, HTTPS toggle, and confirmed unpublish", async () => {
+    const pending = settings({
+      site: {
+        ...settings().site,
+        customDomain: "docs.example.com",
+        domain: {
+          challenge: {
+            name: "_opengithub-pages.docs.example.com",
+            recordType: "TXT",
+            value: "og-pages-next-token",
+          },
+          lastCheckedAt: null,
+          status: "pending",
+          warning: "DNS challenge has not propagated yet.",
+        },
+        httpsEnforced: false,
+        certificateStatus: "pending",
+      },
+    });
+    const verified = settings({
+      site: {
+        ...pending.site,
+        domain: {
+          ...pending.site.domain,
+          lastCheckedAt: "2026-05-03T00:10:00Z",
+          status: "verified",
+          warning: null,
+        },
+        certificateStatus: "issued",
+      },
+    });
+    const https = settings({
+      site: {
+        ...verified.site,
+        httpsEnforced: true,
+      },
+    });
+    const unpublished = settings({
+      site: {
+        ...https.site,
+        source: {
+          branch: null,
+          folder: null,
+          kind: "none",
+          workflowArtifactName: null,
+          workflowId: null,
+        },
+        provisioningStatus: "unpublished",
+        unpublishedAt: "2026-05-03T00:12:00Z",
+      },
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ json: () => Promise.resolve(pending), ok: true })
+      .mockResolvedValueOnce({
+        json: () => Promise.resolve(verified),
+        ok: true,
+      })
+      .mockResolvedValueOnce({ json: () => Promise.resolve(https), ok: true })
+      .mockResolvedValueOnce({
+        json: () => Promise.resolve(unpublished),
+        ok: true,
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryPagesSettingsPage
+        repository={repositoryOverview()}
+        settingsResult={{ ok: true, settings: settings() }}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Domain"), {
+      target: { value: "Docs.Example.COM." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save domain" }));
+    expect(
+      await screen.findByText(
+        "Custom domain saved. Add the DNS challenge before verification.",
+      ),
+    ).toBeVisible();
+    expect(screen.getByDisplayValue("Docs.Example.COM.")).toBeVisible();
+    expect(screen.getByText("og-pages-next-token")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Recheck DNS" }));
+    expect(
+      await screen.findByText("DNS verification rechecked from the Pages API."),
+    ).toBeVisible();
+    expect(screen.getByText(/Certificate:\s*issued/)).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Enforce HTTPS" }));
+    expect(await screen.findByText("HTTPS enforcement enabled.")).toBeVisible();
+    expect(screen.getByText("HTTPS enforced")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Unpublish Pages" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm unpublish" }));
+    expect(
+      await screen.findByText(
+        "Pages unpublished. Repository files were preserved.",
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("Not published")).toBeVisible();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/namuh-eng/opengithub/settings/pages/actions",
+      expect.objectContaining({
+        body: JSON.stringify({
+          action: "save-domain",
+          domain: "Docs.Example.COM.",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/namuh-eng/opengithub/settings/pages/actions",
+      expect.objectContaining({
+        body: JSON.stringify({ action: "recheck-dns" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/namuh-eng/opengithub/settings/pages/actions",
+      expect.objectContaining({
+        body: JSON.stringify({ action: "update-https", enforced: true }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "/namuh-eng/opengithub/settings/pages/actions",
+      expect.objectContaining({
+        body: JSON.stringify({ action: "unpublish-pages" }),
+      }),
+    );
   });
 
   it("renders Actions source suggestions and workflow deployment links", () => {

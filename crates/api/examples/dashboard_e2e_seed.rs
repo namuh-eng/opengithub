@@ -423,18 +423,52 @@ async fn main() -> anyhow::Result<()> {
         if seed_issue_templates_enabled() {
             seed_issue_templates(&pool, first_repository.id, user.id).await?;
         }
-        sqlx::query(
-            r#"
-            INSERT INTO commits (repository_id, oid, author_user_id, committer_user_id, message, committed_at)
-            VALUES ($1, $2, $3, $3, 'Wire dashboard activity feed', now())
-            ON CONFLICT (repository_id, oid) DO NOTHING
-            "#,
+        let dashboard_commit = insert_commit(
+            &pool,
+            first_repository.id,
+            CreateCommit {
+                oid: format!("{}abcdef", &suffix[..16]),
+                author_user_id: Some(user.id),
+                committer_user_id: Some(user.id),
+                message: "Wire dashboard activity feed".to_owned(),
+                tree_oid: Some(format!("tree-dashboard-{}", &suffix[..12])),
+                parent_oids: vec![],
+                committed_at: Utc::now(),
+            },
         )
-        .bind(first_repository.id)
-        .bind(format!("{}abcdef", &suffix[..16]))
-        .bind(user.id)
-        .execute(&pool)
         .await?;
+        upsert_git_ref(
+            &pool,
+            first_repository.id,
+            "refs/heads/main",
+            "branch",
+            Some(dashboard_commit.id),
+        )
+        .await?;
+        for (path, content) in [
+            ("README.md", "# Dashboard workspace\n"),
+            ("docs/index.html", "<h1>Dashboard Pages</h1>\n"),
+        ] {
+            sqlx::query(
+                r#"
+                INSERT INTO repository_files (repository_id, commit_id, path, content, oid, byte_size)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                ON CONFLICT DO NOTHING
+                "#,
+            )
+            .bind(first_repository.id)
+            .bind(dashboard_commit.id)
+            .bind(path)
+            .bind(content)
+            .bind(format!(
+                "{}-{}",
+                dashboard_commit.oid,
+                path.replace('/', "-")
+            ))
+            .bind(content.len() as i64)
+            .execute(&pool)
+            .await?;
+        }
         create_issue(
             &pool,
             CreateIssue {
