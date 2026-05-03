@@ -1,3 +1,11 @@
+2026-05-03 - settings-005 structure planning
+
+- Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `prd.json`, `web/AGENTS.md`, `design/project/wf-settings.jsx`, current settings secrets placeholder, repository settings navigation, existing Actions routes/domain/migrations, repository settings audit patterns, and Actions secrets/variables target docs.
+- Determined `settings-005` requires structure planning before implementation because `needs_structure: true` and `.qrspi/settings-005/structure.md` did not exist.
+- Added `.qrspi/settings-005/structure.md` with five independently verifiable vertical phases: Actions secrets/variables API contract, Editorial tabs/list shell, add/update/delete mutations, workflow resolution and masking integration, and final docs/browser/QA/build-pass bookkeeping.
+- Did not change `prd.json`; `settings-005.build_pass` remains `false` until all implementation phases pass verification.
+- Tests not run because this iteration only created the required planning artifact.
+
 2026-05-03 - settings-004 phase 4 delivery worker integration
 
 - Completed Phase 4 from `.qrspi/settings-004/structure.md`: repository webhook deliveries now have a real Rust job-lease worker path without marking `settings-004.build_pass=true`.
