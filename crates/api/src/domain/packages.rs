@@ -103,6 +103,7 @@ pub struct PackageDetail {
     pub linked_repository: Option<OwnerPackageRepository>,
     pub published_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub deleted_at: Option<DateTime<Utc>>,
     pub download_count: i64,
     pub selected_version: Option<PackageDetailVersion>,
     pub versions: Vec<PackageDetailVersion>,
@@ -202,8 +203,10 @@ pub struct PackageSettingsSummary {
     pub package_type: String,
     pub type_label: String,
     pub visibility: String,
+    pub deleted_at: Option<DateTime<Utc>>,
     pub href: String,
     pub download_count: i64,
+    pub latest_version_id: Option<Uuid>,
     pub latest_version: Option<String>,
     pub latest_digest: Option<String>,
     pub updated_at: DateTime<Utc>,
@@ -247,6 +250,20 @@ pub struct PackageCapabilitySummary {
     pub label: String,
     pub enabled: bool,
     pub reason: String,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", tag = "action")]
+pub enum PackageSettingsMutation {
+    UpdateVisibility { visibility: String },
+    GrantAccess { username: String, role: String },
+    RevokeAccess { user_id: Uuid },
+    LinkRepository { owner: String, repo: String },
+    UnlinkRepository { repository_id: Uuid },
+    DeletePackage,
+    RestorePackage,
+    DeleteVersion { version_id: Uuid },
+    RestoreVersion { version_id: Uuid },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -325,6 +342,7 @@ pub async fn owner_packages(
                p.name,
                p.package_type,
                p.visibility,
+               p.deleted_at,
                p.created_at AS published_at,
                p.created_by_user_id AS publisher_id,
                COALESCE(NULLIF(publisher.username, ''), split_part(publisher.email, '@', 1)) AS publisher_login,
@@ -433,6 +451,7 @@ pub async fn package_detail(
                p.name,
                p.package_type,
                p.visibility,
+               p.deleted_at,
                p.created_at AS published_at,
                p.updated_at,
                p.created_by_user_id AS publisher_id,
@@ -639,6 +658,7 @@ pub async fn package_detail(
         linked_repository,
         published_at: row.try_get("published_at")?,
         updated_at: row.try_get("updated_at")?,
+        deleted_at: row.try_get("deleted_at")?,
         download_count: row.try_get("download_count")?,
         selected_version,
         versions,
@@ -751,8 +771,10 @@ pub async fn package_settings(
             package_type: detail.package_type,
             type_label: detail.type_label,
             visibility: detail.visibility,
+            deleted_at: detail.deleted_at,
             href: detail.href,
             download_count: detail.download_count,
+            latest_version_id: detail.selected_version.as_ref().map(|version| version.id),
             latest_version: detail
                 .selected_version
                 .as_ref()
@@ -771,6 +793,360 @@ pub async fn package_settings(
         registry_write_capabilities: package_registry_capabilities(),
         admin: detail.admin,
     })
+}
+
+pub async fn mutate_package_settings(
+    pool: &PgPool,
+    owner_login: &str,
+    owner_kind: PackageOwnerKind,
+    package_type: &str,
+    package_name: &str,
+    actor_user_id: Uuid,
+    mutation: PackageSettingsMutation,
+) -> Result<PackageSettings, PackageDetailError> {
+    let current = package_settings(
+        pool,
+        owner_login,
+        owner_kind,
+        package_type,
+        package_name,
+        Some(actor_user_id),
+    )
+    .await?;
+    let package_id = current.package.id;
+
+    match mutation {
+        PackageSettingsMutation::UpdateVisibility { visibility } => {
+            let visibility = visibility.trim().to_ascii_lowercase();
+            if !matches!(visibility.as_str(), "public" | "private" | "internal") {
+                return Err(PackageDetailError::InvalidSelection(
+                    "package visibility must be public, private, or internal".to_owned(),
+                ));
+            }
+            sqlx::query(
+                r#"
+                UPDATE packages
+                SET visibility = $2, updated_at = now()
+                WHERE id = $1
+                "#,
+            )
+            .bind(package_id)
+            .bind(&visibility)
+            .execute(pool)
+            .await?;
+            audit_package_admin_change(
+                pool,
+                package_id,
+                None,
+                actor_user_id,
+                "settings.visibility.update",
+                Some(&visibility),
+                None,
+            )
+            .await?;
+        }
+        PackageSettingsMutation::GrantAccess { username, role } => {
+            let role = role.trim().to_ascii_lowercase();
+            if !matches!(role.as_str(), "read" | "write" | "admin") {
+                return Err(PackageDetailError::InvalidSelection(
+                    "package access role must be read, write, or admin".to_owned(),
+                ));
+            }
+            let grantee_id = user_id_by_login(pool, username.trim()).await?;
+            sqlx::query(
+                r#"
+                INSERT INTO package_permissions (package_id, user_id, role)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (package_id, user_id) DO UPDATE
+                SET role = EXCLUDED.role, updated_at = now()
+                "#,
+            )
+            .bind(package_id)
+            .bind(grantee_id)
+            .bind(&role)
+            .execute(pool)
+            .await?;
+            audit_package_admin_change(
+                pool,
+                package_id,
+                None,
+                actor_user_id,
+                "settings.access.grant",
+                Some(&role),
+                Some(serde_json::json!({ "userId": grantee_id })),
+            )
+            .await?;
+        }
+        PackageSettingsMutation::RevokeAccess { user_id } => {
+            sqlx::query("DELETE FROM package_permissions WHERE package_id = $1 AND user_id = $2")
+                .bind(package_id)
+                .bind(user_id)
+                .execute(pool)
+                .await?;
+            audit_package_admin_change(
+                pool,
+                package_id,
+                None,
+                actor_user_id,
+                "settings.access.revoke",
+                None,
+                Some(serde_json::json!({ "userId": user_id })),
+            )
+            .await?;
+        }
+        PackageSettingsMutation::LinkRepository { owner, repo } => {
+            let repository_id =
+                repository_id_by_owner_name(pool, owner.trim(), repo.trim()).await?;
+            sqlx::query(
+                r#"
+                INSERT INTO package_repository_links (package_id, repository_id, link_type)
+                VALUES ($1, $2, 'manual')
+                ON CONFLICT (package_id, repository_id, link_type) DO NOTHING
+                "#,
+            )
+            .bind(package_id)
+            .bind(repository_id)
+            .execute(pool)
+            .await?;
+            audit_package_admin_change(
+                pool,
+                package_id,
+                None,
+                actor_user_id,
+                "settings.repository.link",
+                None,
+                Some(serde_json::json!({ "repositoryId": repository_id })),
+            )
+            .await?;
+        }
+        PackageSettingsMutation::UnlinkRepository { repository_id } => {
+            sqlx::query(
+                r#"
+                DELETE FROM package_repository_links
+                WHERE package_id = $1 AND repository_id = $2 AND link_type = 'manual'
+                "#,
+            )
+            .bind(package_id)
+            .bind(repository_id)
+            .execute(pool)
+            .await?;
+            audit_package_admin_change(
+                pool,
+                package_id,
+                None,
+                actor_user_id,
+                "settings.repository.unlink",
+                None,
+                Some(serde_json::json!({ "repositoryId": repository_id })),
+            )
+            .await?;
+        }
+        PackageSettingsMutation::DeletePackage => {
+            sqlx::query(
+                r#"
+                UPDATE packages
+                SET deleted_at = COALESCE(deleted_at, now()),
+                    deleted_by_user_id = COALESCE(deleted_by_user_id, $2),
+                    updated_at = now()
+                WHERE id = $1
+                "#,
+            )
+            .bind(package_id)
+            .bind(actor_user_id)
+            .execute(pool)
+            .await?;
+            audit_package_admin_change(
+                pool,
+                package_id,
+                None,
+                actor_user_id,
+                "settings.package.delete",
+                None,
+                None,
+            )
+            .await?;
+        }
+        PackageSettingsMutation::RestorePackage => {
+            sqlx::query(
+                r#"
+                UPDATE packages
+                SET deleted_at = NULL,
+                    restored_at = now(),
+                    restored_by_user_id = $2,
+                    updated_at = now()
+                WHERE id = $1
+                "#,
+            )
+            .bind(package_id)
+            .bind(actor_user_id)
+            .execute(pool)
+            .await?;
+            audit_package_admin_change(
+                pool,
+                package_id,
+                None,
+                actor_user_id,
+                "settings.package.restore",
+                None,
+                None,
+            )
+            .await?;
+        }
+        PackageSettingsMutation::DeleteVersion { version_id } => {
+            update_package_version_lifecycle(pool, package_id, version_id, actor_user_id, true)
+                .await?;
+        }
+        PackageSettingsMutation::RestoreVersion { version_id } => {
+            update_package_version_lifecycle(pool, package_id, version_id, actor_user_id, false)
+                .await?;
+        }
+    }
+
+    package_settings(
+        pool,
+        owner_login,
+        owner_kind,
+        package_type,
+        package_name,
+        Some(actor_user_id),
+    )
+    .await
+}
+
+async fn user_id_by_login(pool: &PgPool, login: &str) -> Result<Uuid, PackageDetailError> {
+    if login.is_empty() {
+        return Err(PackageDetailError::InvalidSelection(
+            "username is required".to_owned(),
+        ));
+    }
+    sqlx::query_scalar::<_, Uuid>(
+        r#"
+        SELECT id
+        FROM users
+        WHERE lower(COALESCE(NULLIF(username, ''), split_part(email, '@', 1))) = lower($1)
+        LIMIT 1
+        "#,
+    )
+    .bind(login)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| PackageDetailError::InvalidSelection("user was not found".to_owned()))
+}
+
+async fn repository_id_by_owner_name(
+    pool: &PgPool,
+    owner: &str,
+    repo: &str,
+) -> Result<Uuid, PackageDetailError> {
+    if owner.is_empty() || repo.is_empty() {
+        return Err(PackageDetailError::InvalidSelection(
+            "repository owner and name are required".to_owned(),
+        ));
+    }
+    sqlx::query_scalar::<_, Uuid>(
+        r#"
+        SELECT repositories.id
+        FROM repositories
+        LEFT JOIN users owner_user ON owner_user.id = repositories.owner_user_id
+        LEFT JOIN organizations owner_org ON owner_org.id = repositories.owner_organization_id
+        WHERE lower(COALESCE(owner_user.username, owner_org.slug)) = lower($1)
+          AND lower(repositories.name) = lower($2)
+        LIMIT 1
+        "#,
+    )
+    .bind(owner)
+    .bind(repo)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| PackageDetailError::InvalidSelection("repository was not found".to_owned()))
+}
+
+async fn update_package_version_lifecycle(
+    pool: &PgPool,
+    package_id: Uuid,
+    version_id: Uuid,
+    actor_user_id: Uuid,
+    delete: bool,
+) -> Result<(), PackageDetailError> {
+    let result = if delete {
+        sqlx::query(
+            r#"
+            UPDATE package_versions
+            SET deleted_at = COALESCE(deleted_at, now()),
+                deleted_by_user_id = COALESCE(deleted_by_user_id, $3)
+            WHERE id = $1 AND package_id = $2
+            "#,
+        )
+        .bind(version_id)
+        .bind(package_id)
+        .bind(actor_user_id)
+        .execute(pool)
+        .await?
+    } else {
+        sqlx::query(
+            r#"
+            UPDATE package_versions
+            SET deleted_at = NULL,
+                restored_at = now(),
+                restored_by_user_id = $3
+            WHERE id = $1 AND package_id = $2
+            "#,
+        )
+        .bind(version_id)
+        .bind(package_id)
+        .bind(actor_user_id)
+        .execute(pool)
+        .await?
+    };
+    if result.rows_affected() == 0 {
+        return Err(PackageDetailError::InvalidSelection(
+            "package version was not found".to_owned(),
+        ));
+    }
+    audit_package_admin_change(
+        pool,
+        package_id,
+        Some(version_id),
+        actor_user_id,
+        if delete {
+            "settings.version.delete"
+        } else {
+            "settings.version.restore"
+        },
+        None,
+        None,
+    )
+    .await?;
+    Ok(())
+}
+
+async fn audit_package_admin_change(
+    pool: &PgPool,
+    package_id: Uuid,
+    package_version_id: Option<Uuid>,
+    actor_user_id: Uuid,
+    event_type: &str,
+    reference: Option<&str>,
+    metadata: Option<serde_json::Value>,
+) -> Result<(), PackageDetailError> {
+    sqlx::query(
+        r#"
+        INSERT INTO package_registry_audit_events (
+            package_id, package_version_id, actor_user_id, actor_kind,
+            event_type, reference, metadata
+        )
+        VALUES ($1, $2, $3, 'pat', $4, $5, COALESCE($6, '{}'::jsonb))
+        "#,
+    )
+    .bind(package_id)
+    .bind(package_version_id)
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(reference)
+    .bind(metadata)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 async fn resolve_owner(
@@ -1040,6 +1416,7 @@ async fn package_versions(
         FROM package_versions pv
         JOIN users publisher ON publisher.id = pv.published_by_user_id
         WHERE pv.package_id = $1
+          AND pv.deleted_at IS NULL
         ORDER BY pv.created_at DESC, lower(pv.version) ASC
         LIMIT 30
         "#,
@@ -1355,20 +1732,20 @@ fn package_registry_capabilities() -> Vec<PackageCapabilitySummary> {
         PackageCapabilitySummary {
             key: "visibility".to_owned(),
             label: "Change package visibility".to_owned(),
-            enabled: false,
-            reason: "Visibility writes are reserved for the package registry management slice.".to_owned(),
+            enabled: true,
+            reason: "Admins can switch public, internal, and private visibility with an audit row.".to_owned(),
         },
         PackageCapabilitySummary {
             key: "access".to_owned(),
             label: "Manage package access".to_owned(),
-            enabled: false,
-            reason: "Access mutation APIs are intentionally not enabled until package registry auth lands.".to_owned(),
+            enabled: true,
+            reason: "Admins can grant or revoke direct package read/write/admin roles.".to_owned(),
         },
         PackageCapabilitySummary {
             key: "delete".to_owned(),
             label: "Delete or restore package versions".to_owned(),
-            enabled: false,
-            reason: "Deletion and restore require OCI registry audit semantics from packages-003.".to_owned(),
+            enabled: true,
+            reason: "Deletes are soft-deletes; manifests and blobs remain retained for audit and restore.".to_owned(),
         },
     ]
 }

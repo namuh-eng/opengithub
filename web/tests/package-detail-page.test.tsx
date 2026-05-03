@@ -161,8 +161,10 @@ function packageSettings(
       packageType: detail.packageType,
       typeLabel: detail.typeLabel,
       visibility: detail.visibility,
+      deletedAt: null,
       href: detail.href,
       downloadCount: detail.downloadCount,
+      latestVersionId: detail.selectedVersion?.id ?? null,
       latestVersion: detail.selectedVersion?.version ?? null,
       latestDigest: detail.selectedVersion?.digest ?? null,
       updatedAt: detail.updatedAt,
@@ -201,8 +203,8 @@ function packageSettings(
       {
         key: "visibility",
         label: "Change package visibility",
-        enabled: false,
-        reason: "Visibility writes are reserved for packages-003.",
+        enabled: true,
+        reason: "Admins can switch visibility with an audit row.",
       },
     ],
     admin: detail.admin,
@@ -376,7 +378,7 @@ describe("PackageDetailPage", () => {
 });
 
 describe("PackageSettingsPage", () => {
-  it("renders admin-only settings state, provenance, disabled write reasons, and concrete links", () => {
+  it("renders admin-only settings state, provenance, live write controls, and concrete links", () => {
     renderSettings();
 
     expect(
@@ -395,10 +397,15 @@ describe("PackageSettingsPage", () => {
     ).toHaveAttribute("href", "/ashley/opengithub");
     expect(screen.getByText("Source: direct")).toBeInTheDocument();
     expect(screen.getByText("Published 1.0.0")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Grant" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Link" })).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: "Not available" }),
-    ).toHaveAttribute("aria-disabled", "true");
-    expect(screen.getByText(/reserved for packages-003/)).toBeInTheDocument();
+      screen.getByRole("button", { name: "Save visibility" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Delete package" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Enabled")).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("s3://");
     expect(
       document.querySelectorAll('a[href="#"], a:not([href])'),

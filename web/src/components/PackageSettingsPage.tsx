@@ -1,5 +1,13 @@
+"use client";
+
 import Link from "next/link";
-import type { PackageSettingsFetchResult } from "@/lib/api";
+import { useState } from "react";
+import type {
+  PackageSettings,
+  PackageSettingsFetchResult,
+  PackageSettingsMutation,
+  RepositoryVisibility,
+} from "@/lib/api";
 import { ownerPackagesHref } from "@/lib/navigation";
 
 type PackageSettingsPageProps = {
@@ -50,8 +58,75 @@ export function PackageSettingsPage({
     return <Unavailable result={result} />;
   }
 
-  const settings = result.settings;
+  return (
+    <PackageSettingsContent
+      initialSettings={result.settings}
+      owner={owner}
+      ownerKind={ownerKind}
+    />
+  );
+}
+
+function PackageSettingsContent({
+  initialSettings,
+  owner,
+  ownerKind,
+}: {
+  initialSettings: PackageSettings;
+  owner: string;
+  ownerKind: "user" | "organization";
+}) {
+  const [settings, setSettings] = useState<PackageSettings>(initialSettings);
+  const [pending, setPending] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [visibility, setVisibility] = useState<RepositoryVisibility>(
+    settings.package.visibility,
+  );
+  const [grantLogin, setGrantLogin] = useState("");
+  const [grantRole, setGrantRole] = useState<"read" | "write" | "admin">(
+    "read",
+  );
+  const [repositoryOwner, setRepositoryOwner] = useState(owner);
+  const [repositoryName, setRepositoryName] = useState("");
+
+  async function mutate(label: string, mutation: PackageSettingsMutation) {
+    setPending(label);
+    setMessage(null);
+    setError(null);
+    try {
+      const response = await fetch(
+        `${settings.package.href}/settings/actions`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(mutation),
+        },
+      );
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          body?.error?.message ?? "Package settings update failed.",
+        );
+      }
+      setSettings(body as PackageSettings);
+      if (mutation.action === "updateVisibility") {
+        setVisibility((body as PackageSettings).package.visibility);
+      }
+      setMessage(label);
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Package settings update failed.",
+      );
+    } finally {
+      setPending(null);
+    }
+  }
+
   const detail = settings.package;
+  const packageDeleted = Boolean(detail.deletedAt);
   return (
     <div className="grid gap-6">
       <header className="grid gap-4">
@@ -77,6 +152,9 @@ export function PackageSettingsPage({
             <div className="mt-3 flex flex-wrap gap-2">
               <span className="chip soft">{detail.typeLabel}</span>
               <span className="chip soft">{detail.visibility}</span>
+              {packageDeleted ? (
+                <span className="chip warn">Deleted</span>
+              ) : null}
               {detail.latestVersion ? (
                 <span className="chip accent">
                   Latest {detail.latestVersion}
@@ -111,6 +189,19 @@ export function PackageSettingsPage({
                         {permission.displayName ?? permission.login}
                       </Link>
                       <span className="chip soft">{permission.role}</span>
+                      <button
+                        className="btn sm"
+                        disabled={pending !== null}
+                        onClick={() =>
+                          mutate("Package access revoked.", {
+                            action: "revokeAccess",
+                            userId: permission.userId,
+                          })
+                        }
+                        type="button"
+                      >
+                        Revoke
+                      </button>
                     </div>
                     <p className="t-xs mt-1">
                       Granted {formatDate(permission.grantedAt)}
@@ -123,6 +214,47 @@ export function PackageSettingsPage({
                   from the owner account or linked repositories.
                 </p>
               )}
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_140px_auto]">
+              <label className="grid gap-1">
+                <span className="t-xs">Username</span>
+                <input
+                  className="input"
+                  onChange={(event) => setGrantLogin(event.target.value)}
+                  placeholder="octocat"
+                  value={grantLogin}
+                />
+              </label>
+              <label className="grid gap-1">
+                <span className="t-xs">Role</span>
+                <select
+                  className="input"
+                  onChange={(event) =>
+                    setGrantRole(
+                      event.target.value as "read" | "write" | "admin",
+                    )
+                  }
+                  value={grantRole}
+                >
+                  <option value="read">Read</option>
+                  <option value="write">Write</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </label>
+              <button
+                className="btn"
+                disabled={pending !== null || grantLogin.trim().length === 0}
+                onClick={() =>
+                  mutate("Package access saved.", {
+                    action: "grantAccess",
+                    username: grantLogin,
+                    role: grantRole,
+                  })
+                }
+                type="button"
+              >
+                Grant
+              </button>
             </div>
           </section>
 
@@ -141,9 +273,59 @@ export function PackageSettingsPage({
                       {repository.fullName}
                     </Link>
                     <span className="chip soft">{repository.visibility}</span>
+                    <button
+                      className="btn sm"
+                      disabled={pending !== null}
+                      onClick={() =>
+                        mutate("Repository link removed.", {
+                          action: "unlinkRepository",
+                          repositoryId: repository.id,
+                        })
+                      }
+                      type="button"
+                    >
+                      Unlink
+                    </button>
                   </div>
                 </div>
               ))}
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+              <label className="grid gap-1">
+                <span className="t-xs">Owner</span>
+                <input
+                  className="input"
+                  onChange={(event) => setRepositoryOwner(event.target.value)}
+                  value={repositoryOwner}
+                />
+              </label>
+              <label className="grid gap-1">
+                <span className="t-xs">Repository</span>
+                <input
+                  className="input"
+                  onChange={(event) => setRepositoryName(event.target.value)}
+                  placeholder="repo-name"
+                  value={repositoryName}
+                />
+              </label>
+              <button
+                className="btn"
+                disabled={
+                  pending !== null ||
+                  repositoryOwner.trim().length === 0 ||
+                  repositoryName.trim().length === 0
+                }
+                onClick={() =>
+                  mutate("Repository linked.", {
+                    action: "linkRepository",
+                    owner: repositoryOwner,
+                    repo: repositoryName,
+                  })
+                }
+                type="button"
+              >
+                Link
+              </button>
             </div>
             <h3 className="t-h3 mt-5">Inherited repository access</h3>
             <div className="mt-3 grid gap-3">
@@ -182,11 +364,21 @@ export function PackageSettingsPage({
 
           <section className="card p-5" aria-labelledby="capability-heading">
             <p className="t-label" style={{ color: "var(--ink-3)" }}>
-              Future writes
+              Live writes
             </p>
             <h2 className="t-h2 mt-1" id="capability-heading">
               Registry management controls
             </h2>
+            {message ? (
+              <p className="chip ok mt-4" role="status">
+                {message}
+              </p>
+            ) : null}
+            {error ? (
+              <p className="chip err mt-4" role="alert">
+                {error}
+              </p>
+            ) : null}
             <div className="mt-4 grid gap-3">
               {settings.registryWriteCapabilities.map((capability) => (
                 <div
@@ -197,16 +389,80 @@ export function PackageSettingsPage({
                     <p className="t-sm font-semibold">{capability.label}</p>
                     <p className="t-xs mt-1">{capability.reason}</p>
                   </div>
-                  <button
-                    aria-disabled="true"
-                    className="btn sm"
-                    disabled
-                    type="button"
+                  <span
+                    className={capability.enabled ? "chip ok" : "chip warn"}
                   >
-                    Not available
-                  </button>
+                    {capability.enabled ? "Enabled" : "Unavailable"}
+                  </span>
                 </div>
               ))}
+            </div>
+            <div className="mt-5 grid gap-3">
+              <label className="grid gap-1">
+                <span className="t-xs">Package visibility</span>
+                <select
+                  className="input"
+                  onChange={(event) =>
+                    setVisibility(event.target.value as RepositoryVisibility)
+                  }
+                  value={visibility}
+                >
+                  <option value="public">Public</option>
+                  <option value="internal">Internal</option>
+                  <option value="private">Private</option>
+                </select>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="btn"
+                  disabled={
+                    pending !== null || visibility === detail.visibility
+                  }
+                  onClick={() =>
+                    mutate("Package visibility saved.", {
+                      action: "updateVisibility",
+                      visibility,
+                    })
+                  }
+                  type="button"
+                >
+                  Save visibility
+                </button>
+                {detail.latestVersionId ? (
+                  <button
+                    className="btn"
+                    disabled={pending !== null}
+                    onClick={() =>
+                      mutate("Latest package version deleted.", {
+                        action: "deleteVersion",
+                        versionId: detail.latestVersionId as string,
+                      })
+                    }
+                    type="button"
+                  >
+                    Delete latest version
+                  </button>
+                ) : null}
+                <button
+                  className={packageDeleted ? "btn" : "btn accent"}
+                  disabled={pending !== null}
+                  onClick={() =>
+                    mutate(
+                      packageDeleted
+                        ? "Package restored."
+                        : "Package soft-deleted.",
+                      {
+                        action: packageDeleted
+                          ? "restorePackage"
+                          : "deletePackage",
+                      },
+                    )
+                  }
+                  type="button"
+                >
+                  {packageDeleted ? "Restore package" : "Delete package"}
+                </button>
+              </div>
             </div>
           </section>
         </main>

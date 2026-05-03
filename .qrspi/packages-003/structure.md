@@ -57,7 +57,7 @@
 
 ## Phase 4: Package Admin Mutations, Delete/Restore, and Settings Enablement
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the disabled package settings placeholders from `packages-002` with real admin mutations needed by registry lifecycle: visibility changes, package access grants, linked repository updates, package/version delete and restore, and safe tag/manifest deletion behavior that preserves audit history.
 

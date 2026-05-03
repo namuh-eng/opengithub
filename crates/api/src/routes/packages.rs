@@ -22,10 +22,11 @@ use crate::{
             PackageType,
         },
         packages_registry::{
-            append_blob_upload, cancel_blob_upload, complete_blob_upload, exchange_registry_token,
-            list_registry_tags, put_registry_manifest, read_registry_blob, read_registry_manifest,
-            registry_auth_from_headers, registry_challenge, start_blob_upload, RegistryError,
-            RegistryManifestPutRequest, RegistryManifestReadRequest,
+            append_blob_upload, cancel_blob_upload, complete_blob_upload, delete_registry_manifest,
+            exchange_registry_token, list_registry_tags, put_registry_manifest, read_registry_blob,
+            read_registry_manifest, registry_auth_from_headers, registry_challenge,
+            start_blob_upload, RegistryError, RegistryManifestPutRequest,
+            RegistryManifestReadRequest,
         },
         permissions::RepositoryRole,
     },
@@ -41,7 +42,8 @@ pub fn router() -> Router<AppState> {
             "/v2/:namespace/:image/manifests/:reference",
             get(registry_manifest)
                 .head(registry_manifest_head)
-                .put(registry_manifest_put),
+                .put(registry_manifest_put)
+                .delete(registry_manifest_delete),
         )
         .route(
             "/v2/:namespace/:image/blobs/uploads/",
@@ -278,6 +280,34 @@ async fn registry_manifest_put(
             .unwrap_or_else(|_| HeaderValue::from_static("")),
     );
     Ok((StatusCode::CREATED, response_headers, Json(json!({}))).into_response())
+}
+
+async fn registry_manifest_delete(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((namespace, image, reference)): Path<(String, String, String)>,
+) -> Result<Response, (StatusCode, HeaderMap, Json<serde_json::Value>)> {
+    let pool = state
+        .db
+        .as_ref()
+        .ok_or_else(registry_database_unavailable)?;
+    let auth = registry_auth_from_headers(pool, &headers)
+        .await
+        .map_err(|error| registry_error_response(error, Some(&namespace)))?;
+    let user_agent = headers
+        .get(header::USER_AGENT)
+        .and_then(|value| value.to_str().ok());
+    let deleted = delete_registry_manifest(pool, &namespace, &image, &reference, &auth, user_agent)
+        .await
+        .map_err(|error| registry_error_response(error, Some(&namespace)))?;
+    let mut response_headers = registry_success_headers();
+    if let Some(digest) = deleted.digest {
+        response_headers.insert(
+            "docker-content-digest",
+            HeaderValue::from_str(&digest).unwrap_or_else(|_| HeaderValue::from_static("")),
+        );
+    }
+    Ok((StatusCode::ACCEPTED, response_headers).into_response())
 }
 
 async fn registry_blob(

@@ -4110,5 +4110,24 @@
       "Stress multi-arch manifest indexes, OCI annotations on index manifests, conflicting source labels, concurrent workflow pushes to the same tag, and tag overwrite audit history.",
       "Confirm S3-backed package blob storage and production workflow-token issuance once the real Actions runner path is wired."
     ]
+  },
+  {
+    "feature_id": "packages-003",
+    "tests_written": [
+      "Completed Phase 4 Package Admin Mutations, Delete/Restore, and Settings Enablement without marking packages-003 build_pass=true.",
+      "Added additive package/package_versions soft-delete and restore metadata for admin lifecycle retention.",
+      "Implemented admin-gated package visibility updates, direct package access grant/revoke, manual repository link/unlink, package soft-delete/restore, and package version soft-delete/restore.",
+      "Implemented Docker Registry DELETE /v2/{namespace}/{image}/manifests/{reference} as an audited soft-delete that hides the tag/manifest from later registry reads while retaining blobs and audit history.",
+      "Turned the package settings page controls from disabled placeholders into server-confirmed Editorial controls with success/error feedback and same-origin action routes for user and organization package settings.",
+      "Focused Rust contracts cover settings mutations, redaction, audit rows, and registry manifest delete semantics; focused Vitest covers the package settings controls; focused Playwright covers browser settings mutations and saved packages-003-phase4-settings.jpg.",
+      "Verification passed: focused Rust tests, focused package detail Vitest, focused package detail Playwright, mandatory Editorial banned-value scan, make check, make test, and make test-e2e with 99 Playwright tests."
+    ],
+    "needs_deeper_qa": [
+      "Phase 5 still needs Docker-compatible end-to-end smoke, final developer docs, QA handoff, and packages-003.build_pass=true bookkeeping.",
+      "Probe concurrent admin changes: visibility flips during pulls, simultaneous grant/revoke, duplicate repository link races, and delete/restore while a push is in flight.",
+      "Verify non-admin redaction across user, organization, linked repository admin, package admin, read-only package grant, write package grant, and anonymous viewers.",
+      "Exercise Docker CLI delete compatibility against tag and digest references, then verify tag listing, digest pulls, package detail versions, and audit export behavior after restore.",
+      "Confirm production retention policy with S3-backed package blobs; Phase 4 intentionally never physically deletes blobs."
+    ]
   }
 ]

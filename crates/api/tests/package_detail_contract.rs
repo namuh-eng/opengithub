@@ -109,6 +109,33 @@ async fn get_json(
     (status, headers, value)
 }
 
+async fn patch_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: &str,
+    body: Value,
+) -> (StatusCode, HeaderMap, Value) {
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::PATCH)
+                .uri(uri)
+                .header(header::COOKIE, cookie)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body.to_string()))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let headers = response.headers().clone();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = serde_json::from_slice(&bytes).expect("response should be JSON");
+    (status, headers, value)
+}
+
 fn assert_json(headers: &HeaderMap) {
     assert!(headers
         .get(header::CONTENT_TYPE)
@@ -519,12 +546,157 @@ async fn private_detail_redacts_until_package_or_linked_repository_permission_gr
         .as_array()
         .expect("capabilities")
         .iter()
-        .any(|capability| capability["enabled"] == false
+        .any(|capability| capability["enabled"] == true
             && capability["reason"]
                 .as_str()
                 .expect("reason")
-                .contains("packages-003")));
+                .contains("audit")));
     assert!(!settings_body.to_string().contains("secret-package-bucket"));
+}
+
+#[tokio::test]
+async fn package_settings_admin_mutations_soft_delete_and_audit_without_leaking_storage() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping package settings mutation scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("pkgadmin{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let grantee = create_user(&pool, &format!("{marker}-grantee")).await;
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let source_repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("{marker}-repo"),
+            description: Some("package source".to_owned()),
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repo should create");
+    let linked_repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("{marker}-linked"),
+            description: Some("linked source".to_owned()),
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("linked repo should create");
+    let (_package_id, _older_version_id, latest_version_id) = insert_package_with_versions(
+        &pool,
+        PackageSeed {
+            repository_id: source_repo.id,
+            owner_user_id: Some(owner.id),
+            owner_organization_id: None,
+            created_by_user_id: owner.id,
+            name: &format!("{marker}-image"),
+            package_type: "container",
+            visibility: "private",
+        },
+    )
+    .await;
+    let path = format!(
+        "/api/users/{}-owner/packages/container/{}-image/settings",
+        marker, marker
+    );
+
+    let (status, headers, visibility_body) = patch_json(
+        app.clone(),
+        &path,
+        &owner_cookie,
+        json!({ "action": "updateVisibility", "visibility": "public" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_json(&headers);
+    assert_eq!(visibility_body["package"]["visibility"], "public");
+
+    let (status, _, grant_body) = patch_json(
+        app.clone(),
+        &path,
+        &owner_cookie,
+        json!({
+            "action": "grantAccess",
+            "username": format!("{marker}-grantee"),
+            "role": "write"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(grant_body["explicitPermissions"]
+        .as_array()
+        .expect("permissions")
+        .iter()
+        .any(|permission| permission["userId"] == grantee.id.to_string()
+            && permission["role"] == "write"));
+
+    let (status, _, link_body) = patch_json(
+        app.clone(),
+        &path,
+        &owner_cookie,
+        json!({
+            "action": "linkRepository",
+            "owner": format!("{marker}-owner"),
+            "repo": format!("{marker}-linked")
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(link_body["linkedRepositories"]
+        .as_array()
+        .expect("linked repos")
+        .iter()
+        .any(|repo| repo["id"] == linked_repo.id.to_string()));
+
+    let (status, _, deleted_version_body) = patch_json(
+        app.clone(),
+        &path,
+        &owner_cookie,
+        json!({ "action": "deleteVersion", "versionId": latest_version_id }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_ne!(deleted_version_body["package"]["latestVersion"], "2.0.0");
+
+    let (status, _, package_deleted_body) = patch_json(
+        app.clone(),
+        &path,
+        &owner_cookie,
+        json!({ "action": "deletePackage" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(package_deleted_body["package"]["deletedAt"].is_string());
+
+    let (status, _, restored_body) = patch_json(
+        app.clone(),
+        &path,
+        &owner_cookie,
+        json!({ "action": "restorePackage" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(restored_body["package"]["deletedAt"].is_null());
+    assert!(!restored_body.to_string().contains("secret-package-bucket"));
+
+    let audit_count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*)::bigint FROM package_registry_audit_events WHERE event_type LIKE 'settings.%'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("audit count should load");
+    assert!(audit_count >= 5);
 }
 
 #[tokio::test]

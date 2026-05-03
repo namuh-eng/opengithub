@@ -99,6 +99,75 @@ function ensurePackageDetailSchema() {
       },
     );
   }
+  const hasPackageRegistryAudit = execFileSync(
+    "psql",
+    [
+      databaseUrl,
+      "-tAc",
+      "SELECT to_regclass('public.package_registry_audit_events') IS NOT NULL",
+    ],
+    {
+      env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
+    },
+  )
+    .toString()
+    .trim();
+  if (hasPackageRegistryAudit !== "t") {
+    execFileSync(
+      "psql",
+      [
+        databaseUrl,
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-f",
+        "../crates/api/migrations/202605032020_package_registry_manifest_reads.up.sql",
+      ],
+      {
+        env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
+      },
+    );
+    execFileSync(
+      "psql",
+      [
+        databaseUrl,
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-f",
+        "../crates/api/migrations/202605032230_package_registry_actions_publishing.up.sql",
+      ],
+      {
+        env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
+      },
+    );
+  }
+  const hasPackageDeletedAt = execFileSync(
+    "psql",
+    [
+      databaseUrl,
+      "-tAc",
+      "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'packages' AND column_name = 'deleted_at')",
+    ],
+    {
+      env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
+    },
+  )
+    .toString()
+    .trim();
+  if (hasPackageDeletedAt !== "t") {
+    execFileSync(
+      "psql",
+      [
+        databaseUrl,
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-f",
+        "../crates/api/migrations/202605032345_package_admin_lifecycle.up.sql",
+      ],
+      {
+        env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
+      },
+    );
+  }
 }
 
 function seedDashboard(): SeededDashboard {
@@ -384,10 +453,16 @@ test("package detail final smoke covers user, org, settings, forbidden, and mobi
   await expect(
     page.getByRole("heading", { name: "Linked repositories" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Not available" }).first(),
-  ).toHaveAttribute("aria-disabled", "true");
-  await expect(page.getByText(/packages-003/).first()).toBeVisible();
+  await expect(page.getByText("Enabled").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Grant" })).toBeDisabled();
+  await page.getByLabel("Package visibility").selectOption("private");
+  await page.getByRole("button", { name: "Save visibility" }).click();
+  await expect(page.getByText("Package visibility saved.")).toBeVisible();
+  await page.getByRole("button", { name: "Delete package" }).click();
+  await expect(page.getByText("Package soft-deleted.")).toBeVisible();
+  await expect(page.getByText("Deleted", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Restore package" }).click();
+  await expect(page.getByText("Package restored.")).toBeVisible();
   await expect(page.locator("body")).not.toContainText(
     "redacted-package-layer",
   );
@@ -396,7 +471,7 @@ test("package detail final smoke covers user, org, settings, forbidden, and mobi
 
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/packages-002-final-settings.jpg",
+    path: "../ralph/screenshots/build/packages-003-phase4-settings.jpg",
   });
 
   await page.goto(orgPackageHref);

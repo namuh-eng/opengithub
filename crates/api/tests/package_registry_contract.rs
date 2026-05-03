@@ -540,6 +540,44 @@ async fn registry_blob_upload_manifest_push_tag_list_and_pull_record_downloads()
     .expect("manifest version count should load");
     assert_eq!(manifest_version_count, 1);
 
+    let mut headers = HeaderMap::new();
+    headers.insert(header::AUTHORIZATION, basic_auth(&write_token));
+    let (status, headers, _) = request(
+        app.clone(),
+        Method::DELETE,
+        &format!("/v2/{namespace}/{image}/manifests/v2"),
+        headers,
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED);
+    assert_eq!(
+        headers
+            .get("docker-content-digest")
+            .and_then(|value| value.to_str().ok())
+            .expect("deleted digest"),
+        manifest_digest
+    );
+
+    let mut headers = HeaderMap::new();
+    headers.insert(header::AUTHORIZATION, basic_auth(&write_token));
+    let (status, _, _) = request(
+        app.clone(),
+        Method::GET,
+        &format!("/v2/{namespace}/{image}/manifests/v2"),
+        headers,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let deleted_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM package_versions WHERE package_id = $1 AND version = 'v2' AND deleted_at IS NOT NULL",
+    )
+    .bind(package_id)
+    .fetch_one(&pool)
+    .await
+    .expect("deleted manifest count should load");
+    assert_eq!(deleted_count, 1);
+
     let storage_key_leaks: i64 = sqlx::query_scalar(
         "SELECT COUNT(*)::bigint FROM package_registry_audit_events WHERE package_id = $1 AND COALESCE(reference, '') LIKE '%opengithub-registry%'",
     )

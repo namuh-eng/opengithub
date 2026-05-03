@@ -2852,3 +2852,15 @@
 - Extended `package_registry_contract` with a DB-backed workflow-token publish scenario covering package creation, inherited visibility, workflow run/job metadata, source-label linking, webhook queueing, and workflow audit metadata.
 - Verification passed: focused `package_registry_contract`; focused `web/tests/api-docs.test.tsx`; mandatory Editorial banned-value scan returned zero matches; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 329 web tests.
 - Browser smoke and `make test-e2e` were skipped because Phase 3 is API/docs-first and the structure outline does not require browser smoke for this phase. `prd.json` remains `build_pass:false` because Phases 4-5 remain.
+
+2026-05-03 - packages-003 phase 4 package admin mutations, delete/restore, and settings enablement
+
+- Completed Phase 4 from `.qrspi/packages-003/structure.md`: package settings controls now perform real admin lifecycle mutations and Docker registry clients can soft-delete manifests/tags.
+- Added additive migration `202605032345_package_admin_lifecycle` for package and package_version soft-delete/restore metadata plus active indexes; blob bytes remain retained.
+- Extended Rust package settings domain/routes with admin-gated visibility changes, direct package access grant/revoke, manual repository link/unlink, package soft-delete/restore, package version soft-delete/restore, and redaction-safe audit rows.
+- Extended OCI registry behavior with `DELETE /v2/{namespace}/{image}/manifests/{reference}`; delete requires packages:write, marks the matching package_version deleted, returns Docker-compatible headers, hides later manifest/tag reads, and preserves audit/download/blob history.
+- Replaced disabled package settings placeholders with Editorial server-confirmed controls, same-origin user/org action routes, success/error feedback, and package deleted/restored state.
+- Extended Rust, Vitest, and Playwright coverage for settings mutations, Docker manifest delete semantics, no storage-key leakage, no dead settings controls, and browser settings mutation smoke.
+- Browser smoke screenshot saved at `ralph/screenshots/build/packages-003-phase4-settings.jpg`.
+- Verification passed: `cargo fmt --all --check`; focused `package_detail_contract` settings mutation test; focused `package_registry_contract` registry push/delete test; `cargo check -p opengithub-api`; `cd web && npx tsc --noEmit --pretty false`; focused `web/tests/package-detail-page.test.tsx`; focused same-env Playwright `package-detail.spec.ts`; mandatory Editorial banned-value scan; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 329 web tests; full same-env `make test-e2e` with 99 Playwright tests.
+- Marked Phase 4 as done in `.qrspi/packages-003/structure.md`; `prd.json` remains `build_pass:false` because Phase 5 remains.

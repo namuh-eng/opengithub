@@ -549,8 +549,10 @@ export type PackageSettingsSummary = {
   packageType: string;
   typeLabel: string;
   visibility: RepositoryVisibility;
+  deletedAt: string | null;
   href: string;
   downloadCount: number;
+  latestVersionId: string | null;
   latestVersion: string | null;
   latestDigest: string | null;
   updatedAt: string;
@@ -587,6 +589,21 @@ export type PackageCapabilitySummary = {
   enabled: boolean;
   reason: string;
 };
+
+export type PackageSettingsMutation =
+  | { action: "updateVisibility"; visibility: RepositoryVisibility }
+  | {
+      action: "grantAccess";
+      username: string;
+      role: "read" | "write" | "admin";
+    }
+  | { action: "revokeAccess"; userId: string }
+  | { action: "linkRepository"; owner: string; repo: string }
+  | { action: "unlinkRepository"; repositoryId: string }
+  | { action: "deletePackage" }
+  | { action: "restorePackage" }
+  | { action: "deleteVersion"; versionId: string }
+  | { action: "restoreVersion"; versionId: string };
 
 export type OwnerPackagePublisher = {
   id: string;
@@ -3963,6 +3980,34 @@ export async function getOrganizationPackageSettingsFromCookie(
   );
 }
 
+export async function mutateUserPackageSettingsFromCookie(
+  cookie: string | null | undefined,
+  username: string,
+  packageType: string,
+  packageName: string,
+  mutation: PackageSettingsMutation,
+): Promise<PackageSettings> {
+  return mutatePackageSettingsFromCookie(
+    cookie,
+    `/api/users/${encodeURIComponent(username)}/packages/${encodeURIComponent(packageType)}/${encodeURIComponent(packageName)}/settings`,
+    mutation,
+  );
+}
+
+export async function mutateOrganizationPackageSettingsFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  packageType: string,
+  packageName: string,
+  mutation: PackageSettingsMutation,
+): Promise<PackageSettings> {
+  return mutatePackageSettingsFromCookie(
+    cookie,
+    `/api/orgs/${encodeURIComponent(org)}/packages/${encodeURIComponent(packageType)}/${encodeURIComponent(packageName)}/settings`,
+    mutation,
+  );
+}
+
 async function getPackageDetailFromCookie(
   cookie: string | null | undefined,
   path: string,
@@ -4040,6 +4085,33 @@ async function getPackageSettingsFromCookie(
   }
 
   return { ok: true, settings: (await response.json()) as PackageSettings };
+}
+
+async function mutatePackageSettingsFromCookie(
+  cookie: string | null | undefined,
+  path: string,
+  mutation: PackageSettingsMutation,
+): Promise<PackageSettings> {
+  const response = await fetch(`${apiBaseUrl()}${path}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...(cookie ? { cookie } : {}),
+    },
+    body: JSON.stringify(mutation),
+  });
+  if (!response.ok) {
+    let body: ApiErrorEnvelope | null = null;
+    try {
+      body = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      body = null;
+    }
+    throw new Error(body?.error.message ?? "Package settings update failed.", {
+      cause: body,
+    });
+  }
+  return (await response.json()) as PackageSettings;
 }
 
 async function getOwnerPackagesFromCookie(

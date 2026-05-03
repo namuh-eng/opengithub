@@ -119,6 +119,15 @@ pub struct RegistryManifestPutRequest<'a> {
     pub user_agent: Option<&'a str>,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RegistryManifestDelete {
+    pub package_id: Uuid,
+    pub package_version_id: Uuid,
+    pub reference: String,
+    pub digest: Option<String>,
+}
+
 struct RegistryAuditEvent<'a> {
     package_id: Uuid,
     package_version_id: Option<Uuid>,
@@ -652,6 +661,66 @@ pub async fn put_registry_manifest(
     })
 }
 
+pub async fn delete_registry_manifest(
+    pool: &PgPool,
+    namespace: &str,
+    image: &str,
+    reference: &str,
+    auth: &RegistryAuth,
+    user_agent: Option<&str>,
+) -> Result<RegistryManifestDelete, RegistryError> {
+    let package = require_package_write(pool, namespace, image, auth).await?;
+    let reference = validate_reference(reference)?;
+    let Some(row) = sqlx::query(
+        r#"
+        UPDATE package_versions
+        SET deleted_at = COALESCE(deleted_at, now()),
+            deleted_by_user_id = COALESCE(deleted_by_user_id, $3)
+        WHERE id = (
+            SELECT id
+            FROM package_versions
+            WHERE package_id = $1
+              AND deleted_at IS NULL
+              AND (lower(version) = lower($2) OR lower(digest) = lower($2))
+            ORDER BY CASE WHEN lower(version) = lower($2) THEN 0 ELSE 1 END, created_at DESC
+            LIMIT 1
+        )
+        RETURNING id, digest
+        "#,
+    )
+    .bind(package.id)
+    .bind(&reference)
+    .bind(auth.actor_user_id().expect("write auth has actor"))
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Err(RegistryError::NotFound);
+    };
+    let version_id: Uuid = row.try_get("id")?;
+    let digest: Option<String> = row.try_get("digest")?;
+    audit_registry_event(
+        pool,
+        RegistryAuditEvent {
+            package_id: package.id,
+            package_version_id: Some(version_id),
+            actor_user_id: auth.actor_user_id(),
+            auth: Some(auth),
+            event_type: "manifest.delete",
+            reference: Some(&reference),
+            digest: digest.as_deref(),
+            user_agent,
+            metadata: json!({ "softDeleted": true }),
+        },
+    )
+    .await?;
+    Ok(RegistryManifestDelete {
+        package_id: package.id,
+        package_version_id: version_id,
+        reference,
+        digest,
+    })
+}
+
 pub async fn read_registry_blob(
     pool: &PgPool,
     namespace: &str,
@@ -719,6 +788,7 @@ pub async fn list_registry_tags(
         SELECT version
         FROM package_versions
         WHERE package_id = $1
+          AND deleted_at IS NULL
         ORDER BY lower(version)
         "#,
     )
@@ -820,10 +890,11 @@ pub async fn read_registry_manifest(
                    false
                ) AS actor_can_read_workflow_repo
         FROM packages p
-        JOIN package_versions pv ON pv.package_id = p.id
+        JOIN package_versions pv ON pv.package_id = p.id AND pv.deleted_at IS NULL
         LEFT JOIN users owner_user ON owner_user.id = p.owner_user_id
         LEFT JOIN organizations owner_org ON owner_org.id = p.owner_organization_id
         WHERE p.package_type = 'container'
+          AND p.deleted_at IS NULL
           AND lower(COALESCE(owner_user.username, owner_org.slug)) = lower("#,
     );
     builder.push_bind(request.namespace);
@@ -1112,6 +1183,7 @@ async fn package_for_auth(
         LEFT JOIN users owner_user ON owner_user.id = p.owner_user_id
         LEFT JOIN organizations owner_org ON owner_org.id = p.owner_organization_id
         WHERE p.package_type = 'container'
+          AND p.deleted_at IS NULL
           AND lower(COALESCE(owner_user.username, owner_org.slug)) = lower($1)
           AND lower(p.name) = lower($2)
         LIMIT 1

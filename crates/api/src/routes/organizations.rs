@@ -16,10 +16,10 @@ use crate::{
             OrganizationRepositoryList, OrganizationRepositoryListQuery, PublicOrganizationProfile,
         },
         packages::{
-            owner_packages, package_detail, package_settings, record_package_download_metadata,
-            OwnerPackageList, OwnerPackageListQuery, PackageDetail, PackageDetailError,
-            PackageDetailQuery, PackageDownloadMetadata, PackageListError, PackageOwnerKind,
-            PackageSettings,
+            mutate_package_settings, owner_packages, package_detail, package_settings,
+            record_package_download_metadata, OwnerPackageList, OwnerPackageListQuery,
+            PackageDetail, PackageDetailError, PackageDetailQuery, PackageDownloadMetadata,
+            PackageListError, PackageOwnerKind, PackageSettings, PackageSettingsMutation,
         },
     },
     AppState,
@@ -37,7 +37,7 @@ pub fn router() -> Router<AppState> {
         )
         .route(
             "/api/orgs/:org/packages/:package_type/:package_name/settings",
-            get(public_package_settings),
+            get(public_package_settings).patch(update_package_settings),
         )
         .route(
             "/api/orgs/:org/packages/:package_type/:package_name/download",
@@ -204,6 +204,29 @@ async fn public_package_settings(
         &package_type,
         &package_name,
         actor.map(|user| user.id),
+    )
+    .await
+    .map_err(map_package_detail_error)?;
+
+    Ok(Json(settings))
+}
+
+async fn update_package_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((org, package_type, package_name)): Path<(String, String, String)>,
+    Json(request): Json<PackageSettingsMutation>,
+) -> Result<Json<PackageSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let settings = mutate_package_settings(
+        pool,
+        &org,
+        PackageOwnerKind::Organization,
+        &package_type,
+        &package_name,
+        actor.0.id,
+        request,
     )
     .await
     .map_err(map_package_detail_error)?;
