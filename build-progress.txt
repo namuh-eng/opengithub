@@ -2810,3 +2810,11 @@
 - Browser smoke screenshot saved at `ralph/screenshots/build/packages-002-phase4-settings.jpg`.
 - Verification passed: `cargo fmt --all`; focused `DB_SSL=false CARGO_INCREMENTAL=0 cargo test -p opengithub-api --test package_detail_contract`; `cd web && npx tsc --noEmit --pretty false`; focused `cd web && npm test -- --run tests/package-detail-page.test.tsx`; focused same-env Playwright `package-detail.spec.ts`; mandatory Editorial banned-value scan returned zero matches; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 329 web tests.
 - Marked Phase 4 as done in `.qrspi/packages-002/structure.md`; `prd.json` remains `build_pass:false` because Phase 5 remains.
+
+2026-05-03 - packages-003 structure planning
+
+- Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `web/AGENTS.md`, the first incomplete `prd.json` entry, current package domain/routes/tests, PAT validation references, package migrations, package detail docs surface, Editorial design references, and target container registry/Actions package docs.
+- Determined `packages-003` requires structure planning before implementation because `needs_structure: true` and `.qrspi/packages-003/structure.md` did not exist.
+- Added `.qrspi/packages-003/structure.md` with five independently verifiable phases: OCI registry auth and manifest reads, blob upload/manifest push/tag listing/download accounting, Actions publishing and repository linking, package admin mutations/delete/restore/settings enablement, and final developer docs/Docker smoke/QA/build-pass bookkeeping.
+- Did not change `prd.json`; `packages-003.build_pass` remains `false` until all implementation phases pass verification.
+- Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
