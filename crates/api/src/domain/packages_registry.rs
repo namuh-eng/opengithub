@@ -2,7 +2,7 @@ use axum::http::HeaderMap;
 use base64::Engine as _;
 use chrono::{DateTime, Duration, Utc};
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, QueryBuilder, Row};
 use std::path::{Path, PathBuf};
@@ -12,7 +12,11 @@ use tokio::{
 };
 use uuid::Uuid;
 
-use crate::domain::tokens::{verify_personal_access_token, PersonalAccessTokenError};
+use crate::domain::{
+    repositories::RepositoryVisibility,
+    tokens::{hash_personal_access_token, verify_personal_access_token, PersonalAccessTokenError},
+    webhooks::{enqueue_repository_webhook_event, WebhookError},
+};
 
 const OCI_MANIFEST: &str = "application/vnd.oci.image.manifest.v1+json";
 const DOCKER_MANIFEST: &str = "application/vnd.docker.distribution.manifest.v2+json";
@@ -39,6 +43,14 @@ pub enum RegistryAuth {
     Token {
         user_id: Uuid,
         token_id: Uuid,
+        can_write_packages: bool,
+    },
+    Workflow {
+        user_id: Uuid,
+        token_id: Uuid,
+        repository_id: Uuid,
+        workflow_run_id: Uuid,
+        workflow_job_id: Option<Uuid>,
         can_write_packages: bool,
     },
 }
@@ -111,10 +123,12 @@ struct RegistryAuditEvent<'a> {
     package_id: Uuid,
     package_version_id: Option<Uuid>,
     actor_user_id: Option<Uuid>,
+    auth: Option<&'a RegistryAuth>,
     event_type: &'a str,
     reference: Option<&'a str>,
     digest: Option<&'a str>,
     user_agent: Option<&'a str>,
+    metadata: Value,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -145,13 +159,17 @@ pub enum RegistryError {
     Storage(#[from] std::io::Error),
     #[error("database error")]
     Sqlx(#[from] sqlx::Error),
+    #[error("webhook delivery failed")]
+    Webhook(#[from] WebhookError),
 }
 
 impl RegistryAuth {
     pub fn actor_user_id(&self) -> Option<Uuid> {
         match self {
             RegistryAuth::Anonymous => None,
-            RegistryAuth::Token { user_id, .. } => Some(*user_id),
+            RegistryAuth::Token { user_id, .. } | RegistryAuth::Workflow { user_id, .. } => {
+                Some(*user_id)
+            }
         }
     }
 
@@ -161,8 +179,44 @@ impl RegistryAuth {
             RegistryAuth::Token {
                 can_write_packages: true,
                 ..
+            } | RegistryAuth::Workflow {
+                can_write_packages: true,
+                ..
             }
         )
+    }
+
+    fn actor_kind(&self) -> &'static str {
+        match self {
+            RegistryAuth::Anonymous => "anonymous",
+            RegistryAuth::Token { .. } => "pat",
+            RegistryAuth::Workflow { .. } => "workflow",
+        }
+    }
+
+    fn source_repository_id(&self) -> Option<Uuid> {
+        match self {
+            RegistryAuth::Workflow { repository_id, .. } => Some(*repository_id),
+            _ => None,
+        }
+    }
+
+    fn workflow_run_id(&self) -> Option<Uuid> {
+        match self {
+            RegistryAuth::Workflow {
+                workflow_run_id, ..
+            } => Some(*workflow_run_id),
+            _ => None,
+        }
+    }
+
+    fn workflow_job_id(&self) -> Option<Uuid> {
+        match self {
+            RegistryAuth::Workflow {
+                workflow_job_id, ..
+            } => *workflow_job_id,
+            _ => None,
+        }
     }
 }
 
@@ -173,13 +227,13 @@ pub async fn registry_auth_from_headers(
     let Some(token) = registry_token_from_headers(headers) else {
         return Ok(RegistryAuth::Anonymous);
     };
-    let verified =
-        verify_personal_access_token(pool, &token)
-            .await
-            .map_err(|error| match error {
-                PersonalAccessTokenError::Invalid => RegistryError::InvalidToken,
-                PersonalAccessTokenError::Sqlx(error) => RegistryError::Sqlx(error),
-            })?;
+    let verified = match verify_personal_access_token(pool, &token).await {
+        Ok(verified) => verified,
+        Err(PersonalAccessTokenError::Invalid) => {
+            return registry_workflow_auth(pool, &token).await;
+        }
+        Err(PersonalAccessTokenError::Sqlx(error)) => return Err(RegistryError::Sqlx(error)),
+    };
     if !verified.allows_package_read() {
         return Err(RegistryError::InsufficientScope);
     }
@@ -212,6 +266,62 @@ pub async fn exchange_registry_token(
         access_token: token,
         expires_in: 900,
         issued_at: chrono::Utc::now().to_rfc3339(),
+    })
+}
+
+async fn registry_workflow_auth(pool: &PgPool, token: &str) -> Result<RegistryAuth, RegistryError> {
+    let token_hash = hash_personal_access_token(token);
+    let Some(row) = sqlx::query(
+        r#"
+        SELECT id, repository_id, workflow_run_id, workflow_job_id, actor_user_id, scopes
+        FROM package_workflow_tokens
+        WHERE token_hash = $1
+          AND revoked_at IS NULL
+          AND expires_at > now()
+        LIMIT 1
+        "#,
+    )
+    .bind(&token_hash)
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Err(RegistryError::InvalidToken);
+    };
+
+    let scopes: Vec<String> = row.try_get("scopes")?;
+    let allows_read = scopes.iter().any(|scope| {
+        matches!(
+            scope.as_str(),
+            "packages:read"
+                | "packages:write"
+                | "packages:admin"
+                | "read:packages"
+                | "write:packages"
+                | "admin:packages"
+        )
+    });
+    if !allows_read {
+        return Err(RegistryError::InsufficientScope);
+    }
+    let can_write_packages = scopes.iter().any(|scope| {
+        matches!(
+            scope.as_str(),
+            "packages:write" | "packages:admin" | "write:packages" | "admin:packages"
+        )
+    });
+    let token_id: Uuid = row.try_get("id")?;
+    sqlx::query("UPDATE package_workflow_tokens SET last_used_at = now() WHERE id = $1")
+        .bind(token_id)
+        .execute(pool)
+        .await?;
+
+    Ok(RegistryAuth::Workflow {
+        user_id: row.try_get("actor_user_id")?,
+        token_id,
+        repository_id: row.try_get("repository_id")?,
+        workflow_run_id: row.try_get("workflow_run_id")?,
+        workflow_job_id: row.try_get("workflow_job_id")?,
+        can_write_packages,
     })
 }
 
@@ -248,10 +358,12 @@ pub async fn start_blob_upload(
             package_id: package.id,
             package_version_id: None,
             actor_user_id: auth.actor_user_id(),
+            auth: Some(auth),
             event_type: "blob.upload.start",
             reference: None,
             digest: None,
             user_agent: None,
+            metadata: json!({}),
         },
     )
     .await?;
@@ -362,10 +474,12 @@ pub async fn complete_blob_upload(
             package_id: upload.package_id,
             package_version_id: None,
             actor_user_id: auth.actor_user_id(),
+            auth: Some(auth),
             event_type: "blob.upload.complete",
             reference: None,
             digest: Some(&digest),
             user_agent: None,
+            metadata: json!({}),
         },
     )
     .await?;
@@ -399,10 +513,12 @@ pub async fn cancel_blob_upload(
             package_id: upload.package_id,
             package_version_id: None,
             actor_user_id: auth.actor_user_id(),
+            auth: Some(auth),
             event_type: "blob.upload.cancel",
             reference: None,
             digest: None,
             user_agent: None,
+            metadata: json!({}),
         },
     )
     .await?;
@@ -445,14 +561,17 @@ pub async fn put_registry_manifest(
         .and_then(Value::as_str)
         .map(ToOwned::to_owned);
     let size_bytes = manifest_blob_size(&request.manifest);
+    let publish_metadata =
+        registry_publish_metadata(pool, package.id, request.auth, &request.manifest).await?;
 
     let row = sqlx::query(
         r#"
         INSERT INTO package_versions (
             package_id, version, digest, manifest, manifest_media_type,
-            config_digest, manifest_size_bytes, size_bytes, published_by_user_id
+            config_digest, manifest_size_bytes, size_bytes, published_by_user_id,
+            source_repository_id, workflow_run_id, workflow_job_id, oci_annotations
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         ON CONFLICT (package_id, lower(version)) DO UPDATE
         SET digest = EXCLUDED.digest,
             manifest = EXCLUDED.manifest,
@@ -461,6 +580,10 @@ pub async fn put_registry_manifest(
             manifest_size_bytes = EXCLUDED.manifest_size_bytes,
             size_bytes = EXCLUDED.size_bytes,
             published_by_user_id = EXCLUDED.published_by_user_id,
+            source_repository_id = EXCLUDED.source_repository_id,
+            workflow_run_id = EXCLUDED.workflow_run_id,
+            workflow_job_id = EXCLUDED.workflow_job_id,
+            oci_annotations = EXCLUDED.oci_annotations,
             created_at = now()
         RETURNING id
         "#,
@@ -474,20 +597,44 @@ pub async fn put_registry_manifest(
     .bind(bytes.len() as i64)
     .bind(size_bytes)
     .bind(request.auth.actor_user_id().expect("write auth has actor"))
+    .bind(publish_metadata.source_repository_id)
+    .bind(request.auth.workflow_run_id())
+    .bind(request.auth.workflow_job_id())
+    .bind(&publish_metadata.annotations)
     .fetch_one(pool)
     .await?;
     let version_id: Uuid = row.try_get("id")?;
     attach_manifest_blobs(pool, package.id, version_id, &request.manifest).await?;
+    persist_package_links(pool, package.id, &publish_metadata.linked_repositories).await?;
+    enqueue_package_publish_webhooks(
+        pool,
+        PackagePublishWebhookContext {
+            package_id: package.id,
+            package_version_id: version_id,
+            package_name: &package.name,
+            reference: &reference,
+            digest: &digest,
+            auth: request.auth,
+            metadata: &publish_metadata,
+        },
+    )
+    .await?;
     audit_registry_event(
         pool,
         RegistryAuditEvent {
             package_id: package.id,
             package_version_id: Some(version_id),
             actor_user_id: request.auth.actor_user_id(),
+            auth: Some(request.auth),
             event_type: "manifest.write",
             reference: Some(&reference),
             digest: Some(&digest),
             user_agent: request.user_agent,
+            metadata: json!({
+                "sourceRepositoryId": publish_metadata.source_repository_id,
+                "linkedRepositoryIds": publish_metadata.linked_repositories,
+                "annotations": publish_metadata.annotations
+            }),
         },
     )
     .await?;
@@ -540,10 +687,12 @@ pub async fn read_registry_blob(
             package_id: package.id,
             package_version_id,
             actor_user_id: auth.actor_user_id(),
+            auth: Some(auth),
             event_type: "blob.read",
             reference: None,
             digest: Some(&digest),
             user_agent,
+            metadata: json!({}),
         },
     )
     .await?;
@@ -651,7 +800,25 @@ pub async fn read_registry_manifest(
                                AND pr.repository_id = rp.repository_id
                          )
                      )
-               ) AS actor_can_read_linked_repo
+               ) AS actor_can_read_linked_repo,
+               COALESCE(
+                   p.repository_id = "#,
+    );
+    builder.push_bind(request.auth.source_repository_id());
+    builder.push(
+        r#"
+                   OR EXISTS (
+                       SELECT 1
+                       FROM package_repository_links pr
+                       WHERE pr.package_id = p.id
+                         AND pr.repository_id = "#,
+    );
+    builder.push_bind(request.auth.source_repository_id());
+    builder.push(
+        r#"
+                   ),
+                   false
+               ) AS actor_can_read_workflow_repo
         FROM packages p
         JOIN package_versions pv ON pv.package_id = p.id
         LEFT JOIN users owner_user ON owner_user.id = p.owner_user_id
@@ -682,15 +849,19 @@ pub async fn read_registry_manifest(
     let actor_is_org_member: bool = row.try_get("actor_is_org_member")?;
     let actor_can_read_package: bool = row.try_get("actor_can_read_package")?;
     let actor_can_read_linked_repo: bool = row.try_get("actor_can_read_linked_repo")?;
+    let actor_can_read_workflow_repo: bool = row.try_get("actor_can_read_workflow_repo")?;
     let can_read = public_readable
         || actor_owns_user_package
         || actor_is_org_member
         || actor_can_read_package
-        || actor_can_read_linked_repo;
+        || actor_can_read_linked_repo
+        || actor_can_read_workflow_repo;
     if !can_read {
         return match request.auth {
             RegistryAuth::Anonymous => Err(RegistryError::Unauthorized),
-            RegistryAuth::Token { .. } => Err(RegistryError::NotFound),
+            RegistryAuth::Token { .. } | RegistryAuth::Workflow { .. } => {
+                Err(RegistryError::NotFound)
+            }
         };
     }
 
@@ -708,10 +879,12 @@ pub async fn read_registry_manifest(
             package_id,
             package_version_id: Some(package_version_id),
             actor_user_id,
+            auth: Some(request.auth),
             event_type: "manifest.read",
             reference: Some(&reference),
             digest: digest.as_deref(),
             user_agent: request.user_agent,
+            metadata: json!({}),
         },
     )
     .await?;
@@ -891,6 +1064,7 @@ async fn package_for_auth(
     validate_name_component(namespace, "namespace")?;
     validate_name_component(image, "image")?;
     let actor_user_id = auth.actor_user_id();
+    let auth_repository_id = auth.source_repository_id();
     let Some(row) = sqlx::query(
         r#"
         SELECT p.id, p.name, p.visibility,
@@ -925,7 +1099,15 @@ async fn package_for_auth(
                              WHERE pr.package_id = p.id AND pr.repository_id = rp.repository_id
                          )
                      )
-               ) AS actor_has_repo_access
+               ) AS actor_has_repo_access,
+               COALESCE(
+                   $5::uuid = p.repository_id
+                   OR EXISTS (
+                       SELECT 1 FROM package_repository_links pr
+                       WHERE pr.package_id = p.id AND pr.repository_id = $5::uuid
+                   ),
+                   false
+               ) AS actor_has_workflow_repo_access
         FROM packages p
         LEFT JOIN users owner_user ON owner_user.id = p.owner_user_id
         LEFT JOIN organizations owner_org ON owner_org.id = p.owner_organization_id
@@ -939,9 +1121,15 @@ async fn package_for_auth(
     .bind(image)
     .bind(actor_user_id)
     .bind(require_write)
+    .bind(auth_repository_id)
     .fetch_optional(pool)
     .await?
     else {
+        if require_write {
+            if let RegistryAuth::Workflow { repository_id, .. } = auth {
+                return create_workflow_package(pool, namespace, image, *repository_id, auth).await;
+            }
+        }
         return Err(RegistryError::NotFound);
     };
 
@@ -950,22 +1138,100 @@ async fn package_for_auth(
             || row.try_get("actor_has_org_access")?
             || row.try_get("actor_has_package_access")?
             || row.try_get("actor_has_repo_access")?
+            || row.try_get("actor_has_workflow_repo_access")?
     } else {
         row.try_get("public_readable")?
             || row.try_get("actor_owns_user_package")?
             || row.try_get("actor_has_org_access")?
             || row.try_get("actor_has_package_access")?
             || row.try_get("actor_has_repo_access")?
+            || row.try_get("actor_has_workflow_repo_access")?
     };
     if !can_access {
         return match auth {
             RegistryAuth::Anonymous => Err(RegistryError::Unauthorized),
-            RegistryAuth::Token { .. } => Err(RegistryError::NotFound),
+            RegistryAuth::Token { .. } | RegistryAuth::Workflow { .. } => {
+                Err(RegistryError::NotFound)
+            }
         };
     }
     Ok(RegistryPackage {
         id: row.try_get("id")?,
         name: row.try_get("name")?,
+    })
+}
+
+async fn create_workflow_package(
+    pool: &PgPool,
+    namespace: &str,
+    image: &str,
+    repository_id: Uuid,
+    auth: &RegistryAuth,
+) -> Result<RegistryPackage, RegistryError> {
+    let Some(row) = sqlx::query(
+        r#"
+        SELECT repositories.id,
+               repositories.owner_user_id,
+               repositories.owner_organization_id,
+               COALESCE(NULLIF(owner_user.username, ''), owner_user.email, owner_org.slug) AS owner_login,
+               repositories.visibility,
+               repositories.created_by_user_id
+        FROM repositories
+        LEFT JOIN users owner_user ON owner_user.id = repositories.owner_user_id
+        LEFT JOIN organizations owner_org ON owner_org.id = repositories.owner_organization_id
+        WHERE repositories.id = $1
+        LIMIT 1
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Err(RegistryError::NotFound);
+    };
+    let owner_login: String = row.try_get("owner_login")?;
+    if !owner_login.eq_ignore_ascii_case(namespace) {
+        return Err(RegistryError::NotFound);
+    }
+    let visibility = RepositoryVisibility::try_from(
+        row.try_get::<String, _>("visibility")?.as_str(),
+    )
+    .map_err(|_| RegistryError::InvalidManifest("repository visibility is invalid".to_owned()))?;
+    let package_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO packages (
+            repository_id, owner_user_id, owner_organization_id, created_by_user_id,
+            name, package_type, visibility
+        )
+        VALUES ($1, $2, $3, $4, $5, 'container', $6)
+        RETURNING id
+        "#,
+    )
+    .bind(repository_id)
+    .bind(row.try_get::<Option<Uuid>, _>("owner_user_id")?)
+    .bind(row.try_get::<Option<Uuid>, _>("owner_organization_id")?)
+    .bind(
+        auth.actor_user_id()
+            .unwrap_or_else(|| row.get("created_by_user_id")),
+    )
+    .bind(image)
+    .bind(visibility.as_str())
+    .fetch_one(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO package_repository_links (package_id, repository_id, link_type)
+        VALUES ($1, $2, 'workflow')
+        ON CONFLICT (package_id, repository_id, link_type) DO NOTHING
+        "#,
+    )
+    .bind(package_id)
+    .bind(repository_id)
+    .execute(pool)
+    .await?;
+    Ok(RegistryPackage {
+        id: package_id,
+        name: image.to_owned(),
     })
 }
 
@@ -1005,6 +1271,195 @@ async fn active_upload(
         return Err(RegistryError::UploadNotFound);
     }
     Ok(upload)
+}
+
+#[derive(Debug, Clone)]
+struct RegistryPublishMetadata {
+    source_repository_id: Option<Uuid>,
+    linked_repositories: Vec<Uuid>,
+    annotations: Value,
+}
+
+async fn registry_publish_metadata(
+    pool: &PgPool,
+    package_id: Uuid,
+    auth: &RegistryAuth,
+    manifest: &Value,
+) -> Result<RegistryPublishMetadata, RegistryError> {
+    let mut annotation_map = serde_json::Map::new();
+    merge_annotation_object(&mut annotation_map, manifest.get("annotations"));
+
+    if let Some(config_digest) = manifest
+        .get("config")
+        .and_then(|config| config.get("digest"))
+        .and_then(Value::as_str)
+    {
+        if let Some(config_json) = read_package_blob_json(pool, package_id, config_digest).await? {
+            merge_annotation_object(&mut annotation_map, config_json.get("annotations"));
+            merge_annotation_object(
+                &mut annotation_map,
+                config_json
+                    .get("config")
+                    .and_then(|config| config.get("Labels")),
+            );
+            merge_annotation_object(&mut annotation_map, config_json.get("Labels"));
+        }
+    }
+
+    let mut linked_repositories = Vec::new();
+    if let Some(repository_id) = auth.source_repository_id() {
+        linked_repositories.push(repository_id);
+    }
+    let source_repository_id = match annotation_map
+        .get("org.opencontainers.image.source")
+        .and_then(Value::as_str)
+        .and_then(parse_repository_source)
+    {
+        Some((owner, repo)) => resolve_repository_source(pool, &owner, &repo).await?,
+        None => None,
+    };
+    if let Some(repository_id) = source_repository_id {
+        linked_repositories.push(repository_id);
+    }
+    linked_repositories.sort_unstable();
+    linked_repositories.dedup();
+
+    Ok(RegistryPublishMetadata {
+        source_repository_id: source_repository_id.or_else(|| auth.source_repository_id()),
+        linked_repositories,
+        annotations: Value::Object(annotation_map),
+    })
+}
+
+async fn read_package_blob_json(
+    pool: &PgPool,
+    package_id: Uuid,
+    digest: &str,
+) -> Result<Option<Value>, RegistryError> {
+    let digest = validate_digest(digest)?;
+    let storage_key = sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT storage_key
+        FROM package_blobs
+        WHERE package_id = $1 AND lower(digest) = lower($2)
+        LIMIT 1
+        "#,
+    )
+    .bind(package_id)
+    .bind(&digest)
+    .fetch_optional(pool)
+    .await?;
+    let Some(storage_key) = storage_key else {
+        return Ok(None);
+    };
+    let bytes = fs::read(registry_storage_path(&storage_key)?).await?;
+    Ok(serde_json::from_slice(&bytes).ok())
+}
+
+fn merge_annotation_object(target: &mut serde_json::Map<String, Value>, value: Option<&Value>) {
+    let Some(object) = value.and_then(Value::as_object) else {
+        return;
+    };
+    for (key, value) in object {
+        if key.starts_with("org.opencontainers.image.") {
+            target.insert(key.clone(), value.clone());
+        }
+    }
+}
+
+fn parse_repository_source(source: &str) -> Option<(String, String)> {
+    let trimmed = source.trim().trim_end_matches(".git").trim_end_matches('/');
+    let path = if let Some((_, path)) = trimmed.split_once("://") {
+        path.split_once('/').map(|(_, path)| path)?
+    } else {
+        trimmed
+    };
+    let mut parts = path.split('/').filter(|part| !part.is_empty());
+    let owner = parts.next()?.to_owned();
+    let repo = parts.next()?.to_owned();
+    Some((owner, repo))
+}
+
+async fn resolve_repository_source(
+    pool: &PgPool,
+    owner: &str,
+    repo: &str,
+) -> Result<Option<Uuid>, RegistryError> {
+    sqlx::query_scalar::<_, Uuid>(
+        r#"
+        SELECT repositories.id
+        FROM repositories
+        LEFT JOIN users owner_user ON owner_user.id = repositories.owner_user_id
+        LEFT JOIN organizations owner_org ON owner_org.id = repositories.owner_organization_id
+        WHERE lower(COALESCE(NULLIF(owner_user.username, ''), owner_user.email, owner_org.slug)) = lower($1)
+          AND lower(repositories.name) = lower($2)
+        LIMIT 1
+        "#,
+    )
+    .bind(owner)
+    .bind(repo)
+    .fetch_optional(pool)
+    .await
+    .map_err(RegistryError::Sqlx)
+}
+
+async fn persist_package_links(
+    pool: &PgPool,
+    package_id: Uuid,
+    repository_ids: &[Uuid],
+) -> Result<(), RegistryError> {
+    for repository_id in repository_ids {
+        sqlx::query(
+            r#"
+            INSERT INTO package_repository_links (package_id, repository_id, link_type)
+            VALUES ($1, $2, 'workflow')
+            ON CONFLICT (package_id, repository_id, link_type) DO NOTHING
+            "#,
+        )
+        .bind(package_id)
+        .bind(repository_id)
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
+struct PackagePublishWebhookContext<'a> {
+    package_id: Uuid,
+    package_version_id: Uuid,
+    package_name: &'a str,
+    reference: &'a str,
+    digest: &'a str,
+    auth: &'a RegistryAuth,
+    metadata: &'a RegistryPublishMetadata,
+}
+
+async fn enqueue_package_publish_webhooks(
+    pool: &PgPool,
+    context: PackagePublishWebhookContext<'_>,
+) -> Result<(), RegistryError> {
+    for repository_id in &context.metadata.linked_repositories {
+        enqueue_repository_webhook_event(
+            pool,
+            *repository_id,
+            "package",
+            json!({
+                "action": "published",
+                "packageId": context.package_id,
+                "packageVersionId": context.package_version_id,
+                "packageName": context.package_name,
+                "reference": context.reference,
+                "digest": context.digest,
+                "actorKind": context.auth.actor_kind(),
+                "workflowRunId": context.auth.workflow_run_id(),
+                "workflowJobId": context.auth.workflow_job_id(),
+                "sourceRepositoryId": context.metadata.source_repository_id,
+                "annotations": context.metadata.annotations
+            }),
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 async fn validate_manifest_blobs(
@@ -1136,12 +1591,20 @@ async fn audit_registry_event(
     pool: &PgPool,
     event: RegistryAuditEvent<'_>,
 ) -> Result<(), RegistryError> {
+    let actor_kind = event
+        .auth
+        .map(RegistryAuth::actor_kind)
+        .unwrap_or("anonymous");
+    let repository_id = event.auth.and_then(RegistryAuth::source_repository_id);
+    let workflow_run_id = event.auth.and_then(RegistryAuth::workflow_run_id);
+    let workflow_job_id = event.auth.and_then(RegistryAuth::workflow_job_id);
     sqlx::query(
         r#"
         INSERT INTO package_registry_audit_events (
-            package_id, package_version_id, actor_user_id, event_type, reference, digest, user_agent
+            package_id, package_version_id, actor_user_id, event_type, reference, digest, user_agent,
+            actor_kind, repository_id, workflow_run_id, workflow_job_id, metadata
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         "#,
     )
     .bind(event.package_id)
@@ -1151,6 +1614,11 @@ async fn audit_registry_event(
     .bind(event.reference)
     .bind(event.digest)
     .bind(event.user_agent)
+    .bind(actor_kind)
+    .bind(repository_id)
+    .bind(workflow_run_id)
+    .bind(workflow_job_id)
+    .bind(event.metadata)
     .execute(pool)
     .await?;
     Ok(())

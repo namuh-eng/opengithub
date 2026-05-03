@@ -16,7 +16,7 @@ use opengithub_api::{
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use std::sync::LazyLock;
 use tower::ServiceExt;
 use url::Url;
@@ -99,6 +99,94 @@ async fn create_pat(pool: &PgPool, user_id: Uuid, scopes: &[&str]) -> String {
     .await
     .expect("PAT should insert");
     token
+}
+
+async fn create_workflow_token(
+    pool: &PgPool,
+    repository_id: Uuid,
+    workflow_run_id: Uuid,
+    workflow_job_id: Uuid,
+    actor_user_id: Uuid,
+    scopes: &[&str],
+) -> String {
+    let token = format!("ogwt_{}_registry", Uuid::new_v4().simple());
+    sqlx::query(
+        r#"
+        INSERT INTO package_workflow_tokens (
+            token_hash, repository_id, workflow_run_id, workflow_job_id,
+            actor_user_id, scopes, expires_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        "#,
+    )
+    .bind(hash_personal_access_token(&token))
+    .bind(repository_id)
+    .bind(workflow_run_id)
+    .bind(workflow_job_id)
+    .bind(actor_user_id)
+    .bind(
+        scopes
+            .iter()
+            .map(|scope| scope.to_string())
+            .collect::<Vec<_>>(),
+    )
+    .bind(Utc::now() + Duration::hours(1))
+    .execute(pool)
+    .await
+    .expect("workflow token should insert");
+    token
+}
+
+async fn create_workflow_run_fixture(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Uuid,
+    marker: &str,
+) -> (Uuid, Uuid, Uuid) {
+    let workflow_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO actions_workflows (repository_id, name, path, state, trigger_events)
+        VALUES ($1, $2, '.github/workflows/publish.yml', 'active', ARRAY['push']::text[])
+        RETURNING id
+        "#,
+    )
+    .bind(repository_id)
+    .bind(format!("{marker} publish"))
+    .fetch_one(pool)
+    .await
+    .expect("workflow should insert");
+    let run_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO workflow_runs (
+            repository_id, workflow_id, actor_user_id, run_number, status, conclusion,
+            head_branch, head_sha, event, started_at, completed_at
+        )
+        VALUES ($1, $2, $3, 1, 'completed', 'success', 'main', $4, 'push', now(), now())
+        RETURNING id
+        "#,
+    )
+    .bind(repository_id)
+    .bind(workflow_id)
+    .bind(actor_user_id)
+    .bind(format!(
+        "{:0<40}",
+        marker.chars().take(12).collect::<String>()
+    ))
+    .fetch_one(pool)
+    .await
+    .expect("workflow run should insert");
+    let job_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO workflow_jobs (run_id, name, status, conclusion, runner_label)
+        VALUES ($1, 'publish-container', 'completed', 'success', 'ubuntu-latest')
+        RETURNING id
+        "#,
+    )
+    .bind(run_id)
+    .fetch_one(pool)
+    .await
+    .expect("workflow job should insert");
+    (workflow_id, run_id, job_id)
 }
 
 async fn insert_container_package(
@@ -464,6 +552,254 @@ async fn registry_blob_upload_manifest_push_tag_list_and_pull_record_downloads()
 
 fn json_body(bytes: &[u8]) -> Value {
     serde_json::from_slice(bytes).expect("response should be json")
+}
+
+#[tokio::test]
+async fn registry_workflow_token_publish_links_repository_and_enqueues_package_events() {
+    let _env_guard = REGISTRY_STORAGE_ENV_LOCK.lock().await;
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping package registry contract; set TEST_DATABASE_URL");
+        return;
+    };
+    let storage_dir = std::env::temp_dir().join(format!("opengithub-registry-{}", Uuid::new_v4()));
+    std::env::set_var("OPENGITHUB_PACKAGE_REGISTRY_STORAGE_DIR", &storage_dir);
+
+    let marker = format!("wf{}", Uuid::new_v4().simple());
+    let namespace = format!("{marker}-owner");
+    let owner = create_user(&pool, &namespace).await;
+    let image = format!("{marker}-image");
+    let repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: image.clone(),
+            description: Some("workflow package source".to_owned()),
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repo should create");
+    sqlx::query(
+        "INSERT INTO webhooks (repository_id, url, events, created_by_user_id) VALUES ($1, 'https://example.test/package-hook', ARRAY['package']::text[], $2)",
+    )
+    .bind(repo.id)
+    .bind(owner.id)
+    .execute(&pool)
+    .await
+    .expect("package webhook should insert");
+    let (_, run_id, job_id) = create_workflow_run_fixture(&pool, repo.id, owner.id, &marker).await;
+    let workflow_token = create_workflow_token(
+        &pool,
+        repo.id,
+        run_id,
+        job_id,
+        owner.id,
+        &["packages:write"],
+    )
+    .await;
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), app_config());
+
+    let upload_blob = |app: axum::Router,
+                       token: String,
+                       namespace: String,
+                       image: String,
+                       bytes: Vec<u8>| async move {
+        let digest = sha256_digest(&bytes);
+        let mut headers = HeaderMap::new();
+        headers.insert(header::AUTHORIZATION, basic_auth(&token));
+        let (status, headers, _) = request(
+            app.clone(),
+            Method::POST,
+            &format!("/v2/{namespace}/{image}/blobs/uploads/"),
+            headers,
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED);
+        let upload_location = headers
+            .get(header::LOCATION)
+            .and_then(|value| value.to_str().ok())
+            .expect("upload location")
+            .to_owned();
+
+        let mut headers = HeaderMap::new();
+        headers.insert(header::AUTHORIZATION, basic_auth(&token));
+        let (status, _, _) = request_with_body(
+            app.clone(),
+            Method::PATCH,
+            &upload_location,
+            headers,
+            Body::from(bytes),
+        )
+        .await;
+        assert_eq!(status, StatusCode::ACCEPTED);
+
+        let mut headers = HeaderMap::new();
+        headers.insert(header::AUTHORIZATION, basic_auth(&token));
+        let (status, headers, _) = request(
+            app,
+            Method::PUT,
+            &format!("{upload_location}?digest={digest}"),
+            headers,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+        assert_eq!(
+            headers
+                .get("docker-content-digest")
+                .and_then(|value| value.to_str().ok())
+                .expect("blob digest"),
+            digest
+        );
+        digest
+    };
+
+    let config = json!({
+        "architecture": "amd64",
+        "os": "linux",
+        "config": {
+            "Labels": {
+                "org.opencontainers.image.source": format!("https://opengithub.namuh.co/{namespace}/{image}"),
+                "org.opencontainers.image.description": "Published from Actions",
+                "org.opencontainers.image.revision": "abc123"
+            }
+        }
+    });
+    let config_bytes = serde_json::to_vec(&config).expect("config json");
+    let layer_bytes = b"workflow layer bytes".to_vec();
+    let config_digest = upload_blob(
+        app.clone(),
+        workflow_token.clone(),
+        namespace.clone(),
+        image.clone(),
+        config_bytes.clone(),
+    )
+    .await;
+    let layer_digest = upload_blob(
+        app.clone(),
+        workflow_token.clone(),
+        namespace.clone(),
+        image.clone(),
+        layer_bytes.clone(),
+    )
+    .await;
+    let manifest = json!({
+        "schemaVersion": 2,
+        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "config": {
+            "mediaType": "application/vnd.oci.image.config.v1+json",
+            "digest": config_digest,
+            "size": config_bytes.len()
+        },
+        "layers": [{
+            "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+            "digest": layer_digest,
+            "size": layer_bytes.len()
+        }]
+    });
+    let mut headers = HeaderMap::new();
+    headers.insert(header::AUTHORIZATION, basic_auth(&workflow_token));
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/vnd.oci.image.manifest.v1+json"),
+    );
+    headers.insert(
+        header::USER_AGENT,
+        HeaderValue::from_static("opengithub-actions/1.0"),
+    );
+    let (status, headers, _) = request_with_body(
+        app.clone(),
+        Method::PUT,
+        &format!("/v2/{namespace}/{image}/manifests/actions-build"),
+        headers,
+        Body::from(serde_json::to_vec(&manifest).expect("manifest json")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let manifest_digest = headers
+        .get("docker-content-digest")
+        .and_then(|value| value.to_str().ok())
+        .expect("manifest digest")
+        .to_owned();
+
+    let row = sqlx::query(
+        r#"
+        SELECT packages.id AS package_id,
+               package_versions.id AS version_id,
+               package_versions.workflow_run_id,
+               package_versions.workflow_job_id,
+               package_versions.source_repository_id,
+               package_versions.oci_annotations,
+               packages.visibility
+        FROM packages
+        JOIN package_versions ON package_versions.package_id = packages.id
+        WHERE packages.repository_id = $1 AND packages.name = $2 AND package_versions.version = 'actions-build'
+        "#,
+    )
+    .bind(repo.id)
+    .bind(&image)
+    .fetch_one(&pool)
+    .await
+    .expect("workflow-published package version should load");
+    let package_id: Uuid = row.get("package_id");
+    assert_eq!(row.get::<Option<Uuid>, _>("workflow_run_id"), Some(run_id));
+    assert_eq!(row.get::<Option<Uuid>, _>("workflow_job_id"), Some(job_id));
+    assert_eq!(
+        row.get::<Option<Uuid>, _>("source_repository_id"),
+        Some(repo.id)
+    );
+    assert_eq!(row.get::<String, _>("visibility"), "private");
+    assert_eq!(
+        row.get::<Value, _>("oci_annotations")["org.opencontainers.image.description"],
+        "Published from Actions"
+    );
+
+    let linked_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM package_repository_links WHERE package_id = $1 AND repository_id = $2 AND link_type = 'workflow'",
+    )
+    .bind(package_id)
+    .bind(repo.id)
+    .fetch_one(&pool)
+    .await
+    .expect("package link count should load");
+    assert_eq!(linked_count, 1);
+
+    let package_webhooks: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint
+        FROM webhook_deliveries
+        JOIN webhooks ON webhooks.id = webhook_deliveries.webhook_id
+        WHERE webhooks.repository_id = $1
+          AND webhook_deliveries.event = 'package'
+          AND webhook_deliveries.payload->'payload'->>'digest' = $2
+        "#,
+    )
+    .bind(repo.id)
+    .bind(&manifest_digest)
+    .fetch_one(&pool)
+    .await
+    .expect("package webhook count should load");
+    assert_eq!(package_webhooks, 1);
+
+    let workflow_audit_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint
+        FROM package_registry_audit_events
+        WHERE package_id = $1
+          AND actor_kind = 'workflow'
+          AND workflow_run_id = $2
+          AND event_type = 'manifest.write'
+          AND metadata->>'sourceRepositoryId' = $3
+        "#,
+    )
+    .bind(package_id)
+    .bind(run_id)
+    .bind(repo.id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("workflow audit count should load");
+    assert_eq!(workflow_audit_count, 1);
 }
 
 #[tokio::test]

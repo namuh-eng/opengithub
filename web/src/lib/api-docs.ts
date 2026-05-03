@@ -2023,6 +2023,87 @@ run: #42
     ],
   },
   {
+    id: "oci-registry-v2",
+    method: "GET",
+    path: "/v2/",
+    title: "Container registry challenge",
+    description:
+      "Exposes the Docker Registry HTTP API v2 challenge surface for opengithub container packages.",
+    auth: "PAT or workflow package token; anonymous requests receive a Bearer challenge",
+    response: `{}`,
+    notes: [
+      "Use docker login opengithub.namuh.co with a PAT that has packages:read or packages:write.",
+      "Workflow jobs may use a short-lived opengithub workflow package token scoped to their repository instead of a long-lived PAT.",
+      "The challenge realm is /v2/token and uses service=opengithub-registry.",
+    ],
+  },
+  {
+    id: "oci-registry-manifest",
+    method: "GET",
+    path: "/v2/{namespace}/{image}/manifests/{reference}",
+    title: "Read or publish OCI manifests",
+    description:
+      "Reads manifests by tag or digest and publishes tag-targeted OCI/Docker manifests after referenced blobs have been uploaded.",
+    auth: "Anonymous for public pulls; packages:read for private pulls; packages:write PAT or workflow token for pushes",
+    request: `{
+  "schemaVersion": 2,
+  "mediaType": "application/vnd.oci.image.manifest.v1+json",
+  "config": { "digest": "sha256:...", "size": 128 },
+  "layers": [{ "digest": "sha256:...", "size": 2048 }]
+}`,
+    response: `{
+  "headers": {
+    "docker-content-digest": "sha256:manifest..."
+  }
+}`,
+    notes: [
+      "GET and HEAD read manifests; PUT publishes a tag-targeted manifest. Pushing by digest is rejected; clients publish to a tag and then pull by the returned digest.",
+      "The config blob is inspected for org.opencontainers.image.source, description, licenses, revision, and URL labels.",
+      "When a workflow token publishes, the package inherits the workflow repository link, version rows store workflow run/job IDs, and package webhooks are queued.",
+      "Storage keys are never serialized in manifest responses or audit payloads.",
+    ],
+  },
+  {
+    id: "oci-registry-blobs",
+    method: "POST",
+    path: "/v2/{namespace}/{image}/blobs/uploads/ and /v2/{namespace}/{image}/blobs/{digest}",
+    title: "Upload and pull OCI blobs",
+    description:
+      "Handles resumable blob upload sessions, SHA-256 completion validation, blob pulls, and download accounting.",
+    auth: "packages:write for uploads; same read rules as manifests for pulls",
+    request: `# publish from CI
+echo "$OPENGITHUB_TOKEN" | docker login opengithub.namuh.co -u "$OPENGITHUB_ACTOR" --password-stdin
+docker build -t opengithub.namuh.co/mona/octo-image:latest .
+docker push opengithub.namuh.co/mona/octo-image:latest`,
+    response: `{
+  "digest": "sha256:layer...",
+  "range": "0-2047"
+}`,
+    notes: [
+      "POST starts an upload, PATCH appends bytes, PUT completes by digest, DELETE cancels, and GET/HEAD read uploaded blobs.",
+      "Only body transfers increment package_downloads; HEAD checks do not count as downloads.",
+      "Local development stores bytes under OPENGITHUB_PACKAGE_REGISTRY_STORAGE_DIR; production should back the same storage_key contract with S3.",
+      "Upload cancel/expiry preserves audit history without exposing storage paths.",
+    ],
+  },
+  {
+    id: "oci-registry-tags",
+    method: "GET",
+    path: "/v2/{namespace}/{image}/tags/list",
+    title: "List container tags",
+    description:
+      "Returns Docker-compatible tag lists for visible container packages.",
+    auth: "Anonymous for public packages; packages:read PAT or workflow token for private/internal packages",
+    response: `{
+  "name": "mona/octo-image",
+  "tags": ["latest", "sha-abc123"]
+}`,
+    notes: [
+      "Private package tag lists return 401 for anonymous clients and redacted 404-style failures for unauthorized tokens.",
+      "Workflow tokens can list tags only when their repository is linked to the package.",
+    ],
+  },
+  {
     id: "search",
     method: "GET",
     path: "/api/search?q=router&type=code&page=1&pageSize=30",

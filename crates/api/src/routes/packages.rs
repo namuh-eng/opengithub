@@ -99,7 +99,8 @@ async fn registry_ping(
         Ok(crate::domain::packages_registry::RegistryAuth::Anonymous) => {
             Err(registry_error_response(RegistryError::Unauthorized, None))
         }
-        Ok(crate::domain::packages_registry::RegistryAuth::Token { .. }) => {
+        Ok(crate::domain::packages_registry::RegistryAuth::Token { .. })
+        | Ok(crate::domain::packages_registry::RegistryAuth::Workflow { .. }) => {
             let mut headers = HeaderMap::new();
             headers.insert(
                 "docker-distribution-api-version",
@@ -565,7 +566,7 @@ fn registry_error_response(
             "MANIFEST_INVALID",
             "requested manifest media type is not acceptable",
         ),
-        RegistryError::Storage(_) | RegistryError::Sqlx(_) => (
+        RegistryError::Storage(_) | RegistryError::Sqlx(_) | RegistryError::Webhook(_) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             "UNKNOWN",
             "registry request failed",

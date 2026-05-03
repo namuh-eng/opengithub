@@ -4088,5 +4088,27 @@
       "Verify private/internal package leakage across anonymous users, read-only package grants, write package grants, owner tokens, linked repository permissions, and org namespaces.",
       "Confirm S3-backed storage health in production; Phase 2 stores bytes under OPENGITHUB_PACKAGE_REGISTRY_STORAGE_DIR locally and records storage_kind for S3 handoff."
     ]
+  },
+  {
+    "feature_id": "packages-003",
+    "tests_written": [
+      "Completed Phase 3 Actions Publishing Integration and Repository Linking without marking packages-003 build_pass=true.",
+      "Added package_workflow_tokens for bounded workflow package credentials with packages:read/write scopes tied to workflow runs, jobs, actors, and repositories.",
+      "Workflow-token pushes can create repository-scoped container packages, inherit repository visibility, and link package_repository_links back to the workflow repository.",
+      "Manifest publish now records workflow_run_id, workflow_job_id, source_repository_id, and sanitized OCI annotations from manifest/config labels on package_versions.",
+      "OCI source labels such as org.opencontainers.image.source resolve to opengithub repositories and add package repository links without exposing storage keys.",
+      "Package publish events enqueue repository package webhooks and package_registry_audit_events now record actor_kind, workflow provenance, repository provenance, and bounded metadata.",
+      "Extended /docs/api with Docker registry challenge, manifest, blob, tag-list, workflow-token, source-label, and storage/redaction notes.",
+      "Focused Rust registry contract covers workflow-token publish, workflow-created package inheritance, source-label repository resolution, webhook queueing, and workflow audit metadata.",
+      "Verification passed: focused package_registry_contract, focused API docs Vitest, mandatory Editorial banned-value scan, make check, and make test."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 still needs real package admin mutations, delete/restore lifecycle, registry delete semantics, and settings enablement.",
+      "Phase 5 still needs Docker-compatible end-to-end smoke, final docs/screenshot QA handoff, and packages-003.build_pass=true bookkeeping.",
+      "Probe workflow-token expiry, revocation, read-only workflow tokens, fork workflows, organization namespaces, packages already created by PATs, and source labels pointing to inaccessible or missing repositories.",
+      "Verify package webhook delivery payloads and retry behavior through the webhook worker, not only queued rows.",
+      "Stress multi-arch manifest indexes, OCI annotations on index manifests, conflicting source labels, concurrent workflow pushes to the same tag, and tag overwrite audit history.",
+      "Confirm S3-backed package blob storage and production workflow-token issuance once the real Actions runner path is wired."
+    ]
   }
 ]

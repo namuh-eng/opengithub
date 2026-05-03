@@ -387,6 +387,24 @@ describe("ApiDocsPage", () => {
     expect(
       screen.getByText(/packages-002 exposes read-only settings state/),
     ).toBeVisible();
+    expect(screen.getByText("/v2/")).toBeVisible();
+    expect(
+      screen.getByText("/v2/{namespace}/{image}/manifests/{reference}"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/v2/{namespace}/{image}/blobs/uploads/ and /v2/{namespace}/{image}/blobs/{digest}",
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("/v2/{namespace}/{image}/tags/list")).toBeVisible();
+    expect(
+      screen.getByText(
+        /Workflow jobs may use a short-lived opengithub workflow package token/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/package inherits the workflow repository link/),
+    ).toBeVisible();
     expect(
       screen.getByText("/api/search?q=router&type=code&page=1&pageSize=30"),
     ).toBeVisible();

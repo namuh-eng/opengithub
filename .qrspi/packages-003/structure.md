@@ -40,7 +40,7 @@
 
 ## Phase 3: Actions Publishing Integration and Repository Linking
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Connect registry publishing to opengithub Actions semantics. Workflow tokens should be able to publish packages for the repository that produced the run, package versions should link back to workflow runs/jobs when available, OCI source labels should connect packages to repositories, and webhook/activity/audit events should be emitted for publish and pull actions.
 

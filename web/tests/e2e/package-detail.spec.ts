@@ -223,7 +223,7 @@ function seedPackage(
 
 function seedOrganizationPackage(firstRepositoryHref: string) {
   ensurePackageDetailSchema();
-  const { owner, repo } = repositoryParts(firstRepositoryHref);
+  const { owner } = repositoryParts(firstRepositoryHref);
   const marker = `pkgorg${Date.now()}`;
   const packageName = `${marker}-web`;
   runSql(`

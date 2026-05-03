@@ -2841,3 +2841,14 @@
 - Extended `package_registry_contract` to cover upload start/patch/complete, manifest push, tag listing, blob pull, digest manifest pull, download accounting, and storage-key/audit redaction.
 - Verification passed: focused DB-backed `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 cargo test -p opengithub-api --test package_registry_contract`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 329 web tests; mandatory Editorial banned-value scan returned zero matches using `rg -n -e`.
 - Browser smoke and `make test-e2e` were skipped because Phase 2 is API-first and the structure outline marks browser smoke optional for this phase. `prd.json` remains `build_pass:false` because Phases 3-5 remain.
+
+2026-05-03 - packages-003 phase 3 Actions publishing integration and repository linking
+
+- Completed Phase 3 from `.qrspi/packages-003/structure.md`: OCI registry publishing now records Actions workflow provenance and repository links without marking `packages-003.build_pass=true`.
+- Added additive migration `202605032230_package_registry_actions_publishing` for bounded `package_workflow_tokens`, package version workflow/source metadata, OCI annotation metadata, richer registry audit provenance, and unique package repository links.
+- Extended registry auth to accept short-lived workflow package tokens with `packages:read`/`packages:write` scopes alongside PATs; workflow-token pushes can create repository-scoped container packages that inherit repository visibility.
+- Manifest publish now parses OCI annotations and config labels, resolves `org.opencontainers.image.source` to opengithub repositories, persists source/workflow metadata, links packages to repositories, queues `package` webhook deliveries, and records actor provenance in audit rows.
+- Extended `/docs/api` with Docker Registry v2 challenge, manifest, blob, tag-list, workflow-token, source-label, and local-vs-S3 storage notes.
+- Extended `package_registry_contract` with a DB-backed workflow-token publish scenario covering package creation, inherited visibility, workflow run/job metadata, source-label linking, webhook queueing, and workflow audit metadata.
+- Verification passed: focused `package_registry_contract`; focused `web/tests/api-docs.test.tsx`; mandatory Editorial banned-value scan returned zero matches; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 329 web tests.
+- Browser smoke and `make test-e2e` were skipped because Phase 3 is API/docs-first and the structure outline does not require browser smoke for this phase. `prd.json` remains `build_pass:false` because Phases 4-5 remain.
