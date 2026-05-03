@@ -87,6 +87,10 @@ test("admin can create update and delete Actions secrets and variables", async (
   await expect(page.getByText(secretName, { exact: true })).toBeVisible();
   await expect(page.getByText("Write-only values")).toBeVisible();
   await expect(page.getByText(`super-secret-${suffix}`)).toHaveCount(0);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/settings-005-final-secrets-populated.jpg",
+  });
 
   await page.reload();
   await expect(page.getByText(secretName, { exact: true })).toBeVisible();
@@ -103,6 +107,10 @@ test("admin can create update and delete Actions secrets and variables", async (
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/settings-005-phase3-secrets-mutations.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/settings-005-final-secrets-mutation.jpg",
   });
 
   await page.getByRole("link", { name: /Variables/ }).click();
@@ -126,6 +134,10 @@ test("admin can create update and delete Actions secrets and variables", async (
   await expect(
     page.getByText("https://staging.opengithub.namuh.co"),
   ).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/settings-005-final-secrets-variable.jpg",
+  });
 
   await variableRow.getByRole("button", { name: "Delete" }).click();
   await variableRow
@@ -156,6 +168,27 @@ test("admin can create update and delete Actions secrets and variables", async (
     page.locator(".list-row").filter({ hasText: secretName }),
   ).toHaveCount(0);
   await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/settings-005-final-secrets-empty.jpg",
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { name: "Secrets and variables" }),
+  ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    )
+    .toBe(true);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/settings-005-final-secrets-mobile.jpg",
+  });
 
   await page.context().clearCookies();
   await signIn(page, seeded, seeded.profileActionCookieValue);
@@ -165,4 +198,8 @@ test("admin can create update and delete Actions secrets and variables", async (
   ).toBeVisible();
   await expect(page.getByText(`DEPLOY_KEY_${suffix}`)).toHaveCount(0);
   await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/settings-005-final-secrets-forbidden.jpg",
+  });
 });

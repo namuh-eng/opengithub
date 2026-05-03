@@ -84,7 +84,7 @@
 
 ## Phase 5: Guardrails, API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `settings-005` as a complete vertical slice only after API, UI, mutation flows, workflow resolution, docs, screenshots, and QA handoff are verified. This phase should not add unrelated repository settings areas such as Pages, protected tags, security analysis, or personal access tokens.
 

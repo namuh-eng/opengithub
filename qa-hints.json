@@ -3656,5 +3656,23 @@
       "Verify reusable workflow explicit secret allow-lists from parsed workflow YAML once reusable workflow calls are modeled end to end.",
       "Confirm no secret material lands in worker logs, workflow_runs.event_payload, workflow annotations, API JSON, screenshots, browser state, or archive downloads under high-volume runs."
     ]
+  },
+  {
+    "feature_id": "settings-005",
+    "tests_written": [
+      "Completed Phase 5 final docs, browser smoke, QA handoff, and build-pass bookkeeping for Actions secrets and variables.",
+      "Added API docs coverage for GET /api/repos/{owner}/{repo}/settings/secrets, repository secret create/update/delete, and repository variable create/update/delete, including write-only secret responses, validation errors, audit redaction, inherited metadata, workflow availability policy, and log masking.",
+      "Extended API docs Vitest assertions for the Actions secrets endpoints and policy notes.",
+      "Extended Playwright smoke to save final empty, populated, mutation, variable, mobile, and forbidden screenshots while checking no dead controls and no secret plaintext rendering.",
+      "Final verification included focused Rust/Vitest/Playwright checks, make check, make test, make test-e2e, and the mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Run repository_actions_secrets_contract and workflow resolution tests against a clean freshly migrated TEST_DATABASE_URL so DB assertions execute instead of self-skipping on the shared dirty migration state.",
+      "Verify real AWS KMS, Secrets Manager, or encrypted S3 envelope backing before production hardening; local envelope encryption preserves the API shape but is not the final cloud integration.",
+      "Run ciphertext/plaintext leakage scans across API JSON, audit rows, job logs, annotations, run archives, browser state, screenshots, and application/server logs.",
+      "Exercise fork pull request secret blocking with real fork event producers, environment-gated secret release after approval, and reusable-workflow explicit secret allow-lists once those producers are modeled end to end.",
+      "Model and browser-test inherited organization and environment secret/variable producers; current UI renders the shapes, but local seeded smoke covers repository scope only.",
+      "Stress long names, long/multiline values, URL/base64/shell-escaped masking bypass attempts, concurrent admin edits, duplicate create races, archived repositories, private repository leakage, and keyboard/screen-reader traversal through all forms and confirmations."
+    ]
   }
 ]

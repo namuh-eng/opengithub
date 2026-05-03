@@ -138,6 +138,29 @@ describe("ApiDocsPage", () => {
     expect(
       screen.getByText(/Oversized request and response bodies/),
     ).toBeVisible();
+    expect(
+      screen.getAllByText("/api/repos/{owner}/{repo}/settings/secrets")[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/settings/secrets/secrets"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/settings/secrets/variables"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Secret responses expose only metadata/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/blocks secrets for untrusted fork pull_request events/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Validation and conflict responses never echo submitted secret values/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/secret values cannot and are masked from job logs/),
+    ).toBeVisible();
     expect(screen.getByText("/api/repos/{owner}/{repo}/pulls")).toBeVisible();
     expect(
       screen.getByText(

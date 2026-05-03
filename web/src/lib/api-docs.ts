@@ -666,6 +666,103 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-actions-secrets-list",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/settings/secrets",
+    title: "Read Actions secrets and variables",
+    description:
+      "Reads the admin-only Actions secrets and variables settings contract, including repository-scoped metadata, inherited organization or environment metadata when visible, audit-safe update actors, and workflow availability diagnostics.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    response: `{
+  "repositoryId": "repo_01",
+  "ownerLogin": "mona",
+  "name": "octo-app",
+  "canEdit": true,
+  "secrets": [
+    {
+      "id": "secret_01",
+      "name": "DEPLOY_KEY",
+      "scope": { "kind": "repository", "name": null },
+      "secretConfigured": true,
+      "storageKind": "local_envelope",
+      "updatedAt": "2026-05-03T00:00:00Z"
+    }
+  ],
+  "variables": [
+    {
+      "id": "var_01",
+      "name": "PUBLIC_BASE_URL",
+      "value": "https://opengithub.namuh.co"
+    }
+  ],
+  "inheritedSecrets": [],
+  "inheritedVariables": []
+}`,
+    notes: [
+      "Anonymous callers receive 401; non-admin viewers receive 403 without secret names, variable values, inherited metadata, or audit details.",
+      "Secret responses expose only metadata and secretConfigured; plaintext, ciphertext, fingerprints, encrypted refs, nonce material, and storage envelopes are never serialized.",
+      "Inherited organization and environment rows follow their visibility policy and remain metadata-only for secrets.",
+      "Workflow runtime resolution uses these rows but blocks secrets for untrusted fork pull_request events, environment-gated jobs before approval, and reusable workflows without explicit secret allow-lists.",
+    ],
+  },
+  {
+    id: "repo-actions-secret-create",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/settings/secrets/secrets",
+    title: "Create Actions secret",
+    description:
+      "Creates a repository Actions secret, encrypts the submitted value with the server-side envelope abstraction, writes a redacted audit event, and returns fresh settings metadata.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    request: `{
+  "name": "DEPLOY_KEY",
+  "value": "shown-only-on-submit"
+}`,
+    response: `{
+  "secrets": [
+    {
+      "name": "DEPLOY_KEY",
+      "secretConfigured": true,
+      "storageKind": "local_envelope"
+    }
+  ],
+  "variables": []
+}`,
+    notes: [
+      "PATCH /api/repos/{owner}/{repo}/settings/secrets/secrets/{name} rotates or renames a secret and also requires a fresh nonblank value.",
+      "DELETE /api/repos/{owner}/{repo}/settings/secrets/secrets/{name} removes the repository-scoped secret and writes repository.actions_secret.delete.",
+      "Names are normalized to identifier-like uppercase names; reserved runtime names such as GITHUB_TOKEN return validation_failed.",
+      "Validation and conflict responses never echo submitted secret values.",
+    ],
+  },
+  {
+    id: "repo-actions-variable-create",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/settings/secrets/variables",
+    title: "Create Actions variable",
+    description:
+      "Creates a repository Actions variable whose value may be displayed to repository admins and resolved into future workflow runtime environments.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    request: `{
+  "name": "PUBLIC_BASE_URL",
+  "value": "https://opengithub.namuh.co"
+}`,
+    response: `{
+  "variables": [
+    {
+      "name": "PUBLIC_BASE_URL",
+      "value": "https://opengithub.namuh.co",
+      "visibilityPolicy": "repository"
+    }
+  ]
+}`,
+    notes: [
+      "PATCH /api/repos/{owner}/{repo}/settings/secrets/variables/{name} updates or renames the variable and returns server-confirmed settings.",
+      "DELETE /api/repos/{owner}/{repo}/settings/secrets/variables/{name} removes the repository variable and writes repository.actions_variable.delete.",
+      "Duplicate names, invalid identifiers, reserved runtime names, blank values, and archived repositories return standard error envelopes.",
+      "Variable values can be serialized to workflow context; secret values cannot and are masked from job logs, annotations, log downloads, and run archives.",
+    ],
+  },
+  {
     id: "org-repositories",
     method: "GET",
     path: "/api/orgs/{org}/repositories?q=router&type=public&language=Rust&page=1&pageSize=30",

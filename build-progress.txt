@@ -2531,3 +2531,14 @@
 - Browser smoke screenshot saved at `ralph/screenshots/build/settings-005-phase3-secrets-mutations.jpg`.
 - Verification passed: `cd web && npx tsc --noEmit --pretty false`; focused `web/tests/repository-actions-secrets-page.test.tsx`; focused `repository_actions_secrets_contract` compiled/passed with DB assertions self-skipped on the shared local database; mandatory Editorial banned-value scan returned zero matches; `CARGO_INCREMENTAL=0 TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; `CARGO_INCREMENTAL=0 DB_SSL=false make test` with Cargo tests plus 298 frontend tests; focused same-env Playwright `repository-settings-secrets.spec.ts`; full same-env `make test-e2e` with 96 Playwright tests.
 - Marked Phase 3 as done in `.qrspi/settings-005/structure.md`; `prd.json` remains `build_pass:false` because Phases 4-5 remain.
+
+2026-05-03 - settings-005 phase 5 final docs, smoke, and build pass
+
+- Completed Phase 5 from `.qrspi/settings-005/structure.md`: final API docs, final browser smoke screenshots, QA handoff, and `settings-005.build_pass=true`.
+- Added `/docs/api` coverage for Actions secrets and variables read/create/update/delete endpoints, including admin-only visibility, write-only secret response semantics, encryption/storage notes, validation/conflict behavior, audit redaction, inherited metadata, workflow availability policy, fork PR blocking, and Actions log masking.
+- Extended API docs Vitest assertions for the new Actions secrets endpoints and policy notes.
+- Extended repository secrets Playwright smoke to capture final populated, mutation, variable, empty, mobile, and forbidden states while checking for no dead controls and no secret plaintext rendering.
+- Browser smoke screenshots saved at `ralph/screenshots/build/settings-005-final-secrets-populated.jpg`, `settings-005-final-secrets-mutation.jpg`, `settings-005-final-secrets-variable.jpg`, `settings-005-final-secrets-empty.jpg`, `settings-005-final-secrets-mobile.jpg`, and `settings-005-final-secrets-forbidden.jpg`.
+- Added final `settings-005` QA hints covering clean database reruns, real AWS/KMS or Secrets Manager backing, ciphertext/plaintext leakage scans, fork PR blocking, environment-gated release, reusable workflow allow-lists, inherited scope producers, masking bypass attempts, concurrent admin edits, and accessibility traversal.
+- Verification passed before final full validation: focused `web/tests/api-docs.test.tsx` and `web/tests/repository-actions-secrets-page.test.tsx`; focused Rust `repository_actions_secrets_contract`, `api_repository_actions_job_log_contract`, and `api_repository_actions_run_detail_contract`; focused same-env Playwright `repository-settings-secrets.spec.ts`; mandatory Editorial banned-value scan returned zero matches.
+- Full final `make check`, `make test`, and `make test-e2e` were run after bookkeeping; see this iteration's command log for pass/fail evidence.
