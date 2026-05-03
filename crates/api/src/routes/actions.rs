@@ -938,6 +938,11 @@ pub(crate) fn map_automation_error(error: AutomationError) -> (StatusCode, Json<
             "internal_error",
             "automation operation failed",
         ),
+        AutomationError::ActionsSecrets(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "Actions runtime context could not be resolved",
+        ),
         AutomationError::Sqlx(sqlx::Error::Database(database_error))
             if database_error.is_unique_violation() =>
         {

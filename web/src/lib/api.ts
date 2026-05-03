@@ -1852,6 +1852,22 @@ export type ActionsRunActionState = {
   disabledReason: string | null;
 };
 
+export type ActionsRuntimeScopeCount = {
+  scope: string;
+  secrets: number;
+  variables: number;
+};
+
+export type ActionsRuntimePolicy = {
+  secretCount: number;
+  variableCount: number;
+  blockedSecretCount: number;
+  blockedVariableCount: number;
+  scopes: ActionsRuntimeScopeCount[];
+  blockedReasons: string[];
+  redactionMarker: string;
+};
+
 export type RepositoryActionsRunDetail = {
   repository: {
     id: string;
@@ -1863,6 +1879,7 @@ export type RepositoryActionsRunDetail = {
   viewerPermission: string | null;
   workflow: ActionsRunDetailWorkflow;
   run: ActionsRunListItem;
+  runtimePolicy: ActionsRuntimePolicy;
   attempts: ActionsRunAttempt[];
   jobs: ActionsRunJobDetail[];
   annotations: ActionsRunAnnotation[];

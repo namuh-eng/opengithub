@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 use super::repositories::{
@@ -117,6 +118,45 @@ pub struct ActionsSecretMutation {
 pub struct ActionsVariableMutation {
     pub name: Option<String>,
     pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsRuntimeResolution {
+    #[serde(skip_serializing)]
+    pub secrets: BTreeMap<String, String>,
+    pub variables: BTreeMap<String, String>,
+    pub diagnostics: ActionsRuntimeResolutionDiagnostics,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsRuntimeResolutionDiagnostics {
+    pub secret_count: usize,
+    pub variable_count: usize,
+    pub blocked_secret_count: usize,
+    pub blocked_variable_count: usize,
+    pub scopes: Vec<ActionsRuntimeScopeCount>,
+    pub blocked_reasons: Vec<String>,
+    pub redaction_marker: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsRuntimeScopeCount {
+    pub scope: String,
+    pub secrets: usize,
+    pub variables: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ActionsRuntimeResolutionRequest {
+    pub repository_id: Uuid,
+    pub event: String,
+    pub fork_pull_request: bool,
+    pub environment: Option<String>,
+    pub environment_approved: bool,
+    pub explicit_secret_names: Option<Vec<String>>,
 }
 
 pub async fn repository_actions_secrets_settings_for_actor_by_owner_name(
@@ -415,6 +455,178 @@ pub async fn delete_repository_actions_variable_by_owner_name(
     repository_actions_secrets_settings_for_repository(pool, &repository, actor_user_id).await
 }
 
+pub async fn resolve_actions_runtime_context(
+    pool: &PgPool,
+    request: ActionsRuntimeResolutionRequest,
+) -> Result<ActionsRuntimeResolution, ActionsSecretsError> {
+    let mut secrets = BTreeMap::new();
+    let mut variables = BTreeMap::new();
+    let mut blocked_reasons = Vec::new();
+    let mut blocked_secret_count = 0usize;
+    let mut blocked_variable_count = 0usize;
+    let fork_blocks_secrets =
+        request.fork_pull_request && request.event.eq_ignore_ascii_case("pull_request");
+    let explicit_secret_names = request.explicit_secret_names.as_ref().map(|names| {
+        names
+            .iter()
+            .filter_map(|name| normalize_setting_name(Some(name)).ok())
+            .collect::<Vec<_>>()
+    });
+
+    let secret_rows = sqlx::query(
+        r#"
+        SELECT name, scope_kind, scope_name, encrypted_value_ciphertext, encrypted_value_nonce
+        FROM actions_secrets
+        WHERE repository_id = $1
+        ORDER BY CASE scope_kind
+                   WHEN 'organization' THEN 1
+                   WHEN 'repository' THEN 2
+                   WHEN 'environment' THEN 3
+                   ELSE 4
+                 END,
+                 name
+        "#,
+    )
+    .bind(request.repository_id)
+    .fetch_all(pool)
+    .await?;
+
+    let variable_rows = sqlx::query(
+        r#"
+        SELECT name, value, scope_kind, scope_name
+        FROM actions_variables
+        WHERE repository_id = $1
+        ORDER BY CASE scope_kind
+                   WHEN 'organization' THEN 1
+                   WHEN 'repository' THEN 2
+                   WHEN 'environment' THEN 3
+                   ELSE 4
+                 END,
+                 name
+        "#,
+    )
+    .bind(request.repository_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut scope_counts = BTreeMap::<String, (usize, usize)>::new();
+
+    for row in secret_rows {
+        let name: String = row.get("name");
+        let scope_kind: String = row.get("scope_kind");
+        let scope_name: Option<String> = row.get("scope_name");
+        let scope = runtime_scope_label(&scope_kind, scope_name.as_deref());
+        if explicit_secret_names
+            .as_ref()
+            .is_some_and(|names| !names.iter().any(|allowed| allowed == &name))
+        {
+            blocked_secret_count += 1;
+            push_unique_reason(&mut blocked_reasons, "not_explicitly_allowed");
+            continue;
+        }
+        if fork_blocks_secrets {
+            blocked_secret_count += 1;
+            push_unique_reason(&mut blocked_reasons, "fork_pull_request");
+            continue;
+        }
+        if scope_kind == "environment"
+            && (request.environment.as_deref() != scope_name.as_deref()
+                || !request.environment_approved)
+        {
+            blocked_secret_count += 1;
+            push_unique_reason(&mut blocked_reasons, "environment_not_approved");
+            continue;
+        }
+        let plaintext = decrypt_secret_value(
+            row.get("encrypted_value_ciphertext"),
+            row.get("encrypted_value_nonce"),
+        )?;
+        secrets.insert(name, plaintext);
+        scope_counts.entry(scope).or_default().0 += 1;
+    }
+
+    for row in variable_rows {
+        let name: String = row.get("name");
+        let scope_kind: String = row.get("scope_kind");
+        let scope_name: Option<String> = row.get("scope_name");
+        let scope = runtime_scope_label(&scope_kind, scope_name.as_deref());
+        if scope_kind == "environment"
+            && (request.environment.as_deref() != scope_name.as_deref()
+                || !request.environment_approved)
+        {
+            blocked_variable_count += 1;
+            push_unique_reason(&mut blocked_reasons, "environment_not_approved");
+            continue;
+        }
+        variables.insert(name, row.get("value"));
+        scope_counts.entry(scope).or_default().1 += 1;
+    }
+
+    let scopes = scope_counts
+        .into_iter()
+        .map(
+            |(scope, (secret_count, variable_count))| ActionsRuntimeScopeCount {
+                scope,
+                secrets: secret_count,
+                variables: variable_count,
+            },
+        )
+        .collect::<Vec<_>>();
+
+    Ok(ActionsRuntimeResolution {
+        diagnostics: ActionsRuntimeResolutionDiagnostics {
+            secret_count: secrets.len(),
+            variable_count: variables.len(),
+            blocked_secret_count,
+            blocked_variable_count,
+            scopes,
+            blocked_reasons,
+            redaction_marker: "::add-mask::***".to_owned(),
+        },
+        secrets,
+        variables,
+    })
+}
+
+pub fn mask_actions_secret_values(content: &str, secret_values: &[String]) -> String {
+    let mut masked = content.to_owned();
+    for secret in secret_values {
+        if secret.len() < 3 {
+            continue;
+        }
+        masked = masked.replace(secret, "***");
+        let encoded = STANDARD_NO_PAD.encode(secret.as_bytes());
+        if encoded.len() >= 3 {
+            masked = masked.replace(&encoded, "***");
+        }
+    }
+    masked
+}
+
+pub async fn actions_secret_redaction_values(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<Vec<String>, ActionsSecretsError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT encrypted_value_ciphertext, encrypted_value_nonce
+        FROM actions_secrets
+        WHERE repository_id = $1
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            decrypt_secret_value(
+                row.get("encrypted_value_ciphertext"),
+                row.get("encrypted_value_nonce"),
+            )
+        })
+        .collect()
+}
+
 async fn repository_actions_secrets_settings_for_repository(
     pool: &PgPool,
     repository: &Repository,
@@ -686,6 +898,48 @@ fn encrypt_secret_value(value: &str) -> Result<SecretEnvelope, ActionsSecretsErr
         nonce,
         fingerprint,
     })
+}
+
+fn decrypt_secret_value(ciphertext: String, nonce: String) -> Result<String, ActionsSecretsError> {
+    let encrypted = STANDARD_NO_PAD
+        .decode(ciphertext.as_bytes())
+        .map_err(|_| ActionsSecretsError::Invalid("secret envelope is invalid".to_owned()))?;
+    let key = std::env::var("ACTIONS_SECRETS_KEY")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "opengithub-local-actions-secrets-key".to_owned());
+    let mut plaintext = Vec::with_capacity(encrypted.len());
+    let mut offset = 0usize;
+    let mut counter = 0u64;
+    while offset < encrypted.len() {
+        let mut hasher = Sha256::new();
+        hasher.update(key.as_bytes());
+        hasher.update(nonce.as_bytes());
+        hasher.update(counter.to_le_bytes());
+        let block = hasher.finalize();
+        for byte in block {
+            if offset == encrypted.len() {
+                break;
+            }
+            plaintext.push(encrypted[offset] ^ byte);
+            offset += 1;
+        }
+        counter += 1;
+    }
+    String::from_utf8(plaintext)
+        .map_err(|_| ActionsSecretsError::Invalid("secret envelope is invalid".to_owned()))
+}
+
+fn runtime_scope_label(kind: &str, name: Option<&str>) -> String {
+    name.filter(|value| !value.trim().is_empty())
+        .map(|value| format!("{kind}:{value}"))
+        .unwrap_or_else(|| kind.to_owned())
+}
+
+fn push_unique_reason(reasons: &mut Vec<String>, reason: &str) {
+    if !reasons.iter().any(|existing| existing == reason) {
+        reasons.push(reason.to_owned());
+    }
 }
 
 fn hex_sha256(value: &[u8]) -> String {

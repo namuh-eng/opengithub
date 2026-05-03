@@ -10,6 +10,11 @@ use crate::api_types::ListEnvelope;
 use crate::jobs::{enqueue_job, JobLeaseError};
 
 use super::{
+    actions_secrets::{
+        actions_secret_redaction_values, mask_actions_secret_values,
+        resolve_actions_runtime_context, ActionsRuntimeResolutionDiagnostics,
+        ActionsRuntimeResolutionRequest,
+    },
     permissions::RepositoryRole,
     repositories::{
         get_repository, get_repository_by_owner_name, repository_permission_for_user, Repository,
@@ -213,6 +218,7 @@ pub struct ActionsRunDetail {
     pub viewer_permission: Option<String>,
     pub workflow: ActionsRunDetailWorkflow,
     pub run: ActionsRunListItem,
+    pub runtime_policy: ActionsRuntimeResolutionDiagnostics,
     pub attempts: Vec<ActionsRunAttempt>,
     pub jobs: Vec<ActionsRunJobDetail>,
     pub annotations: Vec<ActionsRunAnnotation>,
@@ -898,6 +904,8 @@ pub enum AutomationError {
     #[error("workflow run action is unavailable: {0}")]
     WorkflowRunActionUnavailable(String),
     #[error(transparent)]
+    ActionsSecrets(#[from] super::actions_secrets::ActionsSecretsError),
+    #[error(transparent)]
     JobLease(#[from] JobLeaseError),
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
@@ -1107,8 +1115,23 @@ pub async fn actions_run_detail_for_viewer(
     let workflow = actions_run_detail_workflow(pool, &repository, run.workflow_id).await?;
     let attempts = actions_run_attempts(pool, &run).await?;
     let jobs = actions_run_jobs(pool, run.id).await?;
-    let annotations = actions_run_annotations(pool, run.id).await?;
+    let redaction_values = actions_secret_redaction_values(pool, repository.id).await?;
+    let mut annotations = actions_run_annotations(pool, run.id).await?;
+    mask_actions_annotations(&mut annotations, &redaction_values);
     let artifacts = actions_run_artifacts(pool, run.id).await?;
+    let runtime_policy = resolve_actions_runtime_context(
+        pool,
+        ActionsRuntimeResolutionRequest {
+            repository_id: repository.id,
+            event: run.event.clone(),
+            fork_pull_request: run.pull_request.is_some() && run.event == "pull_request",
+            environment: None,
+            environment_approved: false,
+            explicit_secret_names: None,
+        },
+    )
+    .await?
+    .diagnostics;
     let action_state = actions_run_action_state(
         &run,
         &run.job_summary,
@@ -1127,6 +1150,7 @@ pub async fn actions_run_detail_for_viewer(
         viewer_permission,
         workflow,
         run,
+        runtime_policy,
         attempts,
         jobs,
         annotations,
@@ -1171,6 +1195,7 @@ pub async fn actions_job_log_detail_for_viewer(
         .collect::<Vec<_>>();
     let log_available = job.log_available;
     let deleted_at = job.log_deleted_at;
+    let redaction_values = actions_secret_redaction_values(pool, repository_id).await?;
 
     let total_matches = if log_available {
         sqlx::query_scalar::<_, i64>(
@@ -1245,7 +1270,8 @@ pub async fn actions_job_log_detail_for_viewer(
     for row in line_rows {
         let step_id: Option<Uuid> = row.get("step_id");
         let line_number: i32 = row.get("line_number");
-        let content: String = row.get("content");
+        let content: String =
+            mask_actions_secret_values(&row.get::<String, _>("content"), &redaction_values);
         let anchor = format!("L{line_number}");
         if q.is_some() {
             matches.push(ActionsJobLogSearchMatch {
@@ -1721,15 +1747,35 @@ pub async fn dispatch_workflow_run(
     let resolved_ref = resolve_workflow_dispatch_ref(pool, repository.id, &input.ref_name).await?;
     let run_number = next_run_number(pool, workflow.id).await?;
     let display_title = format!("Run {} manually", workflow.name);
+    let runtime_context = resolve_actions_runtime_context(
+        pool,
+        ActionsRuntimeResolutionRequest {
+            repository_id: repository.id,
+            event: "workflow_dispatch".to_owned(),
+            fork_pull_request: false,
+            environment: None,
+            environment_approved: false,
+            explicit_secret_names: None,
+        },
+    )
+    .await?;
+    let event_payload = json!({
+        "workflowPath": workflow.path,
+        "ref": resolved_ref.name,
+        "headBranch": resolved_ref.short_name,
+        "headSha": resolved_ref.sha,
+        "inputs": dispatch_inputs.clone(),
+        "runtimePolicy": runtime_context.diagnostics,
+    });
 
     let mut transaction = pool.begin().await?;
     let row = sqlx::query(
         r#"
         INSERT INTO workflow_runs (
             repository_id, workflow_id, actor_user_id, run_number, head_branch,
-            head_sha, event, display_title
+            head_sha, event, display_title, event_payload
         )
-        VALUES ($1, $2, $3, $4, $5, $6, 'workflow_dispatch', $7)
+        VALUES ($1, $2, $3, $4, $5, $6, 'workflow_dispatch', $7, $8)
         RETURNING id
         "#,
     )
@@ -1740,6 +1786,7 @@ pub async fn dispatch_workflow_run(
     .bind(&resolved_ref.short_name)
     .bind(&resolved_ref.sha)
     .bind(&display_title)
+    .bind(&event_payload)
     .fetch_one(&mut *transaction)
     .await?;
     let run_id: Uuid = row.get("id");
@@ -1770,6 +1817,7 @@ pub async fn dispatch_workflow_run(
             "headBranch": resolved_ref.short_name,
             "headSha": resolved_ref.sha,
             "inputs": dispatch_inputs,
+            "runtimePolicy": runtime_context.diagnostics,
         }),
     )
     .await?;
@@ -3154,6 +3202,7 @@ pub async fn workflow_job_logs_for_viewer(
     .bind(offset)
     .fetch_all(pool)
     .await?;
+    let redaction_values = actions_secret_redaction_values(pool, repository_id).await?;
     let lines = rows
         .into_iter()
         .map(|row| {
@@ -3161,7 +3210,10 @@ pub async fn workflow_job_logs_for_viewer(
             ActionsJobLogLine {
                 line_number,
                 timestamp: row.get("timestamp"),
-                content: row.get("content"),
+                content: mask_actions_secret_values(
+                    &row.get::<String, _>("content"),
+                    &redaction_values,
+                ),
                 anchor: format!("L{line_number}"),
             }
         })
@@ -3202,9 +3254,14 @@ pub async fn workflow_job_log_download_for_viewer(
         .bind(job_id)
         .fetch_all(pool)
         .await?;
+        let redaction_values = actions_secret_redaction_values(pool, repository_id).await?;
         let body = rows
             .into_iter()
-            .map(|row| format_log_line(row.get("timestamp"), row.get("content")))
+            .map(|row| {
+                let content =
+                    mask_actions_secret_values(&row.get::<String, _>("content"), &redaction_values);
+                format_log_line(row.get("timestamp"), content)
+            })
             .collect::<Vec<_>>()
             .join("\n");
         return Ok((format!("{}.log", safe_filename(&log.job.name)), body));
@@ -3256,6 +3313,7 @@ pub async fn workflow_run_log_archive_for_viewer(
     .bind(&job_ids)
     .fetch_all(pool)
     .await?;
+    let redaction_values = actions_secret_redaction_values(pool, repository_id).await?;
 
     let mut body = format!(
         "opengithub workflow log archive\nrepository: {}/{}\nrun: #{}\n\n",
@@ -3268,7 +3326,9 @@ pub async fn workflow_run_log_archive_for_viewer(
             current_job = Some(job_id);
             body.push_str(&format!("\n== {} ==\n", row.get::<String, _>("job_name")));
         }
-        body.push_str(&format_log_line(row.get("timestamp"), row.get("content")));
+        let content =
+            mask_actions_secret_values(&row.get::<String, _>("content"), &redaction_values);
+        body.push_str(&format_log_line(row.get("timestamp"), content));
         body.push('\n');
     }
 
@@ -3510,6 +3570,16 @@ fn format_log_line(timestamp: Option<DateTime<Utc>>, content: String) -> String 
     match timestamp {
         Some(timestamp) => format!("{} {content}", timestamp.to_rfc3339()),
         None => content,
+    }
+}
+
+fn mask_actions_annotations(annotations: &mut [ActionsRunAnnotation], redaction_values: &[String]) {
+    for annotation in annotations {
+        annotation.message = mask_actions_secret_values(&annotation.message, redaction_values);
+        annotation.raw_details = annotation
+            .raw_details
+            .as_deref()
+            .map(|details| mask_actions_secret_values(details, redaction_values));
     }
 }
 
@@ -4264,6 +4334,18 @@ async fn create_push_workflow_run(
         "{} pushed to {}",
         repository.owner_login, pushed_ref.short_name
     );
+    let runtime_context = resolve_actions_runtime_context(
+        pool,
+        ActionsRuntimeResolutionRequest {
+            repository_id: repository.id,
+            event: "push".to_owned(),
+            fork_pull_request: false,
+            environment: None,
+            environment_approved: false,
+            explicit_secret_names: None,
+        },
+    )
+    .await?;
     let event_payload = json!({
         "ref": pushed_ref.name,
         "headBranch": if pushed_ref.kind == "branch" { Some(pushed_ref.short_name.clone()) } else { None },
@@ -4272,6 +4354,7 @@ async fn create_push_workflow_run(
         "workflowPath": workflow.path,
         "changedPaths": changed_paths,
         "source": "git_receive_pack",
+        "runtimePolicy": runtime_context.diagnostics,
     });
     let workflow_matrix = json!({
         "jobCount": parsed.jobs.len(),

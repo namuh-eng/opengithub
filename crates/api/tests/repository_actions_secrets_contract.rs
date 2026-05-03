@@ -7,6 +7,12 @@ use opengithub_api::{
     auth::session,
     config::{AppConfig, AuthConfig},
     domain::{
+        actions_secrets::{
+            create_repository_actions_secret_by_owner_name,
+            create_repository_actions_variable_by_owner_name, mask_actions_secret_values,
+            resolve_actions_runtime_context, ActionsRuntimeResolutionRequest,
+            ActionsSecretMutation, ActionsVariableMutation,
+        },
         identity::{upsert_session, upsert_user_by_email, User},
         permissions::RepositoryRole,
         repositories::{
@@ -282,6 +288,115 @@ async fn repository_actions_secrets_are_admin_only_write_only_and_audited() {
     .await
     .expect("plaintext persistence check should run");
     assert!(!persisted_plaintext);
+}
+
+#[tokio::test]
+async fn actions_runtime_resolution_enforces_policy_and_masks_logs() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping Actions runtime secret resolution scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    std::env::set_var(
+        "ACTIONS_SECRETS_KEY",
+        "test-actions-runtime-secret-key-with-enough-entropy",
+    );
+    let marker = format!("actruntime{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("{marker}-repo"),
+            description: Some("Actions runtime contract".to_owned()),
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+
+    create_repository_actions_secret_by_owner_name(
+        &pool,
+        owner.id,
+        &owner.email,
+        &repo.name,
+        ActionsSecretMutation {
+            name: Some("deploy_token".to_owned()),
+            value: "runtime-super-secret".to_owned(),
+        },
+    )
+    .await
+    .expect("secret should create");
+    create_repository_actions_variable_by_owner_name(
+        &pool,
+        owner.id,
+        &owner.email,
+        &repo.name,
+        ActionsVariableMutation {
+            name: Some("release_channel".to_owned()),
+            value: "stable".to_owned(),
+        },
+    )
+    .await
+    .expect("variable should create");
+
+    let trusted = resolve_actions_runtime_context(
+        &pool,
+        ActionsRuntimeResolutionRequest {
+            repository_id: repo.id,
+            event: "push".to_owned(),
+            fork_pull_request: false,
+            environment: None,
+            environment_approved: false,
+            explicit_secret_names: None,
+        },
+    )
+    .await
+    .expect("runtime context should resolve");
+    assert_eq!(
+        trusted.secrets.get("DEPLOY_TOKEN").map(String::as_str),
+        Some("runtime-super-secret")
+    );
+    assert_eq!(
+        trusted.variables.get("RELEASE_CHANNEL").map(String::as_str),
+        Some("stable")
+    );
+    assert_eq!(trusted.diagnostics.secret_count, 1);
+    assert_eq!(trusted.diagnostics.variable_count, 1);
+
+    let serialized = serde_json::to_string(&trusted).expect("runtime context should serialize");
+    assert!(!serialized.contains("runtime-super-secret"));
+    assert!(!serialized.contains("DEPLOY_TOKEN"));
+
+    let blocked = resolve_actions_runtime_context(
+        &pool,
+        ActionsRuntimeResolutionRequest {
+            repository_id: repo.id,
+            event: "pull_request".to_owned(),
+            fork_pull_request: true,
+            environment: None,
+            environment_approved: false,
+            explicit_secret_names: None,
+        },
+    )
+    .await
+    .expect("fork PR context should resolve");
+    assert!(blocked.secrets.is_empty());
+    assert_eq!(blocked.variables.len(), 1);
+    assert_eq!(blocked.diagnostics.blocked_secret_count, 1);
+    assert!(blocked
+        .diagnostics
+        .blocked_reasons
+        .iter()
+        .any(|reason| reason == "fork_pull_request"));
+
+    let masked = mask_actions_secret_values(
+        "token=runtime-super-secret encoded=cnVudGltZS1zdXBlci1zZWNyZXQ",
+        &["runtime-super-secret".to_owned()],
+    );
+    assert_eq!(masked, "token=*** encoded=***");
 }
 
 fn app_config() -> AppConfig {

@@ -65,7 +65,7 @@
 
 ## Phase 4: Workflow Resolution Integration - secret availability, masking, and fork/event rules
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make Actions secrets and variables operational for workflow execution planning. Workflow runs should resolve the correct repository/organization/environment variables and secrets according to event, fork, reusable-workflow, and environment access rules, while logs and API responses mask any resolved secret values.
 

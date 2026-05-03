@@ -3637,5 +3637,24 @@
       "Verify real AWS KMS, Secrets Manager, or encrypted S3 envelope backing before production hardening; this phase still uses the local envelope abstraction from Phase 1.",
       "Phase 4 still needs workflow resolution, fork/reusable-workflow/environment policy enforcement, and log masking integration."
     ]
+  },
+  {
+    "feature_id": "settings-005",
+    "tests_written": [
+      "Completed Phase 4 Workflow Resolution Integration without marking settings-005 build_pass=true.",
+      "Added Rust Actions runtime resolution for repository secrets and variables with diagnostics for available/blocked counts, scope counts, fork pull request blocking, environment approval gating, and explicit reusable-workflow secret allow-listing.",
+      "Secrets deserialize inside the bounded Rust runtime context but are skipped during serialization; workflow run payloads and job queue payloads store only runtimePolicy diagnostics, never secret names or plaintext values.",
+      "Actions job log detail, plain log download, run archive download, and annotation responses now mask configured Actions secret values and their base64 forms before returning content.",
+      "Actions run detail now exposes non-sensitive runtime secret/variable counts and blocked policy reasons in the Editorial metadata panel.",
+      "Focused tests cover runtime resolution serialization redaction, fork PR secret blocking, log masking helper behavior, job log API masking, and run metadata rendering."
+    ],
+    "needs_deeper_qa": [
+      "Run repository_actions_secrets_contract against a clean migrated TEST_DATABASE_URL so the runtime resolution DB assertions execute instead of self-skipping on the shared dirty migration state.",
+      "Exercise real fork pull request event producers once PR-triggered workflow runs include trusted/untrusted fork metadata instead of the current pull_request heuristic.",
+      "Model and verify organization and environment secret/variable producers; Phase 4 supports scope policy but local seeded smoke covers repository scope.",
+      "Probe masking bypasses for shell escaping, JSON escaping, multiline secrets, URL encoding, truncated values, and values shorter than the masking threshold.",
+      "Verify reusable workflow explicit secret allow-lists from parsed workflow YAML once reusable workflow calls are modeled end to end.",
+      "Confirm no secret material lands in worker logs, workflow_runs.event_payload, workflow annotations, API JSON, screenshots, browser state, or archive downloads under high-volume runs."
+    ]
   }
 ]

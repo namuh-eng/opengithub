@@ -12,6 +12,7 @@ use opengithub_api::{
             transition_workflow_run, CreateWorkflow, CreateWorkflowJob, CreateWorkflowRun,
             CreateWorkflowStep, RunConclusion, RunStatus, TransitionRun,
         },
+        actions_secrets::{create_repository_actions_secret_by_owner_name, ActionsSecretMutation},
         identity::{upsert_session, upsert_user_by_email, User},
         repositories::{
             create_repository, CreateRepository, RepositoryOwner, RepositoryVisibility,
@@ -331,6 +332,25 @@ async fn job_log_detail_groups_steps_searches_lines_and_reads_options() {
         "actions-job-log",
     )
     .await;
+    create_repository_actions_secret_by_owner_name(
+        &pool,
+        owner.id,
+        &owner.email,
+        &repo_name,
+        ActionsSecretMutation {
+            name: Some("deploy_token".to_owned()),
+            value: "job-log-super-secret".to_owned(),
+        },
+    )
+    .await
+    .expect("log masking secret should create");
+    sqlx::query(
+        "INSERT INTO workflow_job_log_lines (job_id, line_number, content) VALUES ($1, 5, 'deploy token job-log-super-secret')",
+    )
+    .bind(job_id)
+    .execute(&pool)
+    .await
+    .expect("secret-bearing log should persist");
     sqlx::query(
         r#"
         INSERT INTO actions_log_preferences (repository_id, user_id, show_timestamps, raw_logs, wrap_lines)
@@ -363,7 +383,7 @@ async fn job_log_detail_groups_steps_searches_lines_and_reads_options() {
     assert_eq!(body["jobs"].as_array().expect("jobs").len(), 2);
     assert_eq!(body["logState"]["available"], true);
     assert_eq!(body["logState"]["status"], 200);
-    assert_eq!(body["logState"]["nextCursor"], 4);
+    assert_eq!(body["logState"]["nextCursor"], 5);
     assert_eq!(body["options"]["showTimestamps"], false);
     assert_eq!(body["options"]["rawLogs"], true);
     assert_eq!(body["options"]["wrapLines"], true);
@@ -388,6 +408,14 @@ async fn job_log_detail_groups_steps_searches_lines_and_reads_options() {
     assert!(
         !serialized_body.contains("actions/logs/job-detail.txt"),
         "job log storage keys must not leak into viewer responses"
+    );
+    assert!(
+        !serialized_body.contains("job-log-super-secret"),
+        "job log detail must mask configured Actions secret values"
+    );
+    assert!(
+        serialized_body.contains("deploy token ***"),
+        "job log detail should preserve non-secret context around masked values"
     );
 
     let search_uri = format!("{detail_uri}?q=error&match=1&timestamps=true&raw=false");
@@ -450,7 +478,7 @@ async fn job_log_detail_groups_steps_searches_lines_and_reads_options() {
     let (live_status, live_body) = get_json(app.clone(), &detail_uri, Some(&owner_cookie)).await;
     assert_eq!(live_status, StatusCode::OK);
     assert_eq!(live_body["logState"]["isLive"], true);
-    assert_eq!(live_body["logState"]["nextCursor"], 4);
+    assert_eq!(live_body["logState"]["nextCursor"], 5);
     sqlx::query(
         r#"
         UPDATE workflow_runs
@@ -499,6 +527,8 @@ async fn job_log_detail_groups_steps_searches_lines_and_reads_options() {
     assert!(archive_body.contains("opengithub workflow log archive"));
     assert!(archive_body.contains("unit / web"));
     assert!(archive_body.contains("expected string"));
+    assert!(!archive_body.contains("job-log-super-secret"));
+    assert!(archive_body.contains("deploy token ***"));
 
     sqlx::query("UPDATE workflow_jobs SET log_deleted_at = now() WHERE run_id = $1")
         .bind(run_id)

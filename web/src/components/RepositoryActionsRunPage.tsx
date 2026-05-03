@@ -1005,7 +1005,34 @@ function RunMetadata({ detail }: { detail: RepositoryActionsRunDetail }) {
           <dt className="t-xs">Completed</dt>
           <dd className="t-sm mt-1">{dateTimeLabel(detail.run.completedAt)}</dd>
         </div>
+        <div>
+          <dt className="t-xs">Runtime secrets</dt>
+          <dd className="t-sm mt-1">
+            {detail.runtimePolicy.secretCount} available
+            {detail.runtimePolicy.blockedSecretCount > 0
+              ? `, ${detail.runtimePolicy.blockedSecretCount} blocked`
+              : ""}
+          </dd>
+        </div>
+        <div>
+          <dt className="t-xs">Runtime variables</dt>
+          <dd className="t-sm mt-1">
+            {detail.runtimePolicy.variableCount} available
+            {detail.runtimePolicy.blockedVariableCount > 0
+              ? `, ${detail.runtimePolicy.blockedVariableCount} blocked`
+              : ""}
+          </dd>
+        </div>
       </dl>
+      {detail.runtimePolicy.blockedReasons.length > 0 ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {detail.runtimePolicy.blockedReasons.map((reason) => (
+            <span className="chip warn" key={reason}>
+              {reason.replaceAll("_", " ")}
+            </span>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -127,6 +127,15 @@ function runDetail(
       createdAt: "2026-05-01T00:00:00Z",
       updatedAt: "2026-05-01T00:03:00Z",
     },
+    runtimePolicy: {
+      secretCount: 1,
+      variableCount: 2,
+      blockedSecretCount: 1,
+      blockedVariableCount: 0,
+      scopes: [{ scope: "repository", secrets: 1, variables: 2 }],
+      blockedReasons: ["fork_pull_request"],
+      redactionMarker: "::add-mask::***",
+    },
     attempts: [
       {
         id: null,
@@ -313,6 +322,9 @@ describe("RepositoryActionsRunPage", () => {
     ).toBeGreaterThan(0);
     expect(screen.getByText("feature/actions")).toBeVisible();
     expect(screen.getByText("abcdef0")).toBeVisible();
+    expect(screen.getByText("1 available, 1 blocked")).toBeVisible();
+    expect(screen.getByText("2 available")).toBeVisible();
+    expect(screen.getByText("fork pull request")).toBeVisible();
     expect(
       screen.getByRole("navigation", { name: "Workflow run jobs" }),
     ).toBeVisible();
