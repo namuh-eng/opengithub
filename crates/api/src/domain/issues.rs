@@ -10,11 +10,14 @@ use crate::api_types::ListEnvelope;
 
 use super::{
     markdown::{render_markdown, RenderMarkdownInput},
-    notifications::{create_notification, CreateNotification},
+    notifications::{
+        create_notification, should_deliver_notification, CreateNotification,
+        NotificationDeliveryCheck,
+    },
     permissions::RepositoryRole,
     repositories::{
         get_repository, get_repository_by_owner_name, repository_permission_for_user, Repository,
-        RepositoryVisibility,
+        RepositoryVisibility, RepositoryWatchEvent,
     },
     search::{upsert_search_document, SearchDocumentKind, SearchError, UpsertSearchDocument},
 };
@@ -674,7 +677,7 @@ pub async fn create_issue(pool: &PgPool, input: CreateIssue) -> Result<Issue, Co
         }),
     )
     .await?;
-    notify_issue_assignees(pool, &issue, &assignee_user_ids).await?;
+    notify_issue_assignees(pool, &issue, actor_user_id, &assignee_user_ids).await?;
     index_issue_search_document(pool, &issue, actor_user_id).await?;
     Ok(issue)
 }
@@ -1446,7 +1449,7 @@ pub async fn update_issue_metadata(
         }),
     )
     .await?;
-    notify_issue_assignees(pool, &issue, &input.assignee_user_ids).await?;
+    notify_issue_assignees(pool, &issue, input.actor_user_id, &input.assignee_user_ids).await?;
     index_issue_search_document(pool, &issue, input.actor_user_id).await?;
 
     issue_by_id(pool, issue_id).await
@@ -1587,6 +1590,15 @@ pub async fn add_issue_comment(
         Some(input.actor_user_id),
         "commented",
         json!({ "commentId": comment.id }),
+    )
+    .await?;
+    let issue = issue_by_id(pool, issue_id).await?;
+    notify_issue_participants(
+        pool,
+        &issue,
+        input.actor_user_id,
+        "comment",
+        format!("New comment on issue #{}: {}", issue.number, issue.title),
     )
     .await?;
     Ok(comment)
@@ -1969,6 +1981,30 @@ async fn notify_issue_participants(
 
     for row in rows {
         let user_id: Uuid = row.get("user_id");
+        if !should_deliver_notification(
+            pool,
+            NotificationDeliveryCheck {
+                user_id,
+                repository_id: issue.repository_id,
+                subject_type: "issue".to_owned(),
+                subject_id: Some(issue.id),
+                reason: reason.to_owned(),
+                repository_event: Some(RepositoryWatchEvent::Issues),
+                actor_user_id: Some(actor_user_id),
+                participating: true,
+                direct: false,
+            },
+        )
+        .await
+        .map_err(|error| match error {
+            super::notifications::NotificationError::Sqlx(error) => CollaborationError::Sqlx(error),
+            super::notifications::NotificationError::NotFound => CollaborationError::IssueNotFound,
+            super::notifications::NotificationError::Validation(_) => {
+                CollaborationError::IssueNotFound
+            }
+        })? {
+            continue;
+        }
         create_notification(
             pool,
             CreateNotification {
@@ -2118,10 +2154,35 @@ async fn insert_issue_attachments(
 async fn notify_issue_assignees(
     pool: &PgPool,
     issue: &Issue,
+    actor_user_id: Uuid,
     assignee_user_ids: &[Uuid],
 ) -> Result<(), CollaborationError> {
     for assignee_user_id in assignee_user_ids {
         if *assignee_user_id == issue.author_user_id {
+            continue;
+        }
+        if !should_deliver_notification(
+            pool,
+            NotificationDeliveryCheck {
+                user_id: *assignee_user_id,
+                repository_id: issue.repository_id,
+                subject_type: "issue".to_owned(),
+                subject_id: Some(issue.id),
+                reason: "assigned".to_owned(),
+                repository_event: Some(RepositoryWatchEvent::Issues),
+                actor_user_id: Some(actor_user_id),
+                participating: false,
+                direct: true,
+            },
+        )
+        .await
+        .map_err(|error| match error {
+            super::notifications::NotificationError::Sqlx(error) => CollaborationError::Sqlx(error),
+            super::notifications::NotificationError::NotFound => CollaborationError::IssueNotFound,
+            super::notifications::NotificationError::Validation(_) => {
+                CollaborationError::IssueNotFound
+            }
+        })? {
             continue;
         }
         create_notification(

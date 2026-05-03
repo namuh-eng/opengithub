@@ -4326,5 +4326,24 @@
       "Verify unauthenticated and no-access private/internal issue and PR detail pages do not leak subscription state or custom event names.",
       "The shared opengithub_identity_test database required the additive 202605040005 thread subscription custom events migration to be applied manually for browser smoke because make db-migrate is blocked by missing sqlx-cli."
     ]
+  },
+  {
+    "feature_id": "notifications-004",
+    "tests_written": [
+      "Completed Phase 4 Notification Fanout Integration without marking notifications-004 build_pass=true.",
+      "Added a centralized notification delivery gate that checks repository read permission, actor exclusion, repository watch level, custom repository event categories, direct reactivation reasons, generic inbox thread subscriptions, and issue/PR thread subscription overrides.",
+      "Wired issue assignee, issue participant/comment, pull request review-request, review-submitted, and merged notification producers through the delivery gate.",
+      "Added issue comment notifications for existing thread participants so saved thread preferences apply to comment fanout.",
+      "Added focused Rust coverage for all-activity watch delivery, custom repository event inclusion/exclusion, ignore suppression, direct mention reactivation, generic inbox thread unsubscribe precedence, issue-specific unsubscribe precedence, and thread custom closed/reopened filtering.",
+      "Focused notification fanout test passed; full make check and make test passed with 341 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Probe direct mention and team mention parsing when comment bodies introduce new participants; this phase gates delivery but does not add new mention extraction.",
+      "Exercise review-request reactivation after a manual PR thread unsubscribe with multiple reviewers and stale review-request removals.",
+      "Verify private/internal repository fanout with direct collaborators, org members, team-derived readers, and no-access users.",
+      "Exercise custom repository event categories not yet backed by active producers: discussions, security alerts, repository invitations, releases, and Actions.",
+      "Run concurrent comment/state-change events against the same thread to check duplicate recipient suppression and last-write subscription behavior.",
+      "Phase 5 still needs API docs, final browser smoke, QA handoff consolidation, and build_pass bookkeeping."
+    ]
   }
 ]

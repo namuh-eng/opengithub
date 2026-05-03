@@ -9,9 +9,13 @@ use opengithub_api::{
     domain::{
         identity::{upsert_session, upsert_user_by_email, User},
         issues::{create_issue, CreateIssue},
-        notifications::{create_notification, CreateNotification},
+        notifications::{
+            create_notification, should_deliver_notification, CreateNotification,
+            NotificationDeliveryCheck,
+        },
         repositories::{
             create_repository, CreateRepository, RepositoryOwner, RepositoryVisibility,
+            RepositoryWatchEvent,
         },
     },
 };
@@ -599,6 +603,255 @@ async fn notifications_inbox_contract_filters_groups_and_marks_read() {
     .await
     .expect("bulk done count should load");
     assert_eq!(done_bulk_count, 2);
+}
+
+#[tokio::test]
+async fn notification_fanout_respects_repository_watch_and_thread_overrides() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping notification fanout scenario; set TEST_DATABASE_URL or DATABASE_URL");
+        return;
+    };
+
+    let owner = create_user(&pool, "fanout-owner").await;
+    let actor = create_user(&pool, "fanout-actor").await;
+    let watcher = create_user(&pool, "fanout-watcher").await;
+    let repo_name = format!("fanout-{}", Uuid::new_v4().simple());
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: repo_name,
+            description: None,
+            visibility: RepositoryVisibility::Public,
+            default_branch: None,
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    let issue = create_issue(
+        &pool,
+        CreateIssue {
+            repository_id: repository.id,
+            actor_user_id: owner.id,
+            title: "Fanout respects saved notification settings".to_owned(),
+            body: Some("watch and thread preferences should gate recipients".to_owned()),
+            template_id: None,
+            template_slug: None,
+            field_values: std::collections::HashMap::new(),
+            milestone_id: None,
+            label_ids: vec![],
+            assignee_user_ids: vec![],
+            attachments: vec![],
+        },
+    )
+    .await
+    .expect("issue should create");
+
+    sqlx::query(
+        r#"
+        INSERT INTO repository_watches (user_id, repository_id, reason, level, custom_events)
+        VALUES ($1, $2, 'all', 'all', '[]'::jsonb)
+        ON CONFLICT (user_id, repository_id)
+        DO UPDATE SET reason = EXCLUDED.reason, level = EXCLUDED.level, custom_events = EXCLUDED.custom_events
+        "#,
+    )
+    .bind(watcher.id)
+    .bind(repository.id)
+    .execute(&pool)
+    .await
+    .expect("watch all should persist");
+
+    let issue_event = NotificationDeliveryCheck {
+        user_id: watcher.id,
+        repository_id: repository.id,
+        subject_type: "issue".to_owned(),
+        subject_id: Some(issue.id),
+        reason: "comment".to_owned(),
+        repository_event: Some(RepositoryWatchEvent::Issues),
+        actor_user_id: Some(actor.id),
+        participating: false,
+        direct: false,
+    };
+    assert!(
+        should_deliver_notification(&pool, issue_event.clone())
+            .await
+            .expect("watch all should evaluate"),
+        "all activity watch should receive repository issue events"
+    );
+
+    sqlx::query(
+        r#"
+        UPDATE repository_watches
+        SET reason = 'custom', level = 'custom', custom_events = '["pull_requests"]'::jsonb
+        WHERE user_id = $1 AND repository_id = $2
+        "#,
+    )
+    .bind(watcher.id)
+    .bind(repository.id)
+    .execute(&pool)
+    .await
+    .expect("custom watch should persist");
+    assert!(
+        !should_deliver_notification(&pool, issue_event.clone())
+            .await
+            .expect("custom watch should evaluate"),
+        "custom watch should suppress unselected repository event categories"
+    );
+    assert!(
+        should_deliver_notification(
+            &pool,
+            NotificationDeliveryCheck {
+                repository_event: Some(RepositoryWatchEvent::PullRequests),
+                subject_type: "pull_request".to_owned(),
+                subject_id: None,
+                ..issue_event.clone()
+            },
+        )
+        .await
+        .expect("selected custom event should evaluate"),
+        "custom watch should deliver selected repository event categories"
+    );
+
+    sqlx::query(
+        "UPDATE repository_watches SET reason = 'ignore', level = 'ignore' WHERE user_id = $1 AND repository_id = $2",
+    )
+    .bind(watcher.id)
+    .bind(repository.id)
+    .execute(&pool)
+    .await
+    .expect("ignore should persist");
+    assert!(
+        !should_deliver_notification(&pool, issue_event.clone())
+            .await
+            .expect("ignore should evaluate"),
+        "ignore should suppress repository watch delivery"
+    );
+    assert!(
+        should_deliver_notification(
+            &pool,
+            NotificationDeliveryCheck {
+                reason: "mention".to_owned(),
+                repository_event: Some(RepositoryWatchEvent::Issues),
+                direct: true,
+                ..issue_event.clone()
+            },
+        )
+        .await
+        .expect("direct mention should evaluate"),
+        "direct mentions should still reactivate despite ignored repository watch state"
+    );
+
+    let thread_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        SELECT id
+        FROM notification_threads
+        WHERE repository_id = $1 AND subject_type = 'issue' AND subject_id = $2
+        "#,
+    )
+    .bind(repository.id)
+    .bind(issue.id)
+    .fetch_one(&pool)
+    .await
+    .expect("delivery check should ensure thread");
+    sqlx::query(
+        r#"
+        INSERT INTO notification_subscriptions (thread_id, user_id, state, reason)
+        VALUES ($1, $2, 'unsubscribed', 'manual_unsubscribe')
+        ON CONFLICT (thread_id, user_id)
+        DO UPDATE SET state = 'unsubscribed', reason = 'manual_unsubscribe'
+        "#,
+    )
+    .bind(thread_id)
+    .bind(watcher.id)
+    .execute(&pool)
+    .await
+    .expect("generic thread unsubscribe should persist");
+    assert!(
+        !should_deliver_notification(
+            &pool,
+            NotificationDeliveryCheck {
+                participating: true,
+                reason: "comment".to_owned(),
+                ..issue_event.clone()
+            },
+        )
+        .await
+        .expect("generic thread unsubscribe should evaluate"),
+        "inbox-level thread unsubscribe should suppress future fanout"
+    );
+    sqlx::query("DELETE FROM notification_subscriptions WHERE thread_id = $1 AND user_id = $2")
+        .bind(thread_id)
+        .bind(watcher.id)
+        .execute(&pool)
+        .await
+        .expect("generic thread override should clear");
+
+    sqlx::query(
+        r#"
+        INSERT INTO issue_subscriptions (issue_id, user_id, subscribed, reason, custom_events)
+        VALUES ($1, $2, false, 'ignored', '{}'::text[])
+        ON CONFLICT (issue_id, user_id)
+        DO UPDATE SET subscribed = false, reason = 'ignored', custom_events = '{}'::text[]
+        "#,
+    )
+    .bind(issue.id)
+    .bind(watcher.id)
+    .execute(&pool)
+    .await
+    .expect("thread unsubscribe should persist");
+    assert!(
+        !should_deliver_notification(
+            &pool,
+            NotificationDeliveryCheck {
+                participating: true,
+                reason: "closed".to_owned(),
+                ..issue_event.clone()
+            },
+        )
+        .await
+        .expect("thread unsubscribe should evaluate"),
+        "thread unsubscribe should beat participating and repository watch delivery"
+    );
+
+    sqlx::query(
+        r#"
+        UPDATE issue_subscriptions
+        SET subscribed = true, reason = 'subscribed', custom_events = ARRAY['closed']::text[]
+        WHERE issue_id = $1 AND user_id = $2
+        "#,
+    )
+    .bind(issue.id)
+    .bind(watcher.id)
+    .execute(&pool)
+    .await
+    .expect("thread custom events should persist");
+    assert!(
+        should_deliver_notification(
+            &pool,
+            NotificationDeliveryCheck {
+                participating: true,
+                reason: "closed".to_owned(),
+                ..issue_event.clone()
+            },
+        )
+        .await
+        .expect("closed event should evaluate"),
+        "selected thread state-change events should deliver"
+    );
+    assert!(
+        !should_deliver_notification(
+            &pool,
+            NotificationDeliveryCheck {
+                participating: true,
+                reason: "reopened".to_owned(),
+                ..issue_event
+            },
+        )
+        .await
+        .expect("reopened event should evaluate"),
+        "unselected thread state-change events should be suppressed"
+    );
 }
 
 #[tokio::test]

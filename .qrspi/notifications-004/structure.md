@@ -58,7 +58,7 @@
 
 ## Phase 4: Notification Fanout Integration for Watch Levels and Thread Events
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire repository watch levels, custom repository event categories, ignore, and thread-level custom events into notification creation paths. This phase proves future notifications are delivered or suppressed according to saved settings for issues, pull requests, releases, Actions runs, security alerts, repository invitations, comments, assignments, mentions, review requests, and state changes already supported by the app.
 

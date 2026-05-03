@@ -17,10 +17,14 @@ use super::{
         TimelineEvent,
     },
     markdown::{render_markdown, RenderMarkdownInput},
-    notifications::{create_notification, CreateNotification},
+    notifications::{
+        create_notification, should_deliver_notification, CreateNotification,
+        NotificationDeliveryCheck,
+    },
     permissions::RepositoryRole,
     repositories::{
         get_repository, repository_permission_for_user, Repository, RepositoryVisibility,
+        RepositoryWatchEvent,
     },
     search::{upsert_search_document, SearchDocumentKind, UpsertSearchDocument},
 };
@@ -1177,8 +1181,14 @@ pub async fn create_pull_request(
         }),
     )
     .await?;
-    notify_pull_request_participants(pool, &pull_request, &assignee_user_ids, &reviewer_user_ids)
-        .await?;
+    notify_pull_request_participants(
+        pool,
+        &pull_request,
+        input.actor_user_id,
+        &assignee_user_ids,
+        &reviewer_user_ids,
+    )
+    .await?;
     insert_pull_request_audit_event(pool, &pull_request, input.actor_user_id).await?;
     index_pull_request_search_document(pool, &pull_request, repository.created_by_user_id).await?;
 
@@ -3101,7 +3111,14 @@ pub async fn update_pull_request_metadata(
         }),
     )
     .await?;
-    notify_pull_request_participants(pool, &pull_request, &input.assignee_user_ids, &[]).await?;
+    notify_pull_request_participants(
+        pool,
+        &pull_request,
+        input.actor_user_id,
+        &input.assignee_user_ids,
+        &[],
+    )
+    .await?;
     insert_pull_request_action_audit_event(
         pool,
         &pull_request,
@@ -3181,7 +3198,8 @@ pub async fn update_pull_request_review_requests(
             json!({ "addedReviewerUserIds": added, "removedReviewerUserIds": removed }),
         )
         .await?;
-        notify_pull_request_participants(pool, &pull_request, &[], &added).await?;
+        notify_pull_request_participants(pool, &pull_request, input.actor_user_id, &[], &added)
+            .await?;
         insert_pull_request_action_audit_event(
             pool,
             &pull_request,
@@ -4774,6 +4792,7 @@ async fn insert_closing_issue_references(
 async fn notify_pull_request_participants(
     pool: &PgPool,
     pull_request: &PullRequest,
+    actor_user_id: Uuid,
     assignee_user_ids: &[Uuid],
     reviewer_user_ids: &[Uuid],
 ) -> Result<(), CollaborationError> {
@@ -4782,6 +4801,32 @@ async fn notify_pull_request_participants(
     recipients.extend(reviewer_user_ids.iter().copied());
     for user_id in recipients {
         if user_id == pull_request.author_user_id {
+            continue;
+        }
+        if !should_deliver_notification(
+            pool,
+            NotificationDeliveryCheck {
+                user_id,
+                repository_id: pull_request.repository_id,
+                subject_type: "pull_request".to_owned(),
+                subject_id: Some(pull_request.id),
+                reason: "review_requested".to_owned(),
+                repository_event: Some(RepositoryWatchEvent::PullRequests),
+                actor_user_id: Some(actor_user_id),
+                participating: false,
+                direct: true,
+            },
+        )
+        .await
+        .map_err(|error| match error {
+            super::notifications::NotificationError::Sqlx(error) => CollaborationError::Sqlx(error),
+            super::notifications::NotificationError::NotFound => {
+                CollaborationError::PullRequestNotFound
+            }
+            super::notifications::NotificationError::Validation(_) => {
+                CollaborationError::PullRequestNotFound
+            }
+        })? {
             continue;
         }
         create_notification(
@@ -4831,6 +4876,32 @@ async fn notify_pull_request_review_submitted(
     recipients.remove(&actor_user_id);
 
     for user_id in recipients {
+        if !should_deliver_notification(
+            pool,
+            NotificationDeliveryCheck {
+                user_id,
+                repository_id: pull_request.repository_id,
+                subject_type: "pull_request".to_owned(),
+                subject_id: Some(pull_request.id),
+                reason: "review_submitted".to_owned(),
+                repository_event: Some(RepositoryWatchEvent::PullRequests),
+                actor_user_id: Some(actor_user_id),
+                participating: true,
+                direct: false,
+            },
+        )
+        .await
+        .map_err(|error| match error {
+            super::notifications::NotificationError::Sqlx(error) => CollaborationError::Sqlx(error),
+            super::notifications::NotificationError::NotFound => {
+                CollaborationError::PullRequestNotFound
+            }
+            super::notifications::NotificationError::Validation(_) => {
+                CollaborationError::PullRequestNotFound
+            }
+        })? {
+            continue;
+        }
         create_notification(
             pool,
             CreateNotification {
@@ -6146,6 +6217,32 @@ async fn notify_pull_request_merged(
     recipients.remove(&actor_user_id);
 
     for user_id in recipients {
+        if !should_deliver_notification(
+            pool,
+            NotificationDeliveryCheck {
+                user_id,
+                repository_id: pull_request.repository_id,
+                subject_type: "pull_request".to_owned(),
+                subject_id: Some(pull_request.id),
+                reason: "pull_request_merged".to_owned(),
+                repository_event: Some(RepositoryWatchEvent::PullRequests),
+                actor_user_id: Some(actor_user_id),
+                participating: true,
+                direct: false,
+            },
+        )
+        .await
+        .map_err(|error| match error {
+            super::notifications::NotificationError::Sqlx(error) => CollaborationError::Sqlx(error),
+            super::notifications::NotificationError::NotFound => {
+                CollaborationError::PullRequestNotFound
+            }
+            super::notifications::NotificationError::Validation(_) => {
+                CollaborationError::PullRequestNotFound
+            }
+        })? {
+            continue;
+        }
         create_notification(
             pool,
             CreateNotification {

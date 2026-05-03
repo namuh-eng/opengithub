@@ -3,7 +3,10 @@ use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, QueryBuilder, Row};
 use uuid::Uuid;
 
-use super::repositories::{can_read_repository, get_repository_by_owner_name};
+use super::repositories::{
+    can_read_repository, get_repository, get_repository_by_owner_name, RepositoryWatchEvent,
+    RepositoryWatchLevel,
+};
 use crate::api_types::ListEnvelope;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -32,6 +35,19 @@ pub struct CreateNotification {
     pub subject_id: Option<Uuid>,
     pub title: String,
     pub reason: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct NotificationDeliveryCheck {
+    pub user_id: Uuid,
+    pub repository_id: Uuid,
+    pub subject_type: String,
+    pub subject_id: Option<Uuid>,
+    pub reason: String,
+    pub repository_event: Option<RepositoryWatchEvent>,
+    pub actor_user_id: Option<Uuid>,
+    pub participating: bool,
+    pub direct: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -170,6 +186,52 @@ pub async fn create_notification(
     .await?;
 
     Ok(notification_from_row(row))
+}
+
+pub async fn should_deliver_notification(
+    pool: &PgPool,
+    input: NotificationDeliveryCheck,
+) -> Result<bool, NotificationError> {
+    if input.actor_user_id == Some(input.user_id) {
+        return Ok(false);
+    }
+
+    let Some(repository) = get_repository(pool, input.repository_id)
+        .await
+        .map_err(|error| match error {
+            super::repositories::RepositoryError::Sqlx(error) => NotificationError::Sqlx(error),
+            other => NotificationError::Validation(other.to_string()),
+        })?
+    else {
+        return Ok(false);
+    };
+    if !can_read_repository(pool, &repository, input.user_id)
+        .await
+        .map_err(|error| match error {
+            super::repositories::RepositoryError::Sqlx(error) => NotificationError::Sqlx(error),
+            other => NotificationError::Validation(other.to_string()),
+        })?
+    {
+        return Ok(false);
+    }
+
+    if input.direct || direct_reactivation_reason(&input.reason) {
+        return Ok(true);
+    }
+
+    if let Some(thread_decision) = thread_subscription_delivers(pool, &input).await? {
+        return Ok(thread_decision);
+    }
+
+    if input.participating {
+        return Ok(true);
+    }
+
+    let Some(repository_event) = input.repository_event else {
+        return Ok(false);
+    };
+    repository_watch_delivers_event(pool, input.user_id, input.repository_id, repository_event)
+        .await
 }
 
 pub async fn list_notifications(
@@ -935,6 +997,171 @@ async fn reactivate_notification_subscription_if_needed(
     .execute(pool)
     .await?;
     Ok(())
+}
+
+fn direct_reactivation_reason(reason: &str) -> bool {
+    matches!(
+        reason,
+        "mention" | "team_mention" | "review_requested" | "assigned"
+    )
+}
+
+async fn repository_watch_delivers_event(
+    pool: &PgPool,
+    user_id: Uuid,
+    repository_id: Uuid,
+    event: RepositoryWatchEvent,
+) -> Result<bool, NotificationError> {
+    let row = sqlx::query(
+        r#"
+        SELECT level, custom_events
+        FROM repository_watches
+        WHERE user_id = $1 AND repository_id = $2
+        "#,
+    )
+    .bind(user_id)
+    .bind(repository_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let Some(row) = row else {
+        return Ok(false);
+    };
+    let level = RepositoryWatchLevel::try_from(row.get::<String, _>("level").as_str())
+        .map_err(|error| NotificationError::Validation(error.to_string()))?;
+    Ok(match level {
+        RepositoryWatchLevel::Participating => false,
+        RepositoryWatchLevel::All => true,
+        RepositoryWatchLevel::Ignore => false,
+        RepositoryWatchLevel::Custom => {
+            let custom_events = repository_watch_events_from_json(row.get("custom_events"))?;
+            custom_events.contains(&event)
+        }
+    })
+}
+
+async fn thread_subscription_delivers(
+    pool: &PgPool,
+    input: &NotificationDeliveryCheck,
+) -> Result<Option<bool>, NotificationError> {
+    let thread_id = ensure_notification_thread(
+        pool,
+        Some(input.repository_id),
+        &input.subject_type,
+        input.subject_id,
+        None,
+    )
+    .await?;
+    let generic_state = sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT state
+        FROM notification_subscriptions
+        WHERE thread_id = $1 AND user_id = $2
+        "#,
+    )
+    .bind(thread_id)
+    .bind(input.user_id)
+    .fetch_optional(pool)
+    .await?;
+    match generic_state.as_deref() {
+        Some("unsubscribed") => return Ok(Some(false)),
+        Some("subscribed" | "participating") => return Ok(Some(true)),
+        _ => {}
+    }
+
+    match input.subject_type.as_str() {
+        "issue" => {
+            let Some(issue_id) = input.subject_id else {
+                return Ok(None);
+            };
+            let row = sqlx::query(
+                r#"
+                SELECT subscribed, custom_events
+                FROM issue_subscriptions
+                WHERE issue_id = $1 AND user_id = $2
+                "#,
+            )
+            .bind(issue_id)
+            .bind(input.user_id)
+            .fetch_optional(pool)
+            .await?;
+            Ok(row.map(|row| {
+                thread_subscription_decision(
+                    row.get("subscribed"),
+                    row.get::<Vec<String>, _>("custom_events"),
+                    &input.reason,
+                )
+            }))
+        }
+        "pull_request" => {
+            let Some(pull_request_id) = input.subject_id else {
+                return Ok(None);
+            };
+            let row = sqlx::query(
+                r#"
+                SELECT subscribed, custom_events
+                FROM pull_request_subscriptions
+                WHERE pull_request_id = $1 AND user_id = $2
+                "#,
+            )
+            .bind(pull_request_id)
+            .bind(input.user_id)
+            .fetch_optional(pool)
+            .await?;
+            Ok(row.map(|row| {
+                thread_subscription_decision(
+                    row.get("subscribed"),
+                    row.get::<Vec<String>, _>("custom_events"),
+                    &input.reason,
+                )
+            }))
+        }
+        _ => Ok(None),
+    }
+}
+
+fn thread_subscription_decision(
+    subscribed: bool,
+    custom_events: Vec<String>,
+    reason: &str,
+) -> bool {
+    if !subscribed {
+        return false;
+    }
+    let Some(event) = thread_event_for_reason(reason) else {
+        return true;
+    };
+    custom_events.is_empty() || custom_events.iter().any(|custom| custom == event)
+}
+
+fn thread_event_for_reason(reason: &str) -> Option<&'static str> {
+    match reason {
+        "closed" => Some("closed"),
+        "reopened" => Some("reopened"),
+        "merged" | "pull_request_merged" => Some("merged"),
+        _ => None,
+    }
+}
+
+fn repository_watch_events_from_json(
+    value: serde_json::Value,
+) -> Result<Vec<RepositoryWatchEvent>, NotificationError> {
+    value
+        .as_array()
+        .ok_or_else(|| NotificationError::Validation("custom_events must be an array".to_owned()))?
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .ok_or_else(|| {
+                    NotificationError::Validation("custom_events must contain strings".to_owned())
+                })
+                .and_then(|event| {
+                    RepositoryWatchEvent::try_from(event)
+                        .map_err(|error| NotificationError::Validation(error.to_string()))
+                })
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
