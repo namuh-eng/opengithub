@@ -1939,6 +1939,9 @@ async fn notify_issue_participants(
         .map_err(|error| match error {
             super::notifications::NotificationError::Sqlx(error) => CollaborationError::Sqlx(error),
             super::notifications::NotificationError::NotFound => CollaborationError::IssueNotFound,
+            super::notifications::NotificationError::Validation(_) => {
+                CollaborationError::IssueNotFound
+            }
         })?;
     }
 
@@ -2091,6 +2094,9 @@ async fn notify_issue_assignees(
         .map_err(|error| match error {
             super::notifications::NotificationError::Sqlx(error) => CollaborationError::Sqlx(error),
             super::notifications::NotificationError::NotFound => CollaborationError::IssueNotFound,
+            super::notifications::NotificationError::Validation(_) => {
+                CollaborationError::IssueNotFound
+            }
         })?;
     }
     Ok(())

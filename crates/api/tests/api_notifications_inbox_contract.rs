@@ -33,7 +33,16 @@ async fn database_pool() -> Option<PgPool> {
         .connect(&database_url)
         .await
         .ok()?;
-    MIGRATOR.run(&pool).await.ok()?;
+    if MIGRATOR.run(&pool).await.is_err() {
+        let schema_ready =
+            sqlx::query_scalar::<_, bool>("SELECT to_regclass('public.notifications') IS NOT NULL")
+                .fetch_one(&pool)
+                .await
+                .ok()?;
+        if !schema_ready {
+            return None;
+        }
+    }
     Some(pool)
 }
 
@@ -590,4 +599,228 @@ async fn notifications_inbox_contract_filters_groups_and_marks_read() {
     .await
     .expect("bulk done count should load");
     assert_eq!(done_bulk_count, 2);
+}
+
+#[tokio::test]
+async fn notification_custom_filters_validate_persist_and_feed_inbox_facets() {
+    let Some(pool) = database_pool().await else {
+        eprintln!(
+            "skipping notification custom filters scenario; set TEST_DATABASE_URL or DATABASE_URL"
+        );
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "filters-owner").await;
+    let viewer = create_user(&pool, "filters-viewer").await;
+    let hidden = create_user(&pool, "filters-hidden").await;
+    let repo_name = format!("filters-{}", Uuid::new_v4().simple());
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: repo_name.clone(),
+            description: None,
+            visibility: RepositoryVisibility::Public,
+            default_branch: None,
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    let hidden_repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: hidden.id },
+            name: format!("hidden-{}", Uuid::new_v4().simple()),
+            description: None,
+            visibility: RepositoryVisibility::Private,
+            default_branch: None,
+            created_by_user_id: hidden.id,
+        },
+    )
+    .await
+    .expect("private repository should create");
+    let owner_login = owner.username.as_deref().unwrap_or(&owner.email);
+    let hidden_login = hidden.username.as_deref().unwrap_or(&hidden.email);
+
+    let cookie = cookie_header(&pool, &config, &viewer).await;
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+
+    let (settings_status, settings_body) = send_json(
+        app.clone(),
+        Method::GET,
+        "/api/notifications/custom-filters",
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(settings_status, StatusCode::OK);
+    assert_eq!(settings_body["limit"], 15);
+    assert_eq!(settings_body["remaining"], 15);
+    assert!(settings_body["defaultFilters"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|filter| filter["queryString"] == "reason:assigned"));
+
+    let (invalid_status, invalid_body) = send_json_body(
+        app.clone(),
+        Method::POST,
+        "/api/notifications/custom-filters",
+        Some(&cookie),
+        json!({ "name": "Bad", "queryString": "reason:mention NOT repo:anything" }),
+    )
+    .await;
+    assert_eq!(invalid_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(invalid_body["error"]["code"], "validation_failed");
+    assert!(invalid_body["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("NOT"));
+
+    let (hidden_status, hidden_body) = send_json_body(
+        app.clone(),
+        Method::POST,
+        "/api/notifications/custom-filters",
+        Some(&cookie),
+        json!({
+            "name": "Hidden",
+            "queryString": format!("repo:{}/{}", hidden_login, hidden_repo.name),
+        }),
+    )
+    .await;
+    assert_eq!(hidden_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        hidden_body["error"]["message"],
+        "repo: is not available for this account."
+    );
+
+    let create_query = format!("repo:{owner_login}/{repo_name} reason:mention");
+    let (create_status, create_body) = send_json_body(
+        app.clone(),
+        Method::POST,
+        "/api/notifications/custom-filters",
+        Some(&cookie),
+        json!({ "name": "Review mentions", "queryString": create_query }),
+    )
+    .await;
+    assert_eq!(create_status, StatusCode::OK);
+    assert_eq!(create_body["remaining"], 14);
+    assert_eq!(create_body["customFilters"][0]["name"], "Review mentions");
+    assert!(create_body["customFilters"][0]["href"]
+        .as_str()
+        .unwrap()
+        .starts_with("/notifications?q="));
+    let filter_id = create_body["customFilters"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let issue = create_issue(
+        &pool,
+        CreateIssue {
+            repository_id: repository.id,
+            actor_user_id: owner.id,
+            title: "Custom filter target".to_owned(),
+            body: None,
+            template_id: None,
+            template_slug: None,
+            field_values: std::collections::HashMap::new(),
+            milestone_id: None,
+            label_ids: vec![],
+            assignee_user_ids: vec![],
+            attachments: vec![],
+        },
+    )
+    .await
+    .expect("issue should create");
+    create_notification(
+        &pool,
+        CreateNotification {
+            user_id: viewer.id,
+            repository_id: Some(repository.id),
+            subject_type: "issue".to_owned(),
+            subject_id: Some(issue.id),
+            title: "Custom filter target".to_owned(),
+            reason: "mention".to_owned(),
+        },
+    )
+    .await
+    .expect("notification should create");
+
+    let (inbox_status, inbox_body) = send_json(
+        app.clone(),
+        Method::GET,
+        "/api/notifications",
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(inbox_status, StatusCode::OK);
+    assert!(inbox_body["filters"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|filter| {
+            filter["label"] == "Review mentions"
+                && filter["query"] == format!("repo:{owner_login}/{repo_name} reason:mention")
+                && filter["count"] == 1
+        }));
+
+    let (update_status, update_body) = send_json_body(
+        app.clone(),
+        Method::PATCH,
+        &format!("/api/notifications/custom-filters/{filter_id}"),
+        Some(&cookie),
+        json!({ "name": "Unread mentions", "queryString": "reason:mention is:unread" }),
+    )
+    .await;
+    assert_eq!(update_status, StatusCode::OK);
+    assert_eq!(update_body["customFilters"][0]["name"], "Unread mentions");
+
+    for index in 2..=15 {
+        let (status, _) = send_json_body(
+            app.clone(),
+            Method::POST,
+            "/api/notifications/custom-filters",
+            Some(&cookie),
+            json!({
+                "name": format!("Filter {index}"),
+                "queryString": format!("reason:assigned author:user{index}"),
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let (limit_status, limit_body) = send_json_body(
+        app.clone(),
+        Method::POST,
+        "/api/notifications/custom-filters",
+        Some(&cookie),
+        json!({ "name": "Too many", "queryString": "reason:mention" }),
+    )
+    .await;
+    assert_eq!(limit_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        limit_body["error"]["message"],
+        "You can create up to 15 custom notification filters."
+    );
+
+    let (delete_status, delete_body) = send_json_body(
+        app.clone(),
+        Method::DELETE,
+        &format!("/api/notifications/custom-filters/{filter_id}"),
+        Some(&cookie),
+        json!({}),
+    )
+    .await;
+    assert_eq!(delete_status, StatusCode::OK);
+    assert_eq!(delete_body["customFilters"].as_array().unwrap().len(), 14);
+    let first_position = sqlx::query_scalar::<_, i32>(
+        "SELECT COALESCE(min(position), 0) FROM notification_custom_filters WHERE user_id = $1",
+    )
+    .bind(viewer.id)
+    .fetch_one(&pool)
+    .await
+    .expect("positions should load");
+    assert_eq!(first_position, 1);
 }

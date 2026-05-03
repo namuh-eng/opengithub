@@ -4794,6 +4794,9 @@ async fn notify_pull_request_participants(
             super::notifications::NotificationError::NotFound => {
                 CollaborationError::PullRequestNotFound
             }
+            super::notifications::NotificationError::Validation(_) => {
+                CollaborationError::PullRequestNotFound
+            }
         })?;
     }
     Ok(())
@@ -4837,6 +4840,9 @@ async fn notify_pull_request_review_submitted(
         .map_err(|error| match error {
             super::notifications::NotificationError::Sqlx(error) => CollaborationError::Sqlx(error),
             super::notifications::NotificationError::NotFound => {
+                CollaborationError::PullRequestNotFound
+            }
+            super::notifications::NotificationError::Validation(_) => {
                 CollaborationError::PullRequestNotFound
             }
         })?;
@@ -6139,6 +6145,9 @@ async fn notify_pull_request_merged(
         .map_err(|error| match error {
             super::notifications::NotificationError::Sqlx(error) => CollaborationError::Sqlx(error),
             super::notifications::NotificationError::NotFound => {
+                CollaborationError::PullRequestNotFound
+            }
+            super::notifications::NotificationError::Validation(_) => {
                 CollaborationError::PullRequestNotFound
             }
         })?;

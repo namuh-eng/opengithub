@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, QueryBuilder, Row};
 use uuid::Uuid;
 
+use super::repositories::{can_read_repository, get_repository_by_owner_name};
 use crate::api_types::ListEnvelope;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -37,6 +38,8 @@ pub struct CreateNotification {
 pub enum NotificationError {
     #[error("notification was not found")]
     NotFound,
+    #[error("{0}")]
+    Validation(String),
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
 }
@@ -91,6 +94,44 @@ pub struct NotificationBulkFailure {
     pub id: Uuid,
     pub code: String,
     pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationCustomFilter {
+    pub id: Uuid,
+    pub name: String,
+    pub query_string: String,
+    pub position: i32,
+    pub href: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationDefaultFilter {
+    pub id: String,
+    pub name: String,
+    pub query_string: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationFilterSettings {
+    pub default_filters: Vec<NotificationDefaultFilter>,
+    pub custom_filters: Vec<NotificationCustomFilter>,
+    pub limit: i64,
+    pub remaining: i64,
+    pub allowed_qualifiers: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpsertNotificationCustomFilter {
+    pub name: String,
+    pub query_string: String,
 }
 
 pub async fn create_notification(
@@ -404,6 +445,141 @@ pub async fn bulk_triage_notifications(
     })
 }
 
+pub async fn notification_filter_settings(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<NotificationFilterSettings, NotificationError> {
+    let custom_filters = list_notification_custom_filters(pool, user_id).await?;
+    let remaining = (15 - custom_filters.len() as i64).max(0);
+    Ok(NotificationFilterSettings {
+        default_filters: notification_default_filters()
+            .into_iter()
+            .map(|(id, name, query_string)| NotificationDefaultFilter {
+                id: id.to_owned(),
+                name: name.to_owned(),
+                query_string: query_string.to_owned(),
+                href: notification_href("inbox", "all", "newest", "date", query_string, None),
+            })
+            .collect(),
+        custom_filters,
+        limit: 15,
+        remaining,
+        allowed_qualifiers: ["repo", "org", "author", "is", "reason"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+    })
+}
+
+pub async fn list_notification_custom_filters(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<Vec<NotificationCustomFilter>, NotificationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, name, query_string, position, created_at, updated_at
+        FROM notification_custom_filters
+        WHERE user_id = $1
+        ORDER BY position ASC, created_at ASC
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows.into_iter().map(custom_filter_from_row).collect())
+}
+
+pub async fn create_notification_custom_filter(
+    pool: &PgPool,
+    user_id: Uuid,
+    input: UpsertNotificationCustomFilter,
+) -> Result<NotificationFilterSettings, NotificationError> {
+    let normalized = validate_custom_filter_input(pool, user_id, input).await?;
+    let count = custom_filter_count(pool, user_id).await?;
+    if count >= 15 {
+        return Err(NotificationError::Validation(
+            "You can create up to 15 custom notification filters.".to_owned(),
+        ));
+    }
+    sqlx::query(
+        r#"
+        INSERT INTO notification_custom_filters (user_id, name, query_string, position)
+        VALUES ($1, $2, $3, $4)
+        "#,
+    )
+    .bind(user_id)
+    .bind(&normalized.name)
+    .bind(&normalized.query_string)
+    .bind((count + 1) as i32)
+    .execute(pool)
+    .await
+    .map_err(map_custom_filter_write_error)?;
+
+    notification_filter_settings(pool, user_id).await
+}
+
+pub async fn update_notification_custom_filter(
+    pool: &PgPool,
+    user_id: Uuid,
+    filter_id: Uuid,
+    input: UpsertNotificationCustomFilter,
+) -> Result<NotificationFilterSettings, NotificationError> {
+    let normalized = validate_custom_filter_input(pool, user_id, input).await?;
+    let result = sqlx::query(
+        r#"
+        UPDATE notification_custom_filters
+        SET name = $3, query_string = $4
+        WHERE id = $1 AND user_id = $2
+        "#,
+    )
+    .bind(filter_id)
+    .bind(user_id)
+    .bind(&normalized.name)
+    .bind(&normalized.query_string)
+    .execute(pool)
+    .await
+    .map_err(map_custom_filter_write_error)?;
+    if result.rows_affected() == 0 {
+        return Err(NotificationError::NotFound);
+    }
+
+    notification_filter_settings(pool, user_id).await
+}
+
+pub async fn delete_notification_custom_filter(
+    pool: &PgPool,
+    user_id: Uuid,
+    filter_id: Uuid,
+) -> Result<NotificationFilterSettings, NotificationError> {
+    let deleted_position = sqlx::query_scalar::<_, i32>(
+        r#"
+        DELETE FROM notification_custom_filters
+        WHERE id = $1 AND user_id = $2
+        RETURNING position
+        "#,
+    )
+    .bind(filter_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(NotificationError::NotFound)?;
+
+    sqlx::query(
+        r#"
+        UPDATE notification_custom_filters
+        SET position = position - 1
+        WHERE user_id = $1 AND position > $2
+        "#,
+    )
+    .bind(user_id)
+    .bind(deleted_position)
+    .execute(pool)
+    .await?;
+
+    notification_filter_settings(pool, user_id).await
+}
+
 fn notification_action_name(action: NotificationTriageAction) -> &'static str {
     match action {
         NotificationTriageAction::Read => "read",
@@ -415,6 +591,173 @@ fn notification_action_name(action: NotificationTriageAction) -> &'static str {
         NotificationTriageAction::Subscribe => "subscribe",
         NotificationTriageAction::Unsubscribe => "unsubscribe",
     }
+}
+
+#[derive(Debug, Clone)]
+struct NormalizedCustomFilter {
+    name: String,
+    query_string: String,
+}
+
+async fn validate_custom_filter_input(
+    pool: &PgPool,
+    user_id: Uuid,
+    input: UpsertNotificationCustomFilter,
+) -> Result<NormalizedCustomFilter, NotificationError> {
+    let name = input.name.trim().to_owned();
+    if name.is_empty() {
+        return Err(NotificationError::Validation(
+            "Filter name is required.".to_owned(),
+        ));
+    }
+    if name.chars().count() > 60 {
+        return Err(NotificationError::Validation(
+            "Filter name must be 60 characters or fewer.".to_owned(),
+        ));
+    }
+
+    let query_string = input
+        .query_string
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    validate_custom_filter_query(pool, user_id, &query_string).await?;
+    Ok(NormalizedCustomFilter { name, query_string })
+}
+
+async fn validate_custom_filter_query(
+    pool: &PgPool,
+    user_id: Uuid,
+    query: &str,
+) -> Result<(), NotificationError> {
+    if query.is_empty() {
+        return Err(NotificationError::Validation(
+            "Filter query is required.".to_owned(),
+        ));
+    }
+    if query.chars().count() > 180 {
+        return Err(NotificationError::Validation(
+            "Filter query must be 180 characters or fewer.".to_owned(),
+        ));
+    }
+
+    for token in query.split_whitespace() {
+        if token.eq_ignore_ascii_case("NOT") || token.starts_with('-') {
+            return Err(NotificationError::Validation(
+                "Custom notification filters do not support NOT or exclusion searches.".to_owned(),
+            ));
+        }
+        let Some((qualifier, value)) = token.split_once(':') else {
+            return Err(NotificationError::Validation(
+                "Custom notification filters must use supported qualifiers instead of full-text searches.".to_owned(),
+            ));
+        };
+        let qualifier = qualifier.to_ascii_lowercase();
+        let value = value.trim_matches('"').trim();
+        if value.is_empty() {
+            return Err(NotificationError::Validation(format!(
+                "{qualifier}: requires a value."
+            )));
+        }
+        match qualifier.as_str() {
+            "repo" => validate_repo_qualifier(pool, user_id, value).await?,
+            "org" => validate_org_qualifier(pool, user_id, value).await?,
+            "author" => {}
+            "is" => match value {
+                "unread" | "read" | "saved" | "done" => {}
+                _ => {
+                    return Err(NotificationError::Validation(
+                        "is: only supports unread, read, saved, or done.".to_owned(),
+                    ));
+                }
+            },
+            "reason" => {}
+            _ => {
+                return Err(NotificationError::Validation(format!(
+                    "{qualifier}: is not supported. Use repo:, org:, author:, is:, or reason:."
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn validate_repo_qualifier(
+    pool: &PgPool,
+    user_id: Uuid,
+    value: &str,
+) -> Result<(), NotificationError> {
+    let Some((owner, repo)) = value.split_once('/') else {
+        return Err(NotificationError::Validation(
+            "repo: must use owner/name.".to_owned(),
+        ));
+    };
+    let repository = get_repository_by_owner_name(pool, owner, repo)
+        .await
+        .map_err(|error| NotificationError::Validation(error.to_string()))?
+        .ok_or_else(|| {
+            NotificationError::Validation("repo: is not available for this account.".to_owned())
+        })?;
+    if can_read_repository(pool, &repository, user_id)
+        .await
+        .map_err(|error| NotificationError::Validation(error.to_string()))?
+    {
+        Ok(())
+    } else {
+        Err(NotificationError::Validation(
+            "repo: is not available for this account.".to_owned(),
+        ))
+    }
+}
+
+async fn validate_org_qualifier(
+    pool: &PgPool,
+    user_id: Uuid,
+    value: &str,
+) -> Result<(), NotificationError> {
+    let allowed = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS (
+            SELECT 1
+            FROM organizations
+            JOIN organization_memberships
+              ON organization_memberships.organization_id = organizations.id
+             AND organization_memberships.user_id = $2
+            WHERE lower(organizations.slug) = lower($1)
+        )
+        "#,
+    )
+    .bind(value)
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+    if allowed {
+        Ok(())
+    } else {
+        Err(NotificationError::Validation(
+            "org: is not available for this account.".to_owned(),
+        ))
+    }
+}
+
+async fn custom_filter_count(pool: &PgPool, user_id: Uuid) -> Result<i64, NotificationError> {
+    Ok(sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM notification_custom_filters WHERE user_id = $1",
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?)
+}
+
+fn map_custom_filter_write_error(error: sqlx::Error) -> NotificationError {
+    if let sqlx::Error::Database(database_error) = &error {
+        if database_error.constraint() == Some("notification_custom_filters_user_name_unique") {
+            return NotificationError::Validation(
+                "A custom notification filter with that name already exists.".to_owned(),
+            );
+        }
+    }
+    NotificationError::Sqlx(error)
 }
 
 async fn select_notification_triage_row(
@@ -1074,19 +1417,10 @@ async fn default_filter_facets(
     group: &str,
     q: &str,
 ) -> Result<Vec<NotificationFacet>, NotificationError> {
-    let specs = [
-        ("assigned", "Assigned", "reason:assigned"),
-        ("participating", "Participating", "reason:participating"),
-        ("mentioned", "Mentioned", "reason:mention"),
-        ("team-mentioned", "Team mentioned", "reason:team_mention"),
-        (
-            "review-requested",
-            "Review requested",
-            "reason:review_requested",
-        ),
-    ];
-    let mut facets = Vec::with_capacity(specs.len());
-    for (id, label, query) in specs {
+    let custom_filters = list_notification_custom_filters(pool, user_id).await?;
+    let mut facets =
+        Vec::with_capacity(notification_default_filters().len() + custom_filters.len());
+    for (id, label, query) in notification_default_filters() {
         let parsed = parse_notification_query(query);
         let count = count_matching_notifications(pool, user_id, &parsed).await?;
         facets.push(NotificationFacet {
@@ -1098,7 +1432,33 @@ async fn default_filter_facets(
             active: q == query,
         });
     }
+    for custom_filter in custom_filters {
+        let parsed = parse_notification_query(&custom_filter.query_string);
+        let count = count_matching_notifications(pool, user_id, &parsed).await?;
+        facets.push(NotificationFacet {
+            id: format!("custom-{}", custom_filter.id),
+            label: custom_filter.name,
+            query: custom_filter.query_string.clone(),
+            href: notification_href(folder, tab, sort, group, &custom_filter.query_string, None),
+            count,
+            active: q == custom_filter.query_string,
+        });
+    }
     Ok(facets)
+}
+
+fn notification_default_filters() -> Vec<(&'static str, &'static str, &'static str)> {
+    vec![
+        ("assigned", "Assigned", "reason:assigned"),
+        ("participating", "Participating", "reason:participating"),
+        ("mentioned", "Mentioned", "reason:mention"),
+        ("team-mentioned", "Team mentioned", "reason:team_mention"),
+        (
+            "review-requested",
+            "Review requested",
+            "reason:review_requested",
+        ),
+    ]
 }
 
 fn choice_options(
@@ -1391,6 +1751,20 @@ fn notification_from_row(row: sqlx::postgres::PgRow) -> Notification {
         done_at: row.get("done_at"),
         last_read_at: row.get("last_read_at"),
         saved_at: row.get("saved_at"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    }
+}
+
+fn custom_filter_from_row(row: sqlx::postgres::PgRow) -> NotificationCustomFilter {
+    let id: Uuid = row.get("id");
+    let query_string: String = row.get("query_string");
+    NotificationCustomFilter {
+        id,
+        name: row.get("name"),
+        href: notification_href("inbox", "all", "newest", "date", &query_string, None),
+        query_string,
+        position: row.get("position"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     }

@@ -8105,6 +8105,36 @@ export type NotificationInboxQuery = {
   pageSize?: string;
 };
 
+export type NotificationDefaultFilter = {
+  id: string;
+  name: string;
+  queryString: string;
+  href: string;
+};
+
+export type NotificationCustomFilter = {
+  id: string;
+  name: string;
+  queryString: string;
+  position: number;
+  href: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type NotificationFilterSettings = {
+  defaultFilters: NotificationDefaultFilter[];
+  customFilters: NotificationCustomFilter[];
+  limit: number;
+  remaining: number;
+  allowedQualifiers: string[];
+};
+
+export type UpsertNotificationCustomFilterRequest = {
+  name: string;
+  queryString: string;
+};
+
 export function notificationsPath(query: NotificationInboxQuery = {}): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
@@ -8114,6 +8144,119 @@ export function notificationsPath(query: NotificationInboxQuery = {}): string {
   }
   const suffix = params.toString();
   return suffix ? `/api/notifications?${suffix}` : "/api/notifications";
+}
+
+export async function getNotificationFilterSettingsFromCookie(
+  cookie: string | null | undefined,
+): Promise<NotificationFilterSettings | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}/api/notifications/custom-filters`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Notification filters are temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "notification_filters_failed",
+          message: "Notification filters could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+  return body as NotificationFilterSettings;
+}
+
+export async function createNotificationCustomFilterFromCookie(
+  cookie: string | null | undefined,
+  input: UpsertNotificationCustomFilterRequest,
+): Promise<NotificationFilterSettings> {
+  return writeNotificationCustomFilter(
+    cookie,
+    "/api/notifications/custom-filters",
+    "POST",
+    input,
+  );
+}
+
+export async function updateNotificationCustomFilterFromCookie(
+  cookie: string | null | undefined,
+  filterId: string,
+  input: UpsertNotificationCustomFilterRequest,
+): Promise<NotificationFilterSettings> {
+  return writeNotificationCustomFilter(
+    cookie,
+    `/api/notifications/custom-filters/${encodeURIComponent(filterId)}`,
+    "PATCH",
+    input,
+  );
+}
+
+export async function deleteNotificationCustomFilterFromCookie(
+  cookie: string | null | undefined,
+  filterId: string,
+): Promise<NotificationFilterSettings> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/notifications/custom-filters/${encodeURIComponent(filterId)}`,
+    {
+      method: "DELETE",
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw notificationFilterError(body, response.status);
+  }
+  return body as NotificationFilterSettings;
+}
+
+async function writeNotificationCustomFilter(
+  cookie: string | null | undefined,
+  path: string,
+  method: "POST" | "PATCH",
+  input: UpsertNotificationCustomFilterRequest,
+): Promise<NotificationFilterSettings> {
+  const response = await fetch(`${apiBaseUrl()}${path}`, {
+    method,
+    headers: {
+      ...(cookie ? { cookie } : {}),
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(input),
+    cache: "no-store",
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw notificationFilterError(body, response.status);
+  }
+  return body as NotificationFilterSettings;
+}
+
+function notificationFilterError(body: unknown, status: number) {
+  const fallback: ApiErrorEnvelope = {
+    error: {
+      code: "notification_filters_failed",
+      message: "Notification filters could not be saved.",
+    },
+    status,
+  };
+  return new Error("Notification filter operation failed", {
+    cause: (body as ApiErrorEnvelope | null) ?? fallback,
+  });
 }
 
 export async function getNotificationsFromCookie(

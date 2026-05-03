@@ -2314,6 +2314,43 @@ docker-content-digest: sha256:manifest...`,
     ],
   },
   {
+    id: "notifications-custom-filters",
+    method: "POST",
+    path: "/api/notifications/custom-filters",
+    title: "Create notification custom filter",
+    description:
+      "Creates one signed-in user's saved notification inbox filter and returns the full default/custom filter settings payload.",
+    auth: "Signed opengithub session cookie",
+    request: `{
+  "name": "My review queue",
+  "queryString": "repo:mona/octo-app reason:review_requested is:unread"
+}`,
+    response: `{
+  "limit": 15,
+  "remaining": 14,
+  "allowedQualifiers": ["repo", "org", "author", "is", "reason"],
+  "defaultFilters": [
+    { "id": "assigned", "name": "Assigned", "queryString": "reason:assigned" }
+  ],
+  "customFilters": [
+    {
+      "id": "filter_01",
+      "name": "My review queue",
+      "queryString": "repo:mona/octo-app reason:review_requested is:unread",
+      "position": 1,
+      "href": "/notifications?q=repo%3Amona%2Focto-app%20reason%3Areview_requested%20is%3Aunread"
+    }
+  ]
+}`,
+    notes: [
+      "GET /api/notifications/custom-filters returns the same settings payload without creating a filter.",
+      "PATCH or DELETE /api/notifications/custom-filters/{filter_id} updates or removes one owned custom filter.",
+      "Each user can store at most 15 custom filters; create returns validation_failed after the limit.",
+      "Validation accepts repo:, org:, author:, is:, and reason: only; NOT, exclusion, unsupported qualifiers, and full-text tokens are rejected.",
+      "repo: and org: qualifiers validate visibility or membership without revealing inaccessible private names.",
+    ],
+  },
+  {
     id: "search",
     method: "GET",
     path: "/api/search?q=router&type=code&page=1&pageSize=30",

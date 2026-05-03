@@ -231,6 +231,9 @@ async fn create_terminal_side_effects(
         crate::domain::notifications::NotificationError::NotFound => {
             RepositoryImportWorkerError::NotFound
         }
+        crate::domain::notifications::NotificationError::Validation(_) => {
+            RepositoryImportWorkerError::NotFound
+        }
     })?;
 
     let email_key = format!(

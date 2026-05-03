@@ -250,12 +250,19 @@ export function GlobalSearchModal({
     }
   }, [flatSuggestions.length, selectedIndex]);
 
-  function applyAction(action: SearchModalAction) {
+  function applyAction(action: SearchModalAction, replacementTitle?: string) {
     if (action.kind === "replace_token") {
+      const replacement =
+        replacementTitle?.includes(":") &&
+        currentTokenPrefix(query) === replacementTitle.split(":", 1)[0]
+          ? replacementTitle
+          : action.nextQuery;
       setQuery(
-        action.nextQuery.endsWith(" ")
-          ? action.nextQuery
-          : `${action.nextQuery} `,
+        replacement === action.nextQuery
+          ? action.nextQuery.endsWith(" ")
+            ? action.nextQuery
+            : `${action.nextQuery} `
+          : replaceCurrentSearchToken(query, replacement),
       );
       window.requestAnimationFrame(() => inputRef.current?.focus());
       return;
@@ -376,6 +383,25 @@ export function GlobalSearchModal({
     window.requestAnimationFrame(() => inputRef.current?.focus());
   }
 
+  function replaceCurrentSearchToken(
+    currentQuery: string,
+    replacement: string,
+  ) {
+    const trimmedEnd = currentQuery.trimEnd();
+    const replaceFrom = [...trimmedEnd]
+      .map((character, index) => ({ character, index }))
+      .reverse()
+      .find(({ character }) => /\s/.test(character))?.index;
+    const start = replaceFrom === undefined ? 0 : replaceFrom + 1;
+    const nextQuery = `${currentQuery.slice(0, start)}${replacement}`;
+    return nextQuery.endsWith(" ") ? nextQuery : `${nextQuery} `;
+  }
+
+  function currentTokenPrefix(currentQuery: string) {
+    const token = currentQuery.trimEnd().split(/\s+/).at(-1) ?? "";
+    return token.includes(":") ? token.split(":", 1)[0] : null;
+  }
+
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") {
       event.preventDefault();
@@ -411,7 +437,7 @@ export function GlobalSearchModal({
     }
     if (event.key === "Enter" && selectedSuggestion) {
       event.preventDefault();
-      applyAction(selectedSuggestion.action);
+      applyAction(selectedSuggestion.action, selectedSuggestion.title);
     }
   }
 
@@ -610,7 +636,7 @@ export function GlobalSearchModal({
                       }`}
                       id={`global-search-${item.id}`}
                       key={item.id}
-                      onClick={() => applyAction(item.action)}
+                      onClick={() => applyAction(item.action, item.title)}
                       onMouseEnter={() => setSelectedIndex(index)}
                       role="option"
                       type="button"

@@ -307,3 +307,49 @@ test("signed-in user keeps failed bulk rows selected for rollback", async ({
     path: "../ralph/screenshots/build/notifications-002-final-bulk-rollback.jpg",
   });
 });
+
+test("signed-in user creates and deletes custom notification filters", async ({
+  page,
+}) => {
+  const seeded = seedDashboard();
+  await signIn(page, seeded);
+
+  await page.goto("/settings/notifications");
+  await expect(
+    page.getByRole("heading", { name: "Notifications" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Filters" })).toBeVisible();
+  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
+
+  await page.getByRole("textbox", { name: "Name" }).fill("Mention queue");
+  await page
+    .getByRole("textbox", { name: "Query" })
+    .fill("reason:mention is:unread");
+  await page.getByRole("button", { exact: true, name: "Create" }).click();
+  await expect(page.getByRole("status")).toHaveText("Filter created.");
+  await expect(page.getByText("Mention queue")).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/notifications-003-custom-filters.jpg",
+  });
+
+  await page.goto("/notifications");
+  await expect(
+    page.getByRole("link", { name: /Mention queue/ }),
+  ).toHaveAttribute("href", "/notifications?q=reason%3Amention+is%3Aunread");
+
+  await page.goto("/settings/notifications");
+  await page
+    .locator("tr", { hasText: "Mention queue" })
+    .getByRole("button", { name: "Delete" })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: /Remove Mention queue/ }),
+  ).toBeVisible();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Delete" })
+    .click();
+  await expect(page.getByRole("status")).toHaveText("Filter deleted.");
+  await expect(page.getByText("Mention queue")).toHaveCount(0);
+});

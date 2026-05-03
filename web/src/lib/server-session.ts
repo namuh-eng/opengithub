@@ -6,6 +6,7 @@ import {
   type GlobalSearchQuery,
   getAppShellContextFromCookie,
   getDashboardSummaryFromCookie,
+  getNotificationFilterSettingsFromCookie,
   getOrganizationPackageDetailFromCookie,
   getOrganizationPackageSettingsFromCookie,
   getOrganizationPackagesFromCookie,
@@ -95,6 +96,11 @@ export async function getAppShellContext() {
 export async function getPersonalProfileSettings() {
   const requestHeaders = await headers();
   return getPersonalProfileSettingsFromCookie(requestHeaders.get("cookie"));
+}
+
+export async function getNotificationFilterSettings() {
+  const requestHeaders = await headers();
+  return getNotificationFilterSettingsFromCookie(requestHeaders.get("cookie"));
 }
 
 export async function getPublicUserProfile(

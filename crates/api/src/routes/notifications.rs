@@ -11,8 +11,11 @@ use crate::{
     api_types::{database_unavailable, error_response, ErrorEnvelope},
     auth::extractor::AuthenticatedUser,
     domain::notifications::{
-        bulk_triage_notifications, notification_inbox_view, triage_notification, NotificationError,
+        bulk_triage_notifications, create_notification_custom_filter,
+        delete_notification_custom_filter, notification_filter_settings, notification_inbox_view,
+        triage_notification, update_notification_custom_filter, NotificationError,
         NotificationInboxQuery, NotificationInboxView, NotificationTriageAction,
+        UpsertNotificationCustomFilter,
     },
     AppState,
 };
@@ -21,6 +24,14 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/notifications", get(list))
         .route("/api/notifications/bulk", post(bulk))
+        .route(
+            "/api/notifications/custom-filters",
+            get(filter_settings).post(create_filter),
+        )
+        .route(
+            "/api/notifications/custom-filters/:id",
+            patch(update_filter).delete(delete_filter),
+        )
         .route("/api/notifications/:id/read", patch(mark_read))
         .route("/api/notifications/:id/unread", patch(mark_unread))
         .route("/api/notifications/:id/save", patch(save))
@@ -29,6 +40,66 @@ pub fn router() -> Router<AppState> {
         .route("/api/notifications/:id/inbox", patch(move_to_inbox))
         .route("/api/notifications/:id/subscribe", patch(subscribe))
         .route("/api/notifications/:id/unsubscribe", patch(unsubscribe))
+}
+
+async fn filter_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let response = notification_filter_settings(pool, actor.0.id)
+        .await
+        .map_err(map_notification_error)?;
+    Ok(Json(
+        serde_json::to_value(response).expect("filter settings should serialize"),
+    ))
+}
+
+async fn create_filter(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<UpsertNotificationCustomFilter>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let response = create_notification_custom_filter(pool, actor.0.id, body)
+        .await
+        .map_err(map_notification_error)?;
+    Ok(Json(
+        serde_json::to_value(response).expect("filter settings should serialize"),
+    ))
+}
+
+async fn update_filter(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+    Json(body): Json<UpsertNotificationCustomFilter>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let response = update_notification_custom_filter(pool, actor.0.id, id, body)
+        .await
+        .map_err(map_notification_error)?;
+    Ok(Json(
+        serde_json::to_value(response).expect("filter settings should serialize"),
+    ))
+}
+
+async fn delete_filter(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let response = delete_notification_custom_filter(pool, actor.0.id, id)
+        .await
+        .map_err(map_notification_error)?;
+    Ok(Json(
+        serde_json::to_value(response).expect("filter settings should serialize"),
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -244,6 +315,11 @@ fn map_notification_error(error: NotificationError) -> (StatusCode, Json<ErrorEn
             StatusCode::NOT_FOUND,
             "notification_not_found",
             "Notification was not found.",
+        ),
+        NotificationError::Validation(message) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            &message,
         ),
         NotificationError::Sqlx(sqlx::Error::PoolTimedOut)
         | NotificationError::Sqlx(sqlx::Error::PoolClosed) => database_unavailable(),

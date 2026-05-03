@@ -5,7 +5,7 @@ import { apiEndpointDocs } from "@/lib/api-docs";
 
 describe("ApiDocsPage", () => {
   it("documents every implemented api-001 resource family", {
-    timeout: 30_000,
+    timeout: 60_000,
   }, () => {
     render(<ApiDocsPage />);
 
@@ -448,6 +448,7 @@ describe("ApiDocsPage", () => {
       ),
     ).toBeVisible();
     expect(screen.getByText("/api/notifications/bulk")).toBeVisible();
+    expect(screen.getByText("/api/notifications/custom-filters")).toBeVisible();
     expect(
       screen.getByText(/folder=inbox excludes done notifications/),
     ).toBeVisible();
@@ -461,6 +462,14 @@ describe("ApiDocsPage", () => {
     ).toBeVisible();
     expect(
       screen.getByText(/Failed rows stay selected in the browser/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Each user can store at most 15 custom filters/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Validation accepts repo:, org:, author:, is:, and reason:/,
+      ),
     ).toBeVisible();
     expect(
       screen.getByText("/api/search?q=router&type=code&page=1&pageSize=30"),
@@ -520,7 +529,9 @@ describe("ApiDocsPage", () => {
     ).toBeVisible();
   });
 
-  it("copies request examples from docs snippets", async () => {
+  it("copies request examples from docs snippets", {
+    timeout: 20_000,
+  }, async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,

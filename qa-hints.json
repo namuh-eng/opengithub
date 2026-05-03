@@ -4247,5 +4247,24 @@
       "Retest dense mobile notification groups for horizontal overflow and touch target spacing beyond the seeded one-row smoke.",
       "The shared opengithub_identity_test database has a known pre-existing migration checksum issue for 202605030041; fresh-DB E2E evidence should remain the QA baseline until that database is reset."
     ]
+  },
+  {
+    "feature_id": "notifications-003",
+    "tests_written": [
+      "Added notification_custom_filters persistence with per-user name and position constraints.",
+      "Added authenticated GET/POST/PATCH/DELETE /api/notifications/custom-filters endpoints with 15-filter limit enforcement.",
+      "Implemented qualifier validation for repo:, org:, author:, is:, and reason:, with explicit rejection for NOT, exclusion, unsupported qualifiers, and full-text tokens.",
+      "Validated repo: and org: qualifiers against repository visibility and organization membership without exposing inaccessible private names.",
+      "Rendered the Editorial notification Filters settings surface with default rows, custom create/edit/delete controls, confirmation dialog, inline validation, and concrete inbox links.",
+      "Added custom filters to the notification inbox rail with live counts and documented the endpoint contract in /docs/api.",
+      "Focused Rust, Vitest, TypeScript, and Playwright smoke coverage passed; full make check, make test, and fresh-DB make test-e2e passed."
+    ],
+    "needs_deeper_qa": [
+      "Probe concurrent create/update/delete from two browser tabs and verify position ordering after stale deletes.",
+      "Exercise private repository and private organization qualifier validation with viewers who have team-based, direct, owner, and no access.",
+      "Verify all default filter reset/read-only expectations with keyboard and screen-reader traversal.",
+      "Retest the Filters surface on narrow mobile widths with 15 custom filters and long query strings.",
+      "The shared opengithub_identity_test database still has the known pre-existing 202605030041 migration checksum issue; browser proof used fresh database opengithub_notifications_003_1777831303 with DASHBOARD_E2E_SKIP_MIGRATIONS=1."
+    ]
   }
 ]
