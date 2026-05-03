@@ -3919,5 +3919,24 @@
       "Confirm webhook/activity delivery for asset_uploaded and release.asset.deleted events in the async job worker.",
       "Run accessibility traversal through drag/drop, file picker, progress rows, cancel/remove buttons, and mobile layout."
     ]
+  },
+  {
+    "feature_id": "releases-002",
+    "tests_written": [
+      "Completed Phase 5 API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping.",
+      "Extended /docs/api with release management context, generated-notes preview, create/update/publish/delete semantics, latest policy, deleteTag opt-in behavior, upload-intent create/complete/cancel flow, asset deletion, redaction, validation, audit, webhook/activity, and local/S3 storage notes.",
+      "Focused Vitest covers API docs rendering for management, generated-notes, upload-intent, deleteTag, no-GitHub-API notes generation, and upload completion audit/webhook notes.",
+      "Focused Playwright smoke covers /releases/new generated notes and draft save, /releases/edit asset upload/remove, update, publish draft, delete confirmation, latest detail, immutable release lockout, forbidden management state, empty releases state, mobile layout, and no dead visible controls.",
+      "Final browser screenshots saved under ralph/screenshots/build/releases-002-final-*.jpg.",
+      "Marked releases-002.build_pass=true after focused checks passed; qa_pass remains false for QA ownership."
+    ],
+    "needs_deeper_qa": [
+      "Run real S3 signed PUT/GET upload checks with provider credentials and verify object retention/removal behavior outside local handoff mode.",
+      "Exercise upload interruption, retry, cancellation during in-flight network requests, simultaneous uploads, duplicate names, zero-byte files, exact maxAssetBytes, and over-limit rejection.",
+      "Validate generated notes across merge commits, squash merges, empty ranges, missing previous tags, slash-containing tags, very long histories, and unusual contributor names.",
+      "Stress concurrent release edits, publish races, latest-policy races, duplicate tag races, deleteTag safety, immutable release enforcement, and archived repository blocking on a clean migrated database.",
+      "Verify webhook/activity side effects for generated-notes usage, draft save, publish, update, delete, deleteTag, asset_uploaded, and release.asset.deleted with successful and failing hooks.",
+      "Probe private repository leakage, Markdown XSS in generated/user-edited notes, asset download authorization, and keyboard/screen-reader traversal through the full release form."
+    ]
   }
 ]

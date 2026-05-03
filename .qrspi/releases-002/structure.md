@@ -85,7 +85,7 @@
 
 ## Phase 5: API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `releases-002` only after the dedicated management pages, API docs, screenshots, QA hints, and PRD bookkeeping are complete. Do not expand into packages, marketplace publishing, release discussions, security advisories, or organization-level release policies.
 

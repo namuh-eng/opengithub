@@ -347,6 +347,11 @@ test("repository releases, dedicated management forms, and tags render seeded da
   await expect(
     page.getByRole("button", { exact: true, name: "Publish release" }),
   ).toBeEnabled();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/releases-002-final-new-form.jpg",
+  });
   await page.getByLabel("New tag").check();
   await page.getByLabel("New tag name").fill("v3.0.0");
   await page.getByRole("button", { exact: true, name: "Save draft" }).click();
@@ -391,6 +396,11 @@ test("repository releases, dedicated management forms, and tags render seeded da
   await expect(
     page.locator("li", { hasText: "manual-upload.zip" }).last(),
   ).toContainText("complete");
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/releases-002-final-edit-assets.jpg",
+  });
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/releases-002-phase4-assets-edit.jpg",
@@ -428,6 +438,10 @@ test("repository releases, dedicated management forms, and tags render seeded da
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
+    path: "../ralph/screenshots/build/releases-002-final-update-publish-delete.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
     path: "../ralph/screenshots/build/releases-002-phase3-edit-publish-delete.jpg",
   });
 
@@ -436,6 +450,11 @@ test("repository releases, dedicated management forms, and tags render seeded da
   await expect(
     page.getByText("Stable Editorial release updated"),
   ).toBeVisible();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/releases-002-final-latest.jpg",
+  });
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/releases-002-phase2-detail-latest.jpg",
@@ -477,6 +496,65 @@ test("repository releases, dedicated management forms, and tags render seeded da
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
+    path: "../ralph/screenshots/build/releases-002-final-mobile.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
     path: "../ralph/screenshots/build/releases-001-final-mobile.jpg",
+  });
+
+  const { owner, repo } = repositoryParts(seeded.firstRepositoryHref);
+  runSql(`
+    UPDATE releases
+    SET immutable = true
+    WHERE repository_id = (
+      SELECT repositories.id
+      FROM repositories
+      JOIN users ON users.id = repositories.owner_user_id
+      WHERE users.username = ${sqlLiteral(owner)}
+        AND repositories.name = ${sqlLiteral(repo)}
+    )
+      AND tag_name = 'v2.0.0'
+      AND deleted_at IS NULL;
+  `);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${seeded.firstRepositoryHref}/releases/latest`);
+  await page.getByRole("link", { exact: true, name: "Edit release" }).click();
+  await expect(page.getByText("Immutable release")).toBeVisible();
+  await expect(
+    page.getByRole("button", { exact: true, name: "Update release" }),
+  ).toBeDisabled();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/releases-002-final-immutable.jpg",
+  });
+
+  await page.context().clearCookies();
+  await page.goto(`${seeded.firstRepositoryHref}/releases/new`);
+  await expect(page.getByText("Write access required")).toBeVisible();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/releases-002-final-forbidden.jpg",
+  });
+
+  runSql(`
+    UPDATE releases
+    SET deleted_at = now()
+    WHERE repository_id = (
+      SELECT repositories.id
+      FROM repositories
+      JOIN users ON users.id = repositories.owner_user_id
+      WHERE users.username = ${sqlLiteral(owner)}
+        AND repositories.name = ${sqlLiteral(repo)}
+    );
+  `);
+  await page.goto(`${seeded.firstRepositoryHref}/releases`);
+  await expect(page.getByText("No published releases yet")).toBeVisible();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/releases-002-final-empty.jpg",
   });
 });

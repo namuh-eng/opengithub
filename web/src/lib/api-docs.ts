@@ -1022,6 +1022,53 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-releases-manage-context",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/releases/manage",
+    title: "Load release management context",
+    description:
+      "Returns the write-gated context used by the dedicated new/edit release forms: available tags, refs, target defaults, previous-tag candidates, latest policy options, upload limits, and an optional release snapshot.",
+    auth: "Signed opengithub session cookie with repository write, maintain, admin, or owner access",
+    response: `{
+  "canWrite": true,
+  "defaultTarget": "main",
+  "availableTags": [{ "name": "v2.0.0", "kind": "tag" }],
+  "availableRefs": [{ "name": "main", "kind": "branch" }],
+  "latestPolicyOptions": [{ "value": "automatic", "label": "Automatic" }],
+  "uploadLimits": { "maxAssetBytes": 2147483648, "allowedStorageKinds": ["local", "s3"] }
+}`,
+    notes: [
+      "GET /api/repos/{owner}/{repo}/releases/manage?releaseId={release_id} loads the same contract for edit pages.",
+      "Non-writers receive permission envelopes; private repositories do not leak tags, refs, draft releases, or upload limits to outsiders.",
+      "Archived repositories and immutable releases return context for display while mutation controls remain disabled.",
+    ],
+  },
+  {
+    id: "repo-releases-generated-notes",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/releases/manage/generated-notes",
+    title: "Generate release notes preview",
+    description:
+      "Generates bounded Markdown release notes from opengithub-owned commits and merged pull requests between the selected previous tag and target ref.",
+    auth: "Signed opengithub session cookie with repository write, maintain, admin, or owner access",
+    request: `{
+  "tagName": "v2.0.1",
+  "target": "main",
+  "previousTagName": "v2.0.0"
+}`,
+    response: `{
+  "title": "v2.0.1",
+  "body": "## Changes\\n\\n- abc1234 Merge pull request #42",
+  "commitCount": 8,
+  "mergedPullRequestCount": 2
+}`,
+    notes: [
+      "Generated notes never call GitHub APIs; all commit, pull request, and contributor data comes from the local repository database.",
+      "Empty ranges return deterministic Markdown that users can edit before publishing.",
+      "Invalid previous-tag or target-ref selections return validation_failed without modifying draft content.",
+    ],
+  },
+  {
     id: "repo-releases-create",
     method: "POST",
     path: "/api/repos/{owner}/{repo}/releases",
@@ -1045,6 +1092,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
 }`,
     notes: [
       "Duplicate active releases for the same tag return 409; soft-deleted releases do not block future tags.",
+      "latestPolicy controls whether publication recalculates, preserves, or explicitly assigns the latest release marker.",
       "Archived repositories and immutable release policies reject write attempts before audit state changes.",
       "Every successful create writes a release_audit_events row with redacted before/after state.",
     ],
@@ -1070,6 +1118,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
 }`,
     notes: [
       "DELETE /api/repos/{owner}/{repo}/releases/{release_id} soft-deletes the release and hides it from readers.",
+      "Delete requests accept deleteTag=true only after explicit UI confirmation; the matching refs/tags/{tag} ref is preserved unless that flag is accepted.",
       "PATCH never accepts asset storage keys or untrusted rendered HTML from callers.",
       "Immutable releases and archived repositories return validation or conflict envelopes without partial updates.",
     ],
@@ -1091,6 +1140,57 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     notes: [
       "Publishing a prerelease does not mark it latest.",
       "Release assets remain local/S3-pluggable metadata until the storage provider returns authorized download metadata.",
+    ],
+  },
+  {
+    id: "repo-releases-upload-intents",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/releases/manage/upload-intents",
+    title: "Create release asset upload intent",
+    description:
+      "Creates a bounded local or S3-compatible upload intent before an asset row exists, validating file metadata, checksum, repository mutability, and write permission.",
+    auth: "Signed opengithub session cookie with repository write, maintain, admin, or owner access",
+    request: `{
+  "releaseId": "release_02",
+  "assetName": "opengithub.tar.gz",
+  "contentType": "application/gzip",
+  "byteSize": 128,
+  "checksumSha256": "abc123"
+}`,
+    response: `{
+  "id": "intent_01",
+  "assetName": "opengithub.tar.gz",
+  "storageKind": "local",
+  "uploadUrl": "/api/repos/mona/octo-app/releases/manage/upload-intents/intent_01/local-upload",
+  "handoffToken": "local-upload-intent_01",
+  "status": "pending"
+}`,
+    notes: [
+      "Responses expose short-lived upload URLs or local handoff tokens, never raw S3 or local storage keys.",
+      "Duplicate asset names, expired intents, oversized files, unsupported metadata, immutable releases, and archived repositories fail before asset rows are created.",
+      "Production S3 signed PUT/GET behavior is provider-backed; local development uses compatible handoff metadata.",
+    ],
+  },
+  {
+    id: "repo-releases-upload-complete",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/releases/manage/upload-intents/{intent_id}/complete",
+    title: "Complete release asset upload intent",
+    description:
+      "Completes a pending upload intent, verifies the handoff token and checksum metadata, creates the release asset row, and returns the updated release.",
+    auth: "Signed opengithub session cookie with repository write, maintain, admin, or owner access",
+    request: `{
+  "handoffToken": "local-upload-intent_01",
+  "checksumSha256": "abc123"
+}`,
+    response: `{
+  "id": "release_02",
+  "assets": [{ "name": "opengithub.tar.gz", "downloadCount": 0 }]
+}`,
+    notes: [
+      "POST /api/repos/{owner}/{repo}/releases/manage/upload-intents/{intent_id}/cancel marks pending intents cancelled without creating asset rows.",
+      "Completion records audit and webhook/activity side effects with storage identifiers redacted.",
+      "Asset deletion uses DELETE /api/repos/{owner}/{repo}/releases/{release_id}/assets/{asset_id} and preserves download audit history.",
     ],
   },
   {

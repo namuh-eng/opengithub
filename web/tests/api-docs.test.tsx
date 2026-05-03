@@ -205,6 +205,24 @@ describe("ApiDocsPage", () => {
       ),
     ).toBeVisible();
     expect(
+      screen.getByText("/api/repos/{owner}/{repo}/releases/manage"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/releases/manage/generated-notes",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/releases/manage/upload-intents",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/releases/manage/upload-intents/{intent_id}/complete",
+      ),
+    ).toBeVisible();
+    expect(
       screen.getByText("/api/repos/{owner}/{repo}/releases/{release_id}"),
     ).toBeVisible();
     expect(
@@ -227,6 +245,15 @@ describe("ApiDocsPage", () => {
     ).toBeVisible();
     expect(
       screen.getByText(/Responses never expose S3 or local storage keys/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Delete requests accept deleteTag=true/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Generated notes never call GitHub APIs/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Completion records audit and webhook\/activity/),
     ).toBeVisible();
     expect(
       screen.getByText(/Publishing a prerelease does not mark it latest/),
