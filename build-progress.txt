@@ -2561,3 +2561,14 @@
 - Verification passed: focused `repository_pages_settings_contract` compiled and passed but self-skipped DB assertions because the local `TEST_DATABASE_URL` could not connect or replay migrations; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; `DB_SSL=false make test` with Cargo tests plus 298 frontend tests; mandatory Editorial banned-value scan returned zero matches using `rg -n -e`.
 - Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first and the structure outline marks browser smoke optional for this phase.
 - Marked Phase 1 as done in `.qrspi/settings-006/structure.md`; `prd.json` remains `build_pass:false` because Phases 2-5 remain.
+
+2026-05-03 - settings-006 phase 2 Editorial Pages settings shell
+
+- Completed Phase 2 from `.qrspi/settings-006/structure.md`: `/{owner}/{repo}/settings/pages` now renders a server-fetched Editorial Pages settings page instead of the placeholder.
+- Added typed frontend Pages settings DTOs and cookie-backed session helpers for `GET /api/repos/{owner}/{repo}/settings/pages`, preserving forbidden/unavailable result states.
+- Added `RepositoryPagesSettingsPage` with live/disabled status, source selector, branch and folder controls, Actions workflow suggestions, custom domain DNS challenge/status, HTTPS/certificate/provisioning chips, deployment history rows, reader-safe metadata, unavailable state, and Editorial primitives/tokens only.
+- Added focused Vitest coverage for branch, disabled, Actions, domain, forbidden/unavailable, no inert links/buttons, privacy redaction, and Editorial banned-value guard assertions.
+- Added focused Playwright smoke for the Pages settings shell, mobile no-overflow, reader-safe non-admin view, and no dead controls; screenshots saved at `ralph/screenshots/build/settings-006-phase2-pages-shell.jpg`, `settings-006-phase2-pages-mobile.jpg`, and `settings-006-phase2-pages-reader.jpg`.
+- Verification passed: focused `web/tests/repository-pages-settings-page.test.tsx`; focused same-env Playwright `web/tests/e2e/repository-settings-pages.spec.ts`; mandatory Editorial banned-value scan returned zero matches; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; `DB_SSL=false make test` with Cargo tests plus 302 frontend tests.
+- Local E2E database note: the shared `opengithub_identity_test` database was missing the already-committed `202605030046_repository_pages_settings` migration, so it was applied manually before the Phase 2 browser smoke.
+- Marked Phase 2 as done in `.qrspi/settings-006/structure.md`; `prd.json` remains `build_pass:false` because Phases 3-5 remain.

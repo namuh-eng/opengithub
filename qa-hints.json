@@ -3674,5 +3674,24 @@
       "Model and browser-test inherited organization and environment secret/variable producers; current UI renders the shapes, but local seeded smoke covers repository scope only.",
       "Stress long names, long/multiline values, URL/base64/shell-escaped masking bypass attempts, concurrent admin edits, duplicate create races, archived repositories, private repository leakage, and keyboard/screen-reader traversal through all forms and confirmations."
     ]
+  },
+  {
+    "feature_id": "settings-006",
+    "tests_written": [
+      "Completed Phase 2 Editorial Pages Settings Shell without marking settings-006 build_pass=true.",
+      "Added typed frontend DTOs and cookie-backed fetch helpers for GET /api/repos/{owner}/{repo}/settings/pages.",
+      "Replaced the Pages settings placeholder with a server-fetched RepositorySettingsShell page backed by the Phase 1 Rust API.",
+      "Added RepositoryPagesSettingsPage with Editorial live/disabled status, source selectors, branch/folder options, Actions workflow suggestions, custom domain DNS challenge/status, HTTPS/certificate/provisioning chips, deployment history, unavailable state, and reader-safe metadata rendering.",
+      "Focused Vitest covers branch, disabled, Actions, domain pending/verified/error-adjacent, forbidden/unavailable, no inert links, privacy redaction, and Editorial banned-value guard assertions.",
+      "Focused Playwright smoke seeds a repository, verifies the Pages shell, disabled controls, no dead links/buttons, mobile no-overflow, reader-safe metadata, and saves settings-006 phase 2 screenshots."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 must replace disabled source/domain/HTTPS/deploy controls with real server-confirmed mutation flows and inline success/error states.",
+      "Rerun on a clean database migrated through 202605030046; the shared local test DB was missing the Pages migration and required manually applying the existing migration before focused browser smoke.",
+      "Exercise configured branch-source, Actions-source, custom-domain pending/verified/misconfigured, failed deployment, and live deployment fixtures once mutation and worker phases create those states through the product.",
+      "Probe private repository and non-admin leakage for DNS challenge values, CloudFront aliases, S3 prefixes, storage keys, and custom domain verification state.",
+      "Verify real AWS S3/CloudFront publication, Cloudflare DNS checks, certificate readiness, custom-domain removal, CNAME behavior, cache invalidation, and domain takeover prevention in later phases.",
+      "Check keyboard traversal and screen reader labels through source controls, domain controls, deployment rows, disabled states, and responsive layouts."
+    ]
   }
 ]

@@ -33,6 +33,7 @@ import {
   getRepositoryIssuesFromCookie,
   getRepositoryIssueTemplatesFromCookie,
   getRepositoryIssueTimelineFromCookie,
+  getRepositoryPagesSettingsFromCookie,
   getRepositoryPathFromCookie,
   getRepositoryPullRequestFilesFromCookie,
   getRepositoryPullRequestFromCookie,
@@ -252,6 +253,15 @@ export async function getRepositoryActionsSecretsSettings(
 ) {
   const requestHeaders = await headers();
   return getRepositoryActionsSecretsSettingsFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+  );
+}
+
+export async function getRepositoryPagesSettings(owner: string, repo: string) {
+  const requestHeaders = await headers();
+  return getRepositoryPagesSettingsFromCookie(
     requestHeaders.get("cookie"),
     owner,
     repo,

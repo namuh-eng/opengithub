@@ -1287,6 +1287,97 @@ export type RepositoryActionsSecretsSettingsFetchResult =
   | { ok: true; settings: RepositoryActionsSecretsSettings }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type PagesSourceKind = "none" | "branch" | "actions" | string;
+
+export type PagesSource = {
+  kind: PagesSourceKind;
+  branch: string | null;
+  folder: string | null;
+  workflowId: string | null;
+  workflowArtifactName: string | null;
+};
+
+export type PagesDnsChallenge = {
+  name: string;
+  value: string;
+  recordType: string;
+};
+
+export type PagesDomainState = {
+  status: string;
+  challenge: PagesDnsChallenge | null;
+  lastCheckedAt: string | null;
+  warning: string | null;
+};
+
+export type PagesSiteSummary = {
+  id: string;
+  source: PagesSource;
+  defaultSiteUrl: string;
+  customDomain: string | null;
+  domain: PagesDomainState;
+  httpsEnforced: boolean;
+  certificateStatus: string;
+  provisioningStatus: string;
+  cloudfrontAlias: string | null;
+  latestDeploymentId: string | null;
+  unpublishedAt: string | null;
+  updatedAt: string;
+};
+
+export type PagesBranchRef = {
+  name: string;
+  targetOid: string | null;
+  updatedAt: string;
+};
+
+export type PagesFolderOption = {
+  value: string;
+  label: string;
+  exists: boolean;
+};
+
+export type PagesWorkflowSuggestion = {
+  workflowId: string;
+  name: string;
+  path: string;
+  artifactHint: string;
+};
+
+export type PagesDeploymentSummary = {
+  id: string;
+  source: PagesSource;
+  status: string;
+  conclusion: string | null;
+  defaultUrl: string;
+  customDomainUrl: string | null;
+  workflowRunId: string | null;
+  workflowArtifactId: string | null;
+  failureReason: string | null;
+  queuedAt: string;
+  completedAt: string | null;
+  createdAt: string;
+};
+
+export type RepositoryPagesSettings = {
+  repositoryId: string;
+  ownerLogin: string;
+  name: string;
+  visibility: RepositoryVisibility;
+  viewerPermission: string;
+  canEdit: boolean;
+  site: PagesSiteSummary;
+  availableRefs: PagesBranchRef[];
+  folderOptions: PagesFolderOption[];
+  workflowSuggestions: PagesWorkflowSuggestion[];
+  deployments: PagesDeploymentSummary[];
+  auditEvents: RepositorySettingsAuditEvent[];
+};
+
+export type RepositoryPagesSettingsFetchResult =
+  | { ok: true; settings: RepositoryPagesSettings }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type RepositoryActionsSecretMutationPayload = {
   name?: string;
   value: string;
@@ -5877,6 +5968,42 @@ export async function getRepositoryActionsSecretsSettingsFromCookie(
   return {
     ok: true,
     settings: (await response.json()) as RepositoryActionsSecretsSettings,
+  };
+}
+
+export async function getRepositoryPagesSettingsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+): Promise<RepositoryPagesSettingsFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/pages`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository Pages settings are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    return repositorySettingsErrorResult(
+      response,
+      "Repository Pages settings are unavailable right now.",
+    );
+  }
+
+  return {
+    ok: true,
+    settings: (await response.json()) as RepositoryPagesSettings,
   };
 }
 

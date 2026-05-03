@@ -25,7 +25,7 @@
 
 ## Phase 2: Editorial Pages Settings Shell - source, domain, status, and deployment history
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the `/[owner]/[repo]/settings/pages` placeholder with a real Editorial Pages settings surface backed by the Phase 1 API. The page must cover disabled/empty state, branch publishing, Actions publishing, live site status, custom domain status, deployment history, forbidden/unavailable states, and responsive layout without GitHub/Primer visual regression.
 
