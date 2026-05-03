@@ -316,7 +316,7 @@ test("signed-in user creates and deletes custom notification filters", async ({
 
   await page.goto("/settings/notifications");
   await expect(
-    page.getByRole("heading", { name: "Notifications" }),
+    page.getByRole("heading", { exact: true, name: "Notifications" }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Filters" })).toBeVisible();
   await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);

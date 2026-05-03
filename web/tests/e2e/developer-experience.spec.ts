@@ -123,6 +123,94 @@ test("developer settings expose copyable opengithub token workflows", async ({
   });
 });
 
+test("fine-grained token creation reveals the secret once and persists prefix metadata", async ({
+  page,
+}) => {
+  const seeded = seedSession();
+  await signIn(page, seeded);
+
+  await page.goto(
+    "/settings/personal-access-tokens/new?name=E2E%20deploy&contents=read",
+  );
+
+  await expect(
+    page.getByRole("heading", { level: 1, name: "New fine-grained token" }),
+  ).toBeVisible();
+  const emailInput = page.getByLabel("Account email");
+  const email = await emailInput.getAttribute("placeholder");
+  expect(email).toContain("@opengithub.local");
+  await emailInput.fill(email ?? "");
+  await page.getByRole("button", { name: "Enable sudo" }).click();
+  await expect(
+    page.getByText("Sudo mode is active for this session."),
+  ).toBeVisible();
+
+  await page.getByLabel("No repository access").check();
+  await page.getByRole("button", { name: "Generate token" }).click();
+
+  await expect(
+    page.getByText("Token created. Copy it now; it will not be shown again."),
+  ).toBeVisible();
+  const reveal = page.locator("code").filter({ hasText: /^oghp_/ });
+  await expect(reveal).toBeVisible();
+  const plainTextToken = (await reveal.textContent()) ?? "";
+  expect(plainTextToken.startsWith("oghp_")).toBeTruthy();
+  await page.getByRole("button", { name: "Copy token" }).click();
+  await expect(page.getByText(/Copied|Copy unavailable/)).toBeVisible();
+
+  await page.getByRole("link", { name: "Return to token list" }).click();
+  await expect(page.getByText("E2E deploy")).toBeVisible();
+  await expect(page.locator("main")).toContainText(plainTextToken.slice(0, 17));
+  await expect(page.locator("main")).not.toContainText(plainTextToken);
+
+  await page.getByRole("button", { name: "Revoke" }).click();
+  await expect(page.getByText("Revoke E2E deploy")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Revoke token" }),
+  ).toBeDisabled();
+  await page.getByLabel("Confirm revoke E2E deploy").fill("E2E deploy");
+  await page.getByRole("button", { name: "Revoke token" }).click();
+  await expect(page.getByRole("status")).toContainText("E2E deploy revoked.");
+  await expect(page.getByText("Revoked", { exact: true })).toBeVisible();
+  await expectNoDeadControls(page);
+
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/credentials-001-phase4-token-revoke.jpg",
+  });
+});
+
+test("classic token creation uses broad legacy scopes", async ({ page }) => {
+  const seeded = seedSession();
+  await signIn(page, seeded);
+
+  await page.goto(
+    "/settings/personal-access-tokens/new?type=classic&name=E2E%20classic&contents=write&packages=write&api=read",
+  );
+
+  await expect(
+    page.getByRole("heading", { level: 1, name: "New classic token" }),
+  ).toBeVisible();
+  const emailInput = page.getByLabel("Account email");
+  const email = await emailInput.getAttribute("placeholder");
+  await emailInput.fill(email ?? "");
+  await page.getByRole("button", { name: "Enable sudo" }).click();
+  await expect(
+    page.getByText("Sudo mode is active for this session."),
+  ).toBeVisible();
+  await expect(page.getByText(/Classic tokens use broad access/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Generate token" }).click();
+  await expect(
+    page.getByText("Token created. Copy it now; it will not be shown again."),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Return to token list" }).click();
+  await expect(page.getByText("E2E classic")).toBeVisible();
+  await expect(page.getByText("Classic", { exact: true })).toBeVisible();
+  await expect(page.getByText("All accessible repositories")).toBeVisible();
+  await expectNoDeadControls(page);
+});
+
 test("developer docs snippets are copyable and internal-only", async ({
   page,
 }) => {

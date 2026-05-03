@@ -14,6 +14,7 @@ import {
   getOrganizationPeopleFromCookie,
   getOrganizationRepositoriesFromCookie,
   getPersonalAccessTokenListFromCookie,
+  getPersonalAccessTokenNewContextFromCookie,
   getPersonalProfileSettingsFromCookie,
   getProfileRepositoriesFromCookie,
   getProfileStarsFromCookie,
@@ -64,6 +65,7 @@ import {
   type PackageDetailFetchResult,
   type PackageSettingsFetchResult,
   type PersonalAccessTokenListFetchResult,
+  type PersonalAccessTokenNewContextFetchResult,
   type ProfileRepositoryListQuery,
   type RepositoryActionsDashboardQuery,
   type RepositoryIssueListQuery,
@@ -116,6 +118,13 @@ export async function getNotificationDeliverySettings() {
 export async function getPersonalAccessTokenList(): Promise<PersonalAccessTokenListFetchResult> {
   const requestHeaders = await headers();
   return getPersonalAccessTokenListFromCookie(requestHeaders.get("cookie"));
+}
+
+export async function getPersonalAccessTokenNewContext(): Promise<PersonalAccessTokenNewContextFetchResult> {
+  const requestHeaders = await headers();
+  return getPersonalAccessTokenNewContextFromCookie(
+    requestHeaders.get("cookie"),
+  );
 }
 
 export async function getPublicUserProfile(

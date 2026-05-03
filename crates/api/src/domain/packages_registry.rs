@@ -239,7 +239,11 @@ pub async fn registry_auth_from_headers(
     let verified = match verify_personal_access_token(pool, &token).await {
         Ok(verified) => verified,
         Err(
-            PersonalAccessTokenError::Invalid | PersonalAccessTokenError::InvalidSudoConfirmation,
+            PersonalAccessTokenError::Invalid
+            | PersonalAccessTokenError::InvalidSudoConfirmation
+            | PersonalAccessTokenError::SudoRequired
+            | PersonalAccessTokenError::Validation(_)
+            | PersonalAccessTokenError::Forbidden,
         ) => {
             return registry_workflow_auth(pool, &token).await;
         }
@@ -267,7 +271,10 @@ pub async fn exchange_registry_token(
             .await
             .map_err(|error| match error {
                 PersonalAccessTokenError::Invalid
-                | PersonalAccessTokenError::InvalidSudoConfirmation => RegistryError::InvalidToken,
+                | PersonalAccessTokenError::InvalidSudoConfirmation
+                | PersonalAccessTokenError::SudoRequired
+                | PersonalAccessTokenError::Validation(_)
+                | PersonalAccessTokenError::Forbidden => RegistryError::InvalidToken,
                 PersonalAccessTokenError::Sqlx(error) => RegistryError::Sqlx(error),
             })?;
     if !verified.allows_package_read() {

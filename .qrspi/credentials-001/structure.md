@@ -38,7 +38,7 @@
 
 ## Phase 3: Fine-Grained Token Creation and One-Time Reveal
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Build `/settings/personal-access-tokens/new` as a working fine-grained token creation flow with sudo interstitial, prefilled query parameters, owner/repository selectors, permission matrix, validation, create API, one-time plaintext reveal, and copy feedback.
 
@@ -54,7 +54,7 @@
 
 ## Phase 4: Classic Tokens, Revocation, and Auth Integration Hardening
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Complete the credential lifecycle by supporting classic broad-scope tokens, revocation/delete confirmation, and consistent PAT use across REST API, Git transport, and package registry auth with `last_used_at` updates.
 

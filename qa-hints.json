@@ -4422,5 +4422,42 @@
       "Run keyboard and screen-reader traversal on the details-based Generate new token menu, including focus return and narrow mobile placement.",
       "Full make test-e2e was attempted with DASHBOARD_E2E_SKIP_MIGRATIONS=1 but hung silently in Playwright after several minutes and was terminated; the focused credentials smoke passed."
     ]
+  },
+  {
+    "feature_id": "credentials-001",
+    "tests_written": [
+      "Completed Phase 3 Fine-Grained Token Creation and One-Time Reveal without marking credentials-001 build_pass=true.",
+      "Added POST /api/settings/tokens for fine-grained creation behind active sudo grants, with generated oghp_ secrets, hashed storage, prefix-only metadata, selected repository persistence, validation errors, and security audit events.",
+      "Added /settings/personal-access-tokens/new with sudo confirmation, query prefill, resource owner selection, repository access selection, permission matrix, one-time reveal, copy feedback, and concrete return navigation.",
+      "Extended Rust contract coverage for missing sudo, successful create, validation failure, hash persistence, selected repositories, one-time plaintext response, list redaction, and audit rows.",
+      "Extended Vitest coverage for new-token context rendering, prefill, create submission, one-time reveal, copy feedback, and no dead anchors.",
+      "Focused Playwright create-flow smoke passed on fresh database opengithub_credentials_001_phase3_1777842624 after applying migrations in filename order and clearing web/.next; screenshot saved at ralph/screenshots/build/credentials-001-phase3-token-create.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Real Google reauthentication is still represented by email-confirmation sudo mode; QA should validate eventual Google reauth parity when implemented.",
+      "Repository selector scale and mixed user/org/direct-permission visibility need larger-account testing beyond the focused seed.",
+      "One-time reveal should be probed for browser back/refresh behavior, copy failure announcement, and accidental plaintext leakage into logs, traces, screenshots, or later list responses.",
+      "Classic token creation, revocation/delete confirmation, and PAT auth integration hardening remain Phase 4.",
+      "The shared opengithub_identity_test database still has the known pre-existing 202605030041 migration checksum issue; focused browser validation passed on a fresh psql-migrated database with DASHBOARD_E2E_SKIP_MIGRATIONS=1."
+    ]
+  },
+  {
+    "feature_id": "credentials-001",
+    "tests_written": [
+      "Completed Phase 4 Classic Tokens, Revocation, and Auth Integration Hardening without marking credentials-001 build_pass=true.",
+      "Added classic token creation scopes, sudo-gated token revocation, revoke audit events, bearer REST authentication, Git repository-selection checks, and last_used_at assertions to the Rust PAT contract.",
+      "Added UI revoke confirmation with typed token-name confirmation, server-confirmed status updates, classic token mode selection, broad repository access copy, and REST API permission selection.",
+      "Extended Vitest coverage for revoke confirmation, revoked row state, classic create payloads, one-time reveal, and no hash/plaintext leakage in token lists.",
+      "Focused Playwright smoke passed for fine-grained create/reveal/revoke plus classic creation; screenshot saved at ralph/screenshots/build/credentials-001-phase4-token-revoke.jpg.",
+      "Full make check passed; full make test passed with Cargo tests plus 350 web tests; Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Exercise real Git clone/fetch/push with fine-grained selected-repository tokens and classic tokens against a repository containing actual refs; focused coverage validates the route gate and token contract, not a full Git subprocess flow.",
+      "Exercise OCI package pull/push with read-only, write, revoked, and expired PATs against a live registry flow; package scope checks are wired through the shared verifier but need end-to-end registry smoke.",
+      "Probe concurrent revoke/use races where a token is revoked while Git/package/API requests are in flight.",
+      "Run accessibility traversal on the revoke alert dialog, including focus order, typed confirmation, Escape/cancel behavior, and status announcement.",
+      "Verify long token names/descriptions and many selected repositories do not overflow the Editorial token rows on mobile.",
+      "Real Google reauthentication is still represented by email-confirmation sudo mode; QA should validate future Google reauth parity."
+    ]
   }
 ]

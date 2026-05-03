@@ -17,6 +17,7 @@ use crate::{
         advertise_receive_pack, advertise_upload_pack, run_receive_pack, run_upload_pack,
         GitServiceRequest, GitTransportError,
     },
+    domain::repositories::get_repository_by_owner_name,
     domain::tokens::verify_personal_access_token,
     AppState,
 };
@@ -58,7 +59,8 @@ async fn info_refs(
         .ok_or_else(|| with_git_auth_challenge(database_unavailable()))?;
     let service = query.service.unwrap_or_default();
     let requires_write = service == "git-receive-pack";
-    let actor_user_id = git_actor_user_id(pool, &state, &headers, requires_write).await;
+    let actor_user_id =
+        git_actor_user_id(pool, &state, &headers, &owner, repo, requires_write).await;
     let request = GitServiceRequest {
         owner,
         repo: repo.to_owned(),
@@ -85,7 +87,7 @@ async fn upload_pack(
         .db
         .as_ref()
         .ok_or_else(|| with_git_auth_challenge(database_unavailable()))?;
-    let actor_user_id = git_actor_user_id(pool, &state, &headers, false).await;
+    let actor_user_id = git_actor_user_id(pool, &state, &headers, &owner, repo, false).await;
     let response = run_upload_pack(
         pool,
         GitServiceRequest {
@@ -112,7 +114,7 @@ async fn receive_pack(
         .db
         .as_ref()
         .ok_or_else(|| with_git_auth_challenge(database_unavailable()))?;
-    let actor_user_id = git_actor_user_id(pool, &state, &headers, true).await;
+    let actor_user_id = git_actor_user_id(pool, &state, &headers, &owner, repo, true).await;
     let response = run_receive_pack(
         pool,
         GitServiceRequest {
@@ -157,7 +159,7 @@ async fn repository_bytes(
         .db
         .as_ref()
         .ok_or_else(|| with_git_auth_challenge(database_unavailable()))?;
-    let actor_user_id = git_actor_user_id(pool, &state, &headers, false).await;
+    let actor_user_id = git_actor_user_id(pool, &state, &headers, &owner, &repo, false).await;
     let raw = stream_raw_file(pool, &owner, &repo, &ref_name, &path, actor_user_id)
         .await
         .map_err(map_git_error)?;
@@ -197,7 +199,7 @@ async fn branch_archive(
         .db
         .as_ref()
         .ok_or_else(|| with_git_auth_challenge(database_unavailable()))?;
-    let actor_user_id = git_actor_user_id(pool, &state, &headers, false).await;
+    let actor_user_id = git_actor_user_id(pool, &state, &headers, &owner, &repo, false).await;
     let (archive, bytes) = ensure_repository_archive(pool, &owner, &repo, branch, actor_user_id)
         .await
         .map_err(map_git_error)?;
@@ -228,12 +230,19 @@ async fn git_actor_user_id(
     pool: &sqlx::PgPool,
     state: &AppState,
     headers: &HeaderMap,
+    owner: &str,
+    repo: &str,
     requires_write: bool,
 ) -> Option<uuid::Uuid> {
     if let Some(token) = git_token_from_headers(headers) {
         if let Ok(verified) = verify_personal_access_token(pool, &token).await {
-            if (requires_write && verified.allows_repo_write())
-                || (!requires_write && verified.allows_repo_read())
+            let repository = get_repository_by_owner_name(pool, owner, repo)
+                .await
+                .ok()
+                .flatten();
+            if ((requires_write && verified.allows_repo_write())
+                || (!requires_write && verified.allows_repo_read()))
+                && repository.is_some_and(|repository| verified.allows_repository(repository.id))
             {
                 return Some(verified.user_id);
             }

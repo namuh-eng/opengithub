@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useState } from "react";
 import { DeveloperCommandBlock } from "@/components/DeveloperCommandBlock";
 import type {
   PersonalAccessTokenListFetchResult,
@@ -150,8 +153,51 @@ function TokenManagementPanel({
 }: {
   tokenList?: PersonalAccessTokenListFetchResult;
 }) {
-  const tokens = tokenList?.ok ? tokenList.list.tokens : [];
+  const [tokens, setTokens] = useState(
+    tokenList?.ok ? tokenList.list.tokens : [],
+  );
+  const [confirmToken, setConfirmToken] =
+    useState<PersonalAccessTokenSummary | null>(null);
+  const [confirmName, setConfirmName] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState(false);
   const sudoActive = tokenList?.ok ? tokenList.list.sudo.active : false;
+
+  async function revokeToken() {
+    if (!confirmToken || confirmName.trim() !== confirmToken.name) {
+      return;
+    }
+    setRevoking(true);
+    setMessage(null);
+    try {
+      const response = await fetch(
+        `/settings/personal-access-tokens/${encodeURIComponent(confirmToken.id)}`,
+        { method: "DELETE" },
+      );
+      const body = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          body?.error?.message ?? "Personal access token could not be revoked.",
+        );
+      }
+      setTokens((current) =>
+        current.map((token) =>
+          token.id === confirmToken.id ? body.token : token,
+        ),
+      );
+      setConfirmToken(null);
+      setConfirmName("");
+      setMessage(`${confirmToken.name} revoked.`);
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Personal access token could not be revoked.",
+      );
+    } finally {
+      setRevoking(false);
+    }
+  }
 
   return (
     <section className="mt-6 card">
@@ -230,7 +276,15 @@ function TokenManagementPanel({
       ) : tokens.length > 0 ? (
         <div className="divide-y" style={{ borderColor: "var(--line)" }}>
           {tokens.map((token) => (
-            <TokenRow key={token.id} token={token} />
+            <TokenRow
+              key={token.id}
+              onRevoke={() => {
+                setConfirmName("");
+                setConfirmToken(token);
+                setMessage(null);
+              }}
+              token={token}
+            />
           ))}
         </div>
       ) : (
@@ -283,11 +337,79 @@ function TokenManagementPanel({
           API authentication docs
         </Link>
       </div>
+      {message ? (
+        <p
+          className="px-4 pb-4 t-sm"
+          role="status"
+          style={{ color: "var(--ink-3)" }}
+        >
+          {message}
+        </p>
+      ) : null}
+      {confirmToken ? (
+        <div
+          className="m-4 rounded-md p-4"
+          role="alertdialog"
+          aria-labelledby="token-revoke-title"
+          aria-modal="true"
+          style={{
+            background: "var(--surface-2)",
+            border: "1px solid var(--line)",
+          }}
+        >
+          <p className="chip err">Confirm revoke</p>
+          <h3 className="mt-3 t-h3" id="token-revoke-title">
+            Revoke {confirmToken.name}
+          </h3>
+          <p className="mt-2 t-body" style={{ color: "var(--ink-3)" }}>
+            This immediately invalidates REST API, Git over HTTPS, and package
+            registry authentication for this token. Type the token name to
+            confirm.
+          </p>
+          <label className="mt-4 block">
+            <span className="t-label" style={{ color: "var(--ink-4)" }}>
+              Token name
+            </span>
+            <input
+              aria-label={`Confirm revoke ${confirmToken.name}`}
+              className="input mt-2 w-full"
+              onChange={(event) => setConfirmName(event.target.value)}
+              value={confirmName}
+            />
+          </label>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              className="btn"
+              onClick={() => {
+                setConfirmToken(null);
+                setConfirmName("");
+              }}
+              type="button"
+            >
+              Cancel
+            </button>
+            <button
+              className="btn primary"
+              disabled={revoking || confirmName.trim() !== confirmToken.name}
+              onClick={() => void revokeToken()}
+              type="button"
+            >
+              {revoking ? "Revoking" : "Revoke token"}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
 
-function TokenRow({ token }: { token: PersonalAccessTokenSummary }) {
+function TokenRow({
+  onRevoke,
+  token,
+}: {
+  onRevoke: () => void;
+  token: PersonalAccessTokenSummary;
+}) {
   return (
     <article className="list-row p-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -332,6 +454,14 @@ function TokenRow({ token }: { token: PersonalAccessTokenSummary }) {
             label="Expires"
             value={formatDate(token.expiresAt, "Never")}
           />
+          <button
+            className="btn sm mt-2 justify-self-start"
+            disabled={token.status === "revoked"}
+            onClick={onRevoke}
+            type="button"
+          >
+            Revoke
+          </button>
         </div>
       </div>
     </article>

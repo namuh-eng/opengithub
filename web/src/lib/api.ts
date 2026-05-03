@@ -58,6 +58,53 @@ export type PersonalAccessTokenListFetchResult =
   | { ok: true; list: PersonalAccessTokenList }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type PersonalAccessTokenPermissionChoice = {
+  key: string;
+  label: string;
+  levels: string[];
+};
+
+export type PersonalAccessTokenPermissionGroup = {
+  key: string;
+  label: string;
+  permissions: PersonalAccessTokenPermissionChoice[];
+};
+
+export type PersonalAccessTokenNewContext = {
+  sudo: PersonalAccessTokenSudoState;
+  resourceOwners: PersonalAccessTokenResourceOwner[];
+  repositories: PersonalAccessTokenRepositorySummary[];
+  permissionGroups: PersonalAccessTokenPermissionGroup[];
+  defaultExpirationDays: number;
+  maxExpirationDays: number;
+};
+
+export type PersonalAccessTokenNewContextFetchResult =
+  | { ok: true; context: PersonalAccessTokenNewContext }
+  | { ok: false; status: number; code: string | null; message: string };
+
+export type CreatePersonalAccessTokenRequest = {
+  name: string;
+  description?: string;
+  type?: "fine_grained" | "classic";
+  resourceOwnerId: string;
+  repositoryAccess: "all" | "selected" | "none";
+  repositoryIds: string[];
+  expires_in_days?: number | "never";
+  permissions: { key: string; level: string }[];
+};
+
+export type CreatePersonalAccessTokenResponse = {
+  token: PersonalAccessTokenSummary;
+  plainTextToken: string;
+  createdAt: string;
+};
+
+export type RevokePersonalAccessTokenResponse = {
+  token: PersonalAccessTokenSummary;
+  revokedAt: string;
+};
+
 export type UserEmailAddress = {
   id: string;
   email: string;
@@ -3800,6 +3847,134 @@ export async function getPersonalAccessTokenListFromCookie(
     ok: true,
     list: (await response.json()) as PersonalAccessTokenList,
   };
+}
+
+export async function getPersonalAccessTokenNewContextFromCookie(
+  cookie: string | null | undefined,
+): Promise<PersonalAccessTokenNewContextFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}/api/settings/tokens/new`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Token creation is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Token creation is unavailable right now.";
+    try {
+      const body = (await response.json()) as ApiErrorEnvelope;
+      code = body.error.code ?? null;
+      message = body.error.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    context: (await response.json()) as PersonalAccessTokenNewContext,
+  };
+}
+
+export async function createPersonalAccessTokenFromCookie(
+  cookie: string | null | undefined,
+  input: CreatePersonalAccessTokenRequest,
+): Promise<CreatePersonalAccessTokenResponse> {
+  const response = await fetch(`${apiBaseUrl()}/api/settings/tokens`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(cookie ? { cookie } : {}),
+    },
+    body: JSON.stringify(input),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    let envelope: ApiErrorEnvelope | null = null;
+    try {
+      envelope = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      envelope = null;
+    }
+    throw new Error(
+      envelope?.error.message ?? "Personal access token could not be created.",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as CreatePersonalAccessTokenResponse;
+}
+
+export async function revokePersonalAccessTokenFromCookie(
+  cookie: string | null | undefined,
+  tokenId: string,
+): Promise<RevokePersonalAccessTokenResponse> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/settings/tokens/${encodeURIComponent(tokenId)}`,
+    {
+      method: "DELETE",
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    let envelope: ApiErrorEnvelope | null = null;
+    try {
+      envelope = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      envelope = null;
+    }
+    throw new Error(
+      envelope?.error.message ?? "Personal access token could not be revoked.",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as RevokePersonalAccessTokenResponse;
+}
+
+export async function createSudoGrantFromCookie(
+  cookie: string | null | undefined,
+  input: { confirmation: string },
+): Promise<{ sudo: PersonalAccessTokenSudoState }> {
+  const response = await fetch(`${apiBaseUrl()}/api/settings/sudo`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(cookie ? { cookie } : {}),
+    },
+    body: JSON.stringify(input),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    let envelope: ApiErrorEnvelope | null = null;
+    try {
+      envelope = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      envelope = null;
+    }
+    throw new Error(
+      envelope?.error.message ?? "Sudo mode could not be enabled.",
+      {
+        cause: envelope,
+      },
+    );
+  }
+
+  return (await response.json()) as { sudo: PersonalAccessTokenSudoState };
 }
 
 export async function getAppShellContextFromCookie(

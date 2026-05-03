@@ -9,6 +9,7 @@ use opengithub_api::{
     domain::{
         identity::{self, User},
         tokens::hash_personal_access_token,
+        tokens::verify_personal_access_token,
     },
 };
 use serde_json::{json, Value};
@@ -127,6 +128,31 @@ async fn send_json(
     (status, headers, value)
 }
 
+async fn send_json_with_authorization(
+    app: axum::Router,
+    method: Method,
+    uri: &str,
+    authorization: &str,
+) -> (StatusCode, Value) {
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(method)
+                .uri(uri)
+                .header(header::AUTHORIZATION, authorization)
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = serde_json::from_slice(&bytes).expect("response should be JSON");
+    (status, value)
+}
+
 #[tokio::test]
 async fn token_settings_reject_anonymous_requests_with_json_401() {
     let app = opengithub_api::build_app_with_config(None, app_config());
@@ -223,7 +249,10 @@ async fn token_settings_list_context_and_sudo_are_redacted_and_session_bound() {
     )
     .bind(other.id)
     .bind(format!("oghp_{}", &Uuid::new_v4().simple().to_string()[..8]))
-    .bind(hash_personal_access_token("other-secret-token"))
+    .bind(hash_personal_access_token(&format!(
+        "other-secret-token-{}",
+        Uuid::new_v4().simple()
+    )))
     .execute(&pool)
     .await
     .expect("other token should insert");
@@ -321,4 +350,262 @@ async fn token_settings_list_context_and_sudo_are_redacted_and_session_bound() {
     .await
     .expect("audit should count");
     assert!(audit_count >= 1);
+}
+
+#[tokio::test]
+async fn fine_grained_token_create_requires_sudo_reveals_once_and_persists_redacted_metadata() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping personal access token create scenario; set TEST_DATABASE_URL");
+        return;
+    };
+    let config = app_config();
+    let user = create_user(&pool, "pat-create").await;
+    let (_session_id, cookie) = cookie_header(&pool, &config, &user).await;
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let repo_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO repositories (owner_user_id, name, visibility, created_by_user_id) VALUES ($1, $2, 'private', $1) RETURNING id",
+    )
+    .bind(user.id)
+    .bind(format!("create-token-repo-{}", Uuid::new_v4().simple()))
+    .fetch_one(&pool)
+    .await
+    .expect("repository should insert");
+
+    let create_body = json!({
+        "name": "CI deploy",
+        "description": "Release automation",
+        "type": "fine_grained",
+        "resourceOwnerId": user.id,
+        "repositoryAccess": "selected",
+        "repositoryIds": [repo_id],
+        "expires_in_days": 30,
+        "permissions": [
+            { "key": "contents", "level": "write" },
+            { "key": "packages", "level": "read" },
+            { "key": "issues", "level": "none" }
+        ]
+    });
+    let (status, _headers, no_sudo) = send_json(
+        app.clone(),
+        Method::POST,
+        "/api/settings/tokens",
+        Some(&cookie),
+        Some(create_body.clone()),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(no_sudo["error"]["code"], "sudo_required");
+
+    let (status, _headers, _sudo_body) = send_json(
+        app.clone(),
+        Method::POST,
+        "/api/settings/sudo",
+        Some(&cookie),
+        Some(json!({ "confirmation": user.email })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, _headers, created) = send_json(
+        app.clone(),
+        Method::POST,
+        "/api/settings/tokens",
+        Some(&cookie),
+        Some(create_body),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let plain_text = created["plainTextToken"]
+        .as_str()
+        .expect("plaintext token should be returned once");
+    assert!(plain_text.starts_with("oghp_"));
+    assert_eq!(created["token"]["name"], "CI deploy");
+    assert_eq!(created["token"]["prefix"], &plain_text[..17]);
+    assert_eq!(created["token"]["repositoryAccess"], "selected");
+    assert!(created["token"]["selectedRepositories"]
+        .as_array()
+        .expect("selected repositories")
+        .iter()
+        .any(|repository| repository["id"] == repo_id.to_string()));
+    assert!(created["token"]["scopes"]
+        .as_array()
+        .expect("scopes")
+        .iter()
+        .any(|scope| scope == "repo:write"));
+    assert!(!created.to_string().contains("sha256:"));
+
+    let token_id = Uuid::parse_str(created["token"]["id"].as_str().expect("token id"))
+        .expect("token id should be a uuid");
+    let stored_hash: String =
+        sqlx::query_scalar("SELECT token_hash FROM personal_access_tokens WHERE id = $1")
+            .bind(token_id)
+            .fetch_one(&pool)
+            .await
+            .expect("token hash should persist");
+    assert_eq!(stored_hash, hash_personal_access_token(plain_text));
+
+    let (status, _headers, list_body) = send_json(
+        app.clone(),
+        Method::GET,
+        "/api/settings/tokens",
+        Some(&cookie),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let rendered_list = list_body.to_string();
+    assert!(rendered_list.contains("CI deploy"));
+    assert!(rendered_list.contains(&plain_text[..17]));
+    assert!(!rendered_list.contains(plain_text));
+    assert!(!rendered_list.contains("sha256:"));
+
+    let audit_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM security_audit_events WHERE actor_user_id = $1 AND event_type = 'personal_access_token.create' AND target_id = $2",
+    )
+    .bind(user.id)
+    .bind(token_id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("audit should count");
+    assert_eq!(audit_count, 1);
+
+    let (status, _headers, invalid) = send_json(
+        app,
+        Method::POST,
+        "/api/settings/tokens",
+        Some(&cookie),
+        Some(json!({
+            "name": "Invalid",
+            "resourceOwnerId": user.id,
+            "repositoryAccess": "selected",
+            "repositoryIds": [],
+            "permissions": []
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(invalid["error"]["code"], "validation_failed");
+}
+
+#[tokio::test]
+async fn classic_token_create_revoke_and_bearer_auth_update_last_used() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping personal access token revoke scenario; set TEST_DATABASE_URL");
+        return;
+    };
+    let config = app_config();
+    let user = create_user(&pool, "pat-classic").await;
+    let (_session_id, cookie) = cookie_header(&pool, &config, &user).await;
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+
+    let (status, _headers, _sudo_body) = send_json(
+        app.clone(),
+        Method::POST,
+        "/api/settings/sudo",
+        Some(&cookie),
+        Some(json!({ "confirmation": user.email })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, _headers, created) = send_json(
+        app.clone(),
+        Method::POST,
+        "/api/settings/tokens",
+        Some(&cookie),
+        Some(json!({
+            "name": "Classic automation",
+            "description": "Legacy CI",
+            "type": "classic",
+            "resourceOwnerId": user.id,
+            "repositoryAccess": "selected",
+            "repositoryIds": [],
+            "expires_in_days": "never",
+            "permissions": [
+                { "key": "contents", "level": "write" },
+                { "key": "packages", "level": "write" },
+                { "key": "api", "level": "read" }
+            ]
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(created["token"]["type"], "classic");
+    assert_eq!(created["token"]["repositoryAccess"], "all");
+    assert!(created["token"]["scopes"]
+        .as_array()
+        .expect("scopes")
+        .iter()
+        .any(|scope| scope == "repo"));
+    assert!(created["token"]["scopes"]
+        .as_array()
+        .expect("scopes")
+        .iter()
+        .any(|scope| scope == "write:packages"));
+    assert!(created["token"]["scopes"]
+        .as_array()
+        .expect("scopes")
+        .iter()
+        .any(|scope| scope == "api:read"));
+    let plain_text = created["plainTextToken"]
+        .as_str()
+        .expect("plaintext token should be returned");
+    let token_id = Uuid::parse_str(created["token"]["id"].as_str().expect("token id"))
+        .expect("token id should be uuid");
+
+    let (status, current_user) = send_json_with_authorization(
+        app.clone(),
+        Method::GET,
+        "/api/auth/current-user",
+        &format!("Bearer {plain_text}"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(current_user["id"], user.id.to_string());
+    let last_used_at: Option<chrono::DateTime<Utc>> =
+        sqlx::query_scalar("SELECT last_used_at FROM personal_access_tokens WHERE id = $1")
+            .bind(token_id)
+            .fetch_one(&pool)
+            .await
+            .expect("last used should read");
+    assert!(last_used_at.is_some());
+
+    let (status, _headers, revoked) = send_json(
+        app.clone(),
+        Method::DELETE,
+        &format!("/api/settings/tokens/{token_id}"),
+        Some(&cookie),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(revoked["token"]["status"], "revoked");
+    assert!(revoked["revokedAt"].as_str().is_some());
+    assert!(matches!(
+        verify_personal_access_token(&pool, plain_text).await,
+        Err(opengithub_api::domain::tokens::PersonalAccessTokenError::Invalid)
+    ));
+
+    let (status, revoked_bearer) = send_json_with_authorization(
+        app,
+        Method::GET,
+        "/api/auth/current-user",
+        &format!("Bearer {plain_text}"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert!(matches!(
+        revoked_bearer["error"]["code"].as_str(),
+        Some("unauthorized" | "not_authenticated")
+    ));
+
+    let audit_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM security_audit_events WHERE actor_user_id = $1 AND event_type = 'personal_access_token.revoke' AND target_id = $2",
+    )
+    .bind(user.id)
+    .bind(token_id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("revoke audit should count");
+    assert_eq!(audit_count, 1);
 }
