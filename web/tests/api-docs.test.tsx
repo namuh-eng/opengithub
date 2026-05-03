@@ -428,6 +428,41 @@ describe("ApiDocsPage", () => {
       ),
     ).toBeVisible();
     expect(
+      screen.getByText(
+        "/api/notifications?folder=inbox&tab=unread&group=repository&page=1&pageSize=30",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/notifications/{notification_id}/read and /api/notifications/{notification_id}/unread",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/notifications/{notification_id}/save, /unsave, /done, and /inbox",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/notifications/{notification_id}/subscribe and /api/notifications/{notification_id}/unsubscribe",
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("/api/notifications/bulk")).toBeVisible();
+    expect(
+      screen.getByText(/folder=inbox excludes done notifications/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Done removes rows from Inbox but does not clear unread/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Participation, direct mentions, team mentions/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Failed rows stay selected in the browser/),
+    ).toBeVisible();
+    expect(
       screen.getByText("/api/search?q=router&type=code&page=1&pageSize=30"),
     ).toBeVisible();
     expect(

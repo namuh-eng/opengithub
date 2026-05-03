@@ -2168,6 +2168,152 @@ docker-content-digest: sha256:manifest...`,
     ],
   },
   {
+    id: "notifications-inbox",
+    method: "GET",
+    path: "/api/notifications?folder=inbox&tab=unread&group=repository&page=1&pageSize=30",
+    title: "Notification inbox",
+    description:
+      "Returns the signed-in user's notification inbox with folder facets, read-state filters, repository buckets, grouping, and bounded pagination.",
+    auth: "Signed opengithub session cookie",
+    response: `{
+  "query": { "folder": "inbox", "tab": "unread", "group": "repository" },
+  "folders": [
+    { "id": "inbox", "label": "Inbox", "count": 4, "active": true },
+    { "id": "saved", "label": "Saved", "count": 1, "active": false },
+    { "id": "done", "label": "Done", "count": 2, "active": false }
+  ],
+  "groups": [
+    {
+      "id": "mona/octo-app",
+      "label": "mona/octo-app",
+      "rows": [
+        {
+          "id": "notif_01",
+          "title": "Triage dashboard setup workflow",
+          "unread": true,
+          "saved": false,
+          "done": false,
+          "subscribed": true,
+          "openHref": "/notifications/notif_01/open?next=/mona/octo-app/issues/42"
+        }
+      ]
+    }
+  ],
+  "unreadCount": 4
+}`,
+    notes: [
+      "folder=inbox excludes done notifications and manually unsubscribed threads.",
+      "folder=saved retains saved notifications even after they are moved to Done.",
+      "folder=done returns completed notifications that can be moved back to Inbox.",
+      "Repository and subject links are permission-aware and do not reveal private repository metadata to unauthorized users.",
+    ],
+  },
+  {
+    id: "notifications-read-state",
+    method: "PATCH",
+    path: "/api/notifications/{notification_id}/read and /api/notifications/{notification_id}/unread",
+    title: "Update notification read state",
+    description:
+      "Marks one notification read or unread and returns fresh row state plus folder and unread counts for optimistic UI reconciliation.",
+    auth: "Signed opengithub session cookie for the notification owner",
+    response: `{
+  "id": "notif_01",
+  "unread": false,
+  "saved": false,
+  "done": false,
+  "subscribed": true,
+  "lastReadAt": "2026-05-04T00:00:00Z",
+  "unreadCount": 3,
+  "folderCounts": { "inbox": 4, "saved": 1, "done": 2 }
+}`,
+    notes: [
+      "Unknown or cross-user notification IDs return notification_not_found.",
+      "Read/unread mutations preserve saved, done, and subscription state.",
+    ],
+  },
+  {
+    id: "notifications-retention-state",
+    method: "PATCH",
+    path: "/api/notifications/{notification_id}/save, /unsave, /done, and /inbox",
+    title: "Update notification retention state",
+    description:
+      "Saves, unsaves, completes, or restores one notification while returning server-confirmed row state and counts.",
+    auth: "Signed opengithub session cookie for the notification owner",
+    response: `{
+  "id": "notif_01",
+  "unread": true,
+  "saved": true,
+  "done": true,
+  "subscribed": true,
+  "savedAt": "2026-05-04T00:00:00Z",
+  "folderCounts": { "inbox": 3, "saved": 2, "done": 3 }
+}`,
+    notes: [
+      "Done removes rows from Inbox but does not clear unread or saved state.",
+      "Move to inbox clears done_at and makes a subscribed thread visible in Inbox again.",
+      "Saved notifications remain addressable from Saved until explicitly unsaved.",
+    ],
+  },
+  {
+    id: "notifications-subscription-state",
+    method: "PATCH",
+    path: "/api/notifications/{notification_id}/subscribe and /api/notifications/{notification_id}/unsubscribe",
+    title: "Update notification subscription state",
+    description:
+      "Subscribes or unsubscribes the notification's thread and returns row/count state for the current user.",
+    auth: "Signed opengithub session cookie for the notification owner",
+    response: `{
+  "id": "notif_01",
+  "subscribed": false,
+  "unreadCount": 3,
+  "folderCounts": { "inbox": 3, "saved": 1, "done": 2 }
+}`,
+    notes: [
+      "Unsubscribe hides the thread from Inbox but leaves Saved and Done retention queryable.",
+      "Participation, direct mentions, team mentions, and review requests reactivate a thread subscription on later notification creation.",
+      "Repository watch state is a fallback only; direct thread unsubscribe wins until a reactivation reason occurs.",
+    ],
+  },
+  {
+    id: "notifications-bulk-triage",
+    method: "POST",
+    path: "/api/notifications/bulk",
+    title: "Bulk notification triage",
+    description:
+      "Applies one triage action to up to 100 notification IDs and returns per-row success or failure details for partial rollback.",
+    auth: "Signed opengithub session cookie for the notification owner",
+    request: `{
+  "notificationIds": ["notif_01", "notif_02"],
+  "action": "done"
+}`,
+    response: `{
+  "action": "done",
+  "updated": [
+    {
+      "id": "notif_01",
+      "unread": true,
+      "saved": false,
+      "done": true,
+      "subscribed": true
+    }
+  ],
+  "failed": [
+    {
+      "id": "notif_missing",
+      "code": "notification_not_found",
+      "message": "Notification was not found."
+    }
+  ],
+  "unreadCount": 3,
+  "folderCounts": { "inbox": 3, "saved": 1, "done": 3 }
+}`,
+    notes: [
+      "Supported actions are read, unread, save, unsave, done, inbox, subscribe, and unsubscribe.",
+      "Empty, duplicate, or more than 100 notificationIds return validation_failed.",
+      "Failed rows stay selected in the browser so the client can retry or inspect them.",
+    ],
+  },
+  {
     id: "search",
     method: "GET",
     path: "/api/search?q=router&type=code&page=1&pageSize=30",

@@ -76,7 +76,7 @@
 
 ## Phase 5: API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `notifications-002` only after all single, subscription, and bulk triage actions are working end-to-end. This phase should document the mutation contract, add QA focus notes, capture final browser evidence, and flip only `notifications-002.build_pass`.
 

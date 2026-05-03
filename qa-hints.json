@@ -4229,5 +4229,23 @@
       "Verify keyboard-only selection traversal, group select-all announcements, selected-count toolbar focus order, and mobile overflow/hit targets across dense notification groups.",
       "Probe bulk Unsubscribe reactivation behavior after participation, direct mentions, team mentions, and review requests."
     ]
+  },
+  {
+    "feature_id": "notifications-002",
+    "tests_written": [
+      "Completed Phase 5 API docs, browser smoke expansion, QA handoff, and build-pass bookkeeping.",
+      "Documented notification inbox query fields, read/unread endpoints, saved/done retention endpoints, subscribe/unsubscribe behavior, and POST /api/notifications/bulk partial-failure responses in /docs/api.",
+      "Extended API docs tests to assert the notification endpoint paths, retention semantics, reactivation rules, and failed-row rollback contract.",
+      "Broadened Playwright notification smoke to cover bulk Save, Mark read, Done, Move to inbox, Mark unread, Unsubscribe, Saved/Done folders, mobile overflow, and a controlled partial-failure rollback toast.",
+      "Focused Vitest and TypeScript checks passed; final make-target verification is recorded in build-progress.txt."
+    ],
+    "needs_deeper_qa": [
+      "Probe concurrent bulk mutations from two browser tabs and verify the final count reconciliation with real stale row IDs.",
+      "Exercise mixed-authorization bulk actions against private repository notifications and cross-user notification IDs.",
+      "Verify subscription reactivation from real issue comments, direct mentions, team mentions, and pull-request review requests.",
+      "Run keyboard-only traversal with screen reader announcement checks for row checkboxes, group select-all, selected-count toolbar, and icon-style action buttons.",
+      "Retest dense mobile notification groups for horizontal overflow and touch target spacing beyond the seeded one-row smoke.",
+      "The shared opengithub_identity_test database has a known pre-existing migration checksum issue for 202605030041; fresh-DB E2E evidence should remain the QA baseline until that database is reset."
+    ]
   }
 ]
