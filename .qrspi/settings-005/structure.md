@@ -26,7 +26,7 @@
 
 ## Phase 2: Editorial Secrets and Variables Shell - tabs, empty states, and inherited metadata
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the `/[owner]/[repo]/settings/secrets` placeholder with a real Editorial settings surface backed by the Phase 1 API. The page must cover repository secrets, repository variables, inherited metadata, forbidden/unavailable states, and zero-data empty states without leaking secret values or regressing the locked Editorial visual system.
 

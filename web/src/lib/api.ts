@@ -1220,6 +1220,73 @@ export type WebhookDeliveryDetailFetchResult =
   | { ok: true; delivery: WebhookDeliveryDetail }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type ActionsSettingScope = {
+  kind: string;
+  name: string | null;
+};
+
+export type ActionsSettingActor = {
+  id: string;
+  login: string;
+  displayName: string;
+};
+
+export type ActionsSecretSummary = {
+  id: string;
+  name: string;
+  scope: ActionsSettingScope;
+  secretConfigured: boolean;
+  storageKind: string;
+  visibilityPolicy: string;
+  updatedBy: ActionsSettingActor | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ActionsVariableSummary = {
+  id: string;
+  name: string;
+  value: string | null;
+  scope: ActionsSettingScope;
+  visibilityPolicy: string;
+  updatedBy: ActionsSettingActor | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type InheritedActionsSecretSummary = {
+  name: string;
+  scope: ActionsSettingScope;
+  secretConfigured: boolean;
+  visibilityPolicy: string;
+  updatedAt: string;
+};
+
+export type InheritedActionsVariableSummary = {
+  name: string;
+  value: string | null;
+  scope: ActionsSettingScope;
+  visibilityPolicy: string;
+  updatedAt: string;
+};
+
+export type RepositoryActionsSecretsSettings = {
+  repositoryId: string;
+  ownerLogin: string;
+  name: string;
+  visibility: RepositoryVisibility;
+  viewerPermission: string;
+  canEdit: boolean;
+  secrets: ActionsSecretSummary[];
+  variables: ActionsVariableSummary[];
+  inheritedSecrets: InheritedActionsSecretSummary[];
+  inheritedVariables: InheritedActionsVariableSummary[];
+};
+
+export type RepositoryActionsSecretsSettingsFetchResult =
+  | { ok: true; settings: RepositoryActionsSecretsSettings }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type RepositoryWebhookMutationPayload = {
   payloadUrl: string;
   contentType?: WebhookContentType;
@@ -5733,6 +5800,42 @@ export async function getRepositoryWebhookSettingsFromCookie(
   return {
     ok: true,
     settings: (await response.json()) as RepositoryWebhookSettings,
+  };
+}
+
+export async function getRepositoryActionsSecretsSettingsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+): Promise<RepositoryActionsSecretsSettingsFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/secrets`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository Actions secrets settings are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    return repositorySettingsErrorResult(
+      response,
+      "Repository Actions secrets settings are unavailable right now.",
+    );
+  }
+
+  return {
+    ok: true,
+    settings: (await response.json()) as RepositoryActionsSecretsSettings,
   };
 }
 

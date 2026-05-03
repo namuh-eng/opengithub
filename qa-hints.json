@@ -3600,5 +3600,23 @@
       "Verify fork pull request secret blocking, environment-gated release, reusable workflow secret allow-listing, and log masking in Phase 4.",
       "Exercise concurrent admin edits, long names/values, archived repositories, private repository leakage, and reserved/default variable edge cases."
     ]
+  },
+  {
+    "feature_id": "settings-005",
+    "tests_written": [
+      "Completed Phase 2 Editorial Secrets and Variables Shell without marking settings-005 build_pass=true.",
+      "Added typed frontend fetch/session helpers for GET /api/repos/{owner}/{repo}/settings/secrets and replaced the placeholder settings route with a server-fetched RepositorySettingsShell page.",
+      "Added RepositoryActionsSecretsPage with Editorial summary cards, Secrets/Variables tabs, empty states, repository secret metadata rows, variable value rows for permitted admins, inherited metadata sections, forbidden/unavailable states, and accessible disabled mutation controls reserved for Phase 3.",
+      "Focused Vitest covers secret metadata without value leakage, variable value rendering, inherited metadata, empty states, forbidden state redaction, disabled mutation controls, and Editorial banned-value guard assertions.",
+      "Focused Playwright smoke seeds a repository secret/variable through the Rust API, verifies the settings UI never renders secret plaintext, verifies variables tab rendering, verifies forbidden non-admin redaction, checks no dead controls, and saves ralph/screenshots/build/settings-005-phase2-secrets-shell.jpg.",
+      "Verification passed: focused Vitest; web tsc --noEmit; mandatory Editorial banned-value scan; TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check; DB_SSL=false make test with Cargo tests plus 297 frontend tests; focused repository-settings-secrets Playwright; full same-env make test-e2e with 96 Playwright tests."
+    ],
+    "needs_deeper_qa": [
+      "Rerun on a clean database migrated through 202605030045 without manual migration repair; this shared local DB had only reached 202605030041 before the Phase 2 smoke.",
+      "Phase 3 must replace the accessible disabled Update/Delete controls and Add links with real create/update/delete forms and server-confirmed writes.",
+      "Exercise inherited organization and environment metadata once those scopes have real producers; Phase 2 renders the shapes but local seeded smoke covers repository scope only.",
+      "Check long secret/variable names, long variable values, mobile wrapping, keyboard tab traversal, and screen reader labels across empty/populated/forbidden states.",
+      "Continue ciphertext/plaintext leakage scans across API responses, frontend HTML, screenshots, audit rows, logs, and future Actions run contexts."
+    ]
   }
 ]

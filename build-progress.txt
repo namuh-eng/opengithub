@@ -2499,3 +2499,14 @@
 - Verification passed: focused `repository_actions_secrets_contract` compiled and passed but self-skipped DB assertions because the configured local test database could not replay migrations cleanly; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; `DB_SSL=false make test` with Cargo tests plus 292 frontend tests; mandatory Editorial banned-value scan returned zero matches using `rg -n -e`.
 - Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first and the structure outline marks browser smoke optional for this phase.
 - Marked Phase 1 as done in `.qrspi/settings-005/structure.md`; `prd.json` remains `build_pass:false` because Phases 2-5 remain.
+
+2026-05-03 - settings-005 phase 2 Editorial secrets and variables shell
+
+- Completed Phase 2 from .qrspi/settings-005/structure.md: /{owner}/{repo}/settings/secrets now renders a server-fetched Editorial Actions secrets and variables settings page instead of the placeholder.
+- Added typed frontend API/session helpers for the Phase 1 Rust read contract and wired the settings route through AppShell + RepositorySettingsShell.
+- Added RepositoryActionsSecretsPage with summary cards, Secrets/Variables tabs, repository secret metadata rows that never render values, variable rows with permitted values, inherited metadata sections, empty states, forbidden/unavailable states, and accessible disabled mutation controls for the Phase 3 write flows.
+- Added focused Vitest coverage for empty/populated/inherited/forbidden states, no secret leakage, no dead controls, and Editorial token/primitives guardrails.
+- Added focused Playwright smoke for the settings page using Rust API-seeded repository secret/variable metadata; screenshot saved at ralph/screenshots/build/settings-005-phase2-secrets-shell.jpg.
+- Verification passed: focused web Vitest; web tsc --noEmit; mandatory Editorial banned-value scan returned zero matches; CARGO_INCREMENTAL=0 TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check; CARGO_INCREMENTAL=0 DB_SSL=false make test with Cargo tests plus 297 frontend tests; focused repository-settings-secrets Playwright; full same-env make test-e2e with 96 Playwright tests.
+- Local E2E database note: the shared opengithub_identity_test database had only migrated through 202605030041, so the already-committed 202605030045_repository_actions_secrets migration was applied manually before the Phase 2 browser smoke.
+- Marked Phase 2 as done in .qrspi/settings-005/structure.md; prd.json remains build_pass:false because Phases 3-5 remain.
