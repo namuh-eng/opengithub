@@ -603,8 +603,9 @@ async fn release_reactions(
         )
         .bind(release_id)
         .bind(actor_user_id)
-        .fetch_one(pool)
-        .await?;
+        .fetch_optional(pool)
+        .await?
+        .flatten();
     }
     Ok(summary)
 }

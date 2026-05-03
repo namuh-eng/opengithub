@@ -848,6 +848,102 @@ export type RepositoryRefSummary = {
   updatedAt: string;
 };
 
+export type ReleaseActor = {
+  id: string | null;
+  login: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+};
+
+export type ReleaseContributorSummary = {
+  id: string;
+  login: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+};
+
+export type ReleaseReactionSummary = {
+  totalCount: number;
+  thumbsUp: number;
+  thumbsDown: number;
+  laugh: number;
+  hooray: number;
+  confused: number;
+  heart: number;
+  rocket: number;
+  eyes: number;
+  viewerReaction: string | null;
+};
+
+export type ReleaseLinks = {
+  htmlHref: string;
+  apiHref: string;
+  tagHref: string;
+  zipballHref: string;
+  tarballHref: string;
+  compareHref: string;
+};
+
+export type ReleaseAsset = {
+  id: string;
+  name: string;
+  label: string | null;
+  contentType: string;
+  byteSize: number;
+  downloadCount: number;
+  checksumSha256: string | null;
+  href: string;
+  createdAt: string;
+};
+
+export type RepositoryReleaseSummary = {
+  id: string;
+  tagName: string;
+  title: string;
+  bodyExcerpt: string | null;
+  draft: boolean;
+  prerelease: boolean;
+  latest: boolean;
+  verified: boolean;
+  targetOid: string | null;
+  shortOid: string | null;
+  author: ReleaseActor;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  assets: ReleaseAsset[];
+  reactions: ReleaseReactionSummary;
+  contributors: ReleaseContributorSummary[];
+  links: ReleaseLinks;
+};
+
+export type RepositoryReleaseDetail = RepositoryReleaseSummary & {
+  body: string | null;
+  bodyHtml: string;
+  immutable: boolean;
+  tagSignatureSummary: string | null;
+};
+
+export type ReleaseTagSummary = {
+  id: string;
+  name: string;
+  targetOid: string | null;
+  shortOid: string | null;
+  commitMessage: string | null;
+  committedAt: string | null;
+  verified: boolean;
+  releaseId: string | null;
+  releaseHref: string | null;
+  zipballHref: string;
+  tarballHref: string;
+  compareHref: string;
+};
+
+export type RepositoryReleaseListQuery = {
+  page?: number;
+  pageSize?: number;
+};
+
 export type RepositoryFileFinderItem = {
   path: string;
   name: string;
@@ -5725,6 +5821,152 @@ export async function getRepositoryFromCookie(
   }
 
   return (await response.json()) as RepositoryOverview;
+}
+
+function repositoryReleaseListPath(
+  owner: string,
+  repo: string,
+  query: RepositoryReleaseListQuery = {},
+) {
+  const params = new URLSearchParams();
+  if (query.page) {
+    params.set("page", String(query.page));
+  }
+  if (query.pageSize) {
+    params.set("pageSize", String(query.pageSize));
+  }
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases${suffix}`;
+}
+
+function repositoryReleaseError(
+  body: unknown,
+  status: number,
+  message: string,
+): ApiErrorEnvelope {
+  return (
+    (body as ApiErrorEnvelope | null) ?? {
+      error: { code: "releases_failed", message },
+      status,
+    }
+  );
+}
+
+export async function getRepositoryReleasesFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  query: RepositoryReleaseListQuery = {},
+): Promise<ListEnvelope<RepositoryReleaseSummary> | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}${repositoryReleaseListPath(owner, repo, query)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Repository releases are temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return repositoryReleaseError(
+      body,
+      response.status,
+      "Repository releases could not be loaded.",
+    );
+  }
+  return body as ListEnvelope<RepositoryReleaseSummary>;
+}
+
+export async function getRepositoryReleaseDetailFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  tag: string,
+): Promise<RepositoryReleaseDetail | ApiErrorEnvelope> {
+  const endpoint =
+    tag === "latest"
+      ? `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/latest`
+      : `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/tag/${encodeURIComponent(tag)}`;
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${endpoint}`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Repository release is temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return repositoryReleaseError(
+      body,
+      response.status,
+      "Repository release could not be loaded.",
+    );
+  }
+  return body as RepositoryReleaseDetail;
+}
+
+export async function getRepositoryReleaseTagsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  query: RepositoryReleaseListQuery = {},
+): Promise<ListEnvelope<ReleaseTagSummary> | ApiErrorEnvelope> {
+  const params = new URLSearchParams();
+  if (query.page) {
+    params.set("page", String(query.page));
+  }
+  if (query.pageSize) {
+    params.set("pageSize", String(query.pageSize));
+  }
+  const suffix = params.size ? `?${params.toString()}` : "";
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/tags${suffix}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Repository tags are temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return repositoryReleaseError(
+      body,
+      response.status,
+      "Repository tags could not be loaded.",
+    );
+  }
+  return body as ListEnvelope<ReleaseTagSummary>;
 }
 
 export async function getRepositorySettingsFromCookie(

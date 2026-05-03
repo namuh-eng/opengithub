@@ -2625,3 +2625,14 @@
 - Verification passed: `cargo test -p opengithub-api --test repository_releases_contract`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 305 frontend tests; mandatory Editorial banned-value scan returned zero matches using `rg -n -e`.
 - Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first and the structure outline marks browser smoke optional for this phase.
 - Marked Phase 1 as done in `.qrspi/releases-001/structure.md`; `prd.json` remains `build_pass:false` because Phases 2-5 remain.
+
+2026-05-03 - releases-001 phase 2 Editorial Releases and Tags UI
+
+- Completed Phase 2 from `.qrspi/releases-001/structure.md`: `/{owner}/{repo}/releases`, `/{owner}/{repo}/releases/latest` or `/releases/{tag}`, and `/{owner}/{repo}/tags` now render real server-fetched Editorial release/tag pages instead of placeholders.
+- Added typed frontend release/tag DTOs and cookie-backed fetch helpers for release lists, release detail by latest/tag, and repository tags.
+- Added `RepositoryReleasesPage`, `RepositoryReleaseDetailPage`, and `RepositoryTagsPage` with Releases/Tags tabs, release badges, author/date/SHA metadata, rendered notes, contributors, assets disclosure shell, source archive links, disabled reaction shell, pagination, tag rows, compare links, and empty/forbidden/unavailable states using Editorial primitives/tokens.
+- Fixed a read API edge case found by browser smoke: signed-in viewers without a release reaction now receive `viewerReaction:null` instead of a SQL row-not-found error.
+- Added focused Vitest coverage for list/detail/tags rendering, latest/prerelease/verified chips, sanitized Markdown output, asset disclosure shell, empty/error states, concrete links, disabled reaction accessibility, and no dead controls.
+- Added focused Playwright smoke for seeded Releases list/latest/tags paths; screenshots saved at `ralph/screenshots/build/releases-001-phase2-list.jpg`, `releases-001-phase2-detail.jpg`, and `releases-001-phase2-tags.jpg`.
+- Verification passed: `cargo test -p opengithub-api --test repository_releases_contract`; `cd web && npm test -- --run tests/repository-releases-page.test.tsx`; focused same-env Playwright `repository-releases.spec.ts`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 310 web tests; full same-env `make test-e2e` with 98 Playwright tests; mandatory Editorial banned-value scan returned zero matches.
+- Marked Phase 2 as done in `.qrspi/releases-001/structure.md`; `prd.json` remains `build_pass:false` because Phases 3-5 remain.

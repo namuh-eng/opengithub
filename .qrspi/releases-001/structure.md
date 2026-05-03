@@ -24,7 +24,7 @@
 
 ## Phase 2: Editorial Releases and Tags UI - list, detail, empty states, and responsive layout
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the Releases and Tags placeholders with real server-fetched Editorial pages. The release list/detail should match GitHub's information architecture while using the locked Editorial tokens and primitives.
 

@@ -198,6 +198,17 @@ async fn repository_releases_read_contract_filters_privacy_and_exposes_tags_asse
         .unwrap()
         .contains("<script"));
 
+    let (unreacted_status, _, unreacted_body) = send_json(
+        app.clone(),
+        Method::GET,
+        &latest_uri,
+        Some(&outsider_cookie),
+        None,
+    )
+    .await;
+    assert_eq!(unreacted_status, StatusCode::OK);
+    assert_eq!(unreacted_body["reactions"]["viewerReaction"], Value::Null);
+
     let by_id_uri = format!("{public_uri}/{release_v2}");
     let (by_id_status, _, by_id_body) =
         send_json(app.clone(), Method::GET, &by_id_uri, None, None).await;

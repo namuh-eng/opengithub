@@ -3765,5 +3765,24 @@
       "Phase 4 must add release create/edit/publish/delete and asset upload/remove mutations with audit coverage.",
       "Run against a clean migrated database with larger release histories, tags containing slashes, duplicate/deleted release edge cases, Markdown XSS probes, private repository leakage checks, and asset/reaction race conditions."
     ]
+  },
+  {
+    "feature_id": "releases-001",
+    "tests_written": [
+      "Completed Phase 2 Editorial Releases and Tags UI without marking releases-001 build_pass=true.",
+      "Added typed frontend release/tag DTOs and cookie-backed fetch helpers for release list, latest/tag detail, and tag list API responses.",
+      "Replaced Releases and Tags placeholders with server-fetched Editorial pages for list, latest/detail, tags, empty states, forbidden/unavailable states, release badges, rendered notes, contributors, assets disclosure shell, source archive links, disabled reaction shell, and compare links.",
+      "Fixed release read API viewerReaction lookup so signed-in viewers with no release reaction receive null instead of a SQL row-not-found error.",
+      "Focused Vitest covers list/detail/tags rendering, empty/error states, concrete links, disabled reaction accessibility, and no dead visible controls.",
+      "Focused Playwright smoke seeds a release/tag through the local Postgres fixture, checks list/latest/tags, validates no dead controls, and saves screenshots under ralph/screenshots/build/releases-001-phase2-*.jpg.",
+      "Verification passed: focused repository_releases_contract, focused release UI Vitest, focused release Playwright smoke, make check, make test with 310 web tests, full make test-e2e with 98 Playwright tests, and the mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 still needs real asset/source download endpoints, reaction mutations, latest redirect behavior, and a searchable compare selector rather than disabled/read-link shells.",
+      "Phase 4 still needs release create/edit/publish/delete and asset upload/remove mutation flows before releases-001 can be build_pass.",
+      "Run browser QA on large release histories, long release titles, long asset names, many contributors, and mobile overflow once mutation controls are added.",
+      "Probe Markdown sanitization/XSS with richer release note bodies and verify private repository release/tag redaction for anonymous, read-only, and non-member viewers.",
+      "Verify local migration guard in the focused Playwright smoke is unnecessary on clean databases; it exists only because the shared local DB was missing already-committed release migration columns."
+    ]
   }
 ]

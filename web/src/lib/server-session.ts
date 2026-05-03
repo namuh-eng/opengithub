@@ -40,6 +40,9 @@ import {
   getRepositoryPullRequestsFromCookie,
   getRepositoryPullRequestTimelineFromCookie,
   getRepositoryRefsFromCookie,
+  getRepositoryReleaseDetailFromCookie,
+  getRepositoryReleasesFromCookie,
+  getRepositoryReleaseTagsFromCookie,
   getRepositorySettingsFromCookie,
   getRepositoryWebhookDeliveryDetailFromCookie,
   getRepositoryWebhookDetailFromCookie,
@@ -55,6 +58,7 @@ import {
   type RepositoryIssueListQuery,
   type RepositoryPullRequestDiffQuery,
   type RepositoryPullRequestListQuery,
+  type RepositoryReleaseListQuery,
   type SearchSuggestionsQuery,
   searchCodeFromCookie,
   searchCollaborationFromCookie,
@@ -206,6 +210,48 @@ export async function getDashboardSummary(query: DashboardSummaryQuery = {}) {
 export async function getRepository(owner: string, repo: string) {
   const requestHeaders = await headers();
   return getRepositoryFromCookie(requestHeaders.get("cookie"), owner, repo);
+}
+
+export async function getRepositoryReleases(
+  owner: string,
+  repo: string,
+  query: RepositoryReleaseListQuery = {},
+) {
+  const requestHeaders = await headers();
+  return getRepositoryReleasesFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    query,
+  );
+}
+
+export async function getRepositoryReleaseDetail(
+  owner: string,
+  repo: string,
+  tag: string,
+) {
+  const requestHeaders = await headers();
+  return getRepositoryReleaseDetailFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    tag,
+  );
+}
+
+export async function getRepositoryReleaseTags(
+  owner: string,
+  repo: string,
+  query: RepositoryReleaseListQuery = {},
+) {
+  const requestHeaders = await headers();
+  return getRepositoryReleaseTagsFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    query,
+  );
 }
 
 export async function getRepositorySettings(owner: string, repo: string) {
