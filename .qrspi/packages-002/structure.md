@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial Detail Pages - header, install card, recent versions, and README/about
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Render real server-fetched package detail pages for user- and organization-scoped canonical routes. The page should use the owner/profile shell when owner-scoped and repository context links when a source repository is linked, while staying fully inside the Editorial visual system.
 

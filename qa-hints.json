@@ -3973,5 +3973,22 @@
       "Ensure actual registry download endpoints, not page rendering, are the only paths that increment package_downloads.",
       "Run UI accessibility and mobile checks once Phase 2 renders the detail page."
     ]
+  },
+  {
+    "feature_id": "packages-002",
+    "tests_written": [
+      "Completed Phase 2 Editorial Detail Pages without marking packages-002 build_pass=true.",
+      "Added typed frontend package detail DTOs and cookie-backed user/org detail fetch helpers that preserve forbidden, not-found, and unavailable states.",
+      "Rendered canonical user and organization package detail routes with Editorial header metadata, install command card, recent versions, blob/platform summary, README/about content, linked repository links, and admin-only Settings entry.",
+      "Focused Vitest covers populated detail, latest/selected metadata, org canonical route links, hidden non-admin Settings, empty README/about state, forbidden/unavailable states, no inert links, and concrete version links.",
+      "Focused Playwright seeds a real visible package through Postgres/API state, verifies install/version/about/settings rendering, storage-key redaction, no dead anchors, mobile no-overflow, and saves packages-002-phase2-detail.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 still needs real version-selection interactions, copy-to-clipboard behavior, immutable version detail URLs, and download metadata endpoints.",
+      "Phase 4 still needs the package Settings surface for access, visibility, linked repository, and provenance overview.",
+      "Run private/internal browser fixtures across package grants, linked repository grants, org membership, anonymous readers, and non-admin viewers to verify redaction in the UI shell.",
+      "Stress long package names, very long digests, many platforms/blobs, missing selected versions, packages without linked repositories, and empty README/about content on mobile.",
+      "Verify registry download accounting remains unchanged by page rendering and only increments from explicit download endpoints once Phase 3 adds them."
+    ]
   }
 ]

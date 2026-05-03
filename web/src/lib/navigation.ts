@@ -785,6 +785,22 @@ export function ownerPackagesHref(
   return `${base}${query ? `?${query}` : ""}`;
 }
 
+export function packageDetailHref(
+  ownerKind: "user" | "organization",
+  owner: string,
+  packageType: string,
+  packageName: string,
+  version?: string | null,
+) {
+  const base =
+    ownerKind === "organization"
+      ? `${organizationHref(owner)}/packages/${encodeURIComponent(packageType)}/${encodeURIComponent(packageName)}`
+      : `/${encodeURIComponent(owner)}/${encodeURIComponent(packageType)}/${encodeURIComponent(packageName)}`;
+  return version?.trim()
+    ? `${base}?version=${encodeURIComponent(version.trim())}`
+    : base;
+}
+
 export function organizationProjectHref(org: string) {
   return `${organizationHref(org)}/projects`;
 }

@@ -458,6 +458,76 @@ export type OwnerPackageListItem = {
   latestVersion: string | null;
 };
 
+export type PackageDetailFetchResult =
+  | { ok: true; package: PackageDetail }
+  | { ok: false; status: number; code: string | null; message: string };
+
+export type PackageDetail = {
+  id: string;
+  name: string;
+  packageType: string;
+  typeLabel: string;
+  visibility: RepositoryVisibility;
+  href: string;
+  owner: OwnerPackageOwner;
+  publisher: OwnerPackagePublisher;
+  linkedRepository: OwnerPackageRepository | null;
+  publishedAt: string;
+  updatedAt: string;
+  downloadCount: number;
+  selectedVersion: PackageDetailVersion | null;
+  versions: PackageDetailVersion[];
+  installCommands: PackageInstallCommand[];
+  blobs: PackageBlobSummary[];
+  about: PackageAboutContent;
+  admin: PackageAdminState;
+};
+
+export type PackageDetailVersion = {
+  id: string;
+  version: string;
+  digest: string | null;
+  shortDigest: string | null;
+  platformOs: string | null;
+  platformArch: string | null;
+  sizeBytes: number | null;
+  publishedAt: string;
+  publisher: OwnerPackagePublisher;
+  href: string;
+};
+
+export type PackageBlobSummary = {
+  id: string;
+  versionId: string | null;
+  digest: string;
+  shortDigest: string;
+  mediaType: string | null;
+  platformOs: string | null;
+  platformArch: string | null;
+  sizeBytes: number | null;
+};
+
+export type PackageInstallCommand = {
+  label: string;
+  command: string;
+  version: string | null;
+  digest: string | null;
+  platform: string | null;
+};
+
+export type PackageAboutContent = {
+  source: string;
+  markdown: string | null;
+  html: string | null;
+  empty: boolean;
+};
+
+export type PackageAdminState = {
+  canAdmin: boolean;
+  settingsHref: string | null;
+  reason: string | null;
+};
+
 export type OwnerPackagePublisher = {
   id: string;
   login: string;
@@ -3779,6 +3849,76 @@ export async function getOrganizationPackagesFromCookie(
     `/api/orgs/${encodeURIComponent(org)}/packages`,
     query,
   );
+}
+
+export async function getUserPackageDetailFromCookie(
+  cookie: string | null | undefined,
+  username: string,
+  packageType: string,
+  packageName: string,
+  version?: string | null,
+): Promise<PackageDetailFetchResult> {
+  return getPackageDetailFromCookie(
+    cookie,
+    `/api/users/${encodeURIComponent(username)}/packages/${encodeURIComponent(packageType)}/${encodeURIComponent(packageName)}`,
+    version,
+  );
+}
+
+export async function getOrganizationPackageDetailFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  packageType: string,
+  packageName: string,
+  version?: string | null,
+): Promise<PackageDetailFetchResult> {
+  return getPackageDetailFromCookie(
+    cookie,
+    `/api/orgs/${encodeURIComponent(org)}/packages/${encodeURIComponent(packageType)}/${encodeURIComponent(packageName)}`,
+    version,
+  );
+}
+
+async function getPackageDetailFromCookie(
+  cookie: string | null | undefined,
+  path: string,
+  version?: string | null,
+): Promise<PackageDetailFetchResult> {
+  let response: Response;
+  try {
+    const url = new URL(`${apiBaseUrl()}${path}`);
+    if (version?.trim()) {
+      url.searchParams.set("version", version.trim());
+    }
+    response = await fetch(url, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "packages_unavailable",
+      message: "Package detail could not be reached.",
+    };
+  }
+
+  if (!response.ok) {
+    let body: ApiErrorEnvelope | null = null;
+    try {
+      body = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      body = null;
+    }
+    return {
+      ok: false,
+      status: body?.status ?? response.status,
+      code: body?.error.code ?? null,
+      message: body?.error.message ?? "Package detail could not be loaded.",
+    };
+  }
+
+  return { ok: true, package: (await response.json()) as PackageDetail };
 }
 
 async function getOwnerPackagesFromCookie(
