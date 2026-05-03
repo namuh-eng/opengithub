@@ -2151,6 +2151,14 @@
       "exit_code": 0,
       "category": "compilation_failure",
       "attempt": 200
+    },
+    {
+      "timestamp": "2026-05-03T08:55:30.069544",
+      "phase": "build",
+      "feature": "build_cycle_1",
+      "exit_code": 0,
+      "category": "test_failure",
+      "attempt": 201
     }
   ]
 }
