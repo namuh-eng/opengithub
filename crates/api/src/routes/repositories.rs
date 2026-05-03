@@ -37,15 +37,17 @@ use crate::{
     },
     domain::releases::{
         create_repository_release_asset_by_owner_name, create_repository_release_by_owner_name,
+        create_repository_release_upload_intent_by_owner_name,
         delete_repository_release_asset_by_owner_name, delete_repository_release_by_owner_name,
-        publish_repository_release_by_owner_name, repository_latest_release_by_owner_name,
-        repository_release_archive_metadata_by_owner_name,
+        generate_repository_release_notes_by_owner_name, publish_repository_release_by_owner_name,
+        repository_latest_release_by_owner_name, repository_release_archive_metadata_by_owner_name,
         repository_release_asset_download_by_owner_name,
         repository_release_detail_by_id_by_owner_name,
         repository_release_detail_by_tag_by_owner_name, repository_release_list_by_owner_name,
-        repository_release_tags_by_owner_name, toggle_repository_release_reaction_by_owner_name,
-        update_repository_release_by_owner_name, ReleaseAssetMutation, ReleaseMutation,
-        ReleasesError,
+        repository_release_management_context_by_owner_name, repository_release_tags_by_owner_name,
+        toggle_repository_release_reaction_by_owner_name, update_repository_release_by_owner_name,
+        GeneratedReleaseNotesRequest, ReleaseAssetMutation, ReleaseMutation,
+        ReleaseUploadIntentRequest, ReleasesError,
     },
     domain::repositories::{
         cancel_repository_invitation_by_owner_name, create_repository_branch_rule_by_owner_name,
@@ -96,6 +98,19 @@ pub fn router() -> Router<AppState> {
         .route("/:owner/:repo/refs", get(refs))
         .route("/:owner/:repo/file-finder", get(file_finder))
         .route("/:owner/:repo/releases", get(releases).post(create_release))
+        .route("/:owner/:repo/releases/manage", get(release_manage_new))
+        .route(
+            "/:owner/:repo/releases/manage/generated-notes",
+            post(release_generated_notes),
+        )
+        .route(
+            "/:owner/:repo/releases/manage/upload-intents",
+            post(create_release_upload_intent),
+        )
+        .route(
+            "/:owner/:repo/releases/manage/:release_id",
+            get(release_manage_edit),
+        )
         .route("/:owner/:repo/releases/latest", get(latest_release))
         .route("/:owner/:repo/releases/tags", get(release_tags))
         .route(
@@ -692,6 +707,88 @@ async fn create_release(
     .map_err(map_releases_error)?;
 
     Ok((StatusCode::CREATED, Json(json!(release))))
+}
+
+async fn release_manage_new(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let context = repository_release_management_context_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        None,
+        actor.as_ref().map(|user| user.id),
+    )
+    .await
+    .map_err(map_releases_error)?;
+
+    Ok(Json(json!(context)))
+}
+
+async fn release_manage_edit(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, release_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let context = repository_release_management_context_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        Some(release_id),
+        actor.as_ref().map(|user| user.id),
+    )
+    .await
+    .map_err(map_releases_error)?;
+
+    Ok(Json(json!(context)))
+}
+
+async fn release_generated_notes(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<GeneratedReleaseNotesRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let preview = generate_repository_release_notes_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        actor.as_ref().map(|user| user.id),
+        request,
+    )
+    .await
+    .map_err(map_releases_error)?;
+
+    Ok(Json(json!(preview)))
+}
+
+async fn create_release_upload_intent(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<ReleaseUploadIntentRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let intent = create_repository_release_upload_intent_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        actor.as_ref().map(|user| user.id),
+        request,
+    )
+    .await
+    .map_err(map_releases_error)?;
+
+    Ok((StatusCode::CREATED, Json(json!(intent))))
 }
 
 async fn latest_release(
@@ -2267,6 +2364,11 @@ fn map_releases_error(error: ReleasesError) -> (StatusCode, Json<ErrorEnvelope>)
             StatusCode::UNPROCESSABLE_ENTITY,
             "validation_failed",
             "release notes could not be rendered".to_owned(),
+        ),
+        ReleasesError::Webhook(_) | ReleasesError::Job(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "release side effect queueing failed".to_owned(),
         ),
         ReleasesError::Sqlx(_) => error_response(
             StatusCode::INTERNAL_SERVER_ERROR,

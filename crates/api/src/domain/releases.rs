@@ -4,7 +4,11 @@ use serde_json::json;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
-use crate::api_types::ListEnvelope;
+use crate::{
+    api_types::ListEnvelope,
+    domain::webhooks::{enqueue_repository_webhook_event, WebhookError},
+    jobs::{enqueue_job, JobLeaseError},
+};
 
 use super::{
     markdown::{render_markdown, MarkdownError, RenderMarkdownInput},
@@ -135,6 +139,95 @@ pub struct ReleaseArchiveMetadata {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct ReleaseManagementContext {
+    pub repository_id: Uuid,
+    pub owner_login: String,
+    pub name: String,
+    pub can_write: bool,
+    pub archived: bool,
+    pub release: Option<RepositoryReleaseDetail>,
+    pub available_tags: Vec<ReleaseRefOption>,
+    pub available_refs: Vec<ReleaseRefOption>,
+    pub default_target: String,
+    pub previous_tag_candidates: Vec<ReleaseRefOption>,
+    pub latest_policy_options: Vec<ReleaseLatestPolicyOption>,
+    pub upload_limits: ReleaseUploadLimits,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseRefOption {
+    pub name: String,
+    pub short_name: String,
+    pub kind: String,
+    pub target_oid: Option<String>,
+    pub short_oid: Option<String>,
+    pub committed_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseLatestPolicyOption {
+    pub value: String,
+    pub label: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseUploadLimits {
+    pub max_asset_bytes: i64,
+    pub max_asset_count: i64,
+    pub allowed_storage_kinds: Vec<String>,
+    pub expires_in_seconds: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneratedReleaseNotesRequest {
+    pub target: String,
+    pub previous_tag: Option<String>,
+    pub title: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneratedReleaseNotesPreview {
+    pub title: String,
+    pub body: String,
+    pub target: ReleaseRefOption,
+    pub previous_tag: Option<ReleaseRefOption>,
+    pub commit_count: i64,
+    pub merged_pull_request_count: i64,
+    pub contributors: Vec<ReleaseContributorSummary>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseUploadIntentRequest {
+    pub name: String,
+    pub content_type: Option<String>,
+    pub byte_size: i64,
+    pub checksum_sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseUploadIntent {
+    pub id: Uuid,
+    pub asset_name: String,
+    pub content_type: String,
+    pub byte_size: i64,
+    pub checksum_sha256: Option<String>,
+    pub storage_kind: String,
+    pub upload_url: String,
+    pub handoff_token: String,
+    pub status: String,
+    pub expires_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct ReleaseAssetDownloadMetadata {
     pub asset: ReleaseAsset,
     pub release_id: Uuid,
@@ -152,6 +245,8 @@ pub struct ReleaseMutation {
     pub body: Option<String>,
     pub draft: Option<bool>,
     pub prerelease: Option<bool>,
+    pub latest_policy: Option<String>,
+    pub delete_tag: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -190,6 +285,236 @@ pub enum ReleasesError {
     Markdown,
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
+    #[error(transparent)]
+    Webhook(#[from] WebhookError),
+    #[error(transparent)]
+    Job(#[from] JobLeaseError),
+}
+
+pub async fn repository_release_management_context_by_owner_name(
+    pool: &PgPool,
+    owner_login: &str,
+    repo_name: &str,
+    release_id: Option<Uuid>,
+    actor_user_id: Option<Uuid>,
+) -> Result<ReleaseManagementContext, ReleasesError> {
+    let actor_user_id = actor_user_id.ok_or(ReleasesError::AuthenticationRequired)?;
+    let repository = writable_repository(pool, owner_login, repo_name, actor_user_id).await?;
+    let release = match release_id {
+        Some(release_id) => Some(
+            release_detail_for_repository(pool, &repository, Some(actor_user_id), release_id)
+                .await?,
+        ),
+        None => None,
+    };
+    let available_refs = release_ref_options(pool, repository.id, &["branch", "tag"]).await?;
+    let available_tags = available_refs
+        .iter()
+        .filter(|option| option.kind == "tag")
+        .cloned()
+        .collect::<Vec<_>>();
+    Ok(ReleaseManagementContext {
+        repository_id: repository.id,
+        owner_login: repository.owner_login.clone(),
+        name: repository.name.clone(),
+        can_write: true,
+        archived: repository.is_archived,
+        release,
+        available_tags: available_tags.clone(),
+        available_refs,
+        default_target: repository.default_branch.clone(),
+        previous_tag_candidates: available_tags,
+        latest_policy_options: latest_policy_options(),
+        upload_limits: ReleaseUploadLimits {
+            max_asset_bytes: 2_147_483_648,
+            max_asset_count: 100,
+            allowed_storage_kinds: vec!["local".to_owned(), "s3".to_owned()],
+            expires_in_seconds: 900,
+        },
+    })
+}
+
+pub async fn generate_repository_release_notes_by_owner_name(
+    pool: &PgPool,
+    owner_login: &str,
+    repo_name: &str,
+    actor_user_id: Option<Uuid>,
+    request: GeneratedReleaseNotesRequest,
+) -> Result<GeneratedReleaseNotesPreview, ReleasesError> {
+    let actor_user_id = actor_user_id.ok_or(ReleasesError::AuthenticationRequired)?;
+    let repository = writable_repository(pool, owner_login, repo_name, actor_user_id).await?;
+    ensure_repository_mutable(&repository)?;
+    let target = resolve_release_ref(pool, &repository, &request.target).await?;
+    let previous_tag = match request
+        .previous_tag
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
+        Some(tag) => Some(resolve_release_tag_ref(pool, &repository, tag).await?),
+        None => previous_tag_before(pool, &repository, target.committed_at).await?,
+    };
+    let commits = commits_between_refs(
+        pool,
+        repository.id,
+        previous_tag.as_ref(),
+        target.committed_at,
+    )
+    .await?;
+    let prs = merged_pull_requests_between_refs(
+        pool,
+        repository.id,
+        previous_tag.as_ref(),
+        target.committed_at,
+    )
+    .await?;
+    let title = request
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("Generated release notes")
+        .chars()
+        .take(180)
+        .collect::<String>();
+    let mut body = format!("## {title}\n\n");
+    if commits.is_empty() && prs.is_empty() {
+        body.push_str("No commits or merged pull requests were found for this range.\n");
+    } else {
+        if !prs.is_empty() {
+            body.push_str("### Merged pull requests\n");
+            for row in &prs {
+                let number: i64 = row.get("number");
+                let pr_title: String = row.get("title");
+                body.push_str(&format!("- #{number} {pr_title}\n"));
+            }
+            body.push('\n');
+        }
+        if !commits.is_empty() {
+            body.push_str("### Commits\n");
+            for row in commits.iter().take(25) {
+                let message: String = row.get("message");
+                let oid: String = row.get("oid");
+                body.push_str(&format!("- {} {}\n", short_oid(&oid), first_line(&message)));
+            }
+        }
+    }
+    let contributors = generated_note_contributors(
+        pool,
+        repository.id,
+        previous_tag.as_ref(),
+        target.committed_at,
+    )
+    .await?;
+    audit_release_event(
+        pool,
+        repository.id,
+        None,
+        actor_user_id,
+        "release.notes.generated",
+        &["target", "previous_tag"],
+        json!({}),
+        json!({
+            "target": target.short_name,
+            "previousTag": previous_tag.as_ref().map(|tag| tag.short_name.clone()),
+            "commitCount": commits.len(),
+            "mergedPullRequestCount": prs.len()
+        }),
+    )
+    .await?;
+    Ok(GeneratedReleaseNotesPreview {
+        title,
+        body: body.chars().take(20_000).collect(),
+        target,
+        previous_tag,
+        commit_count: commits.len() as i64,
+        merged_pull_request_count: prs.len() as i64,
+        contributors,
+    })
+}
+
+pub async fn create_repository_release_upload_intent_by_owner_name(
+    pool: &PgPool,
+    owner_login: &str,
+    repo_name: &str,
+    actor_user_id: Option<Uuid>,
+    request: ReleaseUploadIntentRequest,
+) -> Result<ReleaseUploadIntent, ReleasesError> {
+    let actor_user_id = actor_user_id.ok_or(ReleasesError::AuthenticationRequired)?;
+    let repository = writable_repository(pool, owner_login, repo_name, actor_user_id).await?;
+    ensure_repository_mutable(&repository)?;
+    let asset_name = normalize_asset_name(&request.name)?;
+    if request.byte_size <= 0 || request.byte_size > 2_147_483_648 {
+        return Err(ReleasesError::Validation(
+            "asset byte size must be between 1 byte and 2 GiB".to_owned(),
+        ));
+    }
+    let content_type = request
+        .content_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("application/octet-stream")
+        .to_owned();
+    validate_content_type(&content_type)?;
+    let checksum_sha256 = request
+        .checksum_sha256
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(validate_sha256)
+        .transpose()?;
+    let intent_id = Uuid::new_v4();
+    let storage_key = format!("releases/pending/{}/{}", repository.id, intent_id);
+    let expires_at = Utc::now() + chrono::Duration::seconds(900);
+    audit_release_event(
+        pool,
+        repository.id,
+        None,
+        actor_user_id,
+        "release.asset.upload_intent.created",
+        &["asset"],
+        json!({}),
+        json!({
+            "intentId": intent_id,
+            "assetName": asset_name,
+            "byteSize": request.byte_size,
+            "contentType": content_type,
+            "storageKind": "local"
+        }),
+    )
+    .await?;
+    enqueue_job(
+        pool,
+        "release-asset-upload-intent",
+        &intent_id.to_string(),
+        json!({
+            "repositoryId": repository.id,
+            "intentId": intent_id,
+            "assetName": asset_name,
+            "byteSize": request.byte_size,
+            "contentType": content_type,
+            "storageKind": "local",
+            "storageKey": storage_key,
+            "expiresAt": expires_at
+        }),
+    )
+    .await?;
+    Ok(ReleaseUploadIntent {
+        id: intent_id,
+        asset_name,
+        content_type,
+        byte_size: request.byte_size,
+        checksum_sha256,
+        storage_kind: "local".to_owned(),
+        upload_url: format!(
+            "/api/repos/{}/{}/releases/manage/upload-intents/{intent_id}/local-upload",
+            repository.owner_login, repository.name
+        ),
+        handoff_token: format!("local-upload-{intent_id}"),
+        status: "pending".to_owned(),
+        expires_at,
+    })
 }
 
 pub async fn create_repository_release_by_owner_name(
@@ -218,6 +543,7 @@ pub async fn create_repository_release_by_owner_name(
     let body = mutation.body.unwrap_or_default();
     let prerelease = mutation.prerelease.unwrap_or(false);
     let draft = mutation.draft.unwrap_or(false);
+    let latest_policy = normalize_latest_policy(mutation.latest_policy.as_deref())?;
     let body_html =
         render_release_markdown(pool, &repository, tag_name.clone(), Some(body.clone())).await?;
     let excerpt = release_excerpt(&body);
@@ -248,7 +574,7 @@ pub async fn create_repository_release_by_owner_name(
     .await
     .map_err(map_release_write_error)?;
     let release_id = row.get("id");
-    refresh_latest_marker(pool, repository.id).await?;
+    apply_latest_policy(pool, repository.id, release_id, draft, latest_policy).await?;
     audit_release_event(
         pool,
         repository.id,
@@ -265,6 +591,16 @@ pub async fn create_repository_release_by_owner_name(
         }),
     )
     .await?;
+    if !draft {
+        enqueue_release_side_effects(
+            pool,
+            repository.id,
+            release_id,
+            "release",
+            json!({ "action": "created", "releaseId": release_id, "tagName": tag_name }),
+        )
+        .await?;
+    }
     release_detail_for_repository(pool, &repository, Some(actor_user_id), release_id).await
 }
 
@@ -313,6 +649,7 @@ pub async fn update_repository_release_by_owner_name(
         .unwrap_or_else(|| before.body.unwrap_or_default());
     let draft = mutation.draft.unwrap_or(before.summary.draft);
     let prerelease = mutation.prerelease.unwrap_or(before.summary.prerelease);
+    let latest_policy = normalize_latest_policy(mutation.latest_policy.as_deref())?;
     let was_draft = before.summary.draft;
     let published_at = if draft {
         None
@@ -355,7 +692,7 @@ pub async fn update_repository_release_by_owner_name(
     .execute(pool)
     .await
     .map_err(map_release_write_error)?;
-    refresh_latest_marker(pool, repository.id).await?;
+    apply_latest_policy(pool, repository.id, release_id, draft, latest_policy).await?;
     audit_release_event(
         pool,
         repository.id,
@@ -381,6 +718,16 @@ pub async fn update_repository_release_by_owner_name(
         }),
     )
     .await?;
+    if was_draft && !draft {
+        enqueue_release_side_effects(
+            pool,
+            repository.id,
+            release_id,
+            "release",
+            json!({ "action": "published", "releaseId": release_id, "tagName": tag_name }),
+        )
+        .await?;
+    }
     release_detail_for_repository(pool, &repository, Some(actor_user_id), release_id).await
 }
 
@@ -404,6 +751,8 @@ pub async fn publish_repository_release_by_owner_name(
             body: None,
             draft: Some(false),
             prerelease: None,
+            latest_policy: Some("automatic".to_owned()),
+            delete_tag: None,
         },
     )
     .await
@@ -446,6 +795,14 @@ pub async fn delete_repository_release_by_owner_name(
         &["deleted_at"],
         json!({}),
         json!({ "deleted": true }),
+    )
+    .await?;
+    enqueue_release_side_effects(
+        pool,
+        repository.id,
+        release_id,
+        "release",
+        json!({ "action": "deleted", "releaseId": release_id }),
     )
     .await?;
     Ok(())
@@ -1261,6 +1618,109 @@ async fn refresh_latest_marker(pool: &PgPool, repository_id: Uuid) -> Result<(),
     Ok(())
 }
 
+async fn apply_latest_policy(
+    pool: &PgPool,
+    repository_id: Uuid,
+    release_id: Uuid,
+    draft: bool,
+    policy: LatestPolicy,
+) -> Result<(), ReleasesError> {
+    match policy {
+        LatestPolicy::Automatic => refresh_latest_marker(pool, repository_id).await,
+        LatestPolicy::Latest => {
+            if draft {
+                return Err(ReleasesError::Validation(
+                    "draft releases cannot be marked latest".to_owned(),
+                ));
+            }
+            sqlx::query("UPDATE releases SET is_latest = false WHERE repository_id = $1")
+                .bind(repository_id)
+                .execute(pool)
+                .await?;
+            sqlx::query(
+                "UPDATE releases SET is_latest = true WHERE repository_id = $1 AND id = $2",
+            )
+            .bind(repository_id)
+            .bind(release_id)
+            .execute(pool)
+            .await?;
+            Ok(())
+        }
+        LatestPolicy::NotLatest => {
+            sqlx::query(
+                "UPDATE releases SET is_latest = false WHERE repository_id = $1 AND id = $2",
+            )
+            .bind(repository_id)
+            .bind(release_id)
+            .execute(pool)
+            .await?;
+            Ok(())
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LatestPolicy {
+    Automatic,
+    Latest,
+    NotLatest,
+}
+
+fn normalize_latest_policy(policy: Option<&str>) -> Result<LatestPolicy, ReleasesError> {
+    match policy.unwrap_or("automatic").trim() {
+        "automatic" | "" => Ok(LatestPolicy::Automatic),
+        "latest" => Ok(LatestPolicy::Latest),
+        "not_latest" | "notLatest" => Ok(LatestPolicy::NotLatest),
+        _ => Err(ReleasesError::Validation(
+            "latest policy must be automatic, latest, or not_latest".to_owned(),
+        )),
+    }
+}
+
+fn latest_policy_options() -> Vec<ReleaseLatestPolicyOption> {
+    vec![
+        ReleaseLatestPolicyOption {
+            value: "automatic".to_owned(),
+            label: "Automatic".to_owned(),
+            description: "Use the newest non-prerelease publication as latest.".to_owned(),
+        },
+        ReleaseLatestPolicyOption {
+            value: "latest".to_owned(),
+            label: "Set as latest".to_owned(),
+            description: "Pin this published release as the latest release.".to_owned(),
+        },
+        ReleaseLatestPolicyOption {
+            value: "not_latest".to_owned(),
+            label: "Do not mark latest".to_owned(),
+            description: "Keep this release out of the latest marker.".to_owned(),
+        },
+    ]
+}
+
+async fn enqueue_release_side_effects(
+    pool: &PgPool,
+    repository_id: Uuid,
+    release_id: Uuid,
+    event: &str,
+    payload: serde_json::Value,
+) -> Result<(), ReleasesError> {
+    let _queued =
+        enqueue_repository_webhook_event(pool, repository_id, event, payload.clone()).await?;
+    enqueue_job(
+        pool,
+        "release-activity",
+        &format!("{event}-{release_id}"),
+        json!({
+            "repositoryId": repository_id,
+            "releaseId": release_id,
+            "event": event,
+            "payload": payload
+        }),
+    )
+    .await?;
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn audit_release_event(
     pool: &PgPool,
@@ -1297,6 +1757,240 @@ async fn audit_release_event(
     Ok(())
 }
 
+async fn release_ref_options(
+    pool: &PgPool,
+    repository_id: Uuid,
+    kinds: &[&str],
+) -> Result<Vec<ReleaseRefOption>, ReleasesError> {
+    let kind_values = kinds
+        .iter()
+        .map(|kind| (*kind).to_owned())
+        .collect::<Vec<_>>();
+    let rows = sqlx::query(
+        r#"
+        SELECT refs.name, refs.kind, commits.oid AS target_oid, commits.committed_at
+        FROM repository_git_refs refs
+        LEFT JOIN commits ON commits.id = refs.target_commit_id
+        WHERE refs.repository_id = $1 AND refs.kind = ANY($2)
+        ORDER BY refs.kind, COALESCE(commits.committed_at, refs.updated_at) DESC, lower(refs.name)
+        "#,
+    )
+    .bind(repository_id)
+    .bind(kind_values)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(ref_option_from_row)
+        .collect::<Vec<_>>())
+}
+
+async fn resolve_release_ref(
+    pool: &PgPool,
+    repository: &Repository,
+    value: &str,
+) -> Result<ReleaseRefOption, ReleasesError> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(ReleasesError::Validation(
+            "target ref is required".to_owned(),
+        ));
+    }
+    let candidates = vec![
+        value.to_owned(),
+        format!("refs/heads/{value}"),
+        format!("refs/tags/{value}"),
+    ];
+    let row = sqlx::query(
+        r#"
+        SELECT refs.name, refs.kind, commits.oid AS target_oid, commits.committed_at
+        FROM repository_git_refs refs
+        LEFT JOIN commits ON commits.id = refs.target_commit_id
+        WHERE refs.repository_id = $1 AND refs.name = ANY($2)
+        ORDER BY CASE WHEN refs.kind = 'branch' THEN 0 ELSE 1 END
+        LIMIT 1
+        "#,
+    )
+    .bind(repository.id)
+    .bind(candidates)
+    .fetch_optional(pool)
+    .await?;
+    if let Some(row) = row {
+        return Ok(ref_option_from_row(row));
+    }
+    let row = sqlx::query(
+        r#"
+        SELECT $2::text AS name, 'commit'::text AS kind, oid AS target_oid, committed_at
+        FROM commits
+        WHERE repository_id = $1 AND oid = $2
+        LIMIT 1
+        "#,
+    )
+    .bind(repository.id)
+    .bind(value)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| ReleasesError::Validation("target ref was not found".to_owned()))?;
+    Ok(ref_option_from_row(row))
+}
+
+async fn resolve_release_tag_ref(
+    pool: &PgPool,
+    repository: &Repository,
+    tag_name: &str,
+) -> Result<ReleaseRefOption, ReleasesError> {
+    let tag = clean_tag_name(tag_name);
+    let row = sqlx::query(
+        r#"
+        SELECT refs.name, refs.kind, commits.oid AS target_oid, commits.committed_at
+        FROM repository_git_refs refs
+        LEFT JOIN commits ON commits.id = refs.target_commit_id
+        WHERE refs.repository_id = $1
+          AND refs.kind = 'tag'
+          AND lower(regexp_replace(refs.name, '^refs/tags/', '')) = lower($2)
+        LIMIT 1
+        "#,
+    )
+    .bind(repository.id)
+    .bind(tag)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ReleasesError::TagNotFound)?;
+    Ok(ref_option_from_row(row))
+}
+
+async fn previous_tag_before(
+    pool: &PgPool,
+    repository: &Repository,
+    before: Option<DateTime<Utc>>,
+) -> Result<Option<ReleaseRefOption>, ReleasesError> {
+    let row = sqlx::query(
+        r#"
+        SELECT refs.name, refs.kind, commits.oid AS target_oid, commits.committed_at
+        FROM repository_git_refs refs
+        LEFT JOIN commits ON commits.id = refs.target_commit_id
+        WHERE refs.repository_id = $1
+          AND refs.kind = 'tag'
+          AND ($2::timestamptz IS NULL OR commits.committed_at < $2)
+        ORDER BY commits.committed_at DESC NULLS LAST, refs.updated_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(repository.id)
+    .bind(before)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(ref_option_from_row))
+}
+
+async fn commits_between_refs(
+    pool: &PgPool,
+    repository_id: Uuid,
+    previous_tag: Option<&ReleaseRefOption>,
+    target_time: Option<DateTime<Utc>>,
+) -> Result<Vec<sqlx::postgres::PgRow>, ReleasesError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT commits.oid, commits.message, commits.committed_at
+        FROM commits
+        WHERE commits.repository_id = $1
+          AND ($2::timestamptz IS NULL OR commits.committed_at > $2)
+          AND ($3::timestamptz IS NULL OR commits.committed_at <= $3)
+        ORDER BY commits.committed_at DESC
+        LIMIT 100
+        "#,
+    )
+    .bind(repository_id)
+    .bind(previous_tag.and_then(|tag| tag.committed_at))
+    .bind(target_time)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+async fn merged_pull_requests_between_refs(
+    pool: &PgPool,
+    repository_id: Uuid,
+    previous_tag: Option<&ReleaseRefOption>,
+    target_time: Option<DateTime<Utc>>,
+) -> Result<Vec<sqlx::postgres::PgRow>, ReleasesError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT number, title, merged_at
+        FROM pull_requests
+        WHERE repository_id = $1
+          AND state = 'merged'
+          AND merged_at IS NOT NULL
+          AND ($2::timestamptz IS NULL OR merged_at > $2)
+          AND ($3::timestamptz IS NULL OR merged_at <= $3)
+        ORDER BY merged_at DESC
+        LIMIT 50
+        "#,
+    )
+    .bind(repository_id)
+    .bind(previous_tag.and_then(|tag| tag.committed_at))
+    .bind(target_time)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows)
+}
+
+async fn generated_note_contributors(
+    pool: &PgPool,
+    repository_id: Uuid,
+    previous_tag: Option<&ReleaseRefOption>,
+    target_time: Option<DateTime<Utc>>,
+) -> Result<Vec<ReleaseContributorSummary>, ReleasesError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT DISTINCT users.id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS login,
+               users.display_name,
+               users.avatar_url
+        FROM commits
+        JOIN users ON users.id = commits.author_user_id
+        WHERE commits.repository_id = $1
+          AND ($2::timestamptz IS NULL OR commits.committed_at > $2)
+          AND ($3::timestamptz IS NULL OR commits.committed_at <= $3)
+        ORDER BY login
+        LIMIT 20
+        "#,
+    )
+    .bind(repository_id)
+    .bind(previous_tag.and_then(|tag| tag.committed_at))
+    .bind(target_time)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| ReleaseContributorSummary {
+            id: row.get("id"),
+            login: row.get("login"),
+            display_name: row.get("display_name"),
+            avatar_url: row.get("avatar_url"),
+        })
+        .collect())
+}
+
+fn ref_option_from_row(row: sqlx::postgres::PgRow) -> ReleaseRefOption {
+    let name: String = row.get("name");
+    let kind: String = row.get("kind");
+    let short_name = match kind.as_str() {
+        "branch" => name.trim_start_matches("refs/heads/").to_owned(),
+        "tag" => short_tag_name(&name),
+        _ => name.clone(),
+    };
+    let target_oid: Option<String> = row.get("target_oid");
+    ReleaseRefOption {
+        name,
+        short_name,
+        kind,
+        short_oid: target_oid.as_deref().map(short_oid),
+        target_oid,
+        committed_at: row.get("committed_at"),
+    }
+}
+
 fn normalize_tag_input(tag_name: Option<&str>) -> Result<String, ReleasesError> {
     let Some(tag_name) = tag_name else {
         return Err(ReleasesError::Validation(
@@ -1325,6 +2019,43 @@ fn normalize_asset_name(name: &str) -> Result<String, ReleasesError> {
         ));
     }
     Ok(name.to_owned())
+}
+
+fn validate_content_type(content_type: &str) -> Result<(), ReleasesError> {
+    let valid = content_type.len() <= 120
+        && content_type.contains('/')
+        && content_type
+            .chars()
+            .all(|character| !character.is_control() && !character.is_whitespace());
+    if valid {
+        Ok(())
+    } else {
+        Err(ReleasesError::Validation(
+            "asset content type must be a valid MIME type".to_owned(),
+        ))
+    }
+}
+
+fn validate_sha256(value: &str) -> Result<String, ReleasesError> {
+    let value = value.trim();
+    let valid = value.len() == 64 && value.chars().all(|character| character.is_ascii_hexdigit());
+    if valid {
+        Ok(value.to_owned())
+    } else {
+        Err(ReleasesError::Validation(
+            "asset checksum must be a 64 character SHA-256 hex digest".to_owned(),
+        ))
+    }
+}
+
+fn first_line(message: &str) -> String {
+    message
+        .lines()
+        .next()
+        .unwrap_or(message)
+        .chars()
+        .take(140)
+        .collect()
 }
 
 fn release_excerpt(body: &str) -> String {

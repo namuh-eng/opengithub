@@ -1,3 +1,15 @@
+2026-05-03 - releases-002 phase 1 management API hardening
+
+- Completed Phase 1 from `.qrspi/releases-002/structure.md`: release management now has Rust API support for dedicated new/edit forms without marking `releases-002.build_pass=true`.
+- Added `/api/repos/{owner}/{repo}/releases/manage` and `/manage/{release_id}` context endpoints with writer gating, refs/tags, previous-tag candidates, latest policy options, upload limits, archived state, and existing release detail for edit forms.
+- Added generated release notes preview from local commits and merged pull requests between previous tag and target ref, plus deterministic empty-range output and audit rows. No GitHub APIs are called.
+- Added upload-intent creation with asset name/content-type/size/checksum validation, local/S3-pluggable handoff metadata, expiry, queued job payload, and response/audit redaction of storage keys.
+- Widened release mutations with `latestPolicy` and queued release webhook/activity side effects for publish/delete paths where existing webhook delivery infrastructure supports them.
+- Added `crates/api/tests/repository_release_management_contract.rs` for context loading, write gates, generated notes, latest policy, upload intent validation/redaction, edit context, audit rows, and webhook queueing.
+- Verification passed: focused `repository_release_management_contract`; focused existing `repository_releases_contract`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 312 frontend tests; mandatory Editorial banned-value scan returned zero matches using `rg -n -e`.
+- Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first and `.qrspi/releases-002/structure.md` marks browser smoke optional for this phase.
+- Marked Phase 1 as done in `.qrspi/releases-002/structure.md`; `prd.json` remains `build_pass:false` because Phases 2-5 remain.
+
 2026-05-03 - releases-001 phase 5 final QA handoff
 
 - Completed Phase 5 from `.qrspi/releases-001/structure.md`: repository Releases and Tags are now locked as a completed vertical slice and `releases-001.build_pass=true`.

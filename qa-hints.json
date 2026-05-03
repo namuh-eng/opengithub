@@ -3841,5 +3841,24 @@
       "Test private repository leakage for anonymous, outside signed-in, read-only, write, and admin viewers across releases, tags, assets, source archives, reactions, and management controls.",
       "Run keyboard and screen-reader traversal through Releases/Tags tabs, release cards, assets disclosure, reaction controls, compare selector, pagination, release forms, asset controls, and destructive confirmations."
     ]
+  },
+  {
+    "feature_id": "releases-002",
+    "tests_written": [
+      "Completed Phase 1 Management API Hardening without marking releases-002 build_pass=true.",
+      "Added Rust release management context endpoints for new/edit forms with writer gating, available tags/refs, default target, previous tag candidates, latest policy options, and upload limits.",
+      "Added generated release notes preview from local commits and merged pull requests between previous tag and target ref; no GitHub APIs are called.",
+      "Added upload-intent creation with asset name/content-type/size/checksum validation, local/S3-pluggable metadata, expiry, job handoff, and response redaction of storage keys.",
+      "Widened existing release create/update/publish/delete behavior for latestPolicy and release/webhook/activity side effects.",
+      "Focused Rust contract covers management context, write gates, generated notes, latest policy, upload intent validation/redaction, edit context, audit rows, and webhook delivery queueing."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 still needs dedicated Editorial /releases/new and /releases/edit/{id} form pages before browser smoke is meaningful.",
+      "Phase 4 must complete real upload intent completion/cancel flows and provider-backed S3 signed upload health checks.",
+      "Generated notes should be QA-tested against complex histories: merge commits, squash merges, tags with slashes, missing previous tags, empty ranges, and long commit messages.",
+      "Latest policy needs race/concurrency QA across simultaneous publish/update/delete operations.",
+      "Verify webhook/activity delivery with multiple active hooks, wildcard hooks, disabled hooks, and failing delivery retries.",
+      "Probe private repository leakage, immutable release restrictions, archived repository blocking, and audit redaction on a clean migrated database."
+    ]
   }
 ]

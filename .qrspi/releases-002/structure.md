@@ -10,7 +10,7 @@
 
 ## Phase 1: Management API Hardening - edit context, generated notes, latest policy, and asset upload intents
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Extend the Rust/Postgres release write contract so the dedicated form can load everything it needs and submit all mutations without local-only behavior.
 
