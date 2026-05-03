@@ -3729,5 +3729,25 @@
       "Verify page_build webhook payloads against external receivers and retry behavior after worker success/failure.",
       "Probe private repository leakage for artifact storage keys, CloudFront aliases, build logs, and custom-domain metadata in non-admin views."
     ]
+  },
+  {
+    "feature_id": "settings-006",
+    "tests_written": [
+      "Completed Phase 5 final API docs, browser smoke, QA handoff, and build-pass bookkeeping for repository Pages settings.",
+      "Added API docs coverage for Pages read, source update, domain save/remove, DNS recheck, HTTPS toggle, deployment request, Actions artifact deployment notes, and unpublish endpoints.",
+      "Extended API docs Vitest assertions for Pages endpoint paths, non-admin visibility redaction, CloudFront gating, and unpublish source-preservation notes.",
+      "Extended Playwright smoke to cover disabled, Actions-source controls, branch-source mutation, pending/verified/error custom-domain states, live deployment artifact metadata, mobile layout, and forbidden/non-admin redaction.",
+      "Browser smoke screenshots were saved under ralph/screenshots/build/settings-006-final-pages-*.jpg.",
+      "Focused validation included web tsc, focused API docs and Pages Vitest, focused Pages Playwright, full make check, full make test, full make test-e2e, and the mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Run Pages publication against real AWS S3 and CloudFront rather than the local_metadata publication mode used in the build-loop tests.",
+      "Verify real Cloudflare TXT challenge creation/lookup, DNS propagation timing, ACM certificate readiness, CloudFront alias activation, and cache invalidation before production hardening.",
+      "Exercise custom-domain removal and CNAME file behavior with real domains, including takeover-prevention checks and conflicts across repositories.",
+      "Stress missing /docs, missing index.html, large static file sets, binary assets, nested paths, and bounded build-log redaction against a clean migrated database.",
+      "Verify Actions artifact provenance with real workflow artifact archives and ensure unrelated or expired artifacts cannot create Pages deployments.",
+      "Probe private repository leakage for DNS challenge values, artifact storage keys, CloudFront aliases, build logs, custom domains, and deployment metadata in non-admin views.",
+      "Check keyboard and screen-reader traversal through source controls, domain forms, DNS recheck, HTTPS toggle, unpublish confirmation, deployment links, and mobile layout."
+    ]
   }
 ]

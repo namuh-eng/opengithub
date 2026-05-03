@@ -763,6 +763,185 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-pages-read",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/settings/pages",
+    title: "Read repository Pages settings",
+    description:
+      "Reads the Pages settings contract for source selection, domain verification, HTTPS state, cloud provisioning metadata, deployment history, workflow suggestions, and audit events.",
+    auth: "Signed opengithub session cookie with repository read access; admin-only challenge and cloud metadata are redacted for non-admin readers",
+    response: `{
+  "repositoryId": "repo_01",
+  "ownerLogin": "mona",
+  "name": "octo-app",
+  "canEdit": true,
+  "site": {
+    "source": { "kind": "branch", "branch": "main", "folder": "/docs" },
+    "defaultSiteUrl": "https://mona.opengithub.namuh.co/octo-app",
+    "customDomain": "docs.example.com",
+    "domain": {
+      "status": "pending",
+      "challenge": {
+        "recordType": "TXT",
+        "name": "_opengithub-pages.docs.example.com",
+        "value": "og-pages-token"
+      }
+    },
+    "httpsEnforced": false,
+    "certificateStatus": "pending",
+    "provisioningStatus": "queued"
+  },
+  "deployments": []
+}`,
+    notes: [
+      "Anonymous callers receive 401 and private repository outsiders receive not_found without leaking Pages metadata.",
+      "Non-admin readers can inspect public live status but never receive DNS challenge values, CloudFront aliases, or S3 artifact storage keys.",
+      "Local development can report degraded provisioning while preserving the same S3, CloudFront, and Cloudflare metadata shape used in production.",
+    ],
+  },
+  {
+    id: "repo-pages-source-update",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/settings/pages/source",
+    title: "Update Pages publishing source",
+    description:
+      "Configures no source, branch publishing, or Actions artifact publishing and returns fresh server-confirmed Pages settings.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    request: `{
+  "kind": "branch",
+  "branch": "main",
+  "folder": "/docs",
+  "workflowId": null,
+  "workflowArtifactName": null
+}`,
+    response: `{
+  "site": {
+    "source": { "kind": "branch", "branch": "main", "folder": "/docs" },
+    "provisioningStatus": "queued"
+  },
+  "deployments": [{ "status": "queued", "source": { "kind": "branch" } }]
+}`,
+    notes: [
+      "Branch sources require an existing repository ref and either / or /docs at the selected commit.",
+      "Actions sources require a compatible workflow and artifact name; unrelated workflow artifacts cannot create Pages deployments.",
+      "Every successful source change writes repository.pages.source.update and queues deployment work when publishing remains enabled.",
+    ],
+  },
+  {
+    id: "repo-pages-domain-save",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/settings/pages/domain",
+    title: "Save Pages custom domain",
+    description:
+      "Normalizes and reserves a custom domain, creates a DNS TXT challenge, disables HTTPS until verification succeeds, and returns updated Pages settings.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    request: `{
+  "domain": "Docs.Example.COM."
+}`,
+    response: `{
+  "site": {
+    "customDomain": "docs.example.com",
+    "domain": {
+      "status": "pending",
+      "challenge": { "name": "_opengithub-pages.docs.example.com" }
+    },
+    "httpsEnforced": false,
+    "certificateStatus": "pending"
+  }
+}`,
+    notes: [
+      "DELETE /api/repos/{owner}/{repo}/settings/pages/domain removes the domain, challenge, certificate state, and HTTPS enforcement.",
+      "Wildcard, apex-conflict, duplicate active-domain, and unsupported domain inputs return validation or conflict envelopes.",
+      "Domain writes are audited with repository.pages.domain.save or repository.pages.domain.remove.",
+    ],
+  },
+  {
+    id: "repo-pages-dns-recheck",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/settings/pages/domain/recheck",
+    title: "Recheck Pages DNS verification",
+    description:
+      "Checks the latest custom-domain challenge through the configured DNS/provider path and advances certificate readiness only after verification succeeds.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    response: `{
+  "site": {
+    "domain": { "status": "verified", "lastCheckedAt": "2026-05-03T00:00:00Z" },
+    "certificateStatus": "issued"
+  }
+}`,
+    notes: [
+      "Local mode records pending or misconfigured verification rather than faking Cloudflare success.",
+      "CloudFront alias activation remains gated on verified DNS and issued certificate state.",
+      "Failed checks retain bounded error text without exposing provider credentials or environment values.",
+    ],
+  },
+  {
+    id: "repo-pages-https-update",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/settings/pages/https",
+    title: "Update Pages HTTPS enforcement",
+    description:
+      "Toggles HTTPS enforcement for a verified custom domain once DNS and certificate prerequisites are satisfied.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    request: `{
+  "enforced": true
+}`,
+    response: `{
+  "site": {
+    "customDomain": "docs.example.com",
+    "httpsEnforced": true,
+    "certificateStatus": "issued"
+  }
+}`,
+    notes: [
+      "Requests before domain verification or certificate issuance return validation_failed and do not update local UI state.",
+      "Every successful toggle writes repository.pages.https.update.",
+    ],
+  },
+  {
+    id: "repo-pages-deployments-create",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/settings/pages/deployments",
+    title: "Request Pages deployment",
+    description:
+      "Queues a deployment from the saved branch source and returns Pages settings with the new deployment row.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    response: `{
+  "deployments": [
+    {
+      "source": { "kind": "branch", "branch": "main", "folder": "/docs" },
+      "status": "queued",
+      "artifactManifest": {}
+    }
+  ]
+}`,
+    notes: [
+      "POST /api/repos/{owner}/{repo}/settings/pages/actions-deployments links a confirmed Actions artifact deployment using the same response shape.",
+      "The Pages worker records build logs, artifact manifests, storage keys, status transitions, and page_build webhook deliveries.",
+      "Production deployments publish to S3 and CloudFront; local tests can use local_metadata storage with degraded cloud health notes.",
+    ],
+  },
+  {
+    id: "repo-pages-unpublish",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/settings/pages/unpublish",
+    title: "Unpublish Pages site",
+    description:
+      "Disables serving and deployment state while preserving repository source files, historical deployments, and audit history.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    response: `{
+  "site": {
+    "source": { "kind": "none", "branch": null, "folder": null },
+    "provisioningStatus": "unpublished",
+    "unpublishedAt": "2026-05-03T00:00:00Z"
+  }
+}`,
+    notes: [
+      "Unpublish never deletes repository Git objects, branch files, or Actions artifacts.",
+      "CloudFront/S3 publication metadata is cleared or marked inactive, and repository.pages.unpublish is audited.",
+    ],
+  },
+  {
     id: "org-repositories",
     method: "GET",
     path: "/api/orgs/{org}/repositories?q=router&type=public&language=Rust&page=1&pageSize=30",

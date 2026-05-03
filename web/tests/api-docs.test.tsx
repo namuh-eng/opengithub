@@ -12,7 +12,7 @@ describe("ApiDocsPage", () => {
         name: "Build against implemented opengithub APIs",
       }),
     ).toBeVisible();
-    expect(apiEndpointDocs.length).toBeGreaterThanOrEqual(34);
+    expect(apiEndpointDocs.length).toBeGreaterThanOrEqual(41);
 
     for (const endpoint of apiEndpointDocs) {
       const card = screen
@@ -160,6 +160,38 @@ describe("ApiDocsPage", () => {
     ).toBeVisible();
     expect(
       screen.getByText(/secret values cannot and are masked from job logs/),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText("/api/repos/{owner}/{repo}/settings/pages")[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/settings/pages/source"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/settings/pages/domain"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/settings/pages/domain/recheck",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/settings/pages/https"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/settings/pages/deployments"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/settings/pages/unpublish"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Non-admin readers can inspect public live status/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/CloudFront alias activation remains gated/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Unpublish never deletes repository Git objects/),
     ).toBeVisible();
     expect(screen.getByText("/api/repos/{owner}/{repo}/pulls")).toBeVisible();
     expect(

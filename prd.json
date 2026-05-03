@@ -61,7 +61,7 @@
     "priority": "P1",
     "ui_details": "Sanitized HTML inside .markdown-body container with Primer-style typography. Headings get auto anchor links (hover paragraph mark). Code blocks have copy button + language label. Tables get sticky header on long tables. Task lists are interactive when viewer has write access (POST toggle). Mermaid renders as SVG. KaTeX for math. Images autoresize <= container width. External links get rel=noopener noreferrer. Markdown editor toolbar (bold/italic/code/link/image/list/task/quote) with live Preview tab.",
     "behavior": "Server-side render via pulldown-cmark -> AST -> HTML; sanitize via ammonia (allowlist tags/attrs); rewrite relative image/link paths to repo blob URLs at the current ref; resolve @username and #issue references to live links; cache rendered HTML keyed by (content_sha, repo_id, ref). Editor preview hits the same render endpoint for fidelity.",
-    "data_model": "rendered_markdown_cache(content_sha, repository_id|null, ref|null, html, rendered_at) \u2014 TTL-managed; no user data of its own.",
+    "data_model": "rendered_markdown_cache(content_sha, repository_id|null, ref|null, html, rendered_at) — TTL-managed; no user data of its own.",
     "dependent_on": [
       "infra-001"
     ],
@@ -75,7 +75,7 @@
     "priority": "P1",
     "ui_details": "Code surface with line numbers, gutter blame/comment-add button on hover, theme-aware token colors (light + dark), language label dropdown to override detection, Symbols sidebar (functions/classes from Tree-sitter outline), Wrap toggle, Find-in-file (Cmd-F).",
     "behavior": "At index time (search-006 worker), generate Tree-sitter token stream and store as compact byte ranges per (sha, path). At render: server returns text + token map; client renders HTML with token classes mapped to CSS variables defined by theme-001. Diff viewer applies same highlighting per line. Tree-sitter grammars compiled into the API binary.",
-    "data_model": "file_tokens(repository_id, sha, path, language, token_ranges bytea, generated_at) \u2014 generated once per (sha, path), cached.",
+    "data_model": "file_tokens(repository_id, sha, path, language, token_ranges bytea, generated_at) — generated once per (sha, path), cached.",
     "dependent_on": [
       "theme-001",
       "search-006"
@@ -247,7 +247,7 @@
     "page": "/{owner}/{repo}/blob/{branch}/{path}",
     "priority": "P2",
     "core": true,
-    "ui_details": "Blob view keeps repository split-pane shell. Header shows branch selector, breadcrumbs, file name, Go to file, latest commit actor/message/SHA/time, History link, metadata text like '352 lines (352 loc) \u00b7 15.9 KB', Code and Blame toggles, Raw link, copy raw button, download button, symbol pane button, and More file actions. Code viewer uses monospace text, line numbers, syntax highlighting, line-hover anchors, and a read-only hidden textarea for accessibility.",
+    "ui_details": "Blob view keeps repository split-pane shell. Header shows branch selector, breadcrumbs, file name, Go to file, latest commit actor/message/SHA/time, History link, metadata text like '352 lines (352 loc) · 15.9 KB', Code and Blame toggles, Raw link, copy raw button, download button, symbol pane button, and More file actions. Code viewer uses monospace text, line numbers, syntax highlighting, line-hover anchors, and a read-only hidden textarea for accessibility.",
     "behavior": "Opening a file resolves the selected ref and renders text files with syntax highlighting. Raw streams raw bytes. Copy copies raw content or selected permalink. Download saves the raw file. Blame toggles to line-by-line commit attribution. Large/binary files show a non-renderable state with Raw/Download. Keyboard shortcuts include y for permalink, b for blame, and l for line jump.",
     "data_model": "Reads git_objects, git_trees, commits, repository_git_refs, code_search_index, repository_permissions, users, and optional symbol index records. Writes recent_visits and optional code navigation cache records.",
     "dependent_on": [
@@ -977,7 +977,7 @@
       "git-001"
     ],
     "needs_structure": true,
-    "build_pass": false,
+    "build_pass": true,
     "qa_pass": false
   },
   {
@@ -2142,7 +2142,7 @@
   {
     "id": "search-007",
     "category": "feature",
-    "description": "File finder widget \u2014 keyboard-driven `t` shortcut on a repo to fuzzy-find a file by path within the current ref.",
+    "description": "File finder widget — keyboard-driven `t` shortcut on a repo to fuzzy-find a file by path within the current ref.",
     "page": "/<owner>/<repo>/find/<ref>",
     "priority": "P3",
     "ui_details": "Modal-style page with single text input, instant fuzzy match against full path list, keyboard nav (up/down), Enter to open. Empty input shows full list. Highlight matched chars.",
@@ -2157,7 +2157,7 @@
   {
     "id": "security-002",
     "category": "feature",
-    "description": "Active web sessions panel \u2014 list devices, locations, signed-in time; revoke individual sessions or sign-out-everywhere.",
+    "description": "Active web sessions panel — list devices, locations, signed-in time; revoke individual sessions or sign-out-everywhere.",
     "page": "/settings/security/sessions",
     "priority": "P1",
     "ui_details": "Table: device (parsed UA), browser, IP-derived location, last active, Revoke button per row, Sign-out-everywhere button, \"current\" badge on this session.",
@@ -2171,7 +2171,7 @@
   {
     "id": "security-003",
     "category": "feature",
-    "description": "Security log \u2014 append-only audit trail of security-relevant actions (sign-in, sign-out, OAuth link/unlink, email change, sudo confirmations, session revocations) with CSV/JSON export.",
+    "description": "Security log — append-only audit trail of security-relevant actions (sign-in, sign-out, OAuth link/unlink, email change, sudo confirmations, session revocations) with CSV/JSON export.",
     "page": "/settings/security-log",
     "priority": "P2",
     "ui_details": "Table: timestamp, action, IP, location, user-agent. Filter by action type. Pagination 50/page. Export dropdown -> CSV / JSON downloads filtered view.",
@@ -2185,7 +2185,7 @@
   {
     "id": "globalpulls-001",
     "category": "feature",
-    "description": "Global pull-request dashboard at /pulls \u2014 every PR the signed-in user opened, was assigned, was requested as reviewer, or that mentions them, across all repositories.",
+    "description": "Global pull-request dashboard at /pulls — every PR the signed-in user opened, was assigned, was requested as reviewer, or that mentions them, across all repositories.",
     "page": "/pulls",
     "priority": "P2",
     "ui_details": "Tab bar (Created / Assigned / Mentioned / Review requests). Filter dropdowns (Open/Closed, repo, label, milestone). Sortable list with PR title, repo path, status icon, comment count, last activity, reviewer avatars. Pagination.",
@@ -2200,7 +2200,7 @@
   {
     "id": "globalissues-001",
     "category": "feature",
-    "description": "Global issue dashboard at /issues \u2014 every issue the signed-in user opened, was assigned, or was mentioned in.",
+    "description": "Global issue dashboard at /issues — every issue the signed-in user opened, was assigned, or was mentioned in.",
     "page": "/issues",
     "priority": "P2",
     "ui_details": "Tab bar (Created / Assigned / Mentioned). Filter dropdowns (Open/Closed, repo, label, milestone, project). Sortable list with title, repo path, status icon, comment count, last activity. Pagination.",
@@ -2248,7 +2248,7 @@
     "priority": "P2",
     "ui_details": "Backend; visible in response headers. /rate_limit endpoint exposes current bucket state.",
     "behavior": "Per-token sliding-window limiter (per-IP for anon). Tiers: 5000/hr authenticated, 60/hr anon, 30/min for search. 403 on overage with body { error: { code: \"rate_limited\", message: ... } }. Versioning: server holds latest version; older clients pin via header.",
-    "data_model": "rate_limit_buckets(token_id|ip, resource, window_start, request_count) \u2014 Redis-equivalent or Postgres unlogged table.",
+    "data_model": "rate_limit_buckets(token_id|ip, resource, window_start, request_count) — Redis-equivalent or Postgres unlogged table.",
     "dependent_on": [
       "auth-001",
       "infra-001"
@@ -2273,7 +2273,7 @@
   {
     "id": "gist-001",
     "category": "feature",
-    "description": "Gists \u2014 single-file or multi-file snippets at /gist/<id> with their own git history, public/secret visibility, fork/star, embeds, and revisions.",
+    "description": "Gists — single-file or multi-file snippets at /gist/<id> with their own git history, public/secret visibility, fork/star, embeds, and revisions.",
     "page": "/gist (your gists), /gist/new, /gist/<id>, /gist/<id>/edit, /gist/<id>/revisions",
     "priority": "P3",
     "ui_details": "New-gist form with file tabs (+ add file), per-file language detection, Public vs Secret toggle, description input. View page with embed snippet (<script src=...>), Star/Fork buttons (reuses social-001), comments section. Profile sidebar gets a Public gists widget.",
@@ -2290,7 +2290,7 @@
   {
     "id": "ai-001",
     "category": "feature",
-    "description": "AI surface \u2014 repository auto-summary card, AI-generated PR summary + suggested reviewers, AI changelog from commit history. Uses the same Codex/OpenAI provider backing the build loop.",
+    "description": "AI surface — repository auto-summary card, AI-generated PR summary + suggested reviewers, AI changelog from commit history. Uses the same Codex/OpenAI provider backing the build loop.",
     "page": "repo header (AI summary card), /<owner>/<repo>/pull/<n> (AI summary tab), /<owner>/<repo>/releases/<tag> (Generate changelog with AI button)",
     "priority": "P2",
     "ui_details": "Repo summary card under repo header with skeleton loader + Regenerate action, fed by README + top-level files + recent commit messages. PR AI tab: TL;DR, files-of-interest list with one-line risk note each, suggested reviewers (CODEOWNERS + recent committers heuristic), inline-comment seed visible only to PR author. AI changelog modal in releases (Compare from <prev tag>) with grouped Added/Changed/Fixed/Deprecated bullets, Edit before publish.",
