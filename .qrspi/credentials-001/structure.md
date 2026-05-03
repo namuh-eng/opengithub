@@ -6,7 +6,7 @@
 
 ## Phase 1: Token Settings API Foundation - list tokens and create sudo grants
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make the security-sensitive backend contract real enough for a signed-in user to see existing PATs, available resource owners/repositories, permission choices, and whether the current session has sudo-mode elevation. No plaintext token generation yet.
 

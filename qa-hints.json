@@ -4386,4 +4386,23 @@
       "Full Playwright on a fresh migrated database was attempted, but the dev server/API became unreachable after the auth suite; the focused personal-settings-002 smoke passed before that cascade."
     ]
   }
+,
+  {
+    "feature_id": "credentials-001",
+    "tests_written": [
+      "Completed Phase 1 Token Settings API Foundation without marking credentials-001 build_pass=true.",
+      "Added migration coverage for PAT management metadata, selected repository joins, sudo grants, and security audit support.",
+      "Added Rust endpoints for GET /api/settings/tokens, GET /api/settings/tokens/new, and POST /api/settings/sudo behind signed-session auth.",
+      "Added focused Rust contract coverage for anonymous 401, user-scoped redacted list responses, selected repositories, new-token context owners/repositories/permissions, invalid sudo confirmation, active sudo grant state, and audit rows.",
+      "Focused DB-backed PAT contract passed against local Postgres using the known additive-migration workaround; make check and make test passed."
+    ],
+    "needs_deeper_qa": [
+      "Real Google reauthentication UX is not built until later phases; Phase 1 uses email confirmation to create a session-bound sudo grant.",
+      "Token creation and one-time plaintext reveal are not implemented until Phase 3.",
+      "Revocation, last-used updates through REST/Git/packages, and classic token lifecycle hardening remain Phase 4 work.",
+      "Stress repository/resource-owner filtering for large organizations and mixed direct/team/org permissions.",
+      "Probe concurrent sudo grants and expired/revoked session behavior once UI flows are wired.",
+      "The shared opengithub_identity_test database still has the known pre-existing 202605030041 migration checksum issue; the focused contract applies this phase's additive migration directly when that occurs."
+    ]
+  }
 ]

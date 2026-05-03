@@ -1,3 +1,13 @@
+2026-05-04 - credentials-001 phase 1 token settings API foundation
+
+- Completed Phase 1 from `.qrspi/credentials-001/structure.md`: personal access token settings now have a real Rust API foundation without marking `credentials-001.build_pass=true`.
+- Added additive migration `202605040007_personal_access_token_management` for token management metadata, selected-repository joins, sudo grants, and security audit support needed by the PAT settings flows.
+- Extended the token domain with redacted token list DTOs, new-token context resource owner/repository/permission data, session-bound sudo state, and email-confirmation sudo grant creation. Existing PAT verifier behavior remains unchanged for Git/package callers.
+- Added `GET /api/settings/tokens`, `GET /api/settings/tokens/new`, and `POST /api/settings/sudo` behind the Rust signed-session guard.
+- Added focused Rust contract coverage for anonymous 401, user-scoped redacted token listing, selected repository summaries, resource-owner/context filtering, invalid sudo confirmation, sudo grant creation, expiry state, and audit rows.
+- Verification passed: focused `personal_access_tokens_contract` against local Postgres using the known additive-migration workaround for the shared dirty `202605030041` history; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 344 web tests; mandatory Editorial banned-value scan.
+- Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first and `.qrspi/credentials-001/structure.md` marks browser smoke optional for this phase. `prd.json` remains `build_pass:false` because Phases 2-5 remain.
+
 2026-05-04 - credentials-001 structure planning
 
 - Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `prd.json`, `web/AGENTS.md`, current token verification code, existing `/settings/tokens` developer surface, settings navigation/shell patterns, and target personal access token/sudo-mode docs.
