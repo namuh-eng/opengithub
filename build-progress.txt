@@ -2669,3 +2669,11 @@
 - Full E2E note: the shared `opengithub_identity_test` database and a plain fresh SQLx-migrated database both hit the pre-existing duplicate migration-version/checksum problem around `202605030041`; the passing full E2E run used a fresh DB with every checked-in `.up.sql` applied directly and `DASHBOARD_E2E_SKIP_MIGRATIONS=1`.
 - Fixed an unrelated settings accessibility/test blocker discovered by full E2E: the profile settings form section now uses the distinct heading `Profile details`, leaving the page title as the single `Public profile` heading.
 - Marked Phase 3 as done in `.qrspi/releases-001/structure.md`; `prd.json` remains `build_pass:false` because Phases 4-5 remain.
+
+2026-05-03 - releases-002 structure planning
+
+- Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `web/AGENTS.md`, the first incomplete `prd.json` entry, `.qrspi/releases-001/structure.md`, existing release domain/routes/frontend manager code, and target release management/generated-notes docs.
+- Determined `releases-002` requires structure planning before implementation because `needs_structure: true` and `.qrspi/releases-002/structure.md` did not exist.
+- Added `.qrspi/releases-002/structure.md` with five independently verifiable phases: release management API hardening, dedicated Editorial new/edit form pages, server-confirmed create/edit/publish/delete flow, asset upload lifecycle, and final docs/browser/QA/build-pass bookkeeping.
+- Did not change `prd.json`; `releases-002.build_pass` remains `false` until all implementation phases pass verification.
+- Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches.
