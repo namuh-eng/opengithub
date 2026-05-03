@@ -79,7 +79,7 @@
 
 ## Phase 5: API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `releases-001` only after read UI, interactions, management mutations, docs, screenshots, and QA handoff are verified. This phase should not expand into packages, marketplace publishing, release discussions, security advisories, or organization-level release policies.
 

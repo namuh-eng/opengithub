@@ -3823,5 +3823,23 @@
       "Stress tags with slashes, long release names, very long Markdown bodies, and private repository read/write boundaries.",
       "Check keyboard and screen-reader traversal through creation, edit, asset upload, publish, delete, and confirmation flows."
     ]
+  },
+  {
+    "feature_id": "releases-001",
+    "tests_written": [
+      "Completed Phase 5 API docs, QA handoff, final verification, and build-pass bookkeeping for releases-001.",
+      "Documented release list/detail/latest/tags, create/update/delete/publish, asset create/delete/download, source archive downloads, and reaction toggle endpoints in /docs/api.",
+      "Added focused API docs assertions for release endpoint paths, storage-key redaction notes, prerelease latest semantics, and idempotent reaction toggles.",
+      "Reused the focused releases Playwright smoke for final browser evidence; it covers list, detail/latest, tags, create draft, upload asset metadata, publish, asset link wiring, compare selector target, reaction toggle, and no dead visible controls.",
+      "Verification includes focused release Rust/Vitest/Playwright checks, make check, make test, mandatory Editorial banned-value scan, and final screenshots under ralph/screenshots/build/releases-001-final-*.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Exercise real S3 release asset upload/download, signed URL expiry, content disposition, range requests, large-file limits, checksum validation, unsafe filename handling, and storage-key redaction in provider-backed infrastructure.",
+      "Probe Markdown sanitization with richer XSS payloads, very long release notes, embedded links, headings, task lists, and malformed HTML.",
+      "Stress concurrent release create/edit/publish/delete, duplicate tag races, asset download counter races, and reaction toggle races across multiple users.",
+      "Verify immutable release and archived repository restrictions through UI, API, and direct database edge cases.",
+      "Test private repository leakage for anonymous, outside signed-in, read-only, write, and admin viewers across releases, tags, assets, source archives, reactions, and management controls.",
+      "Run keyboard and screen-reader traversal through Releases/Tags tabs, release cards, assets disclosure, reaction controls, compare selector, pagination, release forms, asset controls, and destructive confirmations."
+    ]
   }
 ]

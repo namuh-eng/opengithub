@@ -942,6 +942,231 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-releases-list",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/releases?page=1&pageSize=30",
+    title: "List repository releases",
+    description:
+      "Lists published releases newest first with release badges, author metadata, contributors, rendered notes excerpts, assets, reaction counts, archive links, and bounded pagination.",
+    auth: "Public repositories are readable; private repositories require read permission; drafts require write/admin access",
+    response: `{
+  "items": [
+    {
+      "id": "release_01",
+      "tagName": "v2.0.0",
+      "title": "Stable Editorial release",
+      "latest": true,
+      "prerelease": false,
+      "draft": false,
+      "assets": [{ "name": "opengithub.tar.gz", "downloadCount": 42 }],
+      "reactions": { "rocket": 3, "viewerReaction": null }
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "pageSize": 30
+}`,
+    notes: [
+      "Latest means the newest published non-prerelease release; prereleases and drafts never become latest.",
+      "Release notes are rendered through the server sanitizer before bodyHtml/bodyExcerpt is returned.",
+      "Private repository outsiders receive not_found without leaking release or tag counts.",
+    ],
+  },
+  {
+    id: "repo-releases-detail",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/releases/latest",
+    title: "Read repository release detail",
+    description:
+      "Reads the latest release, a release by ID, or a release by tag with full sanitized notes, asset metadata, source archive links, signature state, reaction summary, and viewer permissions.",
+    auth: "Public repositories are readable; private repositories require read permission; drafts require write/admin access",
+    response: `{
+  "id": "release_01",
+  "tagName": "v2.0.0",
+  "title": "Stable Editorial release",
+  "bodyHtml": "<h2>Highlights</h2><p>Safe release notes.</p>",
+  "immutable": false,
+  "tagSignatureSummary": "Verified tag",
+  "viewer": { "canManage": true }
+}`,
+    notes: [
+      "GET /api/repos/{owner}/{repo}/releases/{release_id} reads by ID; GET /api/repos/{owner}/{repo}/releases/tag/{tag} reads tags that may contain slashes.",
+      "Missing latest releases and unauthorized private releases return the standard error envelope without revealing private refs.",
+    ],
+  },
+  {
+    id: "repo-releases-tags",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/releases/tags?page=1&pageSize=30",
+    title: "List repository release tags",
+    description:
+      "Lists repository tags with target commit metadata, verification state, release linkage, source archive URLs, and compare links for the Tags tab.",
+    auth: "Public repositories are readable; private repositories require read permission",
+    response: `{
+  "items": [
+    {
+      "name": "v2.0.0",
+      "shortOid": "abc1234",
+      "verified": true,
+      "releaseId": "release_01",
+      "releaseHref": "/mona/octo-app/releases/tag/v2.0.0"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "pageSize": 30
+}`,
+    notes: [
+      "Tag rows reuse repository visibility checks and do not expose private repository refs to outsiders.",
+      "zipballHref and tarballHref are authorization-checked API URLs, not raw storage keys.",
+    ],
+  },
+  {
+    id: "repo-releases-create",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/releases",
+    title: "Create repository release",
+    description:
+      "Creates a draft or published release for an existing or selected tag, validates write permission, persists sanitized notes, and writes release audit metadata.",
+    auth: "Signed opengithub session cookie with repository write, maintain, admin, or owner access",
+    request: `{
+  "tagName": "v2.0.1",
+  "target": "main",
+  "title": "Managed release",
+  "body": "Release notes",
+  "draft": true,
+  "prerelease": false
+}`,
+    response: `{
+  "id": "release_02",
+  "tagName": "v2.0.1",
+  "draft": true,
+  "viewer": { "canManage": true }
+}`,
+    notes: [
+      "Duplicate active releases for the same tag return 409; soft-deleted releases do not block future tags.",
+      "Archived repositories and immutable release policies reject write attempts before audit state changes.",
+      "Every successful create writes a release_audit_events row with redacted before/after state.",
+    ],
+  },
+  {
+    id: "repo-releases-update",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/releases/{release_id}",
+    title: "Update or delete repository release",
+    description:
+      "Updates release title, notes, prerelease/draft metadata, or soft-deletes a release after permission, archived repository, immutable release, and tag conflict checks.",
+    auth: "Signed opengithub session cookie with repository write, maintain, admin, or owner access",
+    request: `{
+  "title": "Managed release",
+  "body": "Updated notes",
+  "draft": false,
+  "prerelease": false
+}`,
+    response: `{
+  "id": "release_02",
+  "title": "Managed release",
+  "draft": false
+}`,
+    notes: [
+      "DELETE /api/repos/{owner}/{repo}/releases/{release_id} soft-deletes the release and hides it from readers.",
+      "PATCH never accepts asset storage keys or untrusted rendered HTML from callers.",
+      "Immutable releases and archived repositories return validation or conflict envelopes without partial updates.",
+    ],
+  },
+  {
+    id: "repo-releases-publish",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/releases/{release_id}/publish",
+    title: "Publish draft release",
+    description:
+      "Publishes a draft release, recalculates latest release state, preserves existing asset metadata, and records an audit event.",
+    auth: "Signed opengithub session cookie with repository write, maintain, admin, or owner access",
+    response: `{
+  "id": "release_02",
+  "draft": false,
+  "publishedAt": "2026-05-03T00:00:00Z",
+  "latest": true
+}`,
+    notes: [
+      "Publishing a prerelease does not mark it latest.",
+      "Release assets remain local/S3-pluggable metadata until the storage provider returns authorized download metadata.",
+    ],
+  },
+  {
+    id: "repo-releases-assets",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/releases/{release_id}/assets",
+    title: "Create or delete release asset metadata",
+    description:
+      "Adds release asset metadata for the current storage contract and removes asset rows while keeping storage keys redacted from API responses.",
+    auth: "Signed opengithub session cookie with repository write, maintain, admin, or owner access",
+    request: `{
+  "name": "opengithub.tar.gz",
+  "label": "Source archive",
+  "contentType": "application/gzip",
+  "byteSize": 128,
+  "checksum": "sha256:abc123"
+}`,
+    response: `{
+  "assets": [
+    {
+      "id": "asset_01",
+      "name": "opengithub.tar.gz",
+      "downloadCount": 0,
+      "downloadUrl": "/mona/octo-app/releases/assets/asset_01"
+    }
+  ]
+}`,
+    notes: [
+      "DELETE /api/repos/{owner}/{repo}/releases/{release_id}/assets/{asset_id} removes an asset metadata row after the same permission checks.",
+      "Responses never expose S3 or local storage keys; download URLs route back through the Rust API.",
+      "Large-file limits, checksums, and real S3 signed upload/download behavior require provider QA.",
+    ],
+  },
+  {
+    id: "repo-releases-downloads",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/releases/assets/{asset_id}",
+    title: "Authorize release asset download",
+    description:
+      "Authorizes an asset download, increments counters transactionally, records release_downloads, and returns bounded local/S3-pluggable download metadata.",
+    auth: "Public repository assets are readable; private repository assets require read permission",
+    response: `{
+  "assetId": "asset_01",
+  "releaseTagName": "v2.0.0",
+  "fileName": "opengithub.tar.gz",
+  "contentType": "application/gzip",
+  "downloadUrl": "/api/repos/mona/octo-app/releases/assets/asset_01"
+}`,
+    notes: [
+      "GET /api/repos/{owner}/{repo}/releases/zipball/{tag} and /tarball/{tag} authorize source archive downloads and record release_downloads rows.",
+      "Download responses expose authorized URLs/metadata only and never raw object storage keys.",
+    ],
+  },
+  {
+    id: "repo-releases-reactions",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/releases/{release_id}/reactions",
+    title: "Toggle release reaction",
+    description:
+      "Toggles the signed-in viewer's release reaction and returns the updated reaction summary used by the release cards.",
+    auth: "Signed opengithub session cookie with repository read access",
+    request: `{
+  "content": "rocket"
+}`,
+    response: `{
+  "totalCount": 4,
+  "rocket": 3,
+  "heart": 1,
+  "viewerReaction": "rocket"
+}`,
+    notes: [
+      "Unsupported reaction names return validation_failed; anonymous viewers receive 401.",
+      "Repeated toggles are idempotent per user/release/reaction and update the same summary contract.",
+    ],
+  },
+  {
     id: "org-repositories",
     method: "GET",
     path: "/api/orgs/{org}/repositories?q=router&type=public&language=Rust&page=1&pageSize=30",

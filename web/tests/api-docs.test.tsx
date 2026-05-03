@@ -193,6 +193,45 @@ describe("ApiDocsPage", () => {
     expect(
       screen.getByText(/Unpublish never deletes repository Git objects/),
     ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/releases?page=1&pageSize=30"),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText("/api/repos/{owner}/{repo}/releases/latest")[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/releases/tags?page=1&pageSize=30",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/releases/{release_id}"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/releases/{release_id}/publish",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/releases/{release_id}/assets",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/releases/assets/{asset_id}"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/releases/{release_id}/reactions",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Responses never expose S3 or local storage keys/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Publishing a prerelease does not mark it latest/),
+    ).toBeVisible();
+    expect(screen.getByText(/Repeated toggles are idempotent/)).toBeVisible();
     expect(screen.getByText("/api/repos/{owner}/{repo}/pulls")).toBeVisible();
     expect(
       screen.getByText(

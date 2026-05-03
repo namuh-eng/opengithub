@@ -1,3 +1,13 @@
+2026-05-03 - releases-001 phase 5 final QA handoff
+
+- Completed Phase 5 from `.qrspi/releases-001/structure.md`: repository Releases and Tags are now locked as a completed vertical slice and `releases-001.build_pass=true`.
+- Added `/docs/api` coverage for release list/detail/latest/tags, create/update/delete/publish, asset create/delete/download, source archive downloads, reaction toggles, permissions, validation, pagination, private repository redaction, local/S3 storage notes, and storage-key redaction.
+- Added focused API docs assertions for release endpoint visibility, storage-key redaction notes, prerelease latest semantics, and idempotent reaction toggles.
+- Extended QA hints with provider-backed S3 asset, signed URL, Markdown XSS, concurrency, immutable release, private leakage, counter race, reaction race, and accessibility traversal targets.
+- Extended focused release Playwright smoke to save final evidence screenshots: `ralph/screenshots/build/releases-001-final-list.jpg`, `releases-001-final-detail-latest.jpg`, `releases-001-final-tags.jpg`, `releases-001-final-mutation.jpg`, and `releases-001-final-mobile.jpg`.
+- Verification passed: focused API docs and release page Vitest; focused `repository_releases_contract` compiled/passed with DB assertions self-skipped under the current local DB behavior; focused Playwright `repository-releases.spec.ts`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check`; `DB_SSL=false make test` with Cargo tests plus 312 frontend tests; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false DASHBOARD_E2E_SKIP_MIGRATIONS=1 make test-e2e` with 98 Playwright tests; mandatory Editorial banned-value scan returned zero matches.
+- A first full check/test attempt failed because the filesystem filled while linking Rust test targets; generated `target/`, `web/.next/`, and Playwright result caches were removed, freeing about 14 GiB, and the sequential reruns passed.
+
 2026-05-03 - settings-005 phase 4 workflow runtime resolution and masking
 
 - Completed Phase 4 from `.qrspi/settings-005/structure.md`: Actions secrets and variables now feed a bounded runtime-resolution context for workflow planning without marking `settings-005.build_pass=true`.

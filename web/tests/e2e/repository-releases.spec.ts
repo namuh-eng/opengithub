@@ -265,6 +265,10 @@ test("repository releases, latest detail, and tags render seeded read data", asy
     fullPage: true,
     path: "../ralph/screenshots/build/releases-001-phase3-list-interactions.jpg",
   });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/releases-001-final-list.jpg",
+  });
 
   await page.getByRole("button", { exact: true, name: "New release" }).click();
   await page.getByRole("textbox", { exact: true, name: "Tag" }).fill("v2.0.1");
@@ -302,6 +306,10 @@ test("repository releases, latest detail, and tags render seeded read data", asy
     fullPage: true,
     path: "../ralph/screenshots/build/releases-001-phase4-management.jpg",
   });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/releases-001-final-mutation.jpg",
+  });
 
   await page.goto(`${seeded.firstRepositoryHref}/releases/latest`);
   await expect(page).toHaveURL(/\/releases\/latest$/);
@@ -309,6 +317,10 @@ test("repository releases, latest detail, and tags render seeded read data", asy
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/releases-001-phase3-detail-latest.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/releases-001-final-detail-latest.jpg",
   });
 
   await page.goto(`${seeded.firstRepositoryHref}/tags`);
@@ -331,5 +343,18 @@ test("repository releases, latest detail, and tags render seeded read data", asy
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/releases-001-phase3-tags.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/releases-001-final-tags.jpg",
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${seeded.firstRepositoryHref}/releases`);
+  await expect(page.getByText("Stable Editorial release")).toBeVisible();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/releases-001-final-mobile.jpg",
   });
 });
