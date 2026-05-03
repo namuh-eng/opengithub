@@ -3803,5 +3803,25 @@
       "Compare selector should be tested on repositories with many branches/tags, long ref names, slash-containing tags, and unauthenticated public-release views.",
       "Run accessibility traversal through details disclosure, reaction toolbar, compare selector, and mobile release cards."
     ]
+  },
+  {
+    "feature_id": "releases-001",
+    "tests_written": [
+      "Completed Phase 4 Release Management Mutations without marking releases-001 build_pass=true.",
+      "Added Rust API create/update/publish/delete release endpoints plus create/delete release asset metadata endpoints with write-permission, archived repository, immutable release, duplicate tag, validation, and audit behavior.",
+      "Added a release management migration replacing the old release tag uniqueness with active-release uniqueness so soft-deleted releases do not block future tags.",
+      "Added same-origin Next.js release action forwarding and Editorial management controls for New release, Edit, Publish draft, Delete release, Upload asset, and Remove asset.",
+      "Added a /releases/tag/[tag] route alias because release API links and existing UI hrefs target that GitHub-shaped path.",
+      "Focused Rust contract covers release creation, duplicate tag rejection, asset creation/storage-key redaction, publish/update/delete flows, asset deletion, permission gates, and audit rows.",
+      "Focused Vitest covers write-gated create/edit/publish/delete/asset controls; focused Playwright smoke creates a draft release, uploads an asset, publishes it, checks latest resolution, validates no dead controls, and saves releases-001-phase4-management.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 5 still needs final API docs, final browser screenshots, QA handoff, and build_pass bookkeeping before releases-001 can be marked complete.",
+      "Release asset upload currently records metadata with local storage keys; real S3 object upload, signed URL creation, content disposition, checksum validation, file size limits, and malware/unsafe filename behavior need provider QA.",
+      "Run concurrent release edit/publish/delete and duplicate tag race tests against a clean migrated database.",
+      "Verify immutable release and archived repository restrictions through the UI as well as the Rust contract.",
+      "Stress tags with slashes, long release names, very long Markdown bodies, and private repository read/write boundaries.",
+      "Check keyboard and screen-reader traversal through creation, edit, asset upload, publish, delete, and confirmation flows."
+    ]
   }
 ]

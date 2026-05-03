@@ -942,6 +942,23 @@ export type RepositoryReleaseDetail = RepositoryReleaseSummary & {
   tagSignatureSummary: string | null;
 };
 
+export type ReleaseMutation = {
+  tagName?: string;
+  target?: string;
+  title?: string;
+  body?: string;
+  draft?: boolean;
+  prerelease?: boolean;
+};
+
+export type ReleaseAssetMutation = {
+  name: string;
+  label?: string;
+  contentType?: string;
+  byteSize?: number;
+  checksumSha256?: string;
+};
+
 export type ReleaseTagSummary = {
   id: string;
   name: string;
@@ -6044,6 +6061,132 @@ export async function getRepositoryReleaseAssetDownloadFromCookie(
   }
 
   return payload as ReleaseAssetDownloadMetadata;
+}
+
+async function releaseMutationRequest(
+  cookie: string | null | undefined,
+  endpoint: string,
+  init: RequestInit,
+): Promise<RepositoryReleaseDetail> {
+  const response = await fetch(`${apiBaseUrl()}${endpoint}`, {
+    ...init,
+    headers: {
+      "content-type": "application/json",
+      ...(cookie ? { cookie } : {}),
+      ...init.headers,
+    },
+    cache: "no-store",
+  });
+  if (response.status === 204) {
+    return {} as RepositoryReleaseDetail;
+  }
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(envelope?.error.message ?? "Release could not be updated", {
+      cause: envelope,
+    });
+  }
+  return payload as RepositoryReleaseDetail;
+}
+
+export async function createRepositoryReleaseFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  mutation: ReleaseMutation,
+): Promise<RepositoryReleaseDetail> {
+  return releaseMutationRequest(
+    cookie,
+    `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases`,
+    {
+      method: "POST",
+      body: JSON.stringify(mutation),
+    },
+  );
+}
+
+export async function updateRepositoryReleaseFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  releaseId: string,
+  mutation: ReleaseMutation,
+): Promise<RepositoryReleaseDetail> {
+  return releaseMutationRequest(
+    cookie,
+    `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/${encodeURIComponent(releaseId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(mutation),
+    },
+  );
+}
+
+export async function publishRepositoryReleaseFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  releaseId: string,
+): Promise<RepositoryReleaseDetail> {
+  return releaseMutationRequest(
+    cookie,
+    `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/${encodeURIComponent(releaseId)}/publish`,
+    {
+      method: "POST",
+      body: "{}",
+    },
+  );
+}
+
+export async function deleteRepositoryReleaseFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  releaseId: string,
+): Promise<void> {
+  await releaseMutationRequest(
+    cookie,
+    `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/${encodeURIComponent(releaseId)}`,
+    {
+      method: "DELETE",
+      body: "{}",
+    },
+  );
+}
+
+export async function createRepositoryReleaseAssetFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  releaseId: string,
+  mutation: ReleaseAssetMutation,
+): Promise<RepositoryReleaseDetail> {
+  return releaseMutationRequest(
+    cookie,
+    `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/${encodeURIComponent(releaseId)}/assets`,
+    {
+      method: "POST",
+      body: JSON.stringify(mutation),
+    },
+  );
+}
+
+export async function deleteRepositoryReleaseAssetFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  releaseId: string,
+  assetId: string,
+): Promise<RepositoryReleaseDetail> {
+  return releaseMutationRequest(
+    cookie,
+    `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/${encodeURIComponent(releaseId)}/assets/${encodeURIComponent(assetId)}`,
+    {
+      method: "DELETE",
+      body: "{}",
+    },
+  );
 }
 
 export async function getRepositorySettingsFromCookie(

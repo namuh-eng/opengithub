@@ -381,6 +381,185 @@ async fn repository_releases_read_contract_filters_privacy_and_exposes_tags_asse
     assert!(!deleted_visible);
 }
 
+#[tokio::test]
+async fn repository_releases_management_contract_writes_assets_and_audit() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping repository Releases management scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("relmgmt{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let reader = create_user(&pool, &format!("{marker}-reader")).await;
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let reader_cookie = cookie_header(&pool, &config, &reader).await;
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("{marker}-repo"),
+            description: Some("Release management repository".to_owned()),
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    let commit = seed_commit_and_tag(&pool, repo.id, &owner, "seed", 1).await;
+    sqlx::query(
+        "INSERT INTO repository_git_refs (repository_id, name, kind, target_commit_id) VALUES ($1, 'refs/heads/main', 'branch', $2)",
+    )
+    .bind(repo.id)
+    .bind(commit)
+    .execute(&pool)
+    .await
+    .expect("branch should persist");
+
+    let uri = format!("/api/repos/{}/{}/releases", owner.email, repo.name);
+    let (reader_create_status, _, reader_create_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &uri,
+        Some(&reader_cookie),
+        Some(json!({
+            "tagName": "v4.0.0",
+            "target": "main",
+            "title": "Reader cannot publish"
+        })),
+    )
+    .await;
+    assert_eq!(reader_create_status, StatusCode::FORBIDDEN);
+    assert!(!reader_create_body.to_string().contains(&repo.name));
+
+    let (create_status, _, create_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &uri,
+        Some(&owner_cookie),
+        Some(json!({
+            "tagName": "v4.0.0",
+            "target": "main",
+            "title": "Version four",
+            "body": "Draft notes with **safe** markdown",
+            "draft": true,
+            "prerelease": true
+        })),
+    )
+    .await;
+    assert_eq!(create_status, StatusCode::CREATED);
+    let release_id = Uuid::parse_str(create_body["id"].as_str().unwrap()).unwrap();
+    assert_eq!(create_body["draft"], true);
+    assert_eq!(create_body["prerelease"], true);
+    assert!(!create_body.to_string().contains("storage_key"));
+
+    let (duplicate_status, _, duplicate_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &uri,
+        Some(&owner_cookie),
+        Some(json!({ "tagName": "v4.0.0", "target": "main" })),
+    )
+    .await;
+    assert_eq!(duplicate_status, StatusCode::CONFLICT);
+    assert_eq!(duplicate_body["error"]["code"], "conflict");
+
+    let (asset_status, _, asset_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("{uri}/{release_id}/assets"),
+        Some(&owner_cookie),
+        Some(json!({
+            "name": "opengithub-darwin.tar.gz",
+            "label": "macOS build",
+            "contentType": "application/gzip",
+            "byteSize": 2048,
+            "checksumSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        })),
+    )
+    .await;
+    assert_eq!(asset_status, StatusCode::CREATED);
+    assert_eq!(asset_body["assets"][0]["name"], "opengithub-darwin.tar.gz");
+    assert!(!asset_body.to_string().contains("releases/"));
+    let asset_id = Uuid::parse_str(asset_body["assets"][0]["id"].as_str().unwrap()).unwrap();
+
+    let (publish_status, _, publish_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("{uri}/{release_id}/publish"),
+        Some(&owner_cookie),
+        None,
+    )
+    .await;
+    assert_eq!(publish_status, StatusCode::OK);
+    assert_eq!(publish_body["draft"], false);
+    assert_eq!(publish_body["latest"], true);
+
+    let (update_status, _, update_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &format!("{uri}/{release_id}"),
+        Some(&owner_cookie),
+        Some(json!({
+            "title": "Version four updated",
+            "body": "Updated release notes",
+            "prerelease": false
+        })),
+    )
+    .await;
+    assert_eq!(update_status, StatusCode::OK);
+    assert_eq!(update_body["title"], "Version four updated");
+    assert_eq!(update_body["prerelease"], false);
+
+    let (delete_asset_status, _, delete_asset_body) = send_json(
+        app.clone(),
+        Method::DELETE,
+        &format!("{uri}/{release_id}/assets/{asset_id}"),
+        Some(&owner_cookie),
+        None,
+    )
+    .await;
+    assert_eq!(delete_asset_status, StatusCode::OK);
+    assert!(delete_asset_body["assets"].as_array().unwrap().is_empty());
+
+    let (delete_status, _, _) = send_json(
+        app.clone(),
+        Method::DELETE,
+        &format!("{uri}/{release_id}"),
+        Some(&owner_cookie),
+        None,
+    )
+    .await;
+    assert_eq!(delete_status, StatusCode::NO_CONTENT);
+    let deleted_at = sqlx::query_scalar::<_, Option<chrono::DateTime<Utc>>>(
+        "SELECT deleted_at FROM releases WHERE id = $1",
+    )
+    .bind(release_id)
+    .fetch_one(&pool)
+    .await
+    .expect("deleted release should read");
+    assert!(deleted_at.is_some());
+    let audit_events = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM release_audit_events WHERE repository_id = $1 AND release_id = $2",
+    )
+    .bind(repo.id)
+    .bind(release_id)
+    .fetch_one(&pool)
+    .await
+    .expect("audit events should read");
+    assert!(audit_events >= 5);
+    let audit_text = sqlx::query_scalar::<_, String>(
+        "SELECT COALESCE(string_agg(after_state::text, ' '), '') FROM release_audit_events WHERE release_id = $1",
+    )
+    .bind(release_id)
+    .fetch_one(&pool)
+    .await
+    .expect("audit text should read");
+    assert!(!audit_text.contains("storage_key"));
+}
+
 fn app_config() -> AppConfig {
     AppConfig {
         app_url: Url::parse("http://localhost:3015").expect("app URL"),
@@ -576,6 +755,10 @@ async fn send_json(
     let bytes = to_bytes(response.into_body(), usize::MAX)
         .await
         .expect("body should read");
-    let value = serde_json::from_slice(&bytes).expect("response should be JSON");
+    let value = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).expect("response should be JSON")
+    };
     (status, headers, value)
 }

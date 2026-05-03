@@ -2430,6 +2430,17 @@
 - Did not change `prd.json`; `settings-003.build_pass` remains `false` until all implementation phases pass verification.
 - Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
 
+2026-05-03 - releases-001 phase 4 release management mutations
+
+- Completed Phase 4 from `.qrspi/releases-001/structure.md`: repository Releases now support real create, edit, publish, delete, asset-add, and asset-remove flows for write-capable collaborators.
+- Added additive migration `202605031328_repository_releases_management` to replace strict release tag uniqueness with active-release uniqueness so soft-deleted releases no longer block future releases for the same tag.
+- Extended the Rust release domain and repository routes with write-gated release and asset mutation endpoints, archived repository and immutable release guardrails, duplicate tag validation, Markdown rendering, tag target creation from existing refs/commits, latest marker refresh, storage-key redaction, and release audit events.
+- Added same-origin Next.js release action forwarding plus Editorial management controls on Releases/detail pages for New release, Edit, Publish draft, Delete release, Upload asset, and Remove asset. Read-only viewers do not see live mutation controls.
+- Added `/releases/tag/[tag]` as an app route alias because the API/UI links use the GitHub-shaped release URL path.
+- Extended Rust, Vitest, and Playwright coverage for release management flows, permission gates, rejected duplicates, storage-key redaction, no dead controls, and browser smoke. Screenshot saved at `ralph/screenshots/build/releases-001-phase4-management.jpg`.
+- Verification passed: `cargo check -p opengithub-api`; focused `repository_releases_contract` compiled/passed with DB assertions self-skipped because the shared local DB connection/migration replay was unavailable; `cd web && npx tsc --noEmit --pretty false`; focused `web/tests/repository-releases-page.test.tsx`; focused same-env Playwright `repository-releases.spec.ts`; touched-file Biome checks; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 312 web tests; full same-env `make test-e2e` with 98 Playwright tests; mandatory Editorial banned-value scan returned zero matches.
+- Marked Phase 4 as done in `.qrspi/releases-001/structure.md`; `prd.json` remains `build_pass:false` because Phase 5 remains.
+
 2026-05-03 - settings-003 phase 1 branch policy API contract
 
 - Completed Phase 1 from `.qrspi/settings-003/structure.md`: repository Branches settings now have an API-first Rust/Postgres contract for branch protection rules, rulesets, refs, read-only policy visibility, and audit events.

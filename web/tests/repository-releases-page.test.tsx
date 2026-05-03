@@ -1,5 +1,5 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import {
   RepositoryReleaseDetailPage,
   RepositoryReleasesPage,
@@ -12,6 +12,13 @@ import type {
   RepositoryReleaseDetail,
   RepositoryReleaseSummary,
 } from "@/lib/api";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    refresh: vi.fn(),
+  }),
+}));
 
 function repositoryOverview(
   overrides: Partial<RepositoryOverview> = {},
@@ -239,6 +246,36 @@ describe("RepositoryReleasesPage", () => {
     expect(screen.getByText("Access restricted")).toBeVisible();
     expectNoDeadControls(container);
   });
+
+  it("shows release creation controls only for write-capable viewers", () => {
+    const { rerender } = render(
+      <RepositoryReleasesPage
+        authenticated={true}
+        releases={releaseEnvelope([])}
+        repository={repositoryOverview({ viewerPermission: "read" })}
+      />,
+    );
+    expect(
+      screen.queryByText("Draft or publish a release"),
+    ).not.toBeInTheDocument();
+
+    rerender(
+      <RepositoryReleasesPage
+        authenticated={true}
+        releases={releaseEnvelope([])}
+        repository={repositoryOverview({ viewerPermission: "write" })}
+      />,
+    );
+    expect(screen.getByText("Draft or publish a release")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "New release" }));
+    expect(screen.getByLabelText("Tag")).toHaveValue("");
+    expect(screen.getByLabelText("Target branch, tag, or SHA")).toHaveValue(
+      "main",
+    );
+    expect(
+      screen.getByRole("button", { name: "Create release" }),
+    ).toBeVisible();
+  });
 });
 
 describe("RepositoryReleaseDetailPage", () => {
@@ -263,6 +300,33 @@ describe("RepositoryReleaseDetailPage", () => {
     expect(screen.getByText("Signed by release key")).toBeVisible();
     expect(screen.queryByText("<script>")).not.toBeInTheDocument();
     expectNoDeadControls(container);
+  });
+
+  it("renders edit, publish, delete, and asset controls for write viewers", () => {
+    const detail: RepositoryReleaseDetail = {
+      ...release({ draft: true, latest: false }),
+      body: "Draft notes",
+      bodyHtml: "<p>Draft notes</p>",
+      immutable: false,
+      tagSignatureSummary: null,
+    };
+    render(
+      <RepositoryReleaseDetailPage
+        authenticated={true}
+        release={detail}
+        repository={repositoryOverview({ viewerPermission: "write" })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByDisplayValue("Stable Editorial release")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Save release" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Publish draft" })).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Delete release" }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Upload asset" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Remove" })).toBeVisible();
   });
 });
 

@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -142,6 +143,27 @@ pub struct ReleaseAssetDownloadMetadata {
     pub authorization: String,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseMutation {
+    pub tag_name: Option<String>,
+    pub target: Option<String>,
+    pub title: Option<String>,
+    pub body: Option<String>,
+    pub draft: Option<bool>,
+    pub prerelease: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseAssetMutation {
+    pub name: String,
+    pub label: Option<String>,
+    pub content_type: Option<String>,
+    pub byte_size: Option<i64>,
+    pub checksum_sha256: Option<String>,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ReleasesError {
     #[error(transparent)]
@@ -156,10 +178,393 @@ pub enum ReleasesError {
     UnsupportedReaction,
     #[error("authentication is required")]
     AuthenticationRequired,
+    #[error("{0}")]
+    Validation(String),
+    #[error("{0}")]
+    Conflict(String),
+    #[error("archived repositories cannot modify releases")]
+    ArchivedRepository,
+    #[error("immutable releases cannot be modified")]
+    ImmutableRelease,
     #[error("markdown rendering failed")]
     Markdown,
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
+}
+
+pub async fn create_repository_release_by_owner_name(
+    pool: &PgPool,
+    owner_login: &str,
+    repo_name: &str,
+    actor_user_id: Option<Uuid>,
+    mutation: ReleaseMutation,
+) -> Result<RepositoryReleaseDetail, ReleasesError> {
+    let actor_user_id = actor_user_id.ok_or(ReleasesError::AuthenticationRequired)?;
+    let repository = writable_repository(pool, owner_login, repo_name, actor_user_id).await?;
+    ensure_repository_mutable(&repository)?;
+    let tag_name = normalize_tag_input(mutation.tag_name.as_deref())?;
+    ensure_unique_active_tag(pool, repository.id, &tag_name, None).await?;
+    let target_commit_id =
+        ensure_release_tag_target(pool, &repository, &tag_name, mutation.target.as_deref()).await?;
+    let title = mutation
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(&tag_name)
+        .chars()
+        .take(180)
+        .collect::<String>();
+    let body = mutation.body.unwrap_or_default();
+    let prerelease = mutation.prerelease.unwrap_or(false);
+    let draft = mutation.draft.unwrap_or(false);
+    let body_html =
+        render_release_markdown(pool, &repository, tag_name.clone(), Some(body.clone())).await?;
+    let excerpt = release_excerpt(&body);
+    let published_at = if draft { None } else { Some(Utc::now()) };
+    let row = sqlx::query(
+        r#"
+        INSERT INTO releases (
+            repository_id, tag_name, name, body, draft, prerelease, author_user_id,
+            target_commit_id, body_html, rendered_body_excerpt, is_latest,
+            published_at, updated_by_user_id
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, false, $11, $7)
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(&tag_name)
+    .bind(&title)
+    .bind(&body)
+    .bind(draft)
+    .bind(prerelease)
+    .bind(actor_user_id)
+    .bind(target_commit_id)
+    .bind(body_html)
+    .bind(excerpt)
+    .bind(published_at)
+    .fetch_one(pool)
+    .await
+    .map_err(map_release_write_error)?;
+    let release_id = row.get("id");
+    refresh_latest_marker(pool, repository.id).await?;
+    audit_release_event(
+        pool,
+        repository.id,
+        Some(release_id),
+        actor_user_id,
+        "release.created",
+        &["tag_name", "title", "draft", "prerelease"],
+        json!({}),
+        json!({
+            "tagName": tag_name,
+            "title": title,
+            "draft": draft,
+            "prerelease": prerelease
+        }),
+    )
+    .await?;
+    release_detail_for_repository(pool, &repository, Some(actor_user_id), release_id).await
+}
+
+pub async fn update_repository_release_by_owner_name(
+    pool: &PgPool,
+    owner_login: &str,
+    repo_name: &str,
+    release_id: Uuid,
+    actor_user_id: Option<Uuid>,
+    mutation: ReleaseMutation,
+) -> Result<RepositoryReleaseDetail, ReleasesError> {
+    let actor_user_id = actor_user_id.ok_or(ReleasesError::AuthenticationRequired)?;
+    let repository = writable_repository(pool, owner_login, repo_name, actor_user_id).await?;
+    ensure_repository_mutable(&repository)?;
+    ensure_release_mutable(pool, repository.id, release_id).await?;
+    let before =
+        release_detail_for_repository(pool, &repository, Some(actor_user_id), release_id).await?;
+    let tag_name = match mutation.tag_name.as_deref() {
+        Some(value) => normalize_tag_input(Some(value))?,
+        None => before.summary.tag_name.clone(),
+    };
+    ensure_unique_active_tag(pool, repository.id, &tag_name, Some(release_id)).await?;
+    let target_commit_id = if mutation.target.is_some() || tag_name != before.summary.tag_name {
+        ensure_release_tag_target(pool, &repository, &tag_name, mutation.target.as_deref()).await?
+    } else {
+        sqlx::query_scalar::<_, Option<Uuid>>(
+            "SELECT target_commit_id FROM releases WHERE id = $1 AND repository_id = $2",
+        )
+        .bind(release_id)
+        .bind(repository.id)
+        .fetch_one(pool)
+        .await?
+    };
+    let title = mutation
+        .title
+        .unwrap_or_else(|| before.summary.title.clone())
+        .trim()
+        .to_owned();
+    if title.is_empty() {
+        return Err(ReleasesError::Validation(
+            "release title cannot be blank".to_owned(),
+        ));
+    }
+    let body = mutation
+        .body
+        .unwrap_or_else(|| before.body.unwrap_or_default());
+    let draft = mutation.draft.unwrap_or(before.summary.draft);
+    let prerelease = mutation.prerelease.unwrap_or(before.summary.prerelease);
+    let was_draft = before.summary.draft;
+    let published_at = if draft {
+        None
+    } else if was_draft {
+        Some(Utc::now())
+    } else {
+        before.summary.published_at
+    };
+    let body_html =
+        render_release_markdown(pool, &repository, tag_name.clone(), Some(body.clone())).await?;
+    let excerpt = release_excerpt(&body);
+    sqlx::query(
+        r#"
+        UPDATE releases
+        SET tag_name = $3,
+            name = $4,
+            body = $5,
+            body_html = $6,
+            rendered_body_excerpt = $7,
+            draft = $8,
+            prerelease = $9,
+            target_commit_id = $10,
+            published_at = $11,
+            updated_by_user_id = $12
+        WHERE repository_id = $1 AND id = $2 AND deleted_at IS NULL
+        "#,
+    )
+    .bind(repository.id)
+    .bind(release_id)
+    .bind(&tag_name)
+    .bind(&title)
+    .bind(&body)
+    .bind(body_html)
+    .bind(excerpt)
+    .bind(draft)
+    .bind(prerelease)
+    .bind(target_commit_id)
+    .bind(published_at)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await
+    .map_err(map_release_write_error)?;
+    refresh_latest_marker(pool, repository.id).await?;
+    audit_release_event(
+        pool,
+        repository.id,
+        Some(release_id),
+        actor_user_id,
+        if was_draft && !draft {
+            "release.published"
+        } else {
+            "release.updated"
+        },
+        &["tag_name", "title", "body", "draft", "prerelease", "target"],
+        json!({
+            "tagName": before.summary.tag_name,
+            "title": before.summary.title,
+            "draft": before.summary.draft,
+            "prerelease": before.summary.prerelease
+        }),
+        json!({
+            "tagName": tag_name,
+            "title": title,
+            "draft": draft,
+            "prerelease": prerelease
+        }),
+    )
+    .await?;
+    release_detail_for_repository(pool, &repository, Some(actor_user_id), release_id).await
+}
+
+pub async fn publish_repository_release_by_owner_name(
+    pool: &PgPool,
+    owner_login: &str,
+    repo_name: &str,
+    release_id: Uuid,
+    actor_user_id: Option<Uuid>,
+) -> Result<RepositoryReleaseDetail, ReleasesError> {
+    update_repository_release_by_owner_name(
+        pool,
+        owner_login,
+        repo_name,
+        release_id,
+        actor_user_id,
+        ReleaseMutation {
+            tag_name: None,
+            target: None,
+            title: None,
+            body: None,
+            draft: Some(false),
+            prerelease: None,
+        },
+    )
+    .await
+}
+
+pub async fn delete_repository_release_by_owner_name(
+    pool: &PgPool,
+    owner_login: &str,
+    repo_name: &str,
+    release_id: Uuid,
+    actor_user_id: Option<Uuid>,
+) -> Result<(), ReleasesError> {
+    let actor_user_id = actor_user_id.ok_or(ReleasesError::AuthenticationRequired)?;
+    let repository = writable_repository(pool, owner_login, repo_name, actor_user_id).await?;
+    ensure_repository_mutable(&repository)?;
+    ensure_release_mutable(pool, repository.id, release_id).await?;
+    let affected = sqlx::query(
+        r#"
+        UPDATE releases
+        SET deleted_at = now(), updated_by_user_id = $3
+        WHERE repository_id = $1 AND id = $2 AND deleted_at IS NULL
+        "#,
+    )
+    .bind(repository.id)
+    .bind(release_id)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?
+    .rows_affected();
+    if affected == 0 {
+        return Err(ReleasesError::NotFound);
+    }
+    refresh_latest_marker(pool, repository.id).await?;
+    audit_release_event(
+        pool,
+        repository.id,
+        Some(release_id),
+        actor_user_id,
+        "release.deleted",
+        &["deleted_at"],
+        json!({}),
+        json!({ "deleted": true }),
+    )
+    .await?;
+    Ok(())
+}
+
+pub async fn create_repository_release_asset_by_owner_name(
+    pool: &PgPool,
+    owner_login: &str,
+    repo_name: &str,
+    release_id: Uuid,
+    actor_user_id: Option<Uuid>,
+    mutation: ReleaseAssetMutation,
+) -> Result<RepositoryReleaseDetail, ReleasesError> {
+    let actor_user_id = actor_user_id.ok_or(ReleasesError::AuthenticationRequired)?;
+    let repository = writable_repository(pool, owner_login, repo_name, actor_user_id).await?;
+    ensure_repository_mutable(&repository)?;
+    ensure_release_mutable(pool, repository.id, release_id).await?;
+    let name = normalize_asset_name(&mutation.name)?;
+    let content_type = mutation
+        .content_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("application/octet-stream")
+        .to_owned();
+    let byte_size = mutation.byte_size.unwrap_or(0);
+    if byte_size < 0 {
+        return Err(ReleasesError::Validation(
+            "asset byte size cannot be negative".to_owned(),
+        ));
+    }
+    let storage_key = format!("releases/{release_id}/assets/{}", Uuid::new_v4());
+    sqlx::query(
+        r#"
+        INSERT INTO release_assets (
+            repository_id, release_id, name, label, content_type, byte_size,
+            storage_kind, storage_key, checksum_sha256, uploaded_by_user_id
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, 'local', $7, $8, $9)
+        "#,
+    )
+    .bind(repository.id)
+    .bind(release_id)
+    .bind(&name)
+    .bind(
+        mutation
+            .label
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty()),
+    )
+    .bind(content_type)
+    .bind(byte_size)
+    .bind(storage_key)
+    .bind(
+        mutation
+            .checksum_sha256
+            .as_deref()
+            .map(str::trim)
+            .filter(|v| !v.is_empty()),
+    )
+    .bind(actor_user_id)
+    .execute(pool)
+    .await
+    .map_err(map_release_write_error)?;
+    audit_release_event(
+        pool,
+        repository.id,
+        Some(release_id),
+        actor_user_id,
+        "release.asset.created",
+        &["asset"],
+        json!({}),
+        json!({ "assetName": name, "byteSize": byte_size }),
+    )
+    .await?;
+    release_detail_for_repository(pool, &repository, Some(actor_user_id), release_id).await
+}
+
+pub async fn delete_repository_release_asset_by_owner_name(
+    pool: &PgPool,
+    owner_login: &str,
+    repo_name: &str,
+    release_id: Uuid,
+    asset_id: Uuid,
+    actor_user_id: Option<Uuid>,
+) -> Result<RepositoryReleaseDetail, ReleasesError> {
+    let actor_user_id = actor_user_id.ok_or(ReleasesError::AuthenticationRequired)?;
+    let repository = writable_repository(pool, owner_login, repo_name, actor_user_id).await?;
+    ensure_repository_mutable(&repository)?;
+    ensure_release_mutable(pool, repository.id, release_id).await?;
+    let affected = sqlx::query(
+        r#"
+        UPDATE release_assets
+        SET deleted_at = now()
+        WHERE repository_id = $1 AND release_id = $2 AND id = $3 AND deleted_at IS NULL
+        "#,
+    )
+    .bind(repository.id)
+    .bind(release_id)
+    .bind(asset_id)
+    .execute(pool)
+    .await?
+    .rows_affected();
+    if affected == 0 {
+        return Err(ReleasesError::NotFound);
+    }
+    audit_release_event(
+        pool,
+        repository.id,
+        Some(release_id),
+        actor_user_id,
+        "release.asset.deleted",
+        &["asset"],
+        json!({ "assetId": asset_id }),
+        json!({ "deleted": true }),
+    )
+    .await?;
+    release_detail_for_repository(pool, &repository, Some(actor_user_id), release_id).await
 }
 
 pub async fn repository_release_list_by_owner_name(
@@ -652,6 +1057,50 @@ async fn readable_repository(
     }
 }
 
+async fn writable_repository(
+    pool: &PgPool,
+    owner_login: &str,
+    repo_name: &str,
+    actor_user_id: Uuid,
+) -> Result<Repository, ReleasesError> {
+    let repository = get_repository_by_owner_name(pool, owner_login, repo_name)
+        .await?
+        .ok_or(RepositoryError::NotFound)?;
+    if super::repositories::can_write_repository(pool, &repository, actor_user_id).await? {
+        Ok(repository)
+    } else {
+        Err(ReleasesError::Repository(RepositoryError::PermissionDenied))
+    }
+}
+
+fn ensure_repository_mutable(repository: &Repository) -> Result<(), ReleasesError> {
+    if repository.is_archived {
+        Err(ReleasesError::ArchivedRepository)
+    } else {
+        Ok(())
+    }
+}
+
+async fn ensure_release_mutable(
+    pool: &PgPool,
+    repository_id: Uuid,
+    release_id: Uuid,
+) -> Result<(), ReleasesError> {
+    let immutable = sqlx::query_scalar::<_, bool>(
+        "SELECT immutable FROM releases WHERE repository_id = $1 AND id = $2 AND deleted_at IS NULL",
+    )
+    .bind(repository_id)
+    .bind(release_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ReleasesError::NotFound)?;
+    if immutable {
+        Err(ReleasesError::ImmutableRelease)
+    } else {
+        Ok(())
+    }
+}
+
 async fn can_write_if_actor(
     pool: &PgPool,
     repository: &Repository,
@@ -661,6 +1110,239 @@ async fn can_write_if_actor(
         return Ok(false);
     };
     super::repositories::can_write_repository(pool, repository, actor_user_id).await
+}
+
+async fn ensure_unique_active_tag(
+    pool: &PgPool,
+    repository_id: Uuid,
+    tag_name: &str,
+    except_release_id: Option<Uuid>,
+) -> Result<(), ReleasesError> {
+    let duplicate = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS (
+            SELECT 1
+            FROM releases
+            WHERE repository_id = $1
+              AND lower(tag_name) = lower($2)
+              AND deleted_at IS NULL
+              AND ($3::uuid IS NULL OR id <> $3)
+        )
+        "#,
+    )
+    .bind(repository_id)
+    .bind(tag_name)
+    .bind(except_release_id)
+    .fetch_one(pool)
+    .await?;
+    if duplicate {
+        Err(ReleasesError::Conflict(
+            "an active release already exists for this tag".to_owned(),
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+async fn ensure_release_tag_target(
+    pool: &PgPool,
+    repository: &Repository,
+    tag_name: &str,
+    target: Option<&str>,
+) -> Result<Option<Uuid>, ReleasesError> {
+    let target = target.map(str::trim).filter(|value| !value.is_empty());
+    let ref_candidates = match target {
+        Some(value) => vec![
+            value.to_owned(),
+            format!("refs/tags/{value}"),
+            format!("refs/heads/{value}"),
+        ],
+        None => vec![format!("refs/heads/{}", repository.default_branch)],
+    };
+    let target_commit_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        SELECT target_commit_id
+        FROM repository_git_refs
+        WHERE repository_id = $1
+          AND target_commit_id IS NOT NULL
+          AND name = ANY($2)
+        ORDER BY CASE WHEN kind = 'tag' THEN 0 ELSE 1 END
+        LIMIT 1
+        "#,
+    )
+    .bind(repository.id)
+    .bind(&ref_candidates)
+    .fetch_optional(pool)
+    .await?;
+    let target_commit_id = match target_commit_id {
+        Some(id) => Some(id),
+        None => match target {
+            Some(value) => {
+                sqlx::query_scalar::<_, Uuid>(
+                    "SELECT id FROM commits WHERE repository_id = $1 AND oid = $2 LIMIT 1",
+                )
+                .bind(repository.id)
+                .bind(value)
+                .fetch_optional(pool)
+                .await?
+            }
+            None => None,
+        },
+    };
+    let existing_tag = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS (
+            SELECT 1 FROM repository_git_refs
+            WHERE repository_id = $1
+              AND kind = 'tag'
+              AND lower(regexp_replace(name, '^refs/tags/', '')) = lower($2)
+        )
+        "#,
+    )
+    .bind(repository.id)
+    .bind(tag_name)
+    .fetch_one(pool)
+    .await?;
+    if !existing_tag {
+        let Some(commit_id) = target_commit_id else {
+            return Err(ReleasesError::Validation(
+                "select an existing branch, tag, or commit before creating this release tag"
+                    .to_owned(),
+            ));
+        };
+        sqlx::query(
+            r#"
+            INSERT INTO repository_git_refs (repository_id, name, kind, target_commit_id)
+            VALUES ($1, $2, 'tag', $3)
+            ON CONFLICT DO NOTHING
+            "#,
+        )
+        .bind(repository.id)
+        .bind(format!("refs/tags/{tag_name}"))
+        .bind(commit_id)
+        .execute(pool)
+        .await?;
+    }
+    Ok(target_commit_id)
+}
+
+async fn refresh_latest_marker(pool: &PgPool, repository_id: Uuid) -> Result<(), ReleasesError> {
+    sqlx::query(
+        r#"
+        UPDATE releases
+        SET is_latest = false
+        WHERE repository_id = $1
+        "#,
+    )
+    .bind(repository_id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        WITH latest AS (
+            SELECT id
+            FROM releases
+            WHERE repository_id = $1
+              AND deleted_at IS NULL
+              AND draft = false
+              AND prerelease = false
+              AND published_at IS NOT NULL
+            ORDER BY published_at DESC, created_at DESC
+            LIMIT 1
+        )
+        UPDATE releases
+        SET is_latest = true
+        WHERE id IN (SELECT id FROM latest)
+        "#,
+    )
+    .bind(repository_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn audit_release_event(
+    pool: &PgPool,
+    repository_id: Uuid,
+    release_id: Option<Uuid>,
+    actor_user_id: Uuid,
+    event_type: &str,
+    changed_fields: &[&str],
+    before_state: serde_json::Value,
+    after_state: serde_json::Value,
+) -> Result<(), ReleasesError> {
+    let fields = changed_fields
+        .iter()
+        .map(|field| (*field).to_owned())
+        .collect::<Vec<_>>();
+    sqlx::query(
+        r#"
+        INSERT INTO release_audit_events (
+            repository_id, release_id, actor_user_id, event_type,
+            changed_fields, before_state, after_state
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        "#,
+    )
+    .bind(repository_id)
+    .bind(release_id)
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(fields)
+    .bind(before_state)
+    .bind(after_state)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+fn normalize_tag_input(tag_name: Option<&str>) -> Result<String, ReleasesError> {
+    let Some(tag_name) = tag_name else {
+        return Err(ReleasesError::Validation(
+            "release tag name is required".to_owned(),
+        ));
+    };
+    let tag_name = clean_tag_name(tag_name);
+    if tag_name.is_empty()
+        || tag_name.len() > 120
+        || tag_name
+            .chars()
+            .any(|character| character.is_control() || character.is_whitespace())
+    {
+        return Err(ReleasesError::Validation(
+            "release tag names cannot be blank or contain whitespace".to_owned(),
+        ));
+    }
+    Ok(tag_name)
+}
+
+fn normalize_asset_name(name: &str) -> Result<String, ReleasesError> {
+    let name = name.trim();
+    if name.is_empty() || name.len() > 180 || name.contains('/') || name.contains('\\') {
+        return Err(ReleasesError::Validation(
+            "asset name cannot be blank or contain path separators".to_owned(),
+        ));
+    }
+    Ok(name.to_owned())
+}
+
+fn release_excerpt(body: &str) -> String {
+    body.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(280)
+        .collect()
+}
+
+fn map_release_write_error(error: sqlx::Error) -> ReleasesError {
+    if let sqlx::Error::Database(database_error) = &error {
+        if database_error.is_unique_violation() {
+            return ReleasesError::Conflict("release tag or asset name already exists".to_owned());
+        }
+    }
+    ReleasesError::Sqlx(error)
 }
 
 async fn release_count(

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { RepositoryReleaseInteractions } from "@/components/RepositoryReleaseInteractions";
+import { RepositoryReleaseManager } from "@/components/RepositoryReleaseManager";
 import { RepositoryShell } from "@/components/RepositoryShell";
 import type {
   ApiErrorEnvelope,
@@ -286,6 +287,7 @@ export function RepositoryReleasesPage({
             Latest release
           </Link>
         </div>
+        <RepositoryReleaseManager repository={repository} />
         {isApiError(releases) ? (
           <ReleaseUnavailable
             error={releases}
@@ -356,6 +358,10 @@ export function RepositoryReleaseDetailPage({
               detailHtml={release.bodyHtml}
               release={release}
               repository={repository}
+            />
+            <RepositoryReleaseManager
+              repository={repository}
+              release={release}
             />
             {release.tagSignatureSummary ? (
               <p className="t-xs mt-3">{release.tagSignatureSummary}</p>

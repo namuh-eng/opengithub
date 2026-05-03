@@ -48,6 +48,35 @@ function ensureReleaseReadSchema() {
     .toString()
     .trim();
   if (hasBodyHtml === "t") {
+    const hasManagementIndex = execFileSync(
+      "psql",
+      [
+        databaseUrl,
+        "-tAc",
+        "SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'releases_repository_tag_active_unique')",
+      ],
+      {
+        env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
+      },
+    )
+      .toString()
+      .trim();
+    if (hasManagementIndex === "t") {
+      return;
+    }
+    execFileSync(
+      "psql",
+      [
+        databaseUrl,
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-f",
+        "../crates/api/migrations/202605031328_repository_releases_management.up.sql",
+      ],
+      {
+        env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
+      },
+    );
     return;
   }
   execFileSync(
@@ -58,6 +87,19 @@ function ensureReleaseReadSchema() {
       "ON_ERROR_STOP=1",
       "-f",
       "../crates/api/migrations/202605030047_repository_releases_read.up.sql",
+    ],
+    {
+      env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
+    },
+  );
+  execFileSync(
+    "psql",
+    [
+      databaseUrl,
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-f",
+      "../crates/api/migrations/202605031328_repository_releases_management.up.sql",
     ],
     {
       env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
@@ -224,9 +266,46 @@ test("repository releases, latest detail, and tags render seeded read data", asy
     path: "../ralph/screenshots/build/releases-001-phase3-list-interactions.jpg",
   });
 
-  await page.getByRole("link", { name: "Latest release" }).click();
+  await page.getByRole("button", { exact: true, name: "New release" }).click();
+  await page.getByRole("textbox", { exact: true, name: "Tag" }).fill("v2.0.1");
+  await page
+    .getByRole("textbox", { exact: true, name: "Title" })
+    .fill("Managed release");
+  await page
+    .getByRole("textbox", { exact: true, name: "Notes" })
+    .fill("Managed notes from browser smoke.");
+  await page.getByLabel("Save as draft").check();
+  await page
+    .getByRole("button", { exact: true, name: "Create release" })
+    .click();
+  await expect(page).toHaveURL(/\/releases\/tag\/v2\.0\.1$/);
+  await expect(page.getByText("Managed release")).toBeVisible();
+  await page.getByRole("button", { exact: true, name: "Edit" }).click();
+  await expect(
+    page.getByRole("button", { exact: true, name: "Publish draft" }),
+  ).toBeVisible();
+  await page.getByLabel("Asset name").fill("opengithub-browser.tar.gz");
+  await page.getByLabel("Asset label").fill("Browser smoke");
+  await page.getByLabel("Asset byte size").fill("4096");
+  await page.getByRole("button", { exact: true, name: "Upload asset" }).click();
+  await expect(page.getByText("Asset added.")).toBeVisible();
+  await expect(
+    page
+      .getByLabel("Release management")
+      .getByText("opengithub-browser.tar.gz"),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { exact: true, name: "Publish draft" })
+    .click();
+  await expect(page.getByText("Draft published.")).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/releases-001-phase4-management.jpg",
+  });
+
+  await page.goto(`${seeded.firstRepositoryHref}/releases/latest`);
   await expect(page).toHaveURL(/\/releases\/latest$/);
-  await expect(page.getByText("Verified tag signature")).toBeVisible();
+  await expect(page.getByText("Managed release")).toBeVisible();
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/releases-001-phase3-detail-latest.jpg",
@@ -238,7 +317,12 @@ test("repository releases, latest detail, and tags render seeded read data", asy
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "v2.0.0" })).toBeVisible();
   await expect(
-    page.getByRole("link", { exact: true, name: "Release" }),
+    page.locator(
+      `a[href="${seeded.firstRepositoryHref}/releases/tag/v2.0.0"]`,
+      {
+        hasText: "Release",
+      },
+    ),
   ).toHaveAttribute(
     "href",
     `${seeded.firstRepositoryHref}/releases/tag/v2.0.0`,

@@ -61,7 +61,7 @@
 
 ## Phase 4: Release Management Mutations - create, edit, publish, delete, assets, and audit
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Complete the CRUD surface expected of repository releases. Collaborators with write permission can create draft/published releases, edit release metadata, upload/remove assets, publish drafts, delete releases, and keep tags/source files consistent with repository policy.
 

@@ -36,11 +36,15 @@ use crate::{
         PagesSourceMutation,
     },
     domain::releases::{
-        repository_latest_release_by_owner_name, repository_release_archive_metadata_by_owner_name,
+        create_repository_release_asset_by_owner_name, create_repository_release_by_owner_name,
+        delete_repository_release_asset_by_owner_name, delete_repository_release_by_owner_name,
+        publish_repository_release_by_owner_name, repository_latest_release_by_owner_name,
+        repository_release_archive_metadata_by_owner_name,
         repository_release_asset_download_by_owner_name,
         repository_release_detail_by_id_by_owner_name,
         repository_release_detail_by_tag_by_owner_name, repository_release_list_by_owner_name,
         repository_release_tags_by_owner_name, toggle_repository_release_reaction_by_owner_name,
+        update_repository_release_by_owner_name, ReleaseAssetMutation, ReleaseMutation,
         ReleasesError,
     },
     domain::repositories::{
@@ -91,7 +95,7 @@ pub fn router() -> Router<AppState> {
         .route("/:owner/:repo/commits", get(commits))
         .route("/:owner/:repo/refs", get(refs))
         .route("/:owner/:repo/file-finder", get(file_finder))
-        .route("/:owner/:repo/releases", get(releases))
+        .route("/:owner/:repo/releases", get(releases).post(create_release))
         .route("/:owner/:repo/releases/latest", get(latest_release))
         .route("/:owner/:repo/releases/tags", get(release_tags))
         .route(
@@ -107,11 +111,28 @@ pub fn router() -> Router<AppState> {
             get(release_asset_download),
         )
         .route(
+            "/:owner/:repo/releases/:release_id/assets",
+            post(create_release_asset),
+        )
+        .route(
+            "/:owner/:repo/releases/:release_id/assets/:asset_id",
+            delete(delete_release_asset),
+        )
+        .route(
+            "/:owner/:repo/releases/:release_id/publish",
+            post(publish_release),
+        )
+        .route(
             "/:owner/:repo/releases/:release_id/reactions",
             post(release_reaction),
         )
         .route("/:owner/:repo/releases/tag/*tag", get(release_by_tag))
-        .route("/:owner/:repo/releases/:release_id", get(release_by_id))
+        .route(
+            "/:owner/:repo/releases/:release_id",
+            get(release_by_id)
+                .patch(update_release)
+                .delete(delete_release),
+        )
         .route(
             "/:owner/:repo/settings",
             get(settings).patch(update_settings),
@@ -652,6 +673,27 @@ async fn releases(
     Ok(Json(json!(envelope)))
 }
 
+async fn create_release(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<ReleaseMutation>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let release = create_repository_release_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        actor.as_ref().map(|user| user.id),
+        request,
+    )
+    .await
+    .map_err(map_releases_error)?;
+
+    Ok((StatusCode::CREATED, Json(json!(release))))
+}
+
 async fn latest_release(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -669,6 +711,68 @@ async fn latest_release(
     .map_err(map_releases_error)?;
 
     Ok(Json(json!(release)))
+}
+
+async fn update_release(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, release_id)): Path<(String, String, Uuid)>,
+    RestJson(request): RestJson<ReleaseMutation>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let release = update_repository_release_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        release_id,
+        actor.as_ref().map(|user| user.id),
+        request,
+    )
+    .await
+    .map_err(map_releases_error)?;
+
+    Ok(Json(json!(release)))
+}
+
+async fn publish_release(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, release_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let release = publish_repository_release_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        release_id,
+        actor.as_ref().map(|user| user.id),
+    )
+    .await
+    .map_err(map_releases_error)?;
+
+    Ok(Json(json!(release)))
+}
+
+async fn delete_release(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, release_id)): Path<(String, String, Uuid)>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    delete_repository_release_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        release_id,
+        actor.as_ref().map(|user| user.id),
+    )
+    .await
+    .map_err(map_releases_error)?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn release_by_id(
@@ -792,6 +896,49 @@ async fn release_asset_download(
     .map_err(map_releases_error)?;
 
     Ok(Json(json!(metadata)))
+}
+
+async fn create_release_asset(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, release_id)): Path<(String, String, Uuid)>,
+    RestJson(request): RestJson<ReleaseAssetMutation>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let release = create_repository_release_asset_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        release_id,
+        actor.as_ref().map(|user| user.id),
+        request,
+    )
+    .await
+    .map_err(map_releases_error)?;
+
+    Ok((StatusCode::CREATED, Json(json!(release))))
+}
+
+async fn delete_release_asset(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, release_id, asset_id)): Path<(String, String, Uuid, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let release = delete_repository_release_asset_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        release_id,
+        asset_id,
+        actor.as_ref().map(|user| user.id),
+    )
+    .await
+    .map_err(map_releases_error)?;
+
+    Ok(Json(json!(release)))
 }
 
 async fn release_reaction(
@@ -2102,6 +2249,17 @@ fn map_releases_error(error: ReleasesError) -> (StatusCode, Json<ErrorEnvelope>)
             "validation_failed",
             error.to_string(),
         ),
+        ReleasesError::Validation(_) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            error.to_string(),
+        ),
+        ReleasesError::Conflict(_) => {
+            error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
+        ReleasesError::ArchivedRepository | ReleasesError::ImmutableRelease => {
+            error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
         ReleasesError::AuthenticationRequired => {
             error_response(StatusCode::UNAUTHORIZED, "unauthorized", error.to_string())
         }
