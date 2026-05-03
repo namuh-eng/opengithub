@@ -203,10 +203,25 @@ test("repository releases, latest detail, and tags render seeded read data", asy
   await expect(page.getByText("Verified", { exact: true })).toBeVisible();
   await page.getByText("Assets 3").click();
   await expect(page.getByText("opengithub.tar.gz")).toBeVisible();
+  await expect(
+    page.getByRole("link", { exact: true, name: "opengithub.tar.gz" }),
+  ).toHaveAttribute("href", /\/releases\/assets\//);
+  await page.getByRole("button", { exact: true, name: /rocket 0/ }).click();
+  await expect(page.getByRole("status")).toContainText("Reaction updated");
+  await expect(
+    page.getByRole("button", { exact: true, name: /rocket 1/ }),
+  ).toBeVisible();
+  await page.getByRole("button", { exact: true, name: "Compare" }).click();
+  await expect(
+    page.getByRole("textbox", { name: "Search branches and tags to compare" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /main/ }).first(),
+  ).toHaveAttribute("href", /\/compare\/v2\.0\.0\.\.\.main/);
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/releases-001-phase2-list.jpg",
+    path: "../ralph/screenshots/build/releases-001-phase3-list-interactions.jpg",
   });
 
   await page.getByRole("link", { name: "Latest release" }).click();
@@ -214,7 +229,7 @@ test("repository releases, latest detail, and tags render seeded read data", asy
   await expect(page.getByText("Verified tag signature")).toBeVisible();
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/releases-001-phase2-detail.jpg",
+    path: "../ralph/screenshots/build/releases-001-phase3-detail-latest.jpg",
   });
 
   await page.goto(`${seeded.firstRepositoryHref}/tags`);
@@ -231,6 +246,6 @@ test("repository releases, latest detail, and tags render seeded read data", asy
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/releases-001-phase2-tags.jpg",
+    path: "../ralph/screenshots/build/releases-001-phase3-tags.jpg",
   });
 });

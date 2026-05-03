@@ -33,7 +33,11 @@ export default async function ReleasesPage({
   return (
     <AppShell session={session}>
       {repository && releases ? (
-        <RepositoryReleasesPage releases={releases} repository={repository} />
+        <RepositoryReleasesPage
+          authenticated={session.authenticated}
+          releases={releases}
+          repository={repository}
+        />
       ) : (
         <RepositoryUnavailablePage owner={ownerLogin} repo={repositoryName} />
       )}

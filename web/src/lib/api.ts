@@ -875,6 +875,16 @@ export type ReleaseReactionSummary = {
   viewerReaction: string | null;
 };
 
+export type ReleaseReactionContent =
+  | "thumbs_up"
+  | "thumbs_down"
+  | "laugh"
+  | "hooray"
+  | "confused"
+  | "heart"
+  | "rocket"
+  | "eyes";
+
 export type ReleaseLinks = {
   htmlHref: string;
   apiHref: string;
@@ -894,6 +904,14 @@ export type ReleaseAsset = {
   checksumSha256: string | null;
   href: string;
   createdAt: string;
+};
+
+export type ReleaseAssetDownloadMetadata = {
+  asset: ReleaseAsset;
+  releaseId: string;
+  releaseTagName: string;
+  downloadHref: string;
+  authorization: string;
 };
 
 export type RepositoryReleaseSummary = {
@@ -5967,6 +5985,65 @@ export async function getRepositoryReleaseTagsFromCookie(
     );
   }
   return body as ListEnvelope<ReleaseTagSummary>;
+}
+
+export async function toggleRepositoryReleaseReactionFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  releaseId: string,
+  content: ReleaseReactionContent,
+): Promise<ReleaseReactionSummary> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/${encodeURIComponent(releaseId)}/reactions`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify({ content }),
+      cache: "no-store",
+    },
+  );
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Release reaction could not be updated",
+      {
+        cause: envelope,
+      },
+    );
+  }
+
+  return payload as ReleaseReactionSummary;
+}
+
+export async function getRepositoryReleaseAssetDownloadFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  assetId: string,
+): Promise<ReleaseAssetDownloadMetadata> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/assets/${encodeURIComponent(assetId)}`,
+    {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(envelope?.error.message ?? "Release asset could not load", {
+      cause: envelope,
+    });
+  }
+
+  return payload as ReleaseAssetDownloadMetadata;
 }
 
 export async function getRepositorySettingsFromCookie(

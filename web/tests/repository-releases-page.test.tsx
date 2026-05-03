@@ -177,6 +177,7 @@ describe("RepositoryReleasesPage", () => {
   it("renders Editorial release cards with metadata, assets, reactions, and concrete links", () => {
     const { container } = render(
       <RepositoryReleasesPage
+        authenticated={true}
         releases={releaseEnvelope([
           release(),
           release({
@@ -203,9 +204,12 @@ describe("RepositoryReleasesPage", () => {
     expect(
       screen.getByRole("link", { name: "Latest release" }),
     ).toHaveAttribute("href", "/mona/octo-app/releases/latest");
-    expect(screen.getAllByRole("link", { name: "Compare" })[0]).toHaveAttribute(
+    expect(screen.getAllByRole("button", { name: "Compare" })[0]).toBeVisible();
+    expect(
+      screen.getAllByRole("link", { name: "Source code (zip)" })[0],
+    ).toHaveAttribute(
       "href",
-      "/mona/octo-app/compare/v2.0.0...main",
+      "/api/repos/mona/octo-app/releases/zipball/v2.0.0",
     );
     expectNoDeadControls(container);
   });
@@ -214,6 +218,7 @@ describe("RepositoryReleasesPage", () => {
     const repository = repositoryOverview();
     const { container, rerender } = render(
       <RepositoryReleasesPage
+        authenticated={false}
         releases={releaseEnvelope([])}
         repository={repository}
       />,
@@ -222,6 +227,7 @@ describe("RepositoryReleasesPage", () => {
 
     rerender(
       <RepositoryReleasesPage
+        authenticated={false}
         releases={{
           error: { code: "permission_denied", message: "forbidden" },
           status: 403,
@@ -246,6 +252,7 @@ describe("RepositoryReleaseDetailPage", () => {
     };
     const { container } = render(
       <RepositoryReleaseDetailPage
+        authenticated={true}
         release={detail}
         repository={repositoryOverview()}
       />,

@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { MarkdownBody } from "@/components/MarkdownBody";
+import { RepositoryReleaseInteractions } from "@/components/RepositoryReleaseInteractions";
 import { RepositoryShell } from "@/components/RepositoryShell";
 import type {
   ApiErrorEnvelope,
   ListEnvelope,
-  ReleaseAsset,
   ReleaseTagSummary,
   RepositoryOverview,
   RepositoryReleaseDetail,
@@ -13,11 +13,13 @@ import type {
 import { repositoryCompareRangeHref } from "@/lib/navigation";
 
 type RepositoryReleasesPageProps = {
+  authenticated: boolean;
   repository: RepositoryOverview;
   releases: ListEnvelope<RepositoryReleaseSummary> | ApiErrorEnvelope;
 };
 
 type RepositoryReleaseDetailPageProps = {
+  authenticated: boolean;
   repository: RepositoryOverview;
   release: RepositoryReleaseDetail | ApiErrorEnvelope;
 };
@@ -44,19 +46,6 @@ function formatDate(value: string | null) {
     month: "short",
     year: "numeric",
   }).format(date);
-}
-
-function formatBytes(value: number) {
-  if (value < 1024) return `${value} B`;
-  const units = ["KB", "MB", "GB"];
-  let size = value / 1024;
-  let unit = units[0];
-  for (const candidate of units) {
-    unit = candidate;
-    if (size < 1024 || candidate === units.at(-1)) break;
-    size /= 1024;
-  }
-  return `${size >= 10 ? size.toFixed(0) : size.toFixed(1)} ${unit}`;
 }
 
 function initials(login: string) {
@@ -192,70 +181,13 @@ function ContributorRow({
   );
 }
 
-function AssetsDisclosure({ assets }: { assets: ReleaseAsset[] }) {
-  return (
-    <details className="mt-4 rounded-[var(--radius)] border border-[var(--line)] bg-[var(--surface)]">
-      <summary className="cursor-pointer px-3 py-2 t-sm font-medium">
-        Assets <span className="t-num">{assets.length + 2}</span>
-      </summary>
-      <div
-        className="border-t px-3 py-2"
-        style={{ borderColor: "var(--line)" }}
-      >
-        {assets.length > 0 ? (
-          <ul className="space-y-2">
-            {assets.map((asset) => (
-              <li className="flex flex-wrap items-center gap-2" key={asset.id}>
-                <Link className="t-mono-sm hover:underline" href={asset.href}>
-                  {asset.name}
-                </Link>
-                <span className="t-xs">{formatBytes(asset.byteSize)}</span>
-                <span className="t-xs t-num">
-                  {asset.downloadCount} downloads
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="t-xs">No uploaded release assets yet.</p>
-        )}
-      </div>
-    </details>
-  );
-}
-
-function ReactionBar({ release }: { release: RepositoryReleaseSummary }) {
-  const reactions = [
-    ["thumbsUp", "+1", release.reactions.thumbsUp],
-    ["heart", "heart", release.reactions.heart],
-    ["rocket", "rocket", release.reactions.rocket],
-    ["eyes", "eyes", release.reactions.eyes],
-  ] as const;
-  return (
-    <fieldset
-      aria-label="Release reactions"
-      className="mt-4 flex flex-wrap gap-2"
-    >
-      {reactions.map(([key, label, count]) => (
-        <button
-          aria-disabled="true"
-          className="chip soft"
-          disabled
-          key={key}
-          type="button"
-        >
-          {label} <span className="t-num">{count}</span>
-        </button>
-      ))}
-    </fieldset>
-  );
-}
-
 function ReleaseCard({
+  authenticated,
   detailHtml,
   release,
   repository,
 }: {
+  authenticated: boolean;
   detailHtml?: string;
   release: RepositoryReleaseSummary;
   repository: RepositoryOverview;
@@ -292,22 +224,11 @@ function ReleaseCard({
         )}
       </div>
       <ContributorRow contributors={release.contributors} />
-      <AssetsDisclosure assets={release.assets} />
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Link className="btn sm" href={release.links.zipballHref}>
-          Source code (zip)
-        </Link>
-        <Link className="btn sm" href={release.links.tarballHref}>
-          Source code (tar.gz)
-        </Link>
-        <Link
-          className="btn sm"
-          href={compareHref(repository, release.tagName)}
-        >
-          Compare
-        </Link>
-      </div>
-      <ReactionBar release={release} />
+      <RepositoryReleaseInteractions
+        authenticated={authenticated}
+        release={release}
+        repository={repository}
+      />
     </article>
   );
 }
@@ -341,6 +262,7 @@ function Pagination({
 }
 
 export function RepositoryReleasesPage({
+  authenticated,
   releases,
   repository,
 }: RepositoryReleasesPageProps) {
@@ -386,6 +308,7 @@ export function RepositoryReleasesPage({
             <div className="space-y-4">
               {releases.items.map((release) => (
                 <ReleaseCard
+                  authenticated={authenticated}
                   key={release.id}
                   release={release}
                   repository={repository}
@@ -404,6 +327,7 @@ export function RepositoryReleasesPage({
 }
 
 export function RepositoryReleaseDetailPage({
+  authenticated,
   release,
   repository,
 }: RepositoryReleaseDetailPageProps) {
@@ -428,6 +352,7 @@ export function RepositoryReleaseDetailPage({
               ) : null}
             </div>
             <ReleaseCard
+              authenticated={authenticated}
               detailHtml={release.bodyHtml}
               release={release}
               repository={repository}

@@ -28,6 +28,7 @@ export default async function ReleaseTagPage({ params }: ReleaseTagPageProps) {
     <AppShell session={session}>
       {repository && release ? (
         <RepositoryReleaseDetailPage
+          authenticated={session.authenticated}
           release={release}
           repository={repository}
         />

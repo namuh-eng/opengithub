@@ -324,7 +324,7 @@ export function PersonalProfileSettingsForm({
           <div>
             <p className="t-label">Identity</p>
             <h3 className="t-h2 mt-2" id="public-profile-heading">
-              Public profile
+              Profile details
             </h3>
           </div>
           <button

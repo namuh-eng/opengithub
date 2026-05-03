@@ -146,7 +146,7 @@ async fn repository_releases_read_contract_filters_privacy_and_exposes_tags_asse
         1,
     )
     .await;
-    seed_asset(&pool, public_repo.id, release_v2, &owner).await;
+    let asset_v2 = seed_asset(&pool, public_repo.id, release_v2, &owner).await;
     seed_reaction(&pool, public_repo.id, release_v2, &reader, "rocket").await;
     seed_reaction(&pool, public_repo.id, release_v2, &owner, "heart").await;
 
@@ -248,6 +248,84 @@ async fn repository_releases_read_contract_filters_privacy_and_exposes_tags_asse
     assert_eq!(archive_status, StatusCode::OK);
     assert_eq!(archive_body["format"], "zipball");
     assert_eq!(archive_body["tagName"], "v2.0.0");
+    let archive_downloads = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM release_downloads WHERE release_id = $1 AND source = 'zipball'",
+    )
+    .bind(release_v2)
+    .fetch_one(&pool)
+    .await
+    .expect("archive download count should read");
+    assert_eq!(archive_downloads, 1);
+
+    let (asset_status, _, asset_body) = send_json(
+        app.clone(),
+        Method::GET,
+        &format!("{public_uri}/assets/{asset_v2}"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(asset_status, StatusCode::OK);
+    assert_eq!(asset_body["asset"]["downloadCount"], 43);
+    assert_eq!(asset_body["releaseTagName"], "v2.0.0");
+    assert!(!asset_body
+        .to_string()
+        .contains("releases/test/opengithub.tar.gz"));
+    let asset_downloads = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM release_downloads WHERE release_id = $1 AND asset_id = $2 AND source = 'asset'",
+    )
+    .bind(release_v2)
+    .bind(asset_v2)
+    .fetch_one(&pool)
+    .await
+    .expect("asset download count should read");
+    assert_eq!(asset_downloads, 1);
+
+    let (anonymous_reaction_status, _, anonymous_reaction_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("{public_uri}/{release_v2}/reactions"),
+        None,
+        Some(json!({ "content": "eyes" })),
+    )
+    .await;
+    assert_eq!(anonymous_reaction_status, StatusCode::UNAUTHORIZED);
+    assert_eq!(anonymous_reaction_body["error"]["code"], "unauthorized");
+
+    let (reaction_status, _, reaction_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("{public_uri}/{release_v2}/reactions"),
+        Some(&reader_cookie),
+        Some(json!({ "content": "eyes" })),
+    )
+    .await;
+    assert_eq!(reaction_status, StatusCode::CREATED);
+    assert_eq!(reaction_body["eyes"], 1);
+    assert_eq!(reaction_body["viewerReaction"], "eyes");
+
+    let (reaction_toggle_status, _, reaction_toggle_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("{public_uri}/{release_v2}/reactions"),
+        Some(&reader_cookie),
+        Some(json!({ "content": "eyes" })),
+    )
+    .await;
+    assert_eq!(reaction_toggle_status, StatusCode::CREATED);
+    assert_eq!(reaction_toggle_body["eyes"], 0);
+    assert_ne!(reaction_toggle_body["viewerReaction"], "eyes");
+
+    let (invalid_reaction_status, _, invalid_reaction_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("{public_uri}/{release_v2}/reactions"),
+        Some(&reader_cookie),
+        Some(json!({ "content": "sparkles" })),
+    )
+    .await;
+    assert_eq!(invalid_reaction_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(invalid_reaction_body["error"]["code"], "validation_failed");
 
     let private_uri = format!("/api/repos/{}/{}/releases", owner.email, private_repo.name);
     let (anonymous_private_status, _, anonymous_private_body) =
@@ -431,8 +509,8 @@ async fn seed_release(
     row.get("id")
 }
 
-async fn seed_asset(pool: &PgPool, repository_id: Uuid, release_id: Uuid, uploader: &User) {
-    sqlx::query(
+async fn seed_asset(pool: &PgPool, repository_id: Uuid, release_id: Uuid, uploader: &User) -> Uuid {
+    let row = sqlx::query(
         r#"
         INSERT INTO release_assets (
             repository_id, release_id, name, label, content_type, byte_size,
@@ -440,15 +518,17 @@ async fn seed_asset(pool: &PgPool, repository_id: Uuid, release_id: Uuid, upload
         )
         VALUES ($1, $2, 'opengithub.tar.gz', 'Linux build', 'application/gzip',
                 128, 'releases/test/opengithub.tar.gz', $3, 42, $4)
+        RETURNING id
         "#,
     )
     .bind(repository_id)
     .bind(release_id)
     .bind(format!("{:064x}", Uuid::new_v4().as_u128()))
     .bind(uploader.id)
-    .execute(pool)
+    .fetch_one(pool)
     .await
     .expect("asset should persist");
+    row.get("id")
 }
 
 async fn seed_reaction(

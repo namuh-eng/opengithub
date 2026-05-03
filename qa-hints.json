@@ -3784,5 +3784,24 @@
       "Probe Markdown sanitization/XSS with richer release note bodies and verify private repository release/tag redaction for anonymous, read-only, and non-member viewers.",
       "Verify local migration guard in the focused Playwright smoke is unnecessary on clean databases; it exists only because the shared local DB was missing already-committed release migration columns."
     ]
+  },
+  {
+    "feature_id": "releases-001",
+    "tests_written": [
+      "Completed Phase 3 Assets, Reactions, Latest Redirect, and Compare Selector without marking releases-001 build_pass=true.",
+      "Added Rust API behavior for release asset download authorization/counting, source archive download event recording, authenticated release reaction toggles, unsupported reaction validation, and private/draft permission checks.",
+      "Added same-origin Next.js routes for release reactions and release asset download metadata so UI interactions preserve Rust API auth/session ownership.",
+      "Converted the visible release interaction strip to client-backed Editorial controls for assets disclosure, source archive links, reaction toggle success/error/sign-in states, and searchable compare ref selection.",
+      "Focused Rust contract covers asset counter increments, release_download rows, storage-key redaction, unauthenticated reaction rejection, reaction toggle idempotency, invalid reaction validation, and archive download recording.",
+      "Focused browser smoke verifies assets disclosure, asset link wiring, authenticated rocket reaction toggle, compare selector navigation target, latest detail, tags, no dead controls, and saves releases-001-phase3-*.jpg screenshots."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 still needs release create/edit/publish/delete and asset upload/remove mutation flows before releases-001 can be build_pass.",
+      "Asset download responses currently expose authorized local metadata; real S3 signed URL behavior, expiry, range requests, content disposition, and large file limits need provider QA.",
+      "Source archive endpoints record download events but should be stress-tested with real archive generation, tags containing slashes, missing target commits, and private repository access boundaries.",
+      "Reaction toggles need concurrency/race QA across multiple users and repeated rapid clicks.",
+      "Compare selector should be tested on repositories with many branches/tags, long ref names, slash-containing tags, and unauthenticated public-release views.",
+      "Run accessibility traversal through details disclosure, reaction toolbar, compare selector, and mobile release cards."
+    ]
   }
 ]

@@ -132,6 +132,16 @@ pub struct ReleaseArchiveMetadata {
     pub target_oid: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseAssetDownloadMetadata {
+    pub asset: ReleaseAsset,
+    pub release_id: Uuid,
+    pub release_tag_name: String,
+    pub download_href: String,
+    pub authorization: String,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ReleasesError {
     #[error(transparent)]
@@ -142,6 +152,10 @@ pub enum ReleasesError {
     TagNotFound,
     #[error("unsupported archive format")]
     UnsupportedArchiveFormat,
+    #[error("unsupported reaction")]
+    UnsupportedReaction,
+    #[error("authentication is required")]
+    AuthenticationRequired,
     #[error("markdown rendering failed")]
     Markdown,
     #[error(transparent)]
@@ -347,6 +361,19 @@ pub async fn repository_release_archive_metadata_by_owner_name(
     };
     let tag = tag_lookup(pool, &repository, tag_name).await?;
     let tag_name = short_tag_name(&tag.name);
+    if let Some(release_id) =
+        visible_release_id_for_tag(pool, &repository, &tag_name, actor_user_id).await?
+    {
+        sqlx::query(
+            "INSERT INTO release_downloads (repository_id, release_id, user_id, source) VALUES ($1, $2, $3, $4)",
+        )
+        .bind(repository.id)
+        .bind(release_id)
+        .bind(actor_user_id)
+        .bind(format)
+        .execute(pool)
+        .await?;
+    }
     Ok(ReleaseArchiveMetadata {
         href: format!(
             "/api/repos/{}/{}/releases/{}/{}",
@@ -359,6 +386,145 @@ pub async fn repository_release_archive_metadata_by_owner_name(
                 .to_owned(),
         target_oid: tag.target_oid,
     })
+}
+
+pub async fn repository_release_asset_download_by_owner_name(
+    pool: &PgPool,
+    owner_login: &str,
+    repo_name: &str,
+    asset_id: Uuid,
+    actor_user_id: Option<Uuid>,
+) -> Result<ReleaseAssetDownloadMetadata, ReleasesError> {
+    let repository = readable_repository(pool, owner_login, repo_name, actor_user_id).await?;
+    let include_drafts = can_write_if_actor(pool, &repository, actor_user_id).await?;
+    let row = sqlx::query(
+        r#"
+        UPDATE release_assets
+        SET download_count = download_count + 1
+        FROM releases
+        WHERE release_assets.id = $1
+          AND release_assets.repository_id = $2
+          AND release_assets.release_id = releases.id
+          AND releases.repository_id = release_assets.repository_id
+          AND release_assets.deleted_at IS NULL
+          AND releases.deleted_at IS NULL
+          AND ($3 OR releases.draft = false)
+        RETURNING release_assets.id,
+                  release_assets.name,
+                  release_assets.label,
+                  release_assets.content_type,
+                  release_assets.byte_size,
+                  release_assets.download_count,
+                  release_assets.checksum_sha256,
+                  release_assets.created_at,
+                  releases.id AS release_id,
+                  releases.tag_name
+        "#,
+    )
+    .bind(asset_id)
+    .bind(repository.id)
+    .bind(include_drafts)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ReleasesError::NotFound)?;
+    let release_id: Uuid = row.get("release_id");
+    sqlx::query(
+        "INSERT INTO release_downloads (repository_id, release_id, asset_id, user_id, source) VALUES ($1, $2, $3, $4, 'asset')",
+    )
+    .bind(repository.id)
+    .bind(release_id)
+    .bind(asset_id)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
+    let asset = ReleaseAsset {
+        id: row.get("id"),
+        name: row.get("name"),
+        label: row.get("label"),
+        content_type: row.get("content_type"),
+        byte_size: row.get("byte_size"),
+        download_count: row.get("download_count"),
+        checksum_sha256: row.get("checksum_sha256"),
+        href: format!(
+            "/api/repos/{}/{}/releases/assets/{}",
+            repository.owner_login, repository.name, asset_id
+        ),
+        created_at: row.get("created_at"),
+    };
+    Ok(ReleaseAssetDownloadMetadata {
+        download_href: format!(
+            "/downloads/releases/{}/{}/{}",
+            release_id,
+            asset.id,
+            sanitize_download_name(&asset.name)
+        ),
+        release_id,
+        release_tag_name: row.get("tag_name"),
+        asset,
+        authorization: "repository visibility and viewer permission checked before asset download"
+            .to_owned(),
+    })
+}
+
+pub async fn toggle_repository_release_reaction_by_owner_name(
+    pool: &PgPool,
+    owner_login: &str,
+    repo_name: &str,
+    release_id: Uuid,
+    actor_user_id: Option<Uuid>,
+    reaction: &str,
+) -> Result<ReleaseReactionSummary, ReleasesError> {
+    let actor_user_id = actor_user_id.ok_or(ReleasesError::AuthenticationRequired)?;
+    let reaction = normalize_reaction(reaction)?;
+    let repository = readable_repository(pool, owner_login, repo_name, Some(actor_user_id)).await?;
+    let include_drafts = can_write_if_actor(pool, &repository, Some(actor_user_id)).await?;
+    let exists = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS (
+            SELECT 1
+            FROM releases
+            WHERE repository_id = $1
+              AND id = $2
+              AND deleted_at IS NULL
+              AND ($3 OR draft = false)
+        )
+        "#,
+    )
+    .bind(repository.id)
+    .bind(release_id)
+    .bind(include_drafts)
+    .fetch_one(pool)
+    .await?;
+    if !exists {
+        return Err(ReleasesError::NotFound);
+    }
+
+    let deleted = sqlx::query(
+        "DELETE FROM release_reactions WHERE release_id = $1 AND user_id = $2 AND reaction = $3",
+    )
+    .bind(release_id)
+    .bind(actor_user_id)
+    .bind(reaction)
+    .execute(pool)
+    .await?
+    .rows_affected();
+    if deleted == 0 {
+        sqlx::query(
+            r#"
+            INSERT INTO release_reactions (repository_id, release_id, user_id, reaction)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (release_id, user_id, reaction) DO NOTHING
+            "#,
+        )
+        .bind(repository.id)
+        .bind(release_id)
+        .bind(actor_user_id)
+        .bind(reaction)
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(release_reactions(pool, release_id, Some(actor_user_id)).await?)
 }
 
 async fn release_detail_for_repository(
@@ -436,6 +602,32 @@ async fn release_detail_for_repository(
         .fetch_one(pool)
         .await?,
     })
+}
+
+async fn visible_release_id_for_tag(
+    pool: &PgPool,
+    repository: &Repository,
+    tag_name: &str,
+    actor_user_id: Option<Uuid>,
+) -> Result<Option<Uuid>, ReleasesError> {
+    let include_drafts = can_write_if_actor(pool, repository, actor_user_id).await?;
+    sqlx::query_scalar::<_, Uuid>(
+        r#"
+        SELECT id
+        FROM releases
+        WHERE repository_id = $1
+          AND lower(tag_name) = lower($2)
+          AND deleted_at IS NULL
+          AND ($3 OR draft = false)
+        LIMIT 1
+        "#,
+    )
+    .bind(repository.id)
+    .bind(clean_tag_name(tag_name))
+    .bind(include_drafts)
+    .fetch_optional(pool)
+    .await
+    .map_err(ReleasesError::from)
 }
 
 async fn readable_repository(
@@ -771,6 +963,37 @@ async fn render_release_markdown(
 
 fn clean_tag_name(tag_name: &str) -> String {
     tag_name.trim().trim_start_matches("refs/tags/").to_owned()
+}
+
+fn normalize_reaction(reaction: &str) -> Result<&'static str, ReleasesError> {
+    match reaction {
+        "thumbs_up" | "+1" => Ok("thumbs_up"),
+        "thumbs_down" | "-1" => Ok("thumbs_down"),
+        "laugh" => Ok("laugh"),
+        "hooray" => Ok("hooray"),
+        "confused" => Ok("confused"),
+        "heart" => Ok("heart"),
+        "rocket" => Ok("rocket"),
+        "eyes" => Ok("eyes"),
+        _ => Err(ReleasesError::UnsupportedReaction),
+    }
+}
+
+fn sanitize_download_name(name: &str) -> String {
+    let sanitized = name
+        .chars()
+        .map(|character| match character {
+            '"' | '\\' | '/' | '\r' | '\n' | '\t' => '_',
+            character if character.is_control() => '_',
+            character => character,
+        })
+        .collect::<String>();
+    let trimmed = sanitized.trim_matches('.').trim();
+    if trimmed.is_empty() {
+        "release-asset".to_owned()
+    } else {
+        trimmed.to_owned()
+    }
 }
 
 fn short_tag_name(tag_name: &str) -> String {

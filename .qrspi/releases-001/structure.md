@@ -42,7 +42,7 @@
 
 ## Phase 3: Assets, Reactions, Latest Redirect, and Compare Selector - all visible interactions work
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire the visible interactive controls to real server-confirmed behavior: asset/source downloads, reaction toggles, latest navigation, assets disclosure, and compare tag selection.
 

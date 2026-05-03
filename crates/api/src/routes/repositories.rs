@@ -37,9 +37,11 @@ use crate::{
     },
     domain::releases::{
         repository_latest_release_by_owner_name, repository_release_archive_metadata_by_owner_name,
+        repository_release_asset_download_by_owner_name,
         repository_release_detail_by_id_by_owner_name,
         repository_release_detail_by_tag_by_owner_name, repository_release_list_by_owner_name,
-        repository_release_tags_by_owner_name, ReleasesError,
+        repository_release_tags_by_owner_name, toggle_repository_release_reaction_by_owner_name,
+        ReleasesError,
     },
     domain::repositories::{
         cancel_repository_invitation_by_owner_name, create_repository_branch_rule_by_owner_name,
@@ -99,6 +101,14 @@ pub fn router() -> Router<AppState> {
         .route(
             "/:owner/:repo/releases/tarball/*tag",
             get(release_tarball_metadata),
+        )
+        .route(
+            "/:owner/:repo/releases/assets/:asset_id",
+            get(release_asset_download),
+        )
+        .route(
+            "/:owner/:repo/releases/:release_id/reactions",
+            post(release_reaction),
         )
         .route("/:owner/:repo/releases/tag/*tag", get(release_by_tag))
         .route("/:owner/:repo/releases/:release_id", get(release_by_id))
@@ -291,6 +301,12 @@ struct ReleasesQuery {
     page: Option<i64>,
     #[serde(alias = "page_size")]
     page_size: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReleaseReactionRequest {
+    content: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -756,6 +772,48 @@ async fn release_archive_metadata(
     .map_err(map_releases_error)?;
 
     Ok(Json(json!(metadata)))
+}
+
+async fn release_asset_download(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, asset_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let metadata = repository_release_asset_download_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        asset_id,
+        actor.as_ref().map(|user| user.id),
+    )
+    .await
+    .map_err(map_releases_error)?;
+
+    Ok(Json(json!(metadata)))
+}
+
+async fn release_reaction(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, release_id)): Path<(String, String, Uuid)>,
+    RestJson(request): RestJson<ReleaseReactionRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let reactions = toggle_repository_release_reaction_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        release_id,
+        actor.as_ref().map(|user| user.id),
+        &request.content,
+    )
+    .await
+    .map_err(map_releases_error)?;
+
+    Ok((StatusCode::CREATED, Json(json!(reactions))))
 }
 
 async fn file_finder(
@@ -2039,6 +2097,14 @@ fn map_releases_error(error: ReleasesError) -> (StatusCode, Json<ErrorEnvelope>)
             "validation_failed",
             error.to_string(),
         ),
+        ReleasesError::UnsupportedReaction => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            error.to_string(),
+        ),
+        ReleasesError::AuthenticationRequired => {
+            error_response(StatusCode::UNAUTHORIZED, "unauthorized", error.to_string())
+        }
         ReleasesError::Markdown => error_response(
             StatusCode::UNPROCESSABLE_ENTITY,
             "validation_failed",

@@ -48,7 +48,7 @@ describe("PersonalProfileSettingsForm", () => {
     render(<PersonalProfileSettingsForm initialSettings={settings} />);
 
     expect(
-      screen.getByRole("heading", { name: "Public profile" }),
+      screen.getByRole("heading", { name: "Profile details" }),
     ).toBeVisible();
     expect(screen.getByLabelText("Name")).toHaveValue("Mona Lisa");
     expect(screen.getByLabelText("Public email")).toHaveValue("email-1");
