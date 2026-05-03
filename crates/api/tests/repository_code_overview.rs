@@ -98,12 +98,54 @@ async fn send_json_with_method(
     uri: &str,
     cookie: Option<&str>,
 ) -> (StatusCode, Value) {
+    send_json_with_method_and_body(app, method, uri, cookie, Body::empty()).await
+}
+
+async fn send_json_with_method_and_body(
+    app: axum::Router,
+    method: Method,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Body,
+) -> (StatusCode, Value) {
     let mut builder = Request::builder().method(method).uri(uri);
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }
     let response = app
-        .oneshot(builder.body(Body::empty()).expect("request should build"))
+        .oneshot(builder.body(body).expect("request should build"))
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    (
+        status,
+        serde_json::from_slice(&bytes).expect("response should be json"),
+    )
+}
+
+async fn send_json_body(
+    app: axum::Router,
+    method: Method,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_string()))
+                .expect("request should build"),
+        )
         .await
         .expect("request should run");
     let status = response.status();
@@ -464,7 +506,72 @@ async fn repository_header_actions_toggle_social_state_and_create_fork() {
         send_json_with_method(app.clone(), Method::PUT, &watch_uri, Some(&actor_cookie)).await;
     assert_eq!(watch_status, StatusCode::OK);
     assert_eq!(watch_body["watching"], true);
+    assert_eq!(watch_body["watchLevel"], "participating");
+    assert_eq!(watch_body["watchLabel"], "Participating and @mentions");
     assert_eq!(watch_body["watchersCount"], 1);
+
+    let (read_watch_status, read_watch_body) =
+        send_json(app.clone(), &watch_uri, Some(&actor_cookie)).await;
+    assert_eq!(read_watch_status, StatusCode::OK);
+    assert_eq!(read_watch_body["level"], "participating");
+    assert_eq!(read_watch_body["watching"], true);
+    assert_eq!(
+        read_watch_body["availableEvents"].as_array().unwrap().len(),
+        7
+    );
+
+    let (custom_watch_status, custom_watch_body) = send_json_body(
+        app.clone(),
+        Method::PATCH,
+        &watch_uri,
+        Some(&actor_cookie),
+        json!({
+            "level": "custom",
+            "customEvents": ["pull_requests", "issues", "issues"]
+        }),
+    )
+    .await;
+    assert_eq!(custom_watch_status, StatusCode::OK);
+    assert_eq!(custom_watch_body["level"], "custom");
+    assert_eq!(
+        custom_watch_body["customEvents"],
+        json!(["issues", "pull_requests"])
+    );
+    assert_eq!(custom_watch_body["watchersCount"], 1);
+
+    let (ignore_status, ignore_body) = send_json_body(
+        app.clone(),
+        Method::PATCH,
+        &watch_uri,
+        Some(&actor_cookie),
+        json!({ "level": "ignore" }),
+    )
+    .await;
+    assert_eq!(ignore_status, StatusCode::OK);
+    assert_eq!(ignore_body["level"], "ignore");
+    assert_eq!(ignore_body["watching"], false);
+    assert_eq!(ignore_body["watchersCount"], 0);
+    assert!(ignore_body["ignoreWarning"]
+        .as_str()
+        .unwrap()
+        .contains("suppresses"));
+
+    let (invalid_custom_status, invalid_custom_body) = send_json_body(
+        app.clone(),
+        Method::PATCH,
+        &watch_uri,
+        Some(&actor_cookie),
+        json!({ "level": "custom", "customEvents": [] }),
+    )
+    .await;
+    assert_eq!(invalid_custom_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(invalid_custom_body["error"]["code"], "validation_failed");
+
+    let (watch_again_status, watch_again_body) =
+        send_json_with_method(app.clone(), Method::PUT, &watch_uri, Some(&actor_cookie)).await;
+    assert_eq!(watch_again_status, StatusCode::OK);
+    assert_eq!(watch_again_body["watching"], true);
+    assert_eq!(watch_again_body["watchersCount"], 1);
 
     let (fork_status, fork_body) =
         send_json_with_method(app.clone(), Method::POST, &fork_uri, Some(&actor_cookie)).await;
@@ -490,6 +597,7 @@ async fn repository_header_actions_toggle_social_state_and_create_fork() {
     assert_eq!(overview_status, StatusCode::OK);
     assert_eq!(overview_body["viewerState"]["starred"], true);
     assert_eq!(overview_body["viewerState"]["watching"], true);
+    assert_eq!(overview_body["viewerState"]["watchLevel"], "participating");
     assert_eq!(overview_body["sidebar"]["starsCount"], 1);
     assert_eq!(overview_body["sidebar"]["watchersCount"], 1);
     assert_eq!(overview_body["sidebar"]["forksCount"], 1);

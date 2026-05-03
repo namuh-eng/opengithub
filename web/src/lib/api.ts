@@ -962,6 +962,9 @@ export type RepositorySidebarMetadata = {
 export type RepositoryViewerState = {
   starred: boolean;
   watching: boolean;
+  watchLabel?: string;
+  watchLevel?: RepositoryWatchLevel;
+  customWatchEvents?: RepositoryWatchEvent[];
   forkedRepositoryHref: string | null;
 };
 
@@ -969,6 +972,32 @@ export type RepositorySocialState = RepositoryViewerState & {
   starsCount: number;
   watchersCount: number;
   forksCount: number;
+};
+
+export type RepositoryWatchLevel =
+  | "participating"
+  | "all"
+  | "ignore"
+  | "custom";
+
+export type RepositoryWatchEvent =
+  | "issues"
+  | "pull_requests"
+  | "releases"
+  | "discussions"
+  | "actions"
+  | "security_alerts"
+  | "repository_invitations";
+
+export type RepositoryWatchSettings = {
+  repositoryId: string;
+  level: RepositoryWatchLevel;
+  label: string;
+  watching: boolean;
+  watchersCount: number;
+  customEvents: RepositoryWatchEvent[];
+  availableEvents: RepositoryWatchEvent[];
+  ignoreWarning: string;
 };
 
 export type RepositoryForkResult = {

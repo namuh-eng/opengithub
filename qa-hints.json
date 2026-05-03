@@ -4266,5 +4266,26 @@
       "Retest the Filters surface on narrow mobile widths with 15 custom filters and long query strings.",
       "The shared opengithub_identity_test database still has the known pre-existing 202605030041 migration checksum issue; browser proof used fresh database opengithub_notifications_003_1777831303 with DASHBOARD_E2E_SKIP_MIGRATIONS=1."
     ]
+  },
+  {
+    "feature_id": "notifications-004",
+    "tests_written": [
+      "Completed Phase 1 Repository Watch Settings API Contract without marking notifications-004 build_pass=true.",
+      "Added repository_watches level, custom_events, ignored_at, updated_at, active watcher index, and updated_at trigger through an additive migration.",
+      "Added Rust DTOs and validation for repository watch levels: participating, all, ignore, and custom.",
+      "Added custom repository watch event validation and deduping for issues, pull requests, releases, discussions, actions, security alerts, and repository invitations.",
+      "Added authenticated GET/PATCH /api/repos/{owner}/{repo}/watch while preserving compatibility PUT/DELETE aliases.",
+      "Updated repository overview/social state so active watcher counts exclude ignore rows and viewerState exposes normalized watch label, level, and custom events.",
+      "Added fanout-preparation helper for checking whether a repository watch should receive a given event.",
+      "Extended repository_code_overview Rust coverage for read settings, custom save, ignore count semantics, invalid custom events, compatibility PUT/DELETE, and overview state."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 still needs the Editorial repository Watch menu UI, keyboard traversal, ignore warning confirmation, custom event checkboxes, and browser smoke screenshots.",
+      "Phase 3 still needs issue and pull-request sidebar notification customization dialogs.",
+      "Phase 4 still needs wiring notification fanout producers to repository watch levels, custom events, ignore state, and thread overrides.",
+      "Probe private/internal repository watch reads and writes with unauthenticated, direct-collaborator, team, org-member, and no-access users.",
+      "Exercise concurrent PATCH saves from two browser tabs and verify watcher count reconciliation after ignore/custom/all transitions.",
+      "The focused Rust scenario compiled and ran, but its DB assertions self-skip on the shared test database when the repo's pre-existing duplicate 202605030041 migration issue blocks sqlx migrator setup; full make check and make test passed."
+    ]
   }
 ]

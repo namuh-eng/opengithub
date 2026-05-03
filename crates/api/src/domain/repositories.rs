@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use sqlx::{PgPool, Row};
+use sqlx::{types::Json, PgPool, Row};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
@@ -708,6 +708,9 @@ pub struct RepositorySidebarMetadata {
 pub struct RepositoryViewerState {
     pub starred: bool,
     pub watching: bool,
+    pub watch_label: String,
+    pub watch_level: RepositoryWatchLevel,
+    pub custom_watch_events: Vec<RepositoryWatchEvent>,
     pub forked_repository_href: Option<String>,
 }
 
@@ -716,10 +719,124 @@ pub struct RepositoryViewerState {
 pub struct RepositorySocialState {
     pub starred: bool,
     pub watching: bool,
+    pub watch_label: String,
+    pub watch_level: RepositoryWatchLevel,
+    pub custom_watch_events: Vec<RepositoryWatchEvent>,
     pub stars_count: i64,
     pub watchers_count: i64,
     pub forks_count: i64,
     pub forked_repository_href: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RepositoryWatchLevel {
+    Participating,
+    All,
+    Ignore,
+    Custom,
+}
+
+impl RepositoryWatchLevel {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Participating => "participating",
+            Self::All => "all",
+            Self::Ignore => "ignore",
+            Self::Custom => "custom",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Participating => "Participating and @mentions",
+            Self::All => "All Activity",
+            Self::Ignore => "Ignoring",
+            Self::Custom => "Custom",
+        }
+    }
+
+    fn is_active(self) -> bool {
+        !matches!(self, Self::Ignore)
+    }
+}
+
+impl TryFrom<&str> for RepositoryWatchLevel {
+    type Error = RepositoryError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "participating" | "subscribed" => Ok(Self::Participating),
+            "all" => Ok(Self::All),
+            "ignore" => Ok(Self::Ignore),
+            "custom" => Ok(Self::Custom),
+            other => Err(RepositoryError::InvalidWatchLevel(other.to_owned())),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum RepositoryWatchEvent {
+    Issues,
+    PullRequests,
+    Releases,
+    Discussions,
+    Actions,
+    SecurityAlerts,
+    RepositoryInvitations,
+}
+
+impl RepositoryWatchEvent {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Issues => "issues",
+            Self::PullRequests => "pull_requests",
+            Self::Releases => "releases",
+            Self::Discussions => "discussions",
+            Self::Actions => "actions",
+            Self::SecurityAlerts => "security_alerts",
+            Self::RepositoryInvitations => "repository_invitations",
+        }
+    }
+}
+
+impl TryFrom<&str> for RepositoryWatchEvent {
+    type Error = RepositoryError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "issues" => Ok(Self::Issues),
+            "pull_requests" => Ok(Self::PullRequests),
+            "releases" => Ok(Self::Releases),
+            "discussions" => Ok(Self::Discussions),
+            "actions" => Ok(Self::Actions),
+            "security_alerts" => Ok(Self::SecurityAlerts),
+            "repository_invitations" => Ok(Self::RepositoryInvitations),
+            other => Err(RepositoryError::InvalidWatchEvent(other.to_owned())),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryWatchSettings {
+    pub repository_id: Uuid,
+    pub level: RepositoryWatchLevel,
+    pub label: String,
+    pub watching: bool,
+    pub watchers_count: i64,
+    pub custom_events: Vec<RepositoryWatchEvent>,
+    pub available_events: Vec<RepositoryWatchEvent>,
+    pub ignore_warning: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryWatchSettingsPatch {
+    pub level: RepositoryWatchLevel,
+    #[serde(default)]
+    pub custom_events: Vec<RepositoryWatchEvent>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -980,6 +1097,10 @@ pub enum RepositoryError {
     InvalidDescription(String),
     #[error("invalid merge method `{0}`")]
     InvalidMergeMethod(String),
+    #[error("invalid repository watch level `{0}`")]
+    InvalidWatchLevel(String),
+    #[error("invalid repository watch event `{0}`")]
+    InvalidWatchEvent(String),
     #[error("repository default branch `{0}` was not found")]
     DefaultBranchNotFound(String),
     #[error("at least one merge method must remain enabled")]
@@ -1506,6 +1627,9 @@ pub async fn repository_overview_for_viewer(
         None => RepositoryViewerState {
             starred: false,
             watching: false,
+            watch_label: RepositoryWatchLevel::Participating.label().to_owned(),
+            watch_level: RepositoryWatchLevel::Participating,
+            custom_watch_events: Vec::new(),
             forked_repository_href: None,
         },
     };
@@ -1579,16 +1703,15 @@ pub async fn set_repository_watch_by_owner_name(
     };
 
     if watching {
-        sqlx::query(
-            r#"
-            INSERT INTO repository_watches (user_id, repository_id, reason)
-            VALUES ($1, $2, 'subscribed')
-            ON CONFLICT (user_id, repository_id) DO UPDATE SET reason = EXCLUDED.reason
-            "#,
+        save_repository_watch_settings(
+            pool,
+            repository.id,
+            actor_user_id,
+            RepositoryWatchSettingsPatch {
+                level: RepositoryWatchLevel::Participating,
+                custom_events: Vec::new(),
+            },
         )
-        .bind(actor_user_id)
-        .bind(repository.id)
-        .execute(pool)
         .await?;
     } else {
         sqlx::query("DELETE FROM repository_watches WHERE user_id = $1 AND repository_id = $2")
@@ -1601,6 +1724,66 @@ pub async fn set_repository_watch_by_owner_name(
     repository_social_state(pool, &repository, actor_user_id)
         .await
         .map(Some)
+}
+
+pub async fn repository_watch_settings_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+) -> Result<Option<RepositoryWatchSettings>, RepositoryError> {
+    let Some(repository) =
+        get_repository_for_actor_by_owner_name(pool, actor_user_id, owner_login, name).await?
+    else {
+        return Ok(None);
+    };
+
+    repository_watch_settings(pool, &repository, actor_user_id)
+        .await
+        .map(Some)
+}
+
+pub async fn update_repository_watch_settings_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    patch: RepositoryWatchSettingsPatch,
+) -> Result<Option<RepositoryWatchSettings>, RepositoryError> {
+    let Some(repository) =
+        get_repository_for_actor_by_owner_name(pool, actor_user_id, owner_login, name).await?
+    else {
+        return Ok(None);
+    };
+
+    save_repository_watch_settings(pool, repository.id, actor_user_id, patch).await?;
+    repository_watch_settings(pool, &repository, actor_user_id)
+        .await
+        .map(Some)
+}
+
+pub async fn repository_watch_delivers_event_by_owner_name(
+    pool: &PgPool,
+    user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    event: RepositoryWatchEvent,
+) -> Result<bool, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(false);
+    };
+
+    if !can_read_repository(pool, &repository, user_id).await? {
+        return Ok(false);
+    }
+
+    let (level, custom_events) = repository_watch_state(pool, repository.id, user_id).await?;
+    Ok(match level {
+        RepositoryWatchLevel::Participating => false,
+        RepositoryWatchLevel::All => true,
+        RepositoryWatchLevel::Ignore => false,
+        RepositoryWatchLevel::Custom => custom_events.contains(&event),
+    })
 }
 
 pub async fn fork_repository_by_owner_name(
@@ -6346,7 +6529,7 @@ async fn repository_sidebar_metadata(
     .fetch_one(pool)
     .await?;
     let watchers_count = sqlx::query_scalar::<_, i64>(
-        "SELECT count(*) FROM repository_watches WHERE repository_id = $1",
+        "SELECT count(*) FROM repository_watches WHERE repository_id = $1 AND level <> 'ignore'",
     )
     .bind(repository.id)
     .fetch_one(pool)
@@ -6435,23 +6618,29 @@ async fn repository_viewer_state(
     .bind(repository.id)
     .fetch_one(pool)
     .await?;
-    let watching = sqlx::query_scalar::<_, bool>(
-        r#"
-        SELECT EXISTS (
-            SELECT 1 FROM repository_watches WHERE user_id = $1 AND repository_id = $2
+    let (watch_level, custom_watch_events) =
+        repository_watch_state(pool, repository.id, actor_user_id).await?;
+    let watching = watch_level.is_active()
+        && sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT 1 FROM repository_watches WHERE user_id = $1 AND repository_id = $2
+            )
+            "#,
         )
-        "#,
-    )
-    .bind(actor_user_id)
-    .bind(repository.id)
-    .fetch_one(pool)
-    .await?;
+        .bind(actor_user_id)
+        .bind(repository.id)
+        .fetch_one(pool)
+        .await?;
     let forked_repository_href =
         existing_fork_href_for_user(pool, repository.id, actor_user_id).await?;
 
     Ok(RepositoryViewerState {
         starred,
         watching,
+        watch_label: watch_level.label().to_owned(),
+        watch_level,
+        custom_watch_events,
         forked_repository_href,
     })
 }
@@ -6466,11 +6655,158 @@ async fn repository_social_state(
     Ok(RepositorySocialState {
         starred: viewer_state.starred,
         watching: viewer_state.watching,
+        watch_label: viewer_state.watch_label,
+        watch_level: viewer_state.watch_level,
+        custom_watch_events: viewer_state.custom_watch_events,
         stars_count: sidebar.stars_count,
         watchers_count: sidebar.watchers_count,
         forks_count: sidebar.forks_count,
         forked_repository_href: viewer_state.forked_repository_href,
     })
+}
+
+async fn repository_watch_settings(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+) -> Result<RepositoryWatchSettings, RepositoryError> {
+    let sidebar = repository_sidebar_metadata(pool, repository).await?;
+    let (level, custom_events) = repository_watch_state(pool, repository.id, actor_user_id).await?;
+
+    Ok(RepositoryWatchSettings {
+        repository_id: repository.id,
+        level,
+        label: level.label().to_owned(),
+        watching: level.is_active()
+            && sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS (SELECT 1 FROM repository_watches WHERE user_id = $1 AND repository_id = $2)",
+            )
+            .bind(actor_user_id)
+            .bind(repository.id)
+            .fetch_one(pool)
+            .await?,
+        watchers_count: sidebar.watchers_count,
+        custom_events,
+        available_events: repository_watch_events(),
+        ignore_warning:
+            "Ignoring this repository suppresses repository watch notifications until you choose another watch level."
+                .to_owned(),
+    })
+}
+
+async fn repository_watch_state(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<(RepositoryWatchLevel, Vec<RepositoryWatchEvent>), RepositoryError> {
+    let row = sqlx::query(
+        r#"
+        SELECT level, custom_events
+        FROM repository_watches
+        WHERE user_id = $1 AND repository_id = $2
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(repository_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let Some(row) = row else {
+        return Ok((RepositoryWatchLevel::Participating, Vec::new()));
+    };
+    let level = RepositoryWatchLevel::try_from(row.get::<String, _>("level").as_str())?;
+    let custom_events = watch_events_from_json(row.get::<serde_json::Value, _>("custom_events"))?;
+    Ok((level, custom_events))
+}
+
+async fn save_repository_watch_settings(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Uuid,
+    patch: RepositoryWatchSettingsPatch,
+) -> Result<(), RepositoryError> {
+    let custom_events = normalize_watch_events(patch.custom_events, patch.level)?;
+    let reason = match patch.level {
+        RepositoryWatchLevel::Participating => "subscribed",
+        other => other.as_str(),
+    };
+
+    sqlx::query(
+        r#"
+        INSERT INTO repository_watches (user_id, repository_id, reason, level, custom_events, ignored_at)
+        VALUES ($1, $2, $3, $4, $5, CASE WHEN $4 = 'ignore' THEN now() ELSE NULL END)
+        ON CONFLICT (user_id, repository_id)
+        DO UPDATE SET reason = EXCLUDED.reason,
+                      level = EXCLUDED.level,
+                      custom_events = EXCLUDED.custom_events,
+                      ignored_at = CASE
+                          WHEN EXCLUDED.level = 'ignore' THEN COALESCE(repository_watches.ignored_at, now())
+                          ELSE NULL
+                      END
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(repository_id)
+    .bind(reason)
+    .bind(patch.level.as_str())
+    .bind(Json(custom_events.iter().map(|event| event.as_str()).collect::<Vec<_>>()))
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+fn repository_watch_events() -> Vec<RepositoryWatchEvent> {
+    vec![
+        RepositoryWatchEvent::Issues,
+        RepositoryWatchEvent::PullRequests,
+        RepositoryWatchEvent::Releases,
+        RepositoryWatchEvent::Discussions,
+        RepositoryWatchEvent::Actions,
+        RepositoryWatchEvent::SecurityAlerts,
+        RepositoryWatchEvent::RepositoryInvitations,
+    ]
+}
+
+fn normalize_watch_events(
+    events: Vec<RepositoryWatchEvent>,
+    level: RepositoryWatchLevel,
+) -> Result<Vec<RepositoryWatchEvent>, RepositoryError> {
+    if level != RepositoryWatchLevel::Custom {
+        return Ok(Vec::new());
+    }
+    if events.is_empty() {
+        return Err(RepositoryError::InvalidWatchEvent(
+            "custom watch level requires at least one event".to_owned(),
+        ));
+    }
+    let mut unique = BTreeSet::new();
+    for event in events {
+        unique.insert(event);
+    }
+    Ok(unique.into_iter().collect())
+}
+
+fn watch_events_from_json(
+    value: serde_json::Value,
+) -> Result<Vec<RepositoryWatchEvent>, RepositoryError> {
+    value
+        .as_array()
+        .ok_or_else(|| {
+            RepositoryError::InvalidWatchEvent("custom_events must be an array".to_owned())
+        })?
+        .iter()
+        .map(|value| {
+            value
+                .as_str()
+                .ok_or_else(|| {
+                    RepositoryError::InvalidWatchEvent(
+                        "custom_events must contain strings".to_owned(),
+                    )
+                })
+                .and_then(RepositoryWatchEvent::try_from)
+        })
+        .collect::<Result<Vec<_>, _>>()
 }
 
 async fn existing_fork_href_for_user(

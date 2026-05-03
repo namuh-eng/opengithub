@@ -67,16 +67,18 @@ use crate::{
         repository_file_finder_for_actor_by_owner_name, repository_name_availability,
         repository_overview_for_viewer_by_owner_name,
         repository_path_overview_for_actor_by_owner_name, repository_refs_for_actor_by_owner_name,
-        repository_settings_for_actor_by_owner_name, set_repository_star_by_owner_name,
-        set_repository_watch_by_owner_name, update_repository_branch_rule_by_owner_name,
+        repository_settings_for_actor_by_owner_name, repository_watch_settings_by_owner_name,
+        set_repository_star_by_owner_name, set_repository_watch_by_owner_name,
+        update_repository_branch_rule_by_owner_name,
         update_repository_collaborator_access_by_owner_name,
         update_repository_ruleset_by_owner_name, update_repository_settings_by_owner_name,
-        update_repository_team_access_by_owner_name, CreateRepository,
+        update_repository_team_access_by_owner_name,
+        update_repository_watch_settings_by_owner_name, CreateRepository,
         RepositoryAccessInviteRequest, RepositoryAccessRolePatch, RepositoryAccessTeamGrantRequest,
         RepositoryBootstrapRequest, RepositoryBranchRuleMutation, RepositoryCommitHistoryQuery,
         RepositoryError, RepositoryFileFinderQuery, RepositoryOwner, RepositoryPathQuery,
         RepositoryRefsQuery, RepositoryRulesetMutation, RepositorySettingsPatch,
-        RepositoryVisibility,
+        RepositoryVisibility, RepositoryWatchSettingsPatch,
     },
     domain::webhooks::{
         create_repository_webhook_by_owner_name, delete_repository_webhook_by_owner_name,
@@ -272,7 +274,13 @@ pub fn router() -> Router<AppState> {
             post(unpublish_pages),
         )
         .route("/:owner/:repo/star", put(star).delete(unstar))
-        .route("/:owner/:repo/watch", put(watch).delete(unwatch))
+        .route(
+            "/:owner/:repo/watch",
+            get(read_watch)
+                .patch(update_watch)
+                .put(watch)
+                .delete(unwatch),
+        )
         .route("/:owner/:repo/forks", post(fork))
         .route("/:owner/:repo", get(read))
 }
@@ -2181,6 +2189,50 @@ async fn set_watch(
     Ok(Json(json!(social)))
 }
 
+async fn read_watch(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = repository_watch_settings_by_owner_name(pool, actor.0.id, &owner, &repo)
+        .await
+        .map_err(map_repository_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "repository was not found".to_owned(),
+            )
+        })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn update_watch(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Json(patch): Json<RepositoryWatchSettingsPatch>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings =
+        update_repository_watch_settings_by_owner_name(pool, actor.0.id, &owner, &repo, patch)
+            .await
+            .map_err(map_repository_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
+
+    Ok(Json(json!(settings)))
+}
+
 async fn fork(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2245,6 +2297,8 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         | RepositoryError::InvalidName(_)
         | RepositoryError::InvalidDescription(_)
         | RepositoryError::InvalidMergeMethod(_)
+        | RepositoryError::InvalidWatchLevel(_)
+        | RepositoryError::InvalidWatchEvent(_)
         | RepositoryError::InvalidAccessRole(_)
         | RepositoryError::InvalidBranchPolicy(_)
         | RepositoryError::MergeMethodRequired

@@ -6,7 +6,7 @@
 
 ## Phase 1: Repository Watch Settings API Contract
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the current boolean repository watch mutation with a full repository-level notification settings contract. Signed-in readers can load and save watch levels (`participating`, `all`, `ignore`, `custom`) plus custom event filters. Repository watch count continues to represent users with an active non-ignore watch state, and private repositories must not leak to unauthorized users.
 

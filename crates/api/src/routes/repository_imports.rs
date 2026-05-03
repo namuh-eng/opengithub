@@ -163,6 +163,8 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         | RepositoryError::InvalidName(_)
         | RepositoryError::InvalidDescription(_)
         | RepositoryError::InvalidMergeMethod(_)
+        | RepositoryError::InvalidWatchLevel(_)
+        | RepositoryError::InvalidWatchEvent(_)
         | RepositoryError::InvalidAccessRole(_)
         | RepositoryError::InvalidBranchPolicy(_)
         | RepositoryError::MergeMethodRequired
