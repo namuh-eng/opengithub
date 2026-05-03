@@ -3580,5 +3580,25 @@
       "Private repository leakage checks for hook URLs, delivery bodies, request headers, response headers, secrets, and audit metadata.",
       "Retention cleanup and delivery history bounds once scheduled retention jobs are active."
     ]
+  },
+  {
+    "feature_id": "settings-005",
+    "tests_written": [
+      "Completed Phase 1 API-first Actions secrets and variables contract without marking settings-005 build_pass=true.",
+      "Added actions_secrets and actions_variables schema with repository scope, normalized names, storage kind, encrypted secret envelope fields, value fingerprints, updated actor metadata, unique constraints, and audit-friendly metadata.",
+      "Added Rust repository settings API routes for GET /api/repos/{owner}/{repo}/settings/secrets plus create/update/delete endpoints for repository secrets and variables.",
+      "Secrets are write-only in API responses: metadata includes name/scope/updated actor/storage kind/secretConfigured only; plaintext, ciphertext, fingerprints, encrypted refs, and envelope details are not serialized.",
+      "Variables are readable to repository admins and support create/update/delete with duplicate-name and reserved-name validation.",
+      "Added repository_settings_audit_events for Actions secret and variable create/update/delete with redacted secret before/after states.",
+      "Added focused repository_actions_secrets_contract coverage for admin gates, write-only secret responses, encrypted persistence checks, variable reads, conflicts, deletes, and audit redaction."
+    ],
+    "needs_deeper_qa": [
+      "Rerun repository_actions_secrets_contract against a clean reachable TEST_DATABASE_URL so DB assertions execute instead of self-skipping on the shared migration state.",
+      "Replace or back the local envelope storage with real AWS KMS, Secrets Manager, or encrypted S3 envelope behavior before production hardening.",
+      "Exercise inherited organization and environment secret/variable metadata once those scopes are modeled in later phases.",
+      "Stress ciphertext/plaintext leakage scans across API responses, audit rows, logs, screenshots, and future workflow run payloads.",
+      "Verify fork pull request secret blocking, environment-gated release, reusable workflow secret allow-listing, and log masking in Phase 4.",
+      "Exercise concurrent admin edits, long names/values, archived repositories, private repository leakage, and reserved/default variable edge cases."
+    ]
   }
 ]

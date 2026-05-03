@@ -15,6 +15,16 @@ use crate::{
         ErrorEnvelope, RestJson,
     },
     auth::extractor::AuthenticatedUser,
+    domain::actions_secrets::{
+        create_repository_actions_secret_by_owner_name,
+        create_repository_actions_variable_by_owner_name,
+        delete_repository_actions_secret_by_owner_name,
+        delete_repository_actions_variable_by_owner_name,
+        repository_actions_secrets_settings_for_actor_by_owner_name,
+        update_repository_actions_secret_by_owner_name,
+        update_repository_actions_variable_by_owner_name, ActionsSecretMutation,
+        ActionsSecretsError, ActionsVariableMutation,
+    },
     domain::repositories::{
         cancel_repository_invitation_by_owner_name, create_repository_branch_rule_by_owner_name,
         create_repository_ruleset_by_owner_name, create_repository_with_bootstrap,
@@ -125,6 +135,26 @@ pub fn router() -> Router<AppState> {
         .route(
             "/:owner/:repo/settings/hooks/:hook_id/deliveries/:delivery_id/redeliver",
             post(redeliver_webhook_delivery),
+        )
+        .route(
+            "/:owner/:repo/settings/secrets",
+            get(actions_secrets_settings),
+        )
+        .route(
+            "/:owner/:repo/settings/secrets/secrets",
+            post(create_actions_secret),
+        )
+        .route(
+            "/:owner/:repo/settings/secrets/secrets/:secret_name",
+            patch(update_actions_secret).delete(delete_actions_secret),
+        )
+        .route(
+            "/:owner/:repo/settings/secrets/variables",
+            post(create_actions_variable),
+        )
+        .route(
+            "/:owner/:repo/settings/secrets/variables/:variable_name",
+            patch(update_actions_variable).delete(delete_actions_variable),
         )
         .route("/:owner/:repo/star", put(star).delete(unstar))
         .route("/:owner/:repo/watch", put(watch).delete(unwatch))
@@ -1123,6 +1153,187 @@ async fn redeliver_webhook_delivery(
     Ok(Json(json!(result)))
 }
 
+async fn actions_secrets_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = repository_actions_secrets_settings_for_actor_by_owner_name(
+        pool, actor.0.id, &owner, &repo,
+    )
+    .await
+    .map_err(map_actions_secrets_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn create_actions_secret(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<ActionsSecretMutation>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings =
+        create_repository_actions_secret_by_owner_name(pool, actor.0.id, &owner, &repo, request)
+            .await
+            .map_err(map_actions_secrets_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
+
+    Ok((StatusCode::CREATED, Json(json!(settings))))
+}
+
+async fn update_actions_secret(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, secret_name)): Path<(String, String, String)>,
+    RestJson(request): RestJson<ActionsSecretMutation>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = update_repository_actions_secret_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        &secret_name,
+        request,
+    )
+    .await
+    .map_err(map_actions_secrets_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn delete_actions_secret(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, secret_name)): Path<(String, String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = delete_repository_actions_secret_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        &secret_name,
+    )
+    .await
+    .map_err(map_actions_secrets_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn create_actions_variable(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<ActionsVariableMutation>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings =
+        create_repository_actions_variable_by_owner_name(pool, actor.0.id, &owner, &repo, request)
+            .await
+            .map_err(map_actions_secrets_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
+
+    Ok((StatusCode::CREATED, Json(json!(settings))))
+}
+
+async fn update_actions_variable(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, variable_name)): Path<(String, String, String)>,
+    RestJson(request): RestJson<ActionsVariableMutation>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = update_repository_actions_variable_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        &variable_name,
+        request,
+    )
+    .await
+    .map_err(map_actions_secrets_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(settings)))
+}
+
+async fn delete_actions_variable(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, variable_name)): Path<(String, String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = delete_repository_actions_variable_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        &variable_name,
+    )
+    .await
+    .map_err(map_actions_secrets_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(settings)))
+}
+
 async fn star(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1346,6 +1557,28 @@ fn map_webhook_error(error: WebhookError) -> (StatusCode, Json<ErrorEnvelope>) {
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal_error",
             "webhook operation failed".to_owned(),
+        ),
+    }
+}
+
+fn map_actions_secrets_error(error: ActionsSecretsError) -> (StatusCode, Json<ErrorEnvelope>) {
+    match error {
+        ActionsSecretsError::Repository(error) => map_repository_error(error),
+        ActionsSecretsError::Invalid(_) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            error.to_string(),
+        ),
+        ActionsSecretsError::Conflict => {
+            error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
+        ActionsSecretsError::NotFound => {
+            error_response(StatusCode::NOT_FOUND, "not_found", error.to_string())
+        }
+        ActionsSecretsError::Sqlx(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "Actions secrets operation failed".to_owned(),
         ),
     }
 }

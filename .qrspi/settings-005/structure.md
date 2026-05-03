@@ -6,7 +6,7 @@
 
 ## Phase 1: Secrets and Variables API Contract - metadata, encryption, validation, and audit
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the Rust/Postgres contract for repository Actions secrets and variables under `/api/repos/{owner}/{repo}/settings/secrets`. Repository admins can list metadata, create/update/delete repository-scoped secrets and variables, and see inherited organization/environment metadata when available. Secret values are write-only and never returned by API, audit rows, logs, or test snapshots.
 
