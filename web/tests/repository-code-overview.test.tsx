@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RepositoryCodeOverview } from "@/components/RepositoryCodeOverview";
+import { RepositoryHeaderActions } from "@/components/RepositoryHeaderActions";
 import {
   RepositoryBlobViewPage,
   RepositoryCommitHistoryView,
@@ -593,7 +594,7 @@ describe("RepositoryCodeOverview", () => {
         );
       });
 
-    render(<RepositoryCodeOverview repository={repositoryOverview()} />);
+    render(<RepositoryHeaderActions repository={repositoryOverview()} />);
 
     fireEvent.click(screen.getByRole("button", { name: /Star/ }));
     await waitFor(() => {
@@ -607,21 +608,60 @@ describe("RepositoryCodeOverview", () => {
     });
   });
 
-  it("optimistically toggles the watch control through a same-origin route", async () => {
+  it("saves repository watch settings through the Editorial watch menu", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockImplementation(async (input, init) => {
         const url = String(input);
         expect(url).toBe("/mona/octo-app/actions/watch");
-        expect(init?.method).toBe("PUT");
+        if (init?.method === "GET") {
+          return new Response(
+            JSON.stringify({
+              repositoryId: "repo-1",
+              level: "participating",
+              label: "Participating and @mentions",
+              watching: true,
+              watchersCount: 2,
+              customEvents: [],
+              availableEvents: [
+                "issues",
+                "pull_requests",
+                "releases",
+                "discussions",
+                "actions",
+                "security_alerts",
+                "repository_invitations",
+              ],
+              ignoreWarning:
+                "Ignoring this repository suppresses repository watch notifications until you choose another watch level.",
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        expect(init?.method).toBe("PATCH");
+        expect(JSON.parse(String(init?.body))).toEqual({
+          level: "custom",
+          customEvents: ["issues", "pull_requests"],
+        });
         return new Response(
           JSON.stringify({
-            starred: false,
+            repositoryId: "repo-1",
+            level: "custom",
+            label: "Custom",
             watching: true,
-            starsCount: 3,
             watchersCount: 3,
-            forksCount: 1,
-            forkedRepositoryHref: null,
+            customEvents: ["issues", "pull_requests"],
+            availableEvents: [
+              "issues",
+              "pull_requests",
+              "releases",
+              "discussions",
+              "actions",
+              "security_alerts",
+              "repository_invitations",
+            ],
+            ignoreWarning:
+              "Ignoring this repository suppresses repository watch notifications until you choose another watch level.",
           }),
           { status: 200, headers: { "content-type": "application/json" } },
         );
@@ -630,15 +670,60 @@ describe("RepositoryCodeOverview", () => {
     render(<RepositoryCodeOverview repository={repositoryOverview()} />);
 
     fireEvent.click(screen.getByRole("button", { name: /Watch/ }));
+    expect(
+      await screen.findByRole("menu", { name: "Repository watch settings" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("radio", { name: /Custom/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Issue activity" }));
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Pull request activity" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Unwatch/ })).toHaveTextContent(
+      expect(screen.getByRole("button", { name: /Custom/ })).toHaveTextContent(
         "3",
       );
     });
 
     expect(fetchMock).toHaveBeenCalledWith("/mona/octo-app/actions/watch", {
-      method: "PUT",
+      method: "GET",
     });
+    expect(fetchMock).toHaveBeenCalledWith("/mona/octo-app/actions/watch", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        level: "custom",
+        customEvents: ["issues", "pull_requests"],
+      }),
+    });
+  });
+
+  it("shows the ignore warning before saving repository watch settings", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          repositoryId: "repo-1",
+          level: "participating",
+          label: "Participating and @mentions",
+          watching: true,
+          watchersCount: 2,
+          customEvents: [],
+          availableEvents: ["issues"],
+          ignoreWarning: "Ignoring hides repository watch notifications.",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    render(<RepositoryHeaderActions repository={repositoryOverview()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Watch/ }));
+    fireEvent.click(await screen.findByRole("radio", { name: /Ignore/ }));
+
+    expect(
+      screen.getByText("Ignoring hides repository watch notifications."),
+    ).toBeVisible();
   });
 
   it("rolls back optimistic state and shows feedback when an action fails", async () => {

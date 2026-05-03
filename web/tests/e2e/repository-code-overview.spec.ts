@@ -58,10 +58,84 @@ async function expectNoDeadControls(page: Page) {
   }
 }
 
+async function waitForApiHealth(page: Page) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      const response = await page.request.get("http://localhost:3016/health", {
+        timeout: 1000,
+      });
+      if (response.ok()) {
+        return;
+      }
+    } catch {
+      // The Playwright web server waits for Next.js; the Rust API may finish a
+      // moment later when make dev starts both processes.
+    }
+    await page.waitForTimeout(500);
+  }
+  throw new Error("Rust API did not become healthy for repository E2E");
+}
+
 test.skip(
   !databaseUrl,
   "repository code overview E2E needs TEST_DATABASE_URL or DATABASE_URL",
 );
+
+test.beforeEach(async ({ page }) => {
+  await waitForApiHealth(page);
+});
+
+test("signed-in repository watch menu saves custom event settings", async ({
+  page,
+}) => {
+  const seeded = seedSession();
+  await signIn(page, seeded);
+  const repositoryPath = new URL(
+    seeded.socialSourceRepositoryHref,
+    "http://localhost:3015",
+  ).pathname;
+
+  await page.goto(repositoryPath);
+  await expect(page.getByRole("button", { name: /Watch/ })).toBeVisible();
+
+  const watchReadResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`${repositoryPath}/actions/watch`) &&
+      response.request().method() === "GET" &&
+      response.status() === 200,
+  );
+  await page.locator('button[aria-haspopup="menu"]').first().click();
+  await watchReadResponse;
+  await expect(
+    page.getByRole("menu", { name: "Repository watch settings" }),
+  ).toBeVisible();
+  await expect(page.getByRole("radio", { name: /All Activity/ })).toBeVisible();
+  await expect(page.getByRole("radio", { name: /Ignore/ })).toBeVisible();
+  await page.getByRole("radio", { name: /Ignore/ }).click();
+  await expect(
+    page.getByText(/suppresses repository watch notifications/i),
+  ).toBeVisible();
+  await page.getByRole("radio", { name: /Custom/ }).click();
+  await page.getByRole("checkbox", { name: "Issue activity" }).check();
+  await page.getByRole("checkbox", { name: "Pull request activity" }).check();
+
+  const customWatchResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`${repositoryPath}/actions/watch`) &&
+      response.request().method() === "PATCH" &&
+      response.status() === 200,
+  );
+  await page.getByRole("button", { name: "Save" }).click();
+  await customWatchResponse;
+  await expect(page.getByRole("button", { name: /Custom/ })).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/notifications-004-phase2-watch-menu.jpg",
+  });
+  await page.reload();
+  await expect(page.getByRole("button", { name: /Custom/ })).toBeVisible();
+  await expectNoDeadControls(page);
+});
 
 test("signed-in repository Code tab renders files, README, sidebar, and clone menu", async ({
   page,
@@ -121,21 +195,52 @@ test("signed-in repository Code tab renders files, README, sidebar, and clone me
   await starResponse;
   await page.reload();
   await expect(page.getByRole("button", { name: /Unstar/ })).toBeVisible();
-  const watchResponse = page.waitForResponse(
+  const watchReadResponse = page.waitForResponse(
     (response) =>
       response.url().endsWith(`/${normalizedName}/actions/watch`) &&
-      response.request().method() === "PUT" &&
+      response.request().method() === "GET" &&
       response.status() === 200,
   );
   await page.getByRole("button", { name: /Watch/ }).click();
-  await expect(page.getByRole("button", { name: /Unwatch/ })).toBeVisible();
-  await watchResponse;
+  await watchReadResponse;
+  await expect(
+    page.getByRole("menu", { name: "Repository watch settings" }),
+  ).toBeVisible();
+  await page.getByRole("radio", { name: /All Activity/ }).click();
+  await expect(page.getByRole("radio", { name: /All Activity/ })).toBeChecked();
+  const watchWriteResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/${normalizedName}/actions/watch`) &&
+      response.request().method() === "PATCH" &&
+      response.status() === 200,
+  );
+  await page.getByRole("button", { name: "Save" }).click();
+  await watchWriteResponse;
+  await expect(
+    page.getByRole("button", { name: /All Activity/ }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /All Activity/ }).click();
+  await expect(
+    page.getByRole("menu", { name: "Repository watch settings" }),
+  ).toBeVisible();
+  await page.getByRole("radio", { name: /Custom/ }).click();
+  await page.getByRole("checkbox", { name: "Issue activity" }).check();
+  await page.getByRole("checkbox", { name: "Pull request activity" }).check();
+  const customWatchResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/${normalizedName}/actions/watch`) &&
+      response.request().method() === "PATCH" &&
+      response.status() === 200,
+  );
+  await page.getByRole("button", { name: "Save" }).click();
+  await customWatchResponse;
+  await expect(page.getByRole("button", { name: /Custom/ })).toBeVisible();
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/repo-003-final-action-state.jpg",
+    path: "../ralph/screenshots/build/notifications-004-phase2-watch-menu.jpg",
   });
   await page.reload();
-  await expect(page.getByRole("button", { name: /Unwatch/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Custom/ })).toBeVisible();
 
   await page.locator("summary[aria-label^='Switch branches or tags']").click();
   await expect(page.getByText("Switch branches/tags")).toBeVisible();

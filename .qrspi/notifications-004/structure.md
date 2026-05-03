@@ -24,7 +24,7 @@
 
 ## Phase 2: Editorial Repository Watch Menu
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the simple Watch/Unwatch button in the repository header with the Editorial watch menu described by the PRD. The menu must show current count, radio choices, concise descriptions, keyboard hints, an ignore confirmation warning, and custom event checkboxes backed by the Phase 1 API.
 

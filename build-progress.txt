@@ -1,3 +1,14 @@
+2026-05-04 - notifications-004 phase 2 Editorial repository watch menu
+
+- Completed Phase 2 from `.qrspi/notifications-004/structure.md`: repository headers now have a real Editorial watch settings menu without marking `notifications-004.build_pass=true`.
+- Added typed frontend helpers and same-origin route forwarding for `GET/PATCH /api/repos/{owner}/{repo}/watch`, keeping Rust as the authoritative auth/session/API layer.
+- Replaced the boolean Watch/Unwatch button with a menu for Participating and @mentions, All Activity, Ignore, and Custom, including keyboard accelerator hints, ignore warning copy, custom event checkboxes, server-confirmed save/error feedback, and count/label reconciliation after reload.
+- Extended focused Vitest coverage for menu loading, custom checkbox save payloads, ignore warning visibility, and header count/label updates.
+- Added focused Playwright smoke for signed-in custom watch saves and saved `ralph/screenshots/build/notifications-004-phase2-watch-menu.jpg`.
+- Verification passed: focused repository-code-overview Vitest, targeted Biome, `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`, `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 339 web tests, focused Playwright `repository-code-overview.spec.ts -g "watch menu saves custom"`, and mandatory Editorial banned-value scan.
+- For browser smoke only, applied additive migration `202605040004_repository_watch_settings.up.sql` to the shared local test DB because the repo still has the known pre-existing dirty migration history for `202605030041`; full feature build-pass remains blocked on Phases 3-5.
+- Marked Phase 2 as done in `.qrspi/notifications-004/structure.md`; `prd.json` remains `build_pass:false` because thread customization, fanout integration, and final docs/QA bookkeeping remain.
+
 2026-05-04 - notifications-004 structure planning
 
 - Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `prd.json`, `web/AGENTS.md`, `design/project/og-shell.jsx`, current repository watch routes/helpers, current notification thread/subscription schema, existing issue/PR subscription code, and target notification/watching docs.

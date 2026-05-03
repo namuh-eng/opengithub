@@ -4287,5 +4287,26 @@
       "Exercise concurrent PATCH saves from two browser tabs and verify watcher count reconciliation after ignore/custom/all transitions.",
       "The focused Rust scenario compiled and ran, but its DB assertions self-skip on the shared test database when the repo's pre-existing duplicate 202605030041 migration issue blocks sqlx migrator setup; full make check and make test passed."
     ]
+  },
+  {
+    "feature_id": "notifications-004",
+    "tests_written": [
+      "Completed Phase 2 Editorial Repository Watch Menu without marking notifications-004 build_pass=true.",
+      "Added typed frontend helpers and same-origin GET/PATCH forwarding for repository watch settings.",
+      "Replaced the boolean Watch/Unwatch header control with an Editorial watch menu for Participating and @mentions, All Activity, Ignore, and Custom.",
+      "Added custom event checkboxes for issue, pull request, release, discussion, Actions/CI, security alert, and repository invitation events.",
+      "Added ignore warning copy before saving and server-confirmed save/error feedback.",
+      "Extended Vitest coverage for loading the menu, custom checkbox save payloads, ignore warning visibility, and header count/label reconciliation.",
+      "Added focused Playwright smoke for signed-in custom watch saves and screenshot ralph/screenshots/build/notifications-004-phase2-watch-menu.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Run keyboard-only traversal through the watch menu radio group, custom checkboxes, Escape close, outside-click close, and Save/Cancel focus order.",
+      "Probe concurrent watch saves from two browser tabs and verify count/label reconciliation for participating, all, ignore, and custom transitions.",
+      "Retest unauthenticated and no-access private/internal repositories for watch menu absence or sign-in affordance without metadata leakage.",
+      "Exercise narrow mobile widths for menu placement, no action-bar resizing, no tab overlap, and long custom-event labels.",
+      "Phase 3 still needs issue and pull-request sidebar notification customization dialogs.",
+      "Phase 4 still needs notification fanout wiring for repository watch levels and thread overrides.",
+      "The shared opengithub_identity_test database required the additive 202605040004 repository watch settings migration to be applied manually for browser smoke because its migration history still has the known pre-existing 202605030041 checksum issue."
+    ]
   }
 ]

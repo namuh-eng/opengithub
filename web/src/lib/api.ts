@@ -1000,6 +1000,11 @@ export type RepositoryWatchSettings = {
   ignoreWarning: string;
 };
 
+export type RepositoryWatchSettingsPatch = {
+  level: RepositoryWatchLevel;
+  customEvents?: RepositoryWatchEvent[];
+};
+
 export type RepositoryForkResult = {
   sourceRepositoryId: string;
   forkRepository: RepositorySummary;
@@ -7800,6 +7805,63 @@ export async function setRepositoryWatchFromCookie(
   }
 
   return (await response.json()) as RepositorySocialState;
+}
+
+export async function getRepositoryWatchSettingsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+): Promise<RepositoryWatchSettings> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/watch`,
+    {
+      method: "GET",
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const body = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(body?.error.message ?? "Repository watch settings failed", {
+      cause: body,
+    });
+  }
+
+  return (await response.json()) as RepositoryWatchSettings;
+}
+
+export async function updateRepositoryWatchSettingsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  patch: RepositoryWatchSettingsPatch,
+): Promise<RepositoryWatchSettings> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/watch`,
+    {
+      method: "PATCH",
+      headers: {
+        ...(cookie ? { cookie } : {}),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(patch),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const body = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(body?.error.message ?? "Repository watch update failed", {
+      cause: body,
+    });
+  }
+
+  return (await response.json()) as RepositoryWatchSettings;
 }
 
 export async function forkRepositoryFromCookie(
