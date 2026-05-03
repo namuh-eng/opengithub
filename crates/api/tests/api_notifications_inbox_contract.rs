@@ -105,6 +105,36 @@ async fn send_json(
     (status, value)
 }
 
+async fn send_json_body(
+    app: axum::Router,
+    method: Method,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let request = builder
+        .body(Body::from(body.to_string()))
+        .expect("request should build");
+    let response = app.oneshot(request).await.expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).expect("response should be json")
+    };
+    (status, value)
+}
+
 #[tokio::test]
 async fn notifications_inbox_contract_filters_groups_and_marks_read() {
     let Some(pool) = database_pool().await else {
@@ -487,4 +517,77 @@ async fn notifications_inbox_contract_filters_groups_and_marks_read() {
     .await;
     assert_eq!(forbidden_status, StatusCode::NOT_FOUND);
     assert_eq!(forbidden_body["error"]["code"], "notification_not_found");
+
+    let (bulk_empty_status, bulk_empty_body) = send_json_body(
+        app.clone(),
+        Method::POST,
+        "/api/notifications/bulk",
+        Some(&cookie),
+        json!({
+            "notificationIds": [],
+            "action": "read"
+        }),
+    )
+    .await;
+    assert_eq!(bulk_empty_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(bulk_empty_body["error"]["code"], "validation_failed");
+
+    let bulk_first = create_notification(
+        &pool,
+        CreateNotification {
+            user_id: viewer.id,
+            repository_id: Some(repository.id),
+            subject_type: "issue".to_owned(),
+            subject_id: Some(issue.id),
+            title: "Bulk triage first".to_owned(),
+            reason: "mention".to_owned(),
+        },
+    )
+    .await
+    .expect("first bulk notification should create");
+    let bulk_second = create_notification(
+        &pool,
+        CreateNotification {
+            user_id: viewer.id,
+            repository_id: Some(repository.id),
+            subject_type: "issue".to_owned(),
+            subject_id: Some(issue.id),
+            title: "Bulk triage second".to_owned(),
+            reason: "assigned".to_owned(),
+        },
+    )
+    .await
+    .expect("second bulk notification should create");
+
+    let (bulk_status, bulk_body) = send_json_body(
+        app.clone(),
+        Method::POST,
+        "/api/notifications/bulk",
+        Some(&cookie),
+        json!({
+            "notificationIds": [bulk_first.id, bulk_second.id, Uuid::new_v4()],
+            "action": "done"
+        }),
+    )
+    .await;
+    assert_eq!(bulk_status, StatusCode::OK);
+    assert_eq!(bulk_body["action"], "done");
+    assert_eq!(bulk_body["updated"].as_array().unwrap().len(), 2);
+    assert_eq!(bulk_body["failed"].as_array().unwrap().len(), 1);
+    assert_eq!(bulk_body["failed"][0]["code"], "notification_not_found");
+    assert!(
+        bulk_body["folderCounts"]["done"]
+            .as_i64()
+            .unwrap_or_default()
+            >= 2
+    );
+
+    let done_bulk_count = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM notifications WHERE id = ANY($1) AND done_at IS NOT NULL",
+    )
+    .bind(vec![bulk_first.id, bulk_second.id])
+    .fetch_one(&pool)
+    .await
+    .expect("bulk done count should load");
+    assert_eq!(done_bulk_count, 2);
 }

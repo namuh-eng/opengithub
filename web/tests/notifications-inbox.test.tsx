@@ -560,4 +560,99 @@ describe("NotificationsInboxPage", () => {
       "Thread subscribed.",
     );
   });
+
+  it("selects rows and runs bulk actions with partial failure rollback", async () => {
+    const secondRow = {
+      ...inboxView().groups[0].rows[0],
+      id: "notif-2",
+      title: "Assigned notification needs bulk triage",
+      unread: false,
+      reason: "assigned",
+      reasonLabel: "Assigned",
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        action: "done",
+        updated: [
+          {
+            id: "notif-1",
+            unread: true,
+            saved: false,
+            done: true,
+            subscribed: true,
+            lastReadAt: null,
+            savedAt: null,
+            unreadCount: 0,
+            folderCounts: {
+              inbox: 1,
+              saved: 0,
+              done: 1,
+            },
+          },
+        ],
+        failed: [
+          {
+            id: "notif-2",
+            code: "notification_not_found",
+            message: "Notification was not found.",
+          },
+        ],
+        unreadCount: 0,
+        folderCounts: {
+          inbox: 1,
+          saved: 0,
+          done: 1,
+        },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <NotificationsInboxPage
+        view={inboxView({
+          total: 2,
+          groups: [
+            {
+              ...inboxView().groups[0],
+              count: 2,
+              rows: [inboxView().groups[0].rows[0], secondRow],
+            },
+          ],
+        })}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: "Select all notifications in mona/octo-app",
+      }),
+    );
+    expect(screen.getByText("2 selected")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/notifications/bulk/triage", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          notificationIds: ["notif-1", "notif-2"],
+          action: "done",
+        }),
+      });
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "1 notification moved to Done. 1 failed and stayed selected.",
+    );
+    expect(screen.getByText("1 selected")).toBeVisible();
+    expect(
+      screen.getByRole("checkbox", {
+        name: "Select Assigned notification needs bulk triage",
+      }),
+    ).toBeChecked();
+    expect(screen.queryByText("Inbox search keeps mention filters")).toBeNull();
+    expect(
+      screen.getByText("Assigned notification needs bulk triage"),
+    ).toBeVisible();
+  });
 });

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type {
   ApiErrorEnvelope,
+  NotificationBulkTriageResponse,
   NotificationInboxRow,
   NotificationInboxView,
   NotificationTriageAction,
@@ -59,6 +60,11 @@ function applyConfirmedTriage(
   view: NotificationInboxView,
   response: NotificationTriageResponse,
 ): NotificationInboxView {
+  const removeFromCurrentFolder =
+    (view.query.folder === "inbox" &&
+      (response.done || !response.subscribed)) ||
+    (view.query.folder === "done" && !response.done) ||
+    (view.query.folder === "saved" && !response.saved);
   return mapNotificationRows(
     view,
     response.id,
@@ -72,6 +78,7 @@ function applyConfirmedTriage(
     {
       unreadCount: response.unreadCount,
       folderCounts: response.folderCounts,
+      removeFromCurrentFolder,
     },
   );
 }
@@ -148,6 +155,21 @@ async function patchNotificationTriage(
   return (await response.json()) as NotificationTriageResponse;
 }
 
+async function postBulkNotificationTriage(
+  notificationIds: string[],
+  action: NotificationTriageAction,
+): Promise<NotificationBulkTriageResponse> {
+  const response = await fetch("/notifications/bulk/triage", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ notificationIds, action }),
+  });
+  if (!response.ok) {
+    throw new Error("Bulk notification action failed");
+  }
+  return (await response.json()) as NotificationBulkTriageResponse;
+}
+
 function notificationActionLabel(
   action: NotificationTriageAction,
   response: NotificationTriageResponse,
@@ -176,6 +198,47 @@ function notificationActionLabel(
   return "Notification marked read.";
 }
 
+function bulkActionLabel(
+  action: NotificationTriageAction,
+  response: NotificationBulkTriageResponse,
+) {
+  const updatedCount = response.updated.length;
+  const failedCount = response.failed.length;
+  const noun = updatedCount === 1 ? "notification" : "notifications";
+  const suffix = failedCount
+    ? ` ${failedCount} failed and stayed selected.`
+    : "";
+  if (action === "done") {
+    return `${updatedCount} ${noun} moved to Done.${suffix}`;
+  }
+  if (action === "inbox") {
+    return `${updatedCount} ${noun} moved to Inbox.${suffix}`;
+  }
+  if (action === "unsubscribe") {
+    return `${updatedCount} ${noun} unsubscribed.${suffix}`;
+  }
+  if (action === "save") {
+    return `${updatedCount} ${noun} saved.${suffix}`;
+  }
+  if (action === "unsave") {
+    return `${updatedCount} ${noun} unsaved.${suffix}`;
+  }
+  if (action === "unread") {
+    return `${updatedCount} ${noun} marked unread.${suffix}`;
+  }
+  return `${updatedCount} ${noun} marked read.${suffix}`;
+}
+
+function visibleNotificationIds(view: NotificationInboxView) {
+  return view.groups.flatMap((group) => group.rows.map((row) => row.id));
+}
+
+function selectedRows(view: NotificationInboxView, selectedIds: Set<string>) {
+  return view.groups.flatMap((group) =>
+    group.rows.filter((row) => selectedIds.has(row.id)),
+  );
+}
+
 function withQuery(overrides: Record<string, string | null | undefined>) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(overrides)) {
@@ -192,6 +255,9 @@ export function NotificationsInboxPage({
 }: NotificationsInboxPageProps) {
   const [currentView, setCurrentView] = useState(initialView);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [pendingBulkAction, setPendingBulkAction] =
+    useState<NotificationTriageAction | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [toast, setToast] = useState<string | null>(null);
 
   const visibleView = currentView;
@@ -222,6 +288,96 @@ export function NotificationsInboxPage({
     }
   }
 
+  function toggleRowSelection(notificationId: string, checked: boolean) {
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      if (checked) {
+        next.add(notificationId);
+      } else {
+        next.delete(notificationId);
+      }
+      return next;
+    });
+  }
+
+  function toggleGroupSelection(
+    rows: NotificationInboxRow[],
+    checked: boolean,
+  ) {
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      for (const row of rows) {
+        if (checked) {
+          next.add(row.id);
+        } else {
+          next.delete(row.id);
+        }
+      }
+      return next;
+    });
+  }
+
+  function toggleAllSelection(view: NotificationInboxView, checked: boolean) {
+    const ids = visibleNotificationIds(view);
+    setSelectedIds(checked ? new Set(ids) : new Set());
+  }
+
+  async function runBulkAction(action: NotificationTriageAction) {
+    if (isError(visibleView)) {
+      return;
+    }
+    const rows = selectedRows(visibleView, selectedIds);
+    if (!rows.length) {
+      return;
+    }
+    const notificationIds = rows.map((row) => row.id);
+    const previous = visibleView;
+    setPendingBulkAction(action);
+    setToast(null);
+    setCurrentView(
+      notificationIds.reduce(
+        (nextView, notificationId) =>
+          applyOptimisticTriage(nextView, notificationId, action),
+        previous,
+      ),
+    );
+
+    try {
+      const response = await postBulkNotificationTriage(
+        notificationIds,
+        action,
+      );
+      const failedIds = new Set(response.failed.map((failure) => failure.id));
+      setCurrentView((latest) => {
+        if (isError(latest)) {
+          return latest;
+        }
+        let next = failedIds.size ? previous : latest;
+        for (const confirmed of response.updated) {
+          next = applyConfirmedTriage(next, confirmed);
+        }
+        return {
+          ...next,
+          unreadCount: response.unreadCount,
+          folders: next.folders.map((folder) => {
+            const count =
+              response.folderCounts[
+                folder.id as keyof typeof response.folderCounts
+              ];
+            return typeof count === "number" ? { ...folder, count } : folder;
+          }),
+        };
+      });
+      setSelectedIds(new Set(response.failed.map((failure) => failure.id)));
+      setToast(bulkActionLabel(action, response));
+    } catch {
+      setCurrentView(previous);
+      setToast("Bulk action failed. Your inbox was restored.");
+    } finally {
+      setPendingBulkAction(null);
+    }
+  }
+
   if (isError(visibleView)) {
     return (
       <section className="card p-8" aria-labelledby="notifications-error-title">
@@ -240,6 +396,12 @@ export function NotificationsInboxPage({
 
   const view: NotificationInboxView = visibleView;
   const { query } = view;
+  const visibleIds = visibleNotificationIds(view);
+  const visibleSelectedCount = visibleIds.filter((id) =>
+    selectedIds.has(id),
+  ).length;
+  const allVisibleSelected =
+    visibleIds.length > 0 && visibleSelectedCount === visibleIds.length;
   const allHref = withQuery({
     folder: query.folder === "inbox" ? null : query.folder,
     q: query.q,
@@ -395,6 +557,74 @@ export function NotificationsInboxPage({
             </div>
           ) : null}
 
+          {visibleIds.length ? (
+            <div className="card p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex items-center gap-2 t-sm">
+                  <input
+                    aria-label="Select all visible notifications"
+                    checked={allVisibleSelected}
+                    onChange={(event) =>
+                      toggleAllSelection(view, event.currentTarget.checked)
+                    }
+                    type="checkbox"
+                  />
+                  <span className="t-num">{visibleSelectedCount} selected</span>
+                </label>
+                <span className="hidden flex-1 md:block" />
+                <BulkButton
+                  action="done"
+                  disabled={!visibleSelectedCount}
+                  label="Done"
+                  pendingBulkAction={pendingBulkAction}
+                  runBulkAction={runBulkAction}
+                />
+                <BulkButton
+                  action="inbox"
+                  disabled={!visibleSelectedCount}
+                  label="Move to inbox"
+                  pendingBulkAction={pendingBulkAction}
+                  runBulkAction={runBulkAction}
+                />
+                <BulkButton
+                  action="save"
+                  disabled={!visibleSelectedCount}
+                  label="Save"
+                  pendingBulkAction={pendingBulkAction}
+                  runBulkAction={runBulkAction}
+                />
+                <BulkButton
+                  action="unsave"
+                  disabled={!visibleSelectedCount}
+                  label="Unsave"
+                  pendingBulkAction={pendingBulkAction}
+                  runBulkAction={runBulkAction}
+                />
+                <BulkButton
+                  action="read"
+                  disabled={!visibleSelectedCount}
+                  label="Mark read"
+                  pendingBulkAction={pendingBulkAction}
+                  runBulkAction={runBulkAction}
+                />
+                <BulkButton
+                  action="unread"
+                  disabled={!visibleSelectedCount}
+                  label="Mark unread"
+                  pendingBulkAction={pendingBulkAction}
+                  runBulkAction={runBulkAction}
+                />
+                <BulkButton
+                  action="unsubscribe"
+                  disabled={!visibleSelectedCount}
+                  label="Unsubscribe"
+                  pendingBulkAction={pendingBulkAction}
+                  runBulkAction={runBulkAction}
+                />
+              </div>
+            </div>
+          ) : null}
+
           {view.groups.length ? (
             view.groups.map((group) => (
               <section
@@ -402,6 +632,17 @@ export function NotificationsInboxPage({
                 key={group.id}
               >
                 <div className="mb-2 flex items-center gap-2 px-1">
+                  <input
+                    aria-label={`Select all notifications in ${group.label}`}
+                    checked={group.rows.every((row) => selectedIds.has(row.id))}
+                    onChange={(event) =>
+                      toggleGroupSelection(
+                        group.rows,
+                        event.currentTarget.checked,
+                      )
+                    }
+                    type="checkbox"
+                  />
                   <h2 className="t-label" id={`notification-group-${group.id}`}>
                     {group.label}
                   </h2>
@@ -410,6 +651,18 @@ export function NotificationsInboxPage({
                 <div className="card overflow-hidden">
                   {group.rows.map((row) => (
                     <article className="list-row items-start" key={row.id}>
+                      <input
+                        aria-label={`Select ${row.title}`}
+                        checked={selectedIds.has(row.id)}
+                        className="mt-2"
+                        onChange={(event) =>
+                          toggleRowSelection(
+                            row.id,
+                            event.currentTarget.checked,
+                          )
+                        }
+                        type="checkbox"
+                      />
                       <span
                         role="img"
                         aria-label={row.unread ? "Unread" : "Read"}
@@ -623,5 +876,30 @@ function ChoiceGroup({
         </a>
       ))}
     </fieldset>
+  );
+}
+
+function BulkButton({
+  action,
+  disabled,
+  label,
+  pendingBulkAction,
+  runBulkAction,
+}: {
+  action: NotificationTriageAction;
+  disabled: boolean;
+  label: string;
+  pendingBulkAction: NotificationTriageAction | null;
+  runBulkAction: (action: NotificationTriageAction) => void;
+}) {
+  return (
+    <button
+      className="btn sm ghost"
+      disabled={disabled || pendingBulkAction !== null}
+      onClick={() => runBulkAction(action)}
+      type="button"
+    >
+      {pendingBulkAction === action ? "Working" : label}
+    </button>
   );
 }

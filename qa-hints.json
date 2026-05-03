@@ -4207,5 +4207,27 @@
       "Verify screen reader labels and mobile touch targets for Subscribe/Unsubscribe buttons across dense notification groups.",
       "The Rust contract test still self-skips under sqlx migrator because the repository has pre-existing duplicate 202605030041 migration versions; Playwright used the shared DB after manually applying additive notification migrations."
     ]
+  },
+  {
+    "feature_id": "notifications-002",
+    "tests_written": [
+      "Completed Phase 4 Bulk and Group-Level Triage Toolbar without marking notifications-002 build_pass=true.",
+      "Added authenticated POST /api/notifications/bulk with bounded notificationIds validation, duplicate rejection, action dispatch, updated row responses, failed row details, fresh unread count, and fresh inbox/saved/done folder counts.",
+      "Added same-origin Next bulk triage route and typed API helpers so browser bulk actions preserve cookies while Rust remains authoritative.",
+      "Updated the Editorial notifications UI with row checkboxes, visible select-all, group select-all, selected-count toolbar, bulk Done, Move to inbox, Save, Unsave, Mark read, Mark unread, and Unsubscribe controls.",
+      "Bulk actions optimistically update visible rows and counts, reconcile confirmed rows, keep failed rows selected, and restore failed-row state on partial failure.",
+      "Focused Rust notification contract covers empty bulk validation, bulk Done success, partial not_found failure details, folder counts, and persisted done_at updates.",
+      "Focused Vitest covers group selection, bulk payloads, partial-failure rollback, failed-row selection retention, and successful-row removal from Inbox.",
+      "Focused Playwright notification smoke passed on fresh database opengithub_notifications_002_phase4_1777825931 and saved ralph/screenshots/build/notifications-002-phase4-bulk.jpg.",
+      "Verification passed: cargo fmt --all --check, focused notification Rust contract, focused notification Vitest, web TypeScript, focused Biome, make check, make test, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 5 still needs API docs, broader docs tests, final build_pass bookkeeping, and final full-suite E2E evidence.",
+      "The shared opengithub_identity_test database still has the pre-existing migration checksum issue for 202605030041; focused browser proof used a fresh migrated database with DASHBOARD_E2E_SKIP_MIGRATIONS=1.",
+      "Full make test-e2e was attempted on the fresh database but the Makefile wrapper stayed silent and was terminated after the focused notifications smoke passed; rerun full E2E in Phase 5 after isolating the long-running suite behavior.",
+      "Probe mixed-authorization bulk actions with private repository notifications, stale IDs, duplicate IDs, more than 100 selected IDs, and concurrent bulk mutations from two browser tabs.",
+      "Verify keyboard-only selection traversal, group select-all announcements, selected-count toolbar focus order, and mobile overflow/hit targets across dense notification groups.",
+      "Probe bulk Unsubscribe reactivation behavior after participation, direct mentions, team mentions, and review requests."
+    ]
   }
 ]

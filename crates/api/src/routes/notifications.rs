@@ -1,7 +1,7 @@
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    routing::{get, patch},
+    routing::{get, patch, post},
     Json, Router,
 };
 use serde::Deserialize;
@@ -11,8 +11,8 @@ use crate::{
     api_types::{database_unavailable, error_response, ErrorEnvelope},
     auth::extractor::AuthenticatedUser,
     domain::notifications::{
-        notification_inbox_view, triage_notification, NotificationError, NotificationInboxQuery,
-        NotificationInboxView, NotificationTriageAction,
+        bulk_triage_notifications, notification_inbox_view, triage_notification, NotificationError,
+        NotificationInboxQuery, NotificationInboxView, NotificationTriageAction,
     },
     AppState,
 };
@@ -20,6 +20,7 @@ use crate::{
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/notifications", get(list))
+        .route("/api/notifications/bulk", post(bulk))
         .route("/api/notifications/:id/read", patch(mark_read))
         .route("/api/notifications/:id/unread", patch(mark_unread))
         .route("/api/notifications/:id/save", patch(save))
@@ -28,6 +29,41 @@ pub fn router() -> Router<AppState> {
         .route("/api/notifications/:id/inbox", patch(move_to_inbox))
         .route("/api/notifications/:id/subscribe", patch(subscribe))
         .route("/api/notifications/:id/unsubscribe", patch(unsubscribe))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BulkTriageBody {
+    notification_ids: Vec<Uuid>,
+    action: NotificationTriageActionBody,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum NotificationTriageActionBody {
+    Read,
+    Unread,
+    Save,
+    Unsave,
+    Done,
+    Inbox,
+    Subscribe,
+    Unsubscribe,
+}
+
+impl From<NotificationTriageActionBody> for NotificationTriageAction {
+    fn from(action: NotificationTriageActionBody) -> Self {
+        match action {
+            NotificationTriageActionBody::Read => Self::Read,
+            NotificationTriageActionBody::Unread => Self::Unread,
+            NotificationTriageActionBody::Save => Self::Save,
+            NotificationTriageActionBody::Unsave => Self::Unsave,
+            NotificationTriageActionBody::Done => Self::Done,
+            NotificationTriageActionBody::Inbox => Self::Inbox,
+            NotificationTriageActionBody::Subscribe => Self::Subscribe,
+            NotificationTriageActionBody::Unsubscribe => Self::Unsubscribe,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -132,6 +168,58 @@ async fn unsubscribe(
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     triage(state, headers, id, NotificationTriageAction::Unsubscribe).await
+}
+
+async fn bulk(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<BulkTriageBody>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    validate_bulk_notification_ids(&body.notification_ids)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let response = bulk_triage_notifications(
+        pool,
+        actor.0.id,
+        body.notification_ids,
+        NotificationTriageAction::from(body.action),
+    )
+    .await
+    .map_err(map_notification_error)?;
+    Ok(Json(
+        serde_json::to_value(response).expect("bulk triage response should serialize"),
+    ))
+}
+
+fn validate_bulk_notification_ids(
+    notification_ids: &[Uuid],
+) -> Result<(), (StatusCode, Json<ErrorEnvelope>)> {
+    if notification_ids.is_empty() {
+        return Err(error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            "notificationIds must contain at least one notification.",
+        ));
+    }
+    if notification_ids.len() > 100 {
+        return Err(error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            "notificationIds cannot contain more than 100 notifications.",
+        ));
+    }
+    let unique_count = notification_ids
+        .iter()
+        .collect::<std::collections::HashSet<_>>()
+        .len();
+    if unique_count != notification_ids.len() {
+        return Err(error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            "notificationIds cannot contain duplicates.",
+        ));
+    }
+    Ok(())
 }
 
 async fn triage(

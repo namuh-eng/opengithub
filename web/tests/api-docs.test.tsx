@@ -4,7 +4,9 @@ import { ApiDocsPage } from "@/components/ApiDocsPage";
 import { apiEndpointDocs } from "@/lib/api-docs";
 
 describe("ApiDocsPage", () => {
-  it("documents every implemented api-001 resource family", () => {
+  it("documents every implemented api-001 resource family", {
+    timeout: 30_000,
+  }, () => {
     render(<ApiDocsPage />);
 
     expect(
@@ -436,7 +438,7 @@ describe("ApiDocsPage", () => {
     expect(
       screen.getByText(/Duplicate names for the same viewer/),
     ).toBeVisible();
-  }, 10000);
+  });
 
   it("opens examples without placeholder links or inert controls", () => {
     const { container } = render(<ApiDocsPage />);

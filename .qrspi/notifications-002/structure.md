@@ -59,7 +59,7 @@
 
 ## Phase 4: Bulk and Group-Level Triage Toolbar
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add multi-select, group select-all, and bulk actions for Done, Unsubscribe, Save/Unsave, Mark read/unread, and Move to inbox. Bulk actions should update counts optimistically, preserve navigation for row links, and rollback only the failed rows if the API returns partial failure details.
 

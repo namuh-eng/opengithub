@@ -75,6 +75,24 @@ pub struct NotificationFolderCounts {
     pub done: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationBulkTriageResponse {
+    pub action: String,
+    pub updated: Vec<NotificationTriageResponse>,
+    pub failed: Vec<NotificationBulkFailure>,
+    pub unread_count: i64,
+    pub folder_counts: NotificationFolderCounts,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationBulkFailure {
+    pub id: Uuid,
+    pub code: String,
+    pub message: String,
+}
+
 pub async fn create_notification(
     pool: &PgPool,
     input: CreateNotification,
@@ -355,6 +373,48 @@ pub async fn triage_notification(
         unread_count: unread_notification_count(pool, user_id).await?,
         folder_counts: notification_folder_counts(pool, user_id).await?,
     })
+}
+
+pub async fn bulk_triage_notifications(
+    pool: &PgPool,
+    user_id: Uuid,
+    notification_ids: Vec<Uuid>,
+    action: NotificationTriageAction,
+) -> Result<NotificationBulkTriageResponse, NotificationError> {
+    let mut updated = Vec::with_capacity(notification_ids.len());
+    let mut failed = Vec::new();
+    for notification_id in notification_ids {
+        match triage_notification(pool, notification_id, user_id, action).await {
+            Ok(response) => updated.push(response),
+            Err(NotificationError::NotFound) => failed.push(NotificationBulkFailure {
+                id: notification_id,
+                code: "notification_not_found".to_owned(),
+                message: "Notification was not found.".to_owned(),
+            }),
+            Err(error) => return Err(error),
+        }
+    }
+
+    Ok(NotificationBulkTriageResponse {
+        action: notification_action_name(action).to_owned(),
+        updated,
+        failed,
+        unread_count: unread_notification_count(pool, user_id).await?,
+        folder_counts: notification_folder_counts(pool, user_id).await?,
+    })
+}
+
+fn notification_action_name(action: NotificationTriageAction) -> &'static str {
+    match action {
+        NotificationTriageAction::Read => "read",
+        NotificationTriageAction::Unread => "unread",
+        NotificationTriageAction::Save => "save",
+        NotificationTriageAction::Unsave => "unsave",
+        NotificationTriageAction::Done => "done",
+        NotificationTriageAction::Inbox => "inbox",
+        NotificationTriageAction::Subscribe => "subscribe",
+        NotificationTriageAction::Unsubscribe => "unsubscribe",
+    }
 }
 
 async fn select_notification_triage_row(

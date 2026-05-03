@@ -157,3 +157,46 @@ test("signed-in user marks notifications read and toggles saved state", async ({
   await page.goto("/notifications");
   await expect(rowLink).toBeVisible();
 });
+
+test("signed-in user selects notifications and runs bulk triage", async ({
+  page,
+}) => {
+  const seeded = seedDashboard();
+  await signIn(page, seeded);
+
+  await page.goto("/notifications");
+  await expect(
+    page.getByRole("link", { name: /Triage dashboard setup workflow/ }),
+  ).toBeVisible();
+  await page
+    .getByRole("checkbox", { name: "Select all visible notifications" })
+    .click();
+  await expect(page.getByText("1 selected")).toBeVisible();
+
+  await page.getByRole("button", { exact: true, name: "Save" }).click();
+  await expect(page.getByRole("status")).toHaveText("1 notification saved.");
+  await expect(page.getByText("0 selected")).toBeVisible();
+
+  await page
+    .getByRole("checkbox", { name: "Select all visible notifications" })
+    .click();
+  await page.getByRole("button", { exact: true, name: "Mark read" }).click();
+  await expect(page.getByRole("status")).toHaveText(
+    "1 notification marked read.",
+  );
+
+  await page
+    .getByRole("checkbox", { name: "Select all visible notifications" })
+    .click();
+  await page.getByRole("button", { exact: true, name: "Done" }).click();
+  await expect(page.getByRole("status")).toHaveText(
+    "1 notification moved to Done.",
+  );
+  await expect(
+    page.getByRole("link", { name: /Triage dashboard setup workflow/ }),
+  ).toHaveCount(0);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/notifications-002-phase4-bulk.jpg",
+  });
+});

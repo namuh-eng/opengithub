@@ -8057,6 +8057,20 @@ export type NotificationTriageResponse = {
   folderCounts: NotificationFolderCounts;
 };
 
+export type NotificationBulkFailure = {
+  id: string;
+  code: string;
+  message: string;
+};
+
+export type NotificationBulkTriageResponse = {
+  action: NotificationTriageAction;
+  updated: NotificationTriageResponse[];
+  failed: NotificationBulkFailure[];
+  unreadCount: number;
+  folderCounts: NotificationFolderCounts;
+};
+
 export type NotificationGroup = {
   id: string;
   label: string;
@@ -8184,4 +8198,34 @@ export async function updateNotificationTriageFromCookie(
     });
   }
   return body as NotificationTriageResponse;
+}
+
+export async function bulkUpdateNotificationTriageFromCookie(
+  cookie: string | null | undefined,
+  notificationIds: string[],
+  action: NotificationTriageAction,
+): Promise<NotificationBulkTriageResponse> {
+  const response = await fetch(`${apiBaseUrl()}/api/notifications/bulk`, {
+    method: "POST",
+    headers: {
+      ...(cookie ? { cookie } : {}),
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ notificationIds, action }),
+    cache: "no-store",
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    const fallback: ApiErrorEnvelope = {
+      error: {
+        code: "notification_bulk_triage_failed",
+        message: "Notifications could not be updated.",
+      },
+      status: response.status,
+    };
+    throw new Error("Notification bulk triage failed", {
+      cause: (body as ApiErrorEnvelope | null) ?? fallback,
+    });
+  }
+  return body as NotificationBulkTriageResponse;
 }
