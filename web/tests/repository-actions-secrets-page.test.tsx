@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RepositoryActionsSecretsPage } from "@/components/RepositoryActionsSecretsPage";
 import type {
   ActionsSecretSummary,
@@ -114,6 +114,10 @@ function settings(
 }
 
 describe("RepositoryActionsSecretsPage", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("renders secret metadata without leaking values or encrypted material", () => {
     const { container } = render(
       <RepositoryActionsSecretsPage
@@ -188,7 +192,7 @@ describe("RepositoryActionsSecretsPage", () => {
     expect(screen.getByText("No repository secrets")).toBeVisible();
     expect(screen.getByRole("link", { name: "Add secret" })).toHaveAttribute(
       "href",
-      "/namuh-eng/opengithub/settings/secrets?tab=secrets#repository-secrets",
+      "/namuh-eng/opengithub/settings/secrets?tab=secrets#add-secret",
     );
     expect(screen.getByRole("link", { name: "API docs" })).toHaveAttribute(
       "href",
@@ -217,20 +221,87 @@ describe("RepositoryActionsSecretsPage", () => {
     ).toHaveAttribute("href", "/namuh-eng/opengithub");
   });
 
-  it("uses disabled controls for mutation placeholders instead of dead buttons", () => {
+  it("creates secrets only after a server-confirmed response", async () => {
+    const updatedSettings = settings({
+      secrets: [secret({ name: "NEW_DEPLOY_KEY" })],
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: async () => updatedSettings,
+      ok: true,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
     render(
       <RepositoryActionsSecretsPage
+        repository={repositoryOverview()}
+        settingsResult={{
+          ok: true,
+          settings: settings({ secrets: [] }),
+        }}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "new_deploy_key" },
+    });
+    fireEvent.change(screen.getByLabelText("Secret value"), {
+      target: { value: "super-secret-value" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add secret" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("NEW_DEPLOY_KEY")).toBeVisible(),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/namuh-eng/opengithub/settings/secrets/actions",
+      expect.objectContaining({
+        body: JSON.stringify({
+          action: "create-secret",
+          name: "new_deploy_key",
+          value: "super-secret-value",
+        }),
+        method: "POST",
+      }),
+    );
+    expect(screen.queryByText("super-secret-value")).not.toBeInTheDocument();
+  });
+
+  it("does not update local rows when the server rejects a variable mutation", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        json: async () => ({
+          error: {
+            code: "validation_failed",
+            message: "Actions setting name is reserved.",
+          },
+          status: 422,
+        }),
+        ok: false,
+      }),
+    );
+
+    render(
+      <RepositoryActionsSecretsPage
+        activeTab="variables"
         repository={repositoryOverview()}
         settingsResult={{ ok: true, settings: settings() }}
       />,
     );
 
-    for (const button of screen.getAllByRole("button")) {
-      expect(button).toBeDisabled();
-      expect(button).toHaveAttribute(
-        "title",
-        "Mutation forms are implemented in the next settings phase.",
-      );
-    }
+    fireEvent.change(screen.getAllByLabelText("Name")[0], {
+      target: { value: "GITHUB_TOKEN" },
+    });
+    fireEvent.change(screen.getAllByLabelText("Variable value")[0], {
+      target: { value: "blocked" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add variable" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("Actions setting name is reserved."),
+      ).toBeVisible(),
+    );
+    expect(screen.queryByText("GITHUB_TOKEN")).not.toBeInTheDocument();
   });
 });

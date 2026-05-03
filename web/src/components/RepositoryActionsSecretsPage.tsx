@@ -1,10 +1,15 @@
+"use client";
+
 import Link from "next/link";
+import { type FormEvent, useState } from "react";
 import type {
   ActionsSecretSummary,
   ActionsSettingScope,
   ActionsVariableSummary,
+  ApiErrorEnvelope,
   InheritedActionsSecretSummary,
   InheritedActionsVariableSummary,
+  RepositoryActionsSecretsMutation,
   RepositoryActionsSecretsSettings,
   RepositoryActionsSecretsSettingsFetchResult,
   RepositoryOverview,
@@ -15,6 +20,11 @@ type RepositoryActionsSecretsPageProps = {
   repository: RepositoryOverview;
   settingsResult: RepositoryActionsSecretsSettingsFetchResult;
 };
+
+type MutationKind = "secret" | "variable";
+type FormMode = "create" | "update";
+
+const namePattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", {
@@ -41,6 +51,15 @@ function settingsHref(
   tab: "secrets" | "variables",
 ) {
   return `/${repository.owner_login}/${repository.name}/settings/secrets?tab=${tab}`;
+}
+
+function actionUrl(repository: RepositoryOverview) {
+  return `/${repository.owner_login}/${repository.name}/settings/secrets/actions`;
+}
+
+function errorMessageFromPayload(payload: unknown, fallback: string) {
+  const envelope = payload as ApiErrorEnvelope | null;
+  return envelope?.error?.message ?? fallback;
 }
 
 function SettingsUnavailable({
@@ -81,25 +100,11 @@ function SettingsUnavailable({
   );
 }
 
-function DisabledAction({ label }: { label: string }) {
-  return (
-    <button
-      aria-disabled="true"
-      className="btn sm"
-      disabled
-      title="Mutation forms are implemented in the next settings phase."
-      type="button"
-    >
-      {label}
-    </button>
-  );
-}
-
 function EmptyState({
   kind,
   repository,
 }: {
-  kind: "secret" | "variable";
+  kind: MutationKind;
   repository: RepositoryOverview;
 }) {
   const tab = kind === "secret" ? "secrets" : "variables";
@@ -117,7 +122,7 @@ function EmptyState({
       <div className="mt-5 flex flex-wrap gap-2">
         <Link
           className="btn primary"
-          href={`${settingsHref(repository, tab)}#repository-${tab}`}
+          href={`${settingsHref(repository, tab)}#add-${kind}`}
         >
           {kind === "secret" ? "Add secret" : "Add variable"}
         </Link>
@@ -129,11 +134,263 @@ function EmptyState({
   );
 }
 
+function StatusMessage({
+  error,
+  success,
+}: {
+  error: string | null;
+  success: string | null;
+}) {
+  if (!error && !success) return null;
+  return (
+    <p
+      className="t-sm mt-3"
+      role="status"
+      style={{ color: error ? "var(--err)" : "var(--ok)" }}
+    >
+      {error ?? success}
+    </p>
+  );
+}
+
+function SettingMutationForm({
+  disabled,
+  initialName = "",
+  initialValue = "",
+  kind,
+  mode,
+  onCancel,
+  onSubmit,
+}: {
+  disabled: boolean;
+  initialName?: string;
+  initialValue?: string;
+  kind: MutationKind;
+  mode: FormMode;
+  onCancel?: () => void;
+  onSubmit: (payload: { name: string; value: string }) => Promise<void>;
+}) {
+  const [name, setName] = useState(initialName);
+  const [value, setValue] = useState(initialValue);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const title = `${mode === "create" ? "Add" : "Update"} ${kind}`;
+  const valueLabel = kind === "secret" ? "Secret value" : "Variable value";
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setSuccess(null);
+    const normalizedName = name.trim();
+    const nextValue = value;
+    if (!namePattern.test(normalizedName)) {
+      setError(
+        "Use letters, numbers, and underscores; start with a letter or underscore.",
+      );
+      return;
+    }
+    if (!nextValue.trim()) {
+      setError(
+        kind === "secret"
+          ? "Secret updates require a new value; existing values are never reused."
+          : "Variable value is required.",
+      );
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSubmit({ name: normalizedName, value: nextValue });
+      setSuccess(`${title} saved.`);
+      if (mode === "create") {
+        setName("");
+        setValue("");
+      }
+    } catch (formError) {
+      setError(
+        formError instanceof Error
+          ? formError.message
+          : "Actions setting could not be saved.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form
+      className="card p-4"
+      id={`${mode === "create" ? "add" : "update"}-${kind}`}
+      onSubmit={submit}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="t-label">
+            {mode === "create" ? "New" : "Edit"} {kind}
+          </p>
+          <h3 className="t-h3 mt-1">{title}</h3>
+        </div>
+        <span className={kind === "secret" ? "chip accent" : "chip info"}>
+          {kind === "secret" ? "Write-only" : "Visible to admins"}
+        </span>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,260px)_1fr]">
+        <label className="grid gap-1">
+          <span className="t-label">Name</span>
+          <input
+            className="input"
+            disabled={disabled || saving}
+            name="name"
+            onChange={(event) => setName(event.target.value)}
+            placeholder={kind === "secret" ? "DEPLOY_KEY" : "PUBLIC_BASE_URL"}
+            value={name}
+          />
+        </label>
+        <label className="grid gap-1">
+          <span className="t-label">{valueLabel}</span>
+          <textarea
+            className="input"
+            disabled={disabled || saving}
+            name="value"
+            onChange={(event) => setValue(event.target.value)}
+            placeholder={
+              kind === "secret"
+                ? "Paste a new secret value"
+                : "https://opengithub.namuh.co"
+            }
+            rows={3}
+            value={value}
+          />
+        </label>
+      </div>
+      <p className="t-xs mt-3">
+        {kind === "secret"
+          ? "Secret values are encrypted by the Rust API and never rendered back. Updating a secret always requires a fresh value."
+          : "Variable values are stored as repository metadata and can be shown to repository admins."}
+      </p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          aria-disabled={disabled || saving}
+          className="btn primary"
+          disabled={disabled || saving}
+          type="submit"
+        >
+          {saving ? "Saving..." : title}
+        </button>
+        {onCancel ? (
+          <button
+            aria-disabled={saving}
+            className="btn"
+            disabled={saving}
+            onClick={onCancel}
+            type="button"
+          >
+            Cancel
+          </button>
+        ) : null}
+      </div>
+      <StatusMessage error={error} success={success} />
+    </form>
+  );
+}
+
+function DeleteConfirmation({
+  disabled,
+  kind,
+  name,
+  onCancel,
+  onDelete,
+}: {
+  disabled: boolean;
+  kind: MutationKind;
+  name: string;
+  onCancel: () => void;
+  onDelete: () => Promise<void>;
+}) {
+  const [confirmation, setConfirmation] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    if (confirmation.trim() !== name) {
+      setError(`Type ${name} to confirm deletion.`);
+      return;
+    }
+    setDeleting(true);
+    try {
+      await onDelete();
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : `Repository ${kind} could not be deleted.`,
+      );
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <form className="mt-3 grid gap-3" onSubmit={submit}>
+      <p className="t-xs">
+        Type <span className="t-mono-sm">{name}</span> to delete this {kind}.
+      </p>
+      <input
+        aria-label={`Confirm delete ${name}`}
+        className="input"
+        disabled={disabled || deleting}
+        onChange={(event) => setConfirmation(event.target.value)}
+        value={confirmation}
+      />
+      <div className="flex flex-wrap gap-2">
+        <button
+          aria-disabled={disabled || deleting}
+          className="btn sm"
+          disabled={disabled || deleting}
+          type="submit"
+        >
+          {deleting ? "Deleting..." : `Delete ${kind}`}
+        </button>
+        <button
+          aria-disabled={deleting}
+          className="btn sm"
+          disabled={deleting}
+          onClick={onCancel}
+          type="button"
+        >
+          Cancel
+        </button>
+      </div>
+      <StatusMessage error={error} success={null} />
+    </form>
+  );
+}
+
 function SecretRows({
+  canEdit,
+  deletingName,
+  editingName,
   items,
+  onDelete,
+  onEdit,
+  onSave,
+  setDeletingName,
+  setEditingName,
   title,
 }: {
+  canEdit: boolean;
+  deletingName: string | null;
+  editingName: string | null;
   items: ActionsSecretSummary[];
+  onDelete: (name: string) => Promise<void>;
+  onEdit: (name: string) => void;
+  onSave: (
+    currentName: string,
+    payload: { name: string; value: string },
+  ) => Promise<void>;
+  setDeletingName: (name: string | null) => void;
+  setEditingName: (name: string | null) => void;
   title: string;
 }) {
   if (items.length === 0) return null;
@@ -163,10 +420,47 @@ function SecretRows({
                 {settingActorLabel(secret)} · {secret.storageKind} ·{" "}
                 {secret.visibilityPolicy}
               </p>
+              {editingName === secret.name ? (
+                <div className="mt-3">
+                  <SettingMutationForm
+                    disabled={!canEdit}
+                    initialName={secret.name}
+                    kind="secret"
+                    mode="update"
+                    onCancel={() => setEditingName(null)}
+                    onSubmit={(payload) => onSave(secret.name, payload)}
+                  />
+                </div>
+              ) : null}
+              {deletingName === secret.name ? (
+                <DeleteConfirmation
+                  disabled={!canEdit}
+                  kind="secret"
+                  name={secret.name}
+                  onCancel={() => setDeletingName(null)}
+                  onDelete={() => onDelete(secret.name)}
+                />
+              ) : null}
             </div>
             <div className="flex shrink-0 flex-wrap gap-2">
-              <DisabledAction label="Update" />
-              <DisabledAction label="Delete" />
+              <button
+                aria-disabled={!canEdit}
+                className="btn sm"
+                disabled={!canEdit}
+                onClick={() => onEdit(secret.name)}
+                type="button"
+              >
+                Update
+              </button>
+              <button
+                aria-disabled={!canEdit}
+                className="btn sm"
+                disabled={!canEdit}
+                onClick={() => setDeletingName(secret.name)}
+                type="button"
+              >
+                Delete
+              </button>
             </div>
           </div>
         ))}
@@ -206,10 +500,29 @@ function InheritedSecretRows({
 }
 
 function VariableRows({
+  canEdit,
+  deletingName,
+  editingName,
   items,
+  onDelete,
+  onEdit,
+  onSave,
+  setDeletingName,
+  setEditingName,
   title,
 }: {
+  canEdit: boolean;
+  deletingName: string | null;
+  editingName: string | null;
   items: ActionsVariableSummary[];
+  onDelete: (name: string) => Promise<void>;
+  onEdit: (name: string) => void;
+  onSave: (
+    currentName: string,
+    payload: { name: string; value: string },
+  ) => Promise<void>;
+  setDeletingName: (name: string | null) => void;
+  setEditingName: (name: string | null) => void;
   title: string;
 }) {
   if (items.length === 0) return null;
@@ -251,10 +564,48 @@ function VariableRows({
                 Updated {formatDate(variable.updatedAt)} by{" "}
                 {settingActorLabel(variable)} · {variable.visibilityPolicy}
               </p>
+              {editingName === variable.name ? (
+                <div className="mt-3">
+                  <SettingMutationForm
+                    disabled={!canEdit}
+                    initialName={variable.name}
+                    initialValue={variable.value ?? ""}
+                    kind="variable"
+                    mode="update"
+                    onCancel={() => setEditingName(null)}
+                    onSubmit={(payload) => onSave(variable.name, payload)}
+                  />
+                </div>
+              ) : null}
+              {deletingName === variable.name ? (
+                <DeleteConfirmation
+                  disabled={!canEdit}
+                  kind="variable"
+                  name={variable.name}
+                  onCancel={() => setDeletingName(null)}
+                  onDelete={() => onDelete(variable.name)}
+                />
+              ) : null}
             </div>
             <div className="flex shrink-0 flex-wrap gap-2">
-              <DisabledAction label="Update" />
-              <DisabledAction label="Delete" />
+              <button
+                aria-disabled={!canEdit}
+                className="btn sm"
+                disabled={!canEdit}
+                onClick={() => onEdit(variable.name)}
+                type="button"
+              >
+                Update
+              </button>
+              <button
+                aria-disabled={!canEdit}
+                className="btn sm"
+                disabled={!canEdit}
+                onClick={() => setDeletingName(variable.name)}
+                type="button"
+              >
+                Delete
+              </button>
             </div>
           </div>
         ))}
@@ -338,14 +689,56 @@ export function RepositoryActionsSecretsPage({
   repository,
   settingsResult,
 }: RepositoryActionsSecretsPageProps) {
+  const [settings, setSettings] = useState(
+    settingsResult.ok ? settingsResult.settings : null,
+  );
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [pageSuccess, setPageSuccess] = useState<string | null>(null);
+  const [editingSecret, setEditingSecret] = useState<string | null>(null);
+  const [editingVariable, setEditingVariable] = useState<string | null>(null);
+  const [deletingSecret, setDeletingSecret] = useState<string | null>(null);
+  const [deletingVariable, setDeletingVariable] = useState<string | null>(null);
+
   if (!settingsResult.ok) {
     return (
       <SettingsUnavailable repository={repository} result={settingsResult} />
     );
   }
 
-  const { settings } = settingsResult;
+  if (!settings) return null;
+
   const showSecrets = activeTab !== "variables";
+
+  async function mutate(
+    mutation: RepositoryActionsSecretsMutation,
+    message: string,
+  ) {
+    setPageError(null);
+    setPageSuccess(null);
+    const response = await fetch(actionUrl(repository), {
+      body: JSON.stringify(mutation),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    const payload = (await response.json().catch(() => null)) as unknown;
+    if (!response.ok) {
+      throw new Error(
+        errorMessageFromPayload(
+          payload,
+          "Repository Actions setting update failed.",
+        ),
+      );
+    }
+    setSettings(payload as RepositoryActionsSecretsSettings);
+    setEditingSecret(null);
+    setEditingVariable(null);
+    setDeletingSecret(null);
+    setDeletingVariable(null);
+    setPageSuccess(message);
+  }
+
+  const canEdit = settings.canEdit;
+
   return (
     <div className="grid gap-6">
       <section className="card p-5">
@@ -364,11 +757,12 @@ export function RepositoryActionsSecretsPage({
           <div className="flex flex-wrap gap-2">
             <span className="chip soft">{settings.viewerPermission}</span>
             <span className="chip soft">{settings.visibility}</span>
-            <span className={settings.canEdit ? "chip ok" : "chip warn"}>
-              {settings.canEdit ? "Admin editable" : "Read only"}
+            <span className={canEdit ? "chip ok" : "chip warn"}>
+              {canEdit ? "Admin editable" : "Read only"}
             </span>
           </div>
         </div>
+        <StatusMessage error={pageError} success={pageSuccess} />
       </section>
 
       <SummaryCards settings={settings} />
@@ -398,20 +792,93 @@ export function RepositoryActionsSecretsPage({
 
       {showSecrets ? (
         <div className="grid gap-4">
+          <SettingMutationForm
+            disabled={!canEdit}
+            kind="secret"
+            mode="create"
+            onSubmit={(payload) =>
+              mutate(
+                { action: "create-secret", ...payload },
+                `Secret ${payload.name.toUpperCase()} created.`,
+              )
+            }
+          />
           {settings.secrets.length === 0 ? (
             <EmptyState kind="secret" repository={repository} />
           ) : (
-            <SecretRows items={settings.secrets} title="Repository secrets" />
+            <SecretRows
+              canEdit={canEdit}
+              deletingName={deletingSecret}
+              editingName={editingSecret}
+              items={settings.secrets}
+              onDelete={(name) =>
+                mutate(
+                  { action: "delete-secret", name },
+                  `Secret ${name} deleted.`,
+                )
+              }
+              onEdit={(name) => {
+                setDeletingSecret(null);
+                setEditingSecret(name);
+              }}
+              onSave={(currentName, payload) =>
+                mutate(
+                  { action: "update-secret", currentName, ...payload },
+                  `Secret ${payload.name.toUpperCase()} updated.`,
+                )
+              }
+              setDeletingName={(name) => {
+                setEditingSecret(null);
+                setDeletingSecret(name);
+              }}
+              setEditingName={setEditingSecret}
+              title="Repository secrets"
+            />
           )}
           <InheritedSecretRows items={settings.inheritedSecrets} />
         </div>
       ) : (
         <div className="grid gap-4">
+          <SettingMutationForm
+            disabled={!canEdit}
+            kind="variable"
+            mode="create"
+            onSubmit={(payload) =>
+              mutate(
+                { action: "create-variable", ...payload },
+                `Variable ${payload.name.toUpperCase()} created.`,
+              )
+            }
+          />
           {settings.variables.length === 0 ? (
             <EmptyState kind="variable" repository={repository} />
           ) : (
             <VariableRows
+              canEdit={canEdit}
+              deletingName={deletingVariable}
+              editingName={editingVariable}
               items={settings.variables}
+              onDelete={(name) =>
+                mutate(
+                  { action: "delete-variable", name },
+                  `Variable ${name} deleted.`,
+                )
+              }
+              onEdit={(name) => {
+                setDeletingVariable(null);
+                setEditingVariable(name);
+              }}
+              onSave={(currentName, payload) =>
+                mutate(
+                  { action: "update-variable", currentName, ...payload },
+                  `Variable ${payload.name.toUpperCase()} updated.`,
+                )
+              }
+              setDeletingName={(name) => {
+                setEditingVariable(null);
+                setDeletingVariable(name);
+              }}
+              setEditingName={setEditingVariable}
               title="Repository variables"
             />
           )}

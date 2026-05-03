@@ -1287,6 +1287,30 @@ export type RepositoryActionsSecretsSettingsFetchResult =
   | { ok: true; settings: RepositoryActionsSecretsSettings }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type RepositoryActionsSecretMutationPayload = {
+  name?: string;
+  value: string;
+};
+
+export type RepositoryActionsVariableMutationPayload = {
+  name?: string;
+  value: string;
+};
+
+export type RepositoryActionsSecretsMutation =
+  | ({ action: "create-secret" } & RepositoryActionsSecretMutationPayload)
+  | ({
+      action: "update-secret";
+      currentName: string;
+    } & RepositoryActionsSecretMutationPayload)
+  | { action: "delete-secret"; name: string }
+  | ({ action: "create-variable" } & RepositoryActionsVariableMutationPayload)
+  | ({
+      action: "update-variable";
+      currentName: string;
+    } & RepositoryActionsVariableMutationPayload)
+  | { action: "delete-variable"; name: string };
+
 export type RepositoryWebhookMutationPayload = {
   payloadUrl: string;
   contentType?: WebhookContentType;
@@ -5837,6 +5861,77 @@ export async function getRepositoryActionsSecretsSettingsFromCookie(
     ok: true,
     settings: (await response.json()) as RepositoryActionsSecretsSettings,
   };
+}
+
+export async function mutateRepositoryActionsSecretsSettingsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  mutation: RepositoryActionsSecretsMutation,
+): Promise<RepositoryActionsSecretsSettings> {
+  const base = `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/secrets`;
+  let path = base;
+  let method = "POST";
+  let body: unknown;
+
+  switch (mutation.action) {
+    case "create-secret": {
+      const { action: _action, ...payload } = mutation;
+      path = `${base}/secrets`;
+      body = payload;
+      break;
+    }
+    case "update-secret": {
+      const { action: _action, currentName, ...payload } = mutation;
+      path = `${base}/secrets/${encodeURIComponent(currentName)}`;
+      method = "PATCH";
+      body = payload;
+      break;
+    }
+    case "delete-secret":
+      path = `${base}/secrets/${encodeURIComponent(mutation.name)}`;
+      method = "DELETE";
+      break;
+    case "create-variable": {
+      const { action: _action, ...payload } = mutation;
+      path = `${base}/variables`;
+      body = payload;
+      break;
+    }
+    case "update-variable": {
+      const { action: _action, currentName, ...payload } = mutation;
+      path = `${base}/variables/${encodeURIComponent(currentName)}`;
+      method = "PATCH";
+      body = payload;
+      break;
+    }
+    case "delete-variable":
+      path = `${base}/variables/${encodeURIComponent(mutation.name)}`;
+      method = "DELETE";
+      break;
+  }
+
+  const response = await fetch(path, {
+    method,
+    headers: {
+      ...(body ? { "content-type": "application/json" } : {}),
+      ...(cookie ? { cookie } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const envelope = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Repository Actions secrets update failed.",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as RepositoryActionsSecretsSettings;
 }
 
 export async function getRepositoryWebhookDetailFromCookie(

@@ -45,7 +45,7 @@
 
 ## Phase 3: Add, Update, and Delete Mutations - confirmed forms and write-only handling
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire every visible secret and variable action to real server-confirmed writes. Admins must be able to add, update, and delete repository-scoped secrets and variables from the UI with inline success/error feedback, while invalid inputs never update local UI optimistically.
 

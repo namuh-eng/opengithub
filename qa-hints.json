@@ -3618,5 +3618,24 @@
       "Check long secret/variable names, long variable values, mobile wrapping, keyboard tab traversal, and screen reader labels across empty/populated/forbidden states.",
       "Continue ciphertext/plaintext leakage scans across API responses, frontend HTML, screenshots, audit rows, logs, and future Actions run contexts."
     ]
+  },
+  {
+    "feature_id": "settings-005",
+    "tests_written": [
+      "Completed Phase 3 Add, Update, and Delete Mutations without marking settings-005 build_pass=true.",
+      "Added same-origin Next route POST /{owner}/{repo}/settings/secrets/actions that forwards authenticated secret and variable create/update/delete mutations to the Rust API without JS-side auth.",
+      "Replaced Phase 2 disabled mutation placeholders with Editorial add/update/delete forms for repository secrets and variables, including write-only secret value handling, inline client/API validation, typed delete confirmations, loading states, success/error feedback, and server-confirmed state refreshes only.",
+      "Focused Vitest covers create-secret fetch payloads, secret plaintext non-rendering after server response, rejected variable mutation errors, no local-only state changes, forbidden redaction, empty states, inherited metadata, and Editorial guard assertions.",
+      "Focused Playwright smoke creates a secret through the UI, verifies metadata after reload, updates the secret without value disclosure, creates/updates/deletes a variable, deletes the secret, verifies forbidden non-admin redaction, checks no dead controls, and saves ralph/screenshots/build/settings-005-phase3-secrets-mutations.jpg.",
+      "Verification passed: web tsc --noEmit; focused repository-actions-secrets Vitest; focused repository-settings-secrets Playwright; TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false make check; DB_SSL=false make test with Cargo tests plus 298 frontend tests; full same-env make test-e2e with 96 Playwright tests; mandatory Editorial banned-value scan with zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Rerun repository_actions_secrets_contract against a clean reachable TEST_DATABASE_URL so DB assertions execute instead of self-skipping on the shared migration state.",
+      "Probe API and UI handling for leading/trailing whitespace and multiline secret values; the UI preserves nonblank submitted values but local smoke used simple one-line values.",
+      "Exercise concurrent admin edits, duplicate create races, update-after-delete, delete confirmation casing, very long names/values, mobile keyboard behavior, and failed network retries.",
+      "Continue ciphertext/plaintext leakage scans across server logs, API responses, frontend state, screenshots, audit rows, and future workflow contexts.",
+      "Verify real AWS KMS, Secrets Manager, or encrypted S3 envelope backing before production hardening; this phase still uses the local envelope abstraction from Phase 1.",
+      "Phase 4 still needs workflow resolution, fork/reusable-workflow/environment policy enforcement, and log masking integration."
+    ]
   }
 ]

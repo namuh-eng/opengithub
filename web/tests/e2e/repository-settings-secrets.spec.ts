@@ -2,8 +2,6 @@ import { execFileSync } from "node:child_process";
 import { expect, type Page, test } from "@playwright/test";
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-const apiUrl = process.env.API_URL ?? "http://localhost:3016";
-
 type SeededDashboard = {
   cookieName: string;
   cookieValue: string;
@@ -63,62 +61,100 @@ async function expectNoDeadControls(page: Page) {
   }
 }
 
-function repoApiPath(seeded: SeededDashboard, suffix: string) {
-  const [, owner, repo] = seeded.firstRepositoryHref.split("/");
-  return `${apiUrl}/api/repos/${owner}/${repo}/settings/secrets/${suffix}`;
-}
-
 test.skip(
   !databaseUrl,
   "repository Actions secrets smoke needs TEST_DATABASE_URL or DATABASE_URL",
 );
 
-test("admin can view write-only Actions secrets and variables metadata", async ({
+test("admin can create update and delete Actions secrets and variables", async ({
   page,
 }) => {
   const seeded = seedDashboard();
   await signIn(page, seeded);
-  const cookie = `${seeded.cookieName}=${seeded.cookieValue}`;
   const suffix = Date.now().toString(36).toUpperCase();
-
-  const secretResponse = await page.request.post(
-    repoApiPath(seeded, "secrets"),
-    {
-      data: { name: `DEPLOY_KEY_${suffix}`, value: `super-secret-${suffix}` },
-      headers: { cookie },
-    },
-  );
-  expect(secretResponse.ok(), await secretResponse.text()).toBe(true);
-
-  const variableResponse = await page.request.post(
-    repoApiPath(seeded, "variables"),
-    {
-      data: {
-        name: `PUBLIC_BASE_URL_${suffix}`,
-        value: "https://opengithub.namuh.co",
-      },
-      headers: { cookie },
-    },
-  );
-  expect(variableResponse.ok(), await variableResponse.text()).toBe(true);
+  const secretName = `DEPLOY_KEY_${suffix}`;
+  const variableName = `PUBLIC_BASE_URL_${suffix}`;
 
   await page.goto(`${seeded.firstRepositoryHref}/settings/secrets`);
   await expect(
     page.getByRole("heading", { name: "Secrets and variables" }),
   ).toBeVisible();
-  await expect(page.getByText(`DEPLOY_KEY_${suffix}`)).toBeVisible();
+
+  await page.getByLabel("Name").fill(secretName);
+  await page.getByLabel("Secret value").fill(`super-secret-${suffix}`);
+  await page.getByRole("button", { name: "Add secret" }).click();
+  await expect(page.getByText(`${secretName} created.`)).toBeVisible();
+  await expect(page.getByText(secretName, { exact: true })).toBeVisible();
   await expect(page.getByText("Write-only values")).toBeVisible();
   await expect(page.getByText(`super-secret-${suffix}`)).toHaveCount(0);
+
+  await page.reload();
+  await expect(page.getByText(secretName, { exact: true })).toBeVisible();
+  await expect(page.getByText(`super-secret-${suffix}`)).toHaveCount(0);
+  const secretRow = page
+    .getByText(secretName, { exact: true })
+    .locator("xpath=ancestor::div[contains(@class, 'list-row')][1]");
+  await secretRow.getByRole("button", { name: "Update" }).click();
+  await secretRow.getByLabel("Secret value").fill(`rotated-secret-${suffix}`);
+  await secretRow.getByRole("button", { name: "Update secret" }).click();
+  await expect(page.getByText(`${secretName} updated.`)).toBeVisible();
+  await expect(page.getByText(`rotated-secret-${suffix}`)).toHaveCount(0);
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/settings-005-phase2-secrets-shell.jpg",
+    path: "../ralph/screenshots/build/settings-005-phase3-secrets-mutations.jpg",
   });
 
   await page.getByRole("link", { name: /Variables/ }).click();
   await expect(page).toHaveURL(/tab=variables/);
-  await expect(page.getByText(`PUBLIC_BASE_URL_${suffix}`)).toBeVisible();
+  await page.getByLabel("Name").fill(variableName);
+  await page.getByLabel("Variable value").fill("https://opengithub.namuh.co");
+  await page.getByRole("button", { name: "Add variable" }).click();
+  await expect(page.getByText(`${variableName} created.`)).toBeVisible();
+  await expect(page.getByText(variableName, { exact: true })).toBeVisible();
   await expect(page.getByText("https://opengithub.namuh.co")).toBeVisible();
+
+  const variableRow = page
+    .getByText(variableName, { exact: true })
+    .locator("xpath=ancestor::div[contains(@class, 'list-row')][1]");
+  await variableRow.getByRole("button", { name: "Update" }).click();
+  await variableRow
+    .getByLabel("Variable value")
+    .fill("https://staging.opengithub.namuh.co");
+  await variableRow.getByRole("button", { name: "Update variable" }).click();
+  await expect(page.getByText(`${variableName} updated.`)).toBeVisible();
+  await expect(
+    page.getByText("https://staging.opengithub.namuh.co"),
+  ).toBeVisible();
+
+  await variableRow.getByRole("button", { name: "Delete" }).click();
+  await variableRow
+    .getByLabel(`Confirm delete ${variableName}`)
+    .fill(variableName);
+  await variableRow.getByRole("button", { name: "Delete variable" }).click();
+  await expect(page.getByText(`${variableName} deleted.`)).toBeVisible();
+  await expect(
+    page.locator(".list-row").filter({ hasText: variableName }),
+  ).toHaveCount(0);
+
+  await page
+    .getByRole("navigation", { name: "Secrets and variables tabs" })
+    .getByRole("link", { name: /Secrets/ })
+    .click();
+  const refreshedSecretRow = page
+    .getByText(secretName, { exact: true })
+    .locator("xpath=ancestor::div[contains(@class, 'list-row')][1]");
+  await refreshedSecretRow.getByRole("button", { name: "Delete" }).click();
+  await refreshedSecretRow
+    .getByLabel(`Confirm delete ${secretName}`)
+    .fill(secretName);
+  await refreshedSecretRow
+    .getByRole("button", { name: "Delete secret" })
+    .click();
+  await expect(page.getByText(`${secretName} deleted.`)).toBeVisible();
+  await expect(
+    page.locator(".list-row").filter({ hasText: secretName }),
+  ).toHaveCount(0);
   await expectNoDeadControls(page);
 
   await page.context().clearCookies();
