@@ -447,6 +447,225 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-webhooks-list",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/settings/hooks",
+    title: "List repository webhooks",
+    description:
+      "Reads the admin-only repository Webhooks settings contract, including configured endpoints, event subscriptions, write-only secret state, recent delivery summaries, supported event definitions, and audit events.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    response: `{
+  "repository": {
+    "ownerLogin": "mona",
+    "name": "octo-app",
+    "viewerPermission": "admin",
+    "canEdit": true
+  },
+  "eventDefinitions": [
+    { "name": "push", "label": "Pushes", "category": "Code" }
+  ],
+  "hooks": [
+    {
+      "id": "hook_01",
+      "payloadUrl": "https://receiver.example.com/hooks/opengithub",
+      "contentType": "json",
+      "active": true,
+      "sslVerify": true,
+      "eventSelection": "selected",
+      "events": ["push", "pull_request"],
+      "secretConfigured": true,
+      "latestDelivery": {
+        "id": "delivery_01",
+        "guid": "9a8b7c",
+        "event": "push",
+        "status": "delivered",
+        "responseStatus": 202,
+        "attemptCount": 1,
+        "durationMs": 88
+      }
+    }
+  ],
+  "auditEvents": []
+}`,
+    notes: [
+      "Anonymous callers receive 401; non-admin viewers receive 403 without hook URLs, secrets, or delivery history.",
+      "Plaintext webhook secrets are never returned; secretConfigured is the only readable secret state.",
+      "Delivery statuses are queued, delivered, and failed with attempt counts, duration, and redelivery lineage.",
+    ],
+  },
+  {
+    id: "repo-webhooks-create",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/settings/hooks",
+    title: "Create repository webhook",
+    description:
+      "Creates a webhook endpoint, stores the secret write-only, queues an initial ping delivery, records an audit event, and returns fresh settings with the queued delivery summary.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    request: `{
+  "payloadUrl": "https://receiver.example.com/hooks/opengithub",
+  "contentType": "json",
+  "secret": "shown-only-on-submit",
+  "sslVerify": true,
+  "eventSelection": "selected",
+  "events": ["push", "issues"],
+  "active": true
+}`,
+    response: `{
+  "settings": {
+    "hooks": [{ "payloadUrl": "https://receiver.example.com/hooks/opengithub" }]
+  },
+  "delivery": {
+    "event": "ping",
+    "status": "queued",
+    "attemptCount": 0
+  }
+}`,
+    notes: [
+      "Payload URLs must use HTTPS and contentType must be json or form.",
+      "Selected event mode requires at least one supported event; everything mode subscribes to all supported events.",
+      "Validation errors return the standard validation_failed envelope without echoing secrets.",
+    ],
+  },
+  {
+    id: "repo-webhooks-detail",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/settings/hooks/{hook_id}",
+    title: "Read repository webhook detail",
+    description:
+      "Reads one webhook configuration plus its recent delivery history for the Editorial hook detail and Recent deliveries panels.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    response: `{
+  "hook": {
+    "id": "hook_01",
+    "payloadUrl": "https://receiver.example.com/hooks/opengithub",
+    "secretConfigured": true
+  },
+  "deliveries": [
+    {
+      "id": "delivery_01",
+      "guid": "9a8b7c",
+      "event": "push",
+      "status": "failed",
+      "responseStatus": 503,
+      "attemptCount": 2,
+      "durationMs": 240,
+      "redeliveryOfId": null
+    }
+  ]
+}`,
+    notes: [
+      "Missing hooks and private repository outsiders return not_found without leaking endpoint metadata.",
+      "Recent delivery rows include retry attempt counts and redeliveryOfId for manual redelivery lineage.",
+    ],
+  },
+  {
+    id: "repo-webhooks-update-delete",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/settings/hooks/{hook_id}",
+    title: "Update repository webhook",
+    description:
+      "Updates endpoint configuration and returns fresh settings only after validation, secret-retention handling, and audit logging succeed.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    request: `{
+  "payloadUrl": "https://receiver.example.com/hooks/opengithub-v2",
+  "contentType": "form",
+  "secret": "",
+  "sslVerify": true,
+  "eventSelection": "push",
+  "events": ["push"],
+  "active": false
+}`,
+    response: `{
+  "hooks": [
+    {
+      "payloadUrl": "https://receiver.example.com/hooks/opengithub-v2",
+      "contentType": "form",
+      "active": false,
+      "secretConfigured": true
+    }
+  ],
+  "auditEvents": [{ "eventType": "repository.webhook.update" }]
+}`,
+    notes: [
+      "Blank secret on edit retains the existing secret hash; a non-empty secret rotates it.",
+      "DELETE /api/repos/{owner}/{repo}/settings/hooks/{hook_id} removes the hook and writes repository.webhook.delete.",
+      "Deleted hooks cannot be pinged or redelivered.",
+    ],
+  },
+  {
+    id: "repo-webhooks-ping",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/settings/hooks/{hook_id}/ping",
+    title: "Ping repository webhook",
+    description:
+      "Queues a manual ping delivery for an active or inactive webhook so admins can test receiver connectivity without changing subscriptions.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    response: `{
+  "settings": { "hooks": [{ "id": "hook_01" }] },
+  "delivery": {
+    "id": "delivery_ping",
+    "event": "ping",
+    "status": "queued",
+    "attemptCount": 0
+  }
+}`,
+    notes: [
+      "The delivery worker signs ping payloads with the configured secret using x-hub-signature-256.",
+      "Worker writes response status, bounded headers/body excerpts or storage keys, duration, and retry metadata.",
+    ],
+  },
+  {
+    id: "repo-webhooks-delivery",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/settings/hooks/{hook_id}/deliveries/{delivery_id}",
+    title: "Read webhook delivery detail",
+    description:
+      "Reads one delivery request/response panel with redacted headers, bounded body excerpts, attempt metadata, and retry timing.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    response: `{
+  "summary": {
+    "id": "delivery_01",
+    "guid": "9a8b7c",
+    "event": "push",
+    "status": "failed",
+    "attemptCount": 2,
+    "responseStatus": 503,
+    "durationMs": 240
+  },
+  "requestHeaders": { "x-github-event": "push" },
+  "requestBody": "{\\"zen\\":\\"Keep it logically awesome.\\"}",
+  "responseHeaders": { "content-type": "application/json" },
+  "responseBody": "{\\"ok\\":false}",
+  "nextAttemptAt": "2026-05-03T02:05:00Z"
+}`,
+    notes: [
+      "Secret headers and authorization-like receiver headers are redacted before storage or display.",
+      "Oversized request and response bodies are represented by storage keys instead of unbounded inline strings.",
+    ],
+  },
+  {
+    id: "repo-webhooks-redeliver",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/settings/hooks/{hook_id}/deliveries/{delivery_id}/redeliver",
+    title: "Redeliver webhook event",
+    description:
+      "Queues a new delivery from an existing delivery payload and links it to the original delivery for audit and timeline clarity.",
+    auth: "Signed opengithub session cookie with repository admin or owner access",
+    response: `{
+  "settings": { "hooks": [{ "id": "hook_01" }] },
+  "delivery": {
+    "id": "delivery_redelivered",
+    "event": "redelivery",
+    "status": "queued",
+    "redeliveryOfId": "delivery_01"
+  }
+}`,
+    notes: [
+      "Redelivery preserves original hook ownership checks and fails closed if the delivery does not belong to the hook.",
+      "Every successful redelivery writes repository.webhook.redeliver without storing plaintext secrets.",
+    ],
+  },
+  {
     id: "org-repositories",
     method: "GET",
     path: "/api/orgs/{org}/repositories?q=router&type=public&language=Rust&page=1&pageSize=30",

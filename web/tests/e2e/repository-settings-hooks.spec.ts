@@ -7,6 +7,7 @@ type SeededDashboard = {
   cookieName: string;
   cookieValue: string;
   firstRepositoryHref: string;
+  profileActionCookieValue: string;
 };
 
 function seedDashboard(): SeededDashboard {
@@ -103,6 +104,10 @@ test("admin can create, edit, test, redeliver, and delete a webhook", async ({
     fullPage: true,
     path: "../ralph/screenshots/build/settings-004-phase3-hooks-mutations.jpg",
   });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/settings-004-final-hooks-list-admin.jpg",
+  });
 
   await page.goto(
     `${seeded.firstRepositoryHref}/settings/hooks/${hookId}?delivery=${deliveryId}`,
@@ -112,6 +117,11 @@ test("admin can create, edit, test, redeliver, and delete a webhook", async ({
   await expect(page.getByText("Request", { exact: true })).toBeVisible();
   await expect(page.getByText("Response", { exact: true })).toBeVisible();
   await expect(page.getByText(/Keep it logically awesome/)).toBeVisible();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/settings-004-final-hooks-detail-admin.jpg",
+  });
 
   await page.getByRole("button", { name: "Edit" }).click();
   await page.getByLabel("Just push").check();
@@ -142,6 +152,11 @@ test("admin can create, edit, test, redeliver, and delete a webhook", async ({
   await page.getByRole("button", { name: "Delete webhook" }).click();
   await expect(page.getByText("Webhook deleted.")).toBeVisible();
   await expect(row).toHaveCount(0);
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/settings-004-final-hooks-empty-admin.jpg",
+  });
 
   await page.setViewportSize({ width: 390, height: 860 });
   await page.goto(`${seeded.firstRepositoryHref}/settings/hooks`);
@@ -152,5 +167,32 @@ test("admin can create, edit, test, redeliver, and delete a webhook", async ({
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/settings-004-phase3-hooks-mobile.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/settings-004-final-hooks-mobile.jpg",
+  });
+
+  await page.context().clearCookies();
+  await page.context().addCookies([
+    {
+      domain: "localhost",
+      httpOnly: true,
+      name: seeded.cookieName,
+      path: "/",
+      sameSite: "Lax",
+      secure: false,
+      value: seeded.profileActionCookieValue,
+    },
+  ]);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${seeded.firstRepositoryHref}/settings/hooks`);
+  await expect(
+    page.getByRole("heading", { name: "Webhook settings are restricted" }),
+  ).toBeVisible();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/settings-004-final-hooks-forbidden.jpg",
   });
 });

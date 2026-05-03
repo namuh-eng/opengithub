@@ -108,6 +108,36 @@ describe("ApiDocsPage", () => {
         /Matching previews use the same bounded fnmatch-style pattern matcher/,
       ),
     ).toBeVisible();
+    expect(
+      screen.getAllByText("/api/repos/{owner}/{repo}/settings/hooks")[0],
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(
+        "/api/repos/{owner}/{repo}/settings/hooks/{hook_id}",
+      )[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/settings/hooks/{hook_id}/ping",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/settings/hooks/{hook_id}/deliveries/{delivery_id}",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/settings/hooks/{hook_id}/deliveries/{delivery_id}/redeliver",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Plaintext webhook secrets are never returned/),
+    ).toBeVisible();
+    expect(screen.getByText(/x-hub-signature-256/)).toBeVisible();
+    expect(
+      screen.getByText(/Oversized request and response bodies/),
+    ).toBeVisible();
     expect(screen.getByText("/api/repos/{owner}/{repo}/pulls")).toBeVisible();
     expect(
       screen.getByText(

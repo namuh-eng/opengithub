@@ -3559,5 +3559,26 @@
       "Confirm concrete event-source adapters are called from push, issue, PR, release, workflow, package, and Pages producers as those feature families mature; this phase exposes the adapter but does not wire every future producer.",
       "Full API docs, final desktop/mobile screenshots, retention cleanup notes, and build_pass bookkeeping are deferred to Phase 5."
     ]
+  },
+  {
+    "feature_id": "settings-004",
+    "tests_written": [
+      "Rust repository webhook settings contract covers admin gates, HTTPS/content-type/event validation, write-only secret behavior, ping delivery creation, delivery detail redaction, redelivery linkage, deletion, private repository redaction, and audit redaction.",
+      "Rust webhook delivery worker contract covers event subscription filtering, inactive hook skipping, x-hub-signature-256 signing, bounded request/response recording, retry scheduling, terminal failure, and delivery metadata.",
+      "Vitest covers webhook empty/list/detail/forbidden/unavailable states, add/edit/delete/ping/redeliver interactions, client-side selected-event validation, no local-only updates, and API docs for webhook endpoints.",
+      "Playwright smoke covers admin create, detail redirect, delivery request/response panels, edit, ping, redeliver, delete persistence, mobile overflow, no dead controls, and forbidden non-admin state.",
+      "Final browser screenshots saved under ralph/screenshots/build/settings-004-final-hooks-list-admin.jpg, settings-004-final-hooks-detail-admin.jpg, settings-004-final-hooks-empty-admin.jpg, settings-004-final-hooks-mobile.jpg, and settings-004-final-hooks-forbidden.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Real external receiver success/failure using a controllable HTTPS endpoint rather than the local seeded receiver URL.",
+      "TLS/SSL verification behavior against valid, self-signed, expired, and hostname-mismatched certificates.",
+      "Receiver-side HMAC verification for secret rotation, blank-secret retention on edit, and old-signature rejection after rotation.",
+      "Retry backoff timing and terminal failure behavior under slow, timed-out, 4xx, 5xx, and connection-refused receivers.",
+      "Payload and response body truncation/storage-key behavior for payloads above inline display limits and S3-backed large bodies.",
+      "Concurrent admin edits, delete while delivery is queued, redelivery after hook deletion, and repeated manual ping/redelivery spam limits.",
+      "Event subscription edge cases across push, issues, pull_request, release, workflow, package, and Pages events as those domains mature.",
+      "Private repository leakage checks for hook URLs, delivery bodies, request headers, response headers, secrets, and audit metadata.",
+      "Retention cleanup and delivery history bounds once scheduled retention jobs are active."
+    ]
   }
 ]
