@@ -18,6 +18,7 @@ pub mod permissions;
 pub mod personal_settings;
 pub mod profiles;
 pub mod pulls;
+pub mod releases;
 pub mod repositories;
 pub mod repository_imports;
 pub mod search;

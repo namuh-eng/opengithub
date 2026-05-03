@@ -3749,5 +3749,21 @@
       "Probe private repository leakage for DNS challenge values, artifact storage keys, CloudFront aliases, build logs, custom domains, and deployment metadata in non-admin views.",
       "Check keyboard and screen-reader traversal through source controls, domain forms, DNS recheck, HTTPS toggle, unpublish confirmation, deployment links, and mobile layout."
     ]
+  },
+  {
+    "feature_id": "releases-001",
+    "tests_written": [
+      "Completed Phase 1 Releases read API contract without marking releases-001 build_pass=true.",
+      "Added additive release metadata, asset, reaction, download, and audit tables/columns for repository releases.",
+      "Added Rust API read routes for release list, latest release, release detail by id/tag, repository tags, and archive authorization metadata.",
+      "Focused Rust contract covers public list ordering, latest non-prerelease resolution, draft filtering, detail by id/tag, tag rows, asset metadata, reaction summary/viewer reaction, archive metadata, Markdown sanitization, and private repository permission redaction.",
+      "Verification passed: focused repository_releases_contract, make check, make test, and the mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 must add the Editorial Releases and Tags UI and browser smoke screenshots before this feature can be build_pass.",
+      "Phase 3 must replace archive metadata with authorized asset/source archive download behavior, reaction mutations, latest navigation, and compare selector interactions.",
+      "Phase 4 must add release create/edit/publish/delete and asset upload/remove mutations with audit coverage.",
+      "Run against a clean migrated database with larger release histories, tags containing slashes, duplicate/deleted release edge cases, Markdown XSS probes, private repository leakage checks, and asset/reaction race conditions."
+    ]
   }
 ]

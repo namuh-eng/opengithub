@@ -35,6 +35,12 @@ use crate::{
         PagesActionsDeploymentMutation, PagesDomainMutation, PagesError, PagesHttpsMutation,
         PagesSourceMutation,
     },
+    domain::releases::{
+        repository_latest_release_by_owner_name, repository_release_archive_metadata_by_owner_name,
+        repository_release_detail_by_id_by_owner_name,
+        repository_release_detail_by_tag_by_owner_name, repository_release_list_by_owner_name,
+        repository_release_tags_by_owner_name, ReleasesError,
+    },
     domain::repositories::{
         cancel_repository_invitation_by_owner_name, create_repository_branch_rule_by_owner_name,
         create_repository_ruleset_by_owner_name, create_repository_with_bootstrap,
@@ -83,6 +89,19 @@ pub fn router() -> Router<AppState> {
         .route("/:owner/:repo/commits", get(commits))
         .route("/:owner/:repo/refs", get(refs))
         .route("/:owner/:repo/file-finder", get(file_finder))
+        .route("/:owner/:repo/releases", get(releases))
+        .route("/:owner/:repo/releases/latest", get(latest_release))
+        .route("/:owner/:repo/releases/tags", get(release_tags))
+        .route(
+            "/:owner/:repo/releases/zipball/*tag",
+            get(release_zipball_metadata),
+        )
+        .route(
+            "/:owner/:repo/releases/tarball/*tag",
+            get(release_tarball_metadata),
+        )
+        .route("/:owner/:repo/releases/tag/*tag", get(release_by_tag))
+        .route("/:owner/:repo/releases/:release_id", get(release_by_id))
         .route(
             "/:owner/:repo/settings",
             get(settings).patch(update_settings),
@@ -261,6 +280,14 @@ struct RefsQuery {
     q: Option<String>,
     current_path: Option<String>,
     active_ref: Option<String>,
+    page: Option<i64>,
+    #[serde(alias = "page_size")]
+    page_size: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReleasesQuery {
     page: Option<i64>,
     #[serde(alias = "page_size")]
     page_size: Option<i64>,
@@ -584,6 +611,151 @@ async fn refs(
     })?;
 
     Ok(Json(json!(envelope)))
+}
+
+async fn releases(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<ReleasesQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let pagination = normalize_pagination(query.page, query.page_size);
+    let envelope = repository_release_list_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        actor.as_ref().map(|user| user.id),
+        pagination.page,
+        pagination.page_size,
+    )
+    .await
+    .map_err(map_releases_error)?;
+
+    Ok(Json(json!(envelope)))
+}
+
+async fn latest_release(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let release = repository_latest_release_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        actor.as_ref().map(|user| user.id),
+    )
+    .await
+    .map_err(map_releases_error)?;
+
+    Ok(Json(json!(release)))
+}
+
+async fn release_by_id(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, release_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let release = repository_release_detail_by_id_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        release_id,
+        actor.as_ref().map(|user| user.id),
+    )
+    .await
+    .map_err(map_releases_error)?;
+
+    Ok(Json(json!(release)))
+}
+
+async fn release_by_tag(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, tag)): Path<(String, String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let release = repository_release_detail_by_tag_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        &tag,
+        actor.as_ref().map(|user| user.id),
+    )
+    .await
+    .map_err(map_releases_error)?;
+
+    Ok(Json(json!(release)))
+}
+
+async fn release_tags(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<ReleasesQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let pagination = normalize_pagination(query.page, query.page_size);
+    let envelope = repository_release_tags_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        actor.as_ref().map(|user| user.id),
+        pagination.page,
+        pagination.page_size,
+    )
+    .await
+    .map_err(map_releases_error)?;
+
+    Ok(Json(json!(envelope)))
+}
+
+async fn release_zipball_metadata(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, tag)): Path<(String, String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    release_archive_metadata(state, headers, owner, repo, tag, "zipball").await
+}
+
+async fn release_tarball_metadata(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, tag)): Path<(String, String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    release_archive_metadata(state, headers, owner, repo, tag, "tarball").await
+}
+
+async fn release_archive_metadata(
+    state: AppState,
+    headers: HeaderMap,
+    owner: String,
+    repo: String,
+    tag: String,
+    format: &str,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let metadata = repository_release_archive_metadata_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        &tag,
+        format,
+        actor.as_ref().map(|user| user.id),
+    )
+    .await
+    .map_err(map_releases_error)?;
+
+    Ok(Json(json!(metadata)))
 }
 
 async fn file_finder(
@@ -1847,6 +2019,35 @@ fn map_pages_error(error: PagesError) -> (StatusCode, Json<ErrorEnvelope>) {
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal_error",
             "Pages settings operation failed".to_owned(),
+        ),
+    }
+}
+
+fn map_releases_error(error: ReleasesError) -> (StatusCode, Json<ErrorEnvelope>) {
+    match error {
+        ReleasesError::Repository(RepositoryError::PermissionDenied) => error_response(
+            StatusCode::FORBIDDEN,
+            "forbidden",
+            "user does not have repository access".to_owned(),
+        ),
+        ReleasesError::Repository(error) => map_repository_error(error),
+        ReleasesError::NotFound | ReleasesError::TagNotFound => {
+            error_response(StatusCode::NOT_FOUND, "not_found", error.to_string())
+        }
+        ReleasesError::UnsupportedArchiveFormat => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            error.to_string(),
+        ),
+        ReleasesError::Markdown => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            "release notes could not be rendered".to_owned(),
+        ),
+        ReleasesError::Sqlx(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "release operation failed".to_owned(),
         ),
     }
 }

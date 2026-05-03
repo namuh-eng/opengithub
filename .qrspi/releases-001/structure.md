@@ -6,7 +6,7 @@
 
 ## Phase 1: Releases Read Contract - list, detail, tags, assets, and permissions
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the Rust/Postgres API contract that lets viewers read public releases, latest release, release detail, repository tags, assets metadata, source archive links, and permission-sensitive private repository responses.
 

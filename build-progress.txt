@@ -2614,3 +2614,14 @@
 - Added `.qrspi/releases-001/structure.md` with five independently verifiable phases: releases read contract, Editorial releases/tags UI, assets/reactions/latest/compare interactions, release management mutations, and final docs/browser/QA/build-pass bookkeeping.
 - Did not change `prd.json`; `releases-001.build_pass` remains `false` until all implementation phases pass verification.
 - Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
+
+2026-05-03 - releases-001 phase 1 Releases read API contract
+
+- Completed Phase 1 from `.qrspi/releases-001/structure.md`: repository Releases and Tags now have a Rust/Postgres read API contract under `/api/repos/{owner}/{repo}/releases`.
+- Added additive migration `202605030047_repository_releases_read` for release target commit/rendered metadata, latest/verified/immutable/deleted/audit fields, release assets, release reactions, release download counters, and release audit events.
+- Added `crates/api/src/domain/releases.rs` with DTOs and read handlers for release list, latest release, detail by id, detail by tag, tags list, and zipball/tarball authorization metadata. Public repositories are readable anonymously; private repositories require repository read permission; drafts are visible only to write-capable viewers.
+- Wired repository release routes in `crates/api/src/routes/repositories.rs` and mapped release errors through the existing JSON error envelope contract.
+- Added `crates/api/tests/repository_releases_contract.rs` covering list ordering, latest non-prerelease resolution, draft filtering, detail by id/tag, tags, asset metadata, reaction counts/viewer reaction, archive metadata, sanitized Markdown rendering, private repository redaction, and owner draft visibility.
+- Verification passed: `cargo test -p opengithub-api --test repository_releases_contract`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 305 frontend tests; mandatory Editorial banned-value scan returned zero matches using `rg -n -e`.
+- Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first and the structure outline marks browser smoke optional for this phase.
+- Marked Phase 1 as done in `.qrspi/releases-001/structure.md`; `prd.json` remains `build_pass:false` because Phases 2-5 remain.
