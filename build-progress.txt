@@ -2747,3 +2747,11 @@
 - Verification passed: `cargo fmt --all --check`; `cd web && npx tsc --noEmit --pretty false`; focused `cd web && npm test -- --run tests/repository-releases-page.test.tsx`; focused `DB_SSL=false CARGO_INCREMENTAL=0 cargo test -p opengithub-api --test repository_releases_contract`; focused same-env Playwright `repository-releases.spec.ts`; mandatory Editorial banned-value scan returned zero matches; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 321 web tests.
 - Full `make test-e2e` against the stale shared `opengithub_identity_test` database still failed on the pre-existing `migration 202605030041 was previously applied but has been modified` issue after 25 tests passed. Full Playwright passed with 98 tests on a fresh database initialized by directly applying every checked-in `.up.sql` and running with `DASHBOARD_E2E_SKIP_MIGRATIONS=1`.
 - Marked `releases-003.build_pass=true`; `qa_pass` remains false for QA ownership.
+
+2026-05-03 - packages-002 structure planning
+
+- Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `web/AGENTS.md`, the first incomplete `prd.json` entry, current owner package list API/UI/tests, existing repo-scoped package metadata routes, package migrations, relevant package docs, and Editorial design references.
+- Determined `packages-002` requires structure planning before implementation because `needs_structure: true` and `.qrspi/packages-002/structure.md` did not exist.
+- Added `.qrspi/packages-002/structure.md` with five independently verifiable phases: owner-scoped package detail API contract, Editorial detail pages, version/copy/download interactions, admin settings entry surface, and final docs/browser/QA/build-pass bookkeeping.
+- Did not change `prd.json`; `packages-002.build_pass` remains `false` until all implementation phases pass verification.
+- Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
