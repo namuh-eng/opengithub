@@ -95,6 +95,41 @@ test("signed-in user marks notifications read and toggles saved state", async ({
     path: "../ralph/screenshots/build/notifications-002-phase1-triage.jpg",
   });
 
+  await page
+    .getByRole("button", {
+      name: "Move Triage dashboard setup workflow to Done",
+    })
+    .click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Notification moved to Done.",
+  );
+  await expect(rowLink).toHaveCount(0);
+
+  await page.goto("/notifications?folder=done");
+  await expect(rowLink).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Move Triage dashboard setup workflow to inbox",
+    }),
+  ).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/notifications-002-phase2-done.jpg",
+  });
+
+  await page
+    .getByRole("button", {
+      name: "Move Triage dashboard setup workflow to inbox",
+    })
+    .click();
+  await expect(page.getByRole("status")).toHaveText(
+    "Notification moved to Inbox.",
+  );
+  await expect(rowLink).toHaveCount(0);
+
+  await page.goto("/notifications");
+  await expect(rowLink).toBeVisible();
+
   await page.goto("/notifications?folder=saved");
   await expect(rowLink).toBeVisible();
 });

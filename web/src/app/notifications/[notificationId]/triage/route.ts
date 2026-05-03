@@ -14,6 +14,8 @@ const ACTIONS = new Set<NotificationTriageAction>([
   "unread",
   "save",
   "unsave",
+  "done",
+  "inbox",
 ]);
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
@@ -29,7 +31,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       {
         error: {
           code: "validation_failed",
-          message: "action must be read, unread, save, or unsave",
+          message: "action must be read, unread, save, unsave, done, or inbox",
         },
         status: 422,
       },

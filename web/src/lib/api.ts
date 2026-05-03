@@ -8029,7 +8029,13 @@ export type NotificationInboxRow = {
   relativeTime: string;
 };
 
-export type NotificationTriageAction = "read" | "unread" | "save" | "unsave";
+export type NotificationTriageAction =
+  | "read"
+  | "unread"
+  | "save"
+  | "unsave"
+  | "done"
+  | "inbox";
 
 export type NotificationFolderCounts = {
   inbox: number;

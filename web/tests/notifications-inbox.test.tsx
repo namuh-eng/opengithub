@@ -216,6 +216,11 @@ describe("NotificationsInboxPage", () => {
         name: "Save Inbox search keeps mention filters",
       }),
     ).toBeVisible();
+    expect(
+      within(group).getByRole("button", {
+        name: "Move Inbox search keeps mention filters to Done",
+      }),
+    ).toBeVisible();
   });
 
   it("keeps filters editable in an empty state", () => {
@@ -314,5 +319,140 @@ describe("NotificationsInboxPage", () => {
         name: "Mark Inbox search keeps mention filters as read",
       }),
     ).toBeVisible();
+  });
+
+  it("moves inbox rows to Done and restores done rows to Inbox", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: "notif-1",
+          unread: true,
+          saved: false,
+          done: true,
+          lastReadAt: null,
+          savedAt: null,
+          unreadCount: 0,
+          folderCounts: {
+            inbox: 0,
+            saved: 0,
+            done: 1,
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: "notif-1",
+          unread: true,
+          saved: false,
+          done: false,
+          lastReadAt: null,
+          savedAt: null,
+          unreadCount: 1,
+          folderCounts: {
+            inbox: 1,
+            saved: 0,
+            done: 0,
+          },
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { unmount } = render(<NotificationsInboxPage view={inboxView()} />);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Move Inbox search keeps mention filters to Done",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/notifications/notif-1/triage", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "done" }),
+      });
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Notification moved to Done.",
+    );
+    expect(screen.getByText("No matching notifications")).toBeVisible();
+    expect(screen.getByRole("link", { name: /Done/ })).toHaveTextContent("1");
+
+    unmount();
+    render(
+      <NotificationsInboxPage
+        view={inboxView({
+          query: {
+            q: "reason:mention",
+            folder: "done",
+            tab: "all",
+            sort: "newest",
+            group: "repository",
+            repo: null,
+          },
+          folders: [
+            {
+              id: "inbox",
+              label: "Inbox",
+              query: "",
+              href: "/notifications",
+              count: 0,
+              active: false,
+            },
+            {
+              id: "saved",
+              label: "Saved",
+              query: "",
+              href: "/notifications?folder=saved",
+              count: 0,
+              active: false,
+            },
+            {
+              id: "done",
+              label: "Done",
+              query: "",
+              href: "/notifications?folder=done",
+              count: 1,
+              active: true,
+            },
+          ],
+          groups: [
+            {
+              id: "mona/octo-app",
+              label: "mona/octo-app",
+              count: 1,
+              rows: [
+                {
+                  ...inboxView().groups[0].rows[0],
+                  done: true,
+                },
+              ],
+            },
+          ],
+        })}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Move Inbox search keeps mention filters to inbox",
+      }),
+    );
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        "/notifications/notif-1/triage",
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action: "inbox" }),
+        },
+      );
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Notification moved to Inbox.",
+    );
+    expect(screen.getByText("No matching notifications")).toBeVisible();
   });
 });

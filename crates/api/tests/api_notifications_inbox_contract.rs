@@ -324,6 +324,72 @@ async fn notifications_inbox_contract_filters_groups_and_marks_read() {
     assert_eq!(unsave_body["saved"], false);
     assert_eq!(unsave_body["folderCounts"]["saved"], 0);
 
+    let (resave_status, resave_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &format!("/api/notifications/{}/save", mention.id),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(resave_status, StatusCode::OK);
+    assert_eq!(resave_body["folderCounts"]["saved"], 1);
+
+    let (done_status, done_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &format!("/api/notifications/{}/done", mention.id),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(done_status, StatusCode::OK);
+    assert_eq!(done_body["done"], true);
+    assert_eq!(done_body["saved"], true);
+    assert_eq!(done_body["unread"], true);
+    assert_eq!(done_body["unreadCount"], 0);
+    assert_eq!(done_body["folderCounts"]["inbox"], 1);
+    assert_eq!(done_body["folderCounts"]["saved"], 1);
+    assert_eq!(done_body["folderCounts"]["done"], 1);
+
+    let (inbox_after_done_status, inbox_after_done_body) = send_json(
+        app.clone(),
+        Method::GET,
+        "/api/notifications",
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(inbox_after_done_status, StatusCode::OK);
+    assert_eq!(inbox_after_done_body["total"], 1);
+    assert_eq!(
+        inbox_after_done_body["groups"][0]["rows"][0]["title"],
+        "Assigned notification older"
+    );
+
+    let (done_list_status, done_list_body) = send_json(
+        app.clone(),
+        Method::GET,
+        "/api/notifications?folder=done",
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(done_list_status, StatusCode::OK);
+    assert_eq!(done_list_body["total"], 1);
+    assert_eq!(done_list_body["groups"][0]["rows"][0]["done"], true);
+    assert_eq!(done_list_body["groups"][0]["rows"][0]["saved"], true);
+
+    let (move_status, move_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &format!("/api/notifications/{}/inbox", mention.id),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(move_status, StatusCode::OK);
+    assert_eq!(move_body["done"], false);
+    assert_eq!(move_body["unread"], true);
+    assert_eq!(move_body["unreadCount"], 1);
+    assert_eq!(move_body["folderCounts"]["inbox"], 2);
+    assert_eq!(move_body["folderCounts"]["done"], 0);
+
     let (forbidden_status, forbidden_body) = send_json(
         app.clone(),
         Method::PATCH,

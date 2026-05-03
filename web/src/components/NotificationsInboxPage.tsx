@@ -26,6 +26,10 @@ function applyOptimisticTriage(
 ): NotificationInboxView {
   const unreadDelta = action === "read" ? -1 : action === "unread" ? 1 : 0;
   const savedDelta = action === "save" ? 1 : action === "unsave" ? -1 : 0;
+  const removeFromCurrentFolder =
+    (action === "done" && view.query.folder === "inbox") ||
+    (action === "inbox" && view.query.folder === "done");
+
   return mapNotificationRows(
     view,
     notificationId,
@@ -34,10 +38,12 @@ function applyOptimisticTriage(
       unread:
         action === "read" ? false : action === "unread" ? true : row.unread,
       saved: action === "save" ? true : action === "unsave" ? false : row.saved,
+      done: action === "done" ? true : action === "inbox" ? false : row.done,
     }),
     {
       unreadDelta,
       savedDelta,
+      removeFromCurrentFolder,
     },
   );
 }
@@ -71,17 +77,31 @@ function mapNotificationRows(
     savedDelta?: number;
     unreadCount?: number;
     folderCounts?: NotificationTriageResponse["folderCounts"];
+    removeFromCurrentFolder?: boolean;
   } = {},
 ): NotificationInboxView {
-  const groups = view.groups.map((group) => ({
-    ...group,
-    rows: group.rows.map((row) =>
-      row.id === notificationId ? update(row) : row,
-    ),
-  }));
+  const groups = view.groups
+    .map((group) => {
+      const rows = group.rows
+        .map((row) => (row.id === notificationId ? update(row) : row))
+        .filter(
+          (row) =>
+            !(counts.removeFromCurrentFolder && row.id === notificationId),
+        );
+      return {
+        ...group,
+        count: rows.length,
+        rows,
+      };
+    })
+    .filter((group) => group.rows.length > 0);
   const folderCounts = counts.folderCounts;
+  const nextTotal = counts.removeFromCurrentFolder
+    ? Math.max(0, view.total - 1)
+    : view.total;
   return {
     ...view,
+    total: nextTotal,
     unreadCount:
       counts.unreadCount ??
       Math.max(0, view.unreadCount + (counts.unreadDelta ?? 0)),
@@ -124,6 +144,12 @@ function notificationActionLabel(
   action: NotificationTriageAction,
   response: NotificationTriageResponse,
 ) {
+  if (action === "done") {
+    return "Notification moved to Done.";
+  }
+  if (action === "inbox") {
+    return "Notification moved to Inbox.";
+  }
   if (action === "save" || (action === "unsave" && response.saved)) {
     return "Notification saved.";
   }
@@ -461,9 +487,27 @@ export function NotificationsInboxPage({
                         >
                           {row.saved ? "Saved" : "Save"}
                         </button>
-                        <span className={row.done ? "chip ok" : "chip soft"}>
-                          {row.done ? "Done" : "Inbox"}
-                        </span>
+                        <button
+                          aria-label={
+                            row.done
+                              ? `Move ${row.title} to inbox`
+                              : `Move ${row.title} to Done`
+                          }
+                          className={
+                            row.done ? "btn sm primary" : "btn sm ghost"
+                          }
+                          disabled={
+                            pendingId ===
+                            `${row.id}:${row.done ? "inbox" : "done"}`
+                          }
+                          onClick={() =>
+                            runAction(row, row.done ? "inbox" : "done")
+                          }
+                          title={row.done ? "Move to inbox" : "Done"}
+                          type="button"
+                        >
+                          {row.done ? "Move to inbox" : "Done"}
+                        </button>
                         <span
                           className={row.subscribed ? "chip info" : "chip soft"}
                         >

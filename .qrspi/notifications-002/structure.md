@@ -24,7 +24,7 @@
 
 ## Phase 2: Done and Move-to-Inbox Lifecycle
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement GitHub-style Done triage. Marking Done should remove rows from Inbox, show them in Done, preserve read/saved state, and allow Move to inbox to restore the notification to the active inbox.
 

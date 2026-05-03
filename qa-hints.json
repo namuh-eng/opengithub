@@ -4166,5 +4166,27 @@
       "Probe rapid repeated read/unread and save/unsave clicks, concurrent mutations from two tabs, stale row IDs, and saved-folder unsave retention rules.",
       "Verify screen reader labels and touch/mobile hit targets for the new row action buttons across dense notification lists."
     ]
+  },
+  {
+    "feature_id": "notifications-002",
+    "tests_written": [
+      "Completed Phase 2 Done and Move-to-Inbox Lifecycle without marking notifications-002 build_pass=true.",
+      "Added notifications.done_at persistence with active inbox and done-folder indexes.",
+      "Updated Rust inbox queries so Inbox excludes done rows, Done shows done rows, Saved can overlap with done rows, unread counts exclude done rows, and folder counts use persisted inbox/saved/done totals.",
+      "Added authenticated PATCH /api/notifications/:id/done and /api/notifications/:id/inbox endpoints through the existing triage response envelope.",
+      "Updated the Editorial notifications UI with real Done and Move to inbox row controls, optimistic row removal/restoration, count reconciliation, status feedback, and rollback on failure.",
+      "Focused Rust notification contract covers done persistence, inbox removal, done-folder visibility, saved+done overlap, unread count behavior, Move to inbox restoration, and cross-user 404 behavior.",
+      "Focused Vitest covers Done/Move to inbox route payloads, optimistic removal/restoration, folder count updates, and no inert row controls.",
+      "Focused Playwright notification smoke passed on a fresh migrated database and saved ralph/screenshots/build/notifications-002-phase2-done.jpg.",
+      "Full make check, make test, make test-e2e on the fresh migrated database, and mandatory Editorial banned-value scan passed."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 still needs subscribe/unsubscribe state and reactivation triggers for participation, mentions, team mentions, and review requests.",
+      "Phase 4 still needs bulk selection, group select-all, partial-failure rollback, keyboard traversal, and per-row rollback under mixed authorization.",
+      "Probe concurrent Done and Move-to-inbox actions from two browser tabs, especially saved+done notifications and unread done rows.",
+      "Probe rapid repeated Done/Move-to-inbox clicks, stale row IDs, done-folder pagination, and restoring rows after filters or repository buckets are active.",
+      "Verify screen reader labels, keyboard focus recovery after optimistic row removal, and mobile touch targets for Done/Move to inbox controls.",
+      "The shared opengithub_identity_test database still has the pre-existing migration checksum issue for 202605030041; browser proof used a fresh migrated database with DASHBOARD_E2E_SKIP_MIGRATIONS=1."
+    ]
   }
 ]
