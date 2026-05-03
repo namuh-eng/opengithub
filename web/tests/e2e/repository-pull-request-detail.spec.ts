@@ -342,6 +342,10 @@ test("signed-in user updates pull request sidebar metadata and notifications", a
     fullPage: true,
     path: "../ralph/screenshots/build/notifications-004-phase3-pr-customize.jpg",
   });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/notifications-004-final-pr-customize.jpg",
+  });
 
   await page.reload();
   await expect(page.getByText("Open", { exact: true })).toBeVisible();

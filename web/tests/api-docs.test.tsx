@@ -471,6 +471,27 @@ describe("ApiDocsPage", () => {
         /Validation accepts repo:, org:, author:, is:, and reason:/,
       ),
     ).toBeVisible();
+    expect(screen.getByText("/api/repos/{owner}/{repo}/watch")).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/issues/{number}/subscription",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/pulls/{number}/subscription"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Supported levels are participating, all, ignore/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Issue thread settings override repository watch/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Review requests and direct mentions reactivate/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Fanout de-dupes recipients after repository watch/),
+    ).toBeVisible();
     expect(
       screen.getByText("/api/search?q=router&type=code&page=1&pageSize=30"),
     ).toBeVisible();

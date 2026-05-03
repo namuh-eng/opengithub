@@ -22,7 +22,9 @@ test("api docs expose implemented REST surfaces and working examples", async ({
     page.locator("code").filter({ hasText: /^\/api\/user$/ }),
   ).toBeVisible();
   await expect(
-    page.getByText("/api/repos/{owner}/{repo}/issues"),
+    page.locator("code").filter({
+      hasText: /^\/api\/repos\/\{owner\}\/\{repo\}\/issues$/,
+    }),
   ).toBeVisible();
   await expect(
     page.locator("code").filter({

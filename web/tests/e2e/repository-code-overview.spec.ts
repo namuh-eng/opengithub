@@ -132,6 +132,10 @@ test("signed-in repository watch menu saves custom event settings", async ({
     fullPage: true,
     path: "../ralph/screenshots/build/notifications-004-phase2-watch-menu.jpg",
   });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/notifications-004-final-watch-menu.jpg",
+  });
   await page.reload();
   await expect(page.getByRole("button", { name: /Custom/ })).toBeVisible();
   await expectNoDeadControls(page);
@@ -238,6 +242,10 @@ test("signed-in repository Code tab renders files, README, sidebar, and clone me
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/notifications-004-phase2-watch-menu.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/notifications-004-final-watch-menu.jpg",
   });
   await page.reload();
   await expect(page.getByRole("button", { name: /Custom/ })).toBeVisible();

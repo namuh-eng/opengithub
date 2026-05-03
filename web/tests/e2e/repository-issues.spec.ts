@@ -197,6 +197,10 @@ test("signed-in repository Issues tab renders real issues and row navigation", a
     fullPage: true,
     path: "../ralph/screenshots/build/notifications-004-phase3-issue-customize.jpg",
   });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/notifications-004-final-issue-customize.jpg",
+  });
   await page.getByRole("button", { name: "Thumbs up 0" }).click();
   await expect(
     page.getByRole("button", { name: "Thumbs up 1" }),

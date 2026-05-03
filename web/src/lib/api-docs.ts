@@ -2168,6 +2168,93 @@ docker-content-digest: sha256:manifest...`,
     ],
   },
   {
+    id: "repository-watch-settings",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/watch",
+    title: "Repository watch settings",
+    description:
+      "Reads or updates a signed-in reader's repository-level notification watch state, including custom event filters and ignore behavior.",
+    auth: "Signed opengithub session cookie with repository read access",
+    request: `PATCH /api/repos/mona/octo-app/watch
+{
+  "level": "custom",
+  "customEvents": ["issues", "pull_requests", "actions"]
+}`,
+    response: `{
+  "watching": true,
+  "level": "custom",
+  "label": "Custom",
+  "customEvents": ["issues", "pull_requests", "actions"],
+  "availableEvents": [
+    "issues",
+    "pull_requests",
+    "releases",
+    "discussions",
+    "actions",
+    "security_alerts",
+    "repository_invitations"
+  ],
+  "watchersCount": 12,
+  "ignoreWarning": "Ignoring this repository suppresses repository watch notifications until you choose another watch level."
+}`,
+    notes: [
+      "Supported levels are participating, all, ignore, and custom.",
+      "Custom requires at least one selected event; duplicate customEvents are normalized server-side.",
+      "PUT and DELETE /api/repos/{owner}/{repo}/watch remain compatibility aliases for participating and unwatch.",
+      "watchersCount excludes ignore rows and private repository reads never leak to unauthorized users.",
+    ],
+  },
+  {
+    id: "issue-thread-subscription-settings",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/issues/{number}/subscription",
+    title: "Issue thread notification settings",
+    description:
+      "Subscribes, unsubscribes, or customizes state-change events for one issue thread without changing repository-wide watch settings.",
+    auth: "Signed opengithub session cookie with repository read access",
+    request: `{
+  "subscribed": true,
+  "customEvents": ["closed", "reopened"]
+}`,
+    response: `{
+  "subscribed": true,
+  "reason": "subscribed",
+  "customEvents": ["closed", "reopened"],
+  "canCustomize": true
+}`,
+    notes: [
+      "Issue thread settings override repository watch preferences for the same thread.",
+      "customEvents supports closed and reopened for issue state changes.",
+      "Participation, mentions, and other direct reactivation reasons can resubscribe later notifications.",
+      "Unauthorized private issue reads and writes return redacted not_found-style errors.",
+    ],
+  },
+  {
+    id: "pull-request-thread-subscription-settings",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/pulls/{number}/subscription",
+    title: "Pull request thread notification settings",
+    description:
+      "Subscribes, unsubscribes, or customizes state-change events for one pull request thread without changing repository-wide watch settings.",
+    auth: "Signed opengithub session cookie with repository read access",
+    request: `{
+  "subscribed": true,
+  "customEvents": ["merged", "closed"]
+}`,
+    response: `{
+  "subscribed": true,
+  "reason": "subscribed",
+  "customEvents": ["merged", "closed"],
+  "canCustomize": true
+}`,
+    notes: [
+      "Pull request thread settings override repository watch preferences for the same thread.",
+      "customEvents supports merged, closed, and reopened for pull request state changes.",
+      "Review requests and direct mentions reactivate delivery after a manual unsubscribe.",
+      "Fanout de-dupes recipients after repository watch state, thread overrides, permissions, and actor exclusion are evaluated.",
+    ],
+  },
+  {
     id: "notifications-inbox",
     method: "GET",
     path: "/api/notifications?folder=inbox&tab=unread&group=repository&page=1&pageSize=30",

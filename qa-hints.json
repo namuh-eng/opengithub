@@ -4345,5 +4345,28 @@
       "Run concurrent comment/state-change events against the same thread to check duplicate recipient suppression and last-write subscription behavior.",
       "Phase 5 still needs API docs, final browser smoke, QA handoff consolidation, and build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "notifications-004",
+    "tests_written": [
+      "Completed Phase 5 API docs, browser smoke, QA handoff, and build-pass bookkeeping.",
+      "Documented repository watch GET/PATCH semantics, compatibility PUT/DELETE aliases, levels, custom event categories, ignore behavior, count semantics, and permission redaction in /docs/api.",
+      "Documented issue and pull request thread subscription customize endpoints, customEvents response shape, override semantics, reactivation rules, and fanout de-duping.",
+      "Extended API docs Vitest and Playwright assertions so the new watch/subscription docs stay visible and exact path matching avoids substring collisions.",
+      "Added final browser screenshot captures for repository watch menu, issue customize dialog, and PR customize dialog.",
+      "Focused browser smoke passed for repository watch settings, issue thread customization, and pull request thread customization on fresh database opengithub_notifications_004_phase5_1777837268.",
+      "Full same-env make test-e2e passed with 104 Playwright tests on the fresh database with DASHBOARD_E2E_SKIP_MIGRATIONS=1.",
+      "Set notifications-004.build_pass=true; qa_pass remains false for QA ownership."
+    ],
+    "needs_deeper_qa": [
+      "Concurrent repository watch saves from multiple tabs, especially ignore/custom/all transitions and watcher-count reconciliation.",
+      "Ignore-vs-direct-mention, team mention, and review-request precedence in live producer paths beyond the focused fanout contract.",
+      "Custom repository event categories whose producers are not all active yet: discussions, security alerts, repository invitations, releases, and Actions.",
+      "Issue and PR thread override persistence under concurrent subscribe/unsubscribe/customize saves and state-change events.",
+      "Private/internal repository leakage checks across unauthenticated users, direct collaborators, org members, team-derived readers, and no-access users.",
+      "Keyboard and screen-reader traversal for the repository watch menu and issue/PR customize dialogs, including Escape, Cancel, Save, and focus return.",
+      "Mobile placement of the watch menu and customize dialogs on narrow screens with long repository names and long event labels.",
+      "The shared opengithub_identity_test database still has the known pre-existing 202605030041 migration checksum issue; fresh psql-applied database validation passed."
+    ]
   }
 ]

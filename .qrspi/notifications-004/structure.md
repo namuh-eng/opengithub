@@ -75,7 +75,7 @@
 
 ## Phase 5: API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `notifications-004` only after repository watch menu, issue/PR thread subscription customization, fanout integration, docs, screenshots, and QA hints are verified. This phase flips only `notifications-004.build_pass` and leaves `qa_pass=false`.
 
