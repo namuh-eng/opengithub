@@ -1,3 +1,11 @@
+2026-05-04 - notifications-004 structure planning
+
+- Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `prd.json`, `web/AGENTS.md`, `design/project/og-shell.jsx`, current repository watch routes/helpers, current notification thread/subscription schema, existing issue/PR subscription code, and target notification/watching docs.
+- Determined `notifications-004` is the first `build_pass:false` feature, requires structure planning, and did not have `.qrspi/notifications-004/structure.md`.
+- Added `.qrspi/notifications-004/structure.md` with five independently verifiable vertical phases: repository watch settings API, Editorial repository watch menu, issue/PR thread customize dialog, fanout integration, and final docs/browser/QA/build-pass bookkeeping.
+- Did not change `prd.json`; `notifications-004.build_pass` remains `false` until all implementation phases pass verification.
+- Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches.
+
 2026-05-03 - notifications-002 phase 1 persisted read/unread and saved state
 
 - Completed Phase 1 from `.qrspi/notifications-002/structure.md`: notification rows now have persisted read/unread and saved/unsaved triage without marking `notifications-002.build_pass=true`.
