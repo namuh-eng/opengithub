@@ -3957,5 +3957,21 @@
       "Check private repository tag redaction and archive authorization with read, write, admin, and anonymous viewers.",
       "Stress pagination with hundreds of tags and concurrent tag/release deletion while users navigate between pages."
     ]
+  },
+  {
+    "feature_id": "packages-002",
+    "tests_written": [
+      "Completed Phase 1 Owner-Scoped Detail API Contract without marking packages-002 build_pass=true.",
+      "Added package detail metadata migration for version digest/platform/README fields, package_blobs, and package_about_overrides.",
+      "Exposed user and organization package detail endpoints with public package reads, private/internal redaction, package permission grants, linked repository permission grants, selected version/digest resolution, README/about fallback, admin-state calculation, and storage-key redaction.",
+      "Focused Rust contract covers public package detail, latest and selected version metadata, blob/platform summaries, install command generation, linked repository README rendering, no storage-key leakage, private redaction, package grants, linked repository grants, and org member/admin behavior."
+    ],
+    "needs_deeper_qa": [
+      "Later phases still need Editorial package detail pages, copy/version interactions, immutable version detail routes, download metadata endpoints, and admin settings entry surfaces.",
+      "Probe private/internal package redaction across package permissions, linked repository permissions, organization membership roles, anonymous viewers, and deleted/renamed owners.",
+      "Verify multi-platform OCI manifests with many blobs, duplicate digests, missing digests, long package names, unusual package types, and missing README/about states.",
+      "Ensure actual registry download endpoints, not page rendering, are the only paths that increment package_downloads.",
+      "Run UI accessibility and mobile checks once Phase 2 renders the detail page."
+    ]
   }
 ]

@@ -2755,3 +2755,14 @@
 - Added `.qrspi/packages-002/structure.md` with five independently verifiable phases: owner-scoped package detail API contract, Editorial detail pages, version/copy/download interactions, admin settings entry surface, and final docs/browser/QA/build-pass bookkeeping.
 - Did not change `prd.json`; `packages-002.build_pass` remains `false` until all implementation phases pass verification.
 - Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
+
+2026-05-03 - packages-002 phase 1 owner-scoped package detail API contract
+
+- Completed Phase 1 from `.qrspi/packages-002/structure.md`: owner-scoped package detail read contracts now exist for `GET /api/users/{username}/packages/{package_type}/{package_name}` and `GET /api/orgs/{org}/packages/{package_type}/{package_name}`.
+- Added additive migration `202605031930_package_detail_metadata` for package version digest/platform/README fields, `package_blobs`, and `package_about_overrides`; blob `storage_key` stays server-side and is not serialized in detail responses.
+- Extended `crates/api/src/domain/packages.rs` with `PackageDetail`, version/blob/install/about/admin DTOs, selected version or digest lookup, install command generation, linked repository README/about fallback with Markdown rendering, public/private/internal visibility checks, package permission grants, linked repository permission grants, and admin-state calculation.
+- Wired user and organization package detail routes through the existing JSON error envelope; unauthorized private/internal package reads return not found to avoid metadata leaks.
+- Added `crates/api/tests/package_detail_contract.rs` covering public detail reads, latest and selected version metadata, blob/platform summaries, install commands, README rendering, storage-key redaction, private package redaction, package grants, linked repository grants, and organization member/admin visibility.
+- Verification passed: `cargo fmt --all --check`; focused `DB_SSL=false CARGO_INCREMENTAL=0 cargo test -p opengithub-api --test package_detail_contract`; mandatory Editorial banned-value scan returned zero matches using `rg -n -e`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 321 frontend tests.
+- Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first and the structure outline marks browser smoke optional for this phase.
+- Marked Phase 1 as done in `.qrspi/packages-002/structure.md`; `prd.json` remains `build_pass:false` because Phases 2-5 remain.

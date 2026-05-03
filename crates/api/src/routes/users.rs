@@ -14,8 +14,8 @@ use crate::{
     domain::{
         identity::User,
         packages::{
-            owner_packages, OwnerPackageList, OwnerPackageListQuery, PackageListError,
-            PackageOwnerKind,
+            owner_packages, package_detail, OwnerPackageList, OwnerPackageListQuery, PackageDetail,
+            PackageDetailError, PackageDetailQuery, PackageListError, PackageOwnerKind,
         },
         personal_settings::{
             personal_profile_settings, update_personal_avatar, update_personal_profile_settings,
@@ -48,6 +48,10 @@ pub fn router() -> Router<AppState> {
             get(public_repositories),
         )
         .route("/api/users/:username/packages", get(public_packages))
+        .route(
+            "/api/users/:username/packages/:package_type/:package_name",
+            get(public_package_detail),
+        )
         .route("/api/users/:username/stars", get(public_stars))
         .route("/api/users/:username/follow", put(follow).delete(unfollow))
         .route("/api/users/:username/block", put(block))
@@ -177,6 +181,31 @@ async fn public_packages(
     .map_err(map_package_list_error)?;
 
     Ok(Json(packages))
+}
+
+async fn public_package_detail(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((username, package_type, package_name)): Path<(String, String, String)>,
+    Query(query): Query<PackageDetailRouteQuery>,
+) -> Result<Json<PackageDetail>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let package = package_detail(
+        pool,
+        &username,
+        PackageOwnerKind::User,
+        &package_type,
+        &package_name,
+        actor.map(|user| user.id),
+        PackageDetailQuery {
+            version: query.version.as_deref(),
+        },
+    )
+    .await
+    .map_err(map_package_detail_error)?;
+
+    Ok(Json(package))
 }
 
 pub async fn public_stars(
@@ -379,6 +408,12 @@ pub(crate) struct OwnerPackagesQuery {
     page_size: Option<i64>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PackageDetailRouteQuery {
+    version: Option<String>,
+}
+
 fn map_package_list_error(error: PackageListError) -> (StatusCode, Json<ErrorEnvelope>) {
     match error {
         PackageListError::NotFound => error_response(
@@ -395,6 +430,24 @@ fn map_package_list_error(error: PackageListError) -> (StatusCode, Json<ErrorEnv
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal_error",
             "packages could not be loaded",
+        ),
+    }
+}
+
+fn map_package_detail_error(error: PackageDetailError) -> (StatusCode, Json<ErrorEnvelope>) {
+    match error {
+        PackageDetailError::NotFound => {
+            error_response(StatusCode::NOT_FOUND, "not_found", "package was not found")
+        }
+        PackageDetailError::InvalidSelection(message) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            message,
+        ),
+        PackageDetailError::Markdown(_) | PackageDetailError::Sqlx(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "package could not be loaded",
         ),
     }
 }

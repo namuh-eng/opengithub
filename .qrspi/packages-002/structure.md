@@ -6,7 +6,7 @@
 
 ## Phase 1: Owner-Scoped Detail API Contract - readable package, versions, blobs, README/about, and permissions
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the Rust/Postgres read contract for `/{owner}/{package_type}/{package_name}` and `/orgs/{org}/packages/{package_type}/{package_name}` without depending on GitHub APIs. Public packages are anonymous-readable, private/internal packages require package or linked-repository read permission, and admin capability is returned only when the viewer can manage the package.
 
