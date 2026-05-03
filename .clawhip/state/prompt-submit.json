@@ -1,8 +1,8 @@
 {
-  "observed_at": "2026-05-03T08:05:33.430Z",
+  "observed_at": "2026-05-03T08:22:45.116Z",
   "provider": "claude-code",
   "event_name": "UserPromptSubmit",
   "session_id": "f94fa1e6-a40b-4521-b41e-9be0d1ba7287",
   "turn_id": null,
-  "prompt_summary": "no i mean literally clawhip daemon restart script exsits so find it on machine"
+  "prompt_summary": "wait why does that happen? i dont udnerstand our clawhip config is wrong or discord is weird or clawhip itself is wrong"
 }
