@@ -2542,3 +2542,11 @@
 - Added final `settings-005` QA hints covering clean database reruns, real AWS/KMS or Secrets Manager backing, ciphertext/plaintext leakage scans, fork PR blocking, environment-gated release, reusable workflow allow-lists, inherited scope producers, masking bypass attempts, concurrent admin edits, and accessibility traversal.
 - Verification passed before final full validation: focused `web/tests/api-docs.test.tsx` and `web/tests/repository-actions-secrets-page.test.tsx`; focused Rust `repository_actions_secrets_contract`, `api_repository_actions_job_log_contract`, and `api_repository_actions_run_detail_contract`; focused same-env Playwright `repository-settings-secrets.spec.ts`; mandatory Editorial banned-value scan returned zero matches.
 - Full final `make check`, `make test`, and `make test-e2e` were run after bookkeeping; see this iteration's command log for pass/fail evidence.
+
+2026-05-03 - settings-006 structure planning
+
+- Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `web/AGENTS.md`, the first incomplete `prd.json` entry, `design/project/wf-settings.jsx`, current Pages settings placeholder, adjacent settings structure outlines, existing Git ref/tree and Actions artifact contracts, repository settings audit patterns, and target Pages docs for publishing sources, custom domains, DNS verification, and Actions-triggered Pages deployments.
+- Determined `settings-006` requires structure planning before implementation because `needs_structure: true` and `.qrspi/settings-006/structure.md` did not exist.
+- Added `.qrspi/settings-006/structure.md` with five independently verifiable phases: Pages settings API contract, Editorial Pages settings shell, source/domain mutations, Pages build/serving integration, and final docs/browser/QA/build-pass bookkeeping.
+- Did not change `prd.json`; `settings-006.build_pass` remains `false` until all implementation phases pass verification.
+- Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches using `rg -n -e`.
