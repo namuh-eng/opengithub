@@ -236,6 +236,71 @@ async fn release_management_context_notes_latest_uploads_and_side_effects() {
     assert!(audit_text.contains("upload_intent") || audit_text.contains("upload"));
     assert!(!audit_text.contains("storage_key"));
     assert!(!audit_text.contains("releases/pending"));
+
+    let (draft_status, _, draft_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &release_uri,
+        Some(&owner_cookie),
+        Some(json!({
+            "tagName": "v1.1.0",
+            "target": "main",
+            "title": "Delete candidate",
+            "body": "Draft to delete",
+            "draft": true,
+            "prerelease": false,
+            "latestPolicy": "automatic"
+        })),
+    )
+    .await;
+    assert_eq!(draft_status, StatusCode::CREATED);
+    let draft_id = Uuid::parse_str(draft_body["id"].as_str().unwrap()).unwrap();
+    let tag_exists_before = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS (
+          SELECT 1 FROM repository_git_refs
+          WHERE repository_id = $1 AND kind = 'tag' AND name = 'refs/tags/v1.1.0'
+        )
+        "#,
+    )
+    .bind(repo.id)
+    .fetch_one(&pool)
+    .await
+    .expect("tag existence should read");
+    assert!(tag_exists_before);
+
+    let (delete_status, _, delete_body) = send_json(
+        app.clone(),
+        Method::DELETE,
+        &format!("{release_uri}/{draft_id}"),
+        Some(&owner_cookie),
+        Some(json!({ "deleteTag": true })),
+    )
+    .await;
+    assert_eq!(delete_status, StatusCode::NO_CONTENT);
+    assert_eq!(delete_body, Value::Null);
+    let tag_exists_after = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS (
+          SELECT 1 FROM repository_git_refs
+          WHERE repository_id = $1 AND kind = 'tag' AND name = 'refs/tags/v1.1.0'
+        )
+        "#,
+    )
+    .bind(repo.id)
+    .fetch_one(&pool)
+    .await
+    .expect("tag existence should read after delete");
+    assert!(!tag_exists_after);
+    let delete_audit = sqlx::query_scalar::<_, String>(
+        "SELECT COALESCE(string_agg(after_state::text, ' '), '') FROM release_audit_events WHERE repository_id = $1 AND event_type = 'release.deleted'",
+    )
+    .bind(repo.id)
+    .fetch_one(&pool)
+    .await
+    .expect("delete audit should read");
+    assert!(delete_audit.contains("deleteTag"));
+    assert!(delete_audit.contains("v1.1.0"));
 }
 
 fn app_config() -> AppConfig {

@@ -1,15 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { MarkdownBody } from "@/components/MarkdownBody";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import { MarkdownEditor } from "@/components/MarkdownEditor";
 import { RepositoryShell } from "@/components/RepositoryShell";
 import type {
   ApiErrorEnvelope,
+  GeneratedReleaseNotesPreview,
   ReleaseManagementContext,
+  ReleaseMutation,
   ReleaseRefOption,
   RepositoryOverview,
+  RepositoryReleaseDetail,
 } from "@/lib/api";
 
 type RepositoryReleaseFormPageProps = {
@@ -44,14 +47,6 @@ function formatBytes(value: number) {
   return `${size >= 10 ? size.toFixed(0) : size.toFixed(1)} ${unit}`;
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
 function ReleaseFormUnavailable({
   error,
   repository,
@@ -84,6 +79,22 @@ function ReleaseFormUnavailable({
   );
 }
 
+async function submitReleaseAction(
+  repository: RepositoryOverview,
+  payload: Record<string, unknown>,
+) {
+  const response = await fetch(`${basePath(repository)}/releases/actions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(body?.error?.message ?? "Release action failed.");
+  }
+  return body;
+}
+
 export function RepositoryReleaseFormPage({
   context,
   mode,
@@ -111,6 +122,7 @@ function RepositoryReleaseFormContent({
   mode: "new" | "edit";
   repository: RepositoryOverview;
 }) {
+  const router = useRouter();
   const release = context.release;
   const editing = mode === "edit";
   const locked = context.archived || Boolean(release?.immutable);
@@ -139,15 +151,116 @@ function RepositoryReleaseFormContent({
     context.latestPolicyOptions[0]?.value ?? "automatic",
   );
   const [deleteTag, setDeleteTag] = useState(false);
-  const [notesPreviewOpen, setNotesPreviewOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [editorVersion, setEditorVersion] = useState(0);
+  const [message, setMessage] = useState<{
+    kind: "success" | "error";
+    text: string;
+  } | null>(null);
+  const [notesPreview, setNotesPreview] =
+    useState<GeneratedReleaseNotesPreview | null>(null);
+  const [isPending, startTransition] = useTransition();
 
   const activeTag = tagMode === "new" ? newTagName : tagName;
-  const generatedPreviewHtml = useMemo(() => {
-    const safeTitle = escapeHtml(title.trim() || "Generated release notes");
-    const from = escapeHtml(previousTag || "the previous release");
-    const to = escapeHtml(target || context.defaultTarget);
-    return `<h2>${safeTitle}</h2><p>Preview source: ${from} to ${to}.</p><p>The server-generated notes action is available in the next release-management step.</p>`;
-  }, [context.defaultTarget, previousTag, target, title]);
+  const disabled = locked || isPending;
+  const deleteReady = !editing || deleteConfirm.trim() === release?.tagName;
+
+  function buildMutation(overrides: Partial<ReleaseMutation> = {}) {
+    return {
+      tagName: activeTag,
+      target,
+      title,
+      body,
+      draft,
+      prerelease,
+      latestPolicy,
+      ...overrides,
+    };
+  }
+
+  function runAction(action: () => Promise<unknown>, success: string) {
+    setMessage(null);
+    startTransition(async () => {
+      try {
+        const result = await action();
+        setMessage({ kind: "success", text: success });
+        if (result && typeof result === "object" && "links" in result) {
+          router.push((result as RepositoryReleaseDetail).links.htmlHref);
+          return;
+        }
+        router.refresh();
+      } catch (error) {
+        setMessage({
+          kind: "error",
+          text:
+            error instanceof Error ? error.message : "Release action failed.",
+        });
+      }
+    });
+  }
+
+  function saveRelease(nextDraft: boolean) {
+    const releaseMutation = buildMutation({ draft: nextDraft });
+    runAction(
+      () =>
+        submitReleaseAction(repository, {
+          action: editing ? "update" : "create",
+          releaseId: release?.id,
+          release: releaseMutation,
+        }),
+      nextDraft
+        ? "Draft saved."
+        : editing
+          ? "Release updated."
+          : "Release published.",
+    );
+  }
+
+  function publishDraft() {
+    if (!release) return;
+    runAction(
+      () =>
+        submitReleaseAction(repository, {
+          action: "update",
+          releaseId: release.id,
+          release: buildMutation({ draft: false }),
+        }),
+      "Draft published.",
+    );
+  }
+
+  function deleteRelease() {
+    if (!release || !deleteReady) return;
+    runAction(
+      async () => {
+        await submitReleaseAction(repository, {
+          action: "delete",
+          releaseId: release.id,
+          deleteTag,
+        });
+        router.push(`${basePath(repository)}/releases`);
+        return null;
+      },
+      deleteTag ? "Release and tag deleted." : "Release deleted.",
+    );
+  }
+
+  function generateNotes() {
+    runAction(async () => {
+      const preview = (await submitReleaseAction(repository, {
+        action: "generatedNotes",
+        request: {
+          target,
+          previousTag: previousTag || null,
+          title: title || activeTag || null,
+        },
+      })) as GeneratedReleaseNotesPreview;
+      setNotesPreview(preview);
+      setBody(preview.body);
+      setEditorVersion((value) => value + 1);
+      return null;
+    }, "Generated notes inserted. Review them before publishing.");
+  }
 
   return (
     <RepositoryShell
@@ -167,7 +280,8 @@ function RepositoryReleaseFormContent({
               style={{ color: "var(--ink-2)" }}
             >
               Compose notes, choose a tag and target, prepare assets, and set
-              publication policy before the server-confirmed action step.
+              publication policy. Every publish, draft, edit, and delete action
+              is confirmed by the repository API.
             </p>
           </div>
           <Link className="btn" href={`${basePath(repository)}/releases`}>
@@ -199,7 +313,9 @@ function RepositoryReleaseFormContent({
                     <label className="chip soft">
                       <input
                         checked={tagMode === "existing"}
-                        disabled={locked || context.availableTags.length === 0}
+                        disabled={
+                          disabled || context.availableTags.length === 0
+                        }
                         onChange={() => setTagMode("existing")}
                         type="radio"
                       />{" "}
@@ -208,7 +324,7 @@ function RepositoryReleaseFormContent({
                     <label className="chip soft">
                       <input
                         checked={tagMode === "new"}
-                        disabled={locked}
+                        disabled={disabled}
                         onChange={() => setTagMode("new")}
                         type="radio"
                       />{" "}
@@ -219,7 +335,7 @@ function RepositoryReleaseFormContent({
                     <select
                       aria-label="Existing tag"
                       className="input"
-                      disabled={locked || context.availableTags.length === 0}
+                      disabled={disabled || context.availableTags.length === 0}
                       onChange={(event) => setTagName(event.target.value)}
                       value={tagName}
                     >
@@ -233,7 +349,7 @@ function RepositoryReleaseFormContent({
                     <input
                       aria-label="New tag name"
                       className="input"
-                      disabled={locked}
+                      disabled={disabled}
                       onChange={(event) => setNewTagName(event.target.value)}
                       placeholder="v1.0.0"
                       value={newTagName}
@@ -244,7 +360,7 @@ function RepositoryReleaseFormContent({
                   Target branch, tag, or SHA
                   <select
                     className="input"
-                    disabled={locked}
+                    disabled={disabled}
                     onChange={(event) => setTarget(event.target.value)}
                     value={target}
                   >
@@ -270,7 +386,7 @@ function RepositoryReleaseFormContent({
                 Title
                 <input
                   className="input"
-                  disabled={locked}
+                  disabled={disabled}
                   onChange={(event) => setTitle(event.target.value)}
                   placeholder="Release title"
                   value={title}
@@ -279,6 +395,7 @@ function RepositoryReleaseFormContent({
             </section>
 
             <MarkdownEditor
+              key={editorVersion}
               initialMarkdown={body}
               initialRendered={{
                 cached: false,
@@ -318,7 +435,7 @@ function RepositoryReleaseFormContent({
                 <input
                   aria-label="Release asset files"
                   className="input mt-3"
-                  disabled={locked}
+                  disabled={disabled}
                   multiple
                   type="file"
                 />
@@ -362,7 +479,7 @@ function RepositoryReleaseFormContent({
                 Previous tag
                 <select
                   className="input"
-                  disabled={locked}
+                  disabled={disabled}
                   onChange={(event) => setPreviousTag(event.target.value)}
                   value={previousTag}
                 >
@@ -376,15 +493,23 @@ function RepositoryReleaseFormContent({
               </label>
               <button
                 className="btn mt-4 w-full"
-                disabled={locked}
-                onClick={() => setNotesPreviewOpen((value) => !value)}
+                disabled={disabled}
+                aria-disabled={disabled}
+                onClick={generateNotes}
                 type="button"
               >
-                {notesPreviewOpen ? "Hide preview" : "Preview generated notes"}
+                {isPending ? "Generating..." : "Generate release notes"}
               </button>
-              {notesPreviewOpen ? (
-                <div className="mt-4">
-                  <MarkdownBody html={generatedPreviewHtml} />
+              {notesPreview ? (
+                <div
+                  className="mt-4 rounded-[var(--radius)] border p-3"
+                  style={{ borderColor: "var(--line)" }}
+                >
+                  <p className="t-xs">
+                    {notesPreview.commitCount} commits and{" "}
+                    {notesPreview.mergedPullRequestCount} merged pull requests
+                    inserted into the editor.
+                  </p>
                 </div>
               ) : null}
             </section>
@@ -397,7 +522,7 @@ function RepositoryReleaseFormContent({
                 <label className="flex items-center gap-2 t-sm">
                   <input
                     checked={draft}
-                    disabled={locked}
+                    disabled={disabled}
                     onChange={(event) => setDraft(event.target.checked)}
                     type="checkbox"
                   />
@@ -406,7 +531,7 @@ function RepositoryReleaseFormContent({
                 <label className="flex items-center gap-2 t-sm">
                   <input
                     checked={prerelease}
-                    disabled={locked}
+                    disabled={disabled}
                     onChange={(event) => setPrerelease(event.target.checked)}
                     type="checkbox"
                   />
@@ -420,7 +545,7 @@ function RepositoryReleaseFormContent({
                     <span className="flex items-center gap-2">
                       <input
                         checked={latestPolicy === option.value}
-                        disabled={locked}
+                        disabled={disabled}
                         onChange={() => setLatestPolicy(option.value)}
                         type="radio"
                       />
@@ -432,17 +557,32 @@ function RepositoryReleaseFormContent({
               </fieldset>
               <div className="mt-5 grid gap-2">
                 <button
-                  aria-disabled="true"
+                  aria-disabled={disabled}
                   className="btn accent"
-                  disabled
+                  disabled={disabled}
+                  onClick={() =>
+                    editing ? saveRelease(draft) : saveRelease(false)
+                  }
                   type="button"
                 >
                   {editing ? "Update release" : "Publish release"}
                 </button>
+                {editing && release?.draft ? (
+                  <button
+                    aria-disabled={disabled}
+                    className="btn accent"
+                    disabled={disabled}
+                    onClick={publishDraft}
+                    type="button"
+                  >
+                    Publish draft
+                  </button>
+                ) : null}
                 <button
-                  aria-disabled="true"
+                  aria-disabled={disabled}
                   className="btn"
-                  disabled
+                  disabled={disabled}
+                  onClick={() => saveRelease(true)}
                   type="button"
                 >
                   Save draft
@@ -458,16 +598,27 @@ function RepositoryReleaseFormContent({
                 <label className="mt-4 flex items-center gap-2 t-sm">
                   <input
                     checked={deleteTag}
-                    disabled={locked}
+                    disabled={disabled}
                     onChange={(event) => setDeleteTag(event.target.checked)}
                     type="checkbox"
                   />
                   Also delete the git tag
                 </label>
+                <label className="mt-4 grid gap-2 t-sm">
+                  Type tag name to confirm
+                  <input
+                    className="input"
+                    disabled={disabled}
+                    onChange={(event) => setDeleteConfirm(event.target.value)}
+                    placeholder={release?.tagName}
+                    value={deleteConfirm}
+                  />
+                </label>
                 <button
-                  aria-disabled="true"
+                  aria-disabled={disabled || !deleteReady}
                   className="btn mt-4 w-full"
-                  disabled
+                  disabled={disabled || !deleteReady}
+                  onClick={deleteRelease}
                   type="button"
                 >
                   Delete release
@@ -476,6 +627,17 @@ function RepositoryReleaseFormContent({
             ) : null}
           </aside>
         </div>
+        {message ? (
+          <p
+            className="mt-5 t-sm"
+            role={message.kind === "error" ? "alert" : "status"}
+            style={{
+              color: `var(--${message.kind === "error" ? "err" : "ok"})`,
+            }}
+          >
+            {message.text}
+          </p>
+        ) : null}
       </section>
     </RepositoryShell>
   );

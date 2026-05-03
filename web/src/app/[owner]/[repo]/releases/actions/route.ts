@@ -4,6 +4,8 @@ import {
   createRepositoryReleaseFromCookie,
   deleteRepositoryReleaseAssetFromCookie,
   deleteRepositoryReleaseFromCookie,
+  type GeneratedReleaseNotesRequest,
+  generateRepositoryReleaseNotesFromCookie,
   publishRepositoryReleaseFromCookie,
   type ReleaseAssetMutation,
   type ReleaseMutation,
@@ -33,6 +35,15 @@ export async function POST(request: Request, { params }: RouteContext) {
       );
       return Response.json(release, { status: 201 });
     }
+    if (action === "generatedNotes") {
+      const preview = await generateRepositoryReleaseNotesFromCookie(
+        cookie,
+        owner,
+        repo,
+        payload?.request as GeneratedReleaseNotesRequest,
+      );
+      return Response.json(preview);
+    }
     if (action === "update") {
       const release = await updateRepositoryReleaseFromCookie(
         cookie,
@@ -58,6 +69,7 @@ export async function POST(request: Request, { params }: RouteContext) {
         owner,
         repo,
         String(payload?.releaseId ?? ""),
+        { deleteTag: Boolean(payload?.deleteTag) },
       );
       return Response.json({ ok: true });
     }

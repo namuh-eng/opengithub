@@ -3878,5 +3878,26 @@
       "Verify mobile keyboard traversal and screen-reader flow through the dedicated form once mutation controls become enabled.",
       "Stress private repository leakage, immutable release restrictions, archived repository blocking, and concurrent release edits on a clean migrated database."
     ]
+  },
+  {
+    "feature_id": "releases-002",
+    "tests_written": [
+      "Completed Phase 3 Server-Confirmed Create/Edit/Publish/Delete Flow without marking releases-002 build_pass=true.",
+      "Enabled the dedicated release form actions for generated notes, create/publish release, save draft, update release, publish draft, and delete release through the same-origin Next.js action route and Rust API.",
+      "Generated notes now insert into the Markdown editor only after the server returns a preview; rejected mutations preserve user input and show inline errors.",
+      "Delete release now requires typed tag-name confirmation in the UI and forwards the explicit deleteTag option to the Rust API; the API soft-deletes release metadata and removes refs/tags/<tag> only when requested.",
+      "Focused Rust contract covers deleteTag behavior, tag removal, and delete audit metadata.",
+      "Focused Vitest covers generated notes insertion, publish/save draft/update redirects, rollback-on-error, publish draft, and delete-tag forwarding.",
+      "Focused Playwright smoke covers generated notes, draft creation, release update, draft publish, delete confirmation, no dead visible controls, and screenshots releases-002-phase3-create-draft.jpg and releases-002-phase3-edit-publish-delete.jpg.",
+      "Full E2E suite passed with 98 Playwright tests."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 still needs real upload intent completion/cancel behavior, drag-and-drop progress rows, removal before publish, existing asset deletion, and provider-backed S3 signed upload checks.",
+      "Generated notes need deeper QA across complex histories: merge commits, squash merges, missing previous tags, slash-containing tags, empty ranges, long commit messages, and many contributors.",
+      "Stress concurrent create/update/publish/delete flows, duplicate tag races, latest-policy races, and deleteTag safety on a clean migrated database.",
+      "Verify immutable release and archived repository restrictions through UI, API, and direct edge-case database state.",
+      "Probe private repository leakage and webhook/activity side effects for draft save, publish, update, delete, and deleteTag operations.",
+      "Run accessibility traversal through generated notes, Markdown editor reset, success/error callouts, publish buttons, and typed delete confirmation."
+    ]
   }
 ]

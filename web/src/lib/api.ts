@@ -1041,6 +1041,12 @@ export type ReleaseUploadIntent = {
   expiresAt: string;
 };
 
+export type GeneratedReleaseNotesRequest = {
+  target: string;
+  previousTag?: string | null;
+  title?: string | null;
+};
+
 export type RepositoryFileFinderItem = {
   path: string;
   name: string;
@@ -6137,6 +6143,39 @@ export async function toggleRepositoryReleaseReactionFromCookie(
   return payload as ReleaseReactionSummary;
 }
 
+export async function generateRepositoryReleaseNotesFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  request: GeneratedReleaseNotesRequest,
+): Promise<GeneratedReleaseNotesPreview> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/manage/generated-notes`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Release notes could not be generated",
+      {
+        cause: envelope,
+      },
+    );
+  }
+
+  return payload as GeneratedReleaseNotesPreview;
+}
+
 export async function getRepositoryReleaseAssetDownloadFromCookie(
   cookie: string | null | undefined,
   owner: string,
@@ -6243,13 +6282,14 @@ export async function deleteRepositoryReleaseFromCookie(
   owner: string,
   repo: string,
   releaseId: string,
+  mutation: Pick<ReleaseMutation, "deleteTag"> = {},
 ): Promise<void> {
   await releaseMutationRequest(
     cookie,
     `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/${encodeURIComponent(releaseId)}`,
     {
       method: "DELETE",
-      body: "{}",
+      body: JSON.stringify(mutation),
     },
   );
 }

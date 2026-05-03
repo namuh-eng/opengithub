@@ -47,7 +47,7 @@
 
 ## Phase 3: Server-Confirmed Create/Edit/Publish/Delete Flow - no dead authoring controls
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire every visible form action to the Rust API with rollback-on-error semantics and browser-proven user flows.
 

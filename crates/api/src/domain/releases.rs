@@ -764,11 +764,20 @@ pub async fn delete_repository_release_by_owner_name(
     repo_name: &str,
     release_id: Uuid,
     actor_user_id: Option<Uuid>,
+    delete_tag: bool,
 ) -> Result<(), ReleasesError> {
     let actor_user_id = actor_user_id.ok_or(ReleasesError::AuthenticationRequired)?;
     let repository = writable_repository(pool, owner_login, repo_name, actor_user_id).await?;
     ensure_repository_mutable(&repository)?;
     ensure_release_mutable(pool, repository.id, release_id).await?;
+    let tag_name = sqlx::query_scalar::<_, String>(
+        "SELECT tag_name FROM releases WHERE repository_id = $1 AND id = $2 AND deleted_at IS NULL",
+    )
+    .bind(repository.id)
+    .bind(release_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ReleasesError::NotFound)?;
     let affected = sqlx::query(
         r#"
         UPDATE releases
@@ -785,6 +794,20 @@ pub async fn delete_repository_release_by_owner_name(
     if affected == 0 {
         return Err(ReleasesError::NotFound);
     }
+    if delete_tag {
+        sqlx::query(
+            r#"
+            DELETE FROM repository_git_refs
+            WHERE repository_id = $1
+              AND kind = 'tag'
+              AND lower(regexp_replace(name, '^refs/tags/', '')) = lower($2)
+            "#,
+        )
+        .bind(repository.id)
+        .bind(&tag_name)
+        .execute(pool)
+        .await?;
+    }
     refresh_latest_marker(pool, repository.id).await?;
     audit_release_event(
         pool,
@@ -792,9 +815,9 @@ pub async fn delete_repository_release_by_owner_name(
         Some(release_id),
         actor_user_id,
         "release.deleted",
-        &["deleted_at"],
+        &["deleted_at", "delete_tag"],
         json!({}),
-        json!({ "deleted": true }),
+        json!({ "deleted": true, "deleteTag": delete_tag, "tagName": tag_name }),
     )
     .await?;
     enqueue_release_side_effects(
@@ -802,7 +825,7 @@ pub async fn delete_repository_release_by_owner_name(
         repository.id,
         release_id,
         "release",
-        json!({ "action": "deleted", "releaseId": release_id }),
+        json!({ "action": "deleted", "releaseId": release_id, "deleteTag": delete_tag }),
     )
     .await?;
     Ok(())

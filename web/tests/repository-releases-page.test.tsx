@@ -1,5 +1,11 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RepositoryReleaseFormPage } from "@/components/RepositoryReleaseFormPage";
 import {
   RepositoryReleaseDetailPage,
@@ -7,6 +13,7 @@ import {
   RepositoryTagsPage,
 } from "@/components/RepositoryReleasesPage";
 import type {
+  GeneratedReleaseNotesPreview,
   ListEnvelope,
   ReleaseManagementContext,
   ReleaseTagSummary,
@@ -15,12 +22,24 @@ import type {
   RepositoryReleaseSummary,
 } from "@/lib/api";
 
+const pushMock = vi.fn();
+const refreshMock = vi.fn();
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({
-    push: vi.fn(),
-    refresh: vi.fn(),
+    push: pushMock,
+    refresh: refreshMock,
   }),
 }));
+
+beforeEach(() => {
+  pushMock.mockReset();
+  refreshMock.mockReset();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function repositoryOverview(
   overrides: Partial<RepositoryOverview> = {},
@@ -382,7 +401,7 @@ describe("RepositoryReleaseDetailPage", () => {
 });
 
 describe("RepositoryReleaseFormPage", () => {
-  it("renders the dedicated new release form with selectors, preview, policy, and disabled submit actions", () => {
+  it("renders the dedicated new release form with selectors, policy, and server-confirmed actions", () => {
     const { container } = render(
       <RepositoryReleaseFormPage
         context={managementContext()}
@@ -400,11 +419,6 @@ describe("RepositoryReleaseFormPage", () => {
     fireEvent.change(screen.getByLabelText("Title"), {
       target: { value: "Release <script>" },
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Preview generated notes" }),
-    );
-    expect(screen.getByText("Release <script>")).toBeVisible();
-    expect(screen.queryByText("<script>")).not.toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Preview" })).toBeVisible();
     expect(screen.getByLabelText("Release asset files")).toBeEnabled();
     expect(screen.getByLabelText("Release asset files")).toHaveAttribute(
@@ -413,9 +427,204 @@ describe("RepositoryReleaseFormPage", () => {
     );
     expect(
       screen.getByRole("button", { name: "Publish release" }),
-    ).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Save draft" })).toBeDisabled();
+    ).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save draft" })).toBeEnabled();
     expectNoDeadControls(container);
+  });
+
+  it("inserts generated notes only after the server returns them", async () => {
+    const preview: GeneratedReleaseNotesPreview = {
+      title: "Managed release",
+      body: "## Managed release\n\n- abc1234 Server generated change",
+      target: releaseRef(),
+      previousTag: releaseRef({ name: "v2.0.0", shortName: "v2.0.0" }),
+      commitCount: 1,
+      mergedPullRequestCount: 0,
+      contributors: [],
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => preview,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryReleaseFormPage
+        context={managementContext()}
+        mode="new"
+        repository={repositoryOverview({ viewerPermission: "write" })}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "Managed release" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Generate release notes" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("Markdown source")).toHaveValue(
+        preview.body,
+      ),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/mona/octo-app/releases/actions",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"action":"generatedNotes"'),
+      }),
+    );
+    expect(
+      screen.getByText(
+        "Generated notes inserted. Review them before publishing.",
+      ),
+    ).toBeVisible();
+  });
+
+  it("publishes, saves drafts, updates, and redirects only from returned API state", async () => {
+    const created = {
+      ...release({ title: "Managed release", tagName: "v3.0.0" }),
+      body: "Notes",
+      bodyHtml: "<p>Notes</p>",
+      immutable: false,
+      tagSignatureSummary: null,
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => created,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryReleaseFormPage
+        context={managementContext()}
+        mode="new"
+        repository={repositoryOverview({ viewerPermission: "write" })}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("New tag"));
+    fireEvent.change(screen.getByLabelText("New tag name"), {
+      target: { value: "v3.0.0" },
+    });
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "Managed release" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mona/octo-app/releases/actions",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"draft":true'),
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(pushMock).toHaveBeenCalledWith(
+        "/mona/octo-app/releases/tag/v2.0.0",
+      ),
+    );
+  });
+
+  it("preserves form data and shows server errors when a mutation is rejected", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      json: async () => ({
+        error: {
+          code: "validation_failed",
+          message: "release tag already exists",
+        },
+        status: 422,
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryReleaseFormPage
+        context={managementContext()}
+        mode="new"
+        repository={repositoryOverview({ viewerPermission: "write" })}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "Duplicate release" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Publish release" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "release tag already exists",
+      ),
+    );
+    expect(screen.getByLabelText("Title")).toHaveValue("Duplicate release");
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it("publishes an edited draft and deletes only after typed confirmation", async () => {
+    const detail: RepositoryReleaseDetail = {
+      ...release({ draft: true, latest: false }),
+      body: "Draft notes",
+      bodyHtml: "<p>Draft notes</p>",
+      immutable: false,
+      tagSignatureSummary: null,
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ...detail,
+        draft: false,
+        links: {
+          ...detail.links,
+          htmlHref: "/mona/octo-app/releases/tag/v2.0.0",
+        },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryReleaseFormPage
+        context={managementContext({ release: detail })}
+        mode="edit"
+        repository={repositoryOverview({ viewerPermission: "write" })}
+      />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Delete release" }),
+    ).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Publish draft" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mona/octo-app/releases/actions",
+        expect.objectContaining({
+          body: expect.stringContaining('"draft":false'),
+        }),
+      ),
+    );
+
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ ok: true }),
+    });
+    fireEvent.click(screen.getByLabelText("Also delete the git tag"));
+    fireEvent.change(screen.getByLabelText("Type tag name to confirm"), {
+      target: { value: "v2.0.0" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Delete release" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        "/mona/octo-app/releases/actions",
+        expect.objectContaining({
+          body: expect.stringContaining('"deleteTag":true'),
+        }),
+      ),
+    );
+    expect(pushMock).toHaveBeenCalledWith("/mona/octo-app/releases");
   });
 
   it("renders edit, immutable, danger, and existing asset states", () => {

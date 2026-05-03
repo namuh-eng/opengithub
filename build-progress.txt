@@ -2701,3 +2701,14 @@
 - Verification passed: focused `web/tests/repository-releases-page.test.tsx`; `cd web && npx tsc --noEmit --pretty false`; focused same-env Playwright `repository-releases.spec.ts`; mandatory Editorial banned-value scan returned zero matches; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 315 web tests.
 - Full same-env Playwright was attempted; 25 tests passed and 73 seeded suites failed on the pre-existing local database migration checksum issue: `migration 202605030041 was previously applied but has been modified`.
 - Marked Phase 2 as done in `.qrspi/releases-002/structure.md`; `prd.json` remains `build_pass:false` because Phases 3-5 remain.
+
+2026-05-03 - releases-002 phase 3 server-confirmed release management flow
+
+- Completed Phase 3 from `.qrspi/releases-002/structure.md`: dedicated release form controls now execute server-confirmed generated-notes, create, save-draft, update, publish-draft, and delete flows instead of inert placeholders.
+- Added same-origin generated-notes forwarding through `/{owner}/{repo}/releases/actions`; generated notes are inserted into the Markdown editor only after the Rust API returns the preview.
+- Enabled form pending/success/error state, rollback-on-error behavior, release redirects from returned API links, typed delete confirmation, and delete-tag forwarding.
+- Extended the Rust delete-release contract so `deleteTag:true` removes the matching `refs/tags/<tag>` only when explicitly requested and records the choice in audit/webhook metadata.
+- Extended focused Rust, Vitest, and Playwright coverage for generated notes, create draft, publish release, edit existing release, publish draft, delete without local-only success, delete-tag forwarding, rejected mutation rollback, no dead controls, and mobile-safe smoke coverage.
+- Browser smoke screenshots saved at `ralph/screenshots/build/releases-002-phase3-create-draft.jpg` and `ralph/screenshots/build/releases-002-phase3-edit-publish-delete.jpg`.
+- Verification passed: `cargo test -p opengithub-api --test repository_release_management_contract`; `cd web && npx tsc --noEmit --pretty false`; focused `web/tests/repository-releases-page.test.tsx`; focused same-env Playwright `repository-releases.spec.ts`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 319 frontend tests; full same-env `npm run test:e2e` with 98 Playwright tests; mandatory Editorial banned-value scan returned zero matches using `rg -n -e`.
+- Marked Phase 3 as done in `.qrspi/releases-002/structure.md`; `prd.json` remains `build_pass:false` because Phases 4-5 remain.

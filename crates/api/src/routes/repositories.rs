@@ -856,6 +856,7 @@ async fn delete_release(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path((owner, repo, release_id)): Path<(String, String, Uuid)>,
+    RestJson(request): RestJson<ReleaseMutation>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
@@ -865,6 +866,7 @@ async fn delete_release(
         &repo,
         release_id,
         actor.as_ref().map(|user| user.id),
+        request.delete_tag.unwrap_or(false),
     )
     .await
     .map_err(map_releases_error)?;
