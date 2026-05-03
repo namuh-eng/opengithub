@@ -10,6 +10,54 @@ export type AuthSession = {
   user: AuthUser | null;
 };
 
+export type PersonalAccessTokenResourceOwner = {
+  id: string;
+  kind: "user" | "organization" | string;
+  login: string;
+  displayName: string;
+  avatarUrl: string | null;
+};
+
+export type PersonalAccessTokenRepositorySummary = {
+  id: string;
+  owner: string;
+  name: string;
+  fullName: string;
+  visibility: RepositoryVisibility | string;
+};
+
+export type PersonalAccessTokenSummary = {
+  id: string;
+  name: string;
+  description: string;
+  type: "fine_grained" | "classic" | string;
+  prefix: string;
+  scopes: string[];
+  resourceOwner: PersonalAccessTokenResourceOwner;
+  repositoryAccess: "all" | "selected" | string;
+  selectedRepositories: PersonalAccessTokenRepositorySummary[];
+  status: "active" | "expired" | "revoked" | string;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+};
+
+export type PersonalAccessTokenSudoState = {
+  active: boolean;
+  expiresAt: string | null;
+  requiredFor: string[];
+};
+
+export type PersonalAccessTokenList = {
+  tokens: PersonalAccessTokenSummary[];
+  sudo: PersonalAccessTokenSudoState;
+};
+
+export type PersonalAccessTokenListFetchResult =
+  | { ok: true; list: PersonalAccessTokenList }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type UserEmailAddress = {
   id: string;
   email: string;
@@ -3715,6 +3763,43 @@ export async function getSessionFromHeaders(
   requestHeaders: Headers,
 ): Promise<AuthSession> {
   return getSessionFromCookie(requestHeaders.get("cookie"));
+}
+
+export async function getPersonalAccessTokenListFromCookie(
+  cookie: string | null | undefined,
+): Promise<PersonalAccessTokenListFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}/api/settings/tokens`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Personal access tokens are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Personal access tokens are unavailable right now.";
+    try {
+      const body = (await response.json()) as ApiErrorEnvelope;
+      code = body.error.code ?? null;
+      message = body.error.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    list: (await response.json()) as PersonalAccessTokenList,
+  };
 }
 
 export async function getAppShellContextFromCookie(

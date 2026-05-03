@@ -70,8 +70,38 @@ test("developer settings expose copyable opengithub token workflows", async ({
   await page.goto("/settings/tokens");
 
   await expect(
-    page.getByRole("heading", { name: "Personal access tokens" }),
+    page.getByRole("heading", {
+      exact: true,
+      name: "Personal access tokens",
+    }),
   ).toBeVisible();
+  await expect(page.getByText("Your personal access tokens")).toBeVisible();
+  await expect(page.getByText("No personal access tokens yet")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "New fine-grained token" }),
+  ).toHaveAttribute(
+    "href",
+    "/settings/personal-access-tokens/new?type=fine_grained",
+  );
+  await expect(
+    page.getByRole("link", { name: "New classic token" }),
+  ).toHaveAttribute(
+    "href",
+    "/settings/personal-access-tokens/new?type=classic",
+  );
+  await page.getByText("Generate new token").click();
+  await expect(
+    page.getByRole("link", { name: /Fine-grained token/ }),
+  ).toHaveAttribute(
+    "href",
+    "/settings/personal-access-tokens/new?type=fine_grained",
+  );
+  await expect(
+    page.getByRole("link", { name: /Classic token/ }),
+  ).toHaveAttribute(
+    "href",
+    "/settings/personal-access-tokens/new?type=classic",
+  );
   await expect(page.getByText("Token quickstart")).toBeVisible();
   await expect(page.getByText("repo:read")).toBeVisible();
   await expect(page.getByText("api:write")).toBeVisible();
@@ -89,7 +119,7 @@ test("developer settings expose copyable opengithub token workflows", async ({
 
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/dx-001-settings-tokens.jpg",
+    path: "../ralph/screenshots/build/credentials-001-phase2-token-list.jpg",
   });
 });
 

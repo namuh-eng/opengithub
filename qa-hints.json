@@ -4404,5 +4404,23 @@
       "Probe concurrent sudo grants and expired/revoked session behavior once UI flows are wired.",
       "The shared opengithub_identity_test database still has the known pre-existing 202605030041 migration checksum issue; the focused contract applies this phase's additive migration directly when that occurs."
     ]
+  },
+  {
+    "feature_id": "credentials-001",
+    "tests_written": [
+      "Completed Phase 2 Editorial Developer Settings Token List without marking credentials-001 build_pass=true.",
+      "Added typed frontend API fetch coverage for GET /api/settings/tokens and server-side /settings/tokens data loading through the Rust signed-session cookie.",
+      "Rendered real token list, empty, unauthorized, and unavailable states with token prefixes only, resource owner, repository access, status chips, last-used/expiration metadata, sudo state, and concrete fine-grained/classic generation links.",
+      "Extended Vitest coverage for populated rows, empty state, unauthorized state, concrete links, copy snippets, and no raw token hash/plaintext leakage.",
+      "Focused Playwright smoke passed for signed-in /settings/tokens, generate menu links, copy feedback, no dead controls, and screenshot ralph/screenshots/build/credentials-001-phase2-token-list.jpg.",
+      "Full make check passed; full make test passed with Cargo tests plus 346 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Token creation routes are linked but not implemented until Phase 3; QA should not expect the new-token form to work yet.",
+      "Revocation/delete confirmation is still Phase 4, so this phase intentionally does not provide destructive token controls.",
+      "Exercise populated token rows against larger real accounts with many selected repositories, long token names/descriptions, expired/revoked states, and organization owners.",
+      "Run keyboard and screen-reader traversal on the details-based Generate new token menu, including focus return and narrow mobile placement.",
+      "Full make test-e2e was attempted with DASHBOARD_E2E_SKIP_MIGRATIONS=1 but hung silently in Playwright after several minutes and was terminated; the focused credentials smoke passed."
+    ]
   }
 ]

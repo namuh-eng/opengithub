@@ -22,7 +22,7 @@
 
 ## Phase 2: Editorial Developer Settings Token List - replace read-only placeholder
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Turn `/settings/tokens` into a real signed-in Developer Settings shell: token rows, generate menu, expiration/last-used/status metadata, and delete affordances wired to server data, while retaining the existing command snippets as supporting docs.
 

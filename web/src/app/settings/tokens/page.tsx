@@ -1,9 +1,15 @@
 import { DeveloperTokensPage } from "@/components/DeveloperTokensPage";
 import { SettingsShell } from "@/components/SettingsShell";
-import { getSessionAndShellContext } from "@/lib/server-session";
+import {
+  getPersonalAccessTokenList,
+  getSessionAndShellContext,
+} from "@/lib/server-session";
 
 export default async function SettingsTokensRoute() {
-  const { session, shellContext } = await getSessionAndShellContext();
+  const [{ session, shellContext }, tokenList] = await Promise.all([
+    getSessionAndShellContext(),
+    getPersonalAccessTokenList(),
+  ]);
 
   return (
     <SettingsShell
@@ -13,7 +19,7 @@ export default async function SettingsTokensRoute() {
       shellContext={shellContext}
       title="Personal access tokens"
     >
-      <DeveloperTokensPage showHeading={false} />
+      <DeveloperTokensPage showHeading={false} tokenList={tokenList} />
     </SettingsShell>
   );
 }
