@@ -653,6 +653,105 @@ describe("RepositoryReleaseFormPage", () => {
     expect(screen.getByLabelText("Also delete the git tag")).toBeDisabled();
   });
 
+  it("uploads, completes, and removes release assets through server-confirmed actions", async () => {
+    const detail: RepositoryReleaseDetail = {
+      ...release({ draft: true, latest: false }),
+      body: "Draft notes",
+      bodyHtml: "<p>Draft notes</p>",
+      immutable: false,
+      tagSignatureSummary: null,
+    };
+    const intent = {
+      id: "intent-1",
+      assetName: "manual.zip",
+      contentType: "application/zip",
+      byteSize: 11,
+      checksumSha256: null,
+      storageKind: "local",
+      uploadUrl:
+        "/api/repos/mona/octo-app/releases/manage/upload-intents/intent-1/local-upload",
+      handoffToken: "local-upload-intent-1",
+      status: "pending",
+      expiresAt: "2026-05-03T00:15:00Z",
+    };
+    const updated: RepositoryReleaseDetail = {
+      ...detail,
+      assets: [
+        ...detail.assets,
+        {
+          id: "asset-2",
+          name: "manual.zip",
+          label: null,
+          contentType: "application/zip",
+          byteSize: 11,
+          downloadCount: 0,
+          checksumSha256: null,
+          href: "/api/repos/mona/octo-app/releases/assets/asset-2",
+          createdAt: "2026-05-03T00:10:00Z",
+        },
+      ],
+    };
+    const afterDelete: RepositoryReleaseDetail = { ...detail, assets: [] };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => intent })
+      .mockResolvedValueOnce({ ok: true, json: async () => updated })
+      .mockResolvedValueOnce({ ok: true, json: async () => afterDelete });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryReleaseFormPage
+        context={managementContext({ release: detail })}
+        mode="edit"
+        repository={repositoryOverview({ viewerPermission: "write" })}
+      />,
+    );
+
+    const input = screen.getByLabelText("Release asset files");
+    const file = new File(["hello asset"], "manual.zip", {
+      type: "application/zip",
+    });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        1,
+        "/mona/octo-app/releases/actions",
+        expect.objectContaining({
+          body: expect.stringContaining('"action":"createUploadIntent"'),
+        }),
+      ),
+    );
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        "/mona/octo-app/releases/actions",
+        expect.objectContaining({
+          body: expect.stringContaining('"action":"completeUploadIntent"'),
+        }),
+      ),
+    );
+    expect(await screen.findByText("Attached to release.")).toBeVisible();
+    expect(screen.getAllByText("manual.zip").length).toBeGreaterThan(0);
+
+    const uploadedAssetRow = screen.getAllByText("manual.zip")[1].closest("li");
+    expect(uploadedAssetRow).not.toBeNull();
+    fireEvent.click(
+      within(uploadedAssetRow as HTMLElement).getByRole("button", {
+        name: "Remove",
+      }),
+    );
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        "/mona/octo-app/releases/actions",
+        expect.objectContaining({
+          body: expect.stringContaining('"action":"deleteAsset"'),
+        }),
+      ),
+    );
+    expect(await screen.findByText("Release asset removed.")).toBeVisible();
+  });
+
   it("renders release management forbidden and unavailable states", () => {
     render(
       <RepositoryReleaseFormPage

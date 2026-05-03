@@ -211,6 +211,21 @@ pub struct ReleaseUploadIntentRequest {
     pub checksum_sha256: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseUploadCompleteRequest {
+    pub release_id: Uuid,
+    pub handoff_token: String,
+    pub label: Option<String>,
+    pub checksum_sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReleaseUploadCancelRequest {
+    pub reason: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ReleaseUploadIntent {
@@ -466,7 +481,29 @@ pub async fn create_repository_release_upload_intent_by_owner_name(
         .transpose()?;
     let intent_id = Uuid::new_v4();
     let storage_key = format!("releases/pending/{}/{}", repository.id, intent_id);
+    let handoff_token = format!("local-upload-{intent_id}");
     let expires_at = Utc::now() + chrono::Duration::seconds(900);
+    sqlx::query(
+        r#"
+        INSERT INTO release_asset_upload_intents (
+            id, repository_id, asset_name, content_type, byte_size, checksum_sha256,
+            storage_kind, storage_key, handoff_token, created_by_user_id, expires_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, 'local', $7, $8, $9, $10)
+        "#,
+    )
+    .bind(intent_id)
+    .bind(repository.id)
+    .bind(&asset_name)
+    .bind(&content_type)
+    .bind(request.byte_size)
+    .bind(&checksum_sha256)
+    .bind(&storage_key)
+    .bind(&handoff_token)
+    .bind(actor_user_id)
+    .bind(expires_at)
+    .execute(pool)
+    .await?;
     audit_release_event(
         pool,
         repository.id,
@@ -511,9 +548,224 @@ pub async fn create_repository_release_upload_intent_by_owner_name(
             "/api/repos/{}/{}/releases/manage/upload-intents/{intent_id}/local-upload",
             repository.owner_login, repository.name
         ),
-        handoff_token: format!("local-upload-{intent_id}"),
+        handoff_token,
         status: "pending".to_owned(),
         expires_at,
+    })
+}
+
+pub async fn complete_repository_release_upload_intent_by_owner_name(
+    pool: &PgPool,
+    owner_login: &str,
+    repo_name: &str,
+    intent_id: Uuid,
+    actor_user_id: Option<Uuid>,
+    request: ReleaseUploadCompleteRequest,
+) -> Result<RepositoryReleaseDetail, ReleasesError> {
+    let actor_user_id = actor_user_id.ok_or(ReleasesError::AuthenticationRequired)?;
+    let repository = writable_repository(pool, owner_login, repo_name, actor_user_id).await?;
+    ensure_repository_mutable(&repository)?;
+    ensure_release_mutable(pool, repository.id, request.release_id).await?;
+    let intent = sqlx::query(
+        r#"
+        SELECT id, asset_name, content_type, byte_size, checksum_sha256, storage_kind,
+               storage_key, handoff_token, status, expires_at
+        FROM release_asset_upload_intents
+        WHERE id = $1 AND repository_id = $2
+        "#,
+    )
+    .bind(intent_id)
+    .bind(repository.id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ReleasesError::NotFound)?;
+
+    let status: String = intent.get("status");
+    if status != "pending" {
+        return Err(ReleasesError::Conflict(
+            "release asset upload intent is no longer pending".to_owned(),
+        ));
+    }
+    let expires_at: DateTime<Utc> = intent.get("expires_at");
+    if expires_at <= Utc::now() {
+        sqlx::query(
+            "UPDATE release_asset_upload_intents SET status = 'expired' WHERE id = $1 AND status = 'pending'",
+        )
+        .bind(intent_id)
+        .execute(pool)
+        .await?;
+        return Err(ReleasesError::Conflict(
+            "release asset upload intent has expired".to_owned(),
+        ));
+    }
+    let handoff_token: String = intent.get("handoff_token");
+    if request.handoff_token.trim() != handoff_token {
+        return Err(ReleasesError::Validation(
+            "release asset upload token is invalid".to_owned(),
+        ));
+    }
+
+    let name: String = intent.get("asset_name");
+    let content_type: String = intent.get("content_type");
+    let byte_size: i64 = intent.get("byte_size");
+    let storage_kind: String = intent.get("storage_kind");
+    let storage_key: String = intent.get("storage_key");
+    let checksum_sha256 = match request
+        .checksum_sha256
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(value) => Some(validate_sha256(value)?),
+        None => intent.get("checksum_sha256"),
+    };
+    let label = request
+        .label
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let asset_id = sqlx::query(
+        r#"
+        INSERT INTO release_assets (
+            repository_id, release_id, name, label, content_type, byte_size,
+            storage_kind, storage_key, checksum_sha256, uploaded_by_user_id
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(request.release_id)
+    .bind(&name)
+    .bind(label)
+    .bind(&content_type)
+    .bind(byte_size)
+    .bind(&storage_kind)
+    .bind(&storage_key)
+    .bind(&checksum_sha256)
+    .bind(actor_user_id)
+    .fetch_one(pool)
+    .await
+    .map_err(map_release_write_error)?
+    .get::<Uuid, _>("id");
+
+    sqlx::query(
+        r#"
+        UPDATE release_asset_upload_intents
+        SET release_id = $2,
+            asset_id = $3,
+            status = 'completed',
+            completed_by_user_id = $4,
+            completed_at = now()
+        WHERE id = $1
+        "#,
+    )
+    .bind(intent_id)
+    .bind(request.release_id)
+    .bind(asset_id)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
+
+    audit_release_event(
+        pool,
+        repository.id,
+        Some(request.release_id),
+        actor_user_id,
+        "release.asset.upload_completed",
+        &["asset"],
+        json!({ "intentId": intent_id }),
+        json!({
+            "assetId": asset_id,
+            "assetName": name,
+            "byteSize": byte_size,
+            "contentType": content_type,
+            "storageKind": storage_kind,
+            "checksumSha256": checksum_sha256
+        }),
+    )
+    .await?;
+    enqueue_release_side_effects(
+        pool,
+        repository.id,
+        request.release_id,
+        "release",
+        json!({
+            "action": "asset_uploaded",
+            "releaseId": request.release_id,
+            "assetId": asset_id,
+            "assetName": name
+        }),
+    )
+    .await?;
+    release_detail_for_repository(pool, &repository, Some(actor_user_id), request.release_id).await
+}
+
+pub async fn cancel_repository_release_upload_intent_by_owner_name(
+    pool: &PgPool,
+    owner_login: &str,
+    repo_name: &str,
+    intent_id: Uuid,
+    actor_user_id: Option<Uuid>,
+    request: ReleaseUploadCancelRequest,
+) -> Result<ReleaseUploadIntent, ReleasesError> {
+    let actor_user_id = actor_user_id.ok_or(ReleasesError::AuthenticationRequired)?;
+    let repository = writable_repository(pool, owner_login, repo_name, actor_user_id).await?;
+    ensure_repository_mutable(&repository)?;
+    let row = sqlx::query(
+        r#"
+        UPDATE release_asset_upload_intents
+        SET status = 'cancelled',
+            cancelled_by_user_id = $3,
+            cancelled_at = now()
+        WHERE id = $1
+          AND repository_id = $2
+          AND status = 'pending'
+        RETURNING id, asset_name, content_type, byte_size, checksum_sha256,
+                  storage_kind, handoff_token, status, expires_at
+        "#,
+    )
+    .bind(intent_id)
+    .bind(repository.id)
+    .bind(actor_user_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ReleasesError::NotFound)?;
+    let reason = request
+        .reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("cancelled");
+    audit_release_event(
+        pool,
+        repository.id,
+        None,
+        actor_user_id,
+        "release.asset.upload_cancelled",
+        &["asset"],
+        json!({ "intentId": intent_id }),
+        json!({
+            "intentId": intent_id,
+            "assetName": row.get::<String, _>("asset_name"),
+            "reason": reason
+        }),
+    )
+    .await?;
+    Ok(ReleaseUploadIntent {
+        id: row.get("id"),
+        asset_name: row.get("asset_name"),
+        content_type: row.get("content_type"),
+        byte_size: row.get("byte_size"),
+        checksum_sha256: row.get("checksum_sha256"),
+        storage_kind: row.get("storage_kind"),
+        upload_url: format!(
+            "/api/repos/{}/{}/releases/manage/upload-intents/{intent_id}/local-upload",
+            repository.owner_login, repository.name
+        ),
+        handoff_token: row.get("handoff_token"),
+        status: row.get("status"),
+        expires_at: row.get("expires_at"),
     })
 }
 

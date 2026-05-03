@@ -162,6 +162,7 @@ async fn release_management_context_notes_latest_uploads_and_side_effects() {
         .contains("upload-intents"));
     assert!(!intent_body.to_string().contains("storageKey"));
     assert!(!intent_body.to_string().contains("releases/pending"));
+    let upload_intent_id = Uuid::parse_str(intent_body["id"].as_str().unwrap()).unwrap();
 
     let (invalid_intent_status, _, invalid_intent_body) = send_json(
         app.clone(),
@@ -200,6 +201,104 @@ async fn release_management_context_notes_latest_uploads_and_side_effects() {
     assert!(!create_body.to_string().contains("storageKey"));
     let release_id = Uuid::parse_str(create_body["id"].as_str().unwrap()).unwrap();
 
+    let (complete_status, _, complete_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("{manage_uri}/upload-intents/{upload_intent_id}/complete"),
+        Some(&owner_cookie),
+        Some(json!({
+            "releaseId": release_id,
+            "handoffToken": intent_body["handoffToken"],
+            "checksumSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        })),
+    )
+    .await;
+    assert_eq!(complete_status, StatusCode::OK);
+    assert_eq!(
+        complete_body["assets"][0]["name"],
+        "opengithub-linux.tar.gz"
+    );
+    assert_eq!(complete_body["assets"][0]["downloadCount"], 0);
+    assert_eq!(
+        complete_body["assets"][0]["checksumSha256"],
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    );
+    assert!(!complete_body.to_string().contains("storageKey"));
+    let asset_id = Uuid::parse_str(complete_body["assets"][0]["id"].as_str().unwrap()).unwrap();
+
+    let upload_status = sqlx::query_scalar::<_, String>(
+        "SELECT status FROM release_asset_upload_intents WHERE id = $1",
+    )
+    .bind(upload_intent_id)
+    .fetch_one(&pool)
+    .await
+    .expect("upload intent status should read");
+    assert_eq!(upload_status, "completed");
+
+    let (asset_download_status, _, asset_download_body) = send_json(
+        app.clone(),
+        Method::GET,
+        &format!(
+            "/api/repos/{}/{}/releases/assets/{asset_id}",
+            owner.email, repo.name
+        ),
+        Some(&owner_cookie),
+        None,
+    )
+    .await;
+    assert_eq!(asset_download_status, StatusCode::OK);
+    assert_eq!(asset_download_body["asset"]["downloadCount"], 1);
+
+    let (stale_intent_status, _, stale_intent_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("{manage_uri}/upload-intents/{upload_intent_id}/complete"),
+        Some(&owner_cookie),
+        Some(json!({
+            "releaseId": release_id,
+            "handoffToken": intent_body["handoffToken"]
+        })),
+    )
+    .await;
+    assert_eq!(stale_intent_status, StatusCode::CONFLICT);
+    assert_eq!(stale_intent_body["error"]["code"], "conflict");
+
+    let (cancel_intent_status, _, cancel_intent_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("{manage_uri}/upload-intents"),
+        Some(&owner_cookie),
+        Some(json!({
+            "name": "cancelled.zip",
+            "contentType": "application/zip",
+            "byteSize": 128
+        })),
+    )
+    .await;
+    assert_eq!(cancel_intent_status, StatusCode::CREATED);
+    let cancel_intent_id = Uuid::parse_str(cancel_intent_body["id"].as_str().unwrap()).unwrap();
+    let (cancel_status, _, cancel_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("{manage_uri}/upload-intents/{cancel_intent_id}/cancel"),
+        Some(&owner_cookie),
+        Some(json!({ "reason": "user removed queued asset" })),
+    )
+    .await;
+    assert_eq!(cancel_status, StatusCode::OK);
+    assert_eq!(cancel_body["status"], "cancelled");
+
+    let (delete_asset_status, _, delete_asset_body) = send_json(
+        app.clone(),
+        Method::DELETE,
+        &format!("{release_uri}/{release_id}/assets/{asset_id}"),
+        Some(&owner_cookie),
+        None,
+    )
+    .await;
+    assert_eq!(delete_asset_status, StatusCode::OK);
+    assert_eq!(delete_asset_body["assets"].as_array().unwrap().len(), 0);
+
     let (edit_context_status, _, edit_context_body) = send_json(
         app.clone(),
         Method::GET,
@@ -224,7 +323,7 @@ async fn release_management_context_notes_latest_uploads_and_side_effects() {
     .fetch_one(&pool)
     .await
     .expect("webhook deliveries should read");
-    assert_eq!(webhook_events, 1);
+    assert_eq!(webhook_events, 2);
 
     let audit_text = sqlx::query_scalar::<_, String>(
         "SELECT COALESCE(string_agg(after_state::text, ' '), '') FROM release_audit_events WHERE repository_id = $1",
@@ -234,6 +333,8 @@ async fn release_management_context_notes_latest_uploads_and_side_effects() {
     .await
     .expect("audit text should read");
     assert!(audit_text.contains("upload_intent") || audit_text.contains("upload"));
+    assert!(audit_text.contains("opengithub-linux.tar.gz"));
+    assert!(audit_text.contains("cancelled.zip"));
     assert!(!audit_text.contains("storage_key"));
     assert!(!audit_text.contains("releases/pending"));
 

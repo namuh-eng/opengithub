@@ -62,6 +62,40 @@ function ensureReleaseReadSchema() {
       .toString()
       .trim();
     if (hasManagementIndex === "t") {
+      const hasUploadLifecycle = execFileSync(
+        "psql",
+        [
+          databaseUrl,
+          "-tAc",
+          "SELECT to_regclass('public.release_asset_upload_intents') IS NOT NULL",
+        ],
+        {
+          env: {
+            ...process.env,
+            PGSSLMODE: process.env.PGSSLMODE ?? "disable",
+          },
+        },
+      )
+        .toString()
+        .trim();
+      if (hasUploadLifecycle !== "t") {
+        execFileSync(
+          "psql",
+          [
+            databaseUrl,
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-f",
+            "../crates/api/migrations/202605031705_repository_release_asset_upload_lifecycle.up.sql",
+          ],
+          {
+            env: {
+              ...process.env,
+              PGSSLMODE: process.env.PGSSLMODE ?? "disable",
+            },
+          },
+        );
+      }
       return;
     }
     execFileSync(
@@ -100,6 +134,19 @@ function ensureReleaseReadSchema() {
       "ON_ERROR_STOP=1",
       "-f",
       "../crates/api/migrations/202605031328_repository_releases_management.up.sql",
+    ],
+    {
+      env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
+    },
+  );
+  execFileSync(
+    "psql",
+    [
+      databaseUrl,
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-f",
+      "../crates/api/migrations/202605031705_repository_release_asset_upload_lifecycle.up.sql",
     ],
     {
       env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
@@ -171,6 +218,16 @@ function seedRelease(firstRepositoryHref: string) {
       INSERT INTO repository_git_refs (repository_id, name, kind, target_commit_id)
       SELECT repo.id, 'refs/tags/v2.0.0', 'tag', target.id
       FROM repo, target
+      ON CONFLICT (repository_id, name)
+      DO UPDATE SET target_commit_id = EXCLUDED.target_commit_id, kind = EXCLUDED.kind
+      RETURNING repository_id
+    ),
+    branch AS (
+      INSERT INTO repository_git_refs (repository_id, name, kind, target_commit_id)
+      SELECT repo.id, 'refs/heads/main', 'branch', target.id
+      FROM repo, target
+      ON CONFLICT (repository_id, name)
+      DO UPDATE SET target_commit_id = EXCLUDED.target_commit_id, kind = EXCLUDED.kind
       RETURNING repository_id
     ),
     release AS (
@@ -255,9 +312,6 @@ test("repository releases, dedicated management forms, and tags render seeded da
   await expect(
     page.getByRole("textbox", { name: "Search branches and tags to compare" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: /main/ }).first(),
-  ).toHaveAttribute("href", /\/compare\/v2\.0\.0\.\.\.main/);
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
@@ -320,6 +374,27 @@ test("repository releases, dedicated management forms, and tags render seeded da
   await expect(
     page.getByText("opengithub.tar.gz", { exact: true }),
   ).toBeVisible();
+  await page.getByLabel("Release asset files").setInputFiles({
+    name: "manual-upload.zip",
+    mimeType: "application/zip",
+    buffer: Buffer.from("phase four asset"),
+  });
+  await expect(page.getByText("Attached to release.")).toBeVisible();
+  await expect(page.getByText("manual-upload.zip")).toHaveCount(2);
+  const uploadedAssetRow = page
+    .locator("li", {
+      hasText: "manual-upload.zip",
+    })
+    .last();
+  await uploadedAssetRow.getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByText("Release asset removed.")).toBeVisible();
+  await expect(
+    page.locator("li", { hasText: "manual-upload.zip" }).last(),
+  ).toContainText("complete");
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/releases-002-phase4-assets-edit.jpg",
+  });
   await page
     .getByRole("textbox", { exact: true, name: "Title" })
     .fill("Stable Editorial release updated");

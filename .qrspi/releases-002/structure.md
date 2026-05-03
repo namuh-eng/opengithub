@@ -66,7 +66,7 @@
 
 ## Phase 4: Asset Upload Lifecycle - upload intents, progress rows, completion, removal, and download integrity
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Upgrade asset handling from metadata-only creation to a real upload lifecycle that supports drag-and-drop form rows, progress/success/error states, removal before publish, and existing release asset management.
 

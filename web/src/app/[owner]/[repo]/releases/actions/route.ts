@@ -1,7 +1,10 @@
 import { cookies } from "next/headers";
 import {
+  cancelRepositoryReleaseUploadIntentFromCookie,
+  completeRepositoryReleaseUploadIntentFromCookie,
   createRepositoryReleaseAssetFromCookie,
   createRepositoryReleaseFromCookie,
+  createRepositoryReleaseUploadIntentFromCookie,
   deleteRepositoryReleaseAssetFromCookie,
   deleteRepositoryReleaseFromCookie,
   type GeneratedReleaseNotesRequest,
@@ -9,6 +12,8 @@ import {
   publishRepositoryReleaseFromCookie,
   type ReleaseAssetMutation,
   type ReleaseMutation,
+  type ReleaseUploadCompleteRequest,
+  type ReleaseUploadIntentRequest,
   updateRepositoryReleaseFromCookie,
 } from "@/lib/api";
 
@@ -82,6 +87,35 @@ export async function POST(request: Request, { params }: RouteContext) {
         payload?.asset as ReleaseAssetMutation,
       );
       return Response.json(release, { status: 201 });
+    }
+    if (action === "createUploadIntent") {
+      const intent = await createRepositoryReleaseUploadIntentFromCookie(
+        cookie,
+        owner,
+        repo,
+        payload?.asset as ReleaseUploadIntentRequest,
+      );
+      return Response.json(intent, { status: 201 });
+    }
+    if (action === "completeUploadIntent") {
+      const release = await completeRepositoryReleaseUploadIntentFromCookie(
+        cookie,
+        owner,
+        repo,
+        String(payload?.intentId ?? ""),
+        payload?.completion as ReleaseUploadCompleteRequest,
+      );
+      return Response.json(release);
+    }
+    if (action === "cancelUploadIntent") {
+      const intent = await cancelRepositoryReleaseUploadIntentFromCookie(
+        cookie,
+        owner,
+        repo,
+        String(payload?.intentId ?? ""),
+        String(payload?.reason ?? "cancelled by user"),
+      );
+      return Response.json(intent);
     }
     if (action === "deleteAsset") {
       const release = await deleteRepositoryReleaseAssetFromCookie(

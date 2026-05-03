@@ -3899,5 +3899,25 @@
       "Probe private repository leakage and webhook/activity side effects for draft save, publish, update, delete, and deleteTag operations.",
       "Run accessibility traversal through generated notes, Markdown editor reset, success/error callouts, publish buttons, and typed delete confirmation."
     ]
+  },
+  {
+    "feature_id": "releases-002",
+    "tests_written": [
+      "Completed Phase 4 Asset Upload Lifecycle without marking releases-002 build_pass=true.",
+      "Added persisted release_asset_upload_intents with local/S3-compatible storage metadata, handoff tokens, pending/completed/cancelled/expired states, and storage-key redaction.",
+      "Added Rust API paths for upload-intent completion and cancellation; completion validates token, expiry, permissions, immutable/archived state, checksum, duplicate asset names, and creates release_assets only after confirmed completion.",
+      "Dedicated release form file input and drag/drop now create upload intents, compute SHA-256 when browser crypto is available, complete uploads against the selected release, render progress/success/error rows, cancel queued uploads, and delete existing assets through server-confirmed actions.",
+      "Focused Rust contract covers upload intent creation, completion, stale intent conflict, cancellation, asset deletion, download counter integrity, storage-key redaction, audit events, and release webhook side effects.",
+      "Focused Vitest covers file input upload intent + completion + server-confirmed deletion in the release form.",
+      "Focused Playwright covers the edit release asset upload/remove flow and saved releases-002-phase4-assets-edit.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Real S3 signed PUT/GET behavior is still provider QA; this phase keeps local handoff tokens and storage metadata compatible with S3 but does not stream bytes to AWS.",
+      "Upload interruption/retry and cancel-during-network-race behavior need deeper browser and API QA.",
+      "Large asset boundary testing should cover exactly maxAssetBytes, over-limit files, zero-byte files, unsupported MIME strings, duplicate names, and simultaneous uploads.",
+      "Verify private repository asset access, draft release asset visibility, immutable release asset blocking, and archived repository blocking with clean role fixtures.",
+      "Confirm webhook/activity delivery for asset_uploaded and release.asset.deleted events in the async job worker.",
+      "Run accessibility traversal through drag/drop, file picker, progress rows, cancel/remove buttons, and mobile layout."
+    ]
   }
 ]

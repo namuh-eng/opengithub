@@ -1041,6 +1041,20 @@ export type ReleaseUploadIntent = {
   expiresAt: string;
 };
 
+export type ReleaseUploadIntentRequest = {
+  name: string;
+  contentType?: string | null;
+  byteSize: number;
+  checksumSha256?: string | null;
+};
+
+export type ReleaseUploadCompleteRequest = {
+  releaseId: string;
+  handoffToken: string;
+  label?: string | null;
+  checksumSha256?: string | null;
+};
+
 export type GeneratedReleaseNotesRequest = {
   target: string;
   previousTag?: string | null;
@@ -6309,6 +6323,86 @@ export async function createRepositoryReleaseAssetFromCookie(
       body: JSON.stringify(mutation),
     },
   );
+}
+
+export async function createRepositoryReleaseUploadIntentFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  request: ReleaseUploadIntentRequest,
+): Promise<ReleaseUploadIntent> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/manage/upload-intents`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Release asset upload could not be started",
+      {
+        cause: envelope,
+      },
+    );
+  }
+  return payload as ReleaseUploadIntent;
+}
+
+export async function completeRepositoryReleaseUploadIntentFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  intentId: string,
+  request: ReleaseUploadCompleteRequest,
+): Promise<RepositoryReleaseDetail> {
+  return releaseMutationRequest(
+    cookie,
+    `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/manage/upload-intents/${encodeURIComponent(intentId)}/complete`,
+    {
+      method: "POST",
+      body: JSON.stringify(request),
+    },
+  );
+}
+
+export async function cancelRepositoryReleaseUploadIntentFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  intentId: string,
+  reason?: string,
+): Promise<ReleaseUploadIntent> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/manage/upload-intents/${encodeURIComponent(intentId)}/cancel`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify({ reason: reason ?? "cancelled by user" }),
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Release asset upload could not be cancelled",
+      {
+        cause: envelope,
+      },
+    );
+  }
+  return payload as ReleaseUploadIntent;
 }
 
 export async function deleteRepositoryReleaseAssetFromCookie(

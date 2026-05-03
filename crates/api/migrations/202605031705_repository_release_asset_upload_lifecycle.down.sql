@@ -1,0 +1,5 @@
+DROP TRIGGER IF EXISTS release_asset_upload_intents_set_updated_at ON release_asset_upload_intents;
+DROP INDEX IF EXISTS release_asset_upload_intents_handoff_token_unique;
+DROP INDEX IF EXISTS release_asset_upload_intents_release_idx;
+DROP INDEX IF EXISTS release_asset_upload_intents_repository_status_idx;
+DROP TABLE IF EXISTS release_asset_upload_intents;

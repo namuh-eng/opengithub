@@ -11,6 +11,7 @@ import type {
   ReleaseManagementContext,
   ReleaseMutation,
   ReleaseRefOption,
+  ReleaseUploadIntent,
   RepositoryOverview,
   RepositoryReleaseDetail,
 } from "@/lib/api";
@@ -19,6 +20,17 @@ type RepositoryReleaseFormPageProps = {
   context: ReleaseManagementContext | ApiErrorEnvelope;
   mode: "new" | "edit";
   repository: RepositoryOverview;
+};
+
+type AssetUploadRow = {
+  id: string;
+  name: string;
+  byteSize: number;
+  contentType: string;
+  checksumSha256: string | null;
+  status: "queued" | "uploading" | "complete" | "error" | "cancelled";
+  message: string;
+  intent?: ReleaseUploadIntent;
 };
 
 function isApiError(value: unknown): value is ApiErrorEnvelope {
@@ -95,6 +107,19 @@ async function submitReleaseAction(
   return body;
 }
 
+async function sha256Hex(file: File) {
+  if (!globalThis.crypto?.subtle) {
+    return null;
+  }
+  const digest = await globalThis.crypto.subtle.digest(
+    "SHA-256",
+    await file.arrayBuffer(),
+  );
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 export function RepositoryReleaseFormPage({
   context,
   mode,
@@ -123,7 +148,8 @@ function RepositoryReleaseFormContent({
   repository: RepositoryOverview;
 }) {
   const router = useRouter();
-  const release = context.release;
+  const [currentRelease, setCurrentRelease] = useState(context.release);
+  const release = currentRelease;
   const editing = mode === "edit";
   const locked = context.archived || Boolean(release?.immutable);
   const [tagMode, setTagMode] = useState<"existing" | "new">(
@@ -159,6 +185,7 @@ function RepositoryReleaseFormContent({
   } | null>(null);
   const [notesPreview, setNotesPreview] =
     useState<GeneratedReleaseNotesPreview | null>(null);
+  const [assetRows, setAssetRows] = useState<AssetUploadRow[]>([]);
   const [isPending, startTransition] = useTransition();
 
   const activeTag = tagMode === "new" ? newTagName : tagName;
@@ -260,6 +287,179 @@ function RepositoryReleaseFormContent({
       setEditorVersion((value) => value + 1);
       return null;
     }, "Generated notes inserted. Review them before publishing.");
+  }
+
+  function upsertAssetRow(next: AssetUploadRow) {
+    setAssetRows((rows) => {
+      const existing = rows.findIndex((row) => row.id === next.id);
+      if (existing === -1) return [...rows, next];
+      return rows.map((row) => (row.id === next.id ? next : row));
+    });
+  }
+
+  async function uploadFile(file: File) {
+    const rowId = `${file.name}-${file.size}-${file.lastModified}`;
+    const contentType = file.type || "application/octet-stream";
+    if (!release) {
+      upsertAssetRow({
+        id: rowId,
+        name: file.name,
+        byteSize: file.size,
+        contentType,
+        checksumSha256: null,
+        status: "queued",
+        message: "Save a draft before attaching binary assets.",
+      });
+      return;
+    }
+    if (file.size > context.uploadLimits.maxAssetBytes) {
+      upsertAssetRow({
+        id: rowId,
+        name: file.name,
+        byteSize: file.size,
+        contentType,
+        checksumSha256: null,
+        status: "error",
+        message: `File exceeds ${formatBytes(context.uploadLimits.maxAssetBytes)}.`,
+      });
+      return;
+    }
+    upsertAssetRow({
+      id: rowId,
+      name: file.name,
+      byteSize: file.size,
+      contentType,
+      checksumSha256: null,
+      status: "uploading",
+      message: "Creating upload intent...",
+    });
+    try {
+      const checksumSha256 = await sha256Hex(file);
+      const intent = (await submitReleaseAction(repository, {
+        action: "createUploadIntent",
+        asset: {
+          name: file.name,
+          contentType,
+          byteSize: file.size,
+          checksumSha256,
+        },
+      })) as ReleaseUploadIntent;
+      upsertAssetRow({
+        id: rowId,
+        name: file.name,
+        byteSize: file.size,
+        contentType,
+        checksumSha256,
+        status: "uploading",
+        message: "Completing upload...",
+        intent,
+      });
+      const updated = (await submitReleaseAction(repository, {
+        action: "completeUploadIntent",
+        intentId: intent.id,
+        completion: {
+          releaseId: release.id,
+          handoffToken: intent.handoffToken,
+          checksumSha256,
+        },
+      })) as RepositoryReleaseDetail;
+      setCurrentRelease(updated);
+      upsertAssetRow({
+        id: rowId,
+        name: file.name,
+        byteSize: file.size,
+        contentType,
+        checksumSha256,
+        status: "complete",
+        message: "Attached to release.",
+        intent,
+      });
+      setMessage({ kind: "success", text: "Release asset uploaded." });
+    } catch (error) {
+      upsertAssetRow({
+        id: rowId,
+        name: file.name,
+        byteSize: file.size,
+        contentType,
+        checksumSha256: null,
+        status: "error",
+        message:
+          error instanceof Error ? error.message : "Asset upload failed.",
+      });
+      setMessage({
+        kind: "error",
+        text: error instanceof Error ? error.message : "Asset upload failed.",
+      });
+    }
+  }
+
+  function handleAssetFiles(files: FileList | File[]) {
+    if (disabled) return;
+    for (const file of Array.from(files)) {
+      void uploadFile(file);
+    }
+  }
+
+  async function cancelAssetUpload(row: AssetUploadRow) {
+    if (!row.intent) {
+      setAssetRows((rows) =>
+        rows.map((item) =>
+          item.id === row.id
+            ? { ...item, status: "cancelled", message: "Removed from queue." }
+            : item,
+        ),
+      );
+      return;
+    }
+    try {
+      const intent = (await submitReleaseAction(repository, {
+        action: "cancelUploadIntent",
+        intentId: row.intent.id,
+        reason: "cancelled in release form",
+      })) as ReleaseUploadIntent;
+      setAssetRows((rows) =>
+        rows.map((item) =>
+          item.id === row.id
+            ? {
+                ...item,
+                intent,
+                status: "cancelled",
+                message: "Upload cancelled.",
+              }
+            : item,
+        ),
+      );
+    } catch (error) {
+      setMessage({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Asset upload could not be cancelled.",
+      });
+    }
+  }
+
+  async function deleteAsset(assetId: string) {
+    if (!release) return;
+    setMessage(null);
+    try {
+      const updated = (await submitReleaseAction(repository, {
+        action: "deleteAsset",
+        releaseId: release.id,
+        assetId,
+      })) as RepositoryReleaseDetail;
+      setCurrentRelease(updated);
+      setMessage({ kind: "success", text: "Release asset removed." });
+    } catch (error) {
+      setMessage({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Release asset could not be removed.",
+      });
+    }
   }
 
   return (
@@ -427,9 +627,16 @@ function RepositoryReleaseFormContent({
                   {context.uploadLimits.allowedStorageKinds.join(" / ")}
                 </span>
               </div>
-              <div
+              <label
                 className="mt-4 rounded-[var(--radius)] border border-dashed p-5 text-center"
                 style={{ borderColor: "var(--line)" }}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  handleAssetFiles(event.dataTransfer.files);
+                }}
               >
                 <p className="t-sm">Drag files here or choose assets.</p>
                 <input
@@ -437,13 +644,67 @@ function RepositoryReleaseFormContent({
                   className="input mt-3"
                   disabled={disabled}
                   multiple
+                  onChange={(event) => {
+                    if (event.target.files) {
+                      handleAssetFiles(event.target.files);
+                    }
+                    event.currentTarget.value = "";
+                  }}
                   type="file"
                 />
                 <p className="t-xs mt-2">
                   Upload intent creation is server-confirmed before assets are
                   attached to a release.
                 </p>
-              </div>
+                {!release ? (
+                  <p className="t-xs mt-2" style={{ color: "var(--warn)" }}>
+                    Save a draft first to attach files to a release record.
+                  </p>
+                ) : null}
+              </label>
+              {assetRows.length ? (
+                <ul className="mt-4 space-y-2" aria-label="Pending assets">
+                  {assetRows.map((row) => (
+                    <li
+                      className="list-row flex flex-wrap items-center gap-3 py-2"
+                      key={row.id}
+                    >
+                      <span className="t-mono-sm">{row.name}</span>
+                      <span className="t-xs">{formatBytes(row.byteSize)}</span>
+                      <span
+                        className={`chip ${
+                          row.status === "complete"
+                            ? "ok"
+                            : row.status === "error"
+                              ? "err"
+                              : row.status === "cancelled"
+                                ? "soft"
+                                : "warn"
+                        }`}
+                      >
+                        {row.status}
+                      </span>
+                      <span className="t-xs">{row.message}</span>
+                      {row.checksumSha256 ? (
+                        <span className="t-mono-sm">
+                          {row.checksumSha256.slice(0, 12)}
+                        </span>
+                      ) : null}
+                      {row.status === "queued" || row.status === "uploading" ? (
+                        <button
+                          aria-disabled={disabled}
+                          className="btn sm"
+                          disabled={disabled}
+                          onClick={() => void cancelAssetUpload(row)}
+                          type="button"
+                        >
+                          Cancel
+                        </button>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
               {release?.assets.length ? (
                 <ul className="mt-4 space-y-2">
                   {release.assets.map((asset) => (
@@ -455,10 +716,16 @@ function RepositoryReleaseFormContent({
                       <span className="t-xs">
                         {formatBytes(asset.byteSize)}
                       </span>
+                      {asset.checksumSha256 ? (
+                        <span className="t-mono-sm">
+                          sha256:{asset.checksumSha256.slice(0, 12)}
+                        </span>
+                      ) : null}
                       <button
-                        aria-disabled="true"
+                        aria-disabled={disabled}
                         className="btn sm"
-                        disabled
+                        disabled={disabled}
+                        onClick={() => void deleteAsset(asset.id)}
                         type="button"
                       >
                         Remove
