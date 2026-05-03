@@ -236,6 +236,21 @@ async fn repository_releases_read_contract_filters_privacy_and_exposes_tags_asse
         .unwrap()
         .iter()
         .any(|tag| tag["name"] == "v2.0.0" && tag["releaseId"] == release_v2.to_string()));
+    let stable_tag = tags_body["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tag| tag["name"] == "v2.0.0")
+        .expect("stable tag should be listed");
+    assert_eq!(stable_tag["verified"], true);
+    assert_eq!(
+        stable_tag["signatureSummary"],
+        "Verified tag signature for v2.0.0"
+    );
+    assert!(stable_tag["compareHref"]
+        .as_str()
+        .unwrap()
+        .ends_with("/compare/v2.0.0...main"));
 
     let (archive_status, _, archive_body) = send_json(
         app.clone(),
@@ -248,6 +263,24 @@ async fn repository_releases_read_contract_filters_privacy_and_exposes_tags_asse
     assert_eq!(archive_status, StatusCode::OK);
     assert_eq!(archive_body["format"], "zipball");
     assert_eq!(archive_body["tagName"], "v2.0.0");
+    let (tar_status, _, tar_body) = send_json(
+        app.clone(),
+        Method::GET,
+        &format!("{public_uri}/tarball/v2.0.0"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(tar_status, StatusCode::OK);
+    assert_eq!(tar_body["format"], "tarball");
+    let archive_cache_rows = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM repository_archives WHERE repository_id = $1 AND ref_name = 'refs/tags/v2.0.0' AND target_oid IS NOT NULL AND format IN ('zip', 'tar')",
+    )
+    .bind(public_repo.id)
+    .fetch_one(&pool)
+    .await
+    .expect("archive cache rows should read");
+    assert_eq!(archive_cache_rows, 2);
     let archive_downloads = sqlx::query_scalar::<_, i64>(
         "SELECT count(*) FROM release_downloads WHERE release_id = $1 AND source = 'zipball'",
     )
@@ -665,9 +698,9 @@ async fn seed_release(
         INSERT INTO releases (
             repository_id, tag_name, name, body, draft, prerelease, author_user_id,
             target_commit_id, body_html, rendered_body_excerpt, is_latest, tag_verified,
-            published_at, created_at
+            tag_signature_summary, published_at, created_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, '', $9, $10, true, $11, $11)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, '', $9, $10, true, $11, $12, $12)
         RETURNING id
         "#,
     )
@@ -681,6 +714,7 @@ async fn seed_release(
     .bind(target_commit_id)
     .bind(format!("{title} excerpt"))
     .bind(latest)
+    .bind(format!("Verified tag signature for {tag}"))
     .bind(Utc::now() - Duration::days(days_ago))
     .fetch_one(pool)
     .await

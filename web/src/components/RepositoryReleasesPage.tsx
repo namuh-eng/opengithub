@@ -10,7 +10,6 @@ import type {
   RepositoryReleaseDetail,
   RepositoryReleaseSummary,
 } from "@/lib/api";
-import { repositoryCompareRangeHref } from "@/lib/navigation";
 
 type RepositoryReleasesPageProps = {
   authenticated: boolean;
@@ -57,13 +56,10 @@ function initials(login: string) {
     .join("");
 }
 
-function compareHref(repository: RepositoryOverview, tagName: string) {
-  return repositoryCompareRangeHref(
-    repository.owner_login,
-    repository.name,
-    tagName,
-    repository.default_branch,
-  );
+function signatureSummary(tag: ReleaseTagSummary) {
+  if (tag.signatureSummary) return tag.signatureSummary;
+  if (tag.verified) return "This tag has a verified signature.";
+  return "No verified tag signature metadata has been recorded.";
 }
 
 function canWrite(repository: RepositoryOverview) {
@@ -433,7 +429,7 @@ export function RepositoryTagsPage({
             <div className="card overflow-hidden">
               {tags.items.map((tag) => (
                 <div
-                  className="list-row flex flex-wrap items-center gap-3 px-4 py-3"
+                  className="list-row flex flex-wrap items-start gap-3 px-4 py-4"
                   key={tag.id}
                 >
                   <div className="min-w-0 flex-1">
@@ -444,12 +440,22 @@ export function RepositoryTagsPage({
                       >
                         {tag.name}
                       </Link>
-                      {tag.verified ? (
-                        <span className="chip ok">Verified</span>
+                      {tag.verified || tag.signatureSummary ? (
+                        <details className="group">
+                          <summary className="chip ok cursor-pointer">
+                            {tag.verified ? "Verified" : "Unverified"}
+                          </summary>
+                          <p
+                            className="t-xs mt-2 max-w-xl"
+                            style={{ color: "var(--ink-3)" }}
+                          >
+                            {signatureSummary(tag)}
+                          </p>
+                        </details>
                       ) : null}
                       {tag.releaseHref ? (
                         <Link className="chip accent" href={tag.releaseHref}>
-                          Release
+                          Notes
                         </Link>
                       ) : null}
                     </div>
@@ -472,10 +478,7 @@ export function RepositoryTagsPage({
                   <Link className="btn sm" href={tag.tarballHref}>
                     Tar
                   </Link>
-                  <Link
-                    className="btn sm"
-                    href={compareHref(repository, tag.name)}
-                  >
+                  <Link className="btn sm" href={tag.compareHref}>
                     Compare
                   </Link>
                 </div>

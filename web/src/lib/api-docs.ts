@@ -1000,7 +1000,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     path: "/api/repos/{owner}/{repo}/releases/tags?page=1&pageSize=30",
     title: "List repository release tags",
     description:
-      "Lists repository tags with target commit metadata, verification state, release linkage, source archive URLs, and compare links for the Tags tab.",
+      "Lists repository tags with target commit metadata, expandable signature details, release notes linkage, source archive URLs, and compare links for the Tags tab.",
     auth: "Public repositories are readable; private repositories require read permission",
     response: `{
   "items": [
@@ -1008,6 +1008,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
       "name": "v2.0.0",
       "shortOid": "abc1234",
       "verified": true,
+      "signatureSummary": "Verified tag signature from a trusted public key",
       "releaseId": "release_01",
       "releaseHref": "/mona/octo-app/releases/tag/v2.0.0"
     }
@@ -1019,6 +1020,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     notes: [
       "Tag rows reuse repository visibility checks and do not expose private repository refs to outsiders.",
       "zipballHref and tarballHref are authorization-checked API URLs, not raw storage keys.",
+      "Requesting zipball or tarball metadata records a repository_archives cache row so worker-backed source archive generation can resume or reuse the same tag target.",
     ],
   },
   {

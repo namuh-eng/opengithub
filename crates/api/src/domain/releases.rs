@@ -76,6 +76,7 @@ pub struct ReleaseTagSummary {
     pub commit_message: Option<String>,
     pub committed_at: Option<DateTime<Utc>>,
     pub verified: bool,
+    pub signature_summary: Option<String>,
     pub release_id: Option<Uuid>,
     pub release_href: Option<String>,
     pub zipball_href: String,
@@ -1352,7 +1353,8 @@ pub async fn repository_release_tags_by_owner_name(
                commits.message AS commit_message,
                commits.committed_at,
                releases.id AS release_id,
-               COALESCE(releases.tag_verified, false) AS verified
+               COALESCE(releases.tag_verified, refs.verified, false) AS verified,
+               COALESCE(releases.tag_signature_summary, refs.signature_summary) AS signature_summary
         FROM repository_git_refs refs
         LEFT JOIN commits ON commits.id = refs.target_commit_id
         LEFT JOIN releases
@@ -1409,6 +1411,17 @@ pub async fn repository_release_archive_metadata_by_owner_name(
         .bind(actor_user_id)
         .bind(format)
         .execute(pool)
+        .await?;
+    }
+    if let Some(target_oid) = tag.target_oid.as_deref() {
+        cache_release_archive_metadata(
+            pool,
+            &repository,
+            &tag_name,
+            target_oid,
+            format,
+            actor_user_id,
+        )
         .await?;
     }
     Ok(ReleaseArchiveMetadata {
@@ -2570,6 +2583,7 @@ fn tag_from_row(
         commit_message: row.get("commit_message"),
         committed_at: row.get("committed_at"),
         verified: row.get("verified"),
+        signature_summary: row.get("signature_summary"),
         release_id,
         release_href: release_id.map(|_| {
             format!(
@@ -2586,10 +2600,54 @@ fn tag_from_row(
             repository.owner_login, repository.name, short_name
         ),
         compare_href: format!(
-            "/{}/{}/compare/{}",
-            repository.owner_login, repository.name, short_name
+            "/{}/{}/compare/{}...{}",
+            repository.owner_login, repository.name, short_name, repository.default_branch
         ),
     })
+}
+
+async fn cache_release_archive_metadata(
+    pool: &PgPool,
+    repository: &Repository,
+    tag_name: &str,
+    target_oid: &str,
+    format: &str,
+    actor_user_id: Option<Uuid>,
+) -> Result<(), ReleasesError> {
+    let storage_format = match format {
+        "zipball" => "zip",
+        "tarball" => "tar",
+        _ => return Ok(()),
+    };
+    let storage_key = format!(
+        "release-archives/{}/{}/{}-{}.{}",
+        repository.id,
+        clean_tag_name(tag_name).replace('/', "-"),
+        target_oid.get(..12).unwrap_or(target_oid),
+        format,
+        storage_format
+    );
+    sqlx::query(
+        r#"
+        INSERT INTO repository_archives (
+            repository_id, ref_name, target_oid, format, storage_key, byte_size,
+            status, created_by_user_id
+        )
+        VALUES ($1, $2, $3, $4, $5, 0, 'generating', $6)
+        ON CONFLICT (repository_id, ref_name, target_oid, format)
+        DO UPDATE SET status = repository_archives.status,
+                      created_by_user_id = COALESCE(repository_archives.created_by_user_id, EXCLUDED.created_by_user_id)
+        "#,
+    )
+    .bind(repository.id)
+    .bind(format!("refs/tags/{}", clean_tag_name(tag_name)))
+    .bind(target_oid)
+    .bind(storage_format)
+    .bind(storage_key)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 async fn tag_lookup(

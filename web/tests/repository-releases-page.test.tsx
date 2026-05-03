@@ -174,11 +174,12 @@ function tag(overrides: Partial<ReleaseTagSummary> = {}): ReleaseTagSummary {
     commitMessage: "Release v2",
     committedAt: "2026-05-03T00:00:00Z",
     verified: true,
+    signatureSummary: "Verified tag signature from Ashley's public GPG key.",
     releaseId: "release-1",
     releaseHref: "/mona/octo-app/releases/tag/v2.0.0",
     zipballHref: "/api/repos/mona/octo-app/releases/zipball/v2.0.0",
     tarballHref: "/api/repos/mona/octo-app/releases/tarball/v2.0.0",
-    compareHref: "/mona/octo-app/compare/v2.0.0",
+    compareHref: "/mona/octo-app/compare/v2.0.0...main",
     ...overrides,
   };
 }
@@ -786,8 +787,12 @@ describe("RepositoryTagsPage", () => {
     const row = screen.getByText("v2.0.0").closest(".list-row");
     expect(row).not.toBeNull();
     const scoped = within(row as HTMLElement);
+    fireEvent.click(scoped.getByText("Verified"));
     expect(scoped.getByText("Verified")).toBeVisible();
-    expect(scoped.getByRole("link", { name: "Release" })).toHaveAttribute(
+    expect(
+      scoped.getByText("Verified tag signature from Ashley's public GPG key."),
+    ).toBeVisible();
+    expect(scoped.getByRole("link", { name: "Notes" })).toHaveAttribute(
       "href",
       "/mona/octo-app/releases/tag/v2.0.0",
     );
@@ -800,6 +805,29 @@ describe("RepositoryTagsPage", () => {
       "/mona/octo-app/compare/v2.0.0...main",
     );
     expectNoDeadControls(container);
+  });
+
+  it("renders tag pagination links from the current envelope", () => {
+    render(
+      <RepositoryTagsPage
+        repository={repositoryOverview()}
+        tags={{
+          ...tagEnvelope([tag({ id: "tag-2", name: "v1.0.0" })]),
+          page: 2,
+          pageSize: 1,
+          total: 3,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute(
+      "href",
+      "/mona/octo-app/tags?page=1",
+    );
+    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute(
+      "href",
+      "/mona/octo-app/tags?page=3",
+    );
   });
 
   it("renders tag empty and unavailable states", () => {

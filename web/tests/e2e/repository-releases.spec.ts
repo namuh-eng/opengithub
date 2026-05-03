@@ -48,6 +48,7 @@ function ensureReleaseReadSchema() {
     .toString()
     .trim();
   if (hasBodyHtml === "t") {
+    ensureTagSignatureSchema();
     const hasManagementIndex = execFileSync(
       "psql",
       [
@@ -152,6 +153,41 @@ function ensureReleaseReadSchema() {
       env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
     },
   );
+  ensureTagSignatureSchema();
+}
+
+function ensureTagSignatureSchema() {
+  if (!databaseUrl) {
+    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
+  }
+  const hasTagSignatureMetadata = execFileSync(
+    "psql",
+    [
+      databaseUrl,
+      "-tAc",
+      "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'repository_git_refs' AND column_name = 'signature_summary')",
+    ],
+    {
+      env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
+    },
+  )
+    .toString()
+    .trim();
+  if (hasTagSignatureMetadata !== "t") {
+    execFileSync(
+      "psql",
+      [
+        databaseUrl,
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-f",
+        "../crates/api/migrations/202605031836_repository_tag_signature_metadata.up.sql",
+      ],
+      {
+        env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
+      },
+    );
+  }
 }
 
 function seedDashboard(): SeededDashboard {
@@ -215,11 +251,14 @@ function seedRelease(firstRepositoryHref: string) {
       LIMIT 1
     ),
     tag AS (
-      INSERT INTO repository_git_refs (repository_id, name, kind, target_commit_id)
-      SELECT repo.id, 'refs/tags/v2.0.0', 'tag', target.id
+      INSERT INTO repository_git_refs (repository_id, name, kind, target_commit_id, verified, signature_summary)
+      SELECT repo.id, 'refs/tags/v2.0.0', 'tag', target.id, true, 'Verified tag signature'
       FROM repo, target
       ON CONFLICT (repository_id, name)
-      DO UPDATE SET target_commit_id = EXCLUDED.target_commit_id, kind = EXCLUDED.kind
+      DO UPDATE SET target_commit_id = EXCLUDED.target_commit_id,
+                    kind = EXCLUDED.kind,
+                    verified = EXCLUDED.verified,
+                    signature_summary = EXCLUDED.signature_summary
       RETURNING repository_id
     ),
     branch AS (
@@ -469,11 +508,13 @@ test("repository releases, dedicated management forms, and tags render seeded da
     page.getByRole("heading", { exact: true, name: "Tags" }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "v2.0.0" })).toBeVisible();
+  await page.getByText("Verified", { exact: true }).click();
+  await expect(page.getByText("Verified tag signature")).toBeVisible();
   await expect(
     page.locator(
       `a[href="${seeded.firstRepositoryHref}/releases/tag/v2.0.0"]`,
       {
-        hasText: "Release",
+        hasText: "Notes",
       },
     ),
   ).toHaveAttribute(
@@ -481,6 +522,10 @@ test("repository releases, dedicated management forms, and tags render seeded da
     `${seeded.firstRepositoryHref}/releases/tag/v2.0.0`,
   );
   await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/releases-003-tags-signatures.jpg",
+  });
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/releases-001-phase3-tags.jpg",

@@ -969,6 +969,7 @@ export type ReleaseTagSummary = {
   commitMessage: string | null;
   committedAt: string | null;
   verified: boolean;
+  signatureSummary: string | null;
   releaseId: string | null;
   releaseHref: string | null;
   zipballHref: string;

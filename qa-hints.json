@@ -3938,5 +3938,24 @@
       "Verify webhook/activity side effects for generated-notes usage, draft save, publish, update, delete, deleteTag, asset_uploaded, and release.asset.deleted with successful and failing hooks.",
       "Probe private repository leakage, Markdown XSS in generated/user-edited notes, asset download authorization, and keyboard/screen-reader traversal through the full release form."
     ]
+  },
+  {
+    "feature_id": "releases-003",
+    "tests_written": [
+      "Rendered repository Tags rows with expandable signature details, Notes links to matching release detail pages, zip/tar source archive metadata links, API-provided compare links, and Previous/Next pagination.",
+      "Added repository_git_refs signature metadata columns and exposed signatureSummary on release tag summaries with release-level signature metadata as the preferred source.",
+      "Archive metadata requests now create repository_archives cache rows for zipball/tarball requests so worker-backed generation can resume or reuse the same tag target.",
+      "Focused Rust contract covers signature summary exposure, compare href shape, zip/tar archive metadata, release_download accounting, and repository_archives cache rows.",
+      "Focused Vitest covers tags row links, expanded signature text, pagination links, no dead controls, empty state, and unavailable state.",
+      "Focused Playwright smoke covers seeded /tags navigation, Verified expansion, Notes link, no dead controls, and screenshot ralph/screenshots/build/releases-003-tags-signatures.jpg.",
+      "Full Playwright passed with 98 tests on a fresh migrated database after the shared opengithub_identity_test database hit the pre-existing 202605030041 migration checksum issue."
+    ],
+    "needs_deeper_qa": [
+      "Verify real Git archive byte streaming for tag zip/tar downloads once the release archive endpoint is upgraded from metadata handoff to streaming or signed storage delivery.",
+      "Exercise annotated tags, lightweight tags, slash-containing tags, moved tags, missing target commits, and tags without matching releases.",
+      "Validate signature metadata against real GPG/SSH signing key ingestion, revoked/expired keys, unknown signers, and vigilant-mode presentation.",
+      "Check private repository tag redaction and archive authorization with read, write, admin, and anonymous viewers.",
+      "Stress pagination with hundreds of tags and concurrent tag/release deletion while users navigate between pages."
+    ]
   }
 ]
