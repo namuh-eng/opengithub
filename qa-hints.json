@@ -4048,8 +4048,7 @@
       "Run screen-reader and keyboard traversal through version selection, copy buttons, digest disclosure, recent versions, settings cards, disabled future-write controls, and forbidden/empty states.",
       "Confirm package settings redaction never leaks explicit permissions, inherited repository access, activity, or storage metadata to readable non-admin viewers."
     ]
-  }
-  ,
+  },
   {
     "feature_id": "packages-003",
     "tests_written": [
@@ -4128,6 +4127,24 @@
       "Verify non-admin redaction across user, organization, linked repository admin, package admin, read-only package grant, write package grant, and anonymous viewers.",
       "Exercise Docker CLI delete compatibility against tag and digest references, then verify tag listing, digest pulls, package detail versions, and audit export behavior after restore.",
       "Confirm production retention policy with S3-backed package blobs; Phase 4 intentionally never physically deletes blobs."
+    ]
+  },
+  {
+    "feature_id": "packages-003",
+    "tests_written": [
+      "Completed Phase 5 Developer Docs, Docker Smoke, QA Handoff, and Build-Pass Bookkeeping; packages-003.build_pass=true.",
+      "Updated /docs/api to document live package settings mutations, OCI registry challenge, blob upload/pull, manifest publish/read, tag listing, digest pulls, workflow-token publishing, Docker snippets, and manifest delete/restore retention behavior.",
+      "Focused Rust package_registry_contract passed and covers Docker-compatible HTTP challenge/auth, blob upload, manifest push, tag listing, blob/manifest pulls, download accounting, soft delete, workflow-token publishing, repository linking, webhook queueing, and storage-key redaction.",
+      "Focused API docs Vitest passed and asserts packages-003 docs no longer describe reserved/disabled packages-002 settings behavior.",
+      "Focused Playwright api-docs smoke passed, verifies registry docs snippets render, no dead controls remain, mobile docs have no horizontal overflow, and saved packages-003-final-registry-docs.jpg.",
+      "Full make check, make test, and make test-e2e passed with 99 Playwright tests after running the dev server with the Playwright session cookie name and session secret."
+    ],
+    "needs_deeper_qa": [
+      "Run a real Docker CLI login/build/push/pull/delete flow against a fresh deployed or local server seeded with an actual PAT; this build proves Docker-compatible HTTP routes through Rust contract tests rather than the Docker binary.",
+      "Confirm S3-backed package blob storage health and retention/garbage-collection policy in AWS; local smoke uses OPENGITHUB_PACKAGE_REGISTRY_STORAGE_DIR semantics.",
+      "Stress concurrent blob uploads, upload resume/cancel races, large layers, manifest-list/multi-arch images, tag overwrite races, and delete/restore while pushes or pulls are in flight.",
+      "Probe private/internal leakage across anonymous users, read-only package grants, write package grants, workflow tokens, org namespaces, linked repository admins, and source labels pointing to inaccessible repositories.",
+      "Verify webhook delivery payloads and retries end-to-end through the webhook worker, not only queued rows, and validate package audit export redaction."
     ]
   }
 ]

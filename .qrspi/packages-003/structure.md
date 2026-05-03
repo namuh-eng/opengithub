@@ -74,7 +74,7 @@
 
 ## Phase 5: Developer Docs, Docker Smoke, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `packages-003` only after the registry API, auth, push/pull, Actions publishing, admin lifecycle, docs, and QA handoff are verified. This phase should prove a real primary flow with Docker-compatible HTTP calls or the Docker CLI against the local API/storage path.
 

@@ -93,6 +93,26 @@ test("api docs expose implemented REST surfaces and working examples", async ({
     }),
   ).toBeVisible();
   await expect(
+    page.locator("code").filter({
+      hasText:
+        "/v2/{namespace}/{image}/blobs/uploads/ and /v2/{namespace}/{image}/blobs/{digest}",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.locator("code").filter({
+      hasText: "/v2/{namespace}/{image}/tags/list",
+    }),
+  ).toBeVisible();
+  await expect(page.locator("#oci-registry-manifest-delete")).toContainText(
+    "Blob storage is retained for audit and retention policy",
+  );
+  await expect(page.locator("#oci-registry-blobs")).toContainText(
+    "docker pull opengithub.namuh.co/mona/octo-image@sha256:manifest",
+  );
+  await expect(page.locator("#package-settings-update")).toContainText(
+    "deletePackage",
+  );
+  await expect(
     page
       .locator("code")
       .filter({ hasText: "/api/search?q=router&type=code&page=1&pageSize=30" }),
@@ -109,6 +129,10 @@ test("api docs expose implemented REST surfaces and working examples", async ({
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/api-001-docs.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/packages-003-final-registry-docs.jpg",
   });
 });
 

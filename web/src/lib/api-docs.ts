@@ -1999,7 +1999,7 @@ run: #42
     path: "/api/users/{username}/packages/{package_type}/{package_name}/settings",
     title: "Read package settings",
     description:
-      "Reads the admin-only package settings contract for visibility, explicit package grants, linked repositories, inherited repository access, recent activity, and disabled future registry write capabilities.",
+      "Reads the admin-only package settings contract for visibility, explicit package grants, linked repositories, inherited repository access, recent activity, and registry lifecycle capabilities.",
     auth: "Signed opengithub session cookie with package admin, owner, organization owner, or linked repository admin access",
     response: `{
   "package": {
@@ -2012,14 +2012,54 @@ run: #42
   "linkedRepositories": [],
   "inheritedRepositoryAccess": [],
   "registryWriteCapabilities": [
-    { "key": "visibility", "enabled": false, "reason": "Reserved for packages-003." }
+    { "key": "visibility", "enabled": true, "reason": "Admins can change package visibility." },
+    { "key": "version_lifecycle", "enabled": true, "reason": "Admins can delete or restore package versions." }
   ],
   "recentActivity": []
 }`,
     notes: [
       "Organization package settings use /api/orgs/{org}/packages/{package_type}/{package_name}/settings with the same redaction rules.",
       "Readable non-admin viewers receive 403 without package settings data; unreadable packages receive 404 redaction.",
-      "packages-002 exposes read-only settings state. Visibility, access, delete/restore, and registry byte mutations are reserved for packages-003.",
+      "The settings mutation endpoint supports visibility updates, direct package grants, repository link changes, package delete/restore, and version delete/restore while retaining audit history.",
+      "Settings responses never expose blob storage keys, workflow token hashes, or registry upload storage paths.",
+    ],
+  },
+  {
+    id: "package-settings-update",
+    method: "PATCH",
+    path: "/api/users/{username}/packages/{package_type}/{package_name}/settings",
+    title: "Mutate package settings",
+    description:
+      "Applies admin-gated package lifecycle changes used by the package settings page and container registry retention controls.",
+    auth: "Signed opengithub session cookie with package admin, owner, organization owner, or linked repository admin access",
+    request: `{
+  "action": "updateVisibility",
+  "visibility": "private"
+}
+
+{
+  "action": "grantAccess",
+  "login": "teammate",
+  "permission": "write"
+}
+
+{
+  "action": "deleteVersion",
+  "versionId": "version_01"
+}`,
+    response: `{
+  "settings": {
+    "package": { "name": "octo-image", "visibility": "private" },
+    "explicitPermissions": [{ "login": "teammate", "permission": "write" }],
+    "linkedRepositories": [],
+    "recentActivity": []
+  }
+}`,
+    notes: [
+      "Organization packages use /api/orgs/{org}/packages/{package_type}/{package_name}/settings with the same action envelope.",
+      "Supported actions are updateVisibility, grantAccess, revokeAccess, linkRepository, unlinkRepository, deletePackage, restorePackage, deleteVersion, and restoreVersion.",
+      "Delete actions are soft deletes; pull/tag reads hide deleted versions while blob bytes and audit rows are retained.",
+      "Validation, conflict, and forbidden errors use the standard JSON error envelope without echoing sensitive registry metadata.",
     ],
   },
   {
@@ -2035,6 +2075,7 @@ run: #42
       "Use docker login opengithub.namuh.co with a PAT that has packages:read or packages:write.",
       "Workflow jobs may use a short-lived opengithub workflow package token scoped to their repository instead of a long-lived PAT.",
       "The challenge realm is /v2/token and uses service=opengithub-registry.",
+      "Local smoke tests can target http://localhost:3016 after seeding a PAT and setting OPENGITHUB_PACKAGE_REGISTRY_STORAGE_DIR.",
     ],
   },
   {
@@ -2061,6 +2102,7 @@ run: #42
       "The config blob is inspected for org.opencontainers.image.source, description, licenses, revision, and URL labels.",
       "When a workflow token publishes, the package inherits the workflow repository link, version rows store workflow run/job IDs, and package webhooks are queued.",
       "Storage keys are never serialized in manifest responses or audit payloads.",
+      "Digest pulls use the docker-content-digest header returned by PUT or tag reads.",
     ],
   },
   {
@@ -2074,7 +2116,9 @@ run: #42
     request: `# publish from CI
 echo "$OPENGITHUB_TOKEN" | docker login opengithub.namuh.co -u "$OPENGITHUB_ACTOR" --password-stdin
 docker build -t opengithub.namuh.co/mona/octo-image:latest .
-docker push opengithub.namuh.co/mona/octo-image:latest`,
+docker push opengithub.namuh.co/mona/octo-image:latest
+docker pull opengithub.namuh.co/mona/octo-image:latest
+docker pull opengithub.namuh.co/mona/octo-image@sha256:manifest...`,
     response: `{
   "digest": "sha256:layer...",
   "range": "0-2047"
@@ -2084,6 +2128,25 @@ docker push opengithub.namuh.co/mona/octo-image:latest`,
       "Only body transfers increment package_downloads; HEAD checks do not count as downloads.",
       "Local development stores bytes under OPENGITHUB_PACKAGE_REGISTRY_STORAGE_DIR; production should back the same storage_key contract with S3.",
       "Upload cancel/expiry preserves audit history without exposing storage paths.",
+    ],
+  },
+  {
+    id: "oci-registry-manifest-delete",
+    method: "DELETE",
+    path: "/v2/{namespace}/{image}/manifests/{reference}",
+    title: "Delete a container tag or manifest",
+    description:
+      "Soft-deletes a tag or digest reference for package admins and packages:write credentials while preserving blobs, downloads, provenance, and audit rows.",
+    auth: "packages:write PAT or workflow token with package write/admin permission",
+    request: `DELETE /v2/mona/octo-image/manifests/latest
+
+DELETE /v2/mona/octo-image/manifests/sha256:manifest...`,
+    response: `202 Accepted
+docker-content-digest: sha256:manifest...`,
+    notes: [
+      "After deletion, tag lists and manifest reads hide the deleted version until an admin restores it from package settings.",
+      "Blob storage is retained for audit and retention policy; physical garbage collection is a separate provider-backed maintenance job.",
+      "Delete audit rows record actor kind and reference without local or S3 storage paths.",
     ],
   },
   {
@@ -2101,6 +2164,7 @@ docker push opengithub.namuh.co/mona/octo-image:latest`,
     notes: [
       "Private package tag lists return 401 for anonymous clients and redacted 404-style failures for unauthorized tokens.",
       "Workflow tokens can list tags only when their repository is linked to the package.",
+      "Deleted package versions are omitted from tag lists until restored by an admin.",
     ],
   },
   {

@@ -377,24 +377,32 @@ describe("ApiDocsPage", () => {
       ),
     ).toBeVisible();
     expect(
-      screen.getByText(
+      screen.getAllByText(
         "/api/users/{username}/packages/{package_type}/{package_name}/settings",
-      ),
+      )[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Supported actions are updateVisibility/),
     ).toBeVisible();
     expect(
       screen.getByText(/Rendering the detail page does not create/),
     ).toBeVisible();
+    expect(screen.queryByText(/Reserved for packages-003/)).toBeNull();
     expect(
-      screen.getByText(/packages-002 exposes read-only settings state/),
-    ).toBeVisible();
+      screen.queryByText(/packages-002 exposes read-only settings state/),
+    ).toBeNull();
+    expect(screen.getByText(/Delete actions are soft deletes/)).toBeVisible();
     expect(screen.getByText("/v2/")).toBeVisible();
     expect(
-      screen.getByText("/v2/{namespace}/{image}/manifests/{reference}"),
+      screen.getAllByText("/v2/{namespace}/{image}/manifests/{reference}")[0],
     ).toBeVisible();
     expect(
       screen.getByText(
         "/v2/{namespace}/{image}/blobs/uploads/ and /v2/{namespace}/{image}/blobs/{digest}",
       ),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText("/v2/{namespace}/{image}/manifests/{reference}")[1],
     ).toBeVisible();
     expect(screen.getByText("/v2/{namespace}/{image}/tags/list")).toBeVisible();
     expect(
@@ -404,6 +412,18 @@ describe("ApiDocsPage", () => {
     ).toBeVisible();
     expect(
       screen.getByText(/package inherits the workflow repository link/),
+    ).toBeVisible();
+    expect(
+      apiEndpointDocs.some((endpoint) =>
+        endpoint.request?.includes(
+          "docker pull opengithub.namuh.co/mona/octo-image@sha256:manifest",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      screen.getByText(
+        /Blob storage is retained for audit and retention policy/,
+      ),
     ).toBeVisible();
     expect(
       screen.getByText("/api/search?q=router&type=code&page=1&pageSize=30"),

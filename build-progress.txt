@@ -1,3 +1,12 @@
+2026-05-03 - packages-003 phase 5 final QA handoff
+
+- Completed Phase 5 from `.qrspi/packages-003/structure.md`: OCI/container registry APIs are now locked as a completed vertical slice and `packages-003.build_pass=true`.
+- Updated `/docs/api` with live package settings mutation docs, registry auth challenge notes, blob upload/pull snippets, manifest publish/read and digest-pull guidance, workflow-token publishing, tag listing, manifest soft-delete behavior, local-vs-S3 storage expectations, and redaction/audit rules.
+- Added final docs assertions for packages-003 so API docs no longer describe package settings as reserved/disabled packages-002 placeholders.
+- Saved browser evidence at `ralph/screenshots/build/packages-003-final-registry-docs.jpg`; the API docs smoke also re-saved `api-001-docs.jpg` and `api-001-docs-mobile.jpg`.
+- Verification passed: focused `package_registry_contract` with Docker-compatible HTTP push/pull/delete/workflow-token coverage, web TypeScript, focused API docs Vitest, focused API docs Playwright smoke, full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`, full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 329 web tests, full `DASHBOARD_E2E_SKIP_MIGRATIONS=1 make test-e2e` with 99 Playwright tests, and mandatory Editorial banned-value scan.
+- Full E2E initially failed because the manually started dev server did not match Playwright's `SESSION_COOKIE_NAME=og_session` and `SESSION_SECRET=playwright-session-secret-with-enough-entropy`; restarting with the Playwright auth env fixed the signed-in suite.
+
 2026-05-03 - packages-002 phase 5 final QA handoff
 
 - Completed Phase 5 from `.qrspi/packages-002/structure.md`: package detail pages are now locked as a completed vertical slice and `packages-002.build_pass=true`.
