@@ -362,6 +362,32 @@ describe("ApiDocsPage", () => {
       screen.getByText("/api/repos/{owner}/{repo}/packages"),
     ).toBeVisible();
     expect(
+      screen.getByText(
+        "/api/users/{username}/packages/{package_type}/{package_name}?version=sha256:{digest}",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/orgs/{org}/packages/{package_type}/{package_name}?version=1.0.0",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/users/{username}/packages/{package_type}/{package_name}/download?version=1.0.0",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/users/{username}/packages/{package_type}/{package_name}/settings",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Rendering the detail page does not create/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/packages-002 exposes read-only settings state/),
+    ).toBeVisible();
+    expect(
       screen.getByText("/api/search?q=router&type=code&page=1&pageSize=30"),
     ).toBeVisible();
     expect(
@@ -405,7 +431,7 @@ describe("ApiDocsPage", () => {
 
     expect(details).toHaveAttribute("open");
     expect(
-      screen.getByText((content) => content.includes('"login": "mona"')),
+      screen.getAllByText((content) => content.includes('"login": "mona"'))[0],
     ).toBeVisible();
     expect(
       screen.getByText((content) =>

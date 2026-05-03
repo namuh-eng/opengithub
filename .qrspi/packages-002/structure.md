@@ -77,7 +77,7 @@
 
 ## Phase 5: API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `packages-002` only after API contracts, UI pages, interactions, admin entry, docs, screenshots, and QA handoff are verified. Do not implement the full OCI push/pull registry protocol here; that belongs to `packages-003`.
 

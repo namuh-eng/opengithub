@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CopyButton } from "@/components/CopyButton";
 import type { PackageDetail, PackageDetailVersion } from "@/lib/api";
 import { packageDetailHref } from "@/lib/navigation";
@@ -102,6 +102,9 @@ export function PackageDetailInteractions({
   const initialVersionId =
     detail.selectedVersion?.id ?? detail.versions[0]?.id ?? "";
   const [selectedVersionId, setSelectedVersionId] = useState(initialVersionId);
+  useEffect(() => {
+    setSelectedVersionId(initialVersionId);
+  }, [initialVersionId]);
   const selectedVersion =
     detail.versions.find((version) => version.id === selectedVersionId) ??
     detail.selectedVersion ??
@@ -237,6 +240,7 @@ export function PackageDetailInteractions({
                           detail.name,
                           version.digest ?? version.version,
                         )}
+                        onClick={() => setSelectedVersionId(version.id)}
                       >
                         {version.version}
                       </Link>

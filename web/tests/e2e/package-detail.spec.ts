@@ -9,6 +9,12 @@ type SeededDashboard = {
   firstRepositoryHref: string;
 };
 
+type SeedPackageOptions = {
+  visibility?: "public" | "private" | "internal";
+  packageType?: string;
+  prefix?: string;
+};
+
 function sqlLiteral(value: string) {
   return `'${value.replace(/'/g, "''")}'`;
 }
@@ -144,10 +150,17 @@ function repositoryParts(firstRepositoryHref: string) {
   return { owner, repo };
 }
 
-function seedPackage(firstRepositoryHref: string) {
+function seedPackage(
+  firstRepositoryHref: string,
+  {
+    visibility = "public",
+    packageType = "container",
+    prefix = "detail",
+  }: SeedPackageOptions = {},
+) {
   ensurePackageDetailSchema();
   const { owner, repo } = repositoryParts(firstRepositoryHref);
-  const packageName = `detail-${Date.now()}`;
+  const packageName = `${prefix}-${Date.now()}`;
   runSql(`
     WITH repo AS (
       SELECT repositories.id AS repository_id, repositories.owner_user_id AS owner_user_id
@@ -163,7 +176,7 @@ function seedPackage(firstRepositoryHref: string) {
         name, package_type, visibility
       )
       SELECT repository_id, owner_user_id, NULL, owner_user_id,
-             ${sqlLiteral(packageName)}, 'container', 'public'
+             ${sqlLiteral(packageName)}, ${sqlLiteral(packageType)}, ${sqlLiteral(visibility)}
       FROM repo
       RETURNING id, created_by_user_id
     ),
@@ -205,7 +218,79 @@ function seedPackage(firstRepositoryHref: string) {
     SELECT package_id, id, 27
     FROM latest_version;
   `);
-  return `/${owner}/container/${packageName}`;
+  return `/${owner}/${packageType}/${packageName}`;
+}
+
+function seedOrganizationPackage(firstRepositoryHref: string) {
+  ensurePackageDetailSchema();
+  const { owner, repo } = repositoryParts(firstRepositoryHref);
+  const marker = `pkgorg${Date.now()}`;
+  const packageName = `${marker}-web`;
+  runSql(`
+    WITH actor AS (
+      SELECT users.id AS user_id
+      FROM users
+      WHERE users.username = ${sqlLiteral(owner)}
+      LIMIT 1
+    ),
+    org AS (
+      INSERT INTO organizations (slug, display_name, description, owner_user_id)
+      SELECT ${sqlLiteral(marker)}, 'Package Detail Final Org',
+             'Organization package detail final smoke', user_id
+      FROM actor
+      RETURNING id, owner_user_id, slug
+    ),
+    membership AS (
+      INSERT INTO organization_memberships (organization_id, user_id, role)
+      SELECT id, owner_user_id, 'owner'
+      FROM org
+      ON CONFLICT (organization_id, user_id) DO UPDATE SET role = EXCLUDED.role
+      RETURNING organization_id
+    ),
+    source_repo AS (
+      INSERT INTO repositories (
+        owner_user_id, owner_organization_id, name, description, visibility,
+        default_branch, created_by_user_id
+      )
+      SELECT NULL, org.id, ${sqlLiteral(`${marker}-repo`)},
+             'Org package source', 'internal', 'main', org.owner_user_id
+      FROM org
+      RETURNING id, owner_organization_id, created_by_user_id
+    ),
+    package AS (
+      INSERT INTO packages (
+        repository_id, owner_user_id, owner_organization_id, created_by_user_id,
+        name, package_type, visibility
+      )
+      SELECT id, NULL, owner_organization_id, created_by_user_id,
+             ${sqlLiteral(packageName)}, 'npm', 'internal'
+      FROM source_repo
+      RETURNING id, created_by_user_id
+    ),
+    version AS (
+      INSERT INTO package_versions (
+        package_id, version, digest, platform_os, platform_arch, size_bytes,
+        published_by_user_id, readme_markdown
+      )
+      SELECT id, '3.1.0',
+             'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+             'linux', 'amd64', 8192, created_by_user_id,
+             '# Org Package README'
+      FROM package
+      RETURNING id, package_id
+    ),
+    about AS (
+      INSERT INTO package_about_overrides (package_id, markdown, updated_by_user_id)
+      SELECT id, '# Org Package README', created_by_user_id
+      FROM package
+      RETURNING package_id
+    )
+    INSERT INTO package_downloads (package_id, package_version_id, download_count)
+    SELECT version.package_id, version.id, 9
+    FROM version
+    JOIN about ON about.package_id = version.package_id;
+  `);
+  return `/orgs/${marker}/packages/npm/${packageName}`;
 }
 
 test.skip(
@@ -213,12 +298,17 @@ test.skip(
   "package detail E2E needs TEST_DATABASE_URL or DATABASE_URL",
 );
 
-test("package detail renders install, versions, about, and mobile-safe layout", async ({
+test("package detail final smoke covers user, org, settings, forbidden, and mobile states", async ({
   page,
 }) => {
   const seeded = seedDashboard();
   await signIn(page, seeded);
   const packageHref = seedPackage(seeded.firstRepositoryHref);
+  const privatePackageHref = seedPackage(seeded.firstRepositoryHref, {
+    prefix: "private-detail",
+    visibility: "private",
+  });
+  const orgPackageHref = seedOrganizationPackage(seeded.firstRepositoryHref);
   const packageName = packageHref.split("/").at(-1) ?? "";
 
   await page.goto(`${packageHref}?version=2.0.0`);
@@ -264,11 +354,28 @@ test("package detail renders install, versions, about, and mobile-safe layout", 
   expect(metadataResponse.ok()).toBe(true);
   const metadata = await metadataResponse.json();
   expect(metadata.downloadCount).toBe(downloadsAfterRender + 1);
-  await expect(page.getByRole("heading", { name: "README" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { exact: true, name: "README" }),
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: "Settings" })).toHaveAttribute(
     "href",
     /\/settings$/,
   );
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/packages-002-final-user-detail.jpg",
+  });
+
+  await page.getByRole("link", { name: "2.0.0" }).click();
+  await expect(page).toHaveURL(/version=sha256%3Abbbbb/);
+  await expect(
+    page.getByText(/docker pull ghcr\.io\/.*:2\.0\.0@sha256:bbbb/),
+  ).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/packages-002-final-version-detail.jpg",
+  });
+
   await page.getByRole("link", { name: "Settings" }).click();
   await expect(page.getByText("Package settings")).toBeVisible();
   await expect(
@@ -289,13 +396,43 @@ test("package detail renders install, versions, about, and mobile-safe layout", 
 
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/packages-002-phase4-settings.jpg",
+    path: "../ralph/screenshots/build/packages-002-final-settings.jpg",
+  });
+
+  await page.goto(orgPackageHref);
+  await expect(
+    page.getByRole("heading", { name: /pkgorg.*-web/ }),
+  ).toBeVisible();
+  await expect(page.getByText("internal")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { exact: true, name: "README" }),
+  ).toBeVisible();
+  await expect(page.getByText("Org Package README")).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/packages-002-final-org-detail.jpg",
+  });
+
+  await page.context().clearCookies();
+  await page.goto(privatePackageHref);
+  await expect(
+    page.getByRole("heading", { name: "Package could not load" }),
+  ).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("private-detail");
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/packages-002-final-forbidden.jpg",
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`${packageHref}/settings`);
+  await signIn(page, seeded);
+  await page.goto(`${packageHref}`);
   const mobileOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,
   );
   expect(mobileOverflow).toBe(false);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/packages-002-final-mobile.jpg",
+  });
 });

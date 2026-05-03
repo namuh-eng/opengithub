@@ -1919,6 +1919,110 @@ run: #42
     notes: ["Package blob upload depth is intentionally outside api-001."],
   },
   {
+    id: "package-user-detail",
+    method: "GET",
+    path: "/api/users/{username}/packages/{package_type}/{package_name}?version=sha256:{digest}",
+    title: "Read user package detail",
+    description:
+      "Reads an owner-scoped package detail page contract with selected version, install commands, digest/platform metadata, blobs, linked repository, README/about content, and viewer admin state.",
+    auth: "Anonymous for public packages; signed opengithub session cookie for private/internal package or linked repository access",
+    response: `{
+  "owner": { "kind": "user", "login": "mona", "href": "/mona" },
+  "name": "octo-image",
+  "packageType": "container",
+  "visibility": "public",
+  "selectedVersion": {
+    "version": "2.0.0",
+    "digest": "sha256:bbbb...",
+    "platformOs": "linux",
+    "platformArch": "arm64",
+    "installCommands": [
+      { "label": "Docker", "command": "docker pull ghcr.io/mona/octo-image:2.0.0@sha256:bbbb..." }
+    ]
+  },
+  "versions": [],
+  "blobs": [],
+  "about": { "html": "<h1>README</h1>", "empty": false },
+  "admin": { "canAdmin": true, "settingsHref": "/mona/container/octo-image/settings" }
+}`,
+    notes: [
+      "version accepts a tag or immutable digest and returns 422 for malformed selections.",
+      "Storage keys for package blobs are never serialized in this detail contract.",
+      "Rendering the detail page does not create package_downloads rows or increment counters.",
+    ],
+  },
+  {
+    id: "package-org-detail",
+    method: "GET",
+    path: "/api/orgs/{org}/packages/{package_type}/{package_name}?version=1.0.0",
+    title: "Read organization package detail",
+    description:
+      "Reads the organization-scoped package detail contract with the same selected-version and README/about shape as user packages while enforcing organization membership, package grants, and linked repository permissions.",
+    auth: "Anonymous for public packages; signed opengithub session cookie for private/internal package, organization member, package grant, or linked repository access",
+    response: `{
+  "owner": { "kind": "organization", "login": "namuh", "href": "/orgs/namuh" },
+  "name": "opengithub-web",
+  "packageType": "npm",
+  "visibility": "internal",
+  "selectedVersion": { "version": "1.0.0", "digest": "sha256:aaaa..." },
+  "admin": { "canAdmin": false, "settingsHref": null }
+}`,
+    notes: [
+      "Unreadable private/internal organization packages return 404-style redaction without package metadata.",
+      "Organization owners receive admin settings hrefs; members with read access do not.",
+    ],
+  },
+  {
+    id: "package-download-metadata",
+    method: "GET",
+    path: "/api/users/{username}/packages/{package_type}/{package_name}/download?version=1.0.0",
+    title: "Record package download metadata",
+    description:
+      "Records a bounded package_downloads increment and returns redacted download metadata for an explicit registry/source download handoff.",
+    auth: "Same read rules as package detail",
+    response: `{
+  "packageId": "package_01",
+  "versionId": "version_01",
+  "version": "1.0.0",
+  "digest": "sha256:aaaa...",
+  "downloadCount": 42
+}`,
+    notes: [
+      "Organization packages use /api/orgs/{org}/packages/{package_type}/{package_name}/download with the same query shape.",
+      "This metadata endpoint is the only packages-002 read path that increments package_downloads; page rendering and version selection do not.",
+      "The response deliberately omits package blob storage keys and signed object URLs; byte streaming belongs to packages-003.",
+    ],
+  },
+  {
+    id: "package-settings-read",
+    method: "GET",
+    path: "/api/users/{username}/packages/{package_type}/{package_name}/settings",
+    title: "Read package settings",
+    description:
+      "Reads the admin-only package settings contract for visibility, explicit package grants, linked repositories, inherited repository access, recent activity, and disabled future registry write capabilities.",
+    auth: "Signed opengithub session cookie with package admin, owner, organization owner, or linked repository admin access",
+    response: `{
+  "package": {
+    "name": "octo-image",
+    "visibility": "public",
+    "latestVersion": "2.0.0",
+    "latestDigest": "sha256:bbbb..."
+  },
+  "explicitPermissions": [],
+  "linkedRepositories": [],
+  "inheritedRepositoryAccess": [],
+  "registryWriteCapabilities": [
+    { "key": "visibility", "enabled": false, "reason": "Reserved for packages-003." }
+  ],
+  "recentActivity": []
+}`,
+    notes: [
+      "Organization package settings use /api/orgs/{org}/packages/{package_type}/{package_name}/settings with the same redaction rules.",
+      "Readable non-admin viewers receive 403 without package settings data; unreadable packages receive 404 redaction.",
+      "packages-002 exposes read-only settings state. Visibility, access, delete/restore, and registry byte mutations are reserved for packages-003.",
+    ],
+  },
+  {
     id: "search",
     method: "GET",
     path: "/api/search?q=router&type=code&page=1&pageSize=30",

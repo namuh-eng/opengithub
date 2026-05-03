@@ -1,3 +1,12 @@
+2026-05-03 - packages-002 phase 5 final QA handoff
+
+- Completed Phase 5 from `.qrspi/packages-002/structure.md`: package detail pages are now locked as a completed vertical slice and `packages-002.build_pass=true`.
+- Added `/docs/api` coverage for user/org package detail reads, tag/digest selected-version semantics, explicit download metadata accounting, admin-only settings reads, private/internal redaction, storage-key redaction, and packages-003 write boundaries.
+- Fixed package detail client navigation so clicking an immutable version row updates the visible install command/selected digest state instead of preserving the previous local selector state.
+- Extended focused package Playwright smoke for user detail, immutable version URL state, explicit download increment, admin settings entry, org detail, forbidden private-package redaction, mobile no-overflow, storage-key redaction, and no dead anchors.
+- Saved final screenshots: `ralph/screenshots/build/packages-002-final-user-detail.jpg`, `packages-002-final-org-detail.jpg`, `packages-002-final-version-detail.jpg`, `packages-002-final-settings.jpg`, `packages-002-final-forbidden.jpg`, and `packages-002-final-mobile.jpg`.
+- Verification passed: focused API docs/package detail Vitest, web TypeScript, focused package-detail Playwright smoke, focused API docs + package-detail Playwright rerun, full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`, `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 329 web tests, full `DASHBOARD_E2E_SKIP_MIGRATIONS=1 make test-e2e` with 99 Playwright tests, and mandatory Editorial banned-value scan.
+
 2026-05-03 - releases-002 phase 1 management API hardening
 
 - Completed Phase 1 from `.qrspi/releases-002/structure.md`: release management now has Rust API support for dedicated new/edit forms without marking `releases-002.build_pass=true`.

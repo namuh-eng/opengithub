@@ -19,7 +19,7 @@ test("api docs expose implemented REST surfaces and working examples", async ({
   ).toBeVisible();
   await expect(page.getByText("GET").first()).toBeVisible();
   await expect(
-    page.locator("code").filter({ hasText: "/api/user" }),
+    page.locator("code").filter({ hasText: /^\/api\/user$/ }),
   ).toBeVisible();
   await expect(
     page.getByText("/api/repos/{owner}/{repo}/issues"),
@@ -101,7 +101,7 @@ test("api docs expose implemented REST surfaces and working examples", async ({
 
   const firstExample = page.getByText("Request and response examples").first();
   await firstExample.click();
-  await expect(page.getByText('"login": "mona"')).toBeVisible();
+  await expect(page.getByText('"login": "mona"').first()).toBeVisible();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Git docs" })).toBeVisible();
   await expectNoDeadControls(page);

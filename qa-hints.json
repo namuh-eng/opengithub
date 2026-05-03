@@ -4029,5 +4029,24 @@
       "Exercise accessibility traversal through the settings page cards and disabled future-write controls.",
       "Confirm packages-003 later replaces disabled placeholders with real package access, visibility, delete/restore, and registry protocol mutations without weakening current redaction."
     ]
+  },
+  {
+    "feature_id": "packages-002",
+    "tests_written": [
+      "Completed Phase 5 API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping.",
+      "Extended /docs/api with user and organization package detail endpoints, selected tag/digest semantics, download metadata accounting, admin-only settings reads, storage-key redaction, private/internal redaction, and packages-003 write boundaries.",
+      "Extended API docs tests for package detail, organization detail, download metadata, settings, no render-time download increment notes, and packages-003 reserved controls.",
+      "Extended focused Playwright package detail smoke to cover user package detail, immutable digest URL state, explicit download metadata increment, settings admin entry, organization package detail, forbidden private-package redaction, mobile no-overflow, storage-key redaction, and no dead anchors.",
+      "Final package screenshots are saved under ralph/screenshots/build/packages-002-final-user-detail.jpg, packages-002-final-org-detail.jpg, packages-002-final-version-detail.jpg, packages-002-final-settings.jpg, packages-002-final-forbidden.jpg, and packages-002-final-mobile.jpg.",
+      "Marked packages-002.build_pass=true after verification; qa_pass remains false for QA ownership."
+    ],
+    "needs_deeper_qa": [
+      "Probe private/internal package leakage across anonymous users, package read grants, package admins, linked repository read/write/admin grants, organization members, organization owners, and deleted or renamed owners.",
+      "Verify actual registry byte-transfer behavior and package_downloads accounting once packages-003 implements OCI/package protocol endpoints; packages-002 only records explicit metadata handoff calls.",
+      "Stress long package names, long versions, full-length digests, duplicate tags, many blobs/platforms, missing digests, missing README/about content, packages without linked repositories, and very high download counts on desktop and mobile.",
+      "Exercise clipboard behavior across Chromium, WebKit, Firefox, and blocked Clipboard API permissions.",
+      "Run screen-reader and keyboard traversal through version selection, copy buttons, digest disclosure, recent versions, settings cards, disabled future-write controls, and forbidden/empty states.",
+      "Confirm package settings redaction never leaks explicit permissions, inherited repository access, activity, or storage metadata to readable non-admin viewers."
+    ]
   }
 ]

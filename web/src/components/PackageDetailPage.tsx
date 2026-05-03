@@ -205,7 +205,11 @@ export function PackageDetailPage({
       <DetailHeader detail={detail} ownerKind={ownerKind} />
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="grid min-w-0 gap-6">
-          <PackageDetailInteractions detail={detail} ownerKind={ownerKind} />
+          <PackageDetailInteractions
+            detail={detail}
+            key={detail.selectedVersion?.id ?? detail.id}
+            ownerKind={ownerKind}
+          />
           <AboutContent detail={detail} />
         </div>
         <DetailSidebar detail={detail} />
