@@ -6,7 +6,7 @@
 
 ## Phase 1: Persisted Read/Unread and Saved State
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the first server-backed triage mutations beyond the existing single mark-read endpoint: mark read, mark unread, save, and unsave for one notification. The inbox should reflect saved counts and saved-folder filtering from persisted data, while row-level controls provide server-confirmed success/error feedback.
 

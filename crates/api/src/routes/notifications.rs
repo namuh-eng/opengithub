@@ -11,8 +11,8 @@ use crate::{
     api_types::{database_unavailable, error_response, ErrorEnvelope},
     auth::extractor::AuthenticatedUser,
     domain::notifications::{
-        mark_notification_read, notification_inbox_view, NotificationError, NotificationInboxQuery,
-        NotificationInboxView,
+        notification_inbox_view, triage_notification, NotificationError, NotificationInboxQuery,
+        NotificationInboxView, NotificationTriageAction,
     },
     AppState,
 };
@@ -21,6 +21,9 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/notifications", get(list))
         .route("/api/notifications/:id/read", patch(mark_read))
+        .route("/api/notifications/:id/unread", patch(mark_unread))
+        .route("/api/notifications/:id/save", patch(save))
+        .route("/api/notifications/:id/unsave", patch(unsave))
 }
 
 #[derive(Debug, Deserialize)]
@@ -68,16 +71,47 @@ async fn mark_read(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    triage(state, headers, id, NotificationTriageAction::Read).await
+}
+
+async fn mark_unread(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    triage(state, headers, id, NotificationTriageAction::Unread).await
+}
+
+async fn save(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    triage(state, headers, id, NotificationTriageAction::Save).await
+}
+
+async fn unsave(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    triage(state, headers, id, NotificationTriageAction::Unsave).await
+}
+
+async fn triage(
+    state: AppState,
+    headers: HeaderMap,
+    id: Uuid,
+    action: NotificationTriageAction,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
-    let notification = mark_notification_read(pool, id, actor.0.id)
+    let response = triage_notification(pool, id, actor.0.id, action)
         .await
         .map_err(map_notification_error)?;
-    Ok(Json(serde_json::json!({
-        "id": notification.id,
-        "unread": notification.unread,
-        "lastReadAt": notification.last_read_at,
-    })))
+    Ok(Json(
+        serde_json::to_value(response).expect("triage response should serialize"),
+    ))
 }
 
 fn map_notification_error(error: NotificationError) -> (StatusCode, Json<ErrorEnvelope>) {

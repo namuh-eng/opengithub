@@ -15,7 +15,9 @@ pub struct Notification {
     pub title: String,
     pub reason: String,
     pub unread: bool,
+    pub saved: bool,
     pub last_read_at: Option<DateTime<Utc>>,
+    pub saved_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -38,6 +40,35 @@ pub enum NotificationError {
     Sqlx(#[from] sqlx::Error),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NotificationTriageAction {
+    Read,
+    Unread,
+    Save,
+    Unsave,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationTriageResponse {
+    pub id: Uuid,
+    pub unread: bool,
+    pub saved: bool,
+    pub done: bool,
+    pub last_read_at: Option<DateTime<Utc>>,
+    pub saved_at: Option<DateTime<Utc>>,
+    pub unread_count: i64,
+    pub folder_counts: NotificationFolderCounts,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationFolderCounts {
+    pub inbox: i64,
+    pub saved: i64,
+    pub done: i64,
+}
+
 pub async fn create_notification(
     pool: &PgPool,
     input: CreateNotification,
@@ -49,7 +80,7 @@ pub async fn create_notification(
         )
         VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id, user_id, repository_id, subject_type, subject_id, title, reason,
-                  unread, last_read_at, created_at, updated_at
+                  unread, saved, last_read_at, saved_at, created_at, updated_at
         "#,
     )
     .bind(input.user_id)
@@ -91,7 +122,7 @@ pub async fn list_notifications(
     let rows = sqlx::query(
         r#"
         SELECT id, user_id, repository_id, subject_type, subject_id, title, reason,
-               unread, last_read_at, created_at, updated_at
+               unread, saved, last_read_at, saved_at, created_at, updated_at
         FROM notifications
         WHERE user_id = $1 AND ($2::boolean IS NULL OR unread = $2)
         ORDER BY updated_at DESC, created_at DESC
@@ -126,6 +157,28 @@ pub async fn unread_notification_count(
     Ok(total)
 }
 
+pub async fn notification_folder_counts(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<NotificationFolderCounts, NotificationError> {
+    let row = sqlx::query(
+        r#"
+        SELECT count(*) AS inbox,
+               count(*) FILTER (WHERE saved = true) AS saved
+        FROM notifications
+        WHERE user_id = $1
+        "#,
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(NotificationFolderCounts {
+        inbox: row.get("inbox"),
+        saved: row.get("saved"),
+        done: 0,
+    })
+}
+
 pub async fn mark_notification_read(
     pool: &PgPool,
     notification_id: Uuid,
@@ -137,7 +190,7 @@ pub async fn mark_notification_read(
         SET unread = false, last_read_at = now()
         WHERE id = $1 AND user_id = $2
         RETURNING id, user_id, repository_id, subject_type, subject_id, title, reason,
-                  unread, last_read_at, created_at, updated_at
+                  unread, saved, last_read_at, saved_at, created_at, updated_at
         "#,
     )
     .bind(notification_id)
@@ -147,6 +200,84 @@ pub async fn mark_notification_read(
     .ok_or(NotificationError::NotFound)?;
 
     Ok(notification_from_row(row))
+}
+
+pub async fn triage_notification(
+    pool: &PgPool,
+    notification_id: Uuid,
+    user_id: Uuid,
+    action: NotificationTriageAction,
+) -> Result<NotificationTriageResponse, NotificationError> {
+    let row = match action {
+        NotificationTriageAction::Read => {
+            sqlx::query(
+                r#"
+                UPDATE notifications
+                SET unread = false, last_read_at = now()
+                WHERE id = $1 AND user_id = $2
+                RETURNING id, unread, saved, last_read_at, saved_at
+                "#,
+            )
+            .bind(notification_id)
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await?
+        }
+        NotificationTriageAction::Unread => {
+            sqlx::query(
+                r#"
+                UPDATE notifications
+                SET unread = true, last_read_at = NULL
+                WHERE id = $1 AND user_id = $2
+                RETURNING id, unread, saved, last_read_at, saved_at
+                "#,
+            )
+            .bind(notification_id)
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await?
+        }
+        NotificationTriageAction::Save => {
+            sqlx::query(
+                r#"
+                UPDATE notifications
+                SET saved = true, saved_at = COALESCE(saved_at, now())
+                WHERE id = $1 AND user_id = $2
+                RETURNING id, unread, saved, last_read_at, saved_at
+                "#,
+            )
+            .bind(notification_id)
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await?
+        }
+        NotificationTriageAction::Unsave => {
+            sqlx::query(
+                r#"
+                UPDATE notifications
+                SET saved = false, saved_at = NULL
+                WHERE id = $1 AND user_id = $2
+                RETURNING id, unread, saved, last_read_at, saved_at
+                "#,
+            )
+            .bind(notification_id)
+            .bind(user_id)
+            .fetch_optional(pool)
+            .await?
+        }
+    }
+    .ok_or(NotificationError::NotFound)?;
+
+    Ok(NotificationTriageResponse {
+        id: row.get("id"),
+        unread: row.get("unread"),
+        saved: row.get("saved"),
+        done: false,
+        last_read_at: row.get("last_read_at"),
+        saved_at: row.get("saved_at"),
+        unread_count: unread_notification_count(pool, user_id).await?,
+        folder_counts: notification_folder_counts(pool, user_id).await?,
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -251,6 +382,7 @@ struct InboxRowData {
     title: String,
     reason: String,
     unread: bool,
+    saved: bool,
     updated_at: DateTime<Utc>,
     issue_number: Option<i64>,
     pull_number: Option<i64>,
@@ -448,7 +580,7 @@ fn base_select_sql() -> &'static str {
            COALESCE(NULLIF(owner_user.username, ''), owner_user.email, owner_org.slug) AS owner_login,
            repositories.name AS repo_name,
            notifications.subject_type, notifications.title,
-           notifications.reason, notifications.unread, notifications.updated_at,
+           notifications.reason, notifications.unread, notifications.saved, notifications.updated_at,
            issues.number AS issue_number, pull_requests.number AS pull_number,
            workflow_runs.run_number AS run_number, releases.tag_name AS release_tag,
            EXISTS (
@@ -481,7 +613,7 @@ fn push_filters<'a>(
             .push_bind(unread);
     }
     if let Some(saved) = parsed.saved {
-        builder.push(if saved { " AND false" } else { " AND true" });
+        builder.push(" AND notifications.saved = ").push_bind(saved);
     }
     if let Some(done) = parsed.done {
         builder.push(if done { " AND false" } else { " AND true" });
@@ -573,15 +705,11 @@ async fn folder_facets(
     group: &str,
     q: &str,
 ) -> Result<Vec<NotificationFacet>, NotificationError> {
-    let inbox =
-        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM notifications WHERE user_id = $1")
-            .bind(user_id)
-            .fetch_one(pool)
-            .await?;
+    let counts = notification_folder_counts(pool, user_id).await?;
     let specs = [
-        ("inbox", "Inbox", inbox),
-        ("saved", "Saved", 0),
-        ("done", "Done", 0),
+        ("inbox", "Inbox", counts.inbox),
+        ("saved", "Saved", counts.saved),
+        ("done", "Done", counts.done),
     ];
     Ok(specs
         .into_iter()
@@ -726,7 +854,7 @@ fn inbox_row_view(row: InboxRowData) -> NotificationInboxRow {
         href,
         open_href,
         unread: row.unread,
-        saved: false,
+        saved: row.saved,
         done: false,
         subscribed: row.subscribed,
         updated_at: row.updated_at,
@@ -801,6 +929,7 @@ fn inbox_row_data_from_row(row: sqlx::postgres::PgRow) -> InboxRowData {
         title: row.get("title"),
         reason: row.get("reason"),
         unread: row.get("unread"),
+        saved: row.get("saved"),
         updated_at: row.get("updated_at"),
         issue_number: row.get("issue_number"),
         pull_number: row.get("pull_number"),
@@ -916,7 +1045,9 @@ fn notification_from_row(row: sqlx::postgres::PgRow) -> Notification {
         title: row.get("title"),
         reason: row.get("reason"),
         unread: row.get("unread"),
+        saved: row.get("saved"),
         last_read_at: row.get("last_read_at"),
+        saved_at: row.get("saved_at"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     }

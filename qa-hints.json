@@ -4146,5 +4146,25 @@
       "Probe private/internal leakage across anonymous users, read-only package grants, write package grants, workflow tokens, org namespaces, linked repository admins, and source labels pointing to inaccessible repositories.",
       "Verify webhook delivery payloads and retries end-to-end through the webhook worker, not only queued rows, and validate package audit export redaction."
     ]
+  },
+  {
+    "feature_id": "notifications-002",
+    "tests_written": [
+      "Completed Phase 1 Persisted Read/Unread and Saved State without marking notifications-002 build_pass=true.",
+      "Added notification saved/saved_at persistence, saved folder counts, saved-folder filtering, and single-row read/unread/save/unsave Rust mutation endpoints.",
+      "Added a same-origin Next triage route so browser actions preserve session cookies while Rust remains authoritative.",
+      "Replaced static notification state chips with server-confirmed Editorial row action buttons, optimistic UI updates, status feedback, and rollback on failure.",
+      "Focused Rust notification contract covers read, unread, save, unsave, saved-folder filtering, saved counts, and cross-user 404 behavior.",
+      "Focused Vitest covers row action rendering, optimistic save reconciliation, saved count updates, and rollback feedback.",
+      "Focused Playwright smoke covers signed-in row save/read interactions, saved-folder persistence, no dead anchors, and saved notifications-002-phase1-triage.jpg.",
+      "Full make check, make test, make test-e2e, and mandatory Editorial banned-value scan passed."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 still needs Done and Move to inbox lifecycle, including saved+done overlap and folder removal/restoration behavior.",
+      "Phase 3 still needs subscribe/unsubscribe state and reactivation triggers for participation, mentions, team mentions, and review requests.",
+      "Phase 4 still needs bulk selection, group select-all, partial-failure rollback, keyboard traversal, and per-row rollback under mixed authorization.",
+      "Probe rapid repeated read/unread and save/unsave clicks, concurrent mutations from two tabs, stale row IDs, and saved-folder unsave retention rules.",
+      "Verify screen reader labels and touch/mobile hit targets for the new row action buttons across dense notification lists."
+    ]
   }
 ]

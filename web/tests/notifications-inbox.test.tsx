@@ -1,5 +1,11 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { NotificationsInboxPage } from "@/components/NotificationsInboxPage";
 import type { NotificationInboxView } from "@/lib/api";
 
@@ -145,6 +151,10 @@ function inboxView(
 }
 
 describe("NotificationsInboxPage", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("renders folders, filters, repository buckets, controls, and notification row states", () => {
     render(<NotificationsInboxPage view={inboxView()} />);
 
@@ -196,6 +206,16 @@ describe("NotificationsInboxPage", () => {
     expect(within(group).getByText("Mention")).toBeVisible();
     expect(within(group).getByText("Subscribed")).toBeVisible();
     expect(within(group).getByLabelText("Unread")).toBeVisible();
+    expect(
+      within(group).getByRole("button", {
+        name: "Mark Inbox search keeps mention filters as read",
+      }),
+    ).toBeVisible();
+    expect(
+      within(group).getByRole("button", {
+        name: "Save Inbox search keeps mention filters",
+      }),
+    ).toBeVisible();
   });
 
   it("keeps filters editable in an empty state", () => {
@@ -217,5 +237,82 @@ describe("NotificationsInboxPage", () => {
       "href",
       "/notifications?q=reason%3Amention&group=repository",
     );
+  });
+
+  it("calls row triage actions and reconciles saved and unread counts", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: "notif-1",
+        unread: true,
+        saved: true,
+        done: false,
+        lastReadAt: null,
+        savedAt: "2026-05-03T00:00:00Z",
+        unreadCount: 1,
+        folderCounts: {
+          inbox: 2,
+          saved: 1,
+          done: 0,
+        },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<NotificationsInboxPage view={inboxView()} />);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Save Inbox search keeps mention filters",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith("/notifications/notif-1/triage", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "save" }),
+      });
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Notification saved.",
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "Unsave Inbox search keeps mention filters",
+      }),
+    ).toBeVisible();
+    expect(screen.getByRole("link", { name: /Saved/ })).toHaveTextContent("1");
+  });
+
+  it("rolls back optimistic row updates when triage fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        json: async () => ({
+          error: {
+            code: "notification_not_found",
+            message: "Notification was not found.",
+          },
+          status: 404,
+        }),
+      }),
+    );
+
+    render(<NotificationsInboxPage view={inboxView()} />);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Mark Inbox search keeps mention filters as read",
+      }),
+    );
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Notification action failed. Your inbox was restored.",
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "Mark Inbox search keeps mention filters as read",
+      }),
+    ).toBeVisible();
   });
 });

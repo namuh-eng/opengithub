@@ -1,4 +1,13 @@
-import type { ApiErrorEnvelope, NotificationInboxView } from "@/lib/api";
+"use client";
+
+import { useState } from "react";
+import type {
+  ApiErrorEnvelope,
+  NotificationInboxRow,
+  NotificationInboxView,
+  NotificationTriageAction,
+  NotificationTriageResponse,
+} from "@/lib/api";
 
 type NotificationsInboxPageProps = {
   view: NotificationInboxView | ApiErrorEnvelope;
@@ -8,6 +17,123 @@ function isError(
   view: NotificationInboxView | ApiErrorEnvelope,
 ): view is ApiErrorEnvelope {
   return "error" in view;
+}
+
+function applyOptimisticTriage(
+  view: NotificationInboxView,
+  notificationId: string,
+  action: NotificationTriageAction,
+): NotificationInboxView {
+  const unreadDelta = action === "read" ? -1 : action === "unread" ? 1 : 0;
+  const savedDelta = action === "save" ? 1 : action === "unsave" ? -1 : 0;
+  return mapNotificationRows(
+    view,
+    notificationId,
+    (row) => ({
+      ...row,
+      unread:
+        action === "read" ? false : action === "unread" ? true : row.unread,
+      saved: action === "save" ? true : action === "unsave" ? false : row.saved,
+    }),
+    {
+      unreadDelta,
+      savedDelta,
+    },
+  );
+}
+
+function applyConfirmedTriage(
+  view: NotificationInboxView,
+  response: NotificationTriageResponse,
+): NotificationInboxView {
+  return mapNotificationRows(
+    view,
+    response.id,
+    (row) => ({
+      ...row,
+      unread: response.unread,
+      saved: response.saved,
+      done: response.done,
+    }),
+    {
+      unreadCount: response.unreadCount,
+      folderCounts: response.folderCounts,
+    },
+  );
+}
+
+function mapNotificationRows(
+  view: NotificationInboxView,
+  notificationId: string,
+  update: (row: NotificationInboxRow) => NotificationInboxRow,
+  counts: {
+    unreadDelta?: number;
+    savedDelta?: number;
+    unreadCount?: number;
+    folderCounts?: NotificationTriageResponse["folderCounts"];
+  } = {},
+): NotificationInboxView {
+  const groups = view.groups.map((group) => ({
+    ...group,
+    rows: group.rows.map((row) =>
+      row.id === notificationId ? update(row) : row,
+    ),
+  }));
+  const folderCounts = counts.folderCounts;
+  return {
+    ...view,
+    unreadCount:
+      counts.unreadCount ??
+      Math.max(0, view.unreadCount + (counts.unreadDelta ?? 0)),
+    folders: view.folders.map((folder) => {
+      if (folderCounts) {
+        const count = folderCounts[folder.id as keyof typeof folderCounts];
+        return typeof count === "number" ? { ...folder, count } : folder;
+      }
+      if (folder.id === "saved") {
+        return {
+          ...folder,
+          count: Math.max(0, folder.count + (counts.savedDelta ?? 0)),
+        };
+      }
+      return folder;
+    }),
+    groups,
+  };
+}
+
+async function patchNotificationTriage(
+  notificationId: string,
+  action: NotificationTriageAction,
+): Promise<NotificationTriageResponse> {
+  const response = await fetch(
+    `/notifications/${encodeURIComponent(notificationId)}/triage`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error("Notification action failed");
+  }
+  return (await response.json()) as NotificationTriageResponse;
+}
+
+function notificationActionLabel(
+  action: NotificationTriageAction,
+  response: NotificationTriageResponse,
+) {
+  if (action === "save" || (action === "unsave" && response.saved)) {
+    return "Notification saved.";
+  }
+  if (action === "unsave") {
+    return "Notification unsaved.";
+  }
+  if (response.unread) {
+    return "Notification marked unread.";
+  }
+  return "Notification marked read.";
 }
 
 function withQuery(overrides: Record<string, string | null | undefined>) {
@@ -21,15 +147,49 @@ function withQuery(overrides: Record<string, string | null | undefined>) {
   return suffix ? `/notifications?${suffix}` : "/notifications";
 }
 
-export function NotificationsInboxPage({ view }: NotificationsInboxPageProps) {
-  if (isError(view)) {
+export function NotificationsInboxPage({
+  view: initialView,
+}: NotificationsInboxPageProps) {
+  const [currentView, setCurrentView] = useState(initialView);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const visibleView = currentView;
+
+  async function runAction(
+    row: NotificationInboxRow,
+    action: NotificationTriageAction,
+  ) {
+    if (isError(visibleView)) {
+      return;
+    }
+    const previous = visibleView;
+    setPendingId(`${row.id}:${action}`);
+    setToast(null);
+    setCurrentView(applyOptimisticTriage(previous, row.id, action));
+
+    try {
+      const response = await patchNotificationTriage(row.id, action);
+      setCurrentView((latest) =>
+        isError(latest) ? latest : applyConfirmedTriage(latest, response),
+      );
+      setToast(notificationActionLabel(action, response));
+    } catch {
+      setCurrentView(previous);
+      setToast("Notification action failed. Your inbox was restored.");
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  if (isError(visibleView)) {
     return (
       <section className="card p-8" aria-labelledby="notifications-error-title">
         <p className="t-label" style={{ color: "var(--err)" }}>
           Notifications unavailable
         </p>
         <h1 className="t-h2 mt-2" id="notifications-error-title">
-          {view.error.message}
+          {visibleView.error.message}
         </h1>
         <p className="t-body mt-3" style={{ color: "var(--ink-3)" }}>
           Try refreshing the inbox after the API connection recovers.
@@ -38,6 +198,7 @@ export function NotificationsInboxPage({ view }: NotificationsInboxPageProps) {
     );
   }
 
+  const view: NotificationInboxView = visibleView;
   const { query } = view;
   const allHref = withQuery({
     folder: query.folder === "inbox" ? null : query.folder,
@@ -188,18 +349,11 @@ export function NotificationsInboxPage({ view }: NotificationsInboxPageProps) {
             </div>
           </div>
 
-          <div className="card p-3">
-            <label
-              className="flex items-center gap-2 px-2 py-1 t-sm"
-              style={{ color: "var(--ink-3)" }}
-            >
-              <input
-                aria-label="Select all visible notifications"
-                type="checkbox"
-              />
-              Select all visible notifications
-            </label>
-          </div>
+          {toast ? (
+            <div className="chip soft" role="status" aria-live="polite">
+              {toast}
+            </div>
+          ) : null}
 
           {view.groups.length ? (
             view.groups.map((group) => (
@@ -216,10 +370,6 @@ export function NotificationsInboxPage({ view }: NotificationsInboxPageProps) {
                 <div className="card overflow-hidden">
                   {group.rows.map((row) => (
                     <article className="list-row items-start" key={row.id}>
-                      <label className="mt-1">
-                        <span className="sr-only">Select {row.title}</span>
-                        <input type="checkbox" />
-                      </label>
                       <span
                         role="img"
                         aria-label={row.unread ? "Unread" : "Read"}
@@ -271,13 +421,48 @@ export function NotificationsInboxPage({ view }: NotificationsInboxPageProps) {
                         </a>
                       </div>
                       <div className="flex flex-wrap justify-end gap-1 text-right">
-                        <span
-                          className={row.saved ? "chip accent" : "chip soft"}
+                        <button
+                          aria-label={
+                            row.unread
+                              ? `Mark ${row.title} as read`
+                              : `Mark ${row.title} as unread`
+                          }
+                          className="btn sm ghost"
+                          disabled={
+                            pendingId ===
+                            `${row.id}:${row.unread ? "read" : "unread"}`
+                          }
+                          onClick={() =>
+                            runAction(row, row.unread ? "read" : "unread")
+                          }
+                          title={row.unread ? "Mark read" : "Mark unread"}
+                          type="button"
+                        >
+                          {row.unread ? "Read" : "Unread"}
+                        </button>
+                        <button
+                          aria-label={
+                            row.saved
+                              ? `Unsave ${row.title}`
+                              : `Save ${row.title}`
+                          }
+                          className={
+                            row.saved ? "btn sm primary" : "btn sm ghost"
+                          }
+                          disabled={
+                            pendingId ===
+                            `${row.id}:${row.saved ? "unsave" : "save"}`
+                          }
+                          onClick={() =>
+                            runAction(row, row.saved ? "unsave" : "save")
+                          }
+                          title={row.saved ? "Unsave" : "Save"}
+                          type="button"
                         >
                           {row.saved ? "Saved" : "Save"}
-                        </span>
+                        </button>
                         <span className={row.done ? "chip ok" : "chip soft"}>
-                          {row.done ? "Done" : "Done"}
+                          {row.done ? "Done" : "Inbox"}
                         </span>
                         <span
                           className={row.subscribed ? "chip info" : "chip soft"}

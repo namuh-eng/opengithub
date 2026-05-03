@@ -204,7 +204,7 @@ async fn notifications_inbox_contract_filters_groups_and_marks_read() {
     .expect("hidden notification should create");
 
     let cookie = cookie_header(&pool, &config, &viewer).await;
-    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
 
     let (anon_status, anon_body) =
         send_json(app.clone(), Method::GET, "/api/notifications", None).await;
@@ -268,6 +268,7 @@ async fn notifications_inbox_contract_filters_groups_and_marks_read() {
     .await;
     assert_eq!(mark_status, StatusCode::OK);
     assert_eq!(mark_body["unread"], false);
+    assert_eq!(mark_body["saved"], false);
 
     let unread_after = sqlx::query_scalar::<_, i64>(
         "SELECT count(*) FROM notifications WHERE user_id = $1 AND unread = true",
@@ -277,4 +278,59 @@ async fn notifications_inbox_contract_filters_groups_and_marks_read() {
     .await
     .expect("unread count should load");
     assert_eq!(unread_after, 0);
+
+    let (unread_status, unread_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &format!("/api/notifications/{}/unread", mention.id),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(unread_status, StatusCode::OK);
+    assert_eq!(unread_body["unread"], true);
+    assert_eq!(unread_body["unreadCount"], 1);
+
+    let (save_status, save_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &format!("/api/notifications/{}/save", mention.id),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(save_status, StatusCode::OK);
+    assert_eq!(save_body["saved"], true);
+    assert_eq!(save_body["folderCounts"]["saved"], 1);
+
+    let (saved_list_status, saved_list_body) = send_json(
+        app.clone(),
+        Method::GET,
+        "/api/notifications?folder=saved",
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(saved_list_status, StatusCode::OK);
+    assert_eq!(saved_list_body["total"], 1);
+    assert_eq!(saved_list_body["groups"][0]["rows"][0]["saved"], true);
+    assert_eq!(saved_list_body["folders"][1]["count"], 1);
+
+    let (unsave_status, unsave_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &format!("/api/notifications/{}/unsave", mention.id),
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(unsave_status, StatusCode::OK);
+    assert_eq!(unsave_body["saved"], false);
+    assert_eq!(unsave_body["folderCounts"]["saved"], 0);
+
+    let (forbidden_status, forbidden_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &format!("/api/notifications/{}/save", mention.id),
+        Some(&cookie_header(&pool, &config, &hidden).await),
+    )
+    .await;
+    assert_eq!(forbidden_status, StatusCode::NOT_FOUND);
+    assert_eq!(forbidden_body["error"]["code"], "notification_not_found");
 }

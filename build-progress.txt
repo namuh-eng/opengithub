@@ -1,3 +1,12 @@
+2026-05-03 - notifications-002 phase 1 persisted read/unread and saved state
+
+- Completed Phase 1 from `.qrspi/notifications-002/structure.md`: notification rows now have persisted read/unread and saved/unsaved triage without marking `notifications-002.build_pass=true`.
+- Added additive `notifications.saved` and `notifications.saved_at` migration fields plus a saved-folder index, wired saved-folder filtering/counts, and exposed authenticated Rust PATCH endpoints for read, unread, save, and unsave.
+- Added a same-origin Next triage route for browser mutations, typed triage responses in `web/src/lib/api.ts`, and converted the inbox page to server-confirmed Editorial row action buttons with optimistic updates, status feedback, and rollback on failure.
+- Seeded notification browser fixtures through `dashboard_e2e_seed` and added focused Playwright smoke coverage for signed-in save/read interactions, saved-folder persistence, no dead anchors, and screenshot `ralph/screenshots/build/notifications-002-phase1-triage.jpg`.
+- Verification passed: focused `api_notifications_inbox_contract` compile/self-skip without DB env, focused notifications Vitest, `web` typecheck, `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`, `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 331 web tests, focused notifications Playwright smoke, full same-env `make test-e2e` with 100 Playwright tests, and mandatory Editorial banned-value scan.
+- `make db-migrate` could not run because `sqlx-cli` is not installed; for local browser smoke only, applied the new additive migration to the shared test DB with `psql` before running Playwright. `prd.json` remains `build_pass:false` because Phases 2-5 remain.
+
 2026-05-03 - packages-003 phase 5 final QA handoff
 
 - Completed Phase 5 from `.qrspi/packages-003/structure.md`: OCI/container registry APIs are now locked as a completed vertical slice and `packages-003.build_pass=true`.

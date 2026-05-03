@@ -8029,6 +8029,25 @@ export type NotificationInboxRow = {
   relativeTime: string;
 };
 
+export type NotificationTriageAction = "read" | "unread" | "save" | "unsave";
+
+export type NotificationFolderCounts = {
+  inbox: number;
+  saved: number;
+  done: number;
+};
+
+export type NotificationTriageResponse = {
+  id: string;
+  unread: boolean;
+  saved: boolean;
+  done: boolean;
+  lastReadAt: string | null;
+  savedAt: string | null;
+  unreadCount: number;
+  folderCounts: NotificationFolderCounts;
+};
+
 export type NotificationGroup = {
   id: string;
   label: string;
@@ -8127,4 +8146,33 @@ export async function markNotificationReadFromCookie(
   } catch {
     return false;
   }
+}
+
+export async function updateNotificationTriageFromCookie(
+  cookie: string | null | undefined,
+  notificationId: string,
+  action: NotificationTriageAction,
+): Promise<NotificationTriageResponse> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/notifications/${encodeURIComponent(notificationId)}/${action}`,
+    {
+      method: "PATCH",
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    const fallback: ApiErrorEnvelope = {
+      error: {
+        code: "notification_triage_failed",
+        message: "Notification could not be updated.",
+      },
+      status: response.status,
+    };
+    throw new Error("Notification triage failed", {
+      cause: (body as ApiErrorEnvelope | null) ?? fallback,
+    });
+  }
+  return body as NotificationTriageResponse;
 }

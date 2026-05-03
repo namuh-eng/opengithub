@@ -10,6 +10,7 @@ use opengithub_api::{
         },
         identity::{upsert_session, upsert_user_by_email},
         issues::{create_issue, ensure_default_labels, CreateIssue},
+        notifications::{create_notification, CreateNotification},
         permissions::RepositoryRole,
         pulls::{create_pull_request, CreatePullRequest},
         repositories::{
@@ -469,7 +470,7 @@ async fn main() -> anyhow::Result<()> {
             .execute(&pool)
             .await?;
         }
-        create_issue(
+        let dashboard_issue = create_issue(
             &pool,
             CreateIssue {
                 repository_id: first_repository.id,
@@ -483,6 +484,18 @@ async fn main() -> anyhow::Result<()> {
                 label_ids: vec![],
                 assignee_user_ids: vec![user.id],
                 attachments: Vec::new(),
+            },
+        )
+        .await?;
+        create_notification(
+            &pool,
+            CreateNotification {
+                user_id: user.id,
+                repository_id: Some(first_repository.id),
+                subject_type: "issue".to_owned(),
+                subject_id: Some(dashboard_issue.id),
+                title: "Triage dashboard setup workflow".to_owned(),
+                reason: "mention".to_owned(),
             },
         )
         .await?;
