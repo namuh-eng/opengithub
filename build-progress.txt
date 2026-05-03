@@ -1,3 +1,11 @@
+2026-05-04 - credentials-001 structure planning
+
+- Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `prd.json`, `web/AGENTS.md`, current token verification code, existing `/settings/tokens` developer surface, settings navigation/shell patterns, and target personal access token/sudo-mode docs.
+- Determined `credentials-001` is the first `build_pass:false` feature, requires structure planning, and did not have `.qrspi/credentials-001/structure.md`.
+- Added `.qrspi/credentials-001/structure.md` with five independently verifiable vertical phases: token settings API/sudo foundation, Editorial token list, fine-grained token creation/reveal, classic tokens plus revocation/auth integration, and final docs/browser/QA/build-pass bookkeeping.
+- Did not change `prd.json`; `credentials-001.build_pass` remains `false` until all implementation phases pass verification.
+- Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches.
+
 2026-05-04 - notifications-004 phase 3 issue/PR thread notification customize dialogs
 
 - Completed Phase 3 from `.qrspi/notifications-004/structure.md`: issue and pull request detail sidebars now have real thread-level subscription customization without marking `notifications-004.build_pass=true`.
