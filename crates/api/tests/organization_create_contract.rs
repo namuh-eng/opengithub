@@ -16,6 +16,25 @@ use uuid::Uuid;
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
+#[derive(Debug, sqlx::FromRow)]
+struct OrganizationPolicyDefaults {
+    base_repository_permission: String,
+    members_can_create_public_repositories: bool,
+    members_can_create_private_repositories: bool,
+    members_can_create_internal_repositories: bool,
+    members_can_fork_private_repositories: bool,
+    repository_discussions_enabled: bool,
+    projects_base_permission: String,
+    pages_public_publishing: bool,
+    pages_private_publishing: bool,
+    app_access_request_policy: String,
+    members_can_change_repository_visibility: bool,
+    members_can_delete_repositories: bool,
+    members_can_transfer_repositories: bool,
+    members_can_delete_issues: bool,
+    members_can_create_teams: bool,
+}
+
 async fn database_pool() -> Option<PgPool> {
     let database_url = std::env::var("TEST_DATABASE_URL")
         .or_else(|_| std::env::var("DATABASE_URL"))
@@ -185,14 +204,50 @@ async fn create_organization_normalizes_slug_persists_defaults_and_audit() {
     .expect("membership should count");
     assert_eq!(membership_count, 1);
 
-    let policy_count = sqlx::query_scalar::<_, i64>(
-        "SELECT count(*) FROM organization_policy_settings WHERE organization_id = $1 AND base_repository_permission = 'read'",
+    let policy_defaults: OrganizationPolicyDefaults = sqlx::query_as(
+        r#"
+        SELECT
+            base_repository_permission,
+            members_can_create_public_repositories,
+            members_can_create_private_repositories,
+            members_can_create_internal_repositories,
+            members_can_fork_private_repositories,
+            repository_discussions_enabled,
+            projects_base_permission,
+            pages_public_publishing,
+            pages_private_publishing,
+            app_access_request_policy,
+            members_can_change_repository_visibility,
+            members_can_delete_repositories,
+            members_can_transfer_repositories,
+            members_can_delete_issues,
+            members_can_create_teams
+        FROM organization_policy_settings
+        WHERE organization_id = $1
+        "#,
     )
     .bind(organization_id)
     .fetch_one(&pool)
     .await
-    .expect("policy should count");
-    assert_eq!(policy_count, 1);
+    .expect("policy defaults should load");
+    assert_eq!(policy_defaults.base_repository_permission, "read");
+    assert!(policy_defaults.members_can_create_public_repositories);
+    assert!(policy_defaults.members_can_create_private_repositories);
+    assert!(!policy_defaults.members_can_create_internal_repositories);
+    assert!(policy_defaults.members_can_fork_private_repositories);
+    assert!(policy_defaults.repository_discussions_enabled);
+    assert_eq!(policy_defaults.projects_base_permission, "write");
+    assert!(policy_defaults.pages_public_publishing);
+    assert!(policy_defaults.pages_private_publishing);
+    assert_eq!(
+        policy_defaults.app_access_request_policy,
+        "owners_and_members"
+    );
+    assert!(!policy_defaults.members_can_change_repository_visibility);
+    assert!(!policy_defaults.members_can_delete_repositories);
+    assert!(!policy_defaults.members_can_transfer_repositories);
+    assert!(!policy_defaults.members_can_delete_issues);
+    assert!(policy_defaults.members_can_create_teams);
 
     let audit_metadata = sqlx::query_scalar::<_, Value>(
         "SELECT metadata FROM organization_audit_events WHERE organization_id = $1 AND event_type = 'organization.create'",
@@ -247,6 +302,11 @@ async fn create_organization_rejects_anonymous_reserved_duplicates_and_invalid_f
     assert_eq!(reserved_status, StatusCode::OK);
     assert_eq!(reserved_body["available"], false);
     assert_eq!(reserved_body["reserved"], true);
+    assert_eq!(reserved_body["existingKind"], Value::Null);
+    assert!(!reserved_body["reason"]
+        .as_str()
+        .expect("reserved reason")
+        .contains("system_route"));
 
     let (missing_terms_status, missing_terms_body) = send_json(
         app.clone(),

@@ -133,7 +133,56 @@ test("organization create setup stays usable on mobile", async ({ page }) => {
     .click();
   await page.getByLabel("Organization name *").fill("Mobile Org!!");
   await expect(page.getByText("opengithub.namuh.co/mobile-org")).toBeVisible();
+  await page.getByLabel("Contact email *").fill("mobile-admin@example.com");
+  await page.getByLabel("Business or institution").check();
+  await page
+    .getByLabel("Company name *")
+    .fill(
+      "A very long mobile organization company name that should wrap without creating horizontal overflow",
+    );
+  await page
+    .getByLabel("I accept the organization terms for this Free plan.")
+    .check();
   await expectNoHorizontalOverflow(page);
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-001-phase4-mobile.jpg",
+  });
+});
+
+test("organization create flow supports keyboard-only plan selection and error recovery", async ({
+  page,
+}) => {
+  const seeded = seedSession();
+  await signIn(page, seeded);
+
+  await page.goto("/organizations/new");
+  const freeButton = page.getByRole("button", {
+    name: "Create a free organization",
+  });
+  await freeButton.focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("heading", { name: "Tell us about your organization" }),
+  ).toBeFocused();
+
+  await page.getByLabel("Organization name *").fill("settings");
+  await expect(
+    page.getByText(/reserved|already taken|not available/i),
+  ).toBeVisible();
+  await page
+    .getByLabel("Organization name *")
+    .fill(`Recovered Keyboard Org ${Date.now().toString(36)}`);
+  await expect(page.getByText(/is available/i)).toBeVisible();
+  await page.getByLabel("Contact email *").fill("keyboard@example.com");
+  await page
+    .getByLabel("I accept the organization terms for this Free plan.")
+    .check();
+  await expect(
+    page.getByRole("button", { name: "Create organization" }),
+  ).toBeEnabled();
+  await expectNoDeadControls(page);
 });
 
 test("signed-in user creates a free organization and sees it in navigation", async ({

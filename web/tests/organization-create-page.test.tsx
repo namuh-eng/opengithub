@@ -151,6 +151,85 @@ describe("OrganizationCreatePage", () => {
     }
   });
 
+  it("focuses the first invalid field and exposes accessible descriptions", async () => {
+    global.fetch = mockFetch(availability("acme-labs"));
+
+    const { container } = render(<OrganizationCreatePage />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create a free organization" }),
+    );
+
+    const heading = screen.getByRole("heading", {
+      name: "Tell us about your organization",
+    });
+    await waitFor(() => expect(heading).toHaveFocus());
+
+    fireEvent.submit(container.querySelector("form") as HTMLFormElement);
+    const nameInput = screen.getByLabelText("Organization name *");
+    await waitFor(() => expect(nameInput).toHaveFocus());
+    expect(nameInput).toHaveAccessibleDescription(/lowercase hyphenated slug/i);
+    expect(nameInput).toHaveAttribute("aria-invalid", "true");
+
+    expect(
+      screen.getByRole("group", { name: "Ownership type *" }),
+    ).toHaveAccessibleDescription(/business organizations require/i);
+    expect(container.querySelector(".min-w-0")).toBeInTheDocument();
+    expect(container.querySelector(".break-words")).toBeInTheDocument();
+  });
+
+  it("renders API rate-limit envelopes without assigning them to a field", async () => {
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        json: async () => availability("rate-limited-org"),
+        ok: true,
+      })
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              code: "rate_limited",
+              message: "too many organization creation attempts",
+            },
+            status: 429,
+          }),
+          { status: 429 },
+        ),
+      ) as unknown as typeof fetch;
+
+    render(<OrganizationCreatePage />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create a free organization" }),
+    );
+    fireEvent.change(screen.getByLabelText("Organization name *"), {
+      target: { value: "Rate Limited Org" },
+    });
+    await waitFor(() => {
+      expect(screen.getByText("rate-limited-org is available.")).toBeVisible();
+    });
+    fireEvent.change(screen.getByLabelText("Contact email *"), {
+      target: { value: "admin@example.com" },
+    });
+    fireEvent.click(
+      screen.getByLabelText(
+        "I accept the organization terms for this Free plan.",
+      ),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create organization" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Too many organization creation attempts. Wait a moment, then try again.",
+      );
+    });
+    expect(screen.getByLabelText("Organization name *")).toHaveAttribute(
+      "aria-invalid",
+      "false",
+    );
+  });
+
   it("submits organization creation, disables duplicate submits, and redirects", async () => {
     let resolveCreate: (value: Response) => void = () => {};
     const fetchMock = vi

@@ -105,6 +105,10 @@ export function OrganizationCreatePage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const setupHeadingRef = useRef<HTMLHeadingElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const contactEmailInputRef = useRef<HTMLInputElement>(null);
+  const companyNameInputRef = useRef<HTMLInputElement>(null);
+  const termsInputRef = useRef<HTMLInputElement>(null);
 
   const normalizedSlug = availability?.normalizedSlug || normalizePreview(name);
   const availabilityMessage = availabilityCopy(
@@ -236,6 +240,20 @@ export function OrganizationCreatePage() {
     return errors;
   }
 
+  function focusFirstInvalidField(errors: FieldErrors) {
+    window.setTimeout(() => {
+      if (errors.name) {
+        nameInputRef.current?.focus();
+      } else if (errors.contactEmail) {
+        contactEmailInputRef.current?.focus();
+      } else if (errors.companyName) {
+        companyNameInputRef.current?.focus();
+      } else if (errors.termsAccepted) {
+        termsInputRef.current?.focus();
+      }
+    }, 0);
+  }
+
   async function submitSetup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting) {
@@ -250,6 +268,7 @@ export function OrganizationCreatePage() {
       setFormError(
         "Complete the required fields and confirm the organization URL before creating.",
       );
+      focusFirstInvalidField(nextFieldErrors);
       return;
     }
 
@@ -275,8 +294,13 @@ export function OrganizationCreatePage() {
           fieldForApiError(message);
         if (field) {
           setFieldErrors({ [field]: message });
+          focusFirstInvalidField({ [field]: message });
         } else {
-          setFormError(message);
+          setFormError(
+            body?.status === 429 || body?.error?.code === "rate_limited"
+              ? "Too many organization creation attempts. Wait a moment, then try again."
+              : message,
+          );
         }
         if (body?.error?.code === "conflict" || field === "name") {
           setAvailability((current) =>
@@ -324,7 +348,7 @@ export function OrganizationCreatePage() {
           {PLANS.map((plan) => (
             <article
               aria-label={`${plan.name} plan`}
-              className="card flex min-h-[360px] flex-col p-5"
+              className="card flex min-h-[360px] min-w-0 flex-col p-5"
               key={plan.id}
             >
               <div className="flex items-start justify-between gap-4">
@@ -332,7 +356,10 @@ export function OrganizationCreatePage() {
                   <p className="t-label" style={{ color: "var(--ink-3)" }}>
                     {plan.id === "free" ? "MVP" : "Info only"}
                   </p>
-                  <h2 className="t-h2 mt-2" style={{ color: "var(--ink-1)" }}>
+                  <h2
+                    className="t-h2 mt-2 break-words"
+                    style={{ color: "var(--ink-1)" }}
+                  >
                     {plan.name}
                   </h2>
                 </div>
@@ -340,7 +367,10 @@ export function OrganizationCreatePage() {
                   {plan.price}
                 </span>
               </div>
-              <p className="mt-4 t-body" style={{ color: "var(--ink-2)" }}>
+              <p
+                className="mt-4 break-words t-body"
+                style={{ color: "var(--ink-2)" }}
+              >
                 {plan.summary}
               </p>
               <ul className="mt-5 grid gap-3">
@@ -349,7 +379,12 @@ export function OrganizationCreatePage() {
                     <span aria-hidden="true" style={{ color: "var(--accent)" }}>
                       -
                     </span>
-                    <span style={{ color: "var(--ink-2)" }}>{detail}</span>
+                    <span
+                      className="min-w-0 break-words"
+                      style={{ color: "var(--ink-2)" }}
+                    >
+                      {detail}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -378,10 +413,10 @@ export function OrganizationCreatePage() {
       ) : (
         <form
           aria-describedby={formError ? "organization-form-error" : undefined}
-          className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]"
+          className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]"
           onSubmit={submitSetup}
         >
-          <div className="card p-5 sm:p-6">
+          <div className="card min-w-0 p-5 sm:p-6">
             <button
               className="btn ghost sm mb-5"
               onClick={() => setStep("plans")}
@@ -390,7 +425,7 @@ export function OrganizationCreatePage() {
               Back to plans
             </button>
             <h2
-              className="t-h2 outline-none"
+              className="t-h2 break-words outline-none"
               ref={setupHeadingRef}
               tabIndex={-1}
             >
@@ -422,7 +457,8 @@ export function OrganizationCreatePage() {
                 </span>
                 <span className="input">
                   <input
-                    aria-describedby="organization-url-preview organization-availability"
+                    aria-label="Organization name *"
+                    aria-describedby="organization-name-help organization-url-preview organization-availability"
                     aria-invalid={fieldErrors.name ? "true" : "false"}
                     autoComplete="organization"
                     onChange={(event) => {
@@ -434,8 +470,17 @@ export function OrganizationCreatePage() {
                       setName(event.target.value);
                     }}
                     placeholder="Acme Labs"
+                    ref={nameInputRef}
                     value={name}
                   />
+                </span>
+                <span
+                  className="t-xs"
+                  id="organization-name-help"
+                  style={{ color: "var(--ink-3)" }}
+                >
+                  Use letters, numbers, or spaces. The URL uses a lowercase
+                  hyphenated slug.
                 </span>
               </label>
               <div className="grid gap-2">
@@ -443,7 +488,7 @@ export function OrganizationCreatePage() {
                   Organization URL
                 </p>
                 <div
-                  className="rounded-md px-3 py-2 t-mono-sm"
+                  className="min-w-0 rounded-md px-3 py-2 t-mono-sm"
                   id="organization-url-preview"
                   style={{
                     background: "var(--surface-2)",
@@ -469,6 +514,7 @@ export function OrganizationCreatePage() {
                 </span>
                 <span className="input">
                   <input
+                    aria-label="Contact email *"
                     aria-describedby={
                       fieldErrors.contactEmail || emailInvalid
                         ? "contact-email-error"
@@ -489,6 +535,7 @@ export function OrganizationCreatePage() {
                       setContactEmail(event.target.value);
                     }}
                     placeholder="admin@example.com"
+                    ref={contactEmailInputRef}
                     type="email"
                     value={contactEmail}
                   />
@@ -505,11 +552,21 @@ export function OrganizationCreatePage() {
                 ) : null}
               </label>
 
-              <fieldset className="grid gap-3">
+              <fieldset
+                aria-describedby="ownership-type-help"
+                className="grid gap-3"
+              >
                 <legend className="t-label" style={{ color: "var(--ink-3)" }}>
                   Ownership type *
                 </legend>
-                <label className="card flex cursor-pointer gap-3 p-4">
+                <p
+                  className="t-xs"
+                  id="ownership-type-help"
+                  style={{ color: "var(--ink-3)" }}
+                >
+                  Business organizations require a company or institution name.
+                </p>
+                <label className="card flex min-w-0 cursor-pointer gap-3 p-4">
                   <input
                     aria-label="Personal account"
                     checked={ownershipType === "personal"}
@@ -518,17 +575,19 @@ export function OrganizationCreatePage() {
                     type="radio"
                     value="personal"
                   />
-                  <span>
-                    <span className="block t-h3">Personal account</span>
+                  <span className="min-w-0">
+                    <span className="block break-words t-h3">
+                      Personal account
+                    </span>
                     <span
-                      className="block t-sm"
+                      className="block break-words t-sm"
                       style={{ color: "var(--ink-3)" }}
                     >
                       Owned by you for independent projects.
                     </span>
                   </span>
                 </label>
-                <label className="card flex cursor-pointer gap-3 p-4">
+                <label className="card flex min-w-0 cursor-pointer gap-3 p-4">
                   <input
                     aria-label="Business or institution"
                     checked={ownershipType === "business"}
@@ -537,10 +596,12 @@ export function OrganizationCreatePage() {
                     type="radio"
                     value="business"
                   />
-                  <span>
-                    <span className="block t-h3">Business or institution</span>
+                  <span className="min-w-0">
+                    <span className="block break-words t-h3">
+                      Business or institution
+                    </span>
                     <span
-                      className="block t-sm"
+                      className="block break-words t-sm"
                       style={{ color: "var(--ink-3)" }}
                     >
                       Records a company name for policy and audit context.
@@ -556,6 +617,7 @@ export function OrganizationCreatePage() {
                   </span>
                   <span className="input">
                     <input
+                      aria-label="Company name *"
                       aria-invalid={fieldErrors.companyName ? "true" : "false"}
                       aria-describedby={
                         fieldErrors.companyName
@@ -571,6 +633,7 @@ export function OrganizationCreatePage() {
                         setCompanyName(event.target.value);
                       }}
                       placeholder="Acme Inc."
+                      ref={companyNameInputRef}
                       value={companyName}
                     />
                   </span>
@@ -587,7 +650,7 @@ export function OrganizationCreatePage() {
                 </label>
               ) : null}
 
-              <label className="card flex cursor-pointer gap-3 p-4">
+              <label className="card flex min-w-0 cursor-pointer gap-3 p-4">
                 <input
                   aria-describedby={
                     fieldErrors.termsAccepted ? "terms-error" : undefined
@@ -603,9 +666,13 @@ export function OrganizationCreatePage() {
                     }));
                     setTermsAccepted(event.target.checked);
                   }}
+                  ref={termsInputRef}
                   type="checkbox"
                 />
-                <span className="t-sm" style={{ color: "var(--ink-2)" }}>
+                <span
+                  className="min-w-0 break-words t-sm"
+                  style={{ color: "var(--ink-2)" }}
+                >
                   I accept the organization terms for this Free plan.
                 </span>
               </label>

@@ -4651,5 +4651,23 @@
       "Run accessibility traversal on the submitting state, field error associations, error summary, redirect path, and mobile layout after Phase 4 hardening.",
       "Recheck local SQLx migration replay drift before future full-suite E2E; focused browser smoke used the skip-migrations seed path against the already-migrated local database."
     ]
+  },
+  {
+    "feature_id": "org-admin-001",
+    "tests_written": [
+      "Completed Phase 4 Organization Defaults and Creation UX Guardrails without marking org-admin-001 build_pass=true.",
+      "Hardened /organizations/new with explicit accessible input labels, helper descriptions, first-invalid-field focus on validation failures, setup-heading focus after plan selection, long-word wrapping, min-width safeguards, and mobile-safe plan/form layout classes.",
+      "Added rate-limit envelope rendering for POST /organizations/new/create failures so 429/rate_limited responses show a generic retry message without assigning blame to a field.",
+      "Extended Rust organization_create_contract to assert the full default organization_policy_settings matrix and reserved-slug privacy-safe availability details.",
+      "Extended Vitest coverage for focus management, ARIA descriptions, responsive guardrail classes, and rate-limit error rendering.",
+      "Extended Playwright organization-create smoke for mobile company-name/terms no-overflow, keyboard-only Free-plan selection, reserved-name recovery, enabled submit recovery, no dead controls, and screenshot ralph/screenshots/build/org-admin-001-phase4-mobile.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Run manual screen-reader traversal on the plan cards, setup heading focus, organization name helper/status text, ownership fieldset, terms checkbox, and general error alert.",
+      "Probe real server-side throttling once a shared rate-limit primitive exists; this phase only guarantees the client renders 429/rate_limited envelopes correctly.",
+      "Stress rapid slug typing and aborted availability requests on slow networks to verify stale availability responses never enable the wrong slug.",
+      "Test very long organization names, email addresses, company names, and translated copy on narrow mobile widths beyond the covered 390px smoke.",
+      "Confirm reserved_slugs stays synchronized with future app routes such as org settings, docs, and package registry paths."
+    ]
   }
 ]

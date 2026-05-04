@@ -59,7 +59,7 @@
 
 ## Phase 4: Organization Defaults and Creation UX Guardrails - policy settings, rate limits, and accessibility
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Harden the flow for product-grade edge cases: default organization policy settings, audit trails, rate-limit feedback, reserved-slug source data, keyboard/accessibility behavior, mobile layout, and no-overflow form states. This phase should not add billing or paid-plan provisioning.
 
