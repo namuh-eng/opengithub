@@ -5103,5 +5103,22 @@
       "Stress combined author/date/path pagination around timezone boundaries and repositories with commits authored by users whose login/email casing differs.",
       "The make test-e2e wrapper silently stalled once under stale dev-server state and was terminated; after clearing stale listeners, direct full Playwright completed 122 tests successfully."
     ]
+  },
+  {
+    "feature_id": "commits-001",
+    "tests_written": [
+      "Completed Phase 5 Final Guardrails and QA Handoff and marked commits-001 build_pass=true.",
+      "Documented GET /api/repos/{owner}/{repo}/commits in /docs/api with ref/path/author/until/before/page/pageSize params, grouped response shape, PR/status/signature fields, auth/privacy behavior, and redacted error-envelope notes.",
+      "Extended API docs tests for the commit-history endpoint path, heading, ref_not_found/path_not_found behavior, filter params, anonymous/private access, and secret redaction notes.",
+      "Extended commit-history component tests for accessible button names, Editorial .card/.btn/.chip primitives, semantic ok chips, no dead anchors, no placeholder handlers, and no banned GitHub visual values/imports in the component source.",
+      "Extended Playwright commit-history smoke with final desktop and mobile screenshots, empty-state recovery, no horizontal overflow, and existing branch/tag plus author/date flows."
+    ],
+    "needs_deeper_qa": [
+      "Repeat the commit-history flows with a real Google OAuth session using TEST_ACCOUNT_EMAIL rather than deterministic signed-cookie fixtures.",
+      "Stress imported repositories with long histories, merge commits with multiple parents, renamed files, binary paths, mixed check conclusions, signed/unsigned commits, and very long branch/tag names.",
+      "Probe combined author/date/path pagination around timezone boundaries and users whose login/email casing differs.",
+      "Run screen-reader traversal through the details-based ref, author, date, and row overflow controls on desktop and mobile.",
+      "Re-run the Rust contract against a clean migrated database after the shared local migration drift is resolved so the DB assertions do not depend on the fallback pre-applied schema path."
+    ]
   }
 ]

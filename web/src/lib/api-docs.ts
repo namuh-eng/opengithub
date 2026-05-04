@@ -872,6 +872,76 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     notes: ["Private repositories require explicit repository permission."],
   },
   {
+    id: "repo-commit-history",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/commits?ref=main&path=src&author=mona&until=2026-04-30T23:59:59Z&page=1&pageSize=30",
+    title: "Repository commit history",
+    description:
+      "Returns the screen-ready commit history contract for repository commit-list pages, including resolved ref metadata, URL-backed filters, grouped rows, status summaries, signature state, and pagination.",
+    auth: "Signed opengithub session cookie with repository read access",
+    response: `{
+  "repository": {
+    "ownerLogin": "mona",
+    "name": "octo-app",
+    "defaultBranch": "main",
+    "visibility": "public"
+  },
+  "resolvedRef": {
+    "shortName": "main",
+    "qualifiedName": "refs/heads/main",
+    "kind": "branch",
+    "targetOid": "abcdef1234567890",
+    "href": "/mona/octo-app/tree/main"
+  },
+  "filters": {
+    "path": "src",
+    "author": "mona",
+    "until": "2026-04-30T23:59:59Z"
+  },
+  "groups": [
+    {
+      "date": "2026-04-30",
+      "commits": [
+        {
+          "oid": "abcdef1234567890",
+          "shortOid": "abcdef1",
+          "subject": "Refactor router",
+          "href": "/mona/octo-app/commit/abcdef1234567890",
+          "browseHref": "/mona/octo-app/tree/abcdef1234567890/src",
+          "pullRequests": [{ "number": 12, "href": "/mona/octo-app/pull/12" }],
+          "status": {
+            "status": "completed",
+            "conclusion": "success",
+            "totalCount": 3,
+            "completedCount": 3,
+            "failedCount": 0,
+            "href": "/mona/octo-app/actions?commit=abcdef1234567890"
+          },
+          "verification": {
+            "verified": true,
+            "signatureState": "verified",
+            "signatureSummary": "Verified signature from an active GPG key."
+          }
+        }
+      ]
+    }
+  ],
+  "authorOptions": [{ "login": "mona", "count": 4, "active": true }],
+  "total": 4,
+  "page": 1,
+  "pageSize": 30,
+  "hasNextPage": false,
+  "hasPreviousPage": false
+}`,
+    notes: [
+      "ref resolves against repository_git_refs and accepts branches or tags; missing refs return ref_not_found without leaking private commit OIDs.",
+      "path scopes history to commits touching the requested file or directory; missing paths return path_not_found.",
+      "author, until, before, page, and pageSize are URL-backed filters; page is normalized to 1 and pageSize is clamped by the API contract.",
+      "Private repositories require read access. Anonymous callers receive 401, unauthorized signed-in callers receive 403, and error envelopes never include stack traces, tokens, session secrets, or private ref names.",
+      "Status and verification summaries are presentation metadata only; raw check logs, signing keys, and secret material are never included in the list response.",
+    ],
+  },
+  {
     id: "repo-settings-read",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/settings",

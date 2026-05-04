@@ -73,7 +73,7 @@
 
 ## Phase 5: Final Guardrails and QA Handoff - finish commits-001
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Harden commit-history behavior, docs, visual compliance, browser evidence, and bookkeeping. Mark `commits-001` complete only after the page has real API data, working ref/author/date filters, grouped rows, live row actions, saved screenshots, and QA handoff notes.
 

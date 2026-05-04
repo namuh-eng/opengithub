@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   fireEvent,
   render,
@@ -126,6 +128,41 @@ describe("RepositoryCommitHistoryPage", () => {
     expect(
       container.querySelectorAll('a[href="#"], a:not([href])'),
     ).toHaveLength(0);
+  });
+
+  it("keeps final guardrails for accessibility, Editorial primitives, and banned visual regressions", () => {
+    const { container } = render(
+      <RepositoryCommitHistoryPage history={commitHistory()} />,
+    );
+
+    for (const button of screen.getAllByRole("button")) {
+      expect(button).toHaveAccessibleName(/.+/);
+    }
+    expect(screen.getByRole("link", { name: "3 checks passed" })).toHaveClass(
+      "chip",
+      "ok",
+    );
+    expect(screen.getByText("Verified")).toHaveClass("chip", "ok");
+    expect(screen.getByRole("link", { name: "abcdef1" })).toHaveClass(
+      "btn",
+      "sm",
+      "t-mono-sm",
+    );
+    expect(container.querySelector(".card")).not.toBeNull();
+    expect(container.querySelectorAll(".chip").length).toBeGreaterThan(4);
+    expect(
+      container.querySelectorAll('a[href="#"], a:not([href])'),
+    ).toHaveLength(0);
+
+    const source = readFileSync(
+      resolve(process.cwd(), "src/components/RepositoryCommitHistoryPage.tsx"),
+      "utf8",
+    );
+    expect(source).not.toMatch(
+      /#(0969da|1f883d|1a7f37|cf222e|82071e|f6f8fa|1f2328|d0d7de|59636e|f1aeb5|fff1f3)\b|@primer\/|Octicon/,
+    );
+    expect(source).not.toContain('href="#"');
+    expect(source).not.toContain("onClick={() => {}}");
   });
 
   it("renders active filters, pagination, and empty-state recovery links", () => {

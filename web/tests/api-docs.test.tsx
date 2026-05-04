@@ -434,6 +434,30 @@ describe("ApiDocsPage", () => {
     expect(screen.getByText("/api/repos/{owner}/{repo}/pulls")).toBeVisible();
     expect(
       screen.getByText(
+        "/api/repos/{owner}/{repo}/commits?ref=main&path=src&author=mona&until=2026-04-30T23:59:59Z&page=1&pageSize=30",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Repository commit history" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/ref resolves against repository_git_refs/),
+    ).toBeVisible();
+    expect(screen.getByText(/missing refs return ref_not_found/)).toBeVisible();
+    expect(
+      screen.getByText(/path scopes history to commits touching/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/author, until, before, page, and pageSize/),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(/Anonymous callers receive 401/).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getByText(/raw check logs, signing keys, and secret material/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
         "/api/repos/{owner}/{repo}/pulls/{number}/files?view=unified&whitespace=show",
       ),
     ).toBeVisible();

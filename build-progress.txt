@@ -1,3 +1,13 @@
+2026-05-04 - commits-001 phase 5 final QA handoff
+
+- Completed Phase 5 from `.qrspi/commits-001/structure.md`: repository commit history is now locked as a completed vertical slice and `commits-001.build_pass=true`.
+- Added `/docs/api` coverage for `GET /api/repos/{owner}/{repo}/commits`, including ref/path/author/until/before/page/pageSize params, grouped response shape, PR/status/signature fields, auth/privacy behavior, missing ref/path errors, and redaction guarantees.
+- Extended API docs and commit-history component tests for endpoint visibility, error/privacy notes, accessible button names, Editorial `.card`/`.btn`/`.chip` primitives, semantic status/verification chips, no dead anchors, no placeholder handlers, and banned GitHub visual-value guardrails.
+- Extended Playwright commit-history smoke with final desktop and mobile screenshots, empty-state recovery, no horizontal overflow, and existing branch/tag plus author/date filter flows.
+- Saved final screenshots `ralph/screenshots/build/commits-001-final-default-history.jpg` and `ralph/screenshots/build/commits-001-final-mobile.jpg`.
+- Verification passed: focused `repository-commit-history-page` and `api-docs` Vitest, focused Biome, `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`, `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 403 web tests, focused Playwright `repository-commits.spec.ts` with 4 tests, full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false SESSION_SECRET=playwright-session-secret-with-enough-entropy SESSION_COOKIE_NAME=og_session DASHBOARD_E2E_SKIP_MIGRATIONS=1 make test-e2e` with 122 tests, and mandatory Editorial banned-value scan.
+- `qa_pass` remains false for the QA agent. Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched for this feature commit.
+
 2026-05-04 - org-admin-005 phase 3 repository creation policy and base permissions
 
 - Completed Phase 3 from `.qrspi/org-admin-005/structure.md`: organization repository creation and repository authorization now honor member privilege policy without marking `org-admin-005.build_pass=true`.

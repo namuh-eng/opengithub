@@ -74,6 +74,16 @@ async function expectNoDeadControls(page: Page) {
   }
 }
 
+async function expectNoHorizontalOverflow(page: Page) {
+  const dimensions = await page.evaluate(() => ({
+    bodyWidth: document.body.scrollWidth,
+    viewportWidth: window.innerWidth,
+  }));
+  expect(dimensions.bodyWidth).toBeLessThanOrEqual(
+    dimensions.viewportWidth + 1,
+  );
+}
+
 async function createRepository(page: Page) {
   const repositoryName = `commit history ${Date.now().toString(36)}`;
   const normalizedName = repositoryName.replaceAll(/\s+/g, "-");
@@ -124,6 +134,26 @@ test("signed-in commit history renders grouped rows and live links", async ({
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/commits-001-phase2-default-history.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/commits-001-final-default-history.jpg",
+  });
+
+  await page.goto(
+    `${repositoryHref}/commits/main?until=2000-01-01T00%3A00%3A00Z`,
+  );
+  await expect(
+    page.getByRole("heading", { name: "No commits found" }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Clear commit filters" }).click();
+  await expect(page).toHaveURL(`${repositoryHref}/commits/main`);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/commits-001-final-mobile.jpg",
   });
 });
 
