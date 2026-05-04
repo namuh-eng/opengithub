@@ -97,6 +97,7 @@ function repositorySettings(
     branches: ["main", "release/next", "docs"],
     viewerPermission: "admin",
     updatedAt: "2026-05-03T00:00:00Z",
+    policyLocks: [],
     auditEvents: [
       {
         id: "audit-1",
@@ -207,6 +208,71 @@ describe("repository general settings page", () => {
     expect(
       screen.getByRole("button", { name: "Unarchive repository" }),
     ).toBeEnabled();
+  });
+
+  it("renders organization policy locks for visibility, forking, and destructive actions", () => {
+    render(
+      <RepositoryGeneralSettingsPage
+        repository={repositoryOverview({
+          owner_organization_id: "org-1",
+          owner_user_id: null,
+          owner_login: "namuh-eng",
+        })}
+        settingsResult={okResult({
+          ownerLogin: "namuh-eng",
+          visibility: "private",
+          policyLocks: [
+            {
+              field: "visibility",
+              reason:
+                "Organization policy prevents members from changing repository visibility.",
+              settingsHref:
+                "/organizations/namuh-eng/settings/member_privileges",
+            },
+            {
+              field: "allowForking",
+              reason:
+                "Organization policy prevents private repository forking.",
+              settingsHref:
+                "/organizations/namuh-eng/settings/member_privileges",
+            },
+            {
+              field: "transferRepository",
+              reason:
+                "Organization policy prevents members from transferring repositories.",
+              settingsHref:
+                "/organizations/namuh-eng/settings/member_privileges",
+            },
+            {
+              field: "deleteRepository",
+              reason:
+                "Organization policy prevents members from deleting repositories.",
+              settingsHref:
+                "/organizations/namuh-eng/settings/member_privileges",
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByLabelText("Repository visibility")).toBeDisabled();
+    expect(screen.getByLabelText("Allow forking")).toBeDisabled();
+    expect(
+      screen.getByRole("link", {
+        name: /prevents members from changing repository visibility/i,
+      }),
+    ).toHaveAttribute(
+      "href",
+      "/organizations/namuh-eng/settings/member_privileges",
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "Transfer repository unavailable",
+      }),
+    ).toHaveTextContent("Transfer locked by organization policy");
+    expect(
+      screen.getByRole("button", { name: "Delete repository unavailable" }),
+    ).toHaveTextContent("Delete locked by organization policy");
   });
 
   it("submits profile, feature, behavior, and archive writes through the same-origin route", async () => {

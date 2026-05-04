@@ -2273,6 +2273,20 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
                 "settingsHref": settings_href,
             }),
         ),
+        RepositoryError::OrganizationPolicyLocked {
+            field,
+            reason,
+            settings_href,
+        } => error_response_with_details(
+            StatusCode::FORBIDDEN,
+            "policy_locked",
+            reason.clone(),
+            json!({
+                "field": field,
+                "reason": reason,
+                "settingsHref": settings_href,
+            }),
+        ),
         RepositoryError::OwnerNotFound
         | RepositoryError::NotFound
         | RepositoryError::PathNotFound
@@ -2432,6 +2446,20 @@ fn map_pages_error(error: PagesError) -> (StatusCode, Json<ErrorEnvelope>) {
         PagesError::NotFound => {
             error_response(StatusCode::NOT_FOUND, "not_found", error.to_string())
         }
+        PagesError::PolicyLocked {
+            field,
+            reason,
+            settings_href,
+        } => error_response_with_details(
+            StatusCode::FORBIDDEN,
+            "policy_locked",
+            reason.clone(),
+            json!({
+                "field": field,
+                "reason": reason,
+                "settingsHref": settings_href,
+            }),
+        ),
         PagesError::Job(_) => error_response(
             StatusCode::INTERNAL_SERVER_ERROR,
             "job_enqueue_failed",

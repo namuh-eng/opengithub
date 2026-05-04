@@ -761,5 +761,10 @@ async fn organization_team_create_validates_policy_parent_rules_and_audits() {
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN);
-    assert_eq!(blocked["error"]["code"], "forbidden");
+    assert_eq!(blocked["error"]["code"], "policy_locked");
+    assert_eq!(blocked["details"]["field"], "membersCanCreateTeams");
+    assert_eq!(
+        blocked["details"]["settingsHref"],
+        format!("/organizations/{marker}-locked/settings/member_privileges")
+    );
 }

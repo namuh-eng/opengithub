@@ -1914,6 +1914,12 @@ export type RepositorySettingsAuditEvent = {
   createdAt: string;
 };
 
+export type RepositoryPolicyLock = {
+  field: string;
+  reason: string;
+  settingsHref: string;
+};
+
 export type RepositorySettings = {
   id: string;
   ownerLogin: string;
@@ -1931,6 +1937,7 @@ export type RepositorySettings = {
   viewerPermission: string;
   updatedAt: string;
   auditEvents: RepositorySettingsAuditEvent[];
+  policyLocks: RepositoryPolicyLock[];
 };
 
 export type RepositorySettingsPatch = {
@@ -2372,6 +2379,7 @@ export type RepositoryPagesSettings = {
   workflowSuggestions: PagesWorkflowSuggestion[];
   deployments: PagesDeploymentSummary[];
   auditEvents: RepositorySettingsAuditEvent[];
+  policyLock: RepositoryPolicyLock | null;
 };
 
 export type RepositoryPagesSettingsFetchResult =

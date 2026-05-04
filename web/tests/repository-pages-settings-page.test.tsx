@@ -157,6 +157,7 @@ function settings(
     ],
     deployments: [deployment()],
     auditEvents: [],
+    policyLock: null,
     ...overrides,
   };
 }
@@ -200,6 +201,36 @@ describe("repository Pages settings page", () => {
     expect(container.innerHTML).not.toMatch(
       /#0969da|#1f883d|#1a7f37|#cf222e|@primer\/|Octicon/i,
     );
+  });
+
+  it("disables publishing source controls when organization policy locks Pages", () => {
+    render(
+      <RepositoryPagesSettingsPage
+        repository={repositoryOverview()}
+        settingsResult={{
+          ok: true,
+          settings: settings({
+            policyLock: {
+              field: "pagesPrivatePublishing",
+              reason:
+                "Organization policy prevents Pages publishing for private repositories.",
+              settingsHref:
+                "/organizations/namuh-eng/settings/member_privileges",
+            },
+          }),
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Policy locked")).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: /prevents Pages publishing/i }),
+    ).toHaveAttribute(
+      "href",
+      "/organizations/namuh-eng/settings/member_privileges",
+    );
+    expect(screen.getByLabelText("Source")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save source" })).toBeDisabled();
   });
 
   it("renders disabled Pages without inert anchors", () => {

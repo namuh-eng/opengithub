@@ -898,6 +898,11 @@ pub enum OrganizationTeamsError {
     NotFound,
     #[error("organization teams require membership")]
     Forbidden,
+    #[error("organization policy prevents members from creating teams")]
+    PolicyLocked {
+        reason: String,
+        settings_href: String,
+    },
     #[error("organization teams conflict")]
     Conflict,
     #[error("invalid organization teams filter: {0}")]
@@ -2458,7 +2463,13 @@ pub async fn create_organization_team(
     let can_admin_teams = matches!(role.as_str(), "owner" | "admin");
     let member_can_create = organization_members_can_create_teams(pool, organization.id).await?;
     if !can_admin_teams && !member_can_create {
-        return Err(OrganizationTeamsError::Forbidden);
+        return Err(OrganizationTeamsError::PolicyLocked {
+            reason: "Organization policy prevents members from creating teams.".to_owned(),
+            settings_href: format!(
+                "/organizations/{}/settings/member_privileges",
+                organization.slug
+            ),
+        });
     }
 
     let normalized_name = request.name.trim().chars().take(80).collect::<String>();

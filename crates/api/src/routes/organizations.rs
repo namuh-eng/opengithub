@@ -6,6 +6,7 @@ use axum::{
     Json, Router,
 };
 use serde::Deserialize;
+use serde_json::json;
 use uuid::Uuid;
 
 use crate::{
@@ -791,6 +792,19 @@ fn map_organization_teams_error(
             StatusCode::FORBIDDEN,
             "forbidden",
             "organization teams require organization membership",
+        ),
+        OrganizationTeamsError::PolicyLocked {
+            reason,
+            settings_href,
+        } => error_response_with_details(
+            StatusCode::FORBIDDEN,
+            "policy_locked",
+            reason.clone(),
+            json!({
+                "field": "membersCanCreateTeams",
+                "reason": reason,
+                "settingsHref": settings_href,
+            }),
         ),
         OrganizationTeamsError::Conflict => error_response(
             StatusCode::CONFLICT,

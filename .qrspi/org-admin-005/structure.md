@@ -61,7 +61,7 @@
 
 ## Phase 4: Cross-Feature Policy Enforcement - teams, Pages, discussions, app access, and destructive toggles
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Enforce the remaining organization policy settings across existing API paths and UI affordances. Team creation respects the team-creation toggle, Pages publishing respects public/private Pages toggles, forking/discussions/project/app/destructive settings are represented in backend guards and rendered disabled where the underlying destructive feature is not fully implemented.
 

@@ -285,6 +285,12 @@ function RepositoryGeneralSettingsEditor({
   const basePath = `/${repository.owner_login}/${repository.name}`;
   const updatePath = `${basePath}/settings/update`;
   const repositoryFullName = `${settings.ownerLogin}/${settings.name}`;
+  const policyLock = (field: string) =>
+    settings.policyLocks.find((lock) => lock.field === field) ?? null;
+  const visibilityLock = policyLock("visibility");
+  const forkingLock = policyLock("allowForking");
+  const transferLock = policyLock("transferRepository");
+  const deleteLock = policyLock("deleteRepository");
 
   useEffect(() => {
     setForm(formStateFromSettings(settings));
@@ -512,6 +518,7 @@ function RepositoryGeneralSettingsEditor({
                     <select
                       aria-label="Repository visibility"
                       className="input max-w-xs capitalize"
+                      disabled={Boolean(visibilityLock)}
                       name="visibility"
                       onChange={(event) =>
                         updateForm({
@@ -527,6 +534,19 @@ function RepositoryGeneralSettingsEditor({
                     </select>
                   }
                 />
+                {visibilityLock ? (
+                  <StateRow
+                    label="Policy"
+                    value={
+                      <Link
+                        className="chip warn"
+                        href={visibilityLock.settingsHref}
+                      >
+                        {visibilityLock.reason}
+                      </Link>
+                    }
+                  />
+                ) : null}
                 <StateRow
                   label="Default branch"
                   value={
@@ -692,10 +712,19 @@ function RepositoryGeneralSettingsEditor({
               <SettingToggle
                 checked={form.allowForking}
                 description="Allow users with access to create forks."
+                disabled={Boolean(forkingLock)}
                 label="Allow forking"
                 name="allowForking"
                 onChange={(checked) => updateForm({ allowForking: checked })}
               />
+              {forkingLock ? (
+                <Link
+                  className="chip warn mt-2"
+                  href={forkingLock.settingsHref}
+                >
+                  {forkingLock.reason}
+                </Link>
+              ) : null}
               <SettingToggle
                 checked={form.webCommitSignoffRequired}
                 description="Require signoff on commits created through the web editor."
@@ -799,7 +828,9 @@ function RepositoryGeneralSettingsEditor({
                 disabled
                 type="button"
               >
-                Transfer
+                {transferLock
+                  ? "Transfer locked by organization policy"
+                  : "Transfer"}
               </button>
               <button
                 aria-label="Delete repository unavailable"
@@ -807,8 +838,17 @@ function RepositoryGeneralSettingsEditor({
                 disabled
                 type="button"
               >
-                Delete
+                {deleteLock ? "Delete locked by organization policy" : "Delete"}
               </button>
+              {transferLock || deleteLock ? (
+                <Link
+                  className="chip warn"
+                  href={(transferLock ?? deleteLock)?.settingsHref ?? "#"}
+                >
+                  Destructive repository controls are constrained by member
+                  privileges.
+                </Link>
+              ) : null}
             </div>
           </SettingsCard>
         </aside>

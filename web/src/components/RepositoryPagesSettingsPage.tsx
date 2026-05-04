@@ -211,7 +211,7 @@ function SourceCard({
   const [workflowArtifactName, setWorkflowArtifactName] =
     useState(initialArtifact);
   const [formError, setFormError] = useState<string | null>(null);
-  const canEdit = settings.canEdit && !busy;
+  const canEdit = settings.canEdit && !busy && !settings.policyLock;
   const isBranch = kind === "branch";
   const isActions = kind === "actions";
 
@@ -256,10 +256,26 @@ function SourceCard({
             site publishing.
           </p>
         </div>
-        <span className={settings.canEdit ? "chip ok" : "chip warn"}>
-          {settings.canEdit ? "Admin editable" : "Read only"}
+        <span
+          className={
+            settings.canEdit && !settings.policyLock ? "chip ok" : "chip warn"
+          }
+        >
+          {settings.policyLock
+            ? "Policy locked"
+            : settings.canEdit
+              ? "Admin editable"
+              : "Read only"}
         </span>
       </div>
+      {settings.policyLock ? (
+        <Link
+          className="chip warn mt-4"
+          href={settings.policyLock.settingsHref}
+        >
+          {settings.policyLock.reason}
+        </Link>
+      ) : null}
 
       <form
         className="mt-5 grid gap-4 md:grid-cols-[1fr_1fr]"

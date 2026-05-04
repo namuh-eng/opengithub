@@ -163,6 +163,15 @@ pub struct RepositorySettings {
     pub viewer_permission: String,
     pub updated_at: DateTime<Utc>,
     pub audit_events: Vec<RepositorySettingsAuditEvent>,
+    pub policy_locks: Vec<RepositoryPolicyLock>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryPolicyLock {
+    pub field: String,
+    pub reason: String,
+    pub settings_href: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1084,6 +1093,12 @@ pub enum RepositoryError {
     #[error("organization policy does not allow members to create {visibility} repositories")]
     OrganizationRepositoryCreationPolicy {
         visibility: String,
+        reason: String,
+        settings_href: String,
+    },
+    #[error("organization policy prevents this repository setting from changing")]
+    OrganizationPolicyLocked {
+        field: String,
         reason: String,
         settings_href: String,
     },
@@ -2931,6 +2946,7 @@ pub async fn update_repository_settings_by_owner_name(
         return Err(RepositoryError::PermissionDenied);
     }
 
+    enforce_repository_policy_locks(pool, &repository, actor_user_id, &patch).await?;
     validate_settings_patch(pool, &repository, &patch).await?;
     let before = repository_settings_for_repository(pool, &repository, actor_user_id)
         .await?
@@ -3076,6 +3092,35 @@ pub async fn update_repository_settings_by_owner_name(
         .await?
         .ok_or(RepositoryError::NotFound)?;
     repository_settings_for_repository(pool, &updated, actor_user_id).await
+}
+
+async fn enforce_repository_policy_locks(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    patch: &RepositorySettingsPatch,
+) -> Result<(), RepositoryError> {
+    let locks = repository_policy_locks(pool, repository, actor_user_id).await?;
+    let blocked = |field: &str| locks.iter().find(|lock| lock.field == field);
+    if patch.visibility.is_some() {
+        if let Some(lock) = blocked("visibility") {
+            return Err(RepositoryError::OrganizationPolicyLocked {
+                field: lock.field.clone(),
+                reason: lock.reason.clone(),
+                settings_href: lock.settings_href.clone(),
+            });
+        }
+    }
+    if patch.allow_forking == Some(true) {
+        if let Some(lock) = blocked("allowForking") {
+            return Err(RepositoryError::OrganizationPolicyLocked {
+                field: lock.field.clone(),
+                reason: lock.reason.clone(),
+                settings_href: lock.settings_href.clone(),
+            });
+        }
+    }
+    Ok(())
 }
 
 pub async fn repository_branch_settings_for_actor_by_owner_name(
@@ -4305,6 +4350,7 @@ async fn repository_settings_for_repository(
     let merge = repository_merge_settings_for_repository(pool, repository.id).await?;
     let branches = repository_branch_names(pool, repository.id).await?;
     let audit_events = repository_settings_audit_events(pool, repository.id).await?;
+    let policy_locks = repository_policy_locks(pool, repository, actor_user_id).await?;
     let viewer_permission = repository_permission_for_user(pool, repository.id, actor_user_id)
         .await?
         .map(|permission| permission.role.as_str().to_owned());
@@ -4344,7 +4390,98 @@ async fn repository_settings_for_repository(
         }),
         updated_at: row.try_get("updated_at")?,
         audit_events,
+        policy_locks,
     }))
+}
+
+async fn repository_policy_locks(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+) -> Result<Vec<RepositoryPolicyLock>, RepositoryError> {
+    let Some(organization_id) = repository.owner_organization_id else {
+        return Ok(Vec::new());
+    };
+    if organization_actor_is_owner_or_admin(pool, organization_id, actor_user_id).await? {
+        return Ok(Vec::new());
+    }
+    let Some(row) = sqlx::query(
+        r#"
+        SELECT organizations.slug,
+               COALESCE(organization_policy_settings.members_can_fork_private_repositories, true) AS members_can_fork_private_repositories,
+               COALESCE(organization_policy_settings.members_can_change_repository_visibility, false) AS members_can_change_repository_visibility,
+               COALESCE(organization_policy_settings.members_can_delete_repositories, false) AS members_can_delete_repositories,
+               COALESCE(organization_policy_settings.members_can_transfer_repositories, false) AS members_can_transfer_repositories
+        FROM organizations
+        LEFT JOIN organization_policy_settings
+          ON organization_policy_settings.organization_id = organizations.id
+        WHERE organizations.id = $1
+        "#,
+    )
+    .bind(organization_id)
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Ok(Vec::new());
+    };
+
+    let slug: String = row.try_get("slug")?;
+    let settings_href = format!("/organizations/{slug}/settings/member_privileges");
+    let mut locks = Vec::new();
+    if !row.try_get::<bool, _>("members_can_change_repository_visibility")? {
+        locks.push(RepositoryPolicyLock {
+            field: "visibility".to_owned(),
+            reason: "Organization policy prevents members from changing repository visibility."
+                .to_owned(),
+            settings_href: settings_href.clone(),
+        });
+    }
+    if repository.visibility == RepositoryVisibility::Private
+        && !row.try_get::<bool, _>("members_can_fork_private_repositories")?
+    {
+        locks.push(RepositoryPolicyLock {
+            field: "allowForking".to_owned(),
+            reason: "Organization policy prevents private repository forking.".to_owned(),
+            settings_href: settings_href.clone(),
+        });
+    }
+    if !row.try_get::<bool, _>("members_can_delete_repositories")? {
+        locks.push(RepositoryPolicyLock {
+            field: "deleteRepository".to_owned(),
+            reason: "Organization policy prevents members from deleting repositories.".to_owned(),
+            settings_href: settings_href.clone(),
+        });
+    }
+    if !row.try_get::<bool, _>("members_can_transfer_repositories")? {
+        locks.push(RepositoryPolicyLock {
+            field: "transferRepository".to_owned(),
+            reason: "Organization policy prevents members from transferring repositories."
+                .to_owned(),
+            settings_href,
+        });
+    }
+    Ok(locks)
+}
+
+async fn organization_actor_is_owner_or_admin(
+    pool: &PgPool,
+    organization_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<bool, RepositoryError> {
+    let role = sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT role
+        FROM organization_memberships
+        WHERE organization_id = $1 AND user_id = $2
+        "#,
+    )
+    .bind(organization_id)
+    .bind(actor_user_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(role
+        .as_deref()
+        .is_some_and(|role| matches!(role, "owner" | "admin")))
 }
 
 async fn repository_branch_settings_for_repository(

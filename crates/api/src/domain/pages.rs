@@ -11,7 +11,7 @@ use super::{
     permissions::RepositoryRole,
     repositories::{
         can_admin_repository, can_read_repository, get_repository_by_owner_name, Repository,
-        RepositoryError, RepositorySettingsAuditEvent, RepositoryVisibility,
+        RepositoryError, RepositoryPolicyLock, RepositorySettingsAuditEvent, RepositoryVisibility,
     },
 };
 
@@ -25,6 +25,12 @@ pub enum PagesError {
     Conflict,
     #[error("Pages site was not found")]
     NotFound,
+    #[error("organization policy prevents Pages publishing")]
+    PolicyLocked {
+        field: String,
+        reason: String,
+        settings_href: String,
+    },
     #[error(transparent)]
     Job(#[from] JobLeaseError),
     #[error(transparent)]
@@ -46,6 +52,7 @@ pub struct RepositoryPagesSettings {
     pub workflow_suggestions: Vec<PagesWorkflowSuggestion>,
     pub deployments: Vec<PagesDeploymentSummary>,
     pub audit_events: Vec<RepositorySettingsAuditEvent>,
+    pub policy_lock: Option<RepositoryPolicyLock>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -236,6 +243,7 @@ pub async fn update_repository_pages_source_by_owner_name(
     require_pages_admin(pool, &repository, actor_user_id).await?;
     ensure_repository_mutable(&repository)?;
     let source = normalize_source_mutation(pool, &repository, mutation).await?;
+    enforce_pages_publishing_policy(pool, &repository, actor_user_id, &source.kind).await?;
     let site = ensure_pages_site(pool, &repository, actor_user_id).await?;
     let before = pages_site_audit_state(pool, site.id).await?;
 
@@ -749,6 +757,7 @@ async fn repository_pages_settings_for_repository(
     let workflow_suggestions = pages_workflow_suggestions(pool, repository.id).await?;
     let deployments = pages_deployments(pool, repository.id).await?;
     let audit_events = pages_audit_events(pool, repository.id).await?;
+    let policy_lock = pages_policy_lock(pool, repository, actor_user_id).await?;
 
     Ok(Some(RepositoryPagesSettings {
         repository_id: repository.id,
@@ -765,6 +774,7 @@ async fn repository_pages_settings_for_repository(
         workflow_suggestions,
         deployments,
         audit_events,
+        policy_lock,
     }))
 }
 
@@ -788,6 +798,94 @@ fn ensure_repository_mutable(repository: &Repository) -> Result<(), PagesError> 
     } else {
         Ok(())
     }
+}
+
+async fn enforce_pages_publishing_policy(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    source_kind: &PagesSourceKind,
+) -> Result<(), PagesError> {
+    if source_kind == &PagesSourceKind::None {
+        return Ok(());
+    }
+    if let Some(lock) = pages_policy_lock(pool, repository, actor_user_id).await? {
+        return Err(PagesError::PolicyLocked {
+            field: lock.field,
+            reason: lock.reason,
+            settings_href: lock.settings_href,
+        });
+    }
+    Ok(())
+}
+
+async fn pages_policy_lock(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+) -> Result<Option<RepositoryPolicyLock>, PagesError> {
+    let Some(organization_id) = repository.owner_organization_id else {
+        return Ok(None);
+    };
+    let role = sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT role
+        FROM organization_memberships
+        WHERE organization_id = $1 AND user_id = $2
+        "#,
+    )
+    .bind(organization_id)
+    .bind(actor_user_id)
+    .fetch_optional(pool)
+    .await?;
+    if role
+        .as_deref()
+        .is_some_and(|role| matches!(role, "owner" | "admin"))
+    {
+        return Ok(None);
+    }
+
+    let Some(row) = sqlx::query(
+        r#"
+        SELECT organizations.slug,
+               COALESCE(organization_policy_settings.pages_public_publishing, true) AS pages_public_publishing,
+               COALESCE(organization_policy_settings.pages_private_publishing, true) AS pages_private_publishing
+        FROM organizations
+        LEFT JOIN organization_policy_settings
+          ON organization_policy_settings.organization_id = organizations.id
+        WHERE organizations.id = $1
+        "#,
+    )
+    .bind(organization_id)
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Ok(None);
+    };
+
+    let denied = match repository.visibility {
+        RepositoryVisibility::Public => !row.try_get::<bool, _>("pages_public_publishing")?,
+        RepositoryVisibility::Private | RepositoryVisibility::Internal => {
+            !row.try_get::<bool, _>("pages_private_publishing")?
+        }
+    };
+    if !denied {
+        return Ok(None);
+    }
+    let slug: String = row.try_get("slug")?;
+    let field = if repository.visibility == RepositoryVisibility::Public {
+        "pagesPublicPublishing"
+    } else {
+        "pagesPrivatePublishing"
+    };
+    Ok(Some(RepositoryPolicyLock {
+        field: field.to_owned(),
+        reason: format!(
+            "Organization policy prevents Pages publishing for {} repositories.",
+            repository.visibility.as_str()
+        ),
+        settings_href: format!("/organizations/{slug}/settings/member_privileges"),
+    }))
 }
 
 async fn ensure_pages_site(

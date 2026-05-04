@@ -4998,5 +4998,24 @@
       "Probe large organization access settings because inherited base permission rows can add many non-editable member entries.",
       "Re-run the focused Rust policy contract against a clean migrated database so its DB assertions execute instead of self-skipping on local migration drift."
     ]
+  },
+  {
+    "feature_id": "org-admin-005",
+    "tests_written": [
+      "Completed Phase 4 Cross-Feature Policy Enforcement without marking org-admin-005 build_pass=true.",
+      "Team creation now returns a policy_locked envelope with member-privileges settings link when members_can_create_teams=false.",
+      "Repository Pages settings now expose policyLock metadata and block branch/Actions publishing when organization Pages public/private publishing policy denies the repository visibility.",
+      "Repository general settings now expose organization policy locks for visibility changes, private forking, repository transfer, and repository deletion; locked UI controls link back to member privileges.",
+      "Focused Rust team policy contract passed; focused Pages policy contract compiled but self-skipped DB assertions because the local migration harness returned no pool under the known dirty migration state.",
+      "Focused Vitest covers policy-locked repository settings, policy-locked Pages source controls, and existing organization team behavior.",
+      "Focused Playwright passed member privileges, teams, repository create, and Pages settings specs."
+    ],
+    "needs_deeper_qa": [
+      "Phase 5 must add API docs, final browser screenshots, final long-page smoke coverage, and set build_pass=true.",
+      "Run the new Pages policy contract against a clean migrated database so its policy_locked API assertions execute instead of self-skipping on local migration drift.",
+      "Add final E2E coverage for the exact policy-locked Pages state and repository settings lock links after the deterministic seed includes those policy rows.",
+      "Probe policy flips while repository settings and Pages source forms are open, especially stale submit behavior after policy changes.",
+      "The full make test-e2e wrapper was terminated after a silent stall; direct focused Playwright passed 8 tests and no matching child processes remained after cleanup."
+    ]
   }
 ]

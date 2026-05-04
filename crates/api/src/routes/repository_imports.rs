@@ -164,6 +164,20 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
                 "settingsHref": settings_href,
             }),
         ),
+        RepositoryError::OrganizationPolicyLocked {
+            field,
+            reason,
+            settings_href,
+        } => error_response_with_details(
+            StatusCode::FORBIDDEN,
+            "policy_locked",
+            reason.clone(),
+            json!({
+                "field": field,
+                "reason": reason,
+                "settingsHref": settings_href,
+            }),
+        ),
         RepositoryError::OwnerNotFound
         | RepositoryError::NotFound
         | RepositoryError::AccessTargetNotFound

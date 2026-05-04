@@ -10,8 +10,8 @@ use opengithub_api::{
         identity::{upsert_session, upsert_user_by_email, User},
         permissions::RepositoryRole,
         repositories::{
-            create_repository, grant_repository_permission, CreateRepository, RepositoryOwner,
-            RepositoryVisibility,
+            create_organization, create_repository, grant_repository_permission,
+            CreateOrganization, CreateRepository, RepositoryOwner, RepositoryVisibility,
         },
     },
     jobs::pages::run_pages_build_deployment_once,
@@ -36,6 +36,105 @@ async fn database_pool() -> Option<PgPool> {
         .ok()?;
     MIGRATOR.run(&pool).await.ok()?;
     Some(pool)
+}
+
+#[tokio::test]
+async fn organization_pages_policy_locks_member_publishing() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping organization Pages policy scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("pagespolicy{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let member = create_user(&pool, &format!("{marker}-member")).await;
+    let member_cookie = cookie_header(&pool, &config, &member).await;
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let org = create_organization(
+        &pool,
+        CreateOrganization {
+            slug: marker.clone(),
+            display_name: "Pages Policy".to_owned(),
+            description: None,
+            owner_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("organization should create");
+    sqlx::query(
+        "INSERT INTO organization_memberships (organization_id, user_id, role) VALUES ($1, $2, 'member')",
+    )
+    .bind(org.id)
+    .bind(member.id)
+    .execute(&pool)
+    .await
+    .expect("member should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO organization_policy_settings (organization_id, pages_private_publishing)
+        VALUES ($1, false)
+        ON CONFLICT (organization_id)
+        DO UPDATE SET pages_private_publishing = false
+        "#,
+    )
+    .bind(org.id)
+    .execute(&pool)
+    .await
+    .expect("policy should update");
+    let repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::Organization { id: org.id },
+            name: format!("{marker}-repo"),
+            description: Some("Pages policy contract".to_owned()),
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    grant_repository_permission(&pool, repo.id, member.id, RepositoryRole::Admin, "direct")
+        .await
+        .expect("member admin grant should persist");
+    let commit_id = seed_commit_and_branch(&pool, repo.id, "main").await;
+    sqlx::query(
+        r#"
+        INSERT INTO repository_files (repository_id, commit_id, path, content, oid, byte_size)
+        VALUES ($1, $2, 'docs/index.html', '<h1>Policy</h1>', $3, 15)
+        "#,
+    )
+    .bind(repo.id)
+    .bind(commit_id)
+    .bind(format!("{}-docs", Uuid::new_v4().simple()))
+    .execute(&pool)
+    .await
+    .expect("docs file should persist");
+
+    let uri = format!("/api/repos/{marker}/{}/settings/pages", repo.name);
+    let (status, _, body) =
+        send_json(app.clone(), Method::GET, &uri, Some(&member_cookie), None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["canEdit"], true);
+    assert_eq!(body["policyLock"]["field"], "pagesPrivatePublishing");
+    assert_eq!(
+        body["policyLock"]["settingsHref"],
+        format!("/organizations/{marker}/settings/member_privileges")
+    );
+
+    let (blocked_status, _, blocked_body) = send_json(
+        app,
+        Method::PATCH,
+        &format!("{uri}/source"),
+        Some(&member_cookie),
+        Some(json!({ "kind": "branch", "branch": "main", "folder": "/docs" })),
+    )
+    .await;
+    assert_eq!(blocked_status, StatusCode::FORBIDDEN);
+    assert_eq!(blocked_body["error"]["code"], "policy_locked");
+    assert_eq!(blocked_body["details"]["field"], "pagesPrivatePublishing");
+    assert!(!blocked_body.to_string().contains(&owner.email));
 }
 
 #[tokio::test]
