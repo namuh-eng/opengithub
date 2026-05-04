@@ -2332,6 +2332,115 @@ export type RepositoryBranchSettingsFetchResult =
   | { ok: true; settings: RepositoryBranchSettings }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type RepositoryBranchesView = {
+  repository: RepositoryBranchesRepository;
+  tabs: RepositoryBranchClassificationCounts;
+  filters: RepositoryBranchesFilters;
+  defaultBranch: RepositoryBranchDirectoryRow | null;
+  branches: RepositoryBranchDirectoryRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+  emptyState: RepositoryBranchesEmptyState;
+};
+
+export type RepositoryBranchesRepository = {
+  ownerLogin: string;
+  name: string;
+  defaultBranch: string;
+  visibility: RepositoryVisibility | string;
+  viewerPermission: string;
+};
+
+export type RepositoryBranchesFilters = {
+  tab: "overview" | "active" | "stale" | "all" | string;
+  query: string | null;
+  staleCutoffDays: number;
+};
+
+export type RepositoryBranchClassificationCounts = {
+  overview: number;
+  active: number;
+  stale: number;
+  all: number;
+  default: number;
+};
+
+export type RepositoryBranchDirectoryRow = {
+  name: string;
+  qualifiedName: string;
+  classification: "default" | "active" | "stale" | string;
+  isDefault: boolean;
+  href: string;
+  commitsHref: string;
+  activityHref: string;
+  latestCommit: RepositoryBranchLatestCommitSummary | null;
+  checks: RepositoryBranchCheckSummary;
+  protection: RepositoryBranchProtectionSummary;
+  ahead: number;
+  behind: number;
+  pullRequest: RepositoryBranchPullRequestSummary | null;
+  capabilities: RepositoryBranchCapabilities;
+  updatedAt: string;
+};
+
+export type RepositoryBranchLatestCommitSummary = {
+  oid: string;
+  shortOid: string;
+  subject: string;
+  href: string;
+  committedAt: string;
+  authorLogin: string | null;
+  authorAvatarUrl: string | null;
+};
+
+export type RepositoryBranchCheckSummary = {
+  status: string;
+  conclusion: string | null;
+  totalCount: number;
+  completedCount: number;
+  failedCount: number;
+  href: string;
+};
+
+export type RepositoryBranchProtectionSummary = {
+  protected: boolean;
+  matchingRuleCount: number;
+  matchingRulesetCount: number;
+  requiredStatusChecks: string[];
+  href: string;
+};
+
+export type RepositoryBranchPullRequestSummary = {
+  number: number;
+  title: string;
+  state: string;
+  draft: boolean;
+  href: string;
+};
+
+export type RepositoryBranchCapabilities = {
+  canCopy: boolean;
+  canViewActivity: boolean;
+  canViewRules: boolean;
+  canDelete: boolean;
+  deleteDisabledReason: string | null;
+  canRestore: boolean;
+  restoreDisabledReason: string | null;
+};
+
+export type RepositoryBranchesEmptyState = {
+  title: string;
+  message: string;
+  resetHref: string;
+};
+
+export type RepositoryBranchesFetchResult =
+  | { ok: true; branches: RepositoryBranchesView }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type WebhookContentType = "json" | "form" | string;
 
 export type WebhookEventSelection = "push" | "everything" | "selected" | string;
@@ -8612,6 +8721,74 @@ export async function getRepositoryBranchSettingsFromCookie(
   return {
     ok: true,
     settings: (await response.json()) as RepositoryBranchSettings,
+  };
+}
+
+export async function getRepositoryBranchesFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  options: {
+    tab?: string | null;
+    query?: string | null;
+    page?: number | null;
+    pageSize?: number | null;
+  } = {},
+): Promise<RepositoryBranchesFetchResult> {
+  const params = new URLSearchParams();
+  if (options.tab?.trim() && options.tab.trim() !== "overview") {
+    params.set("tab", options.tab.trim());
+  }
+  if (options.query?.trim()) {
+    params.set("q", options.query.trim());
+  }
+  if (options.page && Number.isFinite(options.page) && options.page > 1) {
+    params.set("page", String(options.page));
+  }
+  if (
+    options.pageSize &&
+    Number.isFinite(options.pageSize) &&
+    options.pageSize !== 30
+  ) {
+    params.set("pageSize", String(options.pageSize));
+  }
+  const query = params.toString();
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches${query ? `?${query}` : ""}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository branches are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Repository branches are unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    branches: (await response.json()) as RepositoryBranchesView,
   };
 }
 

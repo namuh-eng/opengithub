@@ -516,6 +516,94 @@ function encodePathSegments(path: string) {
   return path.split("/").filter(Boolean).map(encodeURIComponent).join("/");
 }
 
+export type RepositoryBranchDirectoryFilters = {
+  tab?: string | null;
+  query?: string | null;
+  page?: number | string | null;
+  pageSize?: number | string | null;
+};
+
+export function repositoryBranchesHref(
+  owner: string,
+  repo: string,
+  filters: RepositoryBranchDirectoryFilters = {},
+  overrides: Partial<Record<"tab" | "q" | "page", string | null>> & {
+    pageSize?: string | null;
+  } = {},
+) {
+  const params = new URLSearchParams();
+  const nextTab =
+    overrides.tab === undefined
+      ? filters.tab?.trim() || "overview"
+      : overrides.tab?.trim() || "overview";
+  const nextQuery =
+    overrides.q === undefined ? filters.query : overrides.q?.trim() || null;
+  const nextPage =
+    overrides.page === undefined
+      ? filters.page
+      : overrides.page?.trim() || null;
+  const nextPageSize =
+    overrides.pageSize === undefined
+      ? filters.pageSize
+      : overrides.pageSize?.trim() || null;
+
+  if (nextTab && nextTab !== "overview") {
+    params.set("tab", nextTab);
+  }
+  if (nextQuery?.trim()) {
+    params.set("q", nextQuery.trim());
+  }
+  if (nextPage && String(nextPage) !== "1") {
+    params.set("page", String(nextPage));
+  }
+  if (nextPageSize && String(nextPageSize) !== "30") {
+    params.set("pageSize", String(nextPageSize));
+  }
+
+  const query = params.toString();
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches${query ? `?${query}` : ""}`;
+}
+
+export function repositoryTreeAtBranchHref({
+  owner,
+  repo,
+  branch,
+  path,
+}: {
+  owner: string;
+  repo: string;
+  branch: string;
+  path?: string | null;
+}) {
+  const encodedPath = path ? `/${encodePathSegments(path)}` : "";
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/tree/${encodeURIComponent(branch)}${encodedPath}`;
+}
+
+export function repositoryBranchActivityHref({
+  owner,
+  repo,
+  branch,
+}: {
+  owner: string;
+  repo: string;
+  branch: string;
+}) {
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches/${encodeURIComponent(branch)}`;
+}
+
+export function repositoryBranchRulesHref({
+  owner,
+  repo,
+  branch,
+}: {
+  owner: string;
+  repo: string;
+  branch: string;
+}) {
+  const params = new URLSearchParams({ branch });
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/branches?${params.toString()}`;
+}
+
 export function repositoryCommitHistoryHref({
   owner,
   repo,

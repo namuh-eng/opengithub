@@ -5217,5 +5217,21 @@
       "Verify real imported Git history where ahead/behind counts include merge commits and long ancestry chains.",
       "Validate Google OAuth browser access once the UI phase lands; this phase was API-only and browser smoke was optional by structure."
     ]
+  },
+  {
+    "feature_id": "branches-001",
+    "tests_written": [
+      "Completed Phase 2 Editorial Branches Overview Page without marking branches-001 build_pass=true.",
+      "Replaced /{owner}/{repo}/branches placeholder with a server-fetched Editorial branch directory overview backed by GET /api/repos/{owner}/{repo}/branches.",
+      "Added typed frontend branch-directory DTOs, signed-cookie fetch helpers, URL helpers, copy branch-name feedback, overview/default/active sections, concrete tree/commits/checks/PR/activity/rules links, unavailable and empty states, and no-dead-control coverage.",
+      "Added focused Vitest coverage and Playwright browser smoke; screenshot saved at ralph/screenshots/build/branches-001-phase2-overview.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 still needs URL-backed active/stale/all tab behavior beyond the overview smoke, pagination edge cases, richer action menu keyboard behavior, and mobile no-overflow checks.",
+      "Phase 4 still needs useful branch activity and rules drill-down destinations instead of relying on the existing branch settings page for rules context.",
+      "Repeat with a real Google OAuth session using TEST_ACCOUNT_EMAIL and imported repositories with hundreds of branches, slash-containing refs, stale refs, missing latest commits, mixed check states, and multiple linked PRs per branch.",
+      "Probe clipboard permissions across browsers; Playwright grants clipboard-write for the copy feedback smoke.",
+      "Re-run against a clean migrated database after the shared local migration drift is resolved."
+    ]
   }
 ]

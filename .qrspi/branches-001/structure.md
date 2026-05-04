@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial Branches Overview Page - default and active branches render real data
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the placeholder `/{owner}/{repo}/branches` page with a real Editorial repository branches screen backed by the Phase 1 API. The default Overview tab should render the repository shell, Branches heading, tablist, search input, default branch section, active branches table, row metadata, empty states, and concrete destinations with no inert controls.
 
