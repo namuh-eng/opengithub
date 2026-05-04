@@ -3315,3 +3315,9 @@
 - Added final `org-admin-003` QA hints covering real Google OAuth, production SES handoff, concurrency races, CSV escaping, large/Unicode org data, accessibility traversal, and the disabled-safe bulk-action placeholder.
 - Verification passed: `cd web && npx vitest run tests/api-docs.test.tsx`, `cd web && npx tsc --noEmit --pretty false`, focused Biome checks, focused direct Playwright `organization-people.spec.ts`, full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`, full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 383 web tests, compatible mandatory Editorial banned-value scan returned zero matches, and direct full Playwright with 116 tests.
 - `make test-e2e` wrapper was attempted first with the standard local database/session environment, but it stayed silent with active Playwright/browser processes and no result; after terminating the stale wrapper/dev-server state, the same suite completed directly with `cd web && ... npx playwright test --reporter=list`.
+
+2026-05-04 - org-admin-004 structure outline
+
+- Created `.qrspi/org-admin-004/structure.md` for the first incomplete PRD feature, splitting organization teams into five vertical phases: teams directory API contract, Editorial teams directory UI, team creation/nesting rules, team detail with permissions/mentions/notifications, and final docs/browser/QA/build-pass bookkeeping.
+- No source implementation was started because `org-admin-004.needs_structure=true` and the build-loop contract requires the structure outline first, then `<promise>NEXT</promise>`.
+- Verified `org-admin-004.build_pass=false`, `qa_pass=false`, and all structure phases remain unchecked for the next invocation.
