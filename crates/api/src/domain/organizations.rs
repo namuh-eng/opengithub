@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -533,6 +534,15 @@ pub struct OrganizationPeopleAdminViewerState {
     pub can_export: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateOrganizationInvitation {
+    pub email_or_login: String,
+    pub role: String,
+    #[serde(default)]
+    pub team_ids: Vec<Uuid>,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct OrganizationRepositoryListQuery<'a> {
     pub query: Option<&'a str>,
@@ -575,8 +585,12 @@ pub enum OrganizationPeopleAdminError {
     NotFound,
     #[error("organization people administration requires owner or admin access")]
     Forbidden,
+    #[error("organization people administration conflict")]
+    Conflict,
     #[error("invalid organization people filter: {0}")]
     InvalidFilter(String),
+    #[error("invalid organization people mutation: {0}")]
+    Validation(String),
     #[error("database error")]
     Sqlx(#[from] sqlx::Error),
 }
@@ -1695,6 +1709,218 @@ pub async fn organization_people_admin(
     })
 }
 
+pub async fn create_organization_invitation(
+    pool: &PgPool,
+    slug: &str,
+    actor_user_id: Uuid,
+    request: CreateOrganizationInvitation,
+) -> Result<OrganizationPeopleAdmin, OrganizationPeopleAdminError> {
+    let organization = require_people_admin_organization(pool, slug, actor_user_id).await?;
+    let target = normalize_invitation_target(&request.email_or_login)?;
+    let role = normalize_invitation_role(&request.role)?;
+    validate_invitation_team_ids(pool, organization.id, &request.team_ids).await?;
+    let invited_user = find_organization_invited_user(pool, &target).await?;
+    if let Some(invited_user_id) = invited_user.as_ref().map(|user| user.user_id) {
+        let existing_member = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM organization_memberships
+                WHERE organization_id = $1 AND user_id = $2
+            )
+            "#,
+        )
+        .bind(organization.id)
+        .bind(invited_user_id)
+        .fetch_one(pool)
+        .await?;
+        if existing_member {
+            return Err(OrganizationPeopleAdminError::Conflict);
+        }
+    }
+
+    let invited_email = invited_user
+        .as_ref()
+        .map(|user| user.email.clone())
+        .unwrap_or_else(|| target.to_ascii_lowercase());
+    if !target.contains('@') && invited_user.is_none() {
+        return Err(OrganizationPeopleAdminError::Validation(
+            "Enter an existing username or a valid email address.".to_owned(),
+        ));
+    }
+    validate_email(&invited_email).map_err(OrganizationPeopleAdminError::Validation)?;
+
+    let token_hash = format!("sha256:{:x}", Sha256::digest(Uuid::new_v4().as_bytes()));
+    let inserted = sqlx::query(
+        r#"
+        INSERT INTO organization_invitations (
+            organization_id,
+            invited_user_id,
+            invited_email,
+            role,
+            team_ids,
+            status,
+            token_hash,
+            invited_by_user_id,
+            email_delivery_status,
+            email_delivery_error,
+            failed_at,
+            expires_at
+        )
+        VALUES ($1, $2, $3, $4, $5, 'pending', $6, $7, 'degraded', $8, NULL, now() + INTERVAL '7 days')
+        ON CONFLICT (organization_id, lower(invited_email)) WHERE status = 'pending'
+        DO NOTHING
+        RETURNING id
+        "#,
+    )
+    .bind(organization.id)
+    .bind(invited_user.as_ref().map(|user| user.user_id))
+    .bind(&invited_email)
+    .bind(&role)
+    .bind(&request.team_ids)
+    .bind(token_hash)
+    .bind(actor_user_id)
+    .bind("Email delivery is waiting for SES confirmation.")
+    .fetch_optional(pool)
+    .await?;
+
+    if inserted.is_none() {
+        return Err(OrganizationPeopleAdminError::Conflict);
+    }
+    insert_organization_people_audit_event(
+        pool,
+        organization.id,
+        actor_user_id,
+        "organization.people.invite",
+        json!({
+            "role": role,
+            "teamCount": request.team_ids.len(),
+            "emailDeliveryStatus": "degraded",
+            "redacted": ["invitedEmail", "tokenHash"]
+        }),
+    )
+    .await?;
+
+    organization_people_admin(
+        pool,
+        &organization.slug,
+        actor_user_id,
+        OrganizationPeopleAdminQuery {
+            tab: Some("invitations"),
+            query: None,
+            page: Some(1),
+            page_size: None,
+        },
+    )
+    .await
+}
+
+pub async fn retry_organization_invitation(
+    pool: &PgPool,
+    slug: &str,
+    actor_user_id: Uuid,
+    invitation_id: Uuid,
+) -> Result<OrganizationPeopleAdmin, OrganizationPeopleAdminError> {
+    let organization = require_people_admin_organization(pool, slug, actor_user_id).await?;
+    let row = sqlx::query(
+        r#"
+        UPDATE organization_invitations
+        SET status = 'pending',
+            email_delivery_status = 'degraded',
+            email_delivery_error = 'Email delivery is waiting for SES confirmation.',
+            failed_at = NULL,
+            expires_at = now() + INTERVAL '7 days'
+        WHERE id = $1
+          AND organization_id = $2
+          AND (status = 'failed' OR email_delivery_status = 'failed')
+        RETURNING role, cardinality(team_ids)::bigint AS team_count
+        "#,
+    )
+    .bind(invitation_id)
+    .bind(organization.id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(OrganizationPeopleAdminError::NotFound)?;
+
+    insert_organization_people_audit_event(
+        pool,
+        organization.id,
+        actor_user_id,
+        "organization.people.invite_retry",
+        json!({
+            "role": row.get::<String, _>("role"),
+            "teamCount": row.get::<i64, _>("team_count"),
+            "emailDeliveryStatus": "degraded",
+            "redacted": ["invitedEmail", "tokenHash"]
+        }),
+    )
+    .await?;
+
+    organization_people_admin(
+        pool,
+        &organization.slug,
+        actor_user_id,
+        OrganizationPeopleAdminQuery {
+            tab: Some("invitations"),
+            query: None,
+            page: Some(1),
+            page_size: None,
+        },
+    )
+    .await
+}
+
+pub async fn cancel_organization_invitation(
+    pool: &PgPool,
+    slug: &str,
+    actor_user_id: Uuid,
+    invitation_id: Uuid,
+) -> Result<OrganizationPeopleAdmin, OrganizationPeopleAdminError> {
+    let organization = require_people_admin_organization(pool, slug, actor_user_id).await?;
+    let row = sqlx::query(
+        r#"
+        UPDATE organization_invitations
+        SET status = 'canceled',
+            canceled_at = now()
+        WHERE id = $1
+          AND organization_id = $2
+          AND status = 'pending'
+        RETURNING role, cardinality(team_ids)::bigint AS team_count
+        "#,
+    )
+    .bind(invitation_id)
+    .bind(organization.id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(OrganizationPeopleAdminError::NotFound)?;
+
+    insert_organization_people_audit_event(
+        pool,
+        organization.id,
+        actor_user_id,
+        "organization.people.invite_cancel",
+        json!({
+            "role": row.get::<String, _>("role"),
+            "teamCount": row.get::<i64, _>("team_count"),
+            "redacted": ["invitedEmail", "tokenHash"]
+        }),
+    )
+    .await?;
+
+    organization_people_admin(
+        pool,
+        &organization.slug,
+        actor_user_id,
+        OrganizationPeopleAdminQuery {
+            tab: Some("invitations"),
+            query: None,
+            page: Some(1),
+            page_size: None,
+        },
+    )
+    .await
+}
+
 async fn organization_by_slug(
     pool: &PgPool,
     slug: &str,
@@ -1724,6 +1950,124 @@ async fn organization_by_slug(
         public_members_visible: row.get("public_members_visible"),
         created_at: row.get("created_at"),
     })
+}
+
+async fn require_people_admin_organization(
+    pool: &PgPool,
+    slug: &str,
+    actor_user_id: Uuid,
+) -> Result<OrganizationRow, OrganizationPeopleAdminError> {
+    let organization = organization_by_slug(pool, slug)
+        .await
+        .map_err(map_profile_error_to_people_admin)?;
+    let viewer_role = viewer_role(pool, organization.id, Some(actor_user_id)).await?;
+    if viewer_role.is_none() && organization.profile_visibility == "private" {
+        return Err(OrganizationPeopleAdminError::NotFound);
+    }
+    let Some(role) = viewer_role else {
+        return Err(OrganizationPeopleAdminError::Forbidden);
+    };
+    if !matches!(role.as_str(), "owner" | "admin") {
+        return Err(OrganizationPeopleAdminError::Forbidden);
+    }
+    Ok(organization)
+}
+
+struct OrganizationInvitedUser {
+    user_id: Uuid,
+    email: String,
+}
+
+async fn find_organization_invited_user(
+    pool: &PgPool,
+    target: &str,
+) -> Result<Option<OrganizationInvitedUser>, OrganizationPeopleAdminError> {
+    let row = sqlx::query(
+        r#"
+        SELECT id, email
+        FROM users
+        WHERE lower(email) = lower($1)
+           OR lower(username) = lower($1)
+        LIMIT 1
+        "#,
+    )
+    .bind(target)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|row| OrganizationInvitedUser {
+        user_id: row.get("id"),
+        email: row.get("email"),
+    }))
+}
+
+fn normalize_invitation_target(value: &str) -> Result<String, OrganizationPeopleAdminError> {
+    let target = value.trim().chars().take(254).collect::<String>();
+    if target.is_empty() {
+        return Err(OrganizationPeopleAdminError::Validation(
+            "Enter a username or email address.".to_owned(),
+        ));
+    }
+    Ok(target)
+}
+
+fn normalize_invitation_role(value: &str) -> Result<String, OrganizationPeopleAdminError> {
+    let role = value.trim();
+    if matches!(role, "admin" | "member") {
+        Ok(role.to_owned())
+    } else {
+        Err(OrganizationPeopleAdminError::Validation(
+            "Choose member or admin for the invitation role.".to_owned(),
+        ))
+    }
+}
+
+async fn validate_invitation_team_ids(
+    pool: &PgPool,
+    organization_id: Uuid,
+    team_ids: &[Uuid],
+) -> Result<(), OrganizationPeopleAdminError> {
+    if team_ids.is_empty() {
+        return Ok(());
+    }
+    let count = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*)::bigint FROM teams WHERE organization_id = $1 AND id = ANY($2)",
+    )
+    .bind(organization_id)
+    .bind(team_ids)
+    .fetch_one(pool)
+    .await?;
+    if count == team_ids.len() as i64 {
+        Ok(())
+    } else {
+        Err(OrganizationPeopleAdminError::Validation(
+            "Choose teams that belong to this organization.".to_owned(),
+        ))
+    }
+}
+
+async fn insert_organization_people_audit_event(
+    pool: &PgPool,
+    organization_id: Uuid,
+    actor_user_id: Uuid,
+    event_type: &str,
+    metadata: serde_json::Value,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO organization_audit_events (
+            organization_id, actor_user_id, event_type, metadata
+        )
+        VALUES ($1, $2, $3, $4)
+        "#,
+    )
+    .bind(organization_id)
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(metadata)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 fn normalize_organization_people_filters(

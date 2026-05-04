@@ -42,7 +42,7 @@
 
 ## Phase 3: Invitations and Email Delivery - invite, retry, and cancel pending people
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire the Invite member dialog and pending/failed invitation actions to real Rust endpoints. Owners/admins can invite by username or verified email, choose role/team defaults, send or degrade the SES handoff honestly, retry failed deliveries, and cancel pending invitations. Invitations expire after 7 days.
 

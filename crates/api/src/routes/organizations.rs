@@ -5,16 +5,19 @@ use axum::{
     Json, Router,
 };
 use serde::Deserialize;
+use uuid::Uuid;
 
 use crate::{
     api_types::{database_unavailable, error_response, ErrorEnvelope, RestJson},
     auth::extractor::AuthenticatedUser,
     domain::{
         organizations::{
-            create_organization_from_signup, organization_people, organization_people_admin,
+            cancel_organization_invitation, create_organization_from_signup,
+            create_organization_invitation, organization_people, organization_people_admin,
             organization_profile_settings, organization_repositories,
             organization_slug_availability, public_organization_profile, rename_organization,
-            update_organization_profile_settings, CreateOrganizationRequest, CreatedOrganization,
+            retry_organization_invitation, update_organization_profile_settings,
+            CreateOrganizationInvitation, CreateOrganizationRequest, CreatedOrganization,
             OrganizationCreateError, OrganizationPeopleAdmin, OrganizationPeopleAdminError,
             OrganizationPeopleAdminQuery, OrganizationPeopleList, OrganizationPeopleListQuery,
             OrganizationProfileError, OrganizationProfileSettings,
@@ -51,6 +54,18 @@ pub fn router() -> Router<AppState> {
         .route("/api/orgs/:org/repositories", get(public_repositories))
         .route("/api/orgs/:org/people", get(public_people))
         .route("/api/orgs/:org/people/admin", get(admin_people))
+        .route(
+            "/api/orgs/:org/people/invitations",
+            post(create_people_invitation),
+        )
+        .route(
+            "/api/orgs/:org/people/invitations/:invitation_id/retry",
+            post(retry_people_invitation),
+        )
+        .route(
+            "/api/orgs/:org/people/invitations/:invitation_id",
+            axum::routing::delete(cancel_people_invitation),
+        )
         .route("/api/orgs/:org/packages", get(public_packages))
         .route(
             "/api/orgs/:org/packages/:package_type/:package_name",
@@ -225,6 +240,49 @@ async fn admin_people(
     )
     .await
     .map_err(map_organization_people_admin_error)?;
+
+    Ok(Json(people))
+}
+
+async fn create_people_invitation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(org): Path<String>,
+    RestJson(request): RestJson<CreateOrganizationInvitation>,
+) -> Result<Json<OrganizationPeopleAdmin>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let people = create_organization_invitation(pool, &org, actor.0.id, request)
+        .await
+        .map_err(map_organization_people_admin_error)?;
+
+    Ok(Json(people))
+}
+
+async fn retry_people_invitation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((org, invitation_id)): Path<(String, Uuid)>,
+) -> Result<Json<OrganizationPeopleAdmin>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let people = retry_organization_invitation(pool, &org, actor.0.id, invitation_id)
+        .await
+        .map_err(map_organization_people_admin_error)?;
+
+    Ok(Json(people))
+}
+
+async fn cancel_people_invitation(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((org, invitation_id)): Path<(String, Uuid)>,
+) -> Result<Json<OrganizationPeopleAdmin>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let people = cancel_organization_invitation(pool, &org, actor.0.id, invitation_id)
+        .await
+        .map_err(map_organization_people_admin_error)?;
 
     Ok(Json(people))
 }
@@ -491,7 +549,17 @@ fn map_organization_people_admin_error(
             "forbidden",
             "organization people administration requires owner or admin access",
         ),
+        OrganizationPeopleAdminError::Conflict => error_response(
+            StatusCode::CONFLICT,
+            "conflict",
+            "organization invitation already exists or the user is already a member",
+        ),
         OrganizationPeopleAdminError::InvalidFilter(message) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            message,
+        ),
+        OrganizationPeopleAdminError::Validation(message) => error_response(
             StatusCode::UNPROCESSABLE_ENTITY,
             "validation_failed",
             message,

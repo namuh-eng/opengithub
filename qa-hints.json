@@ -4816,5 +4816,26 @@
       "Stress long Unicode display names, emails, and high-count orgs for tab wrapping, row menu wrapping, and mobile no-overflow.",
       "For local smoke, the shared opengithub_identity_test database needed the existing 202605040012 organization people admin migration applied manually before the admin endpoint could render."
     ]
+  },
+  {
+    "feature_id": "org-admin-003",
+    "tests_written": [
+      "Completed Phase 3 Invitations and Email Delivery without marking org-admin-003 build_pass=true.",
+      "Added owner/admin POST /api/orgs/{org}/people/invitations, POST /api/orgs/{org}/people/invitations/{id}/retry, and DELETE /api/orgs/{org}/people/invitations/{id}; each returns a fresh organization people admin state.",
+      "Invitation creation resolves existing usernames/emails, validates member/admin roles and organization team IDs, blocks existing members and duplicate pending invites, stores 7-day expiry and hashed tokens, records degraded SES delivery state, and writes redacted organization audit events.",
+      "Retry moves failed invitations back to pending degraded delivery; cancel removes pending invitations from active tabs while preserving audit history.",
+      "The Editorial people shell now has a working Invite member dialog, concrete retry/cancel row actions, in-flight disabled states, success/error feedback, and no placeholder action handlers for Phase 3 controls.",
+      "Focused Vitest covers invite submit payloads, UI state refresh, retry/cancel payloads, feedback, redaction, and existing tab/search/export behavior.",
+      "Focused Playwright covers the owner people shell, real invite creation through the API, failed invitation retry, cancel, pagination/search, no dead anchors, mobile no-overflow, and screenshot ralph/screenshots/build/org-admin-003-phase3-invitations.jpg.",
+      "Verification passed: TypeScript, focused Biome, focused Vitest, focused Playwright organization people smoke, make check, make test with Cargo tests plus 382 web tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 must verify visibility changes, role-change confirmations, member removal, final-owner protections, and JSON/CSV export response bodies.",
+      "Run a real Google OAuth browser session with TEST_ACCOUNT_EMAIL to confirm invite/retry/cancel works outside deterministic Playwright seed cookies.",
+      "Full make test-e2e was attempted but stayed silent with active Playwright/browser processes for several minutes and was terminated; focused direct Playwright for the touched organization people flow passed.",
+      "SES is intentionally represented as degraded until real delivery confirmation is available; QA should verify production SES credentials move delivery status honestly instead of faking success.",
+      "Stress concurrent duplicate invites/retries/cancels from multiple owner/admin sessions and direct API clients.",
+      "Probe long Unicode usernames/emails, invalid domains, canceled/expired invitation edge cases, and screen-reader traversal of the invite dialog and invitation row actions."
+    ]
   }
 ]

@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import type { FormEvent } from "react";
 import { useMemo, useState } from "react";
 import type {
+  ApiErrorEnvelope,
   OrganizationInvitationRow,
   OrganizationPeopleAdmin,
   OrganizationPeopleAdminRow,
@@ -284,8 +286,12 @@ function MemberRow({
 
 function InvitationRow({
   invitation,
+  onCancel,
+  onRetry,
 }: {
   invitation: OrganizationInvitationRow;
+  onCancel: (invitation: OrganizationInvitationRow) => void;
+  onRetry: (invitation: OrganizationInvitationRow) => void;
 }) {
   const label = invitation.invitedLogin
     ? `@${invitation.invitedLogin}`
@@ -324,6 +330,7 @@ function InvitationRow({
           <button
             className="btn sm"
             disabled={!invitation.canRetry}
+            onClick={() => onRetry(invitation)}
             type="button"
           >
             Retry
@@ -331,6 +338,7 @@ function InvitationRow({
           <button
             className="btn sm"
             disabled={!invitation.canCancel}
+            onClick={() => onCancel(invitation)}
             type="button"
           >
             Cancel
@@ -348,31 +356,37 @@ export function OrganizationPeopleAdminPage({
   admin,
   org,
 }: OrganizationPeopleAdminPageProps) {
+  const [currentAdmin, setCurrentAdmin] = useState(admin);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [exportOpen, setExportOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const activeTabParam = tabParam(admin.tab);
-  const visibleRows = admin.rows.items;
-  const visibleInvitations = admin.invitations.items;
+  const [inviteTarget, setInviteTarget] = useState("");
+  const [inviteRole, setInviteRole] = useState<"member" | "admin">("member");
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const activeTabParam = tabParam(currentAdmin.tab);
+  const visibleRows = currentAdmin.rows.items;
+  const visibleInvitations = currentAdmin.invitations.items;
   const total =
-    admin.tab === "members" ||
-    admin.tab === "outsideCollaborators" ||
-    admin.tab === "securityManagers"
-      ? admin.rows.total
-      : admin.invitations.total;
-  const page = admin.filters.page;
-  const pageSize = admin.filters.pageSize;
+    currentAdmin.tab === "members" ||
+    currentAdmin.tab === "outsideCollaborators" ||
+    currentAdmin.tab === "securityManagers"
+      ? currentAdmin.rows.total
+      : currentAdmin.invitations.total;
+  const page = currentAdmin.filters.page;
+  const pageSize = currentAdmin.filters.pageSize;
   const showingFrom = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const showingTo = Math.min(page * pageSize, total);
   const selectedCount = selected.size;
   const tabFilters = useMemo(
     () => ({
       pageSize,
-      query: admin.filters.query,
+      query: currentAdmin.filters.query,
       tab: activeTabParam,
     }),
-    [activeTabParam, admin.filters.query, pageSize],
+    [activeTabParam, currentAdmin.filters.query, pageSize],
   );
 
   function hrefForTab(param: OrganizationPeopleAdminTabParam) {
@@ -380,11 +394,65 @@ export function OrganizationPeopleAdminPage({
       org,
       {
         pageSize,
-        query: admin.filters.query,
+        query: currentAdmin.filters.query,
         tab: param,
       },
       { page: null },
     );
+  }
+
+  async function runPeopleAction(
+    action: Record<string, unknown>,
+    success: string,
+    busyKey: string,
+  ) {
+    setBusyAction(busyKey);
+    setErrorMessage(null);
+    setStatusMessage(null);
+    try {
+      const response = await fetch(
+        `/orgs/${encodeURIComponent(org)}/people/actions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(action),
+        },
+      );
+      if (!response.ok) {
+        const envelope = (await response
+          .json()
+          .catch(() => null)) as ApiErrorEnvelope | null;
+        throw new Error(
+          envelope?.error.message ?? "Organization people update failed.",
+        );
+      }
+      setCurrentAdmin((await response.json()) as OrganizationPeopleAdmin);
+      setStatusMessage(success);
+      return true;
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Organization people update failed.",
+      );
+      return false;
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function submitInvitation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const ok = await runPeopleAction(
+      { action: "invite", emailOrLogin: inviteTarget, role: inviteRole },
+      "Invitation saved with degraded email delivery until SES confirms send status.",
+      "invite",
+    );
+    if (ok) {
+      setInviteTarget("");
+      setInviteRole("member");
+      setInviteOpen(false);
+    }
   }
 
   function setRowSelected(id: string, checked: boolean) {
@@ -415,8 +483,8 @@ export function OrganizationPeopleAdminPage({
                 People administration
               </h2>
               <p className="t-sm mt-2" style={{ color: "var(--ink-2)" }}>
-                {admin.organization.name} · signed in as{" "}
-                {roleLabel(admin.viewerState.role).toLowerCase()}
+                {currentAdmin.organization.name} · signed in as{" "}
+                {roleLabel(currentAdmin.viewerState.role).toLowerCase()}
               </p>
             </div>
             <Link
@@ -430,14 +498,18 @@ export function OrganizationPeopleAdminPage({
           <nav aria-label="People administration tabs" className="tabs mt-5">
             {TABS.map((tab) => (
               <Link
-                aria-current={admin.tab === tab.value ? "page" : undefined}
-                className={admin.tab === tab.value ? "tab active" : "tab"}
+                aria-current={
+                  currentAdmin.tab === tab.value ? "page" : undefined
+                }
+                className={
+                  currentAdmin.tab === tab.value ? "tab active" : "tab"
+                }
                 href={hrefForTab(tab.param)}
                 key={tab.value}
               >
                 {tab.label}{" "}
                 <span className="t-num">
-                  {tab.count(admin).toLocaleString()}
+                  {tab.count(currentAdmin).toLocaleString()}
                 </span>
               </Link>
             ))}
@@ -456,7 +528,7 @@ export function OrganizationPeopleAdminPage({
               <input
                 aria-label="Search organization people"
                 className="input"
-                defaultValue={admin.filters.query ?? ""}
+                defaultValue={currentAdmin.filters.query ?? ""}
                 name="q"
                 placeholder="Search members, invitations, or emails..."
                 type="search"
@@ -499,7 +571,18 @@ export function OrganizationPeopleAdminPage({
             </div>
           </form>
 
-          <SearchSummary admin={admin} org={org} />
+          <SearchSummary admin={currentAdmin} org={org} />
+
+          {statusMessage ? (
+            <div className="chip ok mt-3" role="status">
+              {statusMessage}
+            </div>
+          ) : null}
+          {errorMessage ? (
+            <div className="chip err mt-3" role="alert">
+              {errorMessage}
+            </div>
+          ) : null}
 
           {bulkOpen && selectedCount > 0 ? (
             <div
@@ -522,7 +605,7 @@ export function OrganizationPeopleAdminPage({
               className="card mt-3 flex flex-wrap gap-2 p-3"
               style={{ background: "var(--surface-2)" }}
             >
-              {admin.exports.map((item) =>
+              {currentAdmin.exports.map((item) =>
                 item.available ? (
                   <a
                     className="btn sm no-underline"
@@ -546,36 +629,69 @@ export function OrganizationPeopleAdminPage({
           ) : null}
 
           {inviteOpen ? (
-            <div
+            <form
               aria-label="Invite member dialog"
               className="card mt-3 grid gap-3 p-4"
+              onSubmit={submitInvitation}
               role="dialog"
               style={{ background: "var(--surface-2)" }}
             >
               <div>
                 <p className="t-h3">Invite member</p>
                 <p className="t-sm mt-1" style={{ color: "var(--ink-2)" }}>
-                  Invitation sending, role choice, and team assignment are wired
-                  to SES in the next phase.
+                  Sends through the organization people API and records degraded
+                  email delivery until SES confirms a send.
                 </p>
               </div>
               <label className="grid gap-1">
                 <span className="t-label">Username or email</span>
                 <input
+                  aria-describedby="invite-target-help"
                   className="input"
-                  disabled
+                  onChange={(event) =>
+                    setInviteTarget(event.currentTarget.value)
+                  }
                   placeholder="member@example.com"
+                  required
                   type="text"
+                  value={inviteTarget}
                 />
+                <span className="t-xs" id="invite-target-help">
+                  Use an existing username or a verified email address.
+                </span>
               </label>
-              <button
-                className="btn sm"
-                onClick={() => setInviteOpen(false)}
-                type="button"
-              >
-                Close
-              </button>
-            </div>
+              <label className="grid gap-1">
+                <span className="t-label">Role</span>
+                <select
+                  className="input"
+                  onChange={(event) =>
+                    setInviteRole(
+                      event.currentTarget.value as "member" | "admin",
+                    )
+                  }
+                  value={inviteRole}
+                >
+                  <option value="member">Member</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="btn sm accent"
+                  disabled={busyAction === "invite"}
+                  type="submit"
+                >
+                  {busyAction === "invite" ? "Sending..." : "Send invitation"}
+                </button>
+                <button
+                  className="btn sm"
+                  onClick={() => setInviteOpen(false)}
+                  type="button"
+                >
+                  Close
+                </button>
+              </div>
+            </form>
           ) : null}
         </div>
 
@@ -599,7 +715,24 @@ export function OrganizationPeopleAdminPage({
         ) : visibleInvitations.length > 0 ? (
           <div className="px-5">
             {visibleInvitations.map((invitation) => (
-              <InvitationRow invitation={invitation} key={invitation.id} />
+              <InvitationRow
+                invitation={invitation}
+                key={invitation.id}
+                onCancel={(item) =>
+                  runPeopleAction(
+                    { action: "cancel", invitationId: item.id },
+                    `Canceled invitation for ${item.invitedEmail}.`,
+                    `cancel-${item.id}`,
+                  )
+                }
+                onRetry={(item) =>
+                  runPeopleAction(
+                    { action: "retry", invitationId: item.id },
+                    `Retried invitation for ${item.invitedEmail}.`,
+                    `retry-${item.id}`,
+                  )
+                }
+              />
             ))}
           </div>
         ) : (

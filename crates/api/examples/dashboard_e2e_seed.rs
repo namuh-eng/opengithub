@@ -842,6 +842,31 @@ async fn seed_organization_profile_fixture(
     .bind(owner_user_id)
     .execute(pool)
     .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO organization_invitations (
+            organization_id,
+            invited_email,
+            role,
+            status,
+            token_hash,
+            invited_by_user_id,
+            email_delivery_status,
+            email_delivery_error,
+            failed_at,
+            expires_at
+        )
+        VALUES ($1, $2, 'member', 'failed', $3, $4, 'failed', 'SES sandbox rejected recipient', now(), now() + INTERVAL '7 days')
+        ON CONFLICT (organization_id, lower(invited_email)) WHERE status = 'pending'
+        DO NOTHING
+        "#,
+    )
+    .bind(organization.id)
+    .bind(format!("failed-invite-{}@opengithub.local", &suffix[..12]))
+    .bind(format!("sha256:{}", Uuid::new_v4().simple()))
+    .bind(owner_user_id)
+    .execute(pool)
+    .await?;
 
     Ok(format!("/orgs/{slug}"))
 }

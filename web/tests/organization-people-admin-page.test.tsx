@@ -1,5 +1,11 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { OrganizationPeopleAdminPage } from "@/components/OrganizationPeopleAdminPage";
 import type {
   OrganizationInvitationRow,
@@ -141,6 +147,10 @@ function adminPeople(
 }
 
 describe("OrganizationPeopleAdminPage", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("renders tabs, URL-backed search, export links, and no dead anchors", () => {
     const { container } = render(
       <OrganizationPeopleAdminPage admin={adminPeople()} org="namuh" />,
@@ -252,16 +262,145 @@ describe("OrganizationPeopleAdminPage", () => {
     expect(container).not.toHaveTextContent("token");
   });
 
-  it("opens a concrete invite unavailable dialog instead of an inert CTA", () => {
+  it("submits invitations through the people actions route and updates feedback", async () => {
+    const updated = adminPeople({
+      tab: "invitations",
+      rows: { items: [], page: 1, pageSize: 30, total: 0 },
+      invitations: {
+        items: [
+          invitation({
+            id: "invite-3",
+            invitedEmail: "new-member@example.com",
+            emailDeliveryError:
+              "Email delivery is waiting for SES confirmation.",
+          }),
+        ],
+        page: 1,
+        pageSize: 30,
+        total: 1,
+      },
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => updated,
+    } as Response);
+
     render(<OrganizationPeopleAdminPage admin={adminPeople()} org="namuh" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Invite member" }));
     const dialog = screen.getByLabelText("Invite member dialog");
     expect(within(dialog).getByText("Invite member")).toBeVisible();
-    expect(
+    fireEvent.change(
       within(dialog).getByPlaceholderText("member@example.com"),
-    ).toBeDisabled();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+      {
+        target: { value: "new-member@example.com" },
+      },
+    );
+    fireEvent.change(within(dialog).getByRole("combobox"), {
+      target: { value: "admin" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Send invitation" }),
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/orgs/namuh/people/actions",
+        expect.objectContaining({
+          body: JSON.stringify({
+            action: "invite",
+            emailOrLogin: "new-member@example.com",
+            role: "admin",
+          }),
+          method: "POST",
+        }),
+      );
+    });
+    expect(
+      await screen.findByText(/Invitation saved with degraded email delivery/),
+    ).toBeVisible();
+    expect(screen.getAllByText("new-member@example.com")).toHaveLength(2);
     expect(screen.queryByLabelText("Invite member dialog")).toBeNull();
+  });
+
+  it("retries and cancels invitations through concrete row actions", async () => {
+    const failed = invitation({
+      id: "invite-2",
+      invitedEmail: "failed@example.com",
+      status: "failed",
+      emailDeliveryStatus: "failed",
+      emailDeliveryError: "SES sandbox rejected recipient",
+      canRetry: true,
+      canCancel: true,
+    });
+    const retryState = adminPeople({
+      tab: "invitations",
+      rows: { items: [], page: 1, pageSize: 30, total: 0 },
+      invitations: {
+        items: [
+          invitation({
+            id: "invite-2",
+            invitedEmail: "failed@example.com",
+            emailDeliveryStatus: "degraded",
+          }),
+        ],
+        page: 1,
+        pageSize: 30,
+        total: 1,
+      },
+    });
+    const cancelState = adminPeople({
+      tab: "invitations",
+      rows: { items: [], page: 1, pageSize: 30, total: 0 },
+      invitations: { items: [], page: 1, pageSize: 30, total: 0 },
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => retryState,
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => cancelState,
+      } as Response);
+
+    render(
+      <OrganizationPeopleAdminPage
+        admin={adminPeople({
+          tab: "failedInvitations",
+          rows: { items: [], page: 1, pageSize: 30, total: 0 },
+          invitations: {
+            items: [failed],
+            page: 1,
+            pageSize: 30,
+            total: 1,
+          },
+        })}
+        org="namuh"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(
+      await screen.findByText("Retried invitation for failed@example.com."),
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/orgs/namuh/people/actions",
+      expect.objectContaining({
+        body: JSON.stringify({ action: "retry", invitationId: "invite-2" }),
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(
+      await screen.findByText("Canceled invitation for failed@example.com."),
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/orgs/namuh/people/actions",
+      expect.objectContaining({
+        body: JSON.stringify({ action: "cancel", invitationId: "invite-2" }),
+      }),
+    );
   });
 });

@@ -802,6 +802,16 @@ export type OrganizationPeopleAdminQuery = {
   pageSize?: number;
 };
 
+export type OrganizationInvitationMutation =
+  | {
+      action: "invite";
+      emailOrLogin: string;
+      role: "admin" | "member";
+      teamIds?: string[];
+    }
+  | { action: "retry"; invitationId: string }
+  | { action: "cancel"; invitationId: string };
+
 export type OwnerPackageList = {
   items: OwnerPackageListItem[];
   total: number;
@@ -4943,6 +4953,51 @@ export async function getOrganizationPeopleAdminFromCookie(
 
   if (!response.ok) {
     return null;
+  }
+
+  return (await response.json()) as OrganizationPeopleAdmin;
+}
+
+export async function mutateOrganizationPeopleAdminFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  mutation: OrganizationInvitationMutation,
+): Promise<OrganizationPeopleAdmin> {
+  let path = `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/people/invitations`;
+  let method = "POST";
+  let body: unknown;
+
+  if (mutation.action === "invite") {
+    body = {
+      emailOrLogin: mutation.emailOrLogin,
+      role: mutation.role,
+      teamIds: mutation.teamIds ?? [],
+    };
+  } else if (mutation.action === "retry") {
+    path = `${path}/${encodeURIComponent(mutation.invitationId)}/retry`;
+  } else {
+    path = `${path}/${encodeURIComponent(mutation.invitationId)}`;
+    method = "DELETE";
+  }
+
+  const response = await fetch(path, {
+    method,
+    headers: {
+      ...(body ? { "content-type": "application/json" } : {}),
+      ...(cookie ? { cookie } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const envelope = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Organization people update failed",
+      { cause: envelope },
+    );
   }
 
   return (await response.json()) as OrganizationPeopleAdmin;

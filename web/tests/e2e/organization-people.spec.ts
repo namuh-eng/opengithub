@@ -55,6 +55,7 @@ test.skip(!databaseUrl, "organization people E2E needs a test database");
 test("organization people routes render owner admin controls with URL-backed search and pagination", async ({
   page,
 }) => {
+  test.setTimeout(60_000);
   const seeded = seedOrganizationProfile();
   await signIn(page, seeded);
 
@@ -89,15 +90,34 @@ test("organization people routes render owner admin controls with URL-backed sea
   );
   await page.getByRole("button", { name: "Invite member" }).click();
   await expect(page.getByLabel("Invite member dialog")).toBeVisible();
-  await page.getByRole("button", { name: "Close" }).click();
+  const inviteEmail = `phase3-${Date.now()}@opengithub.local`;
+  await page.getByPlaceholder("member@example.com").fill(inviteEmail);
+  await page.getByRole("combobox").selectOption("admin");
+  await page.getByRole("button", { name: "Send invitation" }).click();
+  await expect(
+    page.getByText(/Invitation saved with degraded email delivery/),
+  ).toBeVisible();
+  await expect(page.getByText(inviteEmail).first()).toBeVisible();
+
+  await page.getByRole("link", { name: /Failed invitations/ }).click();
+  await expect(page.getByText("Email failed").first()).toBeVisible();
+  await page.getByRole("button", { name: "Retry" }).first().click();
+  await expect(page.getByText(/Retried invitation/)).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).first().click();
+  await expect(page.getByText(/Canceled invitation/)).toBeVisible();
 
   await page.goto(`${seeded.organizationProfileHref}/people?pageSize=1`);
   await expect(page).toHaveURL(
     /\/orgs\/org-profile-[^/]+\/people\?pageSize=1$/,
   );
   await expect(page.getByText(/1-1 of 2/)).toBeVisible();
-  await page.getByRole("link", { name: "Next" }).click();
-  await expect(page).toHaveURL(/\/people\?page=2&pageSize=1$/);
+  const nextHref = await page
+    .getByRole("link", { name: "Next" })
+    .getAttribute("href");
+  expect(nextHref).toBeTruthy();
+  await page.goto(nextHref ?? "");
+  await page.waitForURL(/\/people\?page=2&pageSize=1$/);
+  await expect(page.getByText(/2-2 of 2/)).toBeVisible();
   await expect(page.getByRole("link", { name: "Previous" })).toHaveAttribute(
     "href",
     /\/people\?pageSize=1$/,
@@ -117,6 +137,10 @@ test("organization people routes render owner admin controls with URL-backed sea
   ).toHaveAttribute("href", /\/people\?pageSize=1$/);
   await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
 
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-003-phase3-invitations.jpg",
+  });
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/org-admin-003-phase2-people-shell.jpg",

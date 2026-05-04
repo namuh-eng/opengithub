@@ -106,6 +106,37 @@ async fn get_json(
     (status, headers, value)
 }
 
+async fn request_json(
+    app: axum::Router,
+    method: Method,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, HeaderMap, Value) {
+    let mut builder = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_string()))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let headers = response.headers().clone();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = serde_json::from_slice(&bytes).expect("response should be JSON");
+    (status, headers, value)
+}
+
 fn assert_json(headers: &HeaderMap) {
     assert!(headers
         .get(header::CONTENT_TYPE)
@@ -311,6 +342,193 @@ async fn organization_people_admin_lists_tabs_counts_and_capabilities() {
     assert!(!failed_text.contains("failed-secret-token"));
     assert!(!failed_text.contains("DATABASE_URL"));
     assert!(!failed_text.contains("SESSION_SECRET"));
+}
+
+#[tokio::test]
+async fn organization_people_admin_invites_retries_and_cancels_people() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping organization people invitation scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("orgpeopleinvite{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner"), "Org Owner").await;
+    let member = create_user(&pool, &format!("{marker}-member"), "Member Person").await;
+    let invitee = create_user(&pool, &format!("{marker}-invitee"), "Invitee Person").await;
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let member_cookie = cookie_header(&pool, &config, &member).await;
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+
+    let org = create_organization(
+        &pool,
+        CreateOrganization {
+            slug: marker.clone(),
+            display_name: "People Invite Guild".to_owned(),
+            description: Some("People invite contract".to_owned()),
+            owner_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("organization should create");
+    sqlx::query(
+        "INSERT INTO organization_memberships (organization_id, user_id, role) VALUES ($1, $2, 'member')",
+    )
+    .bind(org.id)
+    .bind(member.id)
+    .execute(&pool)
+    .await
+    .expect("member should insert");
+    let team_id = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO teams (organization_id, slug, name) VALUES ($1, $2, 'Invite Team') RETURNING id",
+    )
+    .bind(org.id)
+    .bind(format!("{marker}-team"))
+    .fetch_one(&pool)
+    .await
+    .expect("team should insert");
+
+    let (member_status, _, member_body) = request_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/orgs/{marker}/people/invitations"),
+        Some(&member_cookie),
+        json!({ "emailOrLogin": invitee.email, "role": "member" }),
+    )
+    .await;
+    assert_eq!(member_status, StatusCode::FORBIDDEN);
+    assert_eq!(member_body["error"]["code"], "forbidden");
+
+    let (invalid_status, _, invalid_body) = request_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/orgs/{marker}/people/invitations"),
+        Some(&owner_cookie),
+        json!({ "emailOrLogin": "not-an-email", "role": "member" }),
+    )
+    .await;
+    assert_eq!(invalid_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(invalid_body["error"]["code"], "validation_failed");
+
+    let (existing_status, _, _) = request_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/orgs/{marker}/people/invitations"),
+        Some(&owner_cookie),
+        json!({ "emailOrLogin": member.email, "role": "member" }),
+    )
+    .await;
+    assert_eq!(existing_status, StatusCode::CONFLICT);
+
+    let (create_status, create_headers, create_body) = request_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/orgs/{marker}/people/invitations"),
+        Some(&owner_cookie),
+        json!({
+            "emailOrLogin": invitee.email,
+            "role": "admin",
+            "teamIds": [team_id]
+        }),
+    )
+    .await;
+    assert_eq!(create_status, StatusCode::OK);
+    assert_json(&create_headers);
+    assert_eq!(create_body["tab"], "invitations");
+    assert_eq!(create_body["counts"]["invitations"], 1);
+    assert_eq!(create_body["invitations"]["items"][0]["role"], "admin");
+    assert_eq!(create_body["invitations"]["items"][0]["teamCount"], 1);
+    assert_eq!(
+        create_body["invitations"]["items"][0]["emailDeliveryStatus"],
+        "degraded"
+    );
+    assert_eq!(create_body["invitations"]["items"][0]["canCancel"], true);
+    assert!(!create_body.to_string().contains("token_hash"));
+    assert!(!create_body.to_string().contains("sha256:"));
+
+    let (duplicate_status, _, _) = request_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/orgs/{marker}/people/invitations"),
+        Some(&owner_cookie),
+        json!({ "emailOrLogin": invitee.email, "role": "member" }),
+    )
+    .await;
+    assert_eq!(duplicate_status, StatusCode::CONFLICT);
+
+    let failed_invitation_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO organization_invitations
+            (organization_id, invited_email, role, status, token_hash, invited_by_user_id,
+             email_delivery_status, email_delivery_error, failed_at, expires_at)
+        VALUES ($1, $2, 'member', 'failed', 'sha256:failed-secret', $3,
+                'failed', 'SES sandbox rejected recipient', now(), now() + INTERVAL '1 day')
+        RETURNING id
+        "#,
+    )
+    .bind(org.id)
+    .bind(format!("{marker}-failed@example.com"))
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("failed invitation should insert");
+
+    let (retry_status, _, retry_body) = request_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/orgs/{marker}/people/invitations/{failed_invitation_id}/retry"),
+        Some(&owner_cookie),
+        json!({}),
+    )
+    .await;
+    assert_eq!(retry_status, StatusCode::OK);
+    assert!(retry_body["invitations"]["items"]
+        .as_array()
+        .expect("invitations")
+        .iter()
+        .any(
+            |row| row["invitedEmail"] == format!("{marker}-failed@example.com")
+                && row["emailDeliveryStatus"] == "degraded"
+        ));
+
+    let created_invitation_id = create_body["invitations"]["items"][0]["id"]
+        .as_str()
+        .expect("invitation id");
+    let (cancel_status, _, cancel_body) = request_json(
+        app.clone(),
+        Method::DELETE,
+        &format!("/api/orgs/{marker}/people/invitations/{created_invitation_id}"),
+        Some(&owner_cookie),
+        json!({}),
+    )
+    .await;
+    assert_eq!(cancel_status, StatusCode::OK);
+    assert_eq!(cancel_body["counts"]["invitations"], 1);
+    assert!(cancel_body["invitations"]["items"]
+        .as_array()
+        .expect("remaining invitations")
+        .iter()
+        .all(|row| row["id"] != created_invitation_id));
+
+    let audit_events = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT count(*)::bigint
+        FROM organization_audit_events
+        WHERE organization_id = $1
+          AND event_type IN (
+            'organization.people.invite',
+            'organization.people.invite_retry',
+            'organization.people.invite_cancel'
+          )
+          AND metadata::text NOT LIKE '%failed-secret%'
+          AND metadata::text NOT LIKE '%sha256:%'
+        "#,
+    )
+    .bind(org.id)
+    .fetch_one(&pool)
+    .await
+    .expect("audit events should count");
+    assert_eq!(audit_events, 3);
 }
 
 #[tokio::test]
