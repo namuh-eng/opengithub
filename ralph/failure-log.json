@@ -2423,6 +2423,14 @@
       "exit_code": 0,
       "category": "timeout",
       "attempt": 234
+    },
+    {
+      "timestamp": "2026-05-04T03:45:37.855593",
+      "phase": "build",
+      "feature": "build_cycle_1",
+      "exit_code": 0,
+      "category": "api_error",
+      "attempt": 235
     }
   ]
 }
