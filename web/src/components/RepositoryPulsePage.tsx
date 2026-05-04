@@ -119,6 +119,28 @@ function CommitterAvatar({
   );
 }
 
+function AuthorStatusChip({ status }: { status?: string | null }) {
+  if (status === "bot") {
+    return <span className="chip info">Bot</span>;
+  }
+  if (status === "unmatched" || status === "unavailable") {
+    return <span className="chip warn">Unavailable author</span>;
+  }
+  return null;
+}
+
+function ActivityAuthor({ item }: { item: RepositoryPulseActivityItem }) {
+  const label = item.authorLogin?.trim() || "Unavailable author";
+  if (item.authorProfileHref) {
+    return (
+      <Link className="hover:underline" href={item.authorProfileHref}>
+        {label}
+      </Link>
+    );
+  }
+  return <span>{label}</span>;
+}
+
 function TopCommitters({
   committers,
 }: {
@@ -164,8 +186,9 @@ function TopCommitters({
                         {committer.login}
                       </span>
                     </Link>
+                    <AuthorStatusChip status={committer.authorStatus} />
                     <Link
-                      className="t-mono-sm hover:underline"
+                      className="shrink-0 t-mono-sm hover:underline"
                       href={committer.commitsHref}
                     >
                       {formatNumber(committer.commits)} commits
@@ -207,14 +230,29 @@ function TopCommitters({
                     key={committer.login}
                     style={{ borderColor: "var(--line-soft)" }}
                   >
-                    <td className="py-2 pr-3">{committer.login}</td>
+                    <td className="py-2 pr-3">
+                      <Link
+                        className="break-words hover:underline"
+                        href={committer.profileHref}
+                      >
+                        {committer.login}
+                      </Link>
+                      {committer.isBot ? (
+                        <span className="chip info ml-2">Bot</span>
+                      ) : null}
+                    </td>
                     <td className="py-2 pr-3 text-right t-num">
-                      {formatNumber(committer.commits)}
+                      <Link
+                        className="hover:underline"
+                        href={committer.commitsHref}
+                      >
+                        {formatNumber(committer.commits)}
+                      </Link>
                     </td>
                     <td className="py-2 pr-3 text-right t-num">
                       {formatNumber(committer.filesChanged)}
                     </td>
-                    <td className="py-2 text-right t-num">
+                    <td className="whitespace-nowrap py-2 text-right t-num">
                       +{formatNumber(committer.additions)} -
                       {formatNumber(committer.deletions)}
                     </td>
@@ -267,10 +305,8 @@ function ActivityList({
       {items.length > 0 ? (
         <div>
           {items.map((item) => (
-            <Link
-              aria-label={`${item.title}${item.number ? ` #${item.number}` : ""}`}
-              className="list-row px-4 py-3 hover:no-underline"
-              href={item.href}
+            <div
+              className="list-row px-4 py-3"
               key={`${item.kind}-${item.number ?? item.href}`}
             >
               <div className="min-w-0 flex-1">
@@ -289,19 +325,22 @@ function ActivityList({
                   {item.number ? (
                     <span className="t-mono-sm">#{item.number}</span>
                   ) : null}
-                  <span
-                    className="truncate t-sm font-semibold"
+                  <Link
+                    aria-label={`${item.title}${item.number ? ` #${item.number}` : ""}`}
+                    className="min-w-0 truncate t-sm font-semibold hover:underline"
+                    href={item.href}
                     style={{ color: "var(--ink-1)" }}
                   >
                     {item.title}
-                  </span>
+                  </Link>
                 </div>
                 <p className="t-xs mt-1">
-                  {item.authorLogin ?? "Unknown author"} ·{" "}
+                  <ActivityAuthor item={item} /> ·{" "}
                   {formatRelativeTime(item.occurredAt)}
+                  {item.authorStatus === "bot" ? " · bot" : ""}
                 </p>
               </div>
-            </Link>
+            </div>
           ))}
         </div>
       ) : (

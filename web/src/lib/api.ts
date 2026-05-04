@@ -2524,6 +2524,8 @@ export type RepositoryPulseSummary = {
 export type RepositoryPulseCommitter = {
   userId: string | null;
   login: string;
+  authorStatus?: string;
+  isBot?: boolean;
   avatarUrl: string | null;
   commits: number;
   filesChanged: number;
@@ -2539,6 +2541,8 @@ export type RepositoryPulseActivityItem = {
   title: string;
   state: string;
   authorLogin: string | null;
+  authorProfileHref?: string | null;
+  authorStatus?: string;
   authorAvatarUrl: string | null;
   href: string;
   occurredAt: string;

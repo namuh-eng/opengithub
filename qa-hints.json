@@ -5332,5 +5332,21 @@
       "Date range parameters are emitted on Pulse metric links, but issue/PR list date filtering needs deeper QA once final filter semantics are broadened beyond the current list state/sort handling.",
       "The make test-e2e wrapper silently stalled and was terminated; focused direct Playwright for repository-pulse.spec.ts passed with screenshot evidence."
     ]
+  },
+  {
+    "feature_id": "insights-001",
+    "tests_written": [
+      "Completed Phase 4 Committer Chart, Activity Links, and Bounded Edge Cases without marking insights-001 build_pass=true.",
+      "Extended the Pulse API contract with authorStatus/isBot metadata, unavailable-author handling, period-bounded commit history hrefs, author profile hrefs for activity rows, public empty-repository behavior, and private repository privacy checks.",
+      "Hardened RepositoryPulsePage so top committer chart/table entries, bot/unmatched author chips, author labels, release/PR/issue activity rows, empty states, and commit-range links are concrete and not nested dead controls.",
+      "Extended Rust contract, Vitest component tests, and Playwright Pulse smoke for bot/unmatched authors, empty repositories, large file-change counts, long activity titles, unsafe markup guardrails, no dead controls, and screenshot ralph/screenshots/build/insights-001-phase4-activity-links.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 5 still needs API docs, final accessibility/guardrail assertions, final screenshots, QA handoff, and build_pass bookkeeping.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Stress imported repositories with deleted release authors once release author deletion is supported, bot-only repositories, commits without file-change rows, extremely large commit histories, and activity titles near UI limits.",
+      "Run keyboard-only and screen-reader traversal through the top committer chart/table, author profile links, commit-range links, release/PR/issue activity links, empty-state CTAs, and mobile layout.",
+      "The make test-e2e wrapper silently stalled and was terminated; focused direct Playwright for repository-pulse.spec.ts passed with screenshot evidence."
+    ]
   }
 ]

@@ -116,6 +116,8 @@ function pulseView(
       {
         userId: "user-1",
         login: "mona",
+        authorStatus: "active",
+        isBot: false,
         avatarUrl: null,
         commits: 9,
         filesChanged: 12,
@@ -127,6 +129,8 @@ function pulseView(
       {
         userId: "user-2",
         login: "octo",
+        authorStatus: "active",
+        isBot: false,
         avatarUrl: null,
         commits: 3,
         filesChanged: 6,
@@ -143,6 +147,8 @@ function pulseView(
         title: "Pulse preview",
         state: "published",
         authorLogin: "mona",
+        authorProfileHref: "/mona",
+        authorStatus: "active",
         authorAvatarUrl: null,
         href: "/namuh-eng/opengithub/releases/tag/v1.2.3",
         occurredAt: "2026-05-06T08:00:00Z",
@@ -155,6 +161,8 @@ function pulseView(
         title: "Merge Pulse summary",
         state: "merged",
         authorLogin: "octo",
+        authorProfileHref: "/octo",
+        authorStatus: "active",
         authorAvatarUrl: null,
         href: "/namuh-eng/opengithub/pull/41",
         occurredAt: "2026-05-06T07:00:00Z",
@@ -167,6 +175,8 @@ function pulseView(
         title: "Track Pulse activity",
         state: "closed",
         authorLogin: "mona",
+        authorProfileHref: "/mona",
+        authorStatus: "active",
         authorAvatarUrl: null,
         href: "/namuh-eng/opengithub/issues/9",
         occurredAt: "2026-05-06T06:00:00Z",
@@ -239,7 +249,7 @@ describe("RepositoryPulsePage", () => {
       name: "Top committers data table",
     });
     expect(within(table).getByText("mona")).toBeVisible();
-    expect(screen.getByRole("link", { name: /mona/ })).toHaveAttribute(
+    expect(screen.getAllByRole("link", { name: /mona/ })[0]).toHaveAttribute(
       "href",
       "/mona",
     );
@@ -257,6 +267,10 @@ describe("RepositoryPulsePage", () => {
     expect(
       screen.getByRole("link", { name: /Track Pulse activity/ }),
     ).toHaveAttribute("href", "/namuh-eng/opengithub/issues/9");
+    expect(screen.getAllByRole("link", { name: "mona" })[0]).toHaveAttribute(
+      "href",
+      "/mona",
+    );
 
     expect(container.querySelectorAll(".card").length).toBeGreaterThan(4);
     expect(container.innerHTML).toContain("var(--accent)");
@@ -344,6 +358,80 @@ describe("RepositoryPulsePage", () => {
       "href",
       "/namuh-eng/opengithub/issues",
     );
+  });
+
+  it("renders bounded committer edge cases without unsafe markup or overflow-prone text", () => {
+    const { container } = render(
+      <RepositoryPulsePage
+        pulseResult={{
+          ok: true,
+          pulse: pulseView({
+            topCommitters: [
+              {
+                userId: "bot-user",
+                login: "automation-runner[bot]",
+                authorStatus: "bot",
+                isBot: true,
+                avatarUrl: null,
+                commits: 1,
+                filesChanged: 1,
+                additions: 12_345_678,
+                deletions: 9_876_543,
+                profileHref: "/automation-runner%5Bbot%5D",
+                commitsHref:
+                  "/namuh-eng/opengithub/commits/main?author=automation-runner%5Bbot%5D&until=2026-05-07T00%3A00%3A00Z",
+              },
+              {
+                userId: null,
+                login: "Unmatched author",
+                authorStatus: "unmatched",
+                isBot: false,
+                avatarUrl: null,
+                commits: 1,
+                filesChanged: 0,
+                additions: 0,
+                deletions: 0,
+                profileHref: "/namuh-eng/opengithub",
+                commitsHref:
+                  "/namuh-eng/opengithub/commits/main?until=2026-05-07T00%3A00%3A00Z",
+              },
+            ],
+            releases: [
+              {
+                kind: "release",
+                number: null,
+                title:
+                  "A very long Pulse release title that should stay inside the activity row container without needing unsafe markup",
+                state: "published",
+                authorLogin: null,
+                authorProfileHref: null,
+                authorStatus: "unavailable",
+                authorAvatarUrl: null,
+                href: "/namuh-eng/opengithub/releases/tag/v2.0.0",
+                occurredAt: "2026-05-06T08:00:00Z",
+              },
+            ],
+          }),
+        }}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(screen.getAllByText("Bot")[0]).toBeVisible();
+    expect(screen.getAllByText("Unavailable author")[0]).toBeVisible();
+    expect(
+      screen
+        .getAllByRole("link", { name: "1 commits" })[0]
+        .getAttribute("href"),
+    ).toMatch(/until=2026-05-07T00%3A00%3A00Z/);
+    expect(
+      screen.getByRole("link", {
+        name: /A very long Pulse release title/,
+      }),
+    ).toHaveAttribute("href", "/namuh-eng/opengithub/releases/tag/v2.0.0");
+    expect(container.innerHTML).not.toContain("<script");
+    expect(container.innerHTML).not.toContain("dangerouslySetInnerHTML");
+    expect(container.querySelector('[style*="#0969da"]')).toBeNull();
   });
 
   it("renders API failures inside the Insights shell", () => {

@@ -121,11 +121,26 @@ test("repository Pulse renders live overview data and concrete destinations", as
   await expect(
     page.getByRole("table", { name: "Top committers data table" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /\d+ commits/ }).first(),
+  ).toHaveAttribute("href", /\/commits\/main\?.*until=/);
+  await expect(
+    page.getByRole("link", { name: /pulse-e2e|dashboard/ }).first(),
+  ).toHaveAttribute("href", /^\/[^/]+$/);
+
+  const releaseLink = page
+    .getByRole("link", { name: /View releases|Release|preview/i })
+    .first();
+  await expect(releaseLink).toHaveAttribute("href", /\/releases/);
+  const pullLink = page.locator('a[href*="/pull"]').first();
+  await expect(pullLink).toHaveAttribute("href", /\/pulls|\/pull\//);
+  const issueLink = page.locator('a[href*="/issues"]').first();
+  await expect(issueLink).toHaveAttribute("href", /\/issues/);
 
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/insights-001-phase3-period-selector.jpg",
+    path: "../ralph/screenshots/build/insights-001-phase4-activity-links.jpg",
   });
 
   await page.setViewportSize({ width: 390, height: 844 });

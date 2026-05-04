@@ -143,7 +143,14 @@ async fn repository_pulse_returns_activity_aggregates_privacy_and_cache_metadata
     let config = app_config();
     let owner = create_user(&pool, "pulse-owner").await;
     let committer = create_user(&pool, "pulse-committer").await;
+    let bot = create_user(&pool, "pulse-bot").await;
     let outsider = create_user(&pool, "pulse-outsider").await;
+    sqlx::query("UPDATE users SET username = $1 WHERE id = $2")
+        .bind(format!("pulse-bot-{}[bot]", Uuid::new_v4().simple()))
+        .bind(bot.id)
+        .execute(&pool)
+        .await
+        .expect("bot username should update");
     let owner_cookie = cookie_header(&pool, &config, &owner).await;
     let outsider_cookie = cookie_header(&pool, &config, &outsider).await;
     let repository = create_repository(
@@ -220,6 +227,36 @@ async fn repository_pulse_returns_activity_aggregates_privacy_and_cache_metadata
     .execute(&pool)
     .await
     .expect("file changes should insert");
+    let bot_commit = insert_commit(
+        &pool,
+        repository.id,
+        CreateCommit {
+            oid: format!("bot{}", Uuid::new_v4().simple()),
+            author_user_id: Some(bot.id),
+            committer_user_id: Some(bot.id),
+            message: "Automate Pulse rollups".to_owned(),
+            tree_oid: None,
+            parent_oids: vec![pulse_commit.oid.clone()],
+            committed_at: Utc::now() - Duration::hours(12),
+        },
+    )
+    .await
+    .expect("bot commit should insert");
+    insert_commit(
+        &pool,
+        repository.id,
+        CreateCommit {
+            oid: format!("detached{}", Uuid::new_v4().simple()),
+            author_user_id: None,
+            committer_user_id: None,
+            message: "Import detached Pulse commit".to_owned(),
+            tree_oid: None,
+            parent_oids: vec![bot_commit.oid.clone()],
+            committed_at: Utc::now() - Duration::hours(10),
+        },
+    )
+    .await
+    .expect("detached commit should insert");
 
     let pr_issue_id = sqlx::query_scalar::<_, Uuid>(
         r#"
@@ -317,11 +354,11 @@ async fn repository_pulse_returns_activity_aggregates_privacy_and_cache_metadata
     assert_eq!(body["repository"]["name"], repository.name);
     assert_eq!(body["repository"]["viewerPermission"], "owner");
     assert_eq!(body["period"]["key"], "24h");
-    assert_eq!(body["summary"]["commits"], 1);
+    assert_eq!(body["summary"]["commits"], 3);
     assert_eq!(body["summary"]["filesChanged"], 2);
     assert_eq!(body["summary"]["additions"], 20);
     assert_eq!(body["summary"]["deletions"], 3);
-    assert_eq!(body["summary"]["authors"], 1);
+    assert_eq!(body["summary"]["authors"], 2);
     assert_eq!(body["summary"]["mergedPullRequests"], 1);
     assert_eq!(body["summary"]["closedIssues"], 1);
     assert_eq!(body["summary"]["newIssues"], 1);
@@ -343,11 +380,30 @@ async fn repository_pulse_returns_activity_aggregates_privacy_and_cache_metadata
     );
     assert_eq!(body["topCommitters"][0]["commits"], 1);
     assert_eq!(body["topCommitters"][0]["additions"], 20);
+    assert_eq!(body["topCommitters"][0]["authorStatus"], "active");
+    assert_eq!(body["topCommitters"][0]["isBot"], false);
     assert!(body["topCommitters"][0]["commitsHref"]
         .as_str()
         .expect("commits href")
         .contains("/commits/main"));
+    assert!(body["topCommitters"][0]["commitsHref"]
+        .as_str()
+        .expect("commits href")
+        .contains("until="));
+    let top_committers = body["topCommitters"]
+        .as_array()
+        .expect("top committers should be an array");
+    assert!(top_committers
+        .iter()
+        .any(|item| item["isBot"] == true && item["authorStatus"] == "bot"));
+    assert!(top_committers.iter().any(|item| {
+        item["login"] == "Unmatched author" && item["authorStatus"] == "unmatched"
+    }));
     assert_eq!(body["releases"][0]["title"], "Pulse preview");
+    assert_eq!(
+        body["releases"][0]["authorProfileHref"],
+        format!("/{}", owner.username.as_deref().expect("owner username"))
+    );
     assert_eq!(
         body["releases"][0]["href"],
         format!(
@@ -356,6 +412,7 @@ async fn repository_pulse_returns_activity_aggregates_privacy_and_cache_metadata
         )
     );
     assert_eq!(body["mergedPullRequests"][0]["number"], 41);
+    assert_eq!(body["mergedPullRequests"][0]["authorStatus"], "active");
     assert_eq!(body["issueActivity"][0]["number"], 9);
     assert_eq!(body["snapshot"]["stale"], false);
     assert!(!body.to_string().contains("SESSION_SECRET"));
@@ -394,7 +451,7 @@ async fn repository_pulse_returns_activity_aggregates_privacy_and_cache_metadata
     .await;
     assert_eq!(empty_status, StatusCode::OK);
     assert_eq!(empty_body["period"]["key"], "3d");
-    assert_eq!(empty_body["summary"]["commits"], 1);
+    assert_eq!(empty_body["summary"]["commits"], 3);
 
     let (week_status, week_body) = get_json(
         app.clone(),
@@ -404,7 +461,7 @@ async fn repository_pulse_returns_activity_aggregates_privacy_and_cache_metadata
     .await;
     assert_eq!(week_status, StatusCode::OK);
     assert_eq!(week_body["period"]["key"], "1w");
-    assert_eq!(week_body["summary"]["commits"], 1);
+    assert_eq!(week_body["summary"]["commits"], 3);
 
     let (month_status, month_body) = get_json(
         app.clone(),
@@ -414,7 +471,37 @@ async fn repository_pulse_returns_activity_aggregates_privacy_and_cache_metadata
     .await;
     assert_eq!(month_status, StatusCode::OK);
     assert_eq!(month_body["period"]["key"], "1m");
-    assert_eq!(month_body["summary"]["commits"], 2);
+    assert_eq!(month_body["summary"]["commits"], 4);
+
+    let empty_repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("pulse-empty-{}", Uuid::new_v4().simple()),
+            description: Some("Empty Pulse repository".to_owned()),
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("empty public repository should create");
+    let empty_base = format!(
+        "/api/repos/{}/{}",
+        empty_repository.owner_login, empty_repository.name
+    );
+    let (public_empty_status, public_empty_body) = get_json(
+        app.clone(),
+        &format!("{empty_base}/pulse?period=24h"),
+        Some(&outsider_cookie),
+    )
+    .await;
+    assert_eq!(public_empty_status, StatusCode::OK);
+    assert_eq!(public_empty_body["summary"]["commits"], 0);
+    assert_eq!(
+        public_empty_body["topCommitters"].as_array().unwrap().len(),
+        0
+    );
 
     let (invalid_status, invalid_body) = get_json(
         app,

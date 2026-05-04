@@ -58,7 +58,7 @@
 
 ## Phase 4: Committer Chart, Activity Links, and Bounded Edge Cases
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Harden the interactive Pulse content so every chart, avatar, activity item, and commit range destination either opens a real page or presents a truthful unavailable state. This phase should cover repositories with no commits, bot-only activity, deleted release authors, very large file-change counts, and public/private permission differences.
 

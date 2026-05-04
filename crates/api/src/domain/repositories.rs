@@ -954,6 +954,8 @@ pub struct RepositoryPulseSummary {
 pub struct RepositoryPulseCommitter {
     pub user_id: Option<Uuid>,
     pub login: String,
+    pub author_status: String,
+    pub is_bot: bool,
     pub avatar_url: Option<String>,
     pub commits: i64,
     pub files_changed: i64,
@@ -971,6 +973,8 @@ pub struct RepositoryPulseActivityItem {
     pub title: String,
     pub state: String,
     pub author_login: Option<String>,
+    pub author_profile_href: Option<String>,
+    pub author_status: String,
     pub author_avatar_url: Option<String>,
     pub href: String,
     pub occurred_at: DateTime<Utc>,
@@ -8074,7 +8078,8 @@ async fn repository_pulse_top_committers(
     let rows = sqlx::query(
         r#"
         SELECT commits.author_user_id,
-               COALESCE(NULLIF(users.username, ''), users.email, 'unknown') AS login,
+               NULLIF(users.username, '') AS username,
+               users.email,
                users.avatar_url,
                count(DISTINCT commits.id)::bigint AS commits,
                count(DISTINCT commit_file_changes.path)::bigint AS files_changed,
@@ -8086,10 +8091,10 @@ async fn repository_pulse_top_committers(
         WHERE commits.repository_id = $1
           AND commits.committed_at >= $2
           AND commits.committed_at <= $3
-        GROUP BY commits.author_user_id, login, users.avatar_url
+        GROUP BY commits.author_user_id, users.username, users.email, users.avatar_url
         ORDER BY count(DISTINCT commits.id) DESC,
                  COALESCE(sum(commit_file_changes.additions), 0) DESC,
-                 lower(COALESCE(NULLIF(users.username, ''), users.email, 'unknown')) ASC
+                 lower(COALESCE(NULLIF(users.username, ''), users.email, 'unmatched author')) ASC
         LIMIT 10
         "#,
     )
@@ -8102,18 +8107,50 @@ async fn repository_pulse_top_committers(
     Ok(rows
         .into_iter()
         .map(|row| {
-            let login: String = row.get("login");
-            RepositoryPulseCommitter {
-                user_id: row.get("author_user_id"),
-                profile_href: format!("/{login}"),
-                commits_href: format!(
-                    "/{}/{}/commits/{}?author={}",
+            let user_id: Option<Uuid> = row.get("author_user_id");
+            let username: Option<String> = row.get("username");
+            let email: Option<String> = row.get("email");
+            let login = username
+                .or(email)
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "Unmatched author".to_owned());
+            let is_bot = pulse_login_is_bot(&login);
+            let author_status = if user_id.is_none() {
+                "unmatched"
+            } else if is_bot {
+                "bot"
+            } else {
+                "active"
+            };
+            let commits_href = if user_id.is_some() {
+                format!(
+                    "/{}/{}/commits/{}?author={}&until={}",
                     repository.owner_login,
                     repository.name,
                     percent_encode_segment(&repository.default_branch),
-                    percent_encode_segment(&login)
-                ),
+                    percent_encode_segment(&login),
+                    percent_encode_segment(&ended_at.to_rfc3339())
+                )
+            } else {
+                format!(
+                    "/{}/{}/commits/{}?until={}",
+                    repository.owner_login,
+                    repository.name,
+                    percent_encode_segment(&repository.default_branch),
+                    percent_encode_segment(&ended_at.to_rfc3339())
+                )
+            };
+            RepositoryPulseCommitter {
+                user_id,
+                profile_href: if user_id.is_some() {
+                    format!("/{login}")
+                } else {
+                    format!("/{}/{}", repository.owner_login, repository.name)
+                },
+                commits_href,
                 login,
+                author_status: author_status.to_owned(),
+                is_bot,
                 avatar_url: row.get("avatar_url"),
                 commits: row.get("commits"),
                 files_changed: row.get("files_changed"),
@@ -8122,6 +8159,14 @@ async fn repository_pulse_top_committers(
             }
         })
         .collect())
+}
+
+fn pulse_login_is_bot(login: &str) -> bool {
+    let normalized = login.trim().to_ascii_lowercase();
+    normalized.ends_with("[bot]")
+        || normalized.ends_with("-bot")
+        || normalized.contains(" bot")
+        || normalized.contains("automation")
 }
 
 async fn repository_pulse_releases(
@@ -8158,6 +8203,8 @@ async fn repository_pulse_releases(
         .into_iter()
         .map(|row| {
             let tag: String = row.get("tag_name");
+            let author_login: Option<String> = row.get("author_login");
+            let author_status = pulse_author_status(author_login.as_deref());
             RepositoryPulseActivityItem {
                 kind: "release".to_owned(),
                 number: None,
@@ -8167,7 +8214,9 @@ async fn repository_pulse_releases(
                 } else {
                     "published".to_owned()
                 },
-                author_login: row.get("author_login"),
+                author_profile_href: author_login.as_ref().map(|login| format!("/{login}")),
+                author_status,
+                author_login,
                 author_avatar_url: row.get("author_avatar_url"),
                 href: format!(
                     "/{}/{}/releases/tag/{}",
@@ -8217,12 +8266,16 @@ async fn repository_pulse_merged_pull_requests(
         .into_iter()
         .map(|row| {
             let number: i64 = row.get("number");
+            let author_login: Option<String> = row.get("author_login");
+            let author_status = pulse_author_status(author_login.as_deref());
             RepositoryPulseActivityItem {
                 kind: "pull_request".to_owned(),
                 number: Some(number),
                 title: row.get("title"),
                 state: row.get("state"),
-                author_login: row.get("author_login"),
+                author_profile_href: author_login.as_ref().map(|login| format!("/{login}")),
+                author_status,
+                author_login,
                 author_avatar_url: row.get("author_avatar_url"),
                 href: format!(
                     "/{}/{}/pull/{number}",
@@ -8273,12 +8326,16 @@ async fn repository_pulse_issue_activity(
         .into_iter()
         .map(|row| {
             let number: i64 = row.get("number");
+            let author_login: Option<String> = row.get("author_login");
+            let author_status = pulse_author_status(author_login.as_deref());
             RepositoryPulseActivityItem {
                 kind: "issue".to_owned(),
                 number: Some(number),
                 title: row.get("title"),
                 state: row.get("state"),
-                author_login: row.get("author_login"),
+                author_profile_href: author_login.as_ref().map(|login| format!("/{login}")),
+                author_status,
+                author_login,
                 author_avatar_url: row.get("author_avatar_url"),
                 href: format!(
                     "/{}/{}/issues/{number}",
@@ -8290,6 +8347,14 @@ async fn repository_pulse_issue_activity(
             }
         })
         .collect())
+}
+
+fn pulse_author_status(author_login: Option<&str>) -> String {
+    match author_login {
+        Some(login) if pulse_login_is_bot(login) => "bot".to_owned(),
+        Some(_) => "active".to_owned(),
+        None => "unavailable".to_owned(),
+    }
 }
 
 async fn record_repository_pulse_snapshot(
