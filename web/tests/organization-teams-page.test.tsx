@@ -1,0 +1,297 @@
+import { render, screen, within } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { OrganizationTeamsPage } from "@/components/OrganizationTeamsPage";
+import type {
+  OrganizationTeamSummary,
+  OrganizationTeamsDirectory,
+} from "@/lib/api";
+
+function team(
+  overrides: Partial<OrganizationTeamSummary> = {},
+): OrganizationTeamSummary {
+  return {
+    id: "team-1",
+    slug: "platform",
+    name: "Platform",
+    description: "Core runtime and infrastructure owners.",
+    href: "/orgs/namuh/teams/platform",
+    visibility: "visible",
+    mentionable: true,
+    notificationsEnabled: true,
+    memberCount: 4,
+    repositoryCount: 3,
+    childTeamCount: 1,
+    parent: null,
+    viewerCapabilities: {
+      canView: true,
+      canManage: false,
+      canJoin: false,
+      canMention: true,
+      isMember: true,
+    },
+    updatedAt: "2026-05-04T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function teamsDirectory(
+  overrides: Partial<OrganizationTeamsDirectory> = {},
+): OrganizationTeamsDirectory {
+  const items = overrides.items ?? [team()];
+  return {
+    organization: {
+      id: "org-1",
+      slug: "namuh",
+      name: "Namuh Engineering",
+      href: "/orgs/namuh",
+      settingsHref: "/organizations/namuh/settings/profile",
+    },
+    items,
+    total: overrides.total ?? items.length,
+    page: overrides.page ?? 1,
+    pageSize: overrides.pageSize ?? 30,
+    filters: {
+      query: null,
+      visibility: "all",
+      page: 1,
+      pageSize: 30,
+      ...overrides.filters,
+    },
+    counts: {
+      total: items.length,
+      visible: items.filter((item) => item.visibility !== "secret").length,
+      secret: items.filter((item) => item.visibility === "secret").length,
+      memberTeams: items.filter((item) => item.viewerCapabilities.isMember)
+        .length,
+      ...overrides.counts,
+    },
+    parentOptions: [],
+    emptyState: {
+      title: "Organize people by team",
+      newTeamHref: "/orgs/namuh/teams/new",
+      learnMoreHref: "/docs/api#organization-teams",
+      columns: [
+        {
+          title: "Flexible repository access",
+          body: "Grant repository permissions to a team once.",
+        },
+        {
+          title: "Request-to-join teams",
+          body: "Give members a discoverable home for shared work.",
+        },
+        {
+          title: "Team mentions",
+          body: "Mention visible teams to notify the right group.",
+        },
+      ],
+    },
+    viewerState: {
+      role: "owner",
+      canAdminTeams: true,
+      canCreateTeam: true,
+      canViewSecretTeams: true,
+    },
+    ...overrides,
+  };
+}
+
+describe("OrganizationTeamsPage", () => {
+  it("renders populated team rows with filters, counts, and concrete navigation", () => {
+    const { container } = render(
+      <OrganizationTeamsPage
+        directory={teamsDirectory({
+          items: [
+            team(),
+            team({
+              id: "team-2",
+              slug: "security",
+              name: "Security Response",
+              description: null,
+              href: "/orgs/namuh/teams/security",
+              visibility: "secret",
+              mentionable: false,
+              notificationsEnabled: false,
+              memberCount: 2,
+              repositoryCount: 1,
+              childTeamCount: 0,
+              parent: {
+                id: "team-1",
+                slug: "platform",
+                name: "Platform",
+                href: "/orgs/namuh/teams/platform",
+                visibility: "visible",
+              },
+              viewerCapabilities: {
+                canView: true,
+                canManage: true,
+                canJoin: false,
+                canMention: true,
+                isMember: false,
+              },
+            }),
+          ],
+          total: 2,
+          counts: {
+            total: 2,
+            visible: 1,
+            secret: 1,
+            memberTeams: 1,
+          },
+          filters: {
+            query: "sec",
+            visibility: "secret",
+            page: 1,
+            pageSize: 30,
+          },
+        })}
+        org="namuh"
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Teams" })).toBeVisible();
+    expect(screen.getByLabelText("Search organization teams")).toHaveValue(
+      "sec",
+    );
+    expect(screen.getByLabelText("Filter team visibility")).toHaveValue(
+      "secret",
+    );
+    expect(screen.getByRole("button", { name: "Filter" })).toHaveAttribute(
+      "type",
+      "submit",
+    );
+    expect(screen.getByRole("link", { name: "New team" })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/teams/new",
+    );
+    expect(screen.getByRole("link", { name: "Open Platform" })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/teams/platform",
+    );
+    expect(
+      screen.getByRole("link", { name: "Open Security Response" }),
+    ).toHaveAttribute("href", "/orgs/namuh/teams/security");
+    expect(screen.getAllByText("Secret").length).toBeGreaterThan(0);
+    expect(screen.getByText("Parent")).toBeVisible();
+    expect(screen.getAllByText("@platform").length).toBeGreaterThan(0);
+    expect(screen.getByText("Notifications off")).toBeVisible();
+    expect(screen.getByText("Search: sec")).toBeVisible();
+    expect(screen.getByText("Mentionable")).toBeVisible();
+
+    const sideNav = screen.getByRole("complementary", {
+      name: "Organization teams navigation",
+    });
+    expect(
+      within(sideNav).getByRole("link", { name: "Members" }),
+    ).toHaveAttribute("href", "/orgs/namuh/people");
+    expect(
+      within(sideNav).getByRole("link", { name: "Repositories" }),
+    ).toHaveAttribute("href", "/orgs/namuh/repositories");
+    expect(container.querySelector('a[href="#"], a:not([href])')).toBeNull();
+    expect(
+      Array.from(container.querySelectorAll("button")).every(
+        (button) => button.type === "submit" || button.disabled,
+      ),
+    ).toBe(true);
+  });
+
+  it("renders the required empty-state columns and CTAs", () => {
+    render(
+      <OrganizationTeamsPage
+        directory={teamsDirectory({
+          items: [],
+          total: 0,
+          counts: { total: 0, visible: 0, secret: 0, memberTeams: 0 },
+        })}
+        org="namuh"
+      />,
+    );
+
+    expect(screen.getByText("Organize people by team")).toBeVisible();
+    expect(screen.getByText("Flexible repository access")).toBeVisible();
+    expect(screen.getByText("Request-to-join teams")).toBeVisible();
+    expect(screen.getByText("Team mentions")).toBeVisible();
+    expect(
+      screen.getAllByRole("link", { name: "New team" })[0],
+    ).toHaveAttribute("href", "/orgs/namuh/teams/new");
+    expect(screen.getByRole("link", { name: "Learn more" })).toHaveAttribute(
+      "href",
+      "/docs/api#organization-teams",
+    );
+  });
+
+  it("hides secret tabs and creation actions when the viewer lacks capabilities", () => {
+    render(
+      <OrganizationTeamsPage
+        directory={teamsDirectory({
+          viewerState: {
+            role: "member",
+            canAdminTeams: false,
+            canCreateTeam: false,
+            canViewSecretTeams: false,
+          },
+          items: [
+            team({
+              viewerCapabilities: {
+                ...team().viewerCapabilities,
+                isMember: false,
+              },
+            }),
+          ],
+        })}
+        org="namuh"
+      />,
+    );
+
+    expect(screen.queryByRole("link", { name: "New team" })).toBeNull();
+    expect(screen.queryByRole("link", { name: /Secret/ })).toBeNull();
+    expect(
+      screen.queryByText("Owners and admins can see visible and secret teams."),
+    ).toBeNull();
+    expect(
+      screen.getByText(
+        "Members see visible teams and secret teams they belong to.",
+      ),
+    ).toBeVisible();
+  });
+
+  it("renders filtered empty recovery and pagination links that preserve query state", () => {
+    render(
+      <OrganizationTeamsPage
+        directory={teamsDirectory({
+          items: [],
+          total: 35,
+          page: 2,
+          pageSize: 10,
+          counts: { total: 35, visible: 30, secret: 5, memberTeams: 2 },
+          filters: {
+            query: "frontend",
+            visibility: "visible",
+            page: 2,
+            pageSize: 10,
+          },
+        })}
+        org="namuh"
+      />,
+    );
+
+    expect(screen.getByText("No teams matched these filters.")).toBeVisible();
+    expect(
+      screen.getAllByRole("link", { name: "Clear filters" })[0],
+    ).toHaveAttribute("href", "/orgs/namuh/teams");
+    const pagination = screen.getByRole("navigation", {
+      name: "Teams pagination",
+    });
+    expect(
+      within(pagination).getByRole("link", { name: "Previous" }),
+    ).toHaveAttribute(
+      "href",
+      "/orgs/namuh/teams?q=frontend&visibility=visible&pageSize=10",
+    );
+    expect(
+      within(pagination).getByRole("link", { name: "Next" }),
+    ).toHaveAttribute(
+      "href",
+      "/orgs/namuh/teams?q=frontend&visibility=visible&page=3&pageSize=10",
+    );
+  });
+});

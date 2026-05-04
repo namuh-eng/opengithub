@@ -899,6 +899,51 @@ export function organizationTeamHref(org: string, teamSlug: string) {
   return `${organizationHref(org)}/teams/${encodeURIComponent(teamSlug)}`;
 }
 
+export function organizationTeamsHref(
+  org: string,
+  filters: {
+    query?: string | null;
+    visibility?: string | null;
+    page?: number | string | null;
+    pageSize?: number | string | null;
+  } = {},
+  overrides: Partial<Record<"q" | "visibility" | "page", string | null>> & {
+    pageSize?: string | null;
+  } = {},
+) {
+  const params = new URLSearchParams();
+  const nextQuery =
+    overrides.q === undefined ? filters.query : overrides.q?.trim() || null;
+  const nextVisibility =
+    overrides.visibility === undefined
+      ? filters.visibility
+      : overrides.visibility?.trim() || "all";
+  const nextPage =
+    overrides.page === undefined
+      ? filters.page
+      : overrides.page?.trim() || null;
+  const nextPageSize =
+    overrides.pageSize === undefined
+      ? filters.pageSize
+      : overrides.pageSize?.trim() || null;
+
+  if (nextQuery?.trim()) {
+    params.set("q", nextQuery.trim());
+  }
+  if (nextVisibility?.trim() && nextVisibility !== "all") {
+    params.set("visibility", nextVisibility.trim());
+  }
+  if (nextPage && String(nextPage) !== "1") {
+    params.set("page", String(nextPage));
+  }
+  if (nextPageSize && String(nextPageSize) !== "30") {
+    params.set("pageSize", String(nextPageSize));
+  }
+
+  const query = params.toString();
+  return `${organizationHref(org)}/teams${query ? `?${query}` : ""}`;
+}
+
 export function activeSearchType(value: string | null | undefined) {
   return tabValue(SEARCH_TABS, value ?? null);
 }

@@ -12,6 +12,7 @@ import {
   getOrganizationPeople,
   getOrganizationPeopleAdmin,
   getOrganizationRepositories,
+  getOrganizationTeams,
   getPublicOrganizationProfile,
   getSessionAndShellContext,
 } from "@/lib/server-session";
@@ -50,38 +51,52 @@ export default async function OrganizationPage({
     page: numberParam(queryParams?.page),
     pageSize: numberParam(queryParams?.pageSize),
   };
-  const [profile, repositoryList, peopleList, adminPeople, packageList] =
-    await Promise.all([
-      getPublicOrganizationProfile(orgLogin),
-      activeTab === "repositories"
-        ? getOrganizationRepositories(orgLogin, {
-            q: firstParam(queryParams?.q),
-            type: firstParam(queryParams?.type),
-            language: firstParam(queryParams?.language),
-            sort: firstParam(queryParams?.sort),
-            density: firstParam(queryParams?.density),
-            page: numberParam(queryParams?.page),
-            pageSize: numberParam(queryParams?.pageSize),
-          })
-        : Promise.resolve(null),
-      activeTab === "people"
-        ? getOrganizationPeople(orgLogin, peopleQuery)
-        : Promise.resolve(null),
-      activeTab === "people"
-        ? getOrganizationPeopleAdmin(orgLogin, peopleQuery)
-        : Promise.resolve(null),
-      activeTab === "packages"
-        ? getOrganizationPackages(orgLogin, {
-            q: firstParam(queryParams?.q),
-            type: firstParam(queryParams?.type),
-            visibility: firstParam(queryParams?.visibility),
-            sort: firstParam(queryParams?.sort),
-            artifactTab: firstParam(queryParams?.artifactTab),
-            page: numberParam(queryParams?.page),
-            pageSize: numberParam(queryParams?.pageSize),
-          })
-        : Promise.resolve(null),
-    ]);
+  const [
+    profile,
+    repositoryList,
+    peopleList,
+    adminPeople,
+    packageList,
+    teamsDirectory,
+  ] = await Promise.all([
+    getPublicOrganizationProfile(orgLogin),
+    activeTab === "repositories"
+      ? getOrganizationRepositories(orgLogin, {
+          q: firstParam(queryParams?.q),
+          type: firstParam(queryParams?.type),
+          language: firstParam(queryParams?.language),
+          sort: firstParam(queryParams?.sort),
+          density: firstParam(queryParams?.density),
+          page: numberParam(queryParams?.page),
+          pageSize: numberParam(queryParams?.pageSize),
+        })
+      : Promise.resolve(null),
+    activeTab === "people"
+      ? getOrganizationPeople(orgLogin, peopleQuery)
+      : Promise.resolve(null),
+    activeTab === "people"
+      ? getOrganizationPeopleAdmin(orgLogin, peopleQuery)
+      : Promise.resolve(null),
+    activeTab === "packages"
+      ? getOrganizationPackages(orgLogin, {
+          q: firstParam(queryParams?.q),
+          type: firstParam(queryParams?.type),
+          visibility: firstParam(queryParams?.visibility),
+          sort: firstParam(queryParams?.sort),
+          artifactTab: firstParam(queryParams?.artifactTab),
+          page: numberParam(queryParams?.page),
+          pageSize: numberParam(queryParams?.pageSize),
+        })
+      : Promise.resolve(null),
+    activeTab === "teams"
+      ? getOrganizationTeams(orgLogin, {
+          q: firstParam(queryParams?.q),
+          visibility: firstParam(queryParams?.visibility),
+          page: numberParam(queryParams?.page),
+          pageSize: numberParam(queryParams?.pageSize),
+        })
+      : Promise.resolve(null),
+  ]);
 
   if (profile) {
     return (
@@ -92,6 +107,7 @@ export default async function OrganizationPage({
         profile={profile}
         packageList={packageList}
         repositoryList={repositoryList}
+        teamsDirectory={teamsDirectory}
         session={session}
         shellContext={shellContext}
       />

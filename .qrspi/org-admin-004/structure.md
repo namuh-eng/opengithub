@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial Teams Directory UI - list, filters, empty state, and concrete navigation
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the teams placeholder with a real Editorial organization teams directory at `/orgs/{org}/teams`. The page renders the empty state with flexible repository access, request-to-join teams, and team mentions columns, plus working New team and Learn more CTAs. Populated lists filter teams and link rows to `/orgs/{org}/teams/{teamSlug}`.
 

@@ -802,6 +802,87 @@ export type OrganizationPeopleAdminQuery = {
   pageSize?: number;
 };
 
+export type OrganizationTeamsDirectory = {
+  organization: OrganizationSettingsIdentity;
+  items: OrganizationTeamSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  filters: OrganizationTeamsFilters;
+  counts: OrganizationTeamsCounts;
+  parentOptions: OrganizationTeamParentOption[];
+  emptyState: OrganizationTeamsEmptyState;
+  viewerState: OrganizationTeamsViewerState;
+};
+
+export type OrganizationTeamSummary = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  href: string;
+  visibility: "visible" | "secret" | string;
+  mentionable: boolean;
+  notificationsEnabled: boolean;
+  memberCount: number;
+  repositoryCount: number;
+  childTeamCount: number;
+  parent: OrganizationTeamParentOption | null;
+  viewerCapabilities: OrganizationTeamCapabilities;
+  updatedAt: string;
+};
+
+export type OrganizationTeamParentOption = {
+  id: string;
+  slug: string;
+  name: string;
+  href: string;
+  visibility: "visible" | "secret" | string;
+};
+
+export type OrganizationTeamCapabilities = {
+  canView: boolean;
+  canManage: boolean;
+  canJoin: boolean;
+  canMention: boolean;
+  isMember: boolean;
+};
+
+export type OrganizationTeamsFilters = {
+  query: string | null;
+  visibility: "all" | "visible" | "secret" | "member" | string;
+  page: number;
+  pageSize: number;
+};
+
+export type OrganizationTeamsCounts = {
+  total: number;
+  visible: number;
+  secret: number;
+  memberTeams: number;
+};
+
+export type OrganizationTeamsEmptyState = {
+  title: string;
+  columns: Array<{ title: string; body: string }>;
+  newTeamHref: string;
+  learnMoreHref: string;
+};
+
+export type OrganizationTeamsViewerState = {
+  role: string;
+  canAdminTeams: boolean;
+  canCreateTeam: boolean;
+  canViewSecretTeams: boolean;
+};
+
+export type OrganizationTeamsQuery = {
+  q?: string;
+  visibility?: string;
+  page?: number;
+  pageSize?: number;
+};
+
 export type OrganizationInvitationMutation =
   | {
       action: "invite";
@@ -4967,6 +5048,43 @@ export async function getOrganizationPeopleAdminFromCookie(
   }
 
   return (await response.json()) as OrganizationPeopleAdmin;
+}
+
+export async function getOrganizationTeamsFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  query: OrganizationTeamsQuery = {},
+): Promise<OrganizationTeamsDirectory | null> {
+  let response: Response;
+  try {
+    const url = new URL(
+      `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/teams`,
+    );
+    if (query.q) {
+      url.searchParams.set("q", query.q);
+    }
+    if (query.visibility) {
+      url.searchParams.set("visibility", query.visibility);
+    }
+    if (query.page) {
+      url.searchParams.set("page", String(query.page));
+    }
+    if (query.pageSize) {
+      url.searchParams.set("pageSize", String(query.pageSize));
+    }
+    response = await fetch(url, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return null;
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return (await response.json()) as OrganizationTeamsDirectory;
 }
 
 export async function mutateOrganizationPeopleAdminFromCookie(

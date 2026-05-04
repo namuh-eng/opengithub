@@ -45,6 +45,7 @@ struct SeedOutput {
     actions_run_detail_href: String,
     actions_job_log_href: String,
     organization_profile_href: String,
+    organization_empty_teams_href: String,
 }
 
 fn seed_empty_dashboard() -> bool {
@@ -626,10 +627,11 @@ async fn main() -> anyhow::Result<()> {
     } else {
         (String::new(), String::new())
     };
-    let organization_profile_href = if seed_organization_profile() {
+    let (organization_profile_href, organization_empty_teams_href) = if seed_organization_profile()
+    {
         seed_organization_profile_fixture(&pool, user.id, profile_action_viewer.id, &suffix).await?
     } else {
-        String::new()
+        (String::new(), String::new())
     };
 
     let session_id = Uuid::new_v4().to_string();
@@ -677,6 +679,7 @@ async fn main() -> anyhow::Result<()> {
         actions_run_detail_href,
         actions_job_log_href,
         organization_profile_href,
+        organization_empty_teams_href,
     };
     println!("{}", serde_json::to_string(&output)?);
     Ok(())
@@ -687,7 +690,7 @@ async fn seed_organization_profile_fixture(
     owner_user_id: Uuid,
     member_user_id: Uuid,
     suffix: &str,
-) -> anyhow::Result<String> {
+) -> anyhow::Result<(String, String)> {
     let slug = format!("org-profile-{}", &suffix[..12]);
     let organization = create_organization(
         pool,
@@ -820,6 +823,93 @@ async fn seed_organization_profile_fixture(
     .bind(preview_repository.id)
     .execute(pool)
     .await?;
+    let platform_team_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO teams (
+            organization_id,
+            slug,
+            name,
+            description,
+            visibility,
+            notifications_enabled,
+            updated_at
+        )
+        VALUES ($1, $2, 'Platform Maintainers', 'Runtime, release, and repository access owners.', 'visible', true, now() - INTERVAL '3 hours')
+        RETURNING id
+        "#,
+    )
+    .bind(organization.id)
+    .bind(format!("platform-{}", &suffix[..8]))
+    .fetch_one(pool)
+    .await?;
+    let frontend_team_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO teams (
+            organization_id,
+            parent_team_id,
+            slug,
+            name,
+            description,
+            visibility,
+            notifications_enabled,
+            updated_at
+        )
+        VALUES ($1, $2, $3, 'Frontend Studio', 'Editorial interface work and design-system stewardship.', 'visible', true, now() - INTERVAL '2 hours')
+        RETURNING id
+        "#,
+    )
+    .bind(organization.id)
+    .bind(platform_team_id)
+    .bind(format!("frontend-{}", &suffix[..8]))
+    .fetch_one(pool)
+    .await?;
+    let security_team_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO teams (
+            organization_id,
+            slug,
+            name,
+            description,
+            visibility,
+            notifications_enabled,
+            updated_at
+        )
+        VALUES ($1, $2, 'Security Response', 'Private security and incident response coordination.', 'secret', false, now() - INTERVAL '1 hour')
+        RETURNING id
+        "#,
+    )
+    .bind(organization.id)
+    .bind(format!("security-{}", &suffix[..8]))
+    .fetch_one(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO team_memberships (team_id, user_id, role)
+        VALUES ($1, $2, 'maintainer'),
+               ($3, $4, 'member'),
+               ($5, $2, 'maintainer')
+        "#,
+    )
+    .bind(platform_team_id)
+    .bind(owner_user_id)
+    .bind(frontend_team_id)
+    .bind(member_user_id)
+    .bind(security_team_id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO repository_team_permissions (repository_id, team_id, role, source)
+        VALUES ($1, $2, 'maintain', 'team'),
+               ($3, $4, 'write', 'team')
+        "#,
+    )
+    .bind(repository.id)
+    .bind(platform_team_id)
+    .bind(preview_repository.id)
+    .bind(frontend_team_id)
+    .execute(pool)
+    .await?;
     sqlx::query(
         "INSERT INTO repository_stars (user_id, repository_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
     )
@@ -868,7 +958,30 @@ async fn seed_organization_profile_fixture(
     .execute(pool)
     .await?;
 
-    Ok(format!("/orgs/{slug}"))
+    let empty_slug = format!("org-empty-teams-{}", &suffix[..12]);
+    let empty_organization = create_organization(
+        pool,
+        CreateOrganization {
+            slug: empty_slug.clone(),
+            display_name: "Empty Team Directory".to_owned(),
+            description: Some("Organization with no teams for smoke testing.".to_owned()),
+            owner_user_id,
+        },
+    )
+    .await?;
+    sqlx::query(
+        r#"
+        UPDATE organizations
+        SET profile_visibility = 'public',
+            public_members_visible = true
+        WHERE id = $1
+        "#,
+    )
+    .bind(empty_organization.id)
+    .execute(pool)
+    .await?;
+
+    Ok((format!("/orgs/{slug}"), format!("/orgs/{empty_slug}/teams")))
 }
 
 async fn seed_search_documents(

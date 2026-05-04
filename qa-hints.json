@@ -4888,5 +4888,23 @@
       "The local shared test database reports a pre-existing dirty migration warning for 202605030041; QA should use a clean migrated database before treating migration hygiene as resolved.",
       "Phase 3 and Phase 4 still need creation, nesting, team detail, permission cascade, mention indexing, and notification fanout verification."
     ]
+  },
+  {
+    "feature_id": "org-admin-004",
+    "tests_written": [
+      "Completed Phase 2 Editorial Teams Directory UI without marking org-admin-004 build_pass=true.",
+      "Added typed teams-directory client DTOs and server-session helpers for GET /api/orgs/{org}/teams.",
+      "Added /orgs/{org}/teams and wired the organization profile Teams tab to render a real Editorial directory with search, visibility filtering, populated rows, parent labels, visibility/mentionability/notification chips, pagination, and empty-state CTAs.",
+      "Extended the Playwright E2E seed with visible, nested, secret, and empty-team organization fixtures backed by Postgres teams, team_memberships, and repository_team_permissions rows.",
+      "Focused Vitest covers populated rows, search/filter controls, active filters, concrete member/repository/settings/nav links, secret visibility gating, empty-state columns/CTAs, filtered empty recovery, pagination links, and no dead anchors/buttons.",
+      "Focused Playwright covers owner and member team directory views, secret-team redaction for non-secret members, search/filter URL behavior, row navigation to a concrete team URL, empty state CTAs, mobile no-overflow, and screenshot ralph/screenshots/build/org-admin-004-phase2-teams-directory.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 must wire /orgs/{org}/teams/new and POST /api/orgs/{org}/teams with slug uniqueness, parent validation, notification preference persistence, and secret nested-team rejection.",
+      "Phase 4 must replace the team-detail placeholder with members, repositories, child teams, inherited permissions, mentionability, and notification behavior.",
+      "Run a real Google OAuth browser session with TEST_ACCOUNT_EMAIL to confirm owner/member/secret visibility outside deterministic Playwright seed cookies.",
+      "Stress long Unicode team names/slugs/descriptions, high team counts, pagination/filter combinations, and member visibility changes while a directory page is open.",
+      "The New team CTA is concrete but intentionally lands on the future creation route for Phase 3; QA should not mark org-admin-004 build_pass until create/detail phases are complete."
+    ]
   }
 ]

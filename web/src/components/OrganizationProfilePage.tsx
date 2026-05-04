@@ -4,6 +4,7 @@ import { AppShellFrame } from "@/components/AppShellFrame";
 import { OrganizationPeopleAdminPage } from "@/components/OrganizationPeopleAdminPage";
 import { OrganizationPeoplePage } from "@/components/OrganizationPeoplePage";
 import { OrganizationRepositoriesPage } from "@/components/OrganizationRepositoriesPage";
+import { OrganizationTeamsPage } from "@/components/OrganizationTeamsPage";
 import { OwnerPackagesPage } from "@/components/OwnerPackagesPage";
 import { QueryTabNavigation } from "@/components/QueryTabNavigation";
 import type {
@@ -12,6 +13,7 @@ import type {
   OrganizationPeopleAdmin,
   OrganizationPeopleList,
   OrganizationRepositoryList,
+  OrganizationTeamsDirectory,
   OwnerPackageList,
   PublicOrganizationProfile,
 } from "@/lib/api";
@@ -28,6 +30,7 @@ type OrganizationProfilePageProps = {
   activeTab: string;
   adminPeople?: OrganizationPeopleAdmin | null;
   peopleList?: OrganizationPeopleList | null;
+  teamsDirectory?: OrganizationTeamsDirectory | null;
   profile: PublicOrganizationProfile;
   packageList?: OwnerPackageList | null;
   repositoryList?: OrganizationRepositoryList | null;
@@ -765,6 +768,7 @@ export function OrganizationProfilePage({
   activeTab,
   adminPeople,
   peopleList,
+  teamsDirectory,
   profile,
   packageList,
   repositoryList,
@@ -803,6 +807,11 @@ export function OrganizationProfilePage({
             ) : selectedTab === "people" && peopleList ? (
               <OrganizationPeoplePage
                 list={peopleList}
+                org={profile.identity.slug}
+              />
+            ) : selectedTab === "teams" && teamsDirectory ? (
+              <OrganizationTeamsPage
+                directory={teamsDirectory}
                 org={profile.identity.slug}
               />
             ) : selectedTab === "packages" && packageList ? (
