@@ -191,6 +191,102 @@ pub struct CreatedOrganization {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationProfileSettings {
+    pub organization: OrganizationSettingsIdentity,
+    pub profile: OrganizationProfileSettingsFields,
+    pub social_accounts: Vec<OrganizationSocialAccount>,
+    pub viewer_state: OrganizationSettingsViewerState,
+    pub avatar: OrganizationAvatarSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationSettingsIdentity {
+    pub id: Uuid,
+    pub slug: String,
+    pub name: String,
+    pub href: String,
+    pub settings_href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationProfileSettingsFields {
+    pub display_name: String,
+    pub description: Option<String>,
+    pub website_url: Option<String>,
+    pub location: Option<String>,
+    pub public_email: Option<String>,
+    pub contact_email: Option<String>,
+    pub billing_email: Option<String>,
+    pub company_name: Option<String>,
+    pub ownership_type: String,
+    pub profile_visibility: String,
+    pub public_members_visible: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationSocialAccount {
+    pub provider: String,
+    pub value: String,
+    pub position: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationSettingsViewerState {
+    pub role: String,
+    pub can_edit_profile: bool,
+    pub can_rename: bool,
+    pub can_archive: bool,
+    pub can_delete: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationAvatarSettings {
+    pub avatar_url: Option<String>,
+    pub storage_configured: bool,
+    pub upload_available: bool,
+    pub unavailable_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationProfileSettingsPatch {
+    pub display_name: Option<serde_json::Value>,
+    pub description: Option<serde_json::Value>,
+    pub website_url: Option<serde_json::Value>,
+    pub location: Option<serde_json::Value>,
+    pub public_email: Option<serde_json::Value>,
+    pub contact_email: Option<serde_json::Value>,
+    pub billing_email: Option<serde_json::Value>,
+    pub company_name: Option<serde_json::Value>,
+    pub social_accounts: Option<Vec<OrganizationSocialAccountInput>>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationSocialAccountInput {
+    pub provider: String,
+    pub value: String,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum OrganizationSettingsError {
+    #[error("organization settings were not found")]
+    NotFound,
+    #[error("organization settings require owner access")]
+    Forbidden,
+    #[error("{0}")]
+    Validation(String),
+    #[error("database error")]
+    Sqlx(#[from] sqlx::Error),
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum OrganizationCreateError {
     #[error("{0}")]
@@ -539,6 +635,164 @@ pub async fn create_organization_from_signup(
     })
 }
 
+pub async fn organization_profile_settings(
+    pool: &PgPool,
+    slug: &str,
+    actor_user_id: Uuid,
+) -> Result<OrganizationProfileSettings, OrganizationSettingsError> {
+    let row = organization_settings_row(pool, slug)
+        .await?
+        .ok_or(OrganizationSettingsError::NotFound)?;
+    ensure_organization_owner(pool, row.id, actor_user_id).await?;
+    organization_profile_settings_from_row(pool, row, "owner".to_owned()).await
+}
+
+pub async fn update_organization_profile_settings(
+    pool: &PgPool,
+    slug: &str,
+    actor_user_id: Uuid,
+    patch: OrganizationProfileSettingsPatch,
+) -> Result<OrganizationProfileSettings, OrganizationSettingsError> {
+    let row = organization_settings_row(pool, slug)
+        .await?
+        .ok_or(OrganizationSettingsError::NotFound)?;
+    ensure_organization_owner(pool, row.id, actor_user_id).await?;
+
+    let display_name = patch_text_required(
+        patch.display_name,
+        row.display_name.clone(),
+        "Organization display name",
+        100,
+    )?;
+    let description = patch_text_optional(
+        patch.description,
+        row.description.clone(),
+        "Description",
+        280,
+    )?;
+    let website_url =
+        patch_url_optional(patch.website_url, row.website_url.clone(), "Website URL")?;
+    let location = patch_text_optional(patch.location, row.location.clone(), "Location", 120)?;
+    let public_email =
+        patch_email_optional(patch.public_email, row.public_email.clone(), "Public email")?;
+    let contact_email = patch_email_optional(
+        patch.contact_email,
+        row.contact_email.clone(),
+        "Contact email",
+    )?;
+    let billing_email = patch_email_optional(
+        patch.billing_email,
+        row.billing_email.clone(),
+        "Billing email",
+    )?;
+    let company_name =
+        patch_text_optional(patch.company_name, row.company_name.clone(), "Company", 120)?;
+    let social_accounts = patch
+        .social_accounts
+        .map(normalize_social_accounts)
+        .transpose()?;
+
+    let mut changed_fields = Vec::new();
+    if display_name != row.display_name {
+        changed_fields.push("displayName");
+    }
+    if description != row.description {
+        changed_fields.push("description");
+    }
+    if website_url != row.website_url {
+        changed_fields.push("websiteUrl");
+    }
+    if location != row.location {
+        changed_fields.push("location");
+    }
+    if public_email != row.public_email {
+        changed_fields.push("publicEmail");
+    }
+    if contact_email != row.contact_email {
+        changed_fields.push("contactEmail");
+    }
+    if billing_email != row.billing_email {
+        changed_fields.push("billingEmail");
+    }
+    if company_name != row.company_name {
+        changed_fields.push("companyName");
+    }
+    if social_accounts.is_some() {
+        changed_fields.push("socialAccounts");
+    }
+
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        r#"
+        UPDATE organizations
+        SET display_name = $2,
+            description = $3,
+            website_url = $4,
+            location = $5,
+            public_email = $6,
+            contact_email = $7,
+            billing_email = $8,
+            company_name = $9
+        WHERE id = $1
+        "#,
+    )
+    .bind(row.id)
+    .bind(&display_name)
+    .bind(&description)
+    .bind(&website_url)
+    .bind(&location)
+    .bind(&public_email)
+    .bind(&contact_email)
+    .bind(&billing_email)
+    .bind(&company_name)
+    .execute(&mut *tx)
+    .await?;
+
+    if let Some(social_accounts) = &social_accounts {
+        sqlx::query("DELETE FROM organization_social_accounts WHERE organization_id = $1")
+            .bind(row.id)
+            .execute(&mut *tx)
+            .await?;
+        for account in social_accounts {
+            sqlx::query(
+                r#"
+                INSERT INTO organization_social_accounts (
+                    organization_id, provider, value, position
+                )
+                VALUES ($1, $2, $3, $4)
+                "#,
+            )
+            .bind(row.id)
+            .bind(&account.provider)
+            .bind(&account.value)
+            .bind(account.position)
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO organization_audit_events (
+            organization_id, actor_user_id, event_type, metadata
+        )
+        VALUES ($1, $2, 'organization.profile_settings.update', $3)
+        "#,
+    )
+    .bind(row.id)
+    .bind(actor_user_id)
+    .bind(json!({
+        "slug": row.slug,
+        "changedFields": changed_fields,
+        "redacted": ["publicEmail", "contactEmail", "billingEmail", "socialAccounts"]
+    }))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    organization_profile_settings(pool, slug, actor_user_id).await
+}
+
 fn normalize_display_name(name: &str) -> Result<String, OrganizationCreateError> {
     let display_name = name.split_whitespace().collect::<Vec<_>>().join(" ");
     if display_name.is_empty() {
@@ -567,6 +821,159 @@ fn normalize_contact_email(email: &str) -> Result<String, OrganizationCreateErro
         ));
     }
     Ok(normalized)
+}
+
+fn patch_text_required(
+    value: Option<serde_json::Value>,
+    current: String,
+    label: &str,
+    max_chars: usize,
+) -> Result<String, OrganizationSettingsError> {
+    let Some(value) = value else {
+        return Ok(current);
+    };
+    let Some(raw) = value.as_str() else {
+        return Err(OrganizationSettingsError::Validation(format!(
+            "{label} must be a string."
+        )));
+    };
+    let normalized = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.is_empty() {
+        return Err(OrganizationSettingsError::Validation(format!(
+            "{label} is required."
+        )));
+    }
+    if normalized.chars().count() > max_chars {
+        return Err(OrganizationSettingsError::Validation(format!(
+            "{label} must be {max_chars} characters or fewer."
+        )));
+    }
+    Ok(normalized)
+}
+
+fn patch_text_optional(
+    value: Option<serde_json::Value>,
+    current: Option<String>,
+    label: &str,
+    max_chars: usize,
+) -> Result<Option<String>, OrganizationSettingsError> {
+    let Some(value) = value else {
+        return Ok(current);
+    };
+    if value.is_null() {
+        return Ok(None);
+    }
+    let Some(raw) = value.as_str() else {
+        return Err(OrganizationSettingsError::Validation(format!(
+            "{label} must be a string or null."
+        )));
+    };
+    let normalized = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.is_empty() {
+        return Ok(None);
+    }
+    if normalized.chars().count() > max_chars {
+        return Err(OrganizationSettingsError::Validation(format!(
+            "{label} must be {max_chars} characters or fewer."
+        )));
+    }
+    Ok(Some(normalized))
+}
+
+fn patch_email_optional(
+    value: Option<serde_json::Value>,
+    current: Option<String>,
+    label: &str,
+) -> Result<Option<String>, OrganizationSettingsError> {
+    let normalized = patch_text_optional(value, current, label, 254)?;
+    if let Some(email) = &normalized {
+        validate_email(email).map_err(OrganizationSettingsError::Validation)?;
+        Ok(Some(email.to_ascii_lowercase()))
+    } else {
+        Ok(None)
+    }
+}
+
+fn patch_url_optional(
+    value: Option<serde_json::Value>,
+    current: Option<String>,
+    label: &str,
+) -> Result<Option<String>, OrganizationSettingsError> {
+    let normalized = patch_text_optional(value, current, label, 2048)?;
+    if let Some(url) = &normalized {
+        let lower = url.to_ascii_lowercase();
+        if !(lower.starts_with("https://") || lower.starts_with("http://")) {
+            return Err(OrganizationSettingsError::Validation(format!(
+                "{label} must start with http:// or https://."
+            )));
+        }
+        if url.contains(char::is_whitespace) {
+            return Err(OrganizationSettingsError::Validation(format!(
+                "{label} must be a valid URL."
+            )));
+        }
+    }
+    Ok(normalized)
+}
+
+fn validate_email(email: &str) -> Result<(), String> {
+    let valid = email.len() <= 254
+        && email.split('@').count() == 2
+        && email
+            .split('@')
+            .next()
+            .is_some_and(|local| !local.is_empty())
+        && email.split('@').nth(1).is_some_and(|domain| {
+            domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.')
+        });
+    if valid {
+        Ok(())
+    } else {
+        Err("Enter a valid email address.".to_owned())
+    }
+}
+
+fn normalize_social_accounts(
+    inputs: Vec<OrganizationSocialAccountInput>,
+) -> Result<Vec<OrganizationSocialAccount>, OrganizationSettingsError> {
+    if inputs.len() > 4 {
+        return Err(OrganizationSettingsError::Validation(
+            "Organizations can list at most four social accounts.".to_owned(),
+        ));
+    }
+
+    let mut providers = std::collections::BTreeSet::new();
+    let mut accounts = Vec::with_capacity(inputs.len());
+    for (index, input) in inputs.into_iter().enumerate() {
+        let provider = input.provider.trim().to_ascii_lowercase();
+        if !matches!(provider.as_str(), "x" | "mastodon" | "linkedin" | "bluesky") {
+            return Err(OrganizationSettingsError::Validation(format!(
+                "Unsupported social provider: {provider}."
+            )));
+        }
+        if !providers.insert(provider.clone()) {
+            return Err(OrganizationSettingsError::Validation(format!(
+                "Duplicate social provider: {provider}."
+            )));
+        }
+        let value = input.value.split_whitespace().collect::<Vec<_>>().join(" ");
+        if value.is_empty() {
+            return Err(OrganizationSettingsError::Validation(
+                "Social account values cannot be blank.".to_owned(),
+            ));
+        }
+        if value.chars().count() > 120 {
+            return Err(OrganizationSettingsError::Validation(
+                "Social account values must be 120 characters or fewer.".to_owned(),
+            ));
+        }
+        accounts.push(OrganizationSocialAccount {
+            provider,
+            value,
+            position: i32::try_from(index + 1).unwrap_or(4),
+        });
+    }
+    Ok(accounts)
 }
 
 fn normalize_company_name(
@@ -611,6 +1018,150 @@ struct OrganizationRow {
     profile_visibility: String,
     public_members_visible: bool,
     created_at: DateTime<Utc>,
+}
+
+struct OrganizationSettingsRow {
+    id: Uuid,
+    slug: String,
+    display_name: String,
+    description: Option<String>,
+    avatar_url: Option<String>,
+    website_url: Option<String>,
+    location: Option<String>,
+    public_email: Option<String>,
+    contact_email: Option<String>,
+    billing_email: Option<String>,
+    company_name: Option<String>,
+    ownership_type: String,
+    profile_visibility: String,
+    public_members_visible: bool,
+    avatar_s3_bucket: Option<String>,
+    avatar_s3_key: Option<String>,
+}
+
+async fn organization_settings_row(
+    pool: &PgPool,
+    slug: &str,
+) -> Result<Option<OrganizationSettingsRow>, sqlx::Error> {
+    let row = sqlx::query(
+        r#"
+        SELECT id, slug, display_name, description, avatar_url, website_url, location,
+               public_email, contact_email, billing_email, company_name, ownership_type,
+               profile_visibility, public_members_visible, avatar_s3_bucket, avatar_s3_key
+        FROM organizations
+        WHERE lower(slug) = lower($1)
+        "#,
+    )
+    .bind(slug)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|row| OrganizationSettingsRow {
+        id: row.get("id"),
+        slug: row.get("slug"),
+        display_name: row.get("display_name"),
+        description: row.get("description"),
+        avatar_url: row.get("avatar_url"),
+        website_url: row.get("website_url"),
+        location: row.get("location"),
+        public_email: row.get("public_email"),
+        contact_email: row.get("contact_email"),
+        billing_email: row.get("billing_email"),
+        company_name: row.get("company_name"),
+        ownership_type: row.get("ownership_type"),
+        profile_visibility: row.get("profile_visibility"),
+        public_members_visible: row.get("public_members_visible"),
+        avatar_s3_bucket: row.get("avatar_s3_bucket"),
+        avatar_s3_key: row.get("avatar_s3_key"),
+    }))
+}
+
+async fn ensure_organization_owner(
+    pool: &PgPool,
+    organization_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<(), OrganizationSettingsError> {
+    let role = viewer_role(pool, organization_id, Some(actor_user_id)).await?;
+    if role.as_deref() == Some("owner") {
+        Ok(())
+    } else {
+        Err(OrganizationSettingsError::Forbidden)
+    }
+}
+
+async fn organization_profile_settings_from_row(
+    pool: &PgPool,
+    row: OrganizationSettingsRow,
+    role: String,
+) -> Result<OrganizationProfileSettings, OrganizationSettingsError> {
+    let social_accounts = organization_social_accounts(pool, row.id).await?;
+    let avatar_storage_configured = row.avatar_s3_bucket.is_some() && row.avatar_s3_key.is_some();
+    let slug = row.slug;
+    Ok(OrganizationProfileSettings {
+        organization: OrganizationSettingsIdentity {
+            id: row.id,
+            slug: slug.clone(),
+            name: row.display_name.clone(),
+            href: format!("/orgs/{slug}"),
+            settings_href: format!("/organizations/{slug}/settings/profile"),
+        },
+        profile: OrganizationProfileSettingsFields {
+            display_name: row.display_name,
+            description: row.description,
+            website_url: row.website_url,
+            location: row.location,
+            public_email: row.public_email,
+            contact_email: row.contact_email,
+            billing_email: row.billing_email,
+            company_name: row.company_name,
+            ownership_type: row.ownership_type,
+            profile_visibility: row.profile_visibility,
+            public_members_visible: row.public_members_visible,
+        },
+        social_accounts,
+        viewer_state: OrganizationSettingsViewerState {
+            role,
+            can_edit_profile: true,
+            can_rename: true,
+            can_archive: false,
+            can_delete: false,
+        },
+        avatar: OrganizationAvatarSettings {
+            avatar_url: row.avatar_url,
+            storage_configured: avatar_storage_configured,
+            upload_available: false,
+            unavailable_reason: Some(
+                "Organization avatar upload will be enabled after the S3 avatar pipeline is wired."
+                    .to_owned(),
+            ),
+        },
+    })
+}
+
+async fn organization_social_accounts(
+    pool: &PgPool,
+    organization_id: Uuid,
+) -> Result<Vec<OrganizationSocialAccount>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
+        SELECT provider, value, position
+        FROM organization_social_accounts
+        WHERE organization_id = $1
+        ORDER BY position ASC
+        "#,
+    )
+    .bind(organization_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| OrganizationSocialAccount {
+            provider: row.get("provider"),
+            value: row.get("value"),
+            position: row.get("position"),
+        })
+        .collect())
 }
 
 pub async fn public_organization_profile(

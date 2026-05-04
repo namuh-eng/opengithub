@@ -3206,3 +3206,13 @@
 - Created `.qrspi/org-admin-002/structure.md` for the first incomplete PRD feature, splitting organization profile settings into five vertical phases: owner-only API contract, Editorial settings shell, profile/contact/social mutations, rename/archive/delete guardrails, and final docs/browser/QA/build-pass bookkeeping.
 - No source implementation was started because `org-admin-002.needs_structure=true` and the build-loop contract requires the structure outline first, then `<promise>NEXT</promise>`.
 - Verified `org-admin-002.build_pass=false`, `qa_pass=false`, and all structure phases remain unchecked for the next invocation.
+
+2026-05-04 - org-admin-002 phase 1 organization settings API contract
+
+- Completed Phase 1 from `.qrspi/org-admin-002/structure.md`: organization owners can now read and update profile settings through real Rust API endpoints without marking `org-admin-002.build_pass=true`.
+- Added additive migration `202605040011_organization_profile_settings` for `organizations.public_email`, `organizations.billing_email`, avatar S3 metadata placeholders, `organization_social_accounts`, and profile-settings audit indexes.
+- Added organization settings DTOs/helpers for owner permission checks, case-insensitive slug lookup, public profile/contact/billing fields, bounded validation, HTTP(S) URL validation, email validation, four-provider social account replacement, avatar unavailable state, and redacted audit metadata.
+- Added authenticated `GET /api/orgs/:org/settings/profile` and `PATCH /api/orgs/:org/settings/profile` with standard 401/403/404/422/database/internal envelopes.
+- Added focused Rust contract coverage for anonymous 401, member/non-owner 403, owner read/write, case-insensitive slug lookup, validation failures, social persistence/replacement, contact/billing email persistence, audit redaction, and no raw stack traces or secrets in errors.
+- Verification passed: `cargo fmt --all`; focused `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 cargo test -p opengithub-api --test organization_profile_settings_contract`; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 371 web tests; mandatory Editorial banned-value scan returned zero matches.
+- Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first and the structure outline marks browser smoke optional for this phase. `prd.json` remains `build_pass:false` because Phases 2-5 remain.

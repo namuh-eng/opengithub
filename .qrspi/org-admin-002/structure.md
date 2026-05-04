@@ -6,7 +6,7 @@
 
 ## Phase 1: Organization Settings API Contract - owner-only profile read/write
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the authenticated Rust contract for organization profile settings. Organization owners can load and update public profile fields, contact/billing metadata, social accounts, and location through real Postgres-backed endpoints. Non-owners and anonymous users must not see settings-only data.
 

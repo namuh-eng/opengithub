@@ -4687,5 +4687,22 @@
       "Perform manual screen-reader traversal for the plan cards, availability status region, field errors, ownership radio group, terms checkbox, and post-create organization profile redirect.",
       "Verify production rate-limit behavior once the shared rate-limit primitive is connected server-side; this build verifies client rendering of 429/rate_limited envelopes and existing contract guardrails."
     ]
+  },
+  {
+    "feature_id": "org-admin-002",
+    "tests_written": [
+      "Completed Phase 1 Organization Settings API Contract without marking org-admin-002 build_pass=true.",
+      "Added additive organization profile settings migration for public/billing email fields, avatar storage placeholders, organization_social_accounts, and profile-settings audit indexes.",
+      "Added owner-only Rust GET/PATCH /api/orgs/{org}/settings/profile with case-insensitive slug lookup, profile/contact/billing fields, four-provider social account replacement, avatar unavailable state, validation envelopes, and redacted audit metadata.",
+      "Focused Rust contract covers anonymous 401, member/non-owner 403, owner read, profile/contact/billing/social persistence, case-insensitive lookup, validation errors, audit redaction, and no stack/secret leakage.",
+      "Verification passed: focused organization_profile_settings_contract, make check, make test with Cargo tests plus 371 web tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 must verify the protected Editorial organization settings shell renders owner-only API data without leaking billing/contact fields to non-owners.",
+      "Phase 3 should exercise browser saves for independent public profile, contact, billing, and social sections, including failed-save rollback and reload persistence.",
+      "Probe concurrent PATCH requests replacing social accounts to confirm deterministic ordering and no duplicate provider race leaks.",
+      "Stress validation with very long Unicode display names, URLs with unusual but valid HTTP(S) forms, and email edge cases beyond the focused syntax checks.",
+      "Confirm future avatar upload uses the placeholder S3 metadata contract without exposing bucket/key values in settings responses."
+    ]
   }
 ]

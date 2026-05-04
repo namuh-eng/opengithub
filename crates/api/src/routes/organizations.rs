@@ -11,12 +11,14 @@ use crate::{
     auth::extractor::AuthenticatedUser,
     domain::{
         organizations::{
-            create_organization_from_signup, organization_people, organization_repositories,
-            organization_slug_availability, public_organization_profile, CreateOrganizationRequest,
-            CreatedOrganization, OrganizationCreateError, OrganizationPeopleList,
-            OrganizationPeopleListQuery, OrganizationProfileError, OrganizationRepositoryList,
-            OrganizationRepositoryListQuery, OrganizationSlugAvailability,
-            PublicOrganizationProfile,
+            create_organization_from_signup, organization_people, organization_profile_settings,
+            organization_repositories, organization_slug_availability, public_organization_profile,
+            update_organization_profile_settings, CreateOrganizationRequest, CreatedOrganization,
+            OrganizationCreateError, OrganizationPeopleList, OrganizationPeopleListQuery,
+            OrganizationProfileError, OrganizationProfileSettings,
+            OrganizationProfileSettingsPatch, OrganizationRepositoryList,
+            OrganizationRepositoryListQuery, OrganizationSettingsError,
+            OrganizationSlugAvailability, PublicOrganizationProfile,
         },
         packages::{
             mutate_package_settings, owner_packages, package_detail, package_settings,
@@ -36,6 +38,10 @@ pub fn router() -> Router<AppState> {
         )
         .route("/api/organizations", post(create_organization))
         .route("/api/orgs/:org/profile", get(public_profile))
+        .route(
+            "/api/orgs/:org/settings/profile",
+            get(get_profile_settings).patch(patch_profile_settings),
+        )
         .route("/api/orgs/:org/repositories", get(public_repositories))
         .route("/api/orgs/:org/people", get(public_people))
         .route("/api/orgs/:org/packages", get(public_packages))
@@ -93,6 +99,35 @@ async fn public_profile(
         .map_err(map_organization_profile_error)?;
 
     Ok(Json(profile))
+}
+
+async fn get_profile_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(org): Path<String>,
+) -> Result<Json<OrganizationProfileSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = organization_profile_settings(pool, &org, actor.0.id)
+        .await
+        .map_err(map_organization_settings_error)?;
+
+    Ok(Json(settings))
+}
+
+async fn patch_profile_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(org): Path<String>,
+    RestJson(request): RestJson<OrganizationProfileSettingsPatch>,
+) -> Result<Json<OrganizationProfileSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = update_organization_profile_settings(pool, &org, actor.0.id, request)
+        .await
+        .map_err(map_organization_settings_error)?;
+
+    Ok(Json(settings))
 }
 
 async fn public_repositories(
@@ -381,6 +416,33 @@ fn map_organization_profile_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal_error",
             "organization profile could not be loaded",
+        ),
+    }
+}
+
+fn map_organization_settings_error(
+    error: OrganizationSettingsError,
+) -> (StatusCode, Json<ErrorEnvelope>) {
+    match error {
+        OrganizationSettingsError::NotFound => error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "organization settings were not found",
+        ),
+        OrganizationSettingsError::Forbidden => error_response(
+            StatusCode::FORBIDDEN,
+            "forbidden",
+            "organization settings require owner access",
+        ),
+        OrganizationSettingsError::Validation(message) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            message,
+        ),
+        OrganizationSettingsError::Sqlx(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "organization settings could not be loaded",
         ),
     }
 }
