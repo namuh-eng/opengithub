@@ -6,7 +6,7 @@
 
 ## Phase 1: Owner Policy API Contract - read, patch, confirmation, and audit
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the authenticated Rust contract for organization member privilege settings. Owners can read and update `organization_policy_settings`; non-owners are denied; base repository permission and Projects base permission changes require explicit confirmation and return a refreshed policy state.
 

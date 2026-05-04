@@ -9,23 +9,28 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{
-    api_types::{database_unavailable, error_response, ErrorEnvelope, RestJson},
+    api_types::{
+        database_unavailable, error_response, error_response_with_details, ErrorEnvelope, RestJson,
+    },
     auth::extractor::AuthenticatedUser,
     domain::{
         organizations::{
             cancel_organization_invitation, create_organization_from_signup,
             create_organization_invitation, create_organization_team, export_organization_people,
-            organization_people, organization_people_admin, organization_profile_settings,
-            organization_repositories, organization_slug_availability, organization_team_detail,
-            organization_teams_directory, public_organization_profile, remove_organization_member,
-            rename_organization, retry_organization_invitation, update_organization_member_role,
-            update_organization_member_visibility, update_organization_profile_settings,
-            CreateOrganizationInvitation, CreateOrganizationRequest, CreateOrganizationTeam,
-            CreatedOrganization, OrganizationCreateError, OrganizationPeopleAdmin,
-            OrganizationPeopleAdminError, OrganizationPeopleAdminQuery, OrganizationPeopleList,
-            OrganizationPeopleListQuery, OrganizationProfileError, OrganizationProfileSettings,
-            OrganizationProfileSettingsPatch, OrganizationRepositoryList,
-            OrganizationRepositoryListQuery, OrganizationSettingsError,
+            organization_member_privileges_for_actor, organization_people,
+            organization_people_admin, organization_profile_settings, organization_repositories,
+            organization_slug_availability, organization_team_detail, organization_teams_directory,
+            public_organization_profile, remove_organization_member, rename_organization,
+            retry_organization_invitation, update_organization_member_privileges_for_actor,
+            update_organization_member_role, update_organization_member_visibility,
+            update_organization_profile_settings, CreateOrganizationInvitation,
+            CreateOrganizationRequest, CreateOrganizationTeam, CreatedOrganization,
+            OrganizationCreateError, OrganizationMemberPrivilegesError,
+            OrganizationMemberPrivilegesPatch, OrganizationMemberPrivilegesSettings,
+            OrganizationPeopleAdmin, OrganizationPeopleAdminError, OrganizationPeopleAdminQuery,
+            OrganizationPeopleList, OrganizationPeopleListQuery, OrganizationProfileError,
+            OrganizationProfileSettings, OrganizationProfileSettingsPatch,
+            OrganizationRepositoryList, OrganizationRepositoryListQuery, OrganizationSettingsError,
             OrganizationSlugAvailability, OrganizationTeamCreateResult, OrganizationTeamDetail,
             OrganizationTeamsDirectory, OrganizationTeamsError, OrganizationTeamsQuery,
             PublicOrganizationProfile, RenameOrganizationRequest, UpdateOrganizationMembershipRole,
@@ -56,6 +61,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/orgs/:org/settings/profile/rename",
             post(rename_profile_settings),
+        )
+        .route(
+            "/api/orgs/:org/settings/member-privileges",
+            get(get_member_privileges).patch(patch_member_privileges),
         )
         .route("/api/orgs/:org/repositories", get(public_repositories))
         .route("/api/orgs/:org/people", get(public_people))
@@ -184,6 +193,35 @@ async fn rename_profile_settings(
     let settings = rename_organization(pool, &org, actor.0.id, request)
         .await
         .map_err(map_organization_settings_error)?;
+
+    Ok(Json(settings))
+}
+
+async fn get_member_privileges(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(org): Path<String>,
+) -> Result<Json<OrganizationMemberPrivilegesSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = organization_member_privileges_for_actor(pool, &org, actor.0.id)
+        .await
+        .map_err(map_organization_member_privileges_error)?;
+
+    Ok(Json(settings))
+}
+
+async fn patch_member_privileges(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(org): Path<String>,
+    RestJson(request): RestJson<OrganizationMemberPrivilegesPatch>,
+) -> Result<Json<OrganizationMemberPrivilegesSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = update_organization_member_privileges_for_actor(pool, &org, actor.0.id, request)
+        .await
+        .map_err(map_organization_member_privileges_error)?;
 
     Ok(Json(settings))
 }
@@ -800,6 +838,41 @@ fn map_organization_settings_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal_error",
             "organization settings could not be loaded",
+        ),
+    }
+}
+
+fn map_organization_member_privileges_error(
+    error: OrganizationMemberPrivilegesError,
+) -> (StatusCode, Json<ErrorEnvelope>) {
+    match error {
+        OrganizationMemberPrivilegesError::NotFound => error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "organization member privileges were not found",
+        ),
+        OrganizationMemberPrivilegesError::Forbidden => error_response(
+            StatusCode::FORBIDDEN,
+            "forbidden",
+            "organization member privileges require owner access",
+        ),
+        OrganizationMemberPrivilegesError::Validation(message) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            message,
+        ),
+        OrganizationMemberPrivilegesError::ConfirmationRequired(fields) => {
+            error_response_with_details(
+                StatusCode::CONFLICT,
+                "confirmation_required",
+                "Confirm this organization policy change before saving.",
+                serde_json::json!({ "fields": fields, "confirmation": "confirm" }),
+            )
+        }
+        OrganizationMemberPrivilegesError::Sqlx(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "organization member privileges could not be loaded",
         ),
     }
 }

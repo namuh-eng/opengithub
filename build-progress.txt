@@ -3338,6 +3338,15 @@
 - Verification passed: `cargo fmt --all`; focused `organization_teams_contract` against `opengithub_identity_test`; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 383 web tests; mandatory Editorial banned-value scan returned zero matches.
 - Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first and the structure outline marks browser smoke optional for this phase. The local test database still reports the pre-existing dirty migration warning for `202605030041`, but the new teams contract executed and passed after continuing on the already-applied schema. `prd.json` remains `build_pass:false` because Phases 2-5 remain.
 
+2026-05-04 - org-admin-005 phase 1 owner policy API contract
+
+- Completed Phase 1 from `.qrspi/org-admin-005/structure.md`: organization member privilege settings now have a real owner-only Rust API contract without marking `org-admin-005.build_pass=true`.
+- Added `GET /api/orgs/{org}/settings/member-privileges` and `PATCH /api/orgs/{org}/settings/member-privileges` with signed-session auth, owner-only access, private organization outsider 404 privacy, default `organization_policy_settings` row creation, partial patch behavior, enum validation, confirmation-required responses for base repository and Projects permission changes, and refreshed policy responses.
+- Added member-privileges DTOs/capabilities/lock fields and redacted `organization.policy.update` audit metadata with before/after changed fields for repository creation, forking, discussions, Projects, Pages, app access, destructive toggles, issue deletion, and team creation policies.
+- Added focused `organization_member_privileges_contract` coverage for anonymous 401, member/admin forbidden access, private outsider 404, owner read defaults, invalid enum 422, confirmation_required 409 details, confirmed persistence, audit before/after metadata, and no stack/session-secret leakage.
+- Verification passed: focused `organization_member_privileges_contract`; `cargo fmt --all`; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 390 web tests; mandatory Editorial banned-value scan returned zero matches.
+- Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first and `.qrspi/org-admin-005/structure.md` marks browser smoke optional for this phase. The local test database still reports the known pre-existing dirty migration warning for `202605030041`, but the new focused contract passed. `prd.json` remains `build_pass:false` because Phases 2-5 remain.
+
 2026-05-04 - org-admin-004 phase 2 Editorial teams directory UI
 
 - Completed Phase 2 from `.qrspi/org-admin-004/structure.md`: `/orgs/{org}/teams` now renders a real Editorial organization teams directory without marking `org-admin-004.build_pass=true`.

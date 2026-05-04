@@ -4941,5 +4941,21 @@
       "Permission cascade is verified for repository authorization and detail rows; QA should stress nested team changes and concurrent repository grant edits with larger org data",
       "Email or in-app notification delivery for team mentions should be rechecked against SES/provider-backed delivery when production notification infrastructure is exercised"
     ]
+  },
+  {
+    "feature_id": "org-admin-005",
+    "tests_written": [
+      "Completed Phase 1 Owner Policy API Contract without marking org-admin-005 build_pass=true.",
+      "Added authenticated GET/PATCH /api/orgs/{org}/settings/member-privileges with owner-only access, private organization outsider 404 behavior, default policy row creation, partial patch persistence, enum validation, and confirmation-required responses for base/projects permission changes.",
+      "Focused Rust organization_member_privileges_contract covers anonymous 401, member/admin forbidden writes, private outsider 404, owner default read, invalid enum 422, confirmation_required 409 details, successful confirmed policy patch, persistent organization_policy_settings values, redacted organization.policy.update audit metadata, and no stack/session-secret leakage.",
+      "Verification passed: focused Rust contract, cargo fmt, make check, make test with Cargo tests plus 390 web tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 must verify the Editorial long member privileges settings page, per-card save behavior, confirmation dialogs, disabled policy locks, mobile no-overflow, and no dead controls.",
+      "Phase 3 must prove repository creation constraints and organization base repository permission enforcement across explicit user/team permission overrides.",
+      "Phase 4 must prove team creation, Pages publishing, discussions/forking/app/destructive policy enforcement across existing backend paths and UI affordances.",
+      "Run a real Google OAuth owner session with TEST_ACCOUNT_EMAIL once the UI exists to confirm permissions outside deterministic signed-cookie fixtures.",
+      "Stress concurrent policy writes, large organizations, policy flips while repository/team creation forms are open, and cache invalidation for base permission authorization."
+    ]
   }
 ]

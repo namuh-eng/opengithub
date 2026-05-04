@@ -255,6 +255,81 @@ pub struct OrganizationAvatarSettings {
     pub unavailable_reason: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationMemberPrivilegesSettings {
+    pub organization: OrganizationSettingsIdentity,
+    pub policies: OrganizationMemberPrivilegesPolicies,
+    pub capabilities: OrganizationPolicyCapabilities,
+    pub viewer_state: OrganizationSettingsViewerState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationMemberPrivilegesPolicies {
+    pub base_repository_permission: String,
+    pub members_can_create_public_repositories: bool,
+    pub members_can_create_private_repositories: bool,
+    pub members_can_create_internal_repositories: bool,
+    pub members_can_fork_private_repositories: bool,
+    pub repository_discussions_enabled: bool,
+    pub projects_base_permission: String,
+    pub pages_public_publishing: bool,
+    pub pages_private_publishing: bool,
+    pub app_access_request_policy: String,
+    pub members_can_change_repository_visibility: bool,
+    pub members_can_delete_repositories: bool,
+    pub members_can_transfer_repositories: bool,
+    pub members_can_delete_issues: bool,
+    pub members_can_create_teams: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationPolicyCapabilities {
+    pub can_update: bool,
+    pub requires_confirmation_fields: Vec<String>,
+    pub locks: Vec<OrganizationPolicyLock>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationPolicyLock {
+    pub field: String,
+    pub enforced_by: String,
+    pub reason: String,
+    pub href: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationPolicyAuditChange {
+    pub field: String,
+    pub before: serde_json::Value,
+    pub after: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationMemberPrivilegesPatch {
+    pub base_repository_permission: Option<String>,
+    pub members_can_create_public_repositories: Option<bool>,
+    pub members_can_create_private_repositories: Option<bool>,
+    pub members_can_create_internal_repositories: Option<bool>,
+    pub members_can_fork_private_repositories: Option<bool>,
+    pub repository_discussions_enabled: Option<bool>,
+    pub projects_base_permission: Option<String>,
+    pub pages_public_publishing: Option<bool>,
+    pub pages_private_publishing: Option<bool>,
+    pub app_access_request_policy: Option<String>,
+    pub members_can_change_repository_visibility: Option<bool>,
+    pub members_can_delete_repositories: Option<bool>,
+    pub members_can_transfer_repositories: Option<bool>,
+    pub members_can_delete_issues: Option<bool>,
+    pub members_can_create_teams: Option<bool>,
+    pub confirmation: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct OrganizationProfileSettingsPatch {
@@ -292,6 +367,20 @@ pub enum OrganizationSettingsError {
     Validation(String),
     #[error("organization slug is already taken")]
     Conflict,
+    #[error("database error")]
+    Sqlx(#[from] sqlx::Error),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum OrganizationMemberPrivilegesError {
+    #[error("organization member privileges were not found")]
+    NotFound,
+    #[error("organization member privileges require owner access")]
+    Forbidden,
+    #[error("{0}")]
+    Validation(String),
+    #[error("confirmation is required for organization policy changes")]
+    ConfirmationRequired(Vec<String>),
     #[error("database error")]
     Sqlx(#[from] sqlx::Error),
 }
@@ -1181,6 +1270,120 @@ pub async fn update_organization_profile_settings(
     organization_profile_settings(pool, slug, actor_user_id).await
 }
 
+pub async fn organization_member_privileges_for_actor(
+    pool: &PgPool,
+    slug: &str,
+    actor_user_id: Uuid,
+) -> Result<OrganizationMemberPrivilegesSettings, OrganizationMemberPrivilegesError> {
+    let row = organization_settings_row(pool, slug)
+        .await?
+        .ok_or(OrganizationMemberPrivilegesError::NotFound)?;
+    ensure_member_privileges_owner(pool, &row, actor_user_id).await?;
+    let policies = organization_member_privileges_policies(pool, row.id).await?;
+    Ok(organization_member_privileges_settings_from_parts(
+        row, policies,
+    ))
+}
+
+pub async fn update_organization_member_privileges_for_actor(
+    pool: &PgPool,
+    slug: &str,
+    actor_user_id: Uuid,
+    patch: OrganizationMemberPrivilegesPatch,
+) -> Result<OrganizationMemberPrivilegesSettings, OrganizationMemberPrivilegesError> {
+    let row = organization_settings_row(pool, slug)
+        .await?
+        .ok_or(OrganizationMemberPrivilegesError::NotFound)?;
+    ensure_member_privileges_owner(pool, &row, actor_user_id).await?;
+    ensure_organization_policy_settings(pool, row.id).await?;
+    let current = organization_member_privileges_policies(pool, row.id).await?;
+    let next = apply_member_privileges_patch(&current, &patch)?;
+    let changes = member_privileges_changes(&current, &next);
+    let required_confirmation = member_privileges_confirmation_fields(&current, &next);
+    if !required_confirmation.is_empty()
+        && !patch
+            .confirmation
+            .as_deref()
+            .is_some_and(|value| value.trim().eq_ignore_ascii_case("confirm"))
+    {
+        return Err(OrganizationMemberPrivilegesError::ConfirmationRequired(
+            required_confirmation,
+        ));
+    }
+
+    if changes.is_empty() {
+        return Ok(organization_member_privileges_settings_from_parts(
+            row, current,
+        ));
+    }
+
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        r#"
+        UPDATE organization_policy_settings
+        SET base_repository_permission = $2,
+            members_can_create_public_repositories = $3,
+            members_can_create_private_repositories = $4,
+            members_can_create_internal_repositories = $5,
+            members_can_fork_private_repositories = $6,
+            repository_discussions_enabled = $7,
+            projects_base_permission = $8,
+            pages_public_publishing = $9,
+            pages_private_publishing = $10,
+            app_access_request_policy = $11,
+            members_can_change_repository_visibility = $12,
+            members_can_delete_repositories = $13,
+            members_can_transfer_repositories = $14,
+            members_can_delete_issues = $15,
+            members_can_create_teams = $16
+        WHERE organization_id = $1
+        "#,
+    )
+    .bind(row.id)
+    .bind(&next.base_repository_permission)
+    .bind(next.members_can_create_public_repositories)
+    .bind(next.members_can_create_private_repositories)
+    .bind(next.members_can_create_internal_repositories)
+    .bind(next.members_can_fork_private_repositories)
+    .bind(next.repository_discussions_enabled)
+    .bind(&next.projects_base_permission)
+    .bind(next.pages_public_publishing)
+    .bind(next.pages_private_publishing)
+    .bind(&next.app_access_request_policy)
+    .bind(next.members_can_change_repository_visibility)
+    .bind(next.members_can_delete_repositories)
+    .bind(next.members_can_transfer_repositories)
+    .bind(next.members_can_delete_issues)
+    .bind(next.members_can_create_teams)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO organization_audit_events (
+            organization_id, actor_user_id, event_type, metadata
+        )
+        VALUES ($1, $2, 'organization.policy.update', $3)
+        "#,
+    )
+    .bind(row.id)
+    .bind(actor_user_id)
+    .bind(json!({
+        "slug": row.slug,
+        "changedFields": changes.iter().map(|change| change.field.clone()).collect::<Vec<_>>(),
+        "changes": changes,
+        "redacted": []
+    }))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let refreshed = organization_member_privileges_policies(pool, row.id).await?;
+    Ok(organization_member_privileges_settings_from_parts(
+        row, refreshed,
+    ))
+}
+
 pub async fn rename_organization(
     pool: &PgPool,
     slug: &str,
@@ -1552,6 +1755,322 @@ async fn ensure_organization_owner(
         Ok(())
     } else {
         Err(OrganizationSettingsError::Forbidden)
+    }
+}
+
+async fn ensure_member_privileges_owner(
+    pool: &PgPool,
+    row: &OrganizationSettingsRow,
+    actor_user_id: Uuid,
+) -> Result<(), OrganizationMemberPrivilegesError> {
+    let role = viewer_role(pool, row.id, Some(actor_user_id)).await?;
+    if row.profile_visibility == "private" && role.is_none() {
+        return Err(OrganizationMemberPrivilegesError::NotFound);
+    }
+    if role.as_deref() == Some("owner") {
+        Ok(())
+    } else {
+        Err(OrganizationMemberPrivilegesError::Forbidden)
+    }
+}
+
+async fn ensure_organization_policy_settings(
+    pool: &PgPool,
+    organization_id: Uuid,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO organization_policy_settings (organization_id)
+        VALUES ($1)
+        ON CONFLICT (organization_id) DO NOTHING
+        "#,
+    )
+    .bind(organization_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn organization_member_privileges_policies(
+    pool: &PgPool,
+    organization_id: Uuid,
+) -> Result<OrganizationMemberPrivilegesPolicies, sqlx::Error> {
+    ensure_organization_policy_settings(pool, organization_id).await?;
+    let row = sqlx::query(
+        r#"
+        SELECT base_repository_permission,
+               members_can_create_public_repositories,
+               members_can_create_private_repositories,
+               members_can_create_internal_repositories,
+               members_can_fork_private_repositories,
+               repository_discussions_enabled,
+               projects_base_permission,
+               pages_public_publishing,
+               pages_private_publishing,
+               app_access_request_policy,
+               members_can_change_repository_visibility,
+               members_can_delete_repositories,
+               members_can_transfer_repositories,
+               members_can_delete_issues,
+               members_can_create_teams
+        FROM organization_policy_settings
+        WHERE organization_id = $1
+        "#,
+    )
+    .bind(organization_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(OrganizationMemberPrivilegesPolicies {
+        base_repository_permission: row.get("base_repository_permission"),
+        members_can_create_public_repositories: row.get("members_can_create_public_repositories"),
+        members_can_create_private_repositories: row.get("members_can_create_private_repositories"),
+        members_can_create_internal_repositories: row
+            .get("members_can_create_internal_repositories"),
+        members_can_fork_private_repositories: row.get("members_can_fork_private_repositories"),
+        repository_discussions_enabled: row.get("repository_discussions_enabled"),
+        projects_base_permission: row.get("projects_base_permission"),
+        pages_public_publishing: row.get("pages_public_publishing"),
+        pages_private_publishing: row.get("pages_private_publishing"),
+        app_access_request_policy: row.get("app_access_request_policy"),
+        members_can_change_repository_visibility: row
+            .get("members_can_change_repository_visibility"),
+        members_can_delete_repositories: row.get("members_can_delete_repositories"),
+        members_can_transfer_repositories: row.get("members_can_transfer_repositories"),
+        members_can_delete_issues: row.get("members_can_delete_issues"),
+        members_can_create_teams: row.get("members_can_create_teams"),
+    })
+}
+
+fn organization_member_privileges_settings_from_parts(
+    row: OrganizationSettingsRow,
+    policies: OrganizationMemberPrivilegesPolicies,
+) -> OrganizationMemberPrivilegesSettings {
+    let slug = row.slug;
+    OrganizationMemberPrivilegesSettings {
+        organization: OrganizationSettingsIdentity {
+            id: row.id,
+            slug: slug.clone(),
+            name: row.display_name,
+            href: format!("/orgs/{slug}"),
+            settings_href: format!("/organizations/{slug}/settings/member_privileges"),
+        },
+        policies,
+        capabilities: OrganizationPolicyCapabilities {
+            can_update: true,
+            requires_confirmation_fields: vec![
+                "baseRepositoryPermission".to_owned(),
+                "projectsBasePermission".to_owned(),
+            ],
+            locks: Vec::new(),
+        },
+        viewer_state: OrganizationSettingsViewerState {
+            role: "owner".to_owned(),
+            can_edit_profile: true,
+            can_rename: false,
+            can_archive: false,
+            can_delete: false,
+        },
+    }
+}
+
+fn apply_member_privileges_patch(
+    current: &OrganizationMemberPrivilegesPolicies,
+    patch: &OrganizationMemberPrivilegesPatch,
+) -> Result<OrganizationMemberPrivilegesPolicies, OrganizationMemberPrivilegesError> {
+    let mut next = current.clone();
+    if let Some(value) = &patch.base_repository_permission {
+        next.base_repository_permission = normalize_policy_permission(value)?;
+    }
+    if let Some(value) = patch.members_can_create_public_repositories {
+        next.members_can_create_public_repositories = value;
+    }
+    if let Some(value) = patch.members_can_create_private_repositories {
+        next.members_can_create_private_repositories = value;
+    }
+    if let Some(value) = patch.members_can_create_internal_repositories {
+        next.members_can_create_internal_repositories = value;
+    }
+    if let Some(value) = patch.members_can_fork_private_repositories {
+        next.members_can_fork_private_repositories = value;
+    }
+    if let Some(value) = patch.repository_discussions_enabled {
+        next.repository_discussions_enabled = value;
+    }
+    if let Some(value) = &patch.projects_base_permission {
+        next.projects_base_permission = normalize_policy_permission(value)?;
+    }
+    if let Some(value) = patch.pages_public_publishing {
+        next.pages_public_publishing = value;
+    }
+    if let Some(value) = patch.pages_private_publishing {
+        next.pages_private_publishing = value;
+    }
+    if let Some(value) = &patch.app_access_request_policy {
+        next.app_access_request_policy = normalize_app_access_policy(value)?;
+    }
+    if let Some(value) = patch.members_can_change_repository_visibility {
+        next.members_can_change_repository_visibility = value;
+    }
+    if let Some(value) = patch.members_can_delete_repositories {
+        next.members_can_delete_repositories = value;
+    }
+    if let Some(value) = patch.members_can_transfer_repositories {
+        next.members_can_transfer_repositories = value;
+    }
+    if let Some(value) = patch.members_can_delete_issues {
+        next.members_can_delete_issues = value;
+    }
+    if let Some(value) = patch.members_can_create_teams {
+        next.members_can_create_teams = value;
+    }
+    Ok(next)
+}
+
+fn normalize_policy_permission(value: &str) -> Result<String, OrganizationMemberPrivilegesError> {
+    let value = value.trim().to_ascii_lowercase();
+    match value.as_str() {
+        "none" | "read" | "write" | "admin" => Ok(value),
+        _ => Err(OrganizationMemberPrivilegesError::Validation(
+            "Policy permission must be none, read, write, or admin.".to_owned(),
+        )),
+    }
+}
+
+fn normalize_app_access_policy(value: &str) -> Result<String, OrganizationMemberPrivilegesError> {
+    let value = value.trim().to_ascii_lowercase();
+    match value.as_str() {
+        "owners_only" | "owners_and_members" => Ok(value),
+        _ => Err(OrganizationMemberPrivilegesError::Validation(
+            "App access request policy must be owners_only or owners_and_members.".to_owned(),
+        )),
+    }
+}
+
+fn member_privileges_confirmation_fields(
+    current: &OrganizationMemberPrivilegesPolicies,
+    next: &OrganizationMemberPrivilegesPolicies,
+) -> Vec<String> {
+    let mut fields = Vec::new();
+    if current.base_repository_permission != next.base_repository_permission {
+        fields.push("baseRepositoryPermission".to_owned());
+    }
+    if current.projects_base_permission != next.projects_base_permission {
+        fields.push("projectsBasePermission".to_owned());
+    }
+    fields
+}
+
+fn member_privileges_changes(
+    current: &OrganizationMemberPrivilegesPolicies,
+    next: &OrganizationMemberPrivilegesPolicies,
+) -> Vec<OrganizationPolicyAuditChange> {
+    let mut changes = Vec::new();
+    push_policy_change(
+        &mut changes,
+        "baseRepositoryPermission",
+        json!(current.base_repository_permission),
+        json!(next.base_repository_permission),
+    );
+    push_policy_change(
+        &mut changes,
+        "membersCanCreatePublicRepositories",
+        json!(current.members_can_create_public_repositories),
+        json!(next.members_can_create_public_repositories),
+    );
+    push_policy_change(
+        &mut changes,
+        "membersCanCreatePrivateRepositories",
+        json!(current.members_can_create_private_repositories),
+        json!(next.members_can_create_private_repositories),
+    );
+    push_policy_change(
+        &mut changes,
+        "membersCanCreateInternalRepositories",
+        json!(current.members_can_create_internal_repositories),
+        json!(next.members_can_create_internal_repositories),
+    );
+    push_policy_change(
+        &mut changes,
+        "membersCanForkPrivateRepositories",
+        json!(current.members_can_fork_private_repositories),
+        json!(next.members_can_fork_private_repositories),
+    );
+    push_policy_change(
+        &mut changes,
+        "repositoryDiscussionsEnabled",
+        json!(current.repository_discussions_enabled),
+        json!(next.repository_discussions_enabled),
+    );
+    push_policy_change(
+        &mut changes,
+        "projectsBasePermission",
+        json!(current.projects_base_permission),
+        json!(next.projects_base_permission),
+    );
+    push_policy_change(
+        &mut changes,
+        "pagesPublicPublishing",
+        json!(current.pages_public_publishing),
+        json!(next.pages_public_publishing),
+    );
+    push_policy_change(
+        &mut changes,
+        "pagesPrivatePublishing",
+        json!(current.pages_private_publishing),
+        json!(next.pages_private_publishing),
+    );
+    push_policy_change(
+        &mut changes,
+        "appAccessRequestPolicy",
+        json!(current.app_access_request_policy),
+        json!(next.app_access_request_policy),
+    );
+    push_policy_change(
+        &mut changes,
+        "membersCanChangeRepositoryVisibility",
+        json!(current.members_can_change_repository_visibility),
+        json!(next.members_can_change_repository_visibility),
+    );
+    push_policy_change(
+        &mut changes,
+        "membersCanDeleteRepositories",
+        json!(current.members_can_delete_repositories),
+        json!(next.members_can_delete_repositories),
+    );
+    push_policy_change(
+        &mut changes,
+        "membersCanTransferRepositories",
+        json!(current.members_can_transfer_repositories),
+        json!(next.members_can_transfer_repositories),
+    );
+    push_policy_change(
+        &mut changes,
+        "membersCanDeleteIssues",
+        json!(current.members_can_delete_issues),
+        json!(next.members_can_delete_issues),
+    );
+    push_policy_change(
+        &mut changes,
+        "membersCanCreateTeams",
+        json!(current.members_can_create_teams),
+        json!(next.members_can_create_teams),
+    );
+    changes
+}
+
+fn push_policy_change(
+    changes: &mut Vec<OrganizationPolicyAuditChange>,
+    field: &str,
+    before: serde_json::Value,
+    after: serde_json::Value,
+) {
+    if before != after {
+        changes.push(OrganizationPolicyAuditChange {
+            field: field.to_owned(),
+            before,
+            after,
+        });
     }
 }
 
