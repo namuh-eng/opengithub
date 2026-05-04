@@ -3209,6 +3209,12 @@
 
 2026-05-04 - org-admin-001 structure outline
 
+2026-05-04 - commits-001 structure outline
+
+- Created `.qrspi/commits-001/structure.md` for the first incomplete PRD feature, splitting repository commit history into five vertical phases: screen-ready grouped commit-list API contract, Editorial default commit history page, branch/tag selector, author/date filters, and final docs/browser/QA/build-pass bookkeeping.
+- No source implementation was started because `commits-001.needs_structure=true` and the build-loop contract requires the structure outline first, then `<promise>NEXT</promise>`.
+- Verified `commits-001.build_pass=false`, `qa_pass=false`, no existing `.qrspi/commits-001/structure.md` was present before this pass, and all structure phases remain unchecked for the next invocation.
+
 - Created `.qrspi/org-admin-001/structure.md` for the first incomplete PRD feature, splitting the organization creation flow into five vertical phases: API contract, Editorial plan picker with live slug validation, end-to-end submit/redirect, UX guardrails/defaults, and final docs/browser/QA/build-pass bookkeeping.
 - No source implementation was started because `org-admin-001.needs_structure=true` and the build-loop contract requires the structure outline first, then `<promise>NEXT</promise>`.
 - Verified `org-admin-001.build_pass=false`, `qa_pass=false`, and all structure phases remain unchecked for the next invocation.
