@@ -93,7 +93,9 @@ function seedTraffic(repositoryHref: string) {
       )
       SELECT id, current_date - interval '1 day', 'https://search.opengithub.local/results?q=traffic', 24, 10 FROM target_repo
       UNION ALL
-      SELECT id, current_date - interval '1 day', 'https://example.com/docs', 12, 6 FROM target_repo;
+      SELECT id, current_date - interval '1 day', 'https://example.com/docs', 12, 6 FROM target_repo
+      UNION ALL
+      SELECT id, current_date - interval '1 day', 'https://very-long-referrer.example.com/docs/product/analytics/traffic/reports/2026/05/that-keeps-wrapping-in-the-table', 5, 2 FROM target_repo;
 
       WITH target_repo AS (
         SELECT repositories.id
@@ -109,7 +111,9 @@ function seedTraffic(repositoryHref: string) {
       )
       SELECT id, current_date - interval '1 day', 'README.md', 'README', 30, 12 FROM target_repo
       UNION ALL
-      SELECT id, current_date - interval '1 day', 'src/main.rs', 'Application entrypoint', 16, 7 FROM target_repo;
+      SELECT id, current_date - interval '1 day', 'src/main.rs', 'Application entrypoint', 16, 7 FROM target_repo
+      UNION ALL
+      SELECT id, current_date - interval '1 day', 'docs/product/analytics/traffic/reports/2026/05/very-long-file-name.md', 'Very long traffic report', 5, 2 FROM target_repo;
       `,
     ],
     { stdio: "ignore" },
@@ -159,6 +163,10 @@ test("repository Traffic renders traffic analytics and concrete links", async ({
   await expect(
     page.locator(".chip.active", { hasText: "Last 14 days" }),
   ).toBeVisible();
+  await expect(page.locator(".chip", { hasText: "active days" })).toBeVisible();
+  await expect(
+    page.locator(".chip", { hasText: "Internal traffic excluded" }),
+  ).toBeVisible();
   await expect(page.getByLabel("Traffic summary metrics")).toBeVisible();
   await expect(
     page.getByRole("img", { name: "Clones line chart" }),
@@ -193,11 +201,19 @@ test("repository Traffic renders traffic analytics and concrete links", async ({
   await expect(
     page.getByRole("link", { name: "Application entrypoint" }),
   ).toHaveAttribute("href", /\/blob\/.*src\/main\.rs$/);
+  await expect(
+    page.getByRole("link", {
+      name: "https://very-long-referrer.example.com/docs/product/analytics/traffic/reports/2026/05/that-keeps-wrapping-in-the-table",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Very long traffic report" }),
+  ).toHaveAttribute("href", /very-long-file-name\.md$/);
 
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/insights-003-phase3-chart-focus.jpg",
+    path: "../ralph/screenshots/build/insights-003-phase4-edge-cases.jpg",
   });
 
   await page.setViewportSize({ width: 390, height: 844 });

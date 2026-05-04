@@ -2671,6 +2671,7 @@ export type RepositoryTrafficWindow = {
   visitorsUpdateCadence: string;
   referrersUpdateCadence: string;
   popularContentUpdateCadence: string;
+  internalTrafficExcluded: boolean;
 };
 
 export type RepositoryTrafficSummary = {
@@ -2680,6 +2681,8 @@ export type RepositoryTrafficSummary = {
   visitorsUnique: number;
   referrersTotal: number;
   popularContentTotal: number;
+  activeDays: number;
+  hasTraffic: boolean;
 };
 
 export type RepositoryTrafficSeriesPoint = {

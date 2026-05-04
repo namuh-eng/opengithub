@@ -52,6 +52,13 @@ function formatRelativeTime(value: string) {
   return "just now";
 }
 
+function safeExternalHref(value: string) {
+  return value
+    .replaceAll("<", "%3C")
+    .replaceAll(">", "%3E")
+    .replaceAll('"', "%22");
+}
+
 function TrafficMetric({
   label,
   total,
@@ -106,7 +113,7 @@ function TrafficRows({ traffic }: { traffic: RepositoryTrafficView }) {
               <div className="min-w-0 flex-1">
                 <a
                   className="break-words t-sm font-semibold hover:underline"
-                  href={referrer.href}
+                  href={safeExternalHref(referrer.href)}
                   rel="noopener noreferrer"
                   target="_blank"
                 >
@@ -188,6 +195,38 @@ function TrafficRows({ traffic }: { traffic: RepositoryTrafficView }) {
   );
 }
 
+function NoTrafficNotice({
+  commitHistoryHref,
+  traffic,
+}: {
+  commitHistoryHref: string;
+  traffic: RepositoryTrafficView;
+}) {
+  if (traffic.summaries.hasTraffic) return null;
+
+  return (
+    <section className="card p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="max-w-2xl">
+          <p className="t-label" style={{ color: "var(--ink-3)" }}>
+            No traffic yet
+          </p>
+          <h2 className="t-h2 mt-2" style={{ color: "var(--ink-1)" }}>
+            This repository has no recorded traffic in the current window.
+          </h2>
+          <p className="t-sm mt-2" style={{ color: "var(--ink-3)" }}>
+            The charts stay at zero until clone, visitor, referrer, or content
+            rollups arrive for the selected UTC range.
+          </p>
+        </div>
+        <Link className="btn" href={commitHistoryHref}>
+          Review commits
+        </Link>
+      </div>
+    </section>
+  );
+}
+
 function TrafficReadyPage({
   repository,
   traffic,
@@ -234,14 +273,30 @@ function TrafficReadyPage({
           </div>
           <div className="flex flex-wrap gap-2">
             <span className="chip active">{traffic.window.label}</span>
+            <span className="chip soft">
+              <span className="t-num">
+                {formatNumber(traffic.summaries.activeDays)}
+              </span>{" "}
+              active days
+            </span>
             <span className={traffic.snapshot.stale ? "chip warn" : "chip ok"}>
               {traffic.snapshot.stale ? "Stale snapshot" : "Fresh snapshot"}
+            </span>
+            <span className="chip info">
+              {traffic.window.internalTrafficExcluded
+                ? "Internal traffic excluded"
+                : "Raw traffic"}
             </span>
             <Link className="btn primary" href={commitHistoryHref}>
               Commit history
             </Link>
           </div>
         </section>
+
+        <NoTrafficNotice
+          commitHistoryHref={commitHistoryHref}
+          traffic={traffic}
+        />
 
         <section
           aria-label="Traffic summary metrics"

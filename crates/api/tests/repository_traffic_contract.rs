@@ -210,6 +210,8 @@ async fn repository_traffic_returns_push_access_analytics_privacy_and_cache_meta
         VALUES
             ($1, $2, 'docs.opengithub.local', 30, 12),
             ($1, $3, 'https://search.opengithub.local/results?q=traffic', 18, 9),
+            ($1, $2, 'zzz.example.com/traffic-tie', 5, 2),
+            ($1, $2, 'aaa.example.com/traffic-tie', 5, 2),
             ($1, $4, 'stale.opengithub.local', 99, 80)
         "#,
     )
@@ -228,6 +230,7 @@ async fn repository_traffic_returns_push_access_analytics_privacy_and_cache_meta
         VALUES
             ($1, $2, 'src/lib.rs', 'Library entrypoint', 45, 20),
             ($1, $3, 'docs/traffic report.md', 'Traffic report', 16, 7),
+            ($1, $2, 'docs/very/long/path/that/should/remain/linkable/and/sorted/<script>alert(1)</script>.md', 'Long traffic report <script>alert(1)</script>', 5, 2),
             ($1, $4, 'stale.md', 'Stale page', 88, 22)
         "#,
     )
@@ -295,12 +298,15 @@ async fn repository_traffic_returns_push_access_analytics_privacy_and_cache_meta
     assert_eq!(body["window"]["dayCount"], 14);
     assert_eq!(body["window"]["clonesUpdateCadence"], "hourly");
     assert_eq!(body["window"]["referrersUpdateCadence"], "daily");
+    assert_eq!(body["window"]["internalTrafficExcluded"], true);
     assert_eq!(body["summaries"]["clonesTotal"], 22);
     assert_eq!(body["summaries"]["clonesUnique"], 10);
     assert_eq!(body["summaries"]["visitorsTotal"], 113);
     assert_eq!(body["summaries"]["visitorsUnique"], 52);
-    assert_eq!(body["summaries"]["referrersTotal"], 48);
-    assert_eq!(body["summaries"]["popularContentTotal"], 61);
+    assert_eq!(body["summaries"]["referrersTotal"], 58);
+    assert_eq!(body["summaries"]["popularContentTotal"], 66);
+    assert_eq!(body["summaries"]["activeDays"], 2);
+    assert_eq!(body["summaries"]["hasTraffic"], true);
     assert_eq!(body["clones"].as_array().expect("clone series").len(), 14);
     assert_eq!(
         body["visitors"].as_array().expect("visitor series").len(),
@@ -320,12 +326,24 @@ async fn repository_traffic_returns_push_access_analytics_privacy_and_cache_meta
         body["referrers"][1]["href"],
         "https://search.opengithub.local/results?q=traffic"
     );
+    assert_eq!(
+        body["referrers"][2]["referrer"],
+        "aaa.example.com/traffic-tie"
+    );
+    assert_eq!(
+        body["referrers"][3]["referrer"],
+        "zzz.example.com/traffic-tie"
+    );
     assert_eq!(body["popularContent"][0]["path"], "src/lib.rs");
     assert_eq!(body["popularContent"][0]["title"], "Library entrypoint");
     assert!(body["popularContent"][1]["href"]
         .as_str()
         .expect("content href")
         .contains("/blob/release%2Fmain/docs/traffic%20report.md"));
+    assert!(body["popularContent"][2]["path"]
+        .as_str()
+        .expect("long path")
+        .contains("<script>alert(1)</script>"));
     assert_eq!(body["snapshot"]["stale"], false);
     assert!(body["snapshot"]["cacheKey"]
         .as_str()
@@ -393,5 +411,7 @@ async fn repository_traffic_returns_push_access_analytics_privacy_and_cache_meta
     .await;
     assert_eq!(owner_status, StatusCode::OK);
     assert_eq!(owner_body["summaries"]["clonesTotal"], 0);
+    assert_eq!(owner_body["summaries"]["activeDays"], 0);
+    assert_eq!(owner_body["summaries"]["hasTraffic"], false);
     assert_eq!(owner_body["referrers"].as_array().unwrap().len(), 0);
 }

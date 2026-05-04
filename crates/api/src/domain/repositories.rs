@@ -1112,6 +1112,7 @@ pub struct RepositoryTrafficWindow {
     pub visitors_update_cadence: String,
     pub referrers_update_cadence: String,
     pub popular_content_update_cadence: String,
+    pub internal_traffic_excluded: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1123,6 +1124,8 @@ pub struct RepositoryTrafficSummary {
     pub visitors_unique: i64,
     pub referrers_total: i64,
     pub popular_content_total: i64,
+    pub active_days: i64,
+    pub has_traffic: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -8766,6 +8769,19 @@ async fn repository_traffic_for_repository(
         visitors_unique: visitors.iter().map(|point| point.unique).sum(),
         referrers_total: referrers.iter().map(|row| row.total_views).sum(),
         popular_content_total: popular_content.iter().map(|row| row.total_views).sum(),
+        active_days: clones
+            .iter()
+            .zip(visitors.iter())
+            .filter(|(clone_point, visitor_point)| clone_point.total > 0 || visitor_point.total > 0)
+            .count() as i64,
+        has_traffic: false,
+    };
+    let summaries = RepositoryTrafficSummary {
+        has_traffic: summaries.clones_total > 0
+            || summaries.visitors_total > 0
+            || summaries.referrers_total > 0
+            || summaries.popular_content_total > 0,
+        ..summaries
     };
     let snapshot = record_repository_traffic_snapshot(
         pool,
@@ -8796,6 +8812,7 @@ async fn repository_traffic_for_repository(
             visitors_update_cadence: "hourly".to_owned(),
             referrers_update_cadence: "daily".to_owned(),
             popular_content_update_cadence: "daily".to_owned(),
+            internal_traffic_excluded: true,
         },
         summaries,
         clones,
@@ -8894,10 +8911,14 @@ async fn repository_traffic_popular_content(
 
 fn traffic_referrer_href(referrer: &str) -> String {
     let trimmed = referrer.trim();
-    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-        trimmed.to_owned()
+    let safe = trimmed
+        .replace('<', "%3C")
+        .replace('>', "%3E")
+        .replace('"', "%22");
+    if safe.starts_with("http://") || safe.starts_with("https://") {
+        safe
     } else {
-        format!("https://{trimmed}")
+        format!("https://{safe}")
     }
 }
 
@@ -8926,6 +8947,8 @@ async fn record_repository_traffic_snapshot(
         "visitorsUnique": summaries.visitors_unique,
         "referrersTotal": summaries.referrers_total,
         "popularContentTotal": summaries.popular_content_total,
+        "activeDays": summaries.active_days,
+        "hasTraffic": summaries.has_traffic,
     });
     let row = sqlx::query(
         r#"

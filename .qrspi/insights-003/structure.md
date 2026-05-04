@@ -57,7 +57,7 @@
 
 ## Phase 4: Permission, Freshness, and Bounded Edge Cases
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Harden Traffic for repositories with no traffic, sparse days, bot/internal traffic exclusions, long referrer domains, long content paths, private repositories, and users without push access. Every visible action should either navigate to a real page or show a truthful unavailable state.
 

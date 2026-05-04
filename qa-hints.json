@@ -5491,5 +5491,22 @@
       "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
       "The make test-e2e wrapper again produced no output while child processes ran and was terminated; the direct full Playwright suite passed 127 tests as equivalent browser evidence."
     ]
+  },
+  {
+    "feature_id": "insights-003",
+    "tests_written": [
+      "Completed Phase 4 Permission, Freshness, and Bounded Edge Cases without marking insights-003 build_pass=true.",
+      "Extended the Traffic API response with activeDays, hasTraffic, and internalTrafficExcluded metadata while preserving 14-day sparse-window zero filling and push-access privacy.",
+      "Hardened RepositoryTrafficPage with no-traffic recovery, active-day and internal-traffic chips, safe external href encoding for dangerous characters, long-label wrapping assertions, and no unsafe markup.",
+      "Extended Rust contract coverage for tied referrer ordering, long content dimensions with unsafe-looking text, private repository privacy, read-only 403 without count leakage, zero-traffic public owner view, cache persistence, and no secret leakage.",
+      "Extended Playwright Traffic smoke with long referrer/content rows, chart focus/hover, safe link checks, no dead controls, mobile no-overflow, and screenshot ralph/screenshots/build/insights-003-phase4-edge-cases.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 5 still needs API docs, final browser evidence, final QA handoff, and build_pass bookkeeping.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Exercise read-only and public zero-traffic states in a browser fixture with distinct non-admin users; Rust and component coverage assert the behavior, while the focused browser smoke uses an owner fixture.",
+      "Stress bot/internal traffic exclusion against real ingestion once clone/request rollup jobs exist; this phase surfaces internalTrafficExcluded metadata but does not build ingestion pipelines.",
+      "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema."
+    ]
   }
 ]

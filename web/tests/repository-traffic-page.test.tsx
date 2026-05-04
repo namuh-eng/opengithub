@@ -76,6 +76,7 @@ function trafficView(
       visitorsUpdateCadence: "hourly",
       referrersUpdateCadence: "daily",
       popularContentUpdateCadence: "daily",
+      internalTrafficExcluded: true,
     },
     summaries: {
       clonesTotal: 42,
@@ -84,6 +85,8 @@ function trafficView(
       visitorsUnique: 87,
       referrersTotal: 2,
       popularContentTotal: 2,
+      activeDays: 3,
+      hasTraffic: true,
     },
     clones: [
       { date: "2026-05-05", total: 10, unique: 3 },
@@ -157,6 +160,8 @@ describe("RepositoryTrafficPage", () => {
       1,
     );
     expect(screen.getByText("Fresh snapshot")).toBeVisible();
+    expect(screen.getByText("Internal traffic excluded")).toBeVisible();
+    expect(screen.getByText("active days")).toBeVisible();
     expect(
       screen.getByRole("link", { name: "Commit history" }),
     ).toHaveAttribute("href", "/namuh-eng/opengithub/commits/main");
@@ -286,6 +291,8 @@ describe("RepositoryTrafficPage", () => {
               visitorsUnique: 0,
               referrersTotal: 0,
               popularContentTotal: 0,
+              activeDays: 0,
+              hasTraffic: false,
             },
             clones: [
               { date: "2026-05-06", total: 0, unique: 0 },
@@ -308,5 +315,60 @@ describe("RepositoryTrafficPage", () => {
     expect(
       screen.getByText("No repository paths were viewed during this window."),
     ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "This repository has no recorded traffic in the current window.",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Review commits" }),
+    ).toHaveAttribute("href", "/namuh-eng/opengithub/commits/main");
+  });
+
+  it("wraps long dimensions and never renders unsafe traffic text as markup", () => {
+    const longReferrer =
+      "https://example.com/really/long/referrer/path/that/keeps/wrapping/instead/of/overflowing?q=<script>alert(1)</script>";
+    const longPath =
+      "docs/product/analytics/traffic/reports/2026/05/very-long-file-name-with-markup-<script>alert(1)</script>.md";
+
+    const { container } = render(
+      <RepositoryTrafficPage
+        repository={repositoryOverview()}
+        trafficResult={{
+          ok: true,
+          traffic: trafficView({
+            referrers: [
+              {
+                referrer: longReferrer,
+                href: longReferrer,
+                totalViews: 9,
+                uniqueVisitors: 4,
+              },
+            ],
+            popularContent: [
+              {
+                path: longPath,
+                title: longPath,
+                href: `/namuh-eng/opengithub/blob/main/${encodeURIComponent(longPath)}`,
+                totalViews: 8,
+                uniqueVisitors: 3,
+              },
+            ],
+          }),
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: longReferrer })).toHaveClass(
+      "break-words",
+    );
+    expect(screen.getByRole("link", { name: longPath })).toHaveClass(
+      "break-words",
+    );
+    expect(screen.getAllByText(longPath)[1]?.parentElement).toHaveClass(
+      "break-all",
+    );
+    expect(container.querySelector("script")).toBeNull();
+    expect(container.innerHTML).not.toContain("<script>alert(1)</script>");
   });
 });
