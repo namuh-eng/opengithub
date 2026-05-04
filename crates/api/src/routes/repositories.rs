@@ -74,8 +74,9 @@ use crate::{
         repository_overview_for_viewer_by_owner_name,
         repository_path_overview_for_actor_by_owner_name, repository_pulse_for_actor_by_owner_name,
         repository_refs_for_actor_by_owner_name, repository_settings_for_actor_by_owner_name,
-        repository_watch_settings_by_owner_name, set_repository_star_by_owner_name,
-        set_repository_watch_by_owner_name, update_repository_branch_rule_by_owner_name,
+        repository_traffic_for_actor_by_owner_name, repository_watch_settings_by_owner_name,
+        set_repository_star_by_owner_name, set_repository_watch_by_owner_name,
+        update_repository_branch_rule_by_owner_name,
         update_repository_collaborator_access_by_owner_name,
         update_repository_ruleset_by_owner_name, update_repository_settings_by_owner_name,
         update_repository_team_access_by_owner_name,
@@ -85,7 +86,8 @@ use crate::{
         RepositoryCommitDetailContextQuery, RepositoryCommitHistoryQuery,
         RepositoryContributorsQuery, RepositoryError, RepositoryFileFinderQuery, RepositoryOwner,
         RepositoryPathQuery, RepositoryPulseQuery, RepositoryRefsQuery, RepositoryRulesetMutation,
-        RepositorySettingsPatch, RepositoryVisibility, RepositoryWatchSettingsPatch,
+        RepositorySettingsPatch, RepositoryTrafficQuery, RepositoryVisibility,
+        RepositoryWatchSettingsPatch,
     },
     domain::webhooks::{
         create_repository_webhook_by_owner_name, delete_repository_webhook_by_owner_name,
@@ -116,6 +118,7 @@ pub fn router() -> Router<AppState> {
         .route("/:owner/:repo/branches/activity", get(branch_activity))
         .route("/:owner/:repo/pulse", get(pulse))
         .route("/:owner/:repo/graphs/contributors", get(contributors))
+        .route("/:owner/:repo/graphs/traffic", get(traffic))
         .route("/:owner/:repo/refs", get(refs))
         .route("/:owner/:repo/file-finder", get(file_finder))
         .route("/:owner/:repo/releases", get(releases).post(create_release))
@@ -875,6 +878,33 @@ async fn contributors(
             start: query.start.as_deref(),
             end: query.end.as_deref(),
         },
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn traffic(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = repository_traffic_for_actor_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        RepositoryTrafficQuery,
     )
     .await
     .map_err(map_repository_error)?
@@ -2498,6 +2528,15 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         RepositoryError::OwnerPermissionDenied | RepositoryError::PermissionDenied => {
             error_response(StatusCode::FORBIDDEN, "forbidden", error.to_string())
         }
+        RepositoryError::TrafficAccessDenied => error_response_with_details(
+            StatusCode::FORBIDDEN,
+            "traffic_access_required",
+            "Repository traffic is available to users with push access.".to_owned(),
+            json!({
+                "requiredPermission": "write",
+                "countsVisible": false,
+            }),
+        ),
         RepositoryError::OrganizationRepositoryCreationPolicy {
             visibility,
             reason,

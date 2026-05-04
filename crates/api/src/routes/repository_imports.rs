@@ -147,7 +147,9 @@ fn map_import_error(error: RepositoryImportError) -> (StatusCode, Json<ErrorEnve
 
 fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelope>) {
     match error {
-        RepositoryError::OwnerPermissionDenied | RepositoryError::PermissionDenied => {
+        RepositoryError::OwnerPermissionDenied
+        | RepositoryError::PermissionDenied
+        | RepositoryError::TrafficAccessDenied => {
             error_response(StatusCode::FORBIDDEN, "forbidden", error.to_string())
         }
         RepositoryError::OrganizationRepositoryCreationPolicy {

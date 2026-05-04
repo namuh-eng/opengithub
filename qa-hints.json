@@ -5444,5 +5444,21 @@
       "Run keyboard-only and screen-reader traversal through the Contributors period menu, range sliders, CSV actions, chart/table fallback, contributor profile links, commit-total links, empty-state links, Insights sidebar, and mobile layout.",
       "Verify read-only repository permissions in browser with a non-admin member; unit/API coverage asserts privacy and access shape, but the focused signed-session smoke uses an owner fixture."
     ]
+  },
+  {
+    "feature_id": "insights-003",
+    "tests_written": [
+      "Completed Phase 1 Traffic API Contract and Rollup Storage without marking insights-003 build_pass=true.",
+      "Added additive repository_traffic_daily, repository_referrers_daily, and repository_popular_content_daily migrations, plus 14d support in shared insight snapshot/recent-view period checks.",
+      "Added authenticated GET /api/repos/{owner}/{repo}/graphs/traffic with 14-day UTC clone/visitor series, summary totals, referrer rows, popular content rows, cache metadata, recent-view telemetry, private repository privacy, and structured 403 responses for users without push access.",
+      "Added focused Rust contract coverage for anonymous denial, private outsider 404 privacy, read-only 403 without leaked counts, writer/owner success, zero-traffic public owner view, row ordering, external/content href shape, snapshot persistence, recent-view persistence, and no secret leakage."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 still needs the Editorial /{owner}/{repo}/graphs/traffic page, Insights shell active state, chart/table render, browser smoke screenshot, and no-dead-control checks.",
+      "Phase 3 still needs chart hover/focus tooltip interactions, safe external referrer link attributes, and repository content link actions in the browser.",
+      "Phase 4 still needs edge-case hardening for sparse traffic windows, long referrer domains, long popular content paths, internal/bot traffic exclusion metadata, and read-only permission states in UI.",
+      "Repeat against a clean migrated database after the shared local migration drift for 202605030041 is resolved; this phase manually applied the additive traffic migration to the shared test DB for focused verification.",
+      "Use a real Google OAuth browser session once the UI phase lands; this phase was API-only and browser smoke was optional by structure."
+    ]
   }
 ]

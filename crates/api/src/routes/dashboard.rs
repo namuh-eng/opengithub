@@ -220,7 +220,8 @@ fn map_dashboard_error(error: DashboardError) -> (StatusCode, Json<ErrorEnvelope
             error.to_string(),
         ),
         DashboardError::Repositories(RepositoryError::OwnerPermissionDenied)
-        | DashboardError::Repositories(RepositoryError::PermissionDenied) => {
+        | DashboardError::Repositories(RepositoryError::PermissionDenied)
+        | DashboardError::Repositories(RepositoryError::TrafficAccessDenied) => {
             error_response(StatusCode::FORBIDDEN, "forbidden", error.to_string())
         }
         DashboardError::Repositories(RepositoryError::OrganizationRepositoryCreationPolicy {

@@ -1077,6 +1077,92 @@ pub struct RepositoryContributorWeek {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct RepositoryTrafficView {
+    pub repository: RepositoryTrafficRepository,
+    pub window: RepositoryTrafficWindow,
+    pub summaries: RepositoryTrafficSummary,
+    pub clones: Vec<RepositoryTrafficSeriesPoint>,
+    pub visitors: Vec<RepositoryTrafficSeriesPoint>,
+    pub referrers: Vec<RepositoryTrafficReferrer>,
+    pub popular_content: Vec<RepositoryTrafficContent>,
+    pub snapshot: RepositoryTrafficSnapshot,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryTrafficRepository {
+    pub owner_login: String,
+    pub name: String,
+    pub default_branch: String,
+    pub visibility: RepositoryVisibility,
+    pub viewer_permission: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryTrafficWindow {
+    pub key: String,
+    pub label: String,
+    pub started_on: NaiveDate,
+    pub ended_on: NaiveDate,
+    pub timezone: String,
+    pub day_count: i64,
+    pub clones_update_cadence: String,
+    pub visitors_update_cadence: String,
+    pub referrers_update_cadence: String,
+    pub popular_content_update_cadence: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryTrafficSummary {
+    pub clones_total: i64,
+    pub clones_unique: i64,
+    pub visitors_total: i64,
+    pub visitors_unique: i64,
+    pub referrers_total: i64,
+    pub popular_content_total: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryTrafficSeriesPoint {
+    pub date: NaiveDate,
+    pub total: i64,
+    pub unique: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryTrafficReferrer {
+    pub referrer: String,
+    pub href: String,
+    pub total_views: i64,
+    pub unique_visitors: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryTrafficContent {
+    pub path: String,
+    pub title: String,
+    pub href: String,
+    pub total_views: i64,
+    pub unique_visitors: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryTrafficSnapshot {
+    pub cache_key: String,
+    pub computed_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub stale: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct RepositoryContributorSnapshot {
     pub cache_key: String,
     pub computed_at: DateTime<Utc>,
@@ -1261,6 +1347,9 @@ pub struct RepositoryContributorsQuery<'a> {
     pub start: Option<&'a str>,
     pub end: Option<&'a str>,
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct RepositoryTrafficQuery;
 
 #[derive(Debug, Clone, Copy)]
 pub struct RepositoryRefsQuery<'a> {
@@ -1782,6 +1871,8 @@ pub enum RepositoryError {
     InvalidPulseQuery(String),
     #[error("invalid repository contributors query: {0}")]
     InvalidContributorsQuery(String),
+    #[error("user needs push access to view repository traffic")]
+    TrafficAccessDenied,
     #[error("invalid commit diff context: {0}")]
     InvalidDiffContext(String),
     #[error("repository branch policy already exists")]
@@ -2251,6 +2342,30 @@ pub async fn repository_contributors_for_actor_by_owner_name(
         return Err(RepositoryError::PermissionDenied);
     }
     repository_contributors_for_repository(pool, &repository, actor_user_id, query)
+        .await
+        .map(Some)
+}
+
+pub async fn repository_traffic_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    query: RepositoryTrafficQuery,
+) -> Result<Option<RepositoryTrafficView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if !can_write_repository(pool, &repository, actor_user_id).await? {
+        return Err(RepositoryError::TrafficAccessDenied);
+    }
+    repository_traffic_for_repository(pool, &repository, actor_user_id, query)
         .await
         .map(Some)
 }
@@ -8567,6 +8682,292 @@ fn pulse_issues_href(
         started_at.to_rfc3339(),
         ended_at.to_rfc3339()
     )
+}
+
+const TRAFFIC_PERIOD_KEY: &str = "14d";
+const TRAFFIC_DAY_COUNT: i64 = 14;
+
+async fn repository_traffic_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    _query: RepositoryTrafficQuery,
+) -> Result<RepositoryTrafficView, RepositoryError> {
+    let ended_on = Utc::now().date_naive();
+    let started_on = ended_on - chrono::Duration::days(TRAFFIC_DAY_COUNT - 1);
+    let viewer_permission = viewer_permission_for_user(pool, repository, actor_user_id)
+        .await?
+        .unwrap_or_else(|| "write".to_owned());
+    let cache_key = format!(
+        "traffic:{}:{}:{}",
+        repository.default_branch,
+        started_on.format("%Y%m%d"),
+        ended_on.format("%Y%m%d")
+    );
+
+    let traffic_rows = sqlx::query(
+        r#"
+        SELECT traffic_date,
+               clones_total,
+               clones_unique,
+               visitors_total,
+               visitors_unique
+        FROM repository_traffic_daily
+        WHERE repository_id = $1
+          AND traffic_date >= $2
+          AND traffic_date <= $3
+        ORDER BY traffic_date ASC
+        "#,
+    )
+    .bind(repository.id)
+    .bind(started_on)
+    .bind(ended_on)
+    .fetch_all(pool)
+    .await?;
+
+    let mut by_date = BTreeMap::new();
+    for row in traffic_rows {
+        by_date.insert(
+            row.get::<NaiveDate, _>("traffic_date"),
+            (
+                row.get::<i64, _>("clones_total"),
+                row.get::<i64, _>("clones_unique"),
+                row.get::<i64, _>("visitors_total"),
+                row.get::<i64, _>("visitors_unique"),
+            ),
+        );
+    }
+
+    let mut clones = Vec::new();
+    let mut visitors = Vec::new();
+    for offset in 0..TRAFFIC_DAY_COUNT {
+        let date = started_on + chrono::Duration::days(offset);
+        let (clones_total, clones_unique, visitors_total, visitors_unique) =
+            by_date.get(&date).copied().unwrap_or((0, 0, 0, 0));
+        clones.push(RepositoryTrafficSeriesPoint {
+            date,
+            total: clones_total,
+            unique: clones_unique,
+        });
+        visitors.push(RepositoryTrafficSeriesPoint {
+            date,
+            total: visitors_total,
+            unique: visitors_unique,
+        });
+    }
+
+    let referrers = repository_traffic_referrers(pool, repository, started_on, ended_on).await?;
+    let popular_content =
+        repository_traffic_popular_content(pool, repository, started_on, ended_on).await?;
+    let summaries = RepositoryTrafficSummary {
+        clones_total: clones.iter().map(|point| point.total).sum(),
+        clones_unique: clones.iter().map(|point| point.unique).sum(),
+        visitors_total: visitors.iter().map(|point| point.total).sum(),
+        visitors_unique: visitors.iter().map(|point| point.unique).sum(),
+        referrers_total: referrers.iter().map(|row| row.total_views).sum(),
+        popular_content_total: popular_content.iter().map(|row| row.total_views).sum(),
+    };
+    let snapshot = record_repository_traffic_snapshot(
+        pool,
+        repository.id,
+        actor_user_id,
+        &cache_key,
+        &summaries,
+    )
+    .await?;
+
+    Ok(RepositoryTrafficView {
+        repository: RepositoryTrafficRepository {
+            owner_login: repository.owner_login.clone(),
+            name: repository.name.clone(),
+            default_branch: repository.default_branch.clone(),
+            visibility: repository.visibility.clone(),
+            viewer_permission,
+            href: format!("/{}/{}", repository.owner_login, repository.name),
+        },
+        window: RepositoryTrafficWindow {
+            key: TRAFFIC_PERIOD_KEY.to_owned(),
+            label: "Last 14 days".to_owned(),
+            started_on,
+            ended_on,
+            timezone: "UTC".to_owned(),
+            day_count: TRAFFIC_DAY_COUNT,
+            clones_update_cadence: "hourly".to_owned(),
+            visitors_update_cadence: "hourly".to_owned(),
+            referrers_update_cadence: "daily".to_owned(),
+            popular_content_update_cadence: "daily".to_owned(),
+        },
+        summaries,
+        clones,
+        visitors,
+        referrers,
+        popular_content,
+        snapshot,
+    })
+}
+
+async fn repository_traffic_referrers(
+    pool: &PgPool,
+    repository: &Repository,
+    started_on: NaiveDate,
+    ended_on: NaiveDate,
+) -> Result<Vec<RepositoryTrafficReferrer>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT referrer,
+               sum(total_views)::bigint AS total_views,
+               sum(unique_visitors)::bigint AS unique_visitors
+        FROM repository_referrers_daily
+        WHERE repository_id = $1
+          AND traffic_date >= $2
+          AND traffic_date <= $3
+        GROUP BY referrer
+        ORDER BY sum(total_views) DESC,
+                 sum(unique_visitors) DESC,
+                 lower(referrer) ASC
+        LIMIT 10
+        "#,
+    )
+    .bind(repository.id)
+    .bind(started_on)
+    .bind(ended_on)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let referrer: String = row.get("referrer");
+            RepositoryTrafficReferrer {
+                href: traffic_referrer_href(&referrer),
+                referrer,
+                total_views: row.get("total_views"),
+                unique_visitors: row.get("unique_visitors"),
+            }
+        })
+        .collect())
+}
+
+async fn repository_traffic_popular_content(
+    pool: &PgPool,
+    repository: &Repository,
+    started_on: NaiveDate,
+    ended_on: NaiveDate,
+) -> Result<Vec<RepositoryTrafficContent>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT path,
+               COALESCE(NULLIF(max(title), ''), path) AS title,
+               sum(total_views)::bigint AS total_views,
+               sum(unique_visitors)::bigint AS unique_visitors
+        FROM repository_popular_content_daily
+        WHERE repository_id = $1
+          AND traffic_date >= $2
+          AND traffic_date <= $3
+        GROUP BY path
+        ORDER BY sum(total_views) DESC,
+                 sum(unique_visitors) DESC,
+                 lower(path) ASC
+        LIMIT 10
+        "#,
+    )
+    .bind(repository.id)
+    .bind(started_on)
+    .bind(ended_on)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let path: String = row.get("path");
+            RepositoryTrafficContent {
+                href: repository_content_href(repository, &path),
+                path,
+                title: row.get("title"),
+                total_views: row.get("total_views"),
+                unique_visitors: row.get("unique_visitors"),
+            }
+        })
+        .collect())
+}
+
+fn traffic_referrer_href(referrer: &str) -> String {
+    let trimmed = referrer.trim();
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        trimmed.to_owned()
+    } else {
+        format!("https://{trimmed}")
+    }
+}
+
+fn repository_content_href(repository: &Repository, path: &str) -> String {
+    format!(
+        "/{}/{}/blob/{}/{}",
+        repository.owner_login,
+        repository.name,
+        percent_encode_segment(&repository.default_branch),
+        percent_encode_path(path.trim_start_matches('/'))
+    )
+}
+
+async fn record_repository_traffic_snapshot(
+    pool: &PgPool,
+    repository_id: Uuid,
+    user_id: Uuid,
+    cache_key: &str,
+    summaries: &RepositoryTrafficSummary,
+) -> Result<RepositoryTrafficSnapshot, RepositoryError> {
+    let snapshot = json!({
+        "kind": "traffic",
+        "clonesTotal": summaries.clones_total,
+        "clonesUnique": summaries.clones_unique,
+        "visitorsTotal": summaries.visitors_total,
+        "visitorsUnique": summaries.visitors_unique,
+        "referrersTotal": summaries.referrers_total,
+        "popularContentTotal": summaries.popular_content_total,
+    });
+    let row = sqlx::query(
+        r#"
+        INSERT INTO repository_insight_snapshots (
+            repository_id, period_key, cache_key, snapshot, computed_at, expires_at
+        )
+        VALUES ($1, $2, $3, $4, now(), now() + interval '1 hour')
+        ON CONFLICT (repository_id, period_key, cache_key) DO UPDATE SET
+            snapshot = EXCLUDED.snapshot,
+            computed_at = now(),
+            expires_at = now() + interval '1 hour'
+        RETURNING computed_at, expires_at
+        "#,
+    )
+    .bind(repository_id)
+    .bind(TRAFFIC_PERIOD_KEY)
+    .bind(cache_key)
+    .bind(Json(snapshot))
+    .fetch_one(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO recent_insight_views (repository_id, user_id, period_key, viewed_at)
+        VALUES ($1, $2, $3, now())
+        ON CONFLICT (repository_id, user_id, period_key)
+        DO UPDATE SET viewed_at = now()
+        "#,
+    )
+    .bind(repository_id)
+    .bind(user_id)
+    .bind(TRAFFIC_PERIOD_KEY)
+    .execute(pool)
+    .await?;
+
+    let expires_at: DateTime<Utc> = row.get("expires_at");
+    Ok(RepositoryTrafficSnapshot {
+        cache_key: cache_key.to_owned(),
+        computed_at: row.get("computed_at"),
+        expires_at,
+        stale: expires_at <= Utc::now(),
+    })
 }
 
 const CONTRIBUTORS_LINE_COUNT_COMMIT_LIMIT: i64 = 5_000;

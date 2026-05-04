@@ -6,7 +6,7 @@
 
 ## Phase 1: Traffic API Contract and Rollup Storage - permissioned analytics data
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add an authenticated read contract for `GET /api/repos/{owner}/{repo}/graphs/traffic` that returns the 14-day traffic dashboard data for users with push access, without replacing the placeholder UI yet. The response should include repository metadata, permission state, UTC date bounds, clone and visitor daily series, total and unique summaries, referrer rows, popular content rows, cache freshness metadata, and structured 403 behavior for users without push access.
 
