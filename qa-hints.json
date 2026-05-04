@@ -5410,5 +5410,22 @@
       "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
       "Probe range boundaries exactly at weekStart/weekEnd timestamps, out-of-period ranges, and concurrent snapshot refreshes against a clean migrated database after the shared 202605030041 local migration drift is resolved."
     ]
+  },
+  {
+    "feature_id": "insights-002",
+    "tests_written": [
+      "Completed Phase 4 Contributor Edge Cases and Link-Complete Drilldowns without marking insights-002 build_pass=true.",
+      "Fixed Contributors aggregate author counting so unmatched/deleted commit authors are included instead of disappearing from totals.",
+      "Extended the Rust contributors contract for public empty repositories, slash-containing default branch recovery, bot/unmatched authors, private repository privacy, merge/empty commit exclusion, cache persistence, and no secret leakage.",
+      "Hardened RepositoryContributorsPage with automation/unmatched author chips, empty-state recovery links, long-label wrapping assertions, concrete profile/commit-history destinations, data-table links, and no unsafe markup.",
+      "Extended Playwright Contributors smoke to verify drilldown links, data table, range controls, CSV actions, mobile no-overflow, and screenshot ralph/screenshots/build/insights-002-phase4-edge-cases.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 5 still needs API docs, final browser evidence, final QA handoff, and build_pass bookkeeping.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Stress very large histories above the 5000-commit line-count threshold, bot-only repositories, multiple unmatched imported author identities, and multi-week browser fixtures with older default-branch commits.",
+      "Probe range boundaries exactly at weekStart/weekEnd timestamps and concurrent contributors snapshot refreshes against a clean migrated database after the shared 202605030041 local migration drift is resolved.",
+      "Run keyboard-only and screen-reader traversal through the Contributors period menu, range sliders, CSV actions, chart/table fallback, contributor profile links, commit-total links, empty-state links, and mobile layout."
+    ]
   }
 ]

@@ -57,7 +57,7 @@
 
 ## Phase 4: Contributor Edge Cases and Link-Complete Drilldowns
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Harden contributor analytics for repositories with no commits, merge-heavy histories, bot-only activity, unmatched/deleted authors, slash-containing default branches, very large histories, and public/private permission differences. Every contributor avatar/login/commit total/chart row should navigate to a real page or present a truthful unavailable state.
 

@@ -170,13 +170,21 @@ function RepositoryCommitChart({
 
 function ContributorSections({
   contributors,
+  commitHistoryHref,
 }: {
   contributors: RepositoryContributorRow[];
+  commitHistoryHref: string;
 }) {
   const maxCommits = Math.max(
     1,
     ...contributors.map((contributor) => contributor.totalCommits),
   );
+  const botCount = contributors.filter(
+    (contributor) => contributor.isBot || contributor.authorStatus === "bot",
+  ).length;
+  const unmatchedCount = contributors.filter(
+    (contributor) => contributor.authorStatus === "unmatched",
+  ).length;
 
   return (
     <section className="grid gap-4">
@@ -187,6 +195,22 @@ function ContributorSections({
         <h2 className="t-h2 mt-2" style={{ color: "var(--ink-1)" }}>
           Top contributors
         </h2>
+        {botCount > 0 || unmatchedCount > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {botCount > 0 ? (
+              <span className="chip info">
+                {formatNumber(botCount)} automation author
+                {botCount === 1 ? "" : "s"}
+              </span>
+            ) : null}
+            {unmatchedCount > 0 ? (
+              <span className="chip warn">
+                {formatNumber(unmatchedCount)} unmatched author
+                {unmatchedCount === 1 ? "" : "s"}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       {contributors.length > 0 ? (
         contributors.map((contributor) => {
@@ -283,6 +307,14 @@ function ContributorSections({
             This repository has no default-branch commits with file changes in
             the selected period.
           </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link className="btn sm" href={commitHistoryHref}>
+              Review commit history
+            </Link>
+            <Link className="btn sm ghost" href="#contributors-data-table">
+              Open data table
+            </Link>
+          </div>
         </section>
       )}
     </section>
@@ -379,7 +411,10 @@ function ContributorsReadyPage({
         </section>
 
         <RepositoryCommitChart weeks={contributors.weeks} />
-        <ContributorSections contributors={contributors.contributors} />
+        <ContributorSections
+          commitHistoryHref={commitHistoryHref}
+          contributors={contributors.contributors}
+        />
         <RepositoryContributorsDataTable
           contributors={contributors.contributors}
           weeks={contributors.weeks}

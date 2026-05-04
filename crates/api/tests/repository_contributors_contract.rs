@@ -379,7 +379,7 @@ async fn repository_contributors_returns_default_branch_weekly_analytics_privacy
     assert_eq!(body["repository"]["viewerPermission"], "owner");
     assert_eq!(body["period"]["key"], "24h");
     assert_eq!(body["totals"]["commits"], 3);
-    assert_eq!(body["totals"]["authors"], 2);
+    assert_eq!(body["totals"]["authors"], 3);
     assert_eq!(body["totals"]["additions"], 22);
     assert_eq!(body["totals"]["deletions"], 7);
     assert_eq!(body["threshold"]["lineCountsOmitted"], false);
@@ -427,6 +427,46 @@ async fn repository_contributors_returns_default_branch_weekly_analytics_privacy
         .starts_with("contributors:"));
     assert!(!body.to_string().contains("SESSION_SECRET"));
     assert!(!body.to_string().contains("side.rs"));
+
+    let public_empty = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("contributors-empty-{}", Uuid::new_v4().simple()),
+            description: Some("Empty public contributor analytics repository".to_owned()),
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("trunk/empty".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("empty repository should create");
+    let empty_base = format!(
+        "/api/repos/{}/{}",
+        public_empty.owner_login, public_empty.name
+    );
+    let (empty_status, empty_body) = get_json(
+        app.clone(),
+        &format!("{empty_base}/graphs/contributors?period=1w"),
+        Some(&outsider_cookie),
+    )
+    .await;
+    assert_eq!(empty_status, StatusCode::OK, "body: {empty_body}");
+    assert_eq!(empty_body["repository"]["defaultBranch"], "trunk/empty");
+    assert_eq!(empty_body["repository"]["viewerPermission"], "read");
+    assert_eq!(empty_body["totals"]["commits"], 0);
+    assert_eq!(empty_body["totals"]["authors"], 0);
+    assert_eq!(
+        empty_body["weeks"].as_array().expect("empty weeks").len(),
+        0
+    );
+    assert_eq!(
+        empty_body["contributors"]
+            .as_array()
+            .expect("empty contributors")
+            .len(),
+        0
+    );
 
     let rollup_count = sqlx::query_scalar::<_, i64>(
         r#"

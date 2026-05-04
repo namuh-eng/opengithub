@@ -211,6 +211,7 @@ describe("RepositoryContributorsPage", () => {
       "/namuh-eng/opengithub/commits/main?author=mona&since=2026-05-01T00%3A00%3A00Z&until=2026-05-07T00%3A00%3A00Z",
     );
     expect(screen.getByText("Bot")).toBeVisible();
+    expect(screen.getByText("1 automation author")).toBeVisible();
 
     const table = screen.getByRole("table", {
       name: "Repository contributors data table",
@@ -351,7 +352,64 @@ describe("RepositoryContributorsPage", () => {
       screen.getByText("No commits were indexed for this contributors window."),
     ).toBeVisible();
     expect(screen.getByText("No contributor activity")).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Review commit history" }),
+    ).toHaveAttribute("href", "/namuh-eng/opengithub/commits/main");
+    expect(
+      screen.getByRole("link", { name: "Open data table" }),
+    ).toHaveAttribute("href", "#contributors-data-table");
     expect(screen.getAllByText("omitted")[0]).toBeVisible();
+  });
+
+  it("renders unmatched authors and long contributor labels without unsafe markup", () => {
+    const longLogin =
+      "deleted-import-author-with-a-very-long-name-that-should-wrap-instead-of-overflowing";
+    const { container } = render(
+      <RepositoryContributorsPage
+        contributorsResult={{
+          ok: true,
+          contributors: contributorsView({
+            contributors: [
+              {
+                userId: null,
+                login: longLogin,
+                authorStatus: "unmatched",
+                isBot: false,
+                avatarUrl: null,
+                totalCommits: 2,
+                totalAdditions: null,
+                totalDeletions: null,
+                profileHref: "/namuh-eng/opengithub",
+                commitsHref:
+                  "/namuh-eng/opengithub/commits/main?since=2026-05-01T00%3A00%3A00Z&until=2026-05-07T00%3A00%3A00Z",
+                weeks: [
+                  {
+                    weekStart: "2026-05-04T00:00:00Z",
+                    commits: 2,
+                    additions: null,
+                    deletions: null,
+                  },
+                ],
+              },
+            ],
+          }),
+        }}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(screen.getByText("1 unmatched author")).toBeVisible();
+    expect(screen.getByText("Unmatched author")).toBeVisible();
+    expect(screen.getByRole("link", { name: longLogin })).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub",
+    );
+    expect(screen.getByRole("link", { name: "2 commits" })).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/commits/main?since=2026-05-01T00%3A00%3A00Z&until=2026-05-07T00%3A00%3A00Z",
+    );
+    expect(container.innerHTML).not.toContain("<script");
+    expect(container.querySelector(".break-words")).not.toBeNull();
   });
 
   it("renders API failures inside the Contributors shell", () => {

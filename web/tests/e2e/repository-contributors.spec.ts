@@ -170,4 +170,20 @@ test("repository Contributors renders default analytics and concrete drilldowns"
   ).toHaveAttribute("download", "repository-contributors.csv");
   await page.getByRole("button", { name: "Copy CSV" }).click();
   await expect(page.getByText("CSV copied")).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 900 });
+  await expect(
+    page.getByRole("heading", { name: "Contributor analytics" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /\d+ commits/ }).first(),
+  ).toBeVisible();
+  const horizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth,
+  );
+  expect(horizontalOverflow).toBe(false);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/insights-002-phase4-edge-cases.jpg",
+  });
 });

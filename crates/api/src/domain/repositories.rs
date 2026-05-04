@@ -8626,7 +8626,7 @@ async fn repository_contributors_for_repository(
               )
         )
         SELECT count(*)::bigint AS commits,
-               count(DISTINCT author_user_id)::bigint AS authors,
+               count(DISTINCT COALESCE(author_user_id::text, 'unmatched-author'))::bigint AS authors,
                COALESCE(sum(commit_file_changes.additions), 0)::bigint AS additions,
                COALESCE(sum(commit_file_changes.deletions), 0)::bigint AS deletions
         FROM scoped_commits
