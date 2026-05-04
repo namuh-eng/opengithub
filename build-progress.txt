@@ -3258,3 +3258,9 @@
 - Added final `org-admin-002` QA hints covering real Google-session QA, concurrent PATCH/rename races, long Unicode/mobile/autofill/screen-reader probes, unsupported archive/delete execution, and future organization avatar upload leakage checks.
 - Verification passed: focused `web/tests/api-docs.test.tsx` and `web/tests/organization-profile-settings-page.test.tsx`; `cd web && npx tsc --noEmit --pretty false`; focused Biome; focused Playwright `organization-settings-profile.spec.ts` with 4 tests; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 377 web tests; direct full Playwright with 116 tests; mandatory Editorial banned-value scan returned zero matches.
 - `make test-e2e` wrapper was attempted with the standard local test database/session environment, but it stayed silent with active Playwright processes and was terminated to avoid orphaned dev-server/browser processes; direct `cd web && ... npx playwright test --reporter=list` completed the same full suite successfully.
+
+2026-05-04 - org-admin-003 structure outline
+
+- Created `.qrspi/org-admin-003/structure.md` for the first incomplete PRD feature, splitting organization people administration into five vertical phases: owner/admin admin-list API contract, Editorial people management shell, invitations with SES delivery state, membership mutations/exports, and final docs/browser/QA/build-pass bookkeeping.
+- No source implementation was started because `org-admin-003.needs_structure=true` and the build-loop contract requires the structure outline first, then `<promise>NEXT</promise>`.
+- Verified `org-admin-003.build_pass=false`, `qa_pass=false`, and all structure phases remain unchecked for the next invocation.
