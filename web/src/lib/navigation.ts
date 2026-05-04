@@ -367,6 +367,15 @@ export const REPOSITORY_INSIGHTS_NAV_ITEMS = [
   },
   {
     href: "",
+    hrefSuffix: "/graphs/traffic",
+    label: "Traffic",
+    section: "traffic",
+    kind: "repository",
+    description: "Clone and visitor analytics",
+    protected: false,
+  },
+  {
+    href: "",
     hrefSuffix: "/community",
     label: "Community standards",
     section: "community",
@@ -821,6 +830,26 @@ export function repositoryContributorsHref(
   }
   const query = params.toString();
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/graphs/contributors${query ? `?${query}` : ""}`;
+}
+
+export function repositoryTrafficHref(owner: string, repo: string) {
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/graphs/traffic`;
+}
+
+export function repositoryContentHref({
+  owner,
+  repo,
+  refName,
+  path,
+}: {
+  owner: string;
+  repo: string;
+  refName: string;
+  path: string;
+}) {
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(
+    repo,
+  )}/blob/${encodeURIComponent(refName)}/${encodePathSegments(path)}`;
 }
 
 export function repositoryReleaseHref(

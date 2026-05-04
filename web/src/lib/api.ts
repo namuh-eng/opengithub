@@ -2640,6 +2640,80 @@ export type RepositoryContributorsFetchResult =
   | { ok: true; contributors: RepositoryContributorsView }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type RepositoryTrafficView = {
+  repository: RepositoryTrafficRepository;
+  window: RepositoryTrafficWindow;
+  summaries: RepositoryTrafficSummary;
+  clones: RepositoryTrafficSeriesPoint[];
+  visitors: RepositoryTrafficSeriesPoint[];
+  referrers: RepositoryTrafficReferrer[];
+  popularContent: RepositoryTrafficContent[];
+  snapshot: RepositoryTrafficSnapshot;
+};
+
+export type RepositoryTrafficRepository = {
+  ownerLogin: string;
+  name: string;
+  defaultBranch: string;
+  visibility: RepositoryVisibility | string;
+  viewerPermission: string;
+  href: string;
+};
+
+export type RepositoryTrafficWindow = {
+  key: string;
+  label: string;
+  startedOn: string;
+  endedOn: string;
+  timezone: string;
+  dayCount: number;
+  clonesUpdateCadence: string;
+  visitorsUpdateCadence: string;
+  referrersUpdateCadence: string;
+  popularContentUpdateCadence: string;
+};
+
+export type RepositoryTrafficSummary = {
+  clonesTotal: number;
+  clonesUnique: number;
+  visitorsTotal: number;
+  visitorsUnique: number;
+  referrersTotal: number;
+  popularContentTotal: number;
+};
+
+export type RepositoryTrafficSeriesPoint = {
+  date: string;
+  total: number;
+  unique: number;
+};
+
+export type RepositoryTrafficReferrer = {
+  referrer: string;
+  href: string;
+  totalViews: number;
+  uniqueVisitors: number;
+};
+
+export type RepositoryTrafficContent = {
+  path: string;
+  title: string;
+  href: string;
+  totalViews: number;
+  uniqueVisitors: number;
+};
+
+export type RepositoryTrafficSnapshot = {
+  cacheKey: string;
+  computedAt: string;
+  expiresAt: string;
+  stale: boolean;
+};
+
+export type RepositoryTrafficFetchResult =
+  | { ok: true; traffic: RepositoryTrafficView }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type WebhookContentType = "json" | "form" | string;
 
 export type WebhookEventSelection = "push" | "everything" | "selected" | string;
@@ -9144,6 +9218,50 @@ export async function getRepositoryContributorsFromCookie(
   return {
     ok: true,
     contributors: (await response.json()) as RepositoryContributorsView,
+  };
+}
+
+export async function getRepositoryTrafficFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+): Promise<RepositoryTrafficFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/graphs/traffic`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository Traffic is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Repository Traffic is unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    traffic: (await response.json()) as RepositoryTrafficView,
   };
 }
 

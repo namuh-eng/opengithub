@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial Traffic Page and Insights Shell Integration - default analytics render
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement `/{owner}/{repo}/graphs/traffic` using the existing Editorial Insights shell with Traffic selected. The default page should render permissioned traffic analytics with clone and visitor charts, summary totals, referrers, popular content, UTC/freshness notes, and no inert controls.
 

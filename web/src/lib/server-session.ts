@@ -64,6 +64,7 @@ import {
   getRepositoryReleasesFromCookie,
   getRepositoryReleaseTagsFromCookie,
   getRepositorySettingsFromCookie,
+  getRepositoryTrafficFromCookie,
   getRepositoryWebhookDeliveryDetailFromCookie,
   getRepositoryWebhookDetailFromCookie,
   getRepositoryWebhookSettingsFromCookie,
@@ -94,6 +95,7 @@ import {
   type RepositoryPullRequestListQuery,
   type RepositoryPulseFetchResult,
   type RepositoryReleaseListQuery,
+  type RepositoryTrafficFetchResult,
   type SearchSuggestionsQuery,
   searchCodeFromCookie,
   searchCollaborationFromCookie,
@@ -539,6 +541,18 @@ export async function getRepositoryContributors(
     owner,
     repo,
     options,
+  );
+}
+
+export async function getRepositoryTraffic(
+  owner: string,
+  repo: string,
+): Promise<RepositoryTrafficFetchResult> {
+  const requestHeaders = await headers();
+  return getRepositoryTrafficFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
   );
 }
 

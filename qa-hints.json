@@ -5460,5 +5460,20 @@
       "Repeat against a clean migrated database after the shared local migration drift for 202605030041 is resolved; this phase manually applied the additive traffic migration to the shared test DB for focused verification.",
       "Use a real Google OAuth browser session once the UI phase lands; this phase was API-only and browser smoke was optional by structure."
     ]
+  },
+  {
+    "feature_id": "insights-003",
+    "tests_written": [
+      "Completed Phase 2 Editorial Traffic Page and Insights Shell Integration without marking insights-003 build_pass=true.",
+      "Added typed Traffic frontend DTOs, signed-cookie server fetch helper, /{owner}/{repo}/graphs/traffic route, Traffic Insights sidebar item, and an Editorial RepositoryTrafficPage with summary metrics, clone/visitor chart regions, accessible data-table fallbacks, referrer rows, popular content rows, UTC/freshness notes, permission state, and no dead controls.",
+      "Added focused Vitest coverage for default render, active Insights sidebar state, summary cards, chart/table fallbacks, safe external referrer attributes, popular content links, 403 no-count state, empty states, no inert handlers, unsafe-markup guardrails, and banned GitHub value guardrails.",
+      "Added Playwright browser smoke that seeds real Postgres traffic rows for the dashboard fixture, verifies signed-session Traffic rendering, chart/table visibility, commit-history/content/referrer links, no dead controls, mobile no-overflow, and saves ralph/screenshots/build/insights-003-phase2-traffic-overview.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 still needs chart hover/focus tooltip interactions and selected-point details beyond the Phase 2 static chart/table render.",
+      "Phase 4 still needs broader edge-case coverage for sparse windows, long referrer domains, long popular content paths, internal/bot traffic exclusion metadata, stale snapshots, and read-only permission states in browser.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "The direct focused Playwright smoke passed; the make test-e2e wrapper produced no output for 90 seconds and was terminated, matching the known local wrapper stall recorded in prior build-progress entries."
+    ]
   }
 ]
