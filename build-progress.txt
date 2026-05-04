@@ -3211,6 +3211,12 @@
 - Verification passed: `cargo fmt --all --check`; focused `organization_create_contract`; mandatory Editorial banned-value scan using compatible `rg -n -e` returned zero matches; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 361 web tests.
 - Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first and the structure outline marks browser smoke optional for this phase. `prd.json` remains `build_pass:false` because Phases 2-5 remain.
 
+2026-05-04 - org-admin-005 structure outline
+
+- Created `.qrspi/org-admin-005/structure.md` for the first incomplete PRD feature, splitting organization member privilege settings into five vertical phases: owner-only policy API contract, Editorial member privileges settings UI, repository creation/base-permission enforcement, cross-feature policy enforcement for teams/Pages/discussions/destructive toggles, and final docs/browser/QA/build-pass bookkeeping.
+- No source implementation was started because `org-admin-005.needs_structure=true` and the build-loop contract requires the structure outline first, then `<promise>NEXT</promise>`.
+- Verified `org-admin-005.build_pass=false`, `qa_pass=false`, no existing `.qrspi/org-admin-005/structure.md` was present before this pass, and all new structure phases remain unchecked for the next invocation.
+
 2026-05-04 - org-admin-001 phase 4 organization defaults and UX guardrails
 
 - Completed Phase 4 from `.qrspi/org-admin-001/structure.md`: organization creation now has stronger default-policy assertions, reserved-slug privacy checks, accessibility focus/error associations, mobile wrapping guardrails, keyboard-only recovery coverage, and rate-limit envelope rendering without marking `org-admin-001.build_pass=true`.
