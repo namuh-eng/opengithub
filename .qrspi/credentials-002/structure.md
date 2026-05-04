@@ -58,7 +58,7 @@
 
 ## Phase 4: Commit and Git Authentication Integration
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Connect stored keys to product behavior: SSH keys should be usable for future Git auth checks, and signing metadata should influence commit/tag verification presentation for commits attributed to the user.
 

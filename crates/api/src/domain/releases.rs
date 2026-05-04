@@ -1352,8 +1352,10 @@ pub async fn repository_release_tags_by_owner_name(
                commits.oid AS target_oid,
                commits.message AS commit_message,
                commits.committed_at,
+               commits.author_user_id,
                releases.id AS release_id,
                COALESCE(releases.tag_verified, refs.verified, false) AS verified,
+               refs.signature_fingerprint,
                COALESCE(releases.tag_signature_summary, refs.signature_summary) AS signature_summary
         FROM repository_git_refs refs
         LEFT JOIN commits ON commits.id = refs.target_commit_id
@@ -1372,10 +1374,30 @@ pub async fn repository_release_tags_by_owner_name(
     .bind((page - 1) * page_size)
     .fetch_all(pool)
     .await?;
-    let items = rows
-        .into_iter()
-        .map(|row| tag_from_row(&repository, row))
-        .collect::<Result<Vec<_>, _>>()?;
+    let mut items = Vec::with_capacity(rows.len());
+    for row in rows {
+        let release_verified: bool = row.get("verified");
+        let author_user_id: Option<Uuid> = row.get("author_user_id");
+        let signature_fingerprint: Option<String> = row.get("signature_fingerprint");
+        let stored_summary: Option<String> = row.get("signature_summary");
+        let mut tag = tag_from_row(&repository, row)?;
+        if !release_verified {
+            let signature = super::signing_keys::signature_presentation_for_user(
+                pool,
+                author_user_id,
+                signature_fingerprint.as_deref(),
+                stored_summary.as_deref(),
+            )
+            .await
+            .map_err(|error| match error {
+                super::signing_keys::SigningKeyError::Sqlx(error) => ReleasesError::Sqlx(error),
+                _ => ReleasesError::Validation("signature metadata could not be read".to_owned()),
+            })?;
+            tag.verified = signature.verified;
+            tag.signature_summary = signature.signature_summary;
+        }
+        items.push(tag);
+    }
     Ok(ListEnvelope {
         items,
         total,

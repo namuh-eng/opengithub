@@ -175,6 +175,18 @@ export function RepositoryCommitHistoryView({
                   style={{ color: "var(--ink-3)" }}
                 >
                   {commit.authorLogin ?? "Unknown author"}
+                  {commit.signatureSummary ? (
+                    <>
+                      {" "}
+                      <span aria-hidden="true">·</span>{" "}
+                      <span
+                        className={`chip ${commit.verified ? "ok" : "warn"}`}
+                      >
+                        {commit.verified ? "Verified" : "Unverified"}
+                      </span>{" "}
+                      <span>{commit.signatureSummary}</span>
+                    </>
+                  ) : null}
                 </span>
               </span>
               <span className="t-mono-sm" style={{ color: "var(--accent)" }}>

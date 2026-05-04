@@ -1,3 +1,14 @@
+2026-05-04 - credentials-002 phase 4 commit and git authentication integration
+
+- Completed Phase 4 from `.qrspi/credentials-002/structure.md`: stored SSH/GPG keys now feed backend integration helpers and visible commit/tag signature presentation without marking `credentials-002.build_pass=true`.
+- Added additive migration `202605040009_signing_key_integration` for commit/tag signature fingerprints and supporting indexes.
+- Added signing-key domain helpers for active SSH key lookup by SHA256 fingerprint, SSH last-used updates, active GPG fingerprint verification, revoked-key exclusion, and vigilant-mode unsigned/untrusted signature classification.
+- Extended repository commit history responses with `verified`, `signatureState`, and `signatureSummary`, and rendered the visible state as Editorial `.chip.ok`/`.chip.warn` metadata on commit history rows.
+- Extended release tag listing classification so tag signature fingerprints can be verified against active user GPG keys while preserving existing explicit release/tag signature summaries.
+- Added focused Rust and Vitest coverage for SSH lookup/last-used, GPG verification, vigilant-mode unverified classification, revoked-key behavior, and commit-history chip rendering.
+- Verification passed: focused `personal_signing_keys_contract` integration test, focused `repository-code-overview` Vitest, `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`, `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 358 web tests, focused Playwright repository Code/history smoke after warming local API/Next servers, and mandatory Editorial banned-value scan.
+- First focused Playwright attempt timed out waiting for API health because Rust was still compiling under `make dev`; rerunning against warmed healthy servers passed. `prd.json` remains `build_pass:false` because Phase 5 docs/QA/bookkeeping remains.
+
 2026-05-04 - credentials-002 phase 2 Editorial SSH key management UI
 
 - Completed Phase 2 from `.qrspi/credentials-002/structure.md`: `/settings/keys` now renders a real signed-in Editorial SSH key management page without marking `credentials-002.build_pass=true`.

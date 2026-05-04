@@ -7,6 +7,11 @@ use opengithub_api::{
     auth::session,
     config::{AppConfig, AuthConfig},
     domain::identity::{self, User},
+    domain::signing_keys::{
+        create_gpg_key, create_ssh_key, lookup_active_ssh_key_by_fingerprint, mark_ssh_key_used,
+        signature_presentation_for_user, CreateGpgKeyRequest, CreateSshKeyRequest,
+        SignatureVerificationState,
+    },
 };
 use serde_json::{json, Value};
 use sqlx::PgPool;
@@ -28,12 +33,16 @@ async fn database_pool() -> Option<PgPool> {
         .ok()?;
     if let Err(error) = MIGRATOR.run(&pool).await {
         eprintln!("migrator could not run cleanly for signing-key scenario ({error}); applying credentials-002 additive migration directly");
-        sqlx::raw_sql(include_str!(
+        let _ = sqlx::raw_sql(include_str!(
             "../migrations/202605040008_personal_signing_keys.up.sql"
         ))
         .execute(&pool)
-        .await
-        .ok()?;
+        .await;
+        let _ = sqlx::raw_sql(include_str!(
+            "../migrations/202605040009_signing_key_integration.up.sql"
+        ))
+        .execute(&pool)
+        .await;
     }
     Some(pool)
 }
@@ -349,4 +358,108 @@ async fn signing_key_settings_validate_persist_revoke_and_redact() {
     .await
     .expect("audit count should query");
     assert_eq!(audit_count, 5);
+}
+
+#[tokio::test]
+async fn signing_keys_drive_ssh_lookup_and_signature_classification() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping signing key integration scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let user = create_user(&pool, "signing-integrated").await;
+    let ssh = create_ssh_key(
+        &pool,
+        user.id,
+        CreateSshKeyRequest {
+            title: "Workstation".to_owned(),
+            key_type: Some("ssh-ed25519".to_owned()),
+            public_key: ssh_public_key(),
+            access_mode: Some("read_only".to_owned()),
+        },
+    )
+    .await
+    .expect("ssh key should create")
+    .ssh_key;
+    let principal = lookup_active_ssh_key_by_fingerprint(&pool, &ssh.fingerprint_sha256)
+        .await
+        .expect("ssh lookup should run")
+        .expect("active ssh key should match");
+    assert_eq!(principal.user_id, user.id);
+    assert_eq!(principal.key_id, ssh.id);
+    assert_eq!(principal.access_mode, "read_only");
+
+    mark_ssh_key_used(&pool, principal.key_id)
+        .await
+        .expect("last used update should run");
+    let last_used_at: Option<chrono::DateTime<Utc>> =
+        sqlx::query_scalar("SELECT last_used_at FROM ssh_keys WHERE id = $1")
+            .bind(principal.key_id)
+            .fetch_one(&pool)
+            .await
+            .expect("last used should query");
+    assert!(last_used_at.is_some());
+
+    let gpg = create_gpg_key(
+        &pool,
+        user.id,
+        CreateGpgKeyRequest {
+            title: "Release key".to_owned(),
+            armored_public_key: gpg_public_key(&user.email),
+        },
+    )
+    .await
+    .expect("gpg key should create")
+    .gpg_key;
+    let verified =
+        signature_presentation_for_user(&pool, Some(user.id), Some(&gpg.primary_fingerprint), None)
+            .await
+            .expect("signature presentation should classify");
+    assert!(verified.verified);
+    assert_eq!(
+        verified.signature_state,
+        SignatureVerificationState::Verified
+    );
+    assert_eq!(
+        verified.signature_summary.as_deref(),
+        Some("Verified signature from an active GPG key.")
+    );
+
+    sqlx::query("UPDATE users SET vigilant_mode = true WHERE id = $1")
+        .bind(user.id)
+        .execute(&pool)
+        .await
+        .expect("vigilant mode should update");
+    let untrusted = signature_presentation_for_user(
+        &pool,
+        Some(user.id),
+        Some("0123456789ABCDEF0123456789ABCDEF01234567"),
+        None,
+    )
+    .await
+    .expect("untrusted signature should classify");
+    assert!(!untrusted.verified);
+    assert_eq!(
+        untrusted.signature_state,
+        SignatureVerificationState::VigilantUnverified
+    );
+    assert_eq!(
+        untrusted.signature_summary.as_deref(),
+        Some("Unsigned or untrusted commit by a vigilant-mode author.")
+    );
+
+    sqlx::query("UPDATE gpg_keys SET revoked_at = now() WHERE id = $1")
+        .bind(gpg.id)
+        .execute(&pool)
+        .await
+        .expect("gpg revoke should update");
+    let revoked =
+        signature_presentation_for_user(&pool, Some(user.id), Some(&gpg.primary_fingerprint), None)
+            .await
+            .expect("revoked signature should classify");
+    assert!(!revoked.verified);
+    assert_eq!(
+        revoked.signature_state,
+        SignatureVerificationState::VigilantUnverified
+    );
 }

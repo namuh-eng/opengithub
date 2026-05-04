@@ -127,6 +127,33 @@ pub struct UpdateVigilantModeResponse {
     pub vigilant_mode: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SshKeyAuthPrincipal {
+    #[serde(rename = "userId")]
+    pub user_id: Uuid,
+    #[serde(rename = "keyId")]
+    pub key_id: Uuid,
+    #[serde(rename = "accessMode")]
+    pub access_mode: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SignatureVerificationState {
+    Verified,
+    Unverified,
+    VigilantUnverified,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SignaturePresentation {
+    pub verified: bool,
+    #[serde(rename = "signatureState")]
+    pub signature_state: SignatureVerificationState,
+    #[serde(rename = "signatureSummary")]
+    pub signature_summary: Option<String>,
+}
+
 pub async fn key_settings(
     pool: &PgPool,
     user_id: Uuid,
@@ -361,6 +388,116 @@ pub async fn update_vigilant_mode(
     }
 
     Ok(UpdateVigilantModeResponse { vigilant_mode })
+}
+
+pub async fn lookup_active_ssh_key_by_fingerprint(
+    pool: &PgPool,
+    fingerprint_sha256: &str,
+) -> Result<Option<SshKeyAuthPrincipal>, SigningKeyError> {
+    let fingerprint = normalize_fingerprint(fingerprint_sha256);
+    if fingerprint.is_empty() {
+        return Ok(None);
+    }
+    let row = sqlx::query(
+        r#"
+        SELECT user_id, id, access_mode
+        FROM ssh_keys
+        WHERE lower(fingerprint_sha256) = lower($1)
+          AND revoked_at IS NULL
+        LIMIT 1
+        "#,
+    )
+    .bind(fingerprint)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|row| SshKeyAuthPrincipal {
+        user_id: row.get("user_id"),
+        key_id: row.get("id"),
+        access_mode: row.get("access_mode"),
+    }))
+}
+
+pub async fn mark_ssh_key_used(pool: &PgPool, key_id: Uuid) -> Result<(), SigningKeyError> {
+    sqlx::query(
+        r#"
+        UPDATE ssh_keys
+        SET last_used_at = now()
+        WHERE id = $1 AND revoked_at IS NULL
+        "#,
+    )
+    .bind(key_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn signature_presentation_for_user(
+    pool: &PgPool,
+    author_user_id: Option<Uuid>,
+    signature_fingerprint: Option<&str>,
+    stored_summary: Option<&str>,
+) -> Result<SignaturePresentation, SigningKeyError> {
+    let Some(author_user_id) = author_user_id else {
+        return Ok(SignaturePresentation {
+            verified: false,
+            signature_state: SignatureVerificationState::Unverified,
+            signature_summary: stored_summary.map(str::to_owned),
+        });
+    };
+    let vigilant_mode: bool = sqlx::query_scalar("SELECT vigilant_mode FROM users WHERE id = $1")
+        .bind(author_user_id)
+        .fetch_optional(pool)
+        .await?
+        .unwrap_or(false);
+
+    if let Some(fingerprint) = signature_fingerprint
+        .map(normalize_fingerprint)
+        .filter(|value| !value.is_empty())
+    {
+        let matched = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM gpg_keys
+                WHERE user_id = $1
+                  AND lower(primary_fingerprint) = lower($2)
+                  AND revoked_at IS NULL
+            )
+            "#,
+        )
+        .bind(author_user_id)
+        .bind(&fingerprint)
+        .fetch_one(pool)
+        .await?;
+        if matched {
+            return Ok(SignaturePresentation {
+                verified: true,
+                signature_state: SignatureVerificationState::Verified,
+                signature_summary: Some(
+                    stored_summary
+                        .filter(|summary| !summary.trim().is_empty())
+                        .unwrap_or("Verified signature from an active GPG key.")
+                        .to_owned(),
+                ),
+            });
+        }
+    }
+
+    if vigilant_mode {
+        return Ok(SignaturePresentation {
+            verified: false,
+            signature_state: SignatureVerificationState::VigilantUnverified,
+            signature_summary: Some(
+                "Unsigned or untrusted commit by a vigilant-mode author.".to_owned(),
+            ),
+        });
+    }
+
+    Ok(SignaturePresentation {
+        verified: false,
+        signature_state: SignatureVerificationState::Unverified,
+        signature_summary: stored_summary.map(str::to_owned),
+    })
 }
 
 async fn require_sudo(
@@ -717,6 +854,14 @@ fn base64_no_pad(bytes: &[u8]) -> String {
 
 fn hex_upper(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02X}")).collect()
+}
+
+fn normalize_fingerprint(value: &str) -> String {
+    value
+        .trim()
+        .strip_prefix("SHA256:")
+        .map(|stripped| format!("SHA256:{}", stripped.trim()))
+        .unwrap_or_else(|| value.trim().replace([' ', ':'], "").to_ascii_uppercase())
 }
 
 fn map_unique_validation(

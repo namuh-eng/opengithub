@@ -1074,6 +1074,9 @@ describe("RepositoryCodeOverview", () => {
               href: "/mona/octo-app/commit/abcdef1234567890",
               committedAt: "2026-04-30T00:00:00Z",
               authorLogin: "mona",
+              verified: true,
+              signatureState: "verified",
+              signatureSummary: "Verified signature from an active GPG key.",
             },
           ],
           total: 1,
@@ -1091,5 +1094,9 @@ describe("RepositoryCodeOverview", () => {
       screen.getByRole("link", { name: /Initial commit/ }),
     ).toHaveAttribute("href", "/mona/octo-app/commit/abcdef1234567890");
     expect(screen.getByText("abcdef1")).toBeVisible();
+    expect(screen.getByText("Verified")).toBeVisible();
+    expect(
+      screen.getByText("Verified signature from an active GPG key."),
+    ).toBeVisible();
   });
 });

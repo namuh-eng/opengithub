@@ -1105,6 +1105,9 @@ export type RepositoryCommitHistoryItem = {
   href: string;
   committedAt: string;
   authorLogin: string | null;
+  verified: boolean;
+  signatureState: "verified" | "unverified" | "vigilant_unverified";
+  signatureSummary: string | null;
 };
 
 export type RepositoryLanguageSummary = {

@@ -626,6 +626,9 @@ pub struct RepositoryCommitHistoryItem {
     pub href: String,
     pub committed_at: DateTime<Utc>,
     pub author_login: Option<String>,
+    pub verified: bool,
+    pub signature_state: super::signing_keys::SignatureVerificationState,
+    pub signature_summary: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -6095,7 +6098,10 @@ async fn repository_commit_history(
         sqlx::query(
             r#"
             SELECT commits.oid, commits.message, commits.committed_at,
-                   COALESCE(NULLIF(users.username, ''), users.email) AS author_login
+                   COALESCE(NULLIF(users.username, ''), users.email) AS author_login,
+                   commits.author_user_id,
+                   commits.signature_fingerprint,
+                   commits.signature_summary
             FROM commits
             LEFT JOIN users ON users.id = commits.author_user_id
             WHERE commits.repository_id = $1
@@ -6112,7 +6118,10 @@ async fn repository_commit_history(
         sqlx::query(
             r#"
             SELECT DISTINCT commits.oid, commits.message, commits.committed_at,
-                   COALESCE(NULLIF(users.username, ''), users.email) AS author_login
+                   COALESCE(NULLIF(users.username, ''), users.email) AS author_login,
+                   commits.author_user_id,
+                   commits.signature_fingerprint,
+                   commits.signature_summary
             FROM commits
             JOIN repository_files ON repository_files.commit_id = commits.id
             LEFT JOIN users ON users.id = commits.author_user_id
@@ -6131,23 +6140,37 @@ async fn repository_commit_history(
         .await?
     };
 
-    let items = rows
-        .into_iter()
-        .map(|row| {
-            let oid: String = row.get("oid");
-            RepositoryCommitHistoryItem {
-                short_oid: oid.chars().take(7).collect(),
-                href: format!(
-                    "/{}/{}/commit/{}",
-                    repository.owner_login, repository.name, oid
-                ),
-                oid,
-                message: row.get("message"),
-                committed_at: row.get("committed_at"),
-                author_login: row.get("author_login"),
-            }
-        })
-        .collect();
+    let mut items = Vec::with_capacity(rows.len());
+    for row in rows {
+        let oid: String = row.get("oid");
+        let signature_fingerprint: Option<String> = row.get("signature_fingerprint");
+        let stored_signature_summary: Option<String> = row.get("signature_summary");
+        let signature = super::signing_keys::signature_presentation_for_user(
+            pool,
+            row.get("author_user_id"),
+            signature_fingerprint.as_deref(),
+            stored_signature_summary.as_deref(),
+        )
+        .await
+        .map_err(|error| match error {
+            super::signing_keys::SigningKeyError::Sqlx(error) => RepositoryError::Sqlx(error),
+            _ => RepositoryError::GitStorageFailed,
+        })?;
+        items.push(RepositoryCommitHistoryItem {
+            short_oid: oid.chars().take(7).collect(),
+            href: format!(
+                "/{}/{}/commit/{}",
+                repository.owner_login, repository.name, oid
+            ),
+            oid,
+            message: row.get("message"),
+            committed_at: row.get("committed_at"),
+            author_login: row.get("author_login"),
+            verified: signature.verified,
+            signature_state: signature.signature_state,
+            signature_summary: signature.signature_summary,
+        });
+    }
 
     Ok(ListEnvelope {
         items,

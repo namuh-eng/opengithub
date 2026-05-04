@@ -4535,5 +4535,25 @@
       "Validate real Google reauth parity when sudo mode moves beyond email confirmation.",
       "Exercise mobile density and wrapping with many GPG keys, long fingerprints, long email lists, and mixed deleted/active rows."
     ]
+  },
+  {
+    "feature_id": "credentials-002",
+    "tests_written": [
+      "Completed Phase 4 Commit and Git Authentication Integration without marking credentials-002 build_pass=true.",
+      "Added additive signature integration migration columns for commit and tag signature fingerprints while preserving existing release/tag verified summaries.",
+      "Added active SSH key lookup by SHA256 fingerprint plus last-used update helper for future SSH transport authentication boundaries.",
+      "Added GPG-backed signature classification that marks matching active GPG fingerprints verified and vigilant-mode unsigned/untrusted commits as unverified.",
+      "Extended repository commit history API/UI with verified, signatureState, and signatureSummary fields rendered as Editorial ok/warn chips.",
+      "Focused Rust signing-key integration test passed for SSH lookup, last-used update, active GPG verification, revoked-key exclusion, and vigilant-mode untrusted classification.",
+      "Focused Vitest passed for repository commit-history signature chip rendering.",
+      "make check and make test passed; focused Playwright repository Code/history smoke passed after warming local API and Next servers, saving the existing repo-003-final-history.jpg evidence."
+    ],
+    "needs_deeper_qa": [
+      "Exercise a real SSH transport once introduced: public-key auth handshake, read-only versus read-write access enforcement, revoked-key denial, and last-used timestamp updates.",
+      "Probe real Git signed commit/tag ingestion with GPG fingerprints, mismatched fingerprints, revoked keys, unsigned commits, and commits authored by users without vigilant mode.",
+      "Confirm release tag signature metadata continues to prefer explicit release/tag stored summaries when both stored metadata and GPG-derived classification are present.",
+      "Run browser QA on pages with mixed verified, unverified, and vigilant-unverified commit histories once fixtures include signed commit metadata.",
+      "Check that raw SSH public keys and armored GPG public keys remain absent from API responses, audit metadata, browser output, and logs."
+    ]
   }
 ]
