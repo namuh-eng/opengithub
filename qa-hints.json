@@ -4957,5 +4957,25 @@
       "Run a real Google OAuth owner session with TEST_ACCOUNT_EMAIL once the UI exists to confirm permissions outside deterministic signed-cookie fixtures.",
       "Stress concurrent policy writes, large organizations, policy flips while repository/team creation forms are open, and cache invalidation for base permission authorization."
     ]
+  },
+  {
+    "feature_id": "org-admin-005",
+    "tests_written": [
+      "Completed Phase 2 Editorial Member Privileges UI without marking org-admin-005 build_pass=true.",
+      "Added typed frontend DTOs and server-session helpers for GET/PATCH /api/orgs/{org}/settings/member-privileges.",
+      "Added /organizations/{org}/settings/member_privileges plus same-origin action forwarding for per-card policy saves with the current session cookie.",
+      "Built the long Editorial settings page with independent cards for base permissions, repository creation, forking/discussions, Projects, Pages, app access, destructive actions, and team creation.",
+      "Focused Vitest covers card rendering, default values, per-card payloads, accessible confirmation dialog behavior, server confirmation conflicts, disabled policy-lock affordances, no dead controls, and Editorial token expectations.",
+      "Focused Playwright covers owner render, base-permission confirmation, repository creation save, team creation toggle, no dead controls, mobile no-overflow, and screenshot ralph/screenshots/build/org-admin-005-phase2-member-privileges.jpg.",
+      "Verification passed: focused Vitest, web typecheck, focused Biome, focused Playwright, full make check, full make test with Cargo tests plus 394 web tests, direct full Playwright with 119 tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 must prove repository creation visibility constraints and base repository permission enforcement across explicit user/team permission overrides.",
+      "Phase 4 must prove team creation, Pages publishing, discussions/forking/app/destructive policy enforcement across existing backend paths and UI affordances.",
+      "Run a real Google OAuth owner session with TEST_ACCOUNT_EMAIL to repeat the long settings page outside deterministic signed-cookie fixtures.",
+      "Stress concurrent per-card saves, rapid confirmation-dialog submit/cancel loops, large organizations, and policy flips while repository/team creation forms are open.",
+      "Policy-lock rendering is covered with injected DTOs because the current backend returns no locks until enterprise enforced_by fields exist; QA should revisit real lock rows when that backend source ships.",
+      "The make test-e2e wrapper again stayed silent with active child processes and was terminated; direct Playwright completed the full suite successfully."
+    ]
   }
 ]

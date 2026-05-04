@@ -11,6 +11,7 @@ import {
   getKeySettingsFromCookie,
   getNotificationDeliverySettingsFromCookie,
   getNotificationFilterSettingsFromCookie,
+  getOrganizationMemberPrivilegesFromCookie,
   getOrganizationPackageDetailFromCookie,
   getOrganizationPackageSettingsFromCookie,
   getOrganizationPackagesFromCookie,
@@ -67,6 +68,7 @@ import {
   getUserPackageSettingsFromCookie,
   getUserPackagesFromCookie,
   type KeySettingsFetchResult,
+  type OrganizationMemberPrivilegesFetchResult,
   type OrganizationPeopleAdminQuery,
   type OrganizationPeopleListQuery,
   type OrganizationProfileSettingsFetchResult,
@@ -173,6 +175,16 @@ export async function getOrganizationProfileSettings(
 ): Promise<OrganizationProfileSettingsFetchResult> {
   const requestHeaders = await headers();
   return getOrganizationProfileSettingsFromCookie(
+    requestHeaders.get("cookie"),
+    org,
+  );
+}
+
+export async function getOrganizationMemberPrivileges(
+  org: string,
+): Promise<OrganizationMemberPrivilegesFetchResult> {
+  const requestHeaders = await headers();
+  return getOrganizationMemberPrivilegesFromCookie(
     requestHeaders.get("cookie"),
     org,
   );

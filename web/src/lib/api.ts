@@ -129,6 +129,61 @@ export type OrganizationProfileSettingsFetchResult =
   | { ok: true; settings: OrganizationProfileSettings }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type OrganizationPolicyPermission = "none" | "read" | "write" | "admin";
+
+export type OrganizationAppAccessRequestPolicy =
+  | "owners_only"
+  | "owners_and_members";
+
+export type OrganizationMemberPrivilegesPolicies = {
+  baseRepositoryPermission: OrganizationPolicyPermission | string;
+  membersCanCreatePublicRepositories: boolean;
+  membersCanCreatePrivateRepositories: boolean;
+  membersCanCreateInternalRepositories: boolean;
+  membersCanForkPrivateRepositories: boolean;
+  repositoryDiscussionsEnabled: boolean;
+  projectsBasePermission: OrganizationPolicyPermission | string;
+  pagesPublicPublishing: boolean;
+  pagesPrivatePublishing: boolean;
+  appAccessRequestPolicy: OrganizationAppAccessRequestPolicy | string;
+  membersCanChangeRepositoryVisibility: boolean;
+  membersCanDeleteRepositories: boolean;
+  membersCanTransferRepositories: boolean;
+  membersCanDeleteIssues: boolean;
+  membersCanCreateTeams: boolean;
+};
+
+export type OrganizationPolicyLock = {
+  field: keyof OrganizationMemberPrivilegesPolicies | string;
+  enforcedBy: string;
+  reason: string;
+  href: string | null;
+};
+
+export type OrganizationPolicyCapabilities = {
+  canUpdate: boolean;
+  requiresConfirmationFields: Array<
+    keyof OrganizationMemberPrivilegesPolicies | string
+  >;
+  locks: OrganizationPolicyLock[];
+};
+
+export type OrganizationMemberPrivilegesSettings = {
+  organization: OrganizationSettingsIdentity;
+  policies: OrganizationMemberPrivilegesPolicies;
+  capabilities: OrganizationPolicyCapabilities;
+  viewerState: OrganizationSettingsViewerState;
+};
+
+export type OrganizationMemberPrivilegesFetchResult =
+  | { ok: true; settings: OrganizationMemberPrivilegesSettings }
+  | { ok: false; status: number; code: string | null; message: string };
+
+export type UpdateOrganizationMemberPrivilegesRequest =
+  Partial<OrganizationMemberPrivilegesPolicies> & {
+    confirmation?: string;
+  };
+
 export type UpdateOrganizationProfileSettingsRequest = {
   displayName?: string;
   description?: string | null;
@@ -4938,6 +4993,47 @@ export async function getOrganizationProfileSettingsFromCookie(
   };
 }
 
+export async function getOrganizationMemberPrivilegesFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+): Promise<OrganizationMemberPrivilegesFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/settings/member-privileges`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Organization member privileges are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Organization member privileges are unavailable right now.";
+    try {
+      const body = (await response.json()) as ApiErrorEnvelope;
+      code = body.error.code ?? null;
+      message = body.error.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    settings: (await response.json()) as OrganizationMemberPrivilegesSettings,
+  };
+}
+
 export async function updateOrganizationProfileSettingsFromCookie(
   cookie: string | null | undefined,
   org: string,
@@ -4967,6 +5063,37 @@ export async function updateOrganizationProfileSettingsFromCookie(
   }
 
   return (await response.json()) as OrganizationProfileSettings;
+}
+
+export async function updateOrganizationMemberPrivilegesFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  input: UpdateOrganizationMemberPrivilegesRequest,
+): Promise<OrganizationMemberPrivilegesSettings> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/settings/member-privileges`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const body = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      body?.error.message ?? "Organization member privileges update failed",
+      { cause: body },
+    );
+  }
+
+  return (await response.json()) as OrganizationMemberPrivilegesSettings;
 }
 
 export async function renameOrganizationFromCookie(

@@ -352,7 +352,7 @@ export const ORGANIZATION_SETTINGS_NAV_ITEMS = [
     protected: true,
   },
   {
-    href: "/settings/member-privileges",
+    href: "/settings/member_privileges",
     label: "Member privileges",
     section: "member-privileges",
     group: "access",

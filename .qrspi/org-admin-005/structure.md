@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial Member Privileges UI - long settings page with independent cards
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Build `/organizations/{org}/settings/member_privileges` on the existing Editorial organization settings shell. The page has independent cards/forms for base permissions, repository creation, private forking, discussions, Projects base permission, Pages publishing, app access requests, repository visibility/delete/transfer, issue deletion, and team creation.
 
