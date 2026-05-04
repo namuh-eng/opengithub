@@ -74,6 +74,61 @@ export type AccountSecuritySettingsFetchResult =
   | { ok: true; settings: AccountSecuritySettings }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type OrganizationSettingsIdentity = {
+  id: string;
+  slug: string;
+  name: string;
+  href: string;
+  settingsHref: string;
+};
+
+export type OrganizationProfileSettingsFields = {
+  displayName: string;
+  description: string | null;
+  websiteUrl: string | null;
+  location: string | null;
+  publicEmail: string | null;
+  contactEmail: string | null;
+  billingEmail: string | null;
+  companyName: string | null;
+  ownershipType: string;
+  profileVisibility: string;
+  publicMembersVisible: boolean;
+};
+
+export type OrganizationSocialAccount = {
+  provider: string;
+  value: string;
+  position: number;
+};
+
+export type OrganizationSettingsViewerState = {
+  role: string;
+  canEditProfile: boolean;
+  canRename: boolean;
+  canArchive: boolean;
+  canDelete: boolean;
+};
+
+export type OrganizationAvatarSettings = {
+  avatarUrl: string | null;
+  storageConfigured: boolean;
+  uploadAvailable: boolean;
+  unavailableReason: string | null;
+};
+
+export type OrganizationProfileSettings = {
+  organization: OrganizationSettingsIdentity;
+  profile: OrganizationProfileSettingsFields;
+  socialAccounts: OrganizationSocialAccount[];
+  viewerState: OrganizationSettingsViewerState;
+  avatar: OrganizationAvatarSettings;
+};
+
+export type OrganizationProfileSettingsFetchResult =
+  | { ok: true; settings: OrganizationProfileSettings }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type UnlinkSignInMethodResponse = {
   removedId: string;
   settings: AccountSecuritySettings;
@@ -4549,6 +4604,47 @@ export async function getPublicOrganizationProfileFromCookie(
   }
 
   return (await response.json()) as PublicOrganizationProfile;
+}
+
+export async function getOrganizationProfileSettingsFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+): Promise<OrganizationProfileSettingsFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/settings/profile`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Organization settings are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Organization settings are unavailable right now.";
+    try {
+      const body = (await response.json()) as ApiErrorEnvelope;
+      code = body.error.code ?? null;
+      message = body.error.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    settings: (await response.json()) as OrganizationProfileSettings,
+  };
 }
 
 export async function getOrganizationRepositoriesFromCookie(

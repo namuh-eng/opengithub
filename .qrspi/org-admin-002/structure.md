@@ -24,7 +24,7 @@
 
 ## Phase 2: Editorial Organization Settings Shell - replace the placeholder profile route
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace `/orgs/{org}/settings` placeholder routing with the real protected organization settings shell and profile page at `/organizations/{org}/settings/profile`, with compatibility links from `/orgs/{org}/settings`. The UI must use the Editorial system while matching GitHub's settings information architecture: top organization context, left grouped settings sidebar, context switcher, and right content cards.
 

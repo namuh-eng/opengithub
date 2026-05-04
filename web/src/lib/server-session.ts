@@ -15,6 +15,7 @@ import {
   getOrganizationPackageSettingsFromCookie,
   getOrganizationPackagesFromCookie,
   getOrganizationPeopleFromCookie,
+  getOrganizationProfileSettingsFromCookie,
   getOrganizationRepositoriesFromCookie,
   getPersonalAccessTokenListFromCookie,
   getPersonalAccessTokenNewContextFromCookie,
@@ -64,6 +65,7 @@ import {
   getUserPackagesFromCookie,
   type KeySettingsFetchResult,
   type OrganizationPeopleListQuery,
+  type OrganizationProfileSettingsFetchResult,
   type OrganizationRepositoryListQuery,
   type OwnerPackageListQuery,
   type PackageDetailFetchResult,
@@ -156,6 +158,16 @@ export async function getPublicUserProfile(
 export async function getPublicOrganizationProfile(org: string) {
   const requestHeaders = await headers();
   return getPublicOrganizationProfileFromCookie(
+    requestHeaders.get("cookie"),
+    org,
+  );
+}
+
+export async function getOrganizationProfileSettings(
+  org: string,
+): Promise<OrganizationProfileSettingsFetchResult> {
+  const requestHeaders = await headers();
+  return getOrganizationProfileSettingsFromCookie(
     requestHeaders.get("cookie"),
     org,
   );

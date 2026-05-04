@@ -4704,5 +4704,24 @@
       "Stress validation with very long Unicode display names, URLs with unusual but valid HTTP(S) forms, and email edge cases beyond the focused syntax checks.",
       "Confirm future avatar upload uses the placeholder S3 metadata contract without exposing bucket/key values in settings responses."
     ]
+  },
+  {
+    "feature_id": "org-admin-002",
+    "tests_written": [
+      "Completed Phase 2 Editorial Organization Settings Shell without marking org-admin-002 build_pass=true.",
+      "Added typed frontend OrganizationProfileSettings DTOs and server fetch helpers for GET /api/orgs/{org}/settings/profile.",
+      "Added canonical /organizations/{org}/settings/profile route, compatibility redirect from /orgs/{org}/settings, and an Editorial organization settings shell with grouped sidebar, organization context, personal/organization context switcher, and disabled billing entry.",
+      "Rendered owner-only profile, contact, social, avatar-unavailable, and danger-zone preview sections using Editorial primitives while keeping save/destructive controls disabled until later phases wire mutations.",
+      "Focused Vitest covers shell navigation, context-switcher links, owner-state rendering, disabled unsupported billing, no dead anchors, named buttons, and Editorial token expectations.",
+      "Focused Playwright smoke covers owner route load, context-switcher links, profile/contact/social fields, disabled controls, compatibility redirect, no dead controls, and screenshot ralph/screenshots/build/org-admin-002-phase2-settings-shell.jpg.",
+      "Verification passed: focused Vitest, TypeScript, focused Biome, make check, make test with Cargo tests plus 373 web tests, focused Playwright smoke, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 must verify real PATCH saves for public profile, contact/billing, and social sections with reload persistence and failed-save rollback.",
+      "Run manual owner/non-owner browser checks once deterministic non-owner org settings fixtures are available; backend Phase 1 covers 403, and this phase verifies the owner shell.",
+      "Probe long organization names, emails, social handles, and locations on narrow mobile widths beyond the desktop Phase 2 smoke.",
+      "Full make test-e2e was attempted but the silent wrapper hung and was terminated after focused smoke passed; re-run after local Playwright wrapper stability is addressed.",
+      "Local opengithub_identity_test needed the existing 202605040011 organization profile settings migration applied manually because it was missing Phase 1 columns/table."
+    ]
   }
 ]

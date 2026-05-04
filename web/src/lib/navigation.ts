@@ -28,6 +28,12 @@ export type RepositorySettingsSection = NavigationItem & {
   hrefSuffix: string;
 };
 
+export type OrganizationSettingsSection = NavigationItem & {
+  section: string;
+  group: "general" | "access" | "integrations" | "danger";
+  disabled?: boolean;
+};
+
 export type QueryTab = {
   label: string;
   value: string;
@@ -334,6 +340,73 @@ export const REPOSITORY_SETTINGS_NAV_ITEMS = [
     protected: true,
   },
 ] as const satisfies readonly RepositorySettingsSection[];
+
+export const ORGANIZATION_SETTINGS_NAV_ITEMS = [
+  {
+    href: "/settings/profile",
+    label: "Profile",
+    section: "profile",
+    group: "general",
+    kind: "settings",
+    description: "Public organization profile and contact fields",
+    protected: true,
+  },
+  {
+    href: "/settings/member-privileges",
+    label: "Member privileges",
+    section: "member-privileges",
+    group: "access",
+    kind: "settings",
+    description: "Repository creation and member policy defaults",
+    protected: true,
+  },
+  {
+    href: "/settings/teams",
+    label: "Teams",
+    section: "teams",
+    group: "access",
+    kind: "settings",
+    description: "Team directory and repository access",
+    protected: true,
+  },
+  {
+    href: "/settings/hooks",
+    label: "Webhooks",
+    section: "hooks",
+    group: "integrations",
+    kind: "settings",
+    description: "Organization webhook endpoints",
+    protected: true,
+  },
+  {
+    href: "/settings/packages",
+    label: "Packages",
+    section: "packages",
+    group: "integrations",
+    kind: "settings",
+    description: "Package publishing defaults",
+    protected: true,
+  },
+  {
+    href: "/settings/billing",
+    label: "Billing",
+    section: "billing",
+    group: "general",
+    kind: "settings",
+    description: "Billing is outside this clone's current scope",
+    protected: true,
+    disabled: true,
+  },
+  {
+    href: "/settings/danger",
+    label: "Danger zone",
+    section: "danger",
+    group: "danger",
+    kind: "settings",
+    description: "Rename, archive, and delete guardrails",
+    protected: true,
+  },
+] as const satisfies readonly OrganizationSettingsSection[];
 
 export const PROFILE_TABS = [
   {
@@ -807,6 +880,13 @@ export function organizationProjectHref(org: string) {
 
 export function organizationSettingsHref(org: string) {
   return `${organizationHref(org)}/settings`;
+}
+
+export function organizationSettingsSectionHref(
+  org: string,
+  item: OrganizationSettingsSection,
+) {
+  return `/organizations/${encodeURIComponent(org)}${item.href}`;
 }
 
 export function organizationTeamHref(org: string, teamSlug: string) {
