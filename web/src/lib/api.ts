@@ -1613,6 +1613,60 @@ export type RepositoryCommitAuthorOption = {
   active: boolean;
 };
 
+export type RepositoryCommitDetailView = {
+  repository: RepositoryCommitDetailRepository;
+  commit: RepositoryCommitDetailCommit;
+  parents: RepositoryCommitDetailParent[];
+  branches: RepositoryCommitDetailBranchLink[];
+  pullRequests: RepositoryCommitPullRequestLink[];
+  status: RepositoryCommitStatusSummary;
+  verification: RepositoryCommitVerificationSummary;
+  diffPlaceholder: RepositoryCommitDetailDiffPlaceholder;
+};
+
+export type RepositoryCommitDetailRepository = {
+  ownerLogin: string;
+  name: string;
+  defaultBranch: string;
+  visibility: RepositoryVisibility | string;
+  href: string;
+  commitHistoryHref: string;
+};
+
+export type RepositoryCommitDetailCommit = {
+  oid: string;
+  shortOid: string;
+  message: string;
+  subject: string;
+  body: string | null;
+  href: string;
+  browseHref: string;
+  committedAt: string;
+  authorLogin: string | null;
+  authorAvatarUrl: string | null;
+  committerLogin: string | null;
+  committerAvatarUrl: string | null;
+};
+
+export type RepositoryCommitDetailParent = {
+  oid: string;
+  shortOid: string;
+  href: string;
+};
+
+export type RepositoryCommitDetailBranchLink = {
+  name: string;
+  qualifiedName: string;
+  kind: string;
+  href: string;
+};
+
+export type RepositoryCommitDetailDiffPlaceholder = {
+  state: string;
+  message: string;
+  nextPhase: string;
+};
+
 export type RepositoryLanguageSummary = {
   language: string;
   color: string;
@@ -9224,6 +9278,32 @@ export async function getRepositoryCommitHistoryFromCookie(
   }
 
   return (await response.json()) as RepositoryCommitHistoryView;
+}
+
+export async function getRepositoryCommitDetailFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  sha: string,
+): Promise<RepositoryCommitDetailView | null> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits/${encodeURIComponent(sha)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return null;
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return (await response.json()) as RepositoryCommitDetailView;
 }
 
 export async function getRepositoryRefsFromCookie(

@@ -730,6 +730,72 @@ pub struct RepositoryCommitAuthorOption {
     pub active: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCommitDetailView {
+    pub repository: RepositoryCommitDetailRepository,
+    pub commit: RepositoryCommitDetailCommit,
+    pub parents: Vec<RepositoryCommitDetailParent>,
+    pub branches: Vec<RepositoryCommitDetailBranchLink>,
+    pub pull_requests: Vec<RepositoryCommitPullRequestLink>,
+    pub status: RepositoryCommitStatusSummary,
+    pub verification: RepositoryCommitVerificationSummary,
+    pub diff_placeholder: RepositoryCommitDetailDiffPlaceholder,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCommitDetailRepository {
+    pub owner_login: String,
+    pub name: String,
+    pub default_branch: String,
+    pub visibility: RepositoryVisibility,
+    pub href: String,
+    pub commit_history_href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCommitDetailCommit {
+    pub oid: String,
+    pub short_oid: String,
+    pub message: String,
+    pub subject: String,
+    pub body: Option<String>,
+    pub href: String,
+    pub browse_href: String,
+    pub committed_at: DateTime<Utc>,
+    pub author_login: Option<String>,
+    pub author_avatar_url: Option<String>,
+    pub committer_login: Option<String>,
+    pub committer_avatar_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCommitDetailParent {
+    pub oid: String,
+    pub short_oid: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCommitDetailBranchLink {
+    pub name: String,
+    pub qualified_name: String,
+    pub kind: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCommitDetailDiffPlaceholder {
+    pub state: String,
+    pub message: String,
+    pub next_phase: String,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct RepositoryCommitHistoryQuery<'a> {
     pub ref_name: Option<&'a str>,
@@ -2083,6 +2149,23 @@ pub async fn repository_commit_history_for_actor_by_owner_name(
     )
     .await
     .map(Some)
+}
+
+pub async fn repository_commit_detail_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    sha: &str,
+) -> Result<Option<RepositoryCommitDetailView>, RepositoryError> {
+    let Some(repository) =
+        get_repository_for_actor_by_owner_name(pool, actor_user_id, owner_login, name).await?
+    else {
+        return Ok(None);
+    };
+    repository_commit_detail(pool, &repository, actor_user_id, sha)
+        .await
+        .map(Some)
 }
 
 async fn repository_path_overview_for_actor(
@@ -6712,6 +6795,228 @@ async fn repository_commit_history(
         page_size,
         has_next_page: offset + page_size < total,
         has_previous_page: page > 1,
+    })
+}
+
+async fn repository_commit_detail(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    sha: &str,
+) -> Result<RepositoryCommitDetailView, RepositoryError> {
+    let normalized_sha = sha.trim();
+    if normalized_sha.len() < 4 || normalized_sha.contains('/') || normalized_sha.contains('\\') {
+        return Err(RepositoryError::NotFound);
+    }
+
+    let rows = sqlx::query(
+        r#"
+        SELECT commits.id,
+               commits.oid,
+               commits.message,
+               commits.parent_oids,
+               commits.committed_at,
+               COALESCE(NULLIF(author.username, ''), author.email) AS author_login,
+               author.avatar_url AS author_avatar_url,
+               COALESCE(NULLIF(committer.username, ''), committer.email) AS committer_login,
+               committer.avatar_url AS committer_avatar_url,
+               commits.author_user_id,
+               commits.signature_fingerprint,
+               commits.signature_summary,
+               COALESCE(statuses.status, workflow_statuses.status, 'pending') AS status,
+               COALESCE(statuses.conclusion, workflow_statuses.conclusion) AS conclusion,
+               COALESCE(statuses.total_count, workflow_statuses.total_count, 0)::bigint AS total_count,
+               COALESCE(statuses.completed_count, workflow_statuses.completed_count, 0)::bigint AS completed_count,
+               COALESCE(statuses.failed_count, workflow_statuses.failed_count, 0)::bigint AS failed_count,
+               COALESCE(pr_links.links, '[]'::jsonb) AS pull_requests
+        FROM commits
+        LEFT JOIN users author ON author.id = commits.author_user_id
+        LEFT JOIN users committer ON committer.id = commits.committer_user_id
+        LEFT JOIN repository_commit_status_summaries statuses ON statuses.commit_id = commits.id
+        LEFT JOIN LATERAL (
+            SELECT CASE
+                    WHEN count(*) FILTER (WHERE workflow_runs.status IN ('queued', 'in_progress')) > 0 THEN 'running'
+                    WHEN count(*) = 0 THEN NULL
+                    ELSE 'completed'
+                   END AS status,
+                   CASE
+                    WHEN count(*) = 0 THEN NULL
+                    WHEN count(*) FILTER (WHERE workflow_runs.conclusion = 'failure') > 0 THEN 'failure'
+                    WHEN count(*) FILTER (WHERE workflow_runs.conclusion = 'cancelled') > 0 THEN 'cancelled'
+                    WHEN count(*) FILTER (WHERE workflow_runs.conclusion = 'success') = count(*) THEN 'success'
+                    ELSE NULL
+                   END AS conclusion,
+                   count(*)::bigint AS total_count,
+                   count(*) FILTER (WHERE workflow_runs.status = 'completed')::bigint AS completed_count,
+                   count(*) FILTER (WHERE workflow_runs.conclusion = 'failure')::bigint AS failed_count
+            FROM workflow_runs
+            WHERE workflow_runs.repository_id = commits.repository_id
+              AND (workflow_runs.commit_id = commits.id OR workflow_runs.head_sha = commits.oid)
+        ) workflow_statuses ON true
+        LEFT JOIN LATERAL (
+            SELECT jsonb_agg(
+                jsonb_build_object(
+                    'number', pull_requests.number,
+                    'title', pull_requests.title,
+                    'href', format('/%s/%s/pull/%s', $3::text, $4::text, pull_requests.number),
+                    'state', pull_requests.state
+                )
+                ORDER BY pull_requests.number
+            ) AS links
+            FROM pull_request_commits
+            JOIN pull_requests ON pull_requests.id = pull_request_commits.pull_request_id
+            WHERE pull_request_commits.commit_id = commits.id
+        ) pr_links ON true
+        WHERE commits.repository_id = $1
+          AND (commits.oid = $2 OR commits.oid LIKE ($2 || '%'))
+        ORDER BY (commits.oid = $2) DESC, commits.committed_at DESC
+        LIMIT 2
+        "#,
+    )
+    .bind(repository.id)
+    .bind(normalized_sha)
+    .bind(&repository.owner_login)
+    .bind(&repository.name)
+    .fetch_all(pool)
+    .await?;
+
+    if rows.is_empty() || (rows.len() > 1 && rows[0].get::<String, _>("oid") != normalized_sha) {
+        return Err(RepositoryError::NotFound);
+    }
+
+    let row = &rows[0];
+    let commit_id: Uuid = row.get("id");
+    let oid: String = row.get("oid");
+    let message: String = row.get("message");
+    let (subject, body) = split_commit_message(&message);
+    let signature = super::signing_keys::signature_presentation_for_user(
+        pool,
+        row.get("author_user_id"),
+        row.get::<Option<String>, _>("signature_fingerprint")
+            .as_deref(),
+        row.get::<Option<String>, _>("signature_summary").as_deref(),
+    )
+    .await
+    .map_err(|error| match error {
+        super::signing_keys::SigningKeyError::Sqlx(error) => RepositoryError::Sqlx(error),
+        _ => RepositoryError::GitStorageFailed,
+    })?;
+    let pull_requests: Vec<RepositoryCommitPullRequestLink> =
+        serde_json::from_value(row.get("pull_requests")).unwrap_or_default();
+    let parent_oids: Vec<String> = row.get("parent_oids");
+    let parents = parent_oids
+        .into_iter()
+        .map(|parent_oid| RepositoryCommitDetailParent {
+            short_oid: parent_oid.chars().take(7).collect(),
+            href: format!(
+                "/{}/{}/commit/{}",
+                repository.owner_login, repository.name, parent_oid
+            ),
+            oid: parent_oid,
+        })
+        .collect::<Vec<_>>();
+    let branch_rows = sqlx::query(
+        r#"
+        SELECT name, kind
+        FROM repository_git_refs
+        WHERE repository_id = $1 AND target_commit_id = $2
+        ORDER BY CASE WHEN name = $3 THEN 0 ELSE 1 END, lower(name)
+        "#,
+    )
+    .bind(repository.id)
+    .bind(commit_id)
+    .bind(format!("refs/heads/{}", repository.default_branch))
+    .fetch_all(pool)
+    .await?;
+    let branches = branch_rows
+        .into_iter()
+        .map(|branch| {
+            let qualified_name: String = branch.get("name");
+            let name = qualified_name
+                .strip_prefix("refs/heads/")
+                .or_else(|| qualified_name.strip_prefix("refs/tags/"))
+                .unwrap_or(&qualified_name)
+                .to_owned();
+            RepositoryCommitDetailBranchLink {
+                href: repository_history_href(repository, &name, ""),
+                name,
+                qualified_name,
+                kind: branch.get("kind"),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let _ = sqlx::query(
+        r#"
+        INSERT INTO repository_commit_recent_visits (repository_id, user_id, ref_name, path, filters)
+        VALUES ($1, $2, $3, '', jsonb_build_object('commit', $3::text))
+        ON CONFLICT (repository_id, user_id, ref_name, path)
+        DO UPDATE SET viewed_at = now(), filters = EXCLUDED.filters
+        "#,
+    )
+    .bind(repository.id)
+    .bind(actor_user_id)
+    .bind(&oid)
+    .execute(pool)
+    .await;
+
+    Ok(RepositoryCommitDetailView {
+        repository: RepositoryCommitDetailRepository {
+            owner_login: repository.owner_login.clone(),
+            name: repository.name.clone(),
+            default_branch: repository.default_branch.clone(),
+            visibility: repository.visibility.clone(),
+            href: format!("/{}/{}", repository.owner_login, repository.name),
+            commit_history_href: repository_history_href(
+                repository,
+                &repository.default_branch,
+                "",
+            ),
+        },
+        commit: RepositoryCommitDetailCommit {
+            short_oid: oid.chars().take(7).collect(),
+            href: format!(
+                "/{}/{}/commit/{}",
+                repository.owner_login, repository.name, oid
+            ),
+            browse_href: format!(
+                "/{}/{}/tree/{}",
+                repository.owner_login, repository.name, oid
+            ),
+            oid: oid.clone(),
+            message,
+            subject,
+            body,
+            committed_at: row.get("committed_at"),
+            author_login: row.get("author_login"),
+            author_avatar_url: row.get("author_avatar_url"),
+            committer_login: row.get("committer_login"),
+            committer_avatar_url: row.get("committer_avatar_url"),
+        },
+        parents,
+        branches,
+        pull_requests,
+        status: RepositoryCommitStatusSummary {
+            status: row.get("status"),
+            conclusion: row.get("conclusion"),
+            total_count: row.get("total_count"),
+            completed_count: row.get("completed_count"),
+            failed_count: row.get("failed_count"),
+            href: format!(
+                "/{}/{}/actions?commit={}",
+                repository.owner_login, repository.name, oid
+            ),
+        },
+        verification: RepositoryCommitVerificationSummary {
+            verified: signature.verified,
+            signature_state: signature.signature_state,
+            signature_summary: signature.signature_summary,
+        },
+        diff_placeholder: RepositoryCommitDetailDiffPlaceholder {
+            state: "pending_phase".to_owned(),
+            message: "Diff rendering arrives in the next commit-detail slice.".to_owned(),
+            next_phase: "Phase 2: Diff File Tree and Unified Diff Rendering".to_owned(),
+        },
     })
 }
 

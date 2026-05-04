@@ -38,6 +38,7 @@ import {
   getRepositoryBlameFromCookie,
   getRepositoryBlobFromCookie,
   getRepositoryBranchSettingsFromCookie,
+  getRepositoryCommitDetailFromCookie,
   getRepositoryCommitHistoryFromCookie,
   getRepositoryCreationOptionsFromCookie,
   getRepositoryFileFinderFromCookie,
@@ -610,6 +611,20 @@ export async function getRepositoryCommitHistory(
     refName,
     path,
     options,
+  );
+}
+
+export async function getRepositoryCommitDetail(
+  owner: string,
+  repo: string,
+  sha: string,
+) {
+  const requestHeaders = await headers();
+  return getRepositoryCommitDetailFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    sha,
   );
 }
 

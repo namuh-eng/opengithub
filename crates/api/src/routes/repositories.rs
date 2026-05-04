@@ -64,6 +64,7 @@ use crate::{
         repository_access_settings_for_actor_by_owner_name,
         repository_blame_for_actor_by_owner_name, repository_blob_for_actor_by_owner_name,
         repository_branch_settings_for_actor_by_owner_name,
+        repository_commit_detail_for_actor_by_owner_name,
         repository_commit_history_for_actor_by_owner_name, repository_creation_options,
         repository_file_finder_for_actor_by_owner_name, repository_name_availability,
         repository_overview_for_viewer_by_owner_name,
@@ -101,6 +102,7 @@ pub fn router() -> Router<AppState> {
         .route("/:owner/:repo/blobs/*path", get(blob))
         .route("/:owner/:repo/blame/*path", get(blame))
         .route("/:owner/:repo/commits", get(commits))
+        .route("/:owner/:repo/commits/:sha", get(commit_detail))
         .route("/:owner/:repo/refs", get(refs))
         .route("/:owner/:repo/file-finder", get(file_finder))
         .route("/:owner/:repo/releases", get(releases).post(create_release))
@@ -654,6 +656,28 @@ async fn commits(
     })?;
 
     Ok(Json(json!(envelope)))
+}
+
+async fn commit_detail(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, sha)): Path<(String, String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view =
+        repository_commit_detail_for_actor_by_owner_name(pool, actor.0.id, &owner, &repo, &sha)
+            .await
+            .map_err(map_repository_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
+
+    Ok(Json(json!(view)))
 }
 
 async fn refs(

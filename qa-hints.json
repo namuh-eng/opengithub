@@ -5120,5 +5120,21 @@
       "Run screen-reader traversal through the details-based ref, author, date, and row overflow controls on desktop and mobile.",
       "Re-run the Rust contract against a clean migrated database after the shared local migration drift is resolved so the DB assertions do not depend on the fallback pre-applied schema path."
     ]
+  },
+  {
+    "feature_id": "commits-002",
+    "tests_written": [
+      "Completed Phase 1 Commit Detail Contract and Summary Page without marking commits-002 build_pass=true.",
+      "Added authenticated GET /api/repos/{owner}/{repo}/commits/{sha} with repository visibility checks, exact/unambiguous abbreviated SHA resolution, parent links, branch/tag links, pull request links, status summary, signature summary, recent-visit recording, and redacted not-found/private errors.",
+      "Added typed frontend commit-detail DTOs, signed-cookie fetch helper, /{owner}/{repo}/commit/{sha} route, and Editorial RepositoryCommitDetailPage with concrete Browse files, Commit history, status, parent, PR, and copy-full-SHA controls.",
+      "Added focused Rust contract, Vitest component, and Playwright browser smoke coverage; screenshot saved at ralph/screenshots/build/commits-002-phase1-summary.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 must replace the bounded diff placeholder with the real file tree and unified diff rendering.",
+      "Repeat with real Google OAuth and imported repositories containing merge commits, multiple parents, signed commits, mixed Actions conclusions, linked PRs, and branch/tag refs that share commit targets.",
+      "Probe abbreviated SHA ambiguity, very short/malformed SHA values, deleted refs, and private repository access through browser navigation.",
+      "Exercise screen-reader and keyboard traversal of the summary sidebar and copy control on desktop and mobile.",
+      "The shared local test database still reports the known modified migration warning for 202605030041; rerun contract tests against a clean migrated database after that drift is resolved."
+    ]
   }
 ]

@@ -6,7 +6,7 @@
 
 ## Phase 1: Commit Detail Contract and Summary Page
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add an authenticated, screen-ready commit-detail read contract and render the top summary shell for `/{owner}/{repo}/commit/{sha}`. This phase makes commit-history subject/SHA links land on a real page with author, SHA, verification, status, parent, PR, branch, and browse controls, while the diff body can still show a bounded loading/next-phase state.
 
