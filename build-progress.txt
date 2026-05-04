@@ -3601,6 +3601,14 @@
 - Verification passed: focused `repository_branches_contract` against the local test database with the known `202605030041` pre-applied migration warning; focused `web/tests/repository-branches-page.test.tsx` and `web/tests/repository-branch-activity-page.test.tsx`; `cd web && npx tsc --noEmit --pretty false`; focused Biome checks; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 419 web tests; focused direct Playwright `repository-branches.spec.ts`; direct full Playwright with 124 tests; mandatory Editorial banned-value scan returned zero matches.
 - `prd.json` remains `build_pass:false` because Phase 5 remains. Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
 
+2026-05-05 - insights-003 phase 5 final docs, browser evidence, and build pass
+
+- Completed Phase 5 from `.qrspi/insights-003/structure.md`: repository Traffic analytics is now locked as a completed vertical slice and `insights-003.build_pass=true`.
+- Added `/docs/api` coverage for `GET /api/repos/{owner}/{repo}/graphs/traffic`, including push-access auth, 14-day UTC clone/visitor series, hourly/daily freshness, referrer rows, popular content rows, zero-filled sparse days, cache behavior, recent-view telemetry, safe links, and no-secret error envelopes.
+- Extended API docs assertions for the Traffic endpoint contract, and extended the dashboard E2E seed with a real signed read-only collaborator fixture so browser coverage verifies the 403 state without leaking seeded traffic counts.
+- Saved final screenshots: `ralph/screenshots/build/insights-003-final-desktop.jpg` and `ralph/screenshots/build/insights-003-final-mobile.jpg`.
+- Verification passed: focused `repository_traffic_contract` against the local test database with the known `202605030041` pre-applied migration warning; focused `web/tests/api-docs.test.tsx` and `web/tests/repository-traffic-page.test.tsx`; focused Biome checks; focused direct Playwright `repository-traffic.spec.ts`; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus web tests; direct full Playwright; mandatory Editorial banned-value scan returned zero matches.
+
 2026-05-05 - branches-001 phase 5 final docs, browser evidence, and build pass
 
 - Completed Phase 5 from `.qrspi/branches-001/structure.md`: repository branches are now locked as a completed vertical slice and `branches-001.build_pass=true`.

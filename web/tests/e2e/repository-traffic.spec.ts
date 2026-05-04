@@ -6,7 +6,9 @@ const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 type SeededDashboard = {
   cookieName: string;
   cookieValue: string;
+  trafficReadOnlyCookieValue: string;
   treeRepositoryHref: string;
+  trafficReadOnlyRepositoryHref: string;
 };
 
 function seedDashboard(): SeededDashboard {
@@ -121,15 +123,23 @@ function seedTraffic(repositoryHref: string) {
 }
 
 async function signIn(page: Page, seeded: SeededDashboard) {
+  await signInWithCookie(page, seeded.cookieName, seeded.cookieValue);
+}
+
+async function signInWithCookie(
+  page: Page,
+  cookieName: string,
+  cookieValue: string,
+) {
   await page.context().addCookies([
     {
       domain: "localhost",
       httpOnly: true,
-      name: seeded.cookieName,
+      name: cookieName,
       path: "/",
       sameSite: "Lax",
       secure: false,
-      value: seeded.cookieValue,
+      value: cookieValue,
     },
   ]);
 }
@@ -213,7 +223,7 @@ test("repository Traffic renders traffic analytics and concrete links", async ({
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/insights-003-phase4-edge-cases.jpg",
+    path: "../ralph/screenshots/build/insights-003-final-desktop.jpg",
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -224,4 +234,45 @@ test("repository Traffic renders traffic analytics and concrete links", async ({
     () => document.documentElement.scrollWidth > window.innerWidth,
   );
   expect(horizontalOverflow).toBe(false);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/insights-003-final-mobile.jpg",
+  });
+});
+
+test("repository Traffic hides counts from read-only collaborators", async ({
+  page,
+}) => {
+  const seeded = seedDashboard();
+  if (
+    !seeded.trafficReadOnlyCookieValue ||
+    !seeded.trafficReadOnlyRepositoryHref
+  ) {
+    throw new Error("dashboard seed did not return read-only traffic fixture");
+  }
+  seedTraffic(seeded.trafficReadOnlyRepositoryHref);
+  await signInWithCookie(
+    page,
+    seeded.cookieName,
+    seeded.trafficReadOnlyCookieValue,
+  );
+
+  await page.goto(`${seeded.trafficReadOnlyRepositoryHref}/graphs/traffic`);
+  await expect(
+    page.getByRole("heading", { name: "Traffic unavailable" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Repository traffic is available to users with push access.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Back to Code" }),
+  ).toHaveAttribute("href", seeded.trafficReadOnlyRepositoryHref);
+  await expect(page.getByText("42")).toHaveCount(0);
+  await expect(page.getByText("24")).toHaveCount(0);
+  await expect(
+    page.getByText("https://search.opengithub.local/results?q=traffic"),
+  ).toHaveCount(0);
+  await expectNoDeadControls(page);
 });

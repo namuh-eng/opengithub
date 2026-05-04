@@ -422,6 +422,36 @@ describe("ApiDocsPage", () => {
       2,
     );
     expect(
+      screen.getByText("/api/repos/{owner}/{repo}/graphs/traffic"),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Repository Traffic insights",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/14-day UTC clone and visitor series/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/repository write, admin, or owner access/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Clone and visitor series update hourly; referrers and popular content update daily/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/traffic_access_required with countsVisible=false/),
+    ).toBeVisible();
+    expect(screen.getByText(/zero-filled sparse days/)).toBeVisible();
+    expect(screen.getByText(/noopener noreferrer/)).toBeVisible();
+    expect(
+      screen.getByText(
+        /repository_traffic_daily, repository_referrers_daily, and repository_popular_content_daily/,
+      ),
+    ).toBeVisible();
+    expect(screen.getAllByText(/environment secrets/)[0]).toBeVisible();
+    expect(
       screen.getByText("/api/repos/{owner}/{repo}/releases?page=1&pageSize=30"),
     ).toBeVisible();
     expect(

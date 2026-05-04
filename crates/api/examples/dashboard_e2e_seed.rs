@@ -35,11 +35,13 @@ struct SeedOutput {
     cookie_name: String,
     cookie_value: String,
     profile_action_cookie_value: String,
+    traffic_read_only_cookie_value: String,
     first_repository_href: String,
     private_profile_href: String,
     second_repository_href: String,
     social_source_repository_href: String,
     tree_repository_href: String,
+    traffic_read_only_repository_href: String,
     fork_compare_href: String,
     pull_request_merge_href: String,
     actions_run_detail_href: String,
@@ -267,7 +269,7 @@ async fn main() -> anyhow::Result<()> {
         },
     )
     .await?;
-    let (tree_repository_href, fork_compare_href) = if seed_tree_repository() {
+    let (tree_repository_href, tree_repository_id, fork_compare_href) = if seed_tree_repository() {
         let tree_repository_name = format!("tree-nav-{}", &suffix[..12]);
         let tree_repository = create_repository_with_bootstrap(
             &pool,
@@ -305,10 +307,11 @@ async fn main() -> anyhow::Result<()> {
         };
         (
             format!("/{username}/{tree_repository_name}"),
+            Some(tree_repository.id),
             fork_compare_href,
         )
     } else {
-        (String::new(), String::new())
+        (String::new(), None, String::new())
     };
     let mut pull_request_merge_href = String::new();
     let (first_repository_href, second_repository_href) = if seed_empty_dashboard() {
@@ -661,11 +664,61 @@ async fn main() -> anyhow::Result<()> {
     let profile_action_cookie_value =
         session::cookie_value_from_set_cookie(&profile_action_set_cookie)
             .ok_or_else(|| anyhow::anyhow!("profile action set-cookie did not include a value"))?;
+    let (traffic_read_only_cookie_value, traffic_read_only_repository_href) =
+        if let Some(tree_repository_id) = tree_repository_id {
+            let traffic_reader_username = format!("traffic-reader-{}", &suffix[..12]);
+            let traffic_reader = upsert_user_by_email(
+                &pool,
+                &format!("{traffic_reader_username}@opengithub.local"),
+                Some("Traffic Read Only"),
+                None,
+            )
+            .await?;
+            sqlx::query("UPDATE users SET username = $1 WHERE id = $2")
+                .bind(&traffic_reader_username)
+                .bind(traffic_reader.id)
+                .execute(&pool)
+                .await?;
+            sqlx::query(
+                r#"
+                INSERT INTO repository_permissions (repository_id, user_id, role, source)
+                VALUES ($1, $2, 'read', 'direct')
+                ON CONFLICT (repository_id, user_id)
+                DO UPDATE SET role = EXCLUDED.role
+                "#,
+            )
+            .bind(tree_repository_id)
+            .bind(traffic_reader.id)
+            .execute(&pool)
+            .await?;
+            let read_only_session_id = Uuid::new_v4().to_string();
+            upsert_session(
+                &pool,
+                &read_only_session_id,
+                Some(traffic_reader.id),
+                serde_json::json!({ "provider": "google" }),
+                expires_at,
+            )
+            .await?;
+            let read_only_set_cookie =
+                session::set_cookie_header(&config, &read_only_session_id, expires_at)?;
+            let read_only_cookie_value =
+                session::cookie_value_from_set_cookie(&read_only_set_cookie).ok_or_else(|| {
+                    anyhow::anyhow!("traffic read-only set-cookie did not include a value")
+                })?;
+            (
+                read_only_cookie_value.to_owned(),
+                tree_repository_href.clone(),
+            )
+        } else {
+            (String::new(), String::new())
+        };
 
     let output = SeedOutput {
         cookie_name: config.session_cookie_name,
         cookie_value: cookie_value.to_owned(),
         profile_action_cookie_value: profile_action_cookie_value.to_owned(),
+        traffic_read_only_cookie_value,
         first_repository_href,
         private_profile_href: format!("/{private_profile_username}"),
         second_repository_href,
@@ -674,6 +727,7 @@ async fn main() -> anyhow::Result<()> {
             social_source_repository.owner_login, social_source_repository.name
         ),
         tree_repository_href,
+        traffic_read_only_repository_href,
         fork_compare_href,
         pull_request_merge_href,
         actions_run_detail_href,

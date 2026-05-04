@@ -2166,6 +2166,86 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-traffic",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/graphs/traffic",
+    title: "Repository Traffic insights",
+    description:
+      "Returns the permissioned Traffic analytics contract for repository users with push access, including the 14-day UTC clone and visitor series, summary totals, referrer rows, popular content rows, cache freshness metadata, and repository-safe permission errors.",
+    auth: "Signed opengithub session cookie with repository write, admin, or owner access; read-only users receive 403 without traffic counts",
+    response: `{
+  "repository": {
+    "ownerLogin": "mona",
+    "name": "octo-app",
+    "defaultBranch": "main",
+    "visibility": "private",
+    "viewerPermission": "write",
+    "href": "/mona/octo-app"
+  },
+  "window": {
+    "key": "14d",
+    "label": "Last 14 days",
+    "startedOn": "2026-04-24",
+    "endedOn": "2026-05-07",
+    "timezone": "UTC",
+    "dayCount": 14,
+    "clonesUpdateCadence": "hourly",
+    "visitorsUpdateCadence": "hourly",
+    "referrersUpdateCadence": "daily",
+    "popularContentUpdateCadence": "daily",
+    "internalTrafficExcluded": true
+  },
+  "summaries": {
+    "clonesTotal": 42,
+    "clonesUnique": 12,
+    "visitorsTotal": 220,
+    "visitorsUnique": 87,
+    "referrersTotal": 2,
+    "popularContentTotal": 2,
+    "activeDays": 3,
+    "hasTraffic": true
+  },
+  "clones": [
+    { "date": "2026-05-07", "total": 18, "unique": 4 }
+  ],
+  "visitors": [
+    { "date": "2026-05-07", "total": 70, "unique": 24 }
+  ],
+  "referrers": [
+    {
+      "referrer": "https://search.opengithub.local/results?q=traffic",
+      "href": "https://search.opengithub.local/results?q=traffic",
+      "totalViews": 120,
+      "uniqueVisitors": 44
+    }
+  ],
+  "popularContent": [
+    {
+      "path": "docs/traffic report.md",
+      "title": "Traffic report",
+      "href": "/mona/octo-app/blob/main/docs/traffic%20report.md",
+      "totalViews": 16,
+      "uniqueVisitors": 7
+    }
+  ],
+  "snapshot": {
+    "cacheKey": "traffic:repo-1:20260424:20260507",
+    "computedAt": "2026-05-07T01:00:00Z",
+    "expiresAt": "2026-05-07T02:00:00Z",
+    "stale": false
+  }
+}`,
+    notes: [
+      "The endpoint always returns a 14-day UTC window. Clone and visitor series update hourly; referrers and popular content update daily.",
+      "Traffic is visible only to users with push access. Anonymous callers receive 401, private outsiders receive not_found, and signed-in read-only users receive traffic_access_required with countsVisible=false.",
+      "Clone and visitor arrays include zero-filled sparse days so browser charts and data-table fallbacks can render stable keyboard-focusable points for exact date, total, and unique values.",
+      "Referrer rows are sorted by total views, unique visitors, then referrer label; external hrefs are normalized for safe browser anchors with noopener noreferrer.",
+      "Popular content rows link to repository blob paths on the default branch. Long paths and unsafe-looking text are returned as text, not HTML.",
+      "repository_traffic_daily, repository_referrers_daily, and repository_popular_content_daily store bounded rollups; repository_insight_snapshots stores the cache payload and recent_insight_views records signed-in viewer telemetry.",
+      "Error envelopes never include traffic counts, actor emails, OAuth data, session rows, tokens, storage keys, stack traces, environment secrets, or private commit OIDs.",
+    ],
+  },
+  {
     id: "repo-releases-list",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/releases?page=1&pageSize=30",

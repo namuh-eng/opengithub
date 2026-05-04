@@ -5508,5 +5508,22 @@
       "Stress bot/internal traffic exclusion against real ingestion once clone/request rollup jobs exist; this phase surfaces internalTrafficExcluded metadata but does not build ingestion pipelines.",
       "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema."
     ]
+  },
+  {
+    "feature_id": "insights-003",
+    "tests_written": [
+      "Completed Phase 5 API Docs, Browser Evidence, QA Handoff, and Build Pass and marked insights-003 build_pass=true.",
+      "Documented GET /api/repos/{owner}/{repo}/graphs/traffic in /docs/api, including push-access auth, 14-day UTC clone/visitor series, hourly/daily freshness, referrer rows, popular content rows, snapshot cache behavior, recent-view telemetry, and no-secret error envelopes.",
+      "Extended API docs assertions for Traffic endpoint coverage, permission wording, zero-filled sparse days, safe external referrer attributes, Traffic storage tables, and environment-secret guardrails.",
+      "Extended the dashboard E2E seed with a real signed read-only collaborator fixture so Playwright verifies the browser 403 state without leaking seeded traffic counts.",
+      "Ran focused Rust traffic contract coverage, focused API docs and Traffic page Vitest coverage, focused direct Playwright Traffic smoke, full make check, full make test, direct full Playwright, and the mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Exercise public zero-traffic states in a browser fixture with a distinct non-admin user; Rust and component tests cover public zero traffic, while the final Playwright fixture focuses owner analytics and read-only 403 privacy.",
+      "Stress traffic ingestion once request/git-clone rollup jobs exist; this feature reads rollup tables and surfaces internalTrafficExcluded metadata but does not build ingestion pipelines.",
+      "Run keyboard-only and screen-reader traversal through the Traffic Insights sidebar, chart point buttons, selected-point live regions, data tables, referrer links, popular content links, permission state, and mobile layout.",
+      "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema."
+    ]
   }
 ]
