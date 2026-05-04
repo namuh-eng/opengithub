@@ -3200,3 +3200,9 @@
 - Verification passed: focused Rust `organization_create_contract`; focused `web/tests/organization-create-page.test.tsx`; `cd web && npx tsc --noEmit --pretty false`; targeted Biome; focused Playwright `organization-create.spec.ts` with `DASHBOARD_E2E_SKIP_MIGRATIONS=1`; `cargo fmt --all`; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 371 web tests; compatible mandatory Editorial banned-value scan returned zero matches.
 - Full `make test-e2e` with the standard local test database/session environment was attempted after focused Playwright passed, but the `hack/run_silent.sh` wrapper produced no progress output for several minutes and was terminated to avoid leaving stuck Playwright/dev-server processes. No failing E2E assertion was reported before termination.
 - `prd.json` remains `build_pass:false` because Phase 5 remains.
+
+2026-05-04 - org-admin-002 structure outline
+
+- Created `.qrspi/org-admin-002/structure.md` for the first incomplete PRD feature, splitting organization profile settings into five vertical phases: owner-only API contract, Editorial settings shell, profile/contact/social mutations, rename/archive/delete guardrails, and final docs/browser/QA/build-pass bookkeeping.
+- No source implementation was started because `org-admin-002.needs_structure=true` and the build-loop contract requires the structure outline first, then `<promise>NEXT</promise>`.
+- Verified `org-admin-002.build_pass=false`, `qa_pass=false`, and all structure phases remain unchecked for the next invocation.
