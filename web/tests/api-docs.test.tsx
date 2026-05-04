@@ -14,7 +14,7 @@ describe("ApiDocsPage", () => {
         name: "Build against implemented opengithub APIs",
       }),
     ).toBeVisible();
-    expect(apiEndpointDocs.length).toBeGreaterThanOrEqual(51);
+    expect(apiEndpointDocs.length).toBeGreaterThanOrEqual(52);
 
     for (const endpoint of apiEndpointDocs) {
       const card = screen
@@ -364,6 +364,25 @@ describe("ApiDocsPage", () => {
     ).toBeVisible();
     expect(
       screen.getByText(/Unpublish never deletes repository Git objects/),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/pulse?period=1w"),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Repository Pulse insights" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Supported period values are 24h, 3d, 1w, and 1m/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/metric hrefs so browser cards navigate/),
+    ).toBeVisible();
+    expect(screen.getByText(/authorStatus and isBot metadata/)).toBeVisible();
+    expect(
+      screen.getByText(/repository_insight_snapshots stores/),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(/Private repository outsiders receive not_found/)[0],
     ).toBeVisible();
     expect(
       screen.getByText("/api/repos/{owner}/{repo}/releases?page=1&pageSize=30"),

@@ -5348,5 +5348,21 @@
       "Run keyboard-only and screen-reader traversal through the top committer chart/table, author profile links, commit-range links, release/PR/issue activity links, empty-state CTAs, and mobile layout.",
       "The make test-e2e wrapper silently stalled and was terminated; focused direct Playwright for repository-pulse.spec.ts passed with screenshot evidence."
     ]
+  },
+  {
+    "feature_id": "insights-001",
+    "tests_written": [
+      "Completed Phase 5 API Docs, Browser Evidence, QA Handoff, and Build Pass and marked insights-001 build_pass=true.",
+      "Documented GET /api/repos/{owner}/{repo}/pulse?period=1w in /docs/api, including auth/privacy, 24h/3d/1w/1m periods, date bounds, snapshot cache metadata, response shape, metric hrefs, top committers, activity lists, invalid-period errors, and no-secret guarantees.",
+      "Extended API docs and Pulse component assertions for endpoint coverage, accessible chart/table fallback, keyboard-safe period controls, Editorial token usage, no banned GitHub visual values/imports, no dead anchors, no inert inline handlers, and unsafe-markup guardrails.",
+      "Extended Playwright Pulse smoke to save final desktop and mobile screenshots while exercising Insights sidebar navigation, period menu, metric links, committer profile/commit links, release/PR/issue activity links, no dead controls, and mobile no-overflow."
+    ],
+    "needs_deeper_qa": [
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Stress imported repositories with very large commit histories, bot-only repositories, deleted release authors once deletion is supported, commits without file-change rows, and activity titles near UI limits.",
+      "Probe period-boundary events exactly at the normalized startedAt/endedAt timestamps and concurrent snapshot refreshes for repository_insight_snapshots/recent_insight_views.",
+      "Run keyboard-only and screen-reader traversal through the Insights sidebar, period menu, metric cards, top committer chart/table, author links, commit-range links, activity links, empty-state CTAs, and mobile layout.",
+      "Re-run Rust Pulse contracts against a clean migrated database after the shared local migration drift for 202605030041 is resolved."
+    ]
   }
 ]

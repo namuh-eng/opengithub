@@ -244,10 +244,15 @@ describe("RepositoryPulsePage", () => {
     expect(
       screen.getByRole("img", { name: "Top committers bar chart" }),
     ).toBeVisible();
+    expect(
+      screen.getByRole("img", { name: "Top committers bar chart" }),
+    ).toHaveAttribute("role", "img");
 
     const table = screen.getByRole("table", {
       name: "Top committers data table",
     });
+    expect(within(table).getByText("Committer")).toBeVisible();
+    expect(within(table).getByText("Commits")).toBeVisible();
     expect(within(table).getByText("mona")).toBeVisible();
     expect(screen.getAllByRole("link", { name: /mona/ })[0]).toHaveAttribute(
       "href",
@@ -279,6 +284,9 @@ describe("RepositoryPulsePage", () => {
     );
     expect(container.querySelector('a[href="#"], a:not([href])')).toBeNull();
     expect(container.innerHTML).not.toContain("onClick={() => {}}");
+    for (const button of container.querySelectorAll("button")) {
+      expect(button).toHaveAccessibleName();
+    }
   });
 
   it("opens a URL-backed period menu and closes it with Escape", () => {

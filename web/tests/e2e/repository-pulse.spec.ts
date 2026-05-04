@@ -140,7 +140,7 @@ test("repository Pulse renders live overview data and concrete destinations", as
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/insights-001-phase4-activity-links.jpg",
+    path: "../ralph/screenshots/build/insights-001-final-desktop.jpg",
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -148,4 +148,8 @@ test("repository Pulse renders live overview data and concrete destinations", as
   await expect(
     page.getByRole("button", { name: "Period: Last 3 days" }),
   ).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/insights-001-final-mobile.jpg",
+  });
 });

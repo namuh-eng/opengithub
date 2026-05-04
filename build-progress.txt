@@ -1,3 +1,12 @@
+2026-05-05 - insights-001 phase 5 final QA handoff
+
+- Completed Phase 5 from `.qrspi/insights-001/structure.md`: repository Pulse Insights is now locked as a completed vertical slice and `insights-001.build_pass=true`.
+- Added `/docs/api` coverage for `GET /api/repos/{owner}/{repo}/pulse?period=1w`, including auth/privacy, supported periods, normalized date bounds, snapshot cache metadata, response shape, metric hrefs, top committers, activity lists, invalid-period errors, and no-secret guarantees.
+- Extended API docs and Pulse component assertions for endpoint visibility, accessible chart/table fallback, keyboard-safe period controls, Editorial token usage, no banned GitHub values/imports, no dead anchors, no inert inline handlers, and unsafe-markup guardrails.
+- Extended Playwright Pulse smoke to save final desktop and mobile evidence screenshots at `ralph/screenshots/build/insights-001-final-desktop.jpg` and `ralph/screenshots/build/insights-001-final-mobile.jpg`.
+- Verification passed: focused Pulse/API docs Vitest, focused Biome, focused `repository_pulse_contract`, focused Playwright Pulse smoke, full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`, full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 425 web tests, full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false SESSION_SECRET=playwright-session-secret-with-enough-entropy SESSION_COOKIE_NAME=og_session DASHBOARD_E2E_SKIP_MIGRATIONS=1 make test-e2e` with 125 tests, and mandatory Editorial banned-value scan.
+- `qa_pass` remains false for the QA agent. Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-04 - commits-002 phase 3 diff filter/search/focus
 
 - Completed Phase 3 from `.qrspi/commits-002/structure.md`: commit detail diff controls are now interactive without marking `commits-002.build_pass=true`.

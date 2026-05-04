@@ -75,7 +75,7 @@
 
 ## Phase 5: API Docs, Browser Evidence, QA Handoff, and Build Pass
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `insights-001` only after the Pulse API, Insights shell, overview metrics, period selector, metric links, top committers chart/table, activity links, docs, screenshots, and QA handoff are verified. Mark `build_pass=true` only in this phase and leave `qa_pass=false`.
 

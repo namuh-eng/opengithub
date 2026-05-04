@@ -2009,6 +2009,80 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-pulse",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/pulse?period=1w",
+    title: "Repository Pulse insights",
+    description:
+      "Computes the repository Pulse activity snapshot for a bounded period, including overview metrics, top committers, release activity, merged pull requests, issue activity, linked metric destinations, and cache freshness metadata.",
+    auth: "Public repositories are readable; private repositories require read permission; anonymous callers receive 401",
+    response: `{
+  "repository": {
+    "ownerLogin": "mona",
+    "name": "octo-app",
+    "defaultBranch": "main",
+    "viewerPermission": "write",
+    "href": "/mona/octo-app"
+  },
+  "period": {
+    "key": "1w",
+    "label": "Last week",
+    "startedAt": "2026-05-01T00:00:00Z",
+    "endedAt": "2026-05-07T00:00:00Z"
+  },
+  "summary": {
+    "sentence": "2 authors pushed 12 commits touching 18 files with 420 additions and 90 deletions in the 1w window.",
+    "commits": 12,
+    "filesChanged": 18,
+    "additions": 420,
+    "deletions": 90,
+    "authors": 2,
+    "mergedPullRequests": 4,
+    "openPullRequests": 2,
+    "closedIssues": 8,
+    "newIssues": 3,
+    "releases": 1
+  },
+  "metrics": [
+    {
+      "key": "merged_pull_requests",
+      "label": "Merged pull requests",
+      "count": 4,
+      "href": "/mona/octo-app/pulls?state=merged&from=2026-05-01T00%3A00%3A00Z&until=2026-05-07T00%3A00%3A00Z"
+    }
+  ],
+  "topCommitters": [
+    {
+      "login": "mona",
+      "authorStatus": "active",
+      "isBot": false,
+      "commits": 9,
+      "filesChanged": 12,
+      "additions": 320,
+      "deletions": 45,
+      "profileHref": "/mona",
+      "commitsHref": "/mona/octo-app/commits/main?author=mona&until=2026-05-07T00%3A00%3A00Z"
+    }
+  ],
+  "releases": [],
+  "mergedPullRequests": [],
+  "issueActivity": [],
+  "snapshot": {
+    "cacheKey": "1w:202605010000:202605070000",
+    "computedAt": "2026-05-07T00:00:00Z",
+    "expiresAt": "2026-05-07T00:10:00Z",
+    "stale": false
+  }
+}`,
+    notes: [
+      "Supported period values are 24h, 3d, 1w, and 1m; unsupported values return validation_failed without stack traces.",
+      "Date bounds are normalized server-side and included in metric hrefs so browser cards navigate to filtered pull request or issue lists.",
+      "Top committers include authorStatus and isBot metadata; unmatched or deleted authors are represented without exposing private user rows.",
+      "repository_insight_snapshots stores the bounded snapshot payload and recent_insight_views records read telemetry; responses never expose storage keys, raw sessions, tokens, or environment secrets.",
+      "Private repository outsiders receive not_found without leaking Pulse counts or cache metadata.",
+    ],
+  },
+  {
     id: "repo-releases-list",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/releases?page=1&pageSize=30",
