@@ -3592,3 +3592,9 @@
 - Saved final screenshots: `ralph/screenshots/build/branches-001-final-activity.jpg`, `branches-001-final-directory.jpg`, and `branches-001-final-mobile.jpg`.
 - Verification passed: focused `web/tests/api-docs.test.tsx` and `web/tests/repository-branches-page.test.tsx`; `cd web && npx tsc --noEmit --pretty false`; focused Biome checks; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 420 web tests; direct full Playwright with 124 tests; mandatory Editorial banned-value scan returned zero matches.
 - `make test-e2e` wrapper was attempted with the standard local test environment and migration-skip flag, but it stayed silent with active Playwright/server children and was terminated; the same full suite completed directly with `cd web && ... npx playwright test --reporter=list`.
+
+2026-05-05 - insights-001 structure outline
+
+- Created `.qrspi/insights-001/structure.md` for the first incomplete PRD feature, splitting repository Pulse into five vertical phases: Pulse API contract and snapshot cache, Editorial Insights shell and overview page, URL-backed period selector and metric links, committer/activity interactions plus bounded edge cases, and final docs/browser/QA/build-pass bookkeeping.
+- No source implementation was started because `insights-001.needs_structure=true` and no structure outline existed at invocation start; the build-loop contract requires the outline first, then `<promise>NEXT</promise>`.
+- Verified `insights-001.build_pass=false`, `qa_pass=false`, and all structure phases remain unchecked for the next invocation.
