@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial People Management Shell - render tabs, filters, rows, and disabled-safe controls
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the read-only public people presentation for owner/admin viewers with an Editorial organization people administration surface at `/orgs/{org}/people`. The page must keep the public/member read behavior for non-admin viewers, but owners/admins see the GitHub-like people management information architecture rendered with the Editorial design system.
 

@@ -1,5 +1,6 @@
 import { OrganizationProfilePage } from "@/components/OrganizationProfilePage";
 import { ProfileOrgShell } from "@/components/ProfileOrgShell";
+import type { OrganizationPeopleAdminTabParam } from "@/lib/api";
 import {
   ORGANIZATION_TABS,
   organizationProjectHref,
@@ -8,6 +9,7 @@ import {
 } from "@/lib/navigation";
 import {
   getOrganizationPeople,
+  getOrganizationPeopleAdmin,
   getPublicOrganizationProfile,
   getSessionAndShellContext,
 } from "@/lib/server-session";
@@ -30,6 +32,23 @@ function numberParam(value: string | string[] | undefined) {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function adminTabParam(
+  value: string | string[] | undefined,
+): OrganizationPeopleAdminTabParam | undefined {
+  const raw = firstParam(value);
+  if (
+    raw === "members" ||
+    raw === "outside_collaborators" ||
+    raw === "pending_collaborators" ||
+    raw === "invitations" ||
+    raw === "failed_invitations" ||
+    raw === "security_managers"
+  ) {
+    return raw;
+  }
+  return undefined;
+}
+
 export default async function OrganizationPeopleRoute({
   params,
   searchParams,
@@ -40,12 +59,17 @@ export default async function OrganizationPeopleRoute({
     getSessionAndShellContext(),
   ]);
   const orgLogin = decodeURIComponent(org);
-  const [profile, peopleList] = await Promise.all([
+  const peopleQuery = {
+    q: firstParam(queryParams?.q),
+    page: numberParam(queryParams?.page),
+    pageSize: numberParam(queryParams?.pageSize),
+  };
+  const [profile, peopleList, adminPeople] = await Promise.all([
     getPublicOrganizationProfile(orgLogin),
-    getOrganizationPeople(orgLogin, {
-      q: firstParam(queryParams?.q),
-      page: numberParam(queryParams?.page),
-      pageSize: numberParam(queryParams?.pageSize),
+    getOrganizationPeople(orgLogin, peopleQuery),
+    getOrganizationPeopleAdmin(orgLogin, {
+      ...peopleQuery,
+      tab: adminTabParam(queryParams?.tab),
     }),
   ]);
 
@@ -53,6 +77,7 @@ export default async function OrganizationPeopleRoute({
     return (
       <OrganizationProfilePage
         activeTab="people"
+        adminPeople={adminPeople}
         peopleList={peopleList}
         profile={profile}
         session={session}

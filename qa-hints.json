@@ -4796,5 +4796,25 @@
       "Run browser smoke once UI is wired; this phase was backend-only and browser smoke is optional in the structure outline.",
       "Probe high-volume organizations, long Unicode display names/emails, and concurrent invitation inserts beyond the focused admin-read contract."
     ]
+  },
+  {
+    "feature_id": "org-admin-003",
+    "tests_written": [
+      "Completed Phase 2 Editorial People Management Shell without marking org-admin-003 build_pass=true.",
+      "Added typed frontend organization people admin DTOs and cookie-backed fetch helpers for GET /api/orgs/{org}/people/admin.",
+      "Owner/admin organization people views now render an Editorial people administration shell on the organization People tab and /orgs/{org}/people while non-admin viewers keep the existing public people fallback.",
+      "Rendered admin tabs for Members, Outside collaborators, Pending collaborators, Invitations, Failed invitations, and Security Managers with URL-backed search, row selection, disabled-safe bulk controls, export links, invite unavailable dialog, visibility menu, row action menu, member metadata chips, and invitation rows.",
+      "Focused Vitest covers tab/search/export URLs, selected-row bulk enablement, safe row menus, invitation redaction, invite dialog behavior, no dead anchors, and Editorial primitives.",
+      "Focused Playwright covers owner admin shell navigation, row selection, export menu, invite dialog, pagination, search, no dead anchors, mobile no-overflow, and screenshot ralph/screenshots/build/org-admin-003-phase2-people-shell.jpg.",
+      "Verification passed: web TypeScript, focused Biome, focused Vitest, focused Playwright organization people smoke, make check, make test with Cargo tests plus 381 web tests, full make test-e2e with 116 tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 must verify real invite/retry/cancel mutations, SES degraded delivery handling, duplicate invite conflicts, 7-day expiry, and audit redaction.",
+      "Phase 4 must verify visibility changes, role-change confirmations, member removal, final-owner protections, and JSON/CSV export response bodies.",
+      "Run a real Google OAuth browser session with TEST_ACCOUNT_EMAIL to confirm the owner/admin shell appears outside deterministic Playwright seed cookies.",
+      "Probe non-owner/member/private outsider UI fallback manually; backend Phase 1 covers 403/404 and this phase preserves the public fallback path.",
+      "Stress long Unicode display names, emails, and high-count orgs for tab wrapping, row menu wrapping, and mobile no-overflow.",
+      "For local smoke, the shared opengithub_identity_test database needed the existing 202605040012 organization people admin migration applied manually before the admin endpoint could render."
+    ]
   }
 ]

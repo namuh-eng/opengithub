@@ -14,6 +14,7 @@ import {
   getOrganizationPackageDetailFromCookie,
   getOrganizationPackageSettingsFromCookie,
   getOrganizationPackagesFromCookie,
+  getOrganizationPeopleAdminFromCookie,
   getOrganizationPeopleFromCookie,
   getOrganizationProfileSettingsFromCookie,
   getOrganizationRepositoriesFromCookie,
@@ -64,6 +65,7 @@ import {
   getUserPackageSettingsFromCookie,
   getUserPackagesFromCookie,
   type KeySettingsFetchResult,
+  type OrganizationPeopleAdminQuery,
   type OrganizationPeopleListQuery,
   type OrganizationProfileSettingsFetchResult,
   type OrganizationRepositoryListQuery,
@@ -191,6 +193,18 @@ export async function getOrganizationPeople(
 ) {
   const requestHeaders = await headers();
   return getOrganizationPeopleFromCookie(
+    requestHeaders.get("cookie"),
+    org,
+    query,
+  );
+}
+
+export async function getOrganizationPeopleAdmin(
+  org: string,
+  query: OrganizationPeopleAdminQuery = {},
+) {
+  const requestHeaders = await headers();
+  return getOrganizationPeopleAdminFromCookie(
     requestHeaders.get("cookie"),
     org,
     query,

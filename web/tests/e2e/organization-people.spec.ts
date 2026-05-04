@@ -52,16 +52,18 @@ async function signIn(page: Page, seeded: SeededOrganizationProfile) {
 
 test.skip(!databaseUrl, "organization people E2E needs a test database");
 
-test("organization people routes render members with URL-backed search and pagination", async ({
+test("organization people routes render owner admin controls with URL-backed search and pagination", async ({
   page,
 }) => {
   const seeded = seedOrganizationProfile();
   await signIn(page, seeded);
 
   await page.goto(`${seeded.organizationProfileHref}?tab=people`);
-  await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
   await expect(
-    page.getByRole("complementary", { name: "Organization permissions" }),
+    page.getByRole("heading", { name: "People administration" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "People administration tabs" }),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Open Dashboard Tester" }),
@@ -71,6 +73,23 @@ test("organization people routes render members with URL-backed search and pagin
   ).toHaveAttribute("href", /\/profile-viewer-/);
   await expect(page.getByText("Owner", { exact: true })).toBeVisible();
   await expect(page.getByText("Member", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Bulk action" }),
+  ).toBeDisabled();
+  await page.getByLabel("Select Profile Action Viewer").check();
+  await expect(
+    page.getByRole("button", { name: "Bulk action (1)" }),
+  ).toBeEnabled();
+  await page.getByRole("button", { name: "Bulk action (1)" }).click();
+  await expect(page.getByText(/Bulk membership mutations/)).toBeVisible();
+  await page.getByRole("button", { name: "Export" }).click();
+  await expect(page.getByRole("link", { name: "Export JSON" })).toHaveAttribute(
+    "href",
+    /\/api\/orgs\/org-profile-[^/]+\/people\/export\?format=json&tab=members/,
+  );
+  await page.getByRole("button", { name: "Invite member" }).click();
+  await expect(page.getByLabel("Invite member dialog")).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
 
   await page.goto(`${seeded.organizationProfileHref}/people?pageSize=1`);
   await expect(page).toHaveURL(
@@ -100,6 +119,10 @@ test("organization people routes render members with URL-backed search and pagin
 
   await page.screenshot({
     fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-003-phase2-people-shell.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
     path: "../ralph/screenshots/build/orgs-002-phase4-people.jpg",
   });
   await page.screenshot({
@@ -108,7 +131,9 @@ test("organization people routes render members with URL-backed search and pagin
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole("heading", { name: "People" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "People administration" }),
+  ).toBeVisible();
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,
   );

@@ -695,6 +695,113 @@ export type OrganizationPeopleListQuery = {
   pageSize?: number;
 };
 
+export type OrganizationPeopleAdminTab =
+  | "members"
+  | "outsideCollaborators"
+  | "pendingCollaborators"
+  | "invitations"
+  | "failedInvitations"
+  | "securityManagers";
+
+export type OrganizationPeopleAdminTabParam =
+  | "members"
+  | "outside_collaborators"
+  | "pending_collaborators"
+  | "invitations"
+  | "failed_invitations"
+  | "security_managers";
+
+export type OrganizationPeopleAdmin = {
+  organization: OrganizationSettingsIdentity;
+  tab: OrganizationPeopleAdminTab;
+  filters: OrganizationPeopleAdminFilters;
+  counts: OrganizationPeopleAdminCounts;
+  rows: ListEnvelope<OrganizationPeopleAdminRow>;
+  invitations: ListEnvelope<OrganizationInvitationRow>;
+  exports: OrganizationPeopleAdminExport[];
+  viewerState: OrganizationPeopleAdminViewerState;
+};
+
+export type OrganizationPeopleAdminRow = {
+  userId: string;
+  login: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  href: string;
+  role: string;
+  membershipVisibility: string;
+  outsideCollaborator: boolean;
+  securityManager: boolean;
+  twoFactorEnabled: boolean;
+  hasActiveSession: boolean;
+  teamCount: number;
+  rolesCount: number;
+  membershipSource: string;
+  joinedAt: string;
+  actionState: OrganizationPeopleAdminActionState;
+};
+
+export type OrganizationInvitationRow = {
+  id: string;
+  invitedUserId: string | null;
+  invitedLogin: string | null;
+  invitedEmail: string;
+  role: string;
+  teamCount: number;
+  status: string;
+  emailDeliveryStatus: string;
+  emailDeliveryError: string | null;
+  invitedByUserId: string;
+  expiresAt: string;
+  createdAt: string;
+  canRetry: boolean;
+  canCancel: boolean;
+};
+
+export type OrganizationPeopleAdminFilters = {
+  tab: OrganizationPeopleAdminTab;
+  query: string | null;
+  page: number;
+  pageSize: number;
+};
+
+export type OrganizationPeopleAdminCounts = {
+  members: number;
+  outsideCollaborators: number;
+  pendingCollaborators: number;
+  invitations: number;
+  failedInvitations: number;
+  securityManagers: number;
+};
+
+export type OrganizationPeopleAdminExport = {
+  format: "json" | "csv" | string;
+  href: string;
+  available: boolean;
+};
+
+export type OrganizationPeopleAdminActionState = {
+  canChangeVisibility: boolean;
+  canChangeRole: boolean;
+  canRemove: boolean;
+  finalOwner: boolean;
+  reason: string | null;
+};
+
+export type OrganizationPeopleAdminViewerState = {
+  role: string;
+  canAdminPeople: boolean;
+  canInvite: boolean;
+  canExport: boolean;
+};
+
+export type OrganizationPeopleAdminQuery = {
+  tab?: OrganizationPeopleAdminTabParam;
+  q?: string;
+  page?: number;
+  pageSize?: number;
+};
+
 export type OwnerPackageList = {
   items: OwnerPackageListItem[];
   total: number;
@@ -4802,6 +4909,43 @@ export async function getOrganizationPeopleFromCookie(
   }
 
   return (await response.json()) as OrganizationPeopleList;
+}
+
+export async function getOrganizationPeopleAdminFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  query: OrganizationPeopleAdminQuery = {},
+): Promise<OrganizationPeopleAdmin | null> {
+  let response: Response;
+  try {
+    const url = new URL(
+      `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/people/admin`,
+    );
+    if (query.tab) {
+      url.searchParams.set("tab", query.tab);
+    }
+    if (query.q) {
+      url.searchParams.set("q", query.q);
+    }
+    if (query.page) {
+      url.searchParams.set("page", String(query.page));
+    }
+    if (query.pageSize) {
+      url.searchParams.set("pageSize", String(query.pageSize));
+    }
+    response = await fetch(url, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return null;
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return (await response.json()) as OrganizationPeopleAdmin;
 }
 
 export async function getUserPackagesFromCookie(

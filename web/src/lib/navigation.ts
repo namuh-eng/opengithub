@@ -739,6 +739,7 @@ export function organizationRepositoryListHref(
 
 export type OrganizationPeopleListFilters = {
   query?: string | null;
+  tab?: string | null;
   page?: number | string | null;
   pageSize?: number | string | null;
 };
@@ -751,6 +752,8 @@ export function organizationPeopleListHref(
   } = {},
 ) {
   const params = new URLSearchParams();
+  const nextTab =
+    overrides.q === undefined ? filters.tab?.trim() || null : filters.tab;
   const nextQuery =
     overrides.q === undefined ? filters.query : overrides.q?.trim() || null;
   const nextPage =
@@ -762,6 +765,9 @@ export function organizationPeopleListHref(
       ? filters.pageSize
       : overrides.pageSize?.trim() || null;
 
+  if (nextTab && nextTab !== "members") {
+    params.set("tab", nextTab);
+  }
   if (nextQuery?.trim()) {
     params.set("q", nextQuery.trim());
   }
