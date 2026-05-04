@@ -5556,5 +5556,22 @@
       "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema after manually applying the additive Phase 1 migration.",
       "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL once UI phases land; this phase is API-only."
     ]
+  },
+  {
+    "feature_id": "insights-004",
+    "tests_written": [
+      "Completed Phase 2 Editorial Network Page and Insights Shell Integration without marking insights-004 build_pass=true.",
+      "Added typed Repository Network frontend DTOs, signed-cookie server fetch helper, server-session wrapper, and /{owner}/{repo}/network App Router page backed by the Rust Network endpoint.",
+      "Added RepositoryNetworkPage using the existing RepositoryInsightsShell, Editorial primitives/tokens, summary metric cards, freshness chips, graph/list fork rows, empty/unavailable states, and concrete owner/repository/tree/network/issues/pulls/forks links.",
+      "Added focused Vitest coverage for active Insights navigation, readable fork graph rows, slash-containing tree hrefs, metric links, empty states, no dead anchors, no inert handlers, no unsafe markup, and banned GitHub visual guardrails.",
+      "Added focused Playwright smoke that seeds real database forks, signs in with the existing session-cookie fixture, verifies /network graph rows and links, checks no dead controls and mobile no-overflow, and saves ralph/screenshots/build/insights-004-phase2-network.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 still needs URL-backed Forks filters, keyboard menu behavior, saved-default success/error feedback, and no-dead-control verification.",
+      "Phase 4 still needs broader edge-case coverage for empty public repositories, unreadable private forks in browser, archived/stale/starred fork combinations, metric ties, very long owner/repository names, and mobile layouts across both Network and Forks.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Run screen-reader traversal for the Insights sidebar, Network graph list, fork metric chips, and empty/unavailable states; this phase validates accessible names through Testing Library and Playwright but not a real screen reader.",
+      "The Network page reads Phase 1 projection data and does not implement Forks filters or saved defaults yet; those remain in later phases."
+    ]
   }
 ]

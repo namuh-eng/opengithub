@@ -2717,6 +2717,72 @@ export type RepositoryTrafficFetchResult =
   | { ok: true; traffic: RepositoryTrafficView }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type RepositoryNetworkView = {
+  repository: RepositoryNetworkRepository;
+  summary: RepositoryNetworkSummary;
+  forks: RepositoryNetworkForkNode[];
+  freshness: RepositoryNetworkFreshness;
+  links: RepositoryNetworkLinks;
+};
+
+export type RepositoryNetworkRepository = {
+  id: string;
+  ownerLogin: string;
+  name: string;
+  defaultBranch: string;
+  visibility: RepositoryVisibility | string;
+  viewerPermission: string;
+  href: string;
+  treeHref: string;
+};
+
+export type RepositoryNetworkSummary = {
+  totalReadableForks: number;
+  projectedForks: number;
+  hiddenPrivateForks: number;
+  copy: string;
+  updateNote: string;
+};
+
+export type RepositoryNetworkForkNode = {
+  repositoryId: string;
+  ownerLogin: string;
+  ownerAvatarUrl: string | null;
+  name: string;
+  description: string | null;
+  visibility: RepositoryVisibility | string;
+  defaultBranch: string;
+  isArchived: boolean;
+  isStarredByActor: boolean;
+  starsCount: number;
+  forksCount: number;
+  openIssuesCount: number;
+  openPullRequestsCount: number;
+  createdAt: string;
+  updatedAt: string;
+  pushedAt: string;
+  href: string;
+  ownerHref: string;
+  treeHref: string;
+  networkHref: string;
+};
+
+export type RepositoryNetworkFreshness = {
+  computedAt: string;
+  expiresAt: string;
+  stale: boolean;
+  cadence: string;
+};
+
+export type RepositoryNetworkLinks = {
+  forksHref: string;
+  treeHref: string;
+};
+
+export type RepositoryNetworkFetchResult =
+  | { ok: true; network: RepositoryNetworkView }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type WebhookContentType = "json" | "form" | string;
 
 export type WebhookEventSelection = "push" | "everything" | "selected" | string;
@@ -9265,6 +9331,50 @@ export async function getRepositoryTrafficFromCookie(
   return {
     ok: true,
     traffic: (await response.json()) as RepositoryTrafficView,
+  };
+}
+
+export async function getRepositoryNetworkFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+): Promise<RepositoryNetworkFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/network`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository Network is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Repository Network is unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    network: (await response.json()) as RepositoryNetworkView,
   };
 }
 

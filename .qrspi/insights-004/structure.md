@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial Network Page and Insights Shell Integration - default graph render
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement `/{owner}/{repo}/network` using the existing Editorial Insights shell with Network selected. The page should show the Network graph heading, explanatory copy about recent commits to the repository network, daily update/freshness note, a graph/list representation of recent forks, and real links into fork repositories, tree views, and the Forks page.
 

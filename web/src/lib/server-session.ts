@@ -51,6 +51,7 @@ import {
   getRepositoryIssuesFromCookie,
   getRepositoryIssueTemplatesFromCookie,
   getRepositoryIssueTimelineFromCookie,
+  getRepositoryNetworkFromCookie,
   getRepositoryPagesSettingsFromCookie,
   getRepositoryPathFromCookie,
   getRepositoryPullRequestFilesFromCookie,
@@ -91,6 +92,7 @@ import {
   type RepositoryBranchesFetchResult,
   type RepositoryContributorsFetchResult,
   type RepositoryIssueListQuery,
+  type RepositoryNetworkFetchResult,
   type RepositoryPullRequestDiffQuery,
   type RepositoryPullRequestListQuery,
   type RepositoryPulseFetchResult,
@@ -550,6 +552,18 @@ export async function getRepositoryTraffic(
 ): Promise<RepositoryTrafficFetchResult> {
   const requestHeaders = await headers();
   return getRepositoryTrafficFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+  );
+}
+
+export async function getRepositoryNetwork(
+  owner: string,
+  repo: string,
+): Promise<RepositoryNetworkFetchResult> {
+  const requestHeaders = await headers();
+  return getRepositoryNetworkFromCookie(
     requestHeaders.get("cookie"),
     owner,
     repo,

@@ -836,6 +836,14 @@ export function repositoryTrafficHref(owner: string, repo: string) {
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/graphs/traffic`;
 }
 
+export function repositoryNetworkHref(owner: string, repo: string) {
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/network`;
+}
+
+export function repositoryForksHref(owner: string, repo: string) {
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/forks`;
+}
+
 export function repositoryTrafficContentHref({
   fallbackHref,
   owner,
