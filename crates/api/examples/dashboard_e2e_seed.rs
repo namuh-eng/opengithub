@@ -1651,6 +1651,28 @@ async fn seed_tree_refs(pool: &PgPool, user_id: Uuid, repository_id: Uuid) -> an
         Some(feature_commit.id),
     )
     .await?;
+    let stale_commit = insert_commit(
+        pool,
+        repository_id,
+        CreateCommit {
+            oid: format!("tree-stale-{}", Uuid::new_v4().simple()),
+            author_user_id: Some(user_id),
+            committer_user_id: Some(user_id),
+            message: "Archive old release branch".to_owned(),
+            tree_oid: None,
+            parent_oids: vec![],
+            committed_at: Utc::now() - Duration::days(140),
+        },
+    )
+    .await?;
+    upsert_git_ref(
+        pool,
+        repository_id,
+        "refs/heads/release/old-tree",
+        "branch",
+        Some(stale_commit.id),
+    )
+    .await?;
     upsert_git_ref(
         pool,
         repository_id,

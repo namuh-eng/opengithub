@@ -222,18 +222,27 @@ describe("repository branches page", () => {
   it("renders branch tabs and search as URL-backed controls", () => {
     render(
       <RepositoryBranchesPage
-        branchesResult={{ ok: true, branches: branchesView() }}
+        branchesResult={{
+          ok: true,
+          branches: branchesView({
+            filters: { tab: "stale", query: "release", staleCutoffDays: 90 },
+            page: 2,
+            pageSize: 1,
+            hasNextPage: true,
+            hasPreviousPage: true,
+          }),
+        }}
         repository={repositoryOverview()}
       />,
     );
 
     expect(screen.getByRole("tab", { name: /Overview 2/ })).toHaveAttribute(
       "href",
-      "/namuh-eng/opengithub/branches",
+      "/namuh-eng/opengithub/branches?q=release&pageSize=1",
     );
     expect(screen.getByRole("tab", { name: /Stale 1/ })).toHaveAttribute(
       "href",
-      "/namuh-eng/opengithub/branches?tab=stale",
+      "/namuh-eng/opengithub/branches?tab=stale&q=release&pageSize=1",
     );
     expect(screen.getByLabelText("Search branches")).toHaveAttribute(
       "name",
@@ -242,6 +251,25 @@ describe("repository branches page", () => {
     expect(screen.getByRole("button", { name: "Search" })).toHaveAttribute(
       "type",
       "submit",
+    );
+    expect(screen.getByText("Active filters")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Stale" })).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/branches?q=release&pageSize=1",
+    );
+    expect(
+      screen.getByRole("link", { name: "Search: release" }),
+    ).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/branches?tab=stale&pageSize=1",
+    );
+    expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/branches?tab=stale&q=release&pageSize=1",
+    );
+    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/branches?tab=stale&q=release&page=3&pageSize=1",
     );
   });
 
@@ -313,5 +341,55 @@ describe("repository branches page", () => {
       screen.getByRole("link", { name: "Reset branch filters" }),
     ).toHaveAttribute("href", "/namuh-eng/opengithub/branches");
     expect(container.querySelector('a[href="#"], a:not([href])')).toBeNull();
+  });
+
+  it("opens row action menus with concrete and disabled actions", () => {
+    render(
+      <RepositoryBranchesPage
+        branchesResult={{ ok: true, branches: branchesView() }}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    const row = screen
+      .getByRole("link", { name: "feature/editorial-branches" })
+      .closest("article");
+    expect(row).not.toBeNull();
+    fireEvent.click(
+      within(row as HTMLElement).getByRole("button", { name: "Actions" }),
+    );
+
+    expect(
+      within(row as HTMLElement)
+        .getAllByRole("link", { name: "Activity" })
+        .at(-1),
+    ).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/branches/feature%2Feditorial-branches",
+    );
+    expect(
+      within(row as HTMLElement).getByRole("link", { name: "Open tree" }),
+    ).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/tree/feature%2Feditorial-branches",
+    );
+    expect(
+      within(row as HTMLElement).getByRole("button", {
+        name: "Delete branch",
+      }),
+    ).toBeDisabled();
+    expect(
+      within(row as HTMLElement).getByRole("button", {
+        name: "Restore branch",
+      }),
+    ).toBeDisabled();
+
+    fireEvent.keyDown(
+      within(row as HTMLElement).getByRole("button", { name: "Actions" }),
+      { key: "Escape" },
+    );
+    expect(
+      within(row as HTMLElement).queryAllByRole("link", { name: "Activity" }),
+    ).toHaveLength(1);
   });
 });

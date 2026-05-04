@@ -40,7 +40,7 @@
 
 ## Phase 3: Tabs, Search, Pagination, and Row Actions - branch list interactions are URL-backed
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make Overview, Active, Stale, and All tabs functional, make search case-insensitive and URL-backed, and wire every visible row action to real behavior or a truthful disabled state. Search and tab changes should preserve repository context and pagination should be stable across filtered result sets.
 

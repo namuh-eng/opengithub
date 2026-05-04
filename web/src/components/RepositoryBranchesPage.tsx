@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BranchActionsMenu } from "@/components/BranchActionsMenu";
 import { BranchCopyButton } from "@/components/BranchCopyButton";
 import { RepositoryShell } from "@/components/RepositoryShell";
 import type {
@@ -204,37 +205,16 @@ function BranchRow({
           <span className="t-xs">No pull request</span>
         )}
       </div>
-      <details className="relative justify-self-start lg:justify-self-end">
-        <summary className="btn sm ghost cursor-pointer list-none">
-          Actions
-        </summary>
-        <div
-          className="card absolute right-0 z-10 mt-2 grid min-w-48 gap-1 p-2"
-          style={{ background: "var(--surface)" }}
-        >
-          <Link className="btn sm ghost justify-start" href={activityHref}>
-            Activity
-          </Link>
-          {branch.capabilities.canViewRules ? (
-            <Link className="btn sm ghost justify-start" href={rulesHref}>
-              View rules
-            </Link>
-          ) : (
-            <span className="chip soft justify-start">No visible rules</span>
-          )}
-          <Link className="btn sm ghost justify-start" href={treeHref}>
-            Open tree
-          </Link>
-          <Link className="btn sm ghost justify-start" href={commitsHref}>
-            Open commits
-          </Link>
-          {branch.capabilities.deleteDisabledReason ? (
-            <span className="t-xs px-2 py-1">
-              {branch.capabilities.deleteDisabledReason}
-            </span>
-          ) : null}
-        </div>
-      </details>
+      <BranchActionsMenu
+        activityHref={activityHref}
+        canDelete={branch.capabilities.canDelete}
+        canViewRules={branch.capabilities.canViewRules}
+        commitsHref={commitsHref}
+        deleteDisabledReason={branch.capabilities.deleteDisabledReason}
+        restoreDisabledReason={branch.capabilities.restoreDisabledReason}
+        rulesHref={rulesHref}
+        treeHref={treeHref}
+      />
     </article>
   );
 }
@@ -388,6 +368,36 @@ function BranchesReadyPage({
               </Link>
             ) : null}
           </form>
+          {view.filters.query || view.filters.tab !== "overview" ? (
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <span className="t-label" style={{ color: "var(--ink-3)" }}>
+                Active filters
+              </span>
+              {view.filters.tab !== "overview" ? (
+                <Link
+                  className="chip active"
+                  href={repositoryBranchesHref(owner, repo, filters, {
+                    tab: "overview",
+                    page: null,
+                  })}
+                >
+                  {BRANCH_TABS.find((tab) => tab.value === view.filters.tab)
+                    ?.label ?? "Branch tab"}
+                </Link>
+              ) : null}
+              {view.filters.query ? (
+                <Link
+                  className="chip soft"
+                  href={repositoryBranchesHref(owner, repo, filters, {
+                    q: null,
+                    page: null,
+                  })}
+                >
+                  Search: {view.filters.query}
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
         </section>
 
         {view.filters.tab === "overview" ? (

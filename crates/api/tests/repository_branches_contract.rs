@@ -370,6 +370,46 @@ async fn repository_branches_returns_screen_ready_metadata_privacy_and_filters()
     assert_eq!(stale_body["branches"][0]["name"], "release/old");
     assert_eq!(stale_body["branches"][0]["classification"], "stale");
 
+    let (active_status, active_body) = send_json(
+        app.clone(),
+        &format!("{base}/branches?tab=active&pageSize=1"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(active_status, StatusCode::OK);
+    assert_eq!(active_body["total"], 1);
+    assert_eq!(active_body["branches"][0]["name"], "feature/policy");
+    assert_eq!(active_body["hasNextPage"], false);
+    assert_eq!(active_body["hasPreviousPage"], false);
+    assert!(active_body["branches"]
+        .as_array()
+        .expect("branches")
+        .iter()
+        .all(|branch| branch["classification"] == "active"));
+
+    let (all_page_status, all_page_body) = send_json(
+        app.clone(),
+        &format!("{base}/branches?tab=all&pageSize=1"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(all_page_status, StatusCode::OK);
+    assert_eq!(all_page_body["total"], 3);
+    assert_eq!(all_page_body["branches"][0]["name"], "main");
+    assert_eq!(all_page_body["hasNextPage"], true);
+    assert_eq!(all_page_body["hasPreviousPage"], false);
+
+    let (all_second_status, all_second_body) = send_json(
+        app.clone(),
+        &format!("{base}/branches?tab=all&page=2&pageSize=1"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(all_second_status, StatusCode::OK);
+    assert_eq!(all_second_body["branches"][0]["name"], "feature/policy");
+    assert_eq!(all_second_body["hasNextPage"], true);
+    assert_eq!(all_second_body["hasPreviousPage"], true);
+
     let (search_status, search_body) = send_json(
         app.clone(),
         &format!("{base}/branches?tab=all&q=POLICY&pageSize=1"),
@@ -380,6 +420,23 @@ async fn repository_branches_returns_screen_ready_metadata_privacy_and_filters()
     assert_eq!(search_body["total"], 1);
     assert_eq!(search_body["branches"][0]["name"], "feature/policy");
     assert_eq!(search_body["pageSize"], 1);
+
+    let (empty_status, empty_body) = send_json(
+        app.clone(),
+        &format!("{base}/branches?tab=stale&q=POLICY"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(empty_status, StatusCode::OK);
+    assert_eq!(empty_body["total"], 0);
+    assert_eq!(
+        empty_body["emptyState"]["title"],
+        "No branches matched this search"
+    );
+    assert_eq!(
+        empty_body["emptyState"]["resetHref"],
+        format!("/{}/{}/branches", repository.owner_login, repository.name)
+    );
 
     let visit_count = sqlx::query_scalar::<_, i64>(
         r#"
@@ -396,7 +453,7 @@ async fn repository_branches_returns_screen_ready_metadata_privacy_and_filters()
     assert_eq!(visit_count, 1);
 
     let (invalid_status, invalid_body) = send_json(
-        app,
+        app.clone(),
         &format!("{base}/branches?tab=secrets"),
         Some(&owner_cookie),
     )
@@ -404,4 +461,15 @@ async fn repository_branches_returns_screen_ready_metadata_privacy_and_filters()
     assert_eq!(invalid_status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(invalid_body["error"]["code"], "validation_failed");
     assert!(!invalid_body.to_string().contains("SESSION_SECRET"));
+
+    let long_query = "x".repeat(121);
+    let (long_query_status, long_query_body) = send_json(
+        app,
+        &format!("{base}/branches?q={long_query}"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(long_query_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(long_query_body["error"]["code"], "validation_failed");
+    assert!(!long_query_body.to_string().contains("test-session-secret"));
 }

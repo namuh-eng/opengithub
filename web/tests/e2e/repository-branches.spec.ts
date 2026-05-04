@@ -7,6 +7,7 @@ type SeededDashboard = {
   cookieName: string;
   cookieValue: string;
   firstRepositoryHref: string;
+  treeRepositoryHref: string;
 };
 
 function seedDashboard(): SeededDashboard {
@@ -29,6 +30,7 @@ function seedDashboard(): SeededDashboard {
       env: {
         ...process.env,
         DASHBOARD_E2E_EMPTY: "0",
+        DASHBOARD_E2E_TREE_REFS: "1",
         DASHBOARD_E2E_SKIP_MIGRATIONS: "1",
         SESSION_COOKIE_NAME: "og_session",
       },
@@ -70,7 +72,7 @@ test("branches overview renders live rows and concrete actions", async ({
     origin: "http://localhost:3015",
   });
 
-  await page.goto(`${seeded.firstRepositoryHref}/branches`);
+  await page.goto(`${seeded.treeRepositoryHref}/branches`);
   await expect(page.getByRole("heading", { name: "Branches" })).toBeVisible();
   await expect(page.getByText("Default branch", { exact: true })).toBeVisible();
   await expect(
@@ -94,6 +96,34 @@ test("branches overview renders live rows and concrete actions", async ({
   await expect(page).toHaveURL(/\/branches\?tab=all/);
   await expect(page.getByText(/branches$/).first()).toBeVisible();
 
+  await page.getByLabel("Search branches").fill("feature");
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(page).toHaveURL(/\/branches\?tab=all&q=feature/);
+  await expect(
+    page.getByRole("link", { name: "Search: feature" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "feature/tree-nav" }),
+  ).toHaveAttribute("href", /\/tree\/feature%2Ftree-nav$/);
+
+  await page.goto(`${seeded.treeRepositoryHref}/branches?tab=all&pageSize=1`);
+  await expect(page.getByRole("link", { name: "Next" })).toHaveAttribute(
+    "href",
+    /page=2&pageSize=1/,
+  );
+  await page.getByRole("link", { name: "Next" }).press("Enter");
+  await expect(page).toHaveURL(/\/branches\?tab=all&page=2&pageSize=1$/);
+  await expect(page.getByRole("link", { name: "Previous" })).toHaveAttribute(
+    "href",
+    /\/branches\?tab=all&pageSize=1$/,
+  );
+
+  await page.getByRole("tab", { name: /Stale/ }).click();
+  await expect(page).toHaveURL(/\/branches\?tab=stale&pageSize=1$/);
+  await expect(
+    page.getByRole("link", { name: "release/old-tree" }),
+  ).toBeVisible();
+
   await page
     .getByRole("button", { name: /Copy branch name/ })
     .first()
@@ -102,17 +132,34 @@ test("branches overview renders live rows and concrete actions", async ({
     page.getByRole("button", { name: /Copied branch name/ }).first(),
   ).toBeVisible();
 
-  await page.locator("summary", { hasText: "Actions" }).first().click();
+  await page.getByRole("button", { name: "Actions" }).first().click();
   await expect(
     page.getByRole("link", { name: "Activity" }).first(),
   ).toHaveAttribute("href", /\/branches\//);
   await expect(
     page.getByRole("link", { name: "Open tree" }).first(),
   ).toHaveAttribute("href", /\/tree\//);
+  await expect(
+    page.getByRole("button", { name: "Delete branch" }).first(),
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Delete branch" })).toHaveCount(
+    0,
+  );
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${seeded.treeRepositoryHref}/branches?tab=stale`);
+  const viewportWidth = await page.locator("body").evaluate((body) => ({
+    clientWidth: body.clientWidth,
+    scrollWidth: body.scrollWidth,
+  }));
+  expect(viewportWidth.scrollWidth).toBeLessThanOrEqual(
+    viewportWidth.clientWidth + 2,
+  );
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/branches-001-phase2-overview.jpg",
+    path: "../ralph/screenshots/build/branches-001-phase3-filtered.jpg",
   });
 
   await context.clearCookies();

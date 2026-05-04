@@ -5233,5 +5233,22 @@
       "Probe clipboard permissions across browsers; Playwright grants clipboard-write for the copy feedback smoke.",
       "Re-run against a clean migrated database after the shared local migration drift is resolved."
     ]
+  },
+  {
+    "feature_id": "branches-001",
+    "tests_written": [
+      "Completed Phase 3 Tabs, Search, Pagination, and Row Actions without marking branches-001 build_pass=true.",
+      "Extended Rust branch-directory contract coverage for active/all/stale tab shaping, pageSize=1 pagination, no-results recovery metadata, long-query validation, and redacted error envelopes.",
+      "Added BranchActionsMenu client behavior with accessible open/close state, concrete Activity/View rules/Open tree/Open commits links, disabled deferred Delete/Restore actions, and Escape/outside-click close behavior.",
+      "Extended RepositoryBranchesPage unit coverage for active filter chips, tab/search/page URL round trips, pagination links, slash-containing branch refs, copy feedback, disabled actions, and Editorial banned-value guardrails.",
+      "Extended Playwright smoke with real seeded tree repository branches for all/stale tabs, search chips, pagination, copy feedback, action menu links/disabled mutation state, mobile no-overflow, and screenshot ralph/screenshots/build/branches-001-phase3-filtered.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 still needs branch activity and rules drill-down destinations that do not land on placeholders.",
+      "Repeat with a real Google OAuth session using TEST_ACCOUNT_EMAIL and imported repositories with hundreds of branches, deep slash-containing refs, stale protected refs, orphaned refs with missing latest commits, mixed check states, and multiple open PRs per branch.",
+      "Probe keyboard-only traversal through tabs, search, pagination, branch row links, copy controls, and the action menu on desktop and mobile screen readers.",
+      "Deletion and restore remain intentionally disabled/deferred in the branches page action menu until a later mutation phase; QA should verify no fake-success destructive behavior is exposed.",
+      "The make test-e2e wrapper silently stalled and was terminated; direct full Playwright completed 124 tests successfully after clearing stale dev-server state."
+    ]
   }
 ]
