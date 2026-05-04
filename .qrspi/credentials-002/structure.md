@@ -41,7 +41,7 @@
 
 ## Phase 3: GPG Keys and Vigilant Mode UI
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Complete the visible settings surface by adding GPG key management and vigilant-mode preference updates.
 

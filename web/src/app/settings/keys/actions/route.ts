@@ -1,9 +1,13 @@
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import {
+  type CreateGpgKeyRequest,
   type CreateSshKeyRequest,
+  createGpgKeyFromCookie,
   createSshKeyFromCookie,
+  revokeGpgKeyFromCookie,
   revokeSshKeyFromCookie,
+  updateVigilantModeFromCookie,
 } from "@/lib/api";
 
 function errorResponse(
@@ -49,15 +53,48 @@ export async function POST(request: Request) {
   }
 
   try {
-    const response = await createSshKeyFromCookie(
-      cookie,
-      input as CreateSshKeyRequest,
-    );
+    const response =
+      "armoredPublicKey" in input
+        ? await createGpgKeyFromCookie(cookie, input as CreateGpgKeyRequest)
+        : await createSshKeyFromCookie(cookie, input as CreateSshKeyRequest);
     return NextResponse.json(response);
   } catch (error) {
     return errorResponse(error, {
-      code: "ssh_key_create_failed",
-      message: "SSH key could not be added.",
+      code: "signing_key_create_failed",
+      message: "Signing key could not be added.",
+      status: 422,
+    });
+  }
+}
+
+export async function PATCH(request: Request) {
+  const requestHeaders = await headers();
+  const cookie = requestHeaders.get("cookie");
+  const input = await request.json().catch(() => null);
+  const enabled =
+    input && typeof input === "object" && "enabled" in input
+      ? Boolean(input.enabled)
+      : null;
+  if (enabled === null) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "validation_failed",
+          message: "enabled is required.",
+        },
+        status: 422,
+      },
+      { status: 422 },
+    );
+  }
+
+  try {
+    const response = await updateVigilantModeFromCookie(cookie, { enabled });
+    return NextResponse.json(response);
+  } catch (error) {
+    return errorResponse(error, {
+      code: "vigilant_mode_update_failed",
+      message: "Vigilant mode could not be updated.",
       status: 422,
     });
   }
@@ -71,6 +108,10 @@ export async function DELETE(request: Request) {
     input && typeof input === "object" && "keyId" in input
       ? String(input.keyId)
       : "";
+  const keyKind =
+    input && typeof input === "object" && "keyKind" in input
+      ? String(input.keyKind)
+      : "ssh";
   if (!keyId) {
     return NextResponse.json(
       {
@@ -85,12 +126,15 @@ export async function DELETE(request: Request) {
   }
 
   try {
-    const response = await revokeSshKeyFromCookie(cookie, keyId);
+    const response =
+      keyKind === "gpg"
+        ? await revokeGpgKeyFromCookie(cookie, keyId)
+        : await revokeSshKeyFromCookie(cookie, keyId);
     return NextResponse.json(response);
   } catch (error) {
     return errorResponse(error, {
-      code: "ssh_key_delete_failed",
-      message: "SSH key could not be deleted.",
+      code: "signing_key_delete_failed",
+      message: "Signing key could not be deleted.",
       status: 422,
     });
   }

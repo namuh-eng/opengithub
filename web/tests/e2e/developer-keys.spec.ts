@@ -5,6 +5,8 @@ const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 
 const validSshPublicKey =
   "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPhY2XwcvYPGAilZzICTAgSiG3kOTaMAP1+y/4U9HQb6 phase2@example";
+const validGpgPublicKey =
+  "-----BEGIN PGP PUBLIC KEY BLOCK-----\nComment: phase3@example.com\n\nAAECAwQFBgcICQoLDA0ODxAREhM=\n-----END PGP PUBLIC KEY BLOCK-----";
 
 type SeededSession = {
   cookieName: string;
@@ -68,6 +70,7 @@ test("SSH key settings create and delete a public key", async ({ page }) => {
   const seeded = seedSession();
   await signIn(page, seeded);
   const keyTitle = `E2E SSH ${Date.now().toString(36)}`;
+  const gpgTitle = `E2E GPG ${Date.now().toString(36)}`;
 
   await page.goto("/settings/keys");
 
@@ -97,10 +100,42 @@ test("SSH key settings create and delete a public key", async ({ page }) => {
   await page.getByRole("button", { name: "Delete SSH key" }).click();
   await expect(page.getByRole("status")).toContainText(`${keyTitle} deleted.`);
   await expect(page.getByText("Deleted", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "New GPG key" }).first().click();
+  const gpgForm = page.locator("section", { hasText: "Add new GPG key" });
+  await gpgForm.getByLabel("Title").fill(gpgTitle);
+  await gpgForm.getByLabel("Armored public key").fill(validGpgPublicKey);
+  await page.getByRole("button", { name: "Add GPG key" }).click();
+  await expect(page.getByText(`${gpgTitle} added.`)).toBeVisible();
+  await expect(page.getByText("phase3@example.com")).toBeVisible();
+  await expect(page.locator("main")).not.toContainText(
+    "BEGIN PGP PUBLIC KEY BLOCK",
+  );
+
+  const gpgRow = page.locator(".list-row", { hasText: gpgTitle });
+  await gpgRow.getByRole("button", { name: "Delete" }).click();
+  const gpgEmailInput = page.getByLabel("Account email");
+  const gpgEmail = await gpgEmailInput.getAttribute("placeholder");
+  await gpgEmailInput.fill(gpgEmail ?? "");
+  await page.getByRole("button", { name: "Enable sudo" }).click();
+  await expect(
+    page.getByText("Sudo mode is active for this session."),
+  ).toBeVisible();
+  await page.getByLabel(`Confirm delete ${gpgTitle}`).fill(gpgTitle);
+  await page.getByRole("button", { name: "Delete GPG key" }).click();
+  await expect(page.getByText(`${gpgTitle} deleted.`)).toBeVisible();
+
+  const vigilantCheckbox = page.getByRole("checkbox", {
+    name: /Flag unsigned commits as unverified/,
+  });
+  await vigilantCheckbox.check();
+  await expect(page.getByText("Vigilant mode enabled.")).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator("body")).not.toHaveCSS("overflow-x", "scroll");
   await expectNoDeadControls(page);
 
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/credentials-002-phase2-ssh-keys.jpg",
+    path: "../ralph/screenshots/build/credentials-002-phase3-gpg-vigilant.jpg",
   });
 });

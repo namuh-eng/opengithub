@@ -156,6 +156,28 @@ export type RevokeSshKeyResponse = {
   revokedAt: string;
 };
 
+export type CreateGpgKeyRequest = {
+  title: string;
+  armoredPublicKey: string;
+};
+
+export type CreateGpgKeyResponse = {
+  gpgKey: GpgKeySummary;
+};
+
+export type RevokeGpgKeyResponse = {
+  gpgKey: GpgKeySummary;
+  revokedAt: string;
+};
+
+export type UpdateVigilantModeRequest = {
+  enabled: boolean;
+};
+
+export type UpdateVigilantModeResponse = {
+  vigilantMode: boolean;
+};
+
 export type UserEmailAddress = {
   id: string;
   email: string;
@@ -4123,6 +4145,101 @@ export async function revokeSshKeyFromCookie(
   }
 
   return (await response.json()) as RevokeSshKeyResponse;
+}
+
+export async function createGpgKeyFromCookie(
+  cookie: string | null | undefined,
+  input: CreateGpgKeyRequest,
+): Promise<CreateGpgKeyResponse> {
+  const response = await fetch(`${apiBaseUrl()}/api/settings/keys/gpg`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(cookie ? { cookie } : {}),
+    },
+    body: JSON.stringify(input),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    let envelope: ApiErrorEnvelope | null = null;
+    try {
+      envelope = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      envelope = null;
+    }
+    throw new Error(envelope?.error.message ?? "GPG key could not be added.", {
+      cause: envelope,
+    });
+  }
+
+  return (await response.json()) as CreateGpgKeyResponse;
+}
+
+export async function revokeGpgKeyFromCookie(
+  cookie: string | null | undefined,
+  keyId: string,
+): Promise<RevokeGpgKeyResponse> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/settings/keys/gpg/${encodeURIComponent(keyId)}`,
+    {
+      method: "DELETE",
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    let envelope: ApiErrorEnvelope | null = null;
+    try {
+      envelope = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      envelope = null;
+    }
+    throw new Error(
+      envelope?.error.message ?? "GPG key could not be deleted.",
+      {
+        cause: envelope,
+      },
+    );
+  }
+
+  return (await response.json()) as RevokeGpgKeyResponse;
+}
+
+export async function updateVigilantModeFromCookie(
+  cookie: string | null | undefined,
+  input: UpdateVigilantModeRequest,
+): Promise<UpdateVigilantModeResponse> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/settings/keys/vigilant-mode`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    let envelope: ApiErrorEnvelope | null = null;
+    try {
+      envelope = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      envelope = null;
+    }
+    throw new Error(
+      envelope?.error.message ?? "Vigilant mode could not be updated.",
+      {
+        cause: envelope,
+      },
+    );
+  }
+
+  return (await response.json()) as UpdateVigilantModeResponse;
 }
 
 export async function getAppShellContextFromCookie(

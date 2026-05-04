@@ -4516,5 +4516,24 @@
       "Validate real Google reauth parity when sudo mode moves beyond email confirmation.",
       "Exercise mobile density and wrapping with many SSH keys and long SHA256 fingerprints."
     ]
+  },
+  {
+    "feature_id": "credentials-002",
+    "tests_written": [
+      "Completed Phase 3 GPG Keys and Vigilant Mode UI without marking credentials-002 build_pass=true.",
+      "Extended /settings/keys with server-backed GPG key list rows, New GPG key form, armored public key submission, parsed fingerprint/email rendering, and sudo-gated delete confirmation.",
+      "Added same-origin forwarding for GPG create/delete and vigilant-mode PATCH actions while reusing the Rust settings-key API contracts from Phase 1.",
+      "Added the Vigilant mode card with a real checkbox labeled Flag unsigned commits as unverified, disabled-in-flight state, optimistic update, rollback on failure, and persisted status feedback.",
+      "Focused Vitest passed for GPG create/delete, vigilant-mode persistence, disabled-in-flight state, redaction, unavailable states, no inert links, and Editorial guardrails.",
+      "Focused Playwright smoke passed for signed-in SSH create/delete, GPG create/delete, vigilant-mode toggle, mobile no-overflow, no dead controls, and saved ralph/screenshots/build/credentials-002-phase3-gpg-vigilant.jpg.",
+      "Full make check, make test, and make test-e2e passed; the full E2E target reported 108 passing Playwright tests."
+    ],
+    "needs_deeper_qa": [
+      "Stress real-world GPG public-key exports with multiple identities, subkeys, expiration/revocation packets, comments, unusual armor whitespace, duplicate fingerprint races, and very large invalid payloads.",
+      "Run keyboard and screen-reader traversal on the GPG create form, sudo confirmation panel, delete alertdialog, vigilant-mode checkbox, status announcements, and cancel paths.",
+      "Probe concurrent delete/create and vigilant-mode toggle races across multiple signed-in browser sessions.",
+      "Validate real Google reauth parity when sudo mode moves beyond email confirmation.",
+      "Exercise mobile density and wrapping with many GPG keys, long fingerprints, long email lists, and mixed deleted/active rows."
+    ]
   }
 ]
