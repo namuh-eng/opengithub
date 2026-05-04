@@ -1,19 +1,22 @@
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use serde::Deserialize;
 
 use crate::{
-    api_types::{database_unavailable, error_response, ErrorEnvelope},
+    api_types::{database_unavailable, error_response, ErrorEnvelope, RestJson},
     auth::extractor::AuthenticatedUser,
     domain::{
         organizations::{
-            organization_people, organization_repositories, public_organization_profile,
-            OrganizationPeopleList, OrganizationPeopleListQuery, OrganizationProfileError,
-            OrganizationRepositoryList, OrganizationRepositoryListQuery, PublicOrganizationProfile,
+            create_organization_from_signup, organization_people, organization_repositories,
+            organization_slug_availability, public_organization_profile, CreateOrganizationRequest,
+            CreatedOrganization, OrganizationCreateError, OrganizationPeopleList,
+            OrganizationPeopleListQuery, OrganizationProfileError, OrganizationRepositoryList,
+            OrganizationRepositoryListQuery, OrganizationSlugAvailability,
+            PublicOrganizationProfile,
         },
         packages::{
             mutate_package_settings, owner_packages, package_detail, package_settings,
@@ -27,6 +30,11 @@ use crate::{
 
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route(
+            "/api/organizations/slug-availability",
+            get(slug_availability),
+        )
+        .route("/api/organizations", post(create_organization))
         .route("/api/orgs/:org/profile", get(public_profile))
         .route("/api/orgs/:org/repositories", get(public_repositories))
         .route("/api/orgs/:org/people", get(public_people))
@@ -43,6 +51,34 @@ pub fn router() -> Router<AppState> {
             "/api/orgs/:org/packages/:package_type/:package_name/download",
             get(public_package_download_metadata),
         )
+}
+
+async fn slug_availability(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<OrganizationSlugAvailabilityQuery>,
+) -> Result<Json<OrganizationSlugAvailability>, (StatusCode, Json<ErrorEnvelope>)> {
+    AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let availability = organization_slug_availability(pool, &query.name)
+        .await
+        .map_err(map_organization_create_error)?;
+
+    Ok(Json(availability))
+}
+
+async fn create_organization(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    RestJson(request): RestJson<CreateOrganizationRequest>,
+) -> Result<(StatusCode, Json<CreatedOrganization>), (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let organization = create_organization_from_signup(pool, actor.0.id, request)
+        .await
+        .map_err(map_organization_create_error)?;
+
+    Ok((StatusCode::CREATED, Json(organization)))
 }
 
 async fn public_profile(
@@ -250,6 +286,12 @@ struct OrganizationRepositoriesQuery {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct OrganizationSlugAvailabilityQuery {
+    name: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct OrganizationPeopleQuery {
     q: Option<String>,
     page: Option<i64>,
@@ -339,6 +381,33 @@ fn map_organization_profile_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal_error",
             "organization profile could not be loaded",
+        ),
+    }
+}
+
+fn map_organization_create_error(
+    error: OrganizationCreateError,
+) -> (StatusCode, Json<ErrorEnvelope>) {
+    match error {
+        OrganizationCreateError::Validation(message) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            message,
+        ),
+        OrganizationCreateError::ReservedSlug => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            "organization slug is reserved",
+        ),
+        OrganizationCreateError::DuplicateSlug => error_response(
+            StatusCode::CONFLICT,
+            "conflict",
+            "organization slug is already taken",
+        ),
+        OrganizationCreateError::Sqlx(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "organization could not be created",
         ),
     }
 }

@@ -251,9 +251,7 @@ async fn security_settings_enforce_sudo_and_last_identity_protection() {
             .len(),
         1
     );
-    assert!(
-        !unlink_body
-            .to_string()
-            .contains("second-google@example.com")
-    );
+    assert!(!unlink_body
+        .to_string()
+        .contains("second-google@example.com"));
 }

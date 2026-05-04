@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -136,6 +137,72 @@ pub struct OrganizationViewerState {
     pub is_following: bool,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateOrganizationRequest {
+    pub name: String,
+    pub contact_email: String,
+    pub ownership_type: OrganizationOwnershipType,
+    pub company_name: Option<String>,
+    #[serde(default)]
+    pub terms_accepted: bool,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum OrganizationOwnershipType {
+    Personal,
+    Business,
+}
+
+impl OrganizationOwnershipType {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Personal => "personal",
+            Self::Business => "business",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationSlugAvailability {
+    pub requested_name: String,
+    pub normalized_slug: String,
+    pub available: bool,
+    pub reason: Option<String>,
+    pub reserved: bool,
+    pub existing_kind: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatedOrganization {
+    pub id: Uuid,
+    pub slug: String,
+    pub display_name: String,
+    pub contact_email: String,
+    pub ownership_type: String,
+    pub company_name: Option<String>,
+    pub terms_of_service_type: String,
+    pub role: String,
+    pub href: String,
+    pub settings_href: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum OrganizationCreateError {
+    #[error("{0}")]
+    Validation(String),
+    #[error("organization slug is reserved")]
+    ReservedSlug,
+    #[error("organization slug is already taken")]
+    DuplicateSlug,
+    #[error("database error")]
+    Sqlx(#[from] sqlx::Error),
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct OrganizationRepositoryList {
@@ -264,6 +331,273 @@ pub enum OrganizationProfileError {
     InvalidRepositoryFilter(String),
     #[error("database error")]
     Sqlx(#[from] sqlx::Error),
+}
+
+pub fn normalize_organization_slug(name: &str) -> String {
+    let mut slug = String::new();
+    let mut pending_dash = false;
+
+    for character in name.trim().chars().flat_map(char::to_lowercase) {
+        if character.is_ascii_alphanumeric() {
+            if pending_dash && !slug.is_empty() {
+                slug.push('-');
+            }
+            pending_dash = false;
+            slug.push(character);
+        } else {
+            pending_dash = !slug.is_empty();
+        }
+
+        if slug.len() >= 39 {
+            break;
+        }
+    }
+
+    slug.trim_matches('-').to_owned()
+}
+
+pub fn validate_organization_slug(slug: &str) -> Result<(), String> {
+    if slug.is_empty() {
+        return Err("Organization name must include at least one letter or number.".to_owned());
+    }
+    if slug.len() > 39 {
+        return Err("Organization slug must be 39 characters or fewer.".to_owned());
+    }
+    if !slug.chars().all(|character| {
+        character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
+    }) {
+        return Err(
+            "Organization slug may only use lowercase letters, numbers, and hyphens.".to_owned(),
+        );
+    }
+    if slug.starts_with('-') || slug.ends_with('-') || slug.contains("--") {
+        return Err("Organization slug cannot start, end, or repeat hyphens.".to_owned());
+    }
+    Ok(())
+}
+
+pub async fn organization_slug_availability(
+    pool: &PgPool,
+    requested_name: &str,
+) -> Result<OrganizationSlugAvailability, OrganizationCreateError> {
+    let normalized_slug = normalize_organization_slug(requested_name);
+    let mut reason = validate_organization_slug(&normalized_slug).err();
+    let mut reserved = false;
+    let mut existing_kind = None;
+
+    if reason.is_none() {
+        reserved = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS (SELECT 1 FROM reserved_slugs WHERE lower(slug) = lower($1))",
+        )
+        .bind(&normalized_slug)
+        .fetch_one(pool)
+        .await?;
+        if reserved {
+            reason = Some("This organization slug is reserved.".to_owned());
+        }
+    }
+
+    if reason.is_none() {
+        existing_kind = sqlx::query_scalar::<_, Option<String>>(
+            r#"
+            SELECT existing_kind FROM (
+                SELECT 'organization'::text AS existing_kind
+                FROM organizations
+                WHERE lower(slug) = lower($1)
+                UNION ALL
+                SELECT 'user'::text AS existing_kind
+                FROM users
+                WHERE username IS NOT NULL AND lower(username) = lower($1)
+            ) existing
+            LIMIT 1
+            "#,
+        )
+        .bind(&normalized_slug)
+        .fetch_one(pool)
+        .await?;
+        if existing_kind.is_some() {
+            reason = Some("This organization slug is already taken.".to_owned());
+        }
+    }
+
+    Ok(OrganizationSlugAvailability {
+        requested_name: requested_name.to_owned(),
+        normalized_slug,
+        available: reason.is_none(),
+        reason,
+        reserved,
+        existing_kind,
+    })
+}
+
+pub async fn create_organization_from_signup(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    request: CreateOrganizationRequest,
+) -> Result<CreatedOrganization, OrganizationCreateError> {
+    let display_name = normalize_display_name(&request.name)?;
+    let availability = organization_slug_availability(pool, &request.name).await?;
+    validate_organization_slug(&availability.normalized_slug)
+        .map_err(OrganizationCreateError::Validation)?;
+    if availability.reserved {
+        return Err(OrganizationCreateError::ReservedSlug);
+    }
+    if availability.existing_kind.is_some() {
+        return Err(OrganizationCreateError::DuplicateSlug);
+    }
+
+    let contact_email = normalize_contact_email(&request.contact_email)?;
+    if !request.terms_accepted {
+        return Err(OrganizationCreateError::Validation(
+            "You must accept the organization terms before creating an organization.".to_owned(),
+        ));
+    }
+    let company_name = normalize_company_name(request.ownership_type, request.company_name)?;
+    let ownership_type = request.ownership_type.as_str();
+    let terms_of_service_type = "free_organization_terms";
+    let mut tx = pool.begin().await?;
+
+    let row = sqlx::query(
+        r#"
+        INSERT INTO organizations (
+            slug, display_name, owner_user_id, contact_email, terms_of_service_type,
+            company_name, ownership_type
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, slug, display_name, contact_email, ownership_type, company_name,
+                  terms_of_service_type, created_at
+        "#,
+    )
+    .bind(&availability.normalized_slug)
+    .bind(&display_name)
+    .bind(actor_user_id)
+    .bind(&contact_email)
+    .bind(terms_of_service_type)
+    .bind(&company_name)
+    .bind(ownership_type)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(map_unique_slug_error)?;
+
+    let organization_id = row.get::<Uuid, _>("id");
+    sqlx::query(
+        r#"
+        INSERT INTO organization_memberships (organization_id, user_id, role)
+        VALUES ($1, $2, 'owner')
+        ON CONFLICT (organization_id, user_id) DO UPDATE SET role = 'owner'
+        "#,
+    )
+    .bind(organization_id)
+    .bind(actor_user_id)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO organization_policy_settings (organization_id)
+        VALUES ($1)
+        ON CONFLICT (organization_id) DO NOTHING
+        "#,
+    )
+    .bind(organization_id)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO organization_audit_events (
+            organization_id, actor_user_id, event_type, metadata
+        )
+        VALUES ($1, $2, 'organization.create', $3)
+        "#,
+    )
+    .bind(organization_id)
+    .bind(actor_user_id)
+    .bind(json!({
+        "slug": availability.normalized_slug,
+        "ownershipType": ownership_type,
+        "termsOfServiceType": terms_of_service_type
+    }))
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    let slug = row.get::<String, _>("slug");
+    Ok(CreatedOrganization {
+        id: organization_id,
+        slug: slug.clone(),
+        display_name: row.get("display_name"),
+        contact_email: row.get("contact_email"),
+        ownership_type: row.get("ownership_type"),
+        company_name: row.get("company_name"),
+        terms_of_service_type: row.get("terms_of_service_type"),
+        role: "owner".to_owned(),
+        href: format!("/orgs/{slug}"),
+        settings_href: format!("/organizations/{slug}/settings/profile"),
+        created_at: row.get("created_at"),
+    })
+}
+
+fn normalize_display_name(name: &str) -> Result<String, OrganizationCreateError> {
+    let display_name = name.split_whitespace().collect::<Vec<_>>().join(" ");
+    if display_name.is_empty() {
+        return Err(OrganizationCreateError::Validation(
+            "Organization name is required.".to_owned(),
+        ));
+    }
+    if display_name.chars().count() > 100 {
+        return Err(OrganizationCreateError::Validation(
+            "Organization name must be 100 characters or fewer.".to_owned(),
+        ));
+    }
+    Ok(display_name)
+}
+
+fn normalize_contact_email(email: &str) -> Result<String, OrganizationCreateError> {
+    let normalized = email.trim().to_ascii_lowercase();
+    let valid = normalized.len() <= 254
+        && normalized.split('@').count() == 2
+        && normalized.split('@').nth(1).is_some_and(|domain| {
+            domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.')
+        });
+    if !valid {
+        return Err(OrganizationCreateError::Validation(
+            "Enter a valid contact email address.".to_owned(),
+        ));
+    }
+    Ok(normalized)
+}
+
+fn normalize_company_name(
+    ownership_type: OrganizationOwnershipType,
+    company_name: Option<String>,
+) -> Result<Option<String>, OrganizationCreateError> {
+    let normalized = company_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    match ownership_type {
+        OrganizationOwnershipType::Personal => Ok(None),
+        OrganizationOwnershipType::Business => normalized
+            .ok_or_else(|| {
+                OrganizationCreateError::Validation(
+                    "Company or institution name is required for business organizations."
+                        .to_owned(),
+                )
+            })
+            .map(Some),
+    }
+}
+
+fn map_unique_slug_error(error: sqlx::Error) -> OrganizationCreateError {
+    match &error {
+        sqlx::Error::Database(database_error) if database_error.is_unique_violation() => {
+            OrganizationCreateError::DuplicateSlug
+        }
+        _ => OrganizationCreateError::Sqlx(error),
+    }
 }
 
 struct OrganizationRow {

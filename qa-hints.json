@@ -4385,8 +4385,7 @@
       "Exercise CLI channel downstream behavior once CLI notification delivery exists; this feature stores the preference only.",
       "Full Playwright on a fresh migrated database was attempted, but the dev server/API became unreachable after the auth suite; the focused personal-settings-002 smoke passed before that cascade."
     ]
-  }
-,
+  },
   {
     "feature_id": "credentials-001",
     "tests_written": [
@@ -4593,6 +4592,25 @@
       "Validate real reauthentication parity when sudo mode moves from local email confirmation to Google reauth.",
       "Run keyboard and screen-reader traversal on the sudo form, unlink confirmation panel, status announcements, disabled 2FA card, and mobile wrapping with long account emails.",
       "Confirm security audit event redaction for unlink operations in logs and API responses."
+    ]
+  },
+  {
+    "feature_id": "org-admin-001",
+    "tests_written": [
+      "Completed Phase 1 Organization Creation API Contract without marking org-admin-001 build_pass=true.",
+      "Added authenticated GET /api/organizations/slug-availability and POST /api/organizations route contracts.",
+      "Added additive organization creation migration for contact_email, terms_of_service_type, company_name, ownership_type, reserved_slugs, organization_policy_settings, and organization_audit_events.",
+      "Implemented slug normalization and availability checks across reserved slugs, existing organizations, and existing users.",
+      "Implemented create_organization_from_signup with contact email validation, terms acceptance, personal/business ownership validation, owner membership creation, default policy row creation, and audit metadata redaction.",
+      "Focused Rust organization_create_contract passed for successful create, owner membership, default policy row, audit redaction, anonymous rejection, reserved names, invalid email, missing terms, missing business company name, and duplicate slug conflict.",
+      "Full make check passed; full make test passed with Cargo tests plus 361 web tests. Browser smoke and E2E were skipped because Phase 1 is API-first and the structure outline marks browser smoke optional."
+    ],
+    "needs_deeper_qa": [
+      "Probe slug edge cases with Unicode, punctuation-only names, very long inputs, usernames that collide after normalization, concurrent duplicate creates, and reserved route additions.",
+      "Verify future UI Phase 2 maps availability reasons to accessible inline validation without leaking whether private users or organizations exist.",
+      "Exercise rate-limit behavior once Phase 4 adds bounded create attempts.",
+      "Confirm organization audit metadata and request logs never include raw contact email or company details beyond intended organization profile fields.",
+      "Run real browser create flow after Phase 3 wires the form submission and redirect."
     ]
   }
 ]

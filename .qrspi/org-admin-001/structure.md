@@ -6,7 +6,7 @@
 
 ## Phase 1: Organization Creation API Contract - create a Free organization with owner membership
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the authenticated Rust contract for organization creation while keeping the UI placeholder intact. A signed-in user can create an organization with normalized slug, display name, contact email, ownership type, optional company name, terms acceptance, default policy rows, owner membership, and audit event. Paid plan provisioning stays explicitly out of scope.
 
