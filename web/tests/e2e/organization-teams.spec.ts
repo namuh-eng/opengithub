@@ -73,6 +73,10 @@ test("organization teams directory supports owner/member views, filters, and nav
   await expect(page.getByText("Security Response")).toBeVisible();
   await expect(page.getByRole("link", { name: "Secret" })).toBeVisible();
   await expect(page.getByText("Mention notifications").first()).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-004-final-populated-directory.jpg",
+  });
 
   await page.getByLabel("Search organization teams").fill("frontend");
   await page.getByLabel("Filter team visibility").selectOption("visible");
@@ -96,7 +100,7 @@ test("organization teams directory supports owner/member views, filters, and nav
   await expect(page.getByText("Hierarchy and mention delivery")).toBeVisible();
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-004-phase4-team-detail.jpg",
+    path: "../ralph/screenshots/build/org-admin-004-final-detail-overview.jpg",
   });
 
   await page.setViewportSize({ width: 390, height: 850 });
@@ -105,7 +109,7 @@ test("organization teams directory supports owner/member views, filters, and nav
   expect(scrollWidth).toBeLessThanOrEqual(390);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-004-phase2-teams-directory.jpg",
+    path: "../ralph/screenshots/build/org-admin-004-final-mobile.jpg",
   });
 
   await signIn(page, seeded, seeded.profileActionCookieValue);
@@ -128,6 +132,10 @@ test("organization teams directory supports owner/member views, filters, and nav
     "href",
     "/docs/api#organization-teams",
   );
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-004-final-empty-state.jpg",
+  });
 });
 
 test("organization team creation validates nesting and redirects to the created team", async ({
@@ -141,6 +149,10 @@ test("organization team creation validates nesting and redirects to the created 
   await expect(
     page.getByRole("heading", { name: "Create team" }),
   ).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-004-final-create-form.jpg",
+  });
   await expect(page.getByLabel("Parent team")).toContainText("Platform");
   const parentValue =
     (await page
@@ -177,6 +189,6 @@ test("organization team creation validates nesting and redirects to the created 
 
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-004-phase3-team-create.jpg",
+    path: "../ralph/screenshots/build/org-admin-004-final-validation-error.jpg",
   });
 });

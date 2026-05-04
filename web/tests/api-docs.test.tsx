@@ -142,6 +142,45 @@ describe("ApiDocsPage", () => {
     expect(
       screen.getByText(/archive and delete execution remain unsupported/),
     ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/orgs/{org}/teams?q=platform&visibility=all&page=1&pageSize=30",
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("/api/orgs/{org}/teams")).toBeVisible();
+    expect(screen.getByText("/api/orgs/{org}/teams/{team_slug}")).toBeVisible();
+    expect(
+      screen.getByText(
+        /Supported visibility filters are all, visible, and secret/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Visible teams are discoverable and @mentionable by organization members/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Secret teams cannot be nested under any parent/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/parent cycles are rejected with validation_failed/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /notificationsEnabled flag controls team-mention fanout/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Parent team repository permissions cascade to children/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/direct versus inherited team grants/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/never invitation tokens or private member records/),
+    ).toBeVisible();
     expect(screen.getByText("/api/repos/{owner}/{repo}/issues")).toBeVisible();
     expect(
       screen.getAllByText("/api/repos/{owner}/{repo}/settings")[0],

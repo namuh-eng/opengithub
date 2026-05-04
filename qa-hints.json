@@ -4925,5 +4925,21 @@
       "Probe production notification fanout semantics after Phase 4 wires team mentions; Phase 3 only persists the notification preference.",
       "The make test-e2e wrapper again produced no progress output and was terminated; direct Playwright completed the full suite successfully."
     ]
+  },
+  {
+    "feature_id": "org-admin-004",
+    "tests_written": [
+      "API docs test covers organization teams list, create, and detail endpoints with visibility, secret nesting, notification fanout, inherited permissions, privacy, and error notes",
+      "Organization teams unit tests cover directory empty/populated states, filters, create validation, detail tabs, inherited grants, no dead controls, and Editorial primitives",
+      "Rust organization_teams_contract covers auth, privacy, filters, pagination, create slugification, duplicate conflicts, policy denial/allowance, secret nesting, parent cycle guard, audit rows, detail privacy, inherited repository permission cascade, and mention notification state",
+      "Playwright organization teams smoke covers populated owner/member lists, search/filter URL state, row navigation, empty-state CTAs, team creation redirect, secret nested-team validation, detail surface, mobile no-overflow, and final screenshots",
+      "Full make check, make test, make test-e2e, and mandatory Editorial banned-value scan passed"
+    ],
+    "needs_deeper_qa": [
+      "Real Google OAuth-created sessions should repeat the org teams browser flow outside the deterministic Playwright signed-cookie fixture",
+      "Team mention fanout is covered through backend contracts and visible detail state; QA should probe real issue/PR comment mentions once richer composer flows ship",
+      "Permission cascade is verified for repository authorization and detail rows; QA should stress nested team changes and concurrent repository grant edits with larger org data",
+      "Email or in-app notification delivery for team mentions should be rechecked against SES/provider-backed delivery when production notification infrastructure is exercised"
+    ]
   }
 ]

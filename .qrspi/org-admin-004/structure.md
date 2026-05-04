@@ -77,7 +77,7 @@
 
 ## Phase 5: Docs, Browser QA Handoff, and Build Pass - finish org-admin-004
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Document organization teams endpoints and complete final build-loop bookkeeping. Mark `org-admin-004.build_pass=true` only after list, empty state, create, nesting constraints, team detail, permissions, mentions, notifications, browser smoke, and QA handoff are verified.
 

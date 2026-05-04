@@ -196,6 +196,120 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "organization-teams",
+    method: "GET",
+    path: "/api/orgs/{org}/teams?q=platform&visibility=all&page=1&pageSize=30",
+    title: "List organization teams",
+    description:
+      "Returns the signed-in viewer's organization teams directory with visibility-aware rows, parent options, counts, and the Editorial empty-state contract.",
+    auth: "Signed opengithub session cookie with organization membership",
+    response: `{
+  "items": [
+    {
+      "slug": "platform",
+      "name": "Platform",
+      "visibility": "visible",
+      "mentionable": true,
+      "notificationsEnabled": true,
+      "memberCount": 4,
+      "repositoryCount": 3,
+      "childTeamCount": 1,
+      "parent": null,
+      "viewerCapabilities": {
+        "canView": true,
+        "canManage": false,
+        "canMention": true,
+        "isMember": true
+      }
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "pageSize": 30,
+  "counts": { "total": 1, "visible": 1, "secret": 0, "memberTeams": 1 },
+  "emptyState": {
+    "newTeamHref": "/orgs/acme-labs/teams/new",
+    "learnMoreHref": "/docs/api#organization-teams"
+  }
+}`,
+    notes: [
+      "Anonymous callers receive 401; private organizations return not_found for outside viewers without leaking team counts.",
+      "Supported visibility filters are all, visible, and secret; invalid filters return validation_failed.",
+      "Visible teams are discoverable and @mentionable by organization members; secret teams are returned only to owners/admins or direct members.",
+      "Responses include Flexible repository access, Request-to-join teams, and Team mentions empty-state columns, but never invitation tokens or private member records.",
+    ],
+  },
+  {
+    id: "organization-team-create",
+    method: "POST",
+    path: "/api/orgs/{org}/teams",
+    title: "Create organization team",
+    description:
+      "Creates a visible or secret organization team from the New team form after policy, slug, parent, nesting, and notification validation.",
+    auth: "Signed opengithub session cookie with organization owner/admin role, or member role when team creation policy allows it",
+    request: `{
+  "name": "Release Infrastructure",
+  "description": "Owns release trains.",
+  "parentTeamId": "team_platform",
+  "visibility": "visible",
+  "notificationsEnabled": false
+}`,
+    response: `{
+  "team": {
+    "slug": "release-infrastructure",
+    "name": "Release Infrastructure",
+    "visibility": "visible",
+    "notificationsEnabled": false,
+    "parent": { "slug": "platform", "name": "Platform" }
+  },
+  "href": "/orgs/acme-labs/teams/release-infrastructure"
+}`,
+    notes: [
+      "Team names are slugified with the same Rust normalizer used by the browser preview; duplicate slugs return 409 conflict.",
+      "Secret teams cannot be nested under any parent, visible child teams cannot use a secret parent, and parent cycles are rejected with validation_failed.",
+      "The notificationsEnabled flag controls team-mention fanout while keeping mention indexing available for allowed visible teams.",
+      "Successful creates write redacted organization.team.create audit events and never copy submitted descriptions into sensitive logs.",
+    ],
+  },
+  {
+    id: "organization-team-detail",
+    method: "GET",
+    path: "/api/orgs/{org}/teams/{team_slug}",
+    title: "Read organization team detail",
+    description:
+      "Returns one team detail surface with member rows, child teams, direct and inherited repository grants, hierarchy, mentionability, and notification state.",
+    auth: "Signed opengithub session cookie with organization membership and visibility to the requested team",
+    response: `{
+  "team": { "slug": "frontend", "visibility": "visible" },
+  "hierarchy": {
+    "parentChain": [{ "slug": "platform", "name": "Platform" }],
+    "inheritedRepositoryCount": 1,
+    "directRepositoryCount": 1,
+    "childTeamCount": 0
+  },
+  "members": [{ "login": "mona", "role": "maintainer" }],
+  "repositories": [
+    {
+      "fullName": "acme-labs/runtime",
+      "role": "write",
+      "sourceTeamSlug": "platform",
+      "inherited": true
+    }
+  ],
+  "mentionState": {
+    "mentionable": true,
+    "notificationsEnabled": false,
+    "fanoutState": "team mentions stay indexed, but member fanout is suppressed"
+  }
+}`,
+    notes: [
+      "Secret team detail returns not_found to non-members unless the viewer is an organization owner/admin.",
+      "Parent team repository permissions cascade to children for repository authorization and review-request lookups.",
+      "Repository rows identify direct versus inherited team grants so settings pages remain the source of mutation.",
+      "Notification fanout de-dupes team mention subscribers with direct mentions, participation, and review-request recipients.",
+    ],
+  },
+  {
     id: "personal-access-tokens-list",
     method: "GET",
     path: "/api/settings/tokens",
