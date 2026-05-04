@@ -59,7 +59,7 @@
 
 ## Phase 4: Team Detail Foundation, Permissions, Mentions, and Notifications
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make team rows land on useful team detail pages and connect team permissions to repository authorization/review/notification foundations. Team detail shows members, repositories, parent/child inheritance, mentionability, and notification state; repository authorization and review request lookups honor direct and inherited team permissions.
 

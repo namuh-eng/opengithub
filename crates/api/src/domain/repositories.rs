@@ -2330,9 +2330,45 @@ pub async fn repository_permission_for_user(
 ) -> Result<Option<RepositoryPermission>, RepositoryError> {
     let row = sqlx::query(
         r#"
+        WITH RECURSIVE user_teams AS (
+            SELECT teams.id, teams.parent_team_id, 0 AS depth
+            FROM team_memberships
+            JOIN teams ON teams.id = team_memberships.team_id
+            WHERE team_memberships.user_id = $2
+            UNION
+            SELECT parent.id, parent.parent_team_id, user_teams.depth + 1
+            FROM teams parent
+            JOIN user_teams ON user_teams.parent_team_id = parent.id
+            WHERE user_teams.depth < 24
+        ),
+        candidates AS (
+            SELECT repository_id, user_id, role, source, 0 AS source_rank
+            FROM repository_permissions
+            WHERE repository_id = $1 AND user_id = $2
+            UNION ALL
+            SELECT repository_team_permissions.repository_id,
+                   $2 AS user_id,
+                   repository_team_permissions.role,
+                   'team' AS source,
+                   1 AS source_rank
+            FROM repository_team_permissions
+            JOIN user_teams ON user_teams.id = repository_team_permissions.team_id
+            WHERE repository_team_permissions.repository_id = $1
+        )
         SELECT repository_id, user_id, role, source
-        FROM repository_permissions
-        WHERE repository_id = $1 AND user_id = $2
+        FROM candidates
+        ORDER BY
+          CASE role
+            WHEN 'owner' THEN 6
+            WHEN 'admin' THEN 5
+            WHEN 'maintain' THEN 4
+            WHEN 'write' THEN 3
+            WHEN 'triage' THEN 2
+            WHEN 'read' THEN 1
+            ELSE 0
+          END DESC,
+          source_rank ASC
+        LIMIT 1
         "#,
     )
     .bind(repository_id)

@@ -88,9 +88,10 @@ test("profile, organization, team, and search skeleton routes stay navigable", a
   await expect(
     page.getByRole("heading", { name: "namuh / platform" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Organization profile" }),
-  ).toHaveAttribute("href", "/orgs/namuh");
+  await expect(page.getByRole("link", { name: "All teams" })).toHaveAttribute(
+    "href",
+    "/orgs/namuh/teams",
+  );
 
   await page.goto("/search?q=router&type=code");
   await expect(

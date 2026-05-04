@@ -9,8 +9,8 @@ use opengithub_api::{
     domain::{
         identity::{upsert_session, upsert_user_by_email, User},
         repositories::{
-            create_organization, create_repository, CreateOrganization, CreateRepository,
-            RepositoryOwner, RepositoryVisibility,
+            create_organization, create_repository, repository_permission_for_user,
+            CreateOrganization, CreateRepository, RepositoryOwner, RepositoryVisibility,
         },
     },
 };
@@ -267,11 +267,12 @@ async fn organization_teams_directory_authorizes_filters_and_redacts() {
         None,
     )
     .await;
-    sqlx::query("INSERT INTO team_memberships (team_id, user_id, role) VALUES ($1, $2, 'member'), ($3, $4, 'maintainer')")
+    sqlx::query("INSERT INTO team_memberships (team_id, user_id, role) VALUES ($1, $2, 'member'), ($3, $4, 'member'), ($5, $4, 'maintainer')")
         .bind(visible)
         .bind(member.id)
-        .bind(secret)
+        .bind(child)
         .bind(secret_member.id)
+        .bind(secret)
         .execute(&pool)
         .await
         .expect("team memberships should insert");
@@ -295,6 +296,28 @@ async fn organization_teams_directory_authorizes_filters_and_redacts() {
         .execute(&pool)
         .await
         .expect("team repository permissions should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO organization_team_mentions (
+            organization_id, team_id, source_kind, source_id, mentioned_by_user_id,
+            notification_status
+        )
+        VALUES ($1, $2, 'issue', $3, $4, 'sent')
+        "#,
+    )
+    .bind(org.id)
+    .bind(visible)
+    .bind(Uuid::new_v4())
+    .bind(member.id)
+    .execute(&pool)
+    .await
+    .expect("team mention should insert");
+    let inherited_permission = repository_permission_for_user(&pool, repo.id, secret_member.id)
+        .await
+        .expect("inherited repository permission should load")
+        .expect("child team membership should inherit parent repository permission");
+    assert_eq!(inherited_permission.role.as_str(), "write");
+    assert_eq!(inherited_permission.source, "team");
     sqlx::query(
         r#"
         INSERT INTO organization_invitations (
@@ -362,6 +385,58 @@ async fn organization_teams_directory_authorizes_filters_and_redacts() {
         true
     );
     assert_eq!(member_view["items"][1]["mentionable"], true);
+
+    let (status, _, visible_detail) = get_json(
+        app.clone(),
+        &format!("/api/orgs/{marker}/teams/{marker}-platform"),
+        Some(&member_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(visible_detail["team"]["slug"], format!("{marker}-platform"));
+    assert_eq!(
+        visible_detail["members"][0]["login"],
+        format!("{marker}-member")
+    );
+    assert_eq!(visible_detail["repositories"][0]["role"], "write");
+    assert_eq!(
+        visible_detail["childTeams"][0]["slug"],
+        format!("{marker}-frontend")
+    );
+    assert_eq!(visible_detail["mentionState"]["notificationsEnabled"], true);
+    assert_eq!(
+        visible_detail["mentionState"]["recentMentions"][0]["notificationStatus"],
+        "sent"
+    );
+
+    let (status, _, child_detail) = get_json(
+        app.clone(),
+        &format!("/api/orgs/{marker}/teams/{marker}-frontend"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        child_detail["hierarchy"]["parentChain"][0]["slug"],
+        format!("{marker}-platform")
+    );
+    assert!(child_detail["repositories"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|repository| repository["inherited"] == true
+            && repository["sourceTeamSlug"] == format!("{marker}-platform")
+            && repository["role"] == "write"));
+
+    let (status, _, secret_hidden) = get_json(
+        app.clone(),
+        &format!("/api/orgs/{marker}/teams/{marker}-security"),
+        Some(&member_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(secret_hidden["error"]["code"], "not_found");
+
     let member_text = member_view.to_string();
     assert!(!member_text.contains(&format!("{marker}-security")));
     assert!(!member_text.contains("private-invite"));

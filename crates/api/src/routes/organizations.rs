@@ -16,7 +16,7 @@ use crate::{
             cancel_organization_invitation, create_organization_from_signup,
             create_organization_invitation, create_organization_team, export_organization_people,
             organization_people, organization_people_admin, organization_profile_settings,
-            organization_repositories, organization_slug_availability,
+            organization_repositories, organization_slug_availability, organization_team_detail,
             organization_teams_directory, public_organization_profile, remove_organization_member,
             rename_organization, retry_organization_invitation, update_organization_member_role,
             update_organization_member_visibility, update_organization_profile_settings,
@@ -26,9 +26,9 @@ use crate::{
             OrganizationPeopleListQuery, OrganizationProfileError, OrganizationProfileSettings,
             OrganizationProfileSettingsPatch, OrganizationRepositoryList,
             OrganizationRepositoryListQuery, OrganizationSettingsError,
-            OrganizationSlugAvailability, OrganizationTeamCreateResult, OrganizationTeamsDirectory,
-            OrganizationTeamsError, OrganizationTeamsQuery, PublicOrganizationProfile,
-            RenameOrganizationRequest, UpdateOrganizationMembershipRole,
+            OrganizationSlugAvailability, OrganizationTeamCreateResult, OrganizationTeamDetail,
+            OrganizationTeamsDirectory, OrganizationTeamsError, OrganizationTeamsQuery,
+            PublicOrganizationProfile, RenameOrganizationRequest, UpdateOrganizationMembershipRole,
             UpdateOrganizationMembershipVisibility,
         },
         packages::{
@@ -60,6 +60,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/orgs/:org/repositories", get(public_repositories))
         .route("/api/orgs/:org/people", get(public_people))
         .route("/api/orgs/:org/teams", get(org_teams).post(create_org_team))
+        .route("/api/orgs/:org/teams/:team_slug", get(org_team_detail))
         .route("/api/orgs/:org/people/admin", get(admin_people))
         .route("/api/orgs/:org/people/export", get(export_people))
         .route(
@@ -277,6 +278,20 @@ async fn create_org_team(
         .map_err(map_organization_teams_error)?;
 
     Ok((StatusCode::CREATED, Json(team)))
+}
+
+async fn org_team_detail(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((org, team_slug)): Path<(String, String)>,
+) -> Result<Json<OrganizationTeamDetail>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let detail = organization_team_detail(pool, &org, &team_slug, actor.0.id)
+        .await
+        .map_err(map_organization_teams_error)?;
+
+    Ok(Json(detail))
 }
 
 async fn admin_people(

@@ -832,6 +832,59 @@ export type OrganizationTeamSummary = {
   updatedAt: string;
 };
 
+export type OrganizationTeamDetail = {
+  organization: OrganizationSettingsIdentity;
+  team: OrganizationTeamSummary;
+  hierarchy: OrganizationTeamHierarchy;
+  members: OrganizationTeamMemberRow[];
+  repositories: OrganizationTeamRepositoryPermission[];
+  childTeams: OrganizationTeamSummary[];
+  mentionState: OrganizationTeamMentionState;
+  viewerState: OrganizationTeamsViewerState;
+};
+
+export type OrganizationTeamHierarchy = {
+  parentChain: OrganizationTeamParentOption[];
+  inheritedRepositoryCount: number;
+  directRepositoryCount: number;
+  childTeamCount: number;
+};
+
+export type OrganizationTeamMemberRow = {
+  userId: string;
+  login: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  role: string;
+  href: string;
+};
+
+export type OrganizationTeamRepositoryPermission = {
+  repositoryId: string;
+  name: string;
+  fullName: string;
+  href: string;
+  visibility: string;
+  role: string;
+  source: string;
+  sourceTeamSlug: string;
+  inherited: boolean;
+};
+
+export type OrganizationTeamMentionState = {
+  mentionable: boolean;
+  notificationsEnabled: boolean;
+  fanoutState: string;
+  recentMentions: OrganizationTeamMentionRow[];
+};
+
+export type OrganizationTeamMentionRow = {
+  sourceKind: string;
+  sourceId: string;
+  notificationStatus: string;
+  createdAt: string;
+};
+
 export type OrganizationTeamParentOption = {
   id: string;
   slug: string;
@@ -5128,6 +5181,31 @@ export async function createOrganizationTeamFromCookie(
   }
 
   return (await response.json()) as OrganizationTeamCreateResult;
+}
+
+export async function getOrganizationTeamDetailFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  teamSlug: string,
+): Promise<OrganizationTeamDetail | null> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/teams/${encodeURIComponent(teamSlug)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return null;
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return (await response.json()) as OrganizationTeamDetail;
 }
 
 export async function mutateOrganizationPeopleAdminFromCookie(

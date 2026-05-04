@@ -568,6 +568,71 @@ pub struct OrganizationTeamSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct OrganizationTeamDetail {
+    pub organization: OrganizationSettingsIdentity,
+    pub team: OrganizationTeamSummary,
+    pub hierarchy: OrganizationTeamHierarchy,
+    pub members: Vec<OrganizationTeamMemberRow>,
+    pub repositories: Vec<OrganizationTeamRepositoryPermission>,
+    pub child_teams: Vec<OrganizationTeamSummary>,
+    pub mention_state: OrganizationTeamMentionState,
+    pub viewer_state: OrganizationTeamsViewerState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationTeamHierarchy {
+    pub parent_chain: Vec<OrganizationTeamParentOption>,
+    pub inherited_repository_count: i64,
+    pub direct_repository_count: i64,
+    pub child_team_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationTeamMemberRow {
+    pub user_id: Uuid,
+    pub login: String,
+    pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub role: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationTeamRepositoryPermission {
+    pub repository_id: Uuid,
+    pub name: String,
+    pub full_name: String,
+    pub href: String,
+    pub visibility: String,
+    pub role: String,
+    pub source: String,
+    pub source_team_slug: String,
+    pub inherited: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationTeamMentionState {
+    pub mentionable: bool,
+    pub notifications_enabled: bool,
+    pub fanout_state: String,
+    pub recent_mentions: Vec<OrganizationTeamMentionRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationTeamMentionRow {
+    pub source_kind: String,
+    pub source_id: Uuid,
+    pub notification_status: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct OrganizationTeamParentOption {
     pub id: Uuid,
     pub slug: String,
@@ -1975,6 +2040,94 @@ pub async fn create_organization_team(
     Ok(OrganizationTeamCreateResult {
         destination_href: team.href.clone(),
         team,
+    })
+}
+
+pub async fn organization_team_detail(
+    pool: &PgPool,
+    slug: &str,
+    team_slug: &str,
+    actor_user_id: Uuid,
+) -> Result<OrganizationTeamDetail, OrganizationTeamsError> {
+    let organization = organization_by_slug(pool, slug)
+        .await
+        .map_err(map_profile_error_to_teams)?;
+    let viewer_role = viewer_role(pool, organization.id, Some(actor_user_id)).await?;
+    if viewer_role.is_none() && organization.profile_visibility == "private" {
+        return Err(OrganizationTeamsError::NotFound);
+    }
+    let Some(role) = viewer_role else {
+        return Err(OrganizationTeamsError::Forbidden);
+    };
+
+    let can_admin_teams = matches!(role.as_str(), "owner" | "admin");
+    let teams =
+        organization_team_directory_rows(pool, &organization, actor_user_id, can_admin_teams)
+            .await?;
+    let team = teams
+        .iter()
+        .find(|team| team.slug.eq_ignore_ascii_case(team_slug))
+        .cloned()
+        .ok_or(OrganizationTeamsError::NotFound)?;
+
+    let members = organization_team_members(pool, team.id).await?;
+    let repositories = organization_team_repository_permissions(
+        pool,
+        &organization.slug,
+        organization.id,
+        team.id,
+    )
+    .await?;
+    let child_teams =
+        organization_team_child_rows(pool, &organization, team.id, actor_user_id, can_admin_teams)
+            .await?;
+    let parent_chain = organization_team_parent_chain(pool, &organization, team.id).await?;
+    let recent_mentions = organization_team_recent_mentions(pool, organization.id, team.id).await?;
+    let direct_repository_count = repositories
+        .iter()
+        .filter(|repository| !repository.inherited)
+        .count() as i64;
+    let inherited_repository_count = repositories
+        .iter()
+        .filter(|repository| repository.inherited)
+        .count() as i64;
+    let member_can_create = organization_members_can_create_teams(pool, organization.id).await?;
+
+    Ok(OrganizationTeamDetail {
+        organization: OrganizationSettingsIdentity {
+            id: organization.id,
+            slug: organization.slug.clone(),
+            name: organization.display_name,
+            href: format!("/orgs/{}", organization.slug),
+            settings_href: format!("/organizations/{}/settings/profile", organization.slug),
+        },
+        team: team.clone(),
+        hierarchy: OrganizationTeamHierarchy {
+            parent_chain,
+            inherited_repository_count,
+            direct_repository_count,
+            child_team_count: child_teams.len() as i64,
+        },
+        members,
+        repositories,
+        child_teams,
+        mention_state: OrganizationTeamMentionState {
+            mentionable: team.mentionable,
+            notifications_enabled: team.notifications_enabled,
+            fanout_state: if team.notifications_enabled {
+                "team mentions create subscribed notifications for members unless a direct rule overrides delivery."
+            } else {
+                "team mentions stay indexed, but member fanout is suppressed unless direct mention, participation, or review request rules subscribe the user."
+            }
+            .to_owned(),
+            recent_mentions,
+        },
+        viewer_state: OrganizationTeamsViewerState {
+            role,
+            can_admin_teams,
+            can_create_team: can_admin_teams || member_can_create,
+            can_view_secret_teams: can_admin_teams,
+        },
     })
 }
 
@@ -3955,6 +4108,193 @@ async fn organization_team_directory_rows(
             }
         })
         .collect())
+}
+
+async fn organization_team_child_rows(
+    pool: &PgPool,
+    organization: &OrganizationRow,
+    parent_team_id: Uuid,
+    actor_user_id: Uuid,
+    can_admin_teams: bool,
+) -> Result<Vec<OrganizationTeamSummary>, sqlx::Error> {
+    let teams =
+        organization_team_directory_rows(pool, organization, actor_user_id, can_admin_teams)
+            .await?;
+    Ok(teams
+        .into_iter()
+        .filter(|team| {
+            team.parent
+                .as_ref()
+                .is_some_and(|parent| parent.id == parent_team_id)
+        })
+        .collect())
+}
+
+async fn organization_team_members(
+    pool: &PgPool,
+    team_id: Uuid,
+) -> Result<Vec<OrganizationTeamMemberRow>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
+        SELECT users.id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS login,
+               users.display_name,
+               users.avatar_url,
+               team_memberships.role
+        FROM team_memberships
+        JOIN users ON users.id = team_memberships.user_id
+        WHERE team_memberships.team_id = $1
+        ORDER BY
+          CASE team_memberships.role WHEN 'maintainer' THEN 0 ELSE 1 END,
+          lower(COALESCE(NULLIF(users.username, ''), users.email))
+        LIMIT 100
+        "#,
+    )
+    .bind(team_id)
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            let login: String = row.try_get("login")?;
+            Ok(OrganizationTeamMemberRow {
+                user_id: row.try_get("id")?,
+                href: format!("/{login}"),
+                login,
+                display_name: row.try_get("display_name")?,
+                avatar_url: row.try_get("avatar_url")?,
+                role: row.try_get("role")?,
+            })
+        })
+        .collect()
+}
+
+async fn organization_team_parent_chain(
+    pool: &PgPool,
+    organization: &OrganizationRow,
+    team_id: Uuid,
+) -> Result<Vec<OrganizationTeamParentOption>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
+        WITH RECURSIVE ancestors AS (
+            SELECT parent.id, parent.slug, parent.name, parent.visibility, parent.parent_team_id, 1 AS depth
+            FROM teams child
+            JOIN teams parent ON parent.id = child.parent_team_id
+            WHERE child.organization_id = $1 AND child.id = $2
+            UNION ALL
+            SELECT parent.id, parent.slug, parent.name, parent.visibility, parent.parent_team_id, ancestors.depth + 1
+            FROM teams parent
+            JOIN ancestors ON ancestors.parent_team_id = parent.id
+            WHERE parent.organization_id = $1 AND ancestors.depth < 24
+        )
+        SELECT id, slug, name, visibility
+        FROM ancestors
+        ORDER BY depth DESC
+        "#,
+    )
+    .bind(organization.id)
+    .bind(team_id)
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            let slug: String = row.try_get("slug")?;
+            Ok(OrganizationTeamParentOption {
+                id: row.try_get("id")?,
+                href: format!("/orgs/{}/teams/{slug}", organization.slug),
+                slug,
+                name: row.try_get("name")?,
+                visibility: row.try_get("visibility")?,
+            })
+        })
+        .collect()
+}
+
+async fn organization_team_repository_permissions(
+    pool: &PgPool,
+    organization_slug: &str,
+    organization_id: Uuid,
+    team_id: Uuid,
+) -> Result<Vec<OrganizationTeamRepositoryPermission>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
+        WITH RECURSIVE team_scope AS (
+            SELECT id, slug, parent_team_id, 0 AS depth
+            FROM teams
+            WHERE organization_id = $1 AND id = $2
+            UNION ALL
+            SELECT parent.id, parent.slug, parent.parent_team_id, team_scope.depth + 1
+            FROM teams parent
+            JOIN team_scope ON team_scope.parent_team_id = parent.id
+            WHERE parent.organization_id = $1 AND team_scope.depth < 24
+        )
+        SELECT repositories.id AS repository_id,
+               repositories.name,
+               repositories.visibility,
+               repository_team_permissions.role,
+               repository_team_permissions.source,
+               team_scope.slug AS source_team_slug,
+               team_scope.id <> $2 AS inherited
+        FROM repository_team_permissions
+        JOIN team_scope ON team_scope.id = repository_team_permissions.team_id
+        JOIN repositories ON repositories.id = repository_team_permissions.repository_id
+        WHERE repositories.owner_organization_id = $1
+        ORDER BY inherited ASC, lower(repositories.name)
+        "#,
+    )
+    .bind(organization_id)
+    .bind(team_id)
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            let name: String = row.try_get("name")?;
+            Ok(OrganizationTeamRepositoryPermission {
+                repository_id: row.try_get("repository_id")?,
+                full_name: format!("{organization_slug}/{name}"),
+                href: format!("/{organization_slug}/{name}/settings/access"),
+                name,
+                visibility: row.try_get::<String, _>("visibility")?,
+                role: row.try_get("role")?,
+                source: row.try_get("source")?,
+                source_team_slug: row.try_get("source_team_slug")?,
+                inherited: row.try_get("inherited")?,
+            })
+        })
+        .collect()
+}
+
+async fn organization_team_recent_mentions(
+    pool: &PgPool,
+    organization_id: Uuid,
+    team_id: Uuid,
+) -> Result<Vec<OrganizationTeamMentionRow>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
+        SELECT source_kind, source_id, notification_status, created_at
+        FROM organization_team_mentions
+        WHERE organization_id = $1 AND team_id = $2
+        ORDER BY created_at DESC
+        LIMIT 10
+        "#,
+    )
+    .bind(organization_id)
+    .bind(team_id)
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            Ok(OrganizationTeamMentionRow {
+                source_kind: row.try_get("source_kind")?,
+                source_id: row.try_get("source_id")?,
+                notification_status: row.try_get("notification_status")?,
+                created_at: row.try_get("created_at")?,
+            })
+        })
+        .collect()
 }
 
 async fn pinned_repositories(

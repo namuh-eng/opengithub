@@ -7,8 +7,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OrganizationTeamCreatePage } from "@/components/OrganizationTeamCreatePage";
+import { OrganizationTeamDetailPage } from "@/components/OrganizationTeamDetailPage";
 import { OrganizationTeamsPage } from "@/components/OrganizationTeamsPage";
 import type {
+  OrganizationTeamDetail,
   OrganizationTeamSummary,
   OrganizationTeamsDirectory,
 } from "@/lib/api";
@@ -102,6 +104,98 @@ function teamsDirectory(
           body: "Mention visible teams to notify the right group.",
         },
       ],
+    },
+    viewerState: {
+      role: "owner",
+      canAdminTeams: true,
+      canCreateTeam: true,
+      canViewSecretTeams: true,
+    },
+    ...overrides,
+  };
+}
+
+function teamDetail(
+  overrides: Partial<OrganizationTeamDetail> = {},
+): OrganizationTeamDetail {
+  return {
+    organization: {
+      id: "org-1",
+      slug: "namuh",
+      name: "Namuh Engineering",
+      href: "/orgs/namuh",
+      settingsHref: "/organizations/namuh/settings/profile",
+    },
+    team: team(),
+    hierarchy: {
+      parentChain: [
+        {
+          id: "team-parent",
+          slug: "engineering",
+          name: "Engineering",
+          href: "/orgs/namuh/teams/engineering",
+          visibility: "visible",
+        },
+      ],
+      inheritedRepositoryCount: 1,
+      directRepositoryCount: 1,
+      childTeamCount: 1,
+    },
+    members: [
+      {
+        userId: "user-1",
+        login: "mona",
+        displayName: "Mona",
+        avatarUrl: null,
+        role: "maintainer",
+        href: "/mona",
+      },
+    ],
+    repositories: [
+      {
+        repositoryId: "repo-1",
+        name: "runtime",
+        fullName: "namuh/runtime",
+        href: "/namuh/runtime/settings/access",
+        visibility: "private",
+        role: "write",
+        source: "team",
+        sourceTeamSlug: "platform",
+        inherited: false,
+      },
+      {
+        repositoryId: "repo-2",
+        name: "frontend",
+        fullName: "namuh/frontend",
+        href: "/namuh/frontend/settings/access",
+        visibility: "private",
+        role: "read",
+        source: "team",
+        sourceTeamSlug: "engineering",
+        inherited: true,
+      },
+    ],
+    childTeams: [
+      team({
+        id: "team-child",
+        slug: "frontend",
+        name: "Frontend",
+        href: "/orgs/namuh/teams/frontend",
+        parent: {
+          id: "team-1",
+          slug: "platform",
+          name: "Platform",
+          href: "/orgs/namuh/teams/platform",
+          visibility: "visible",
+        },
+      }),
+    ],
+    mentionState: {
+      mentionable: true,
+      notificationsEnabled: false,
+      fanoutState:
+        "team mentions stay indexed, but member fanout is suppressed unless direct mention, participation, or review request rules subscribe the user.",
+      recentMentions: [],
     },
     viewerState: {
       role: "owner",
@@ -405,5 +499,32 @@ describe("OrganizationTeamsPage", () => {
 
     expect(screen.getByRole("button", { name: "Create team" })).toBeDisabled();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("renders team detail with members, inherited repository access, child teams, and mention state", () => {
+    const { container } = render(
+      <OrganizationTeamDetailPage detail={teamDetail()} org="namuh" />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Platform" })).toBeVisible();
+    expect(screen.getByText("@platform")).toBeVisible();
+    expect(screen.getByText("namuh/runtime")).toBeVisible();
+    expect(screen.getByText("namuh/frontend")).toBeVisible();
+    expect(screen.getByText("Inherited from @engineering")).toBeVisible();
+    expect(screen.getByRole("link", { name: /Mona/ })).toHaveAttribute(
+      "href",
+      "/mona",
+    );
+    expect(screen.getByRole("link", { name: /Frontend/ })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/teams/frontend",
+    );
+    expect(screen.getByText("Fanout suppressed")).toBeVisible();
+    expect(screen.getByRole("link", { name: "All teams" })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/teams",
+    );
+    expect(container.querySelector('a[href="#"], a:not([href])')).toBeNull();
+    expect(container.querySelector("button")).toBeNull();
   });
 });

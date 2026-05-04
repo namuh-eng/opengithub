@@ -90,9 +90,14 @@ test("organization teams directory supports owner/member views, filters, and nav
   expect(teamHref).toBeTruthy();
   await page.goto(teamHref ?? "");
   await expect(
-    page.getByRole("heading", { name: /org-profile-/ }),
+    page.getByRole("heading", { name: "Frontend Studio" }),
   ).toBeVisible();
-  await expect(page.getByText(/will show members, repositories/)).toBeVisible();
+  await expect(page.getByText("Direct and inherited access")).toBeVisible();
+  await expect(page.getByText("Hierarchy and mention delivery")).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-004-phase4-team-detail.jpg",
+  });
 
   await page.setViewportSize({ width: 390, height: 850 });
   await page.goto(`${seeded.organizationProfileHref}/teams`);
@@ -151,7 +156,10 @@ test("organization team creation validates nesting and redirects to the created 
   await expect(page).toHaveURL(
     /\/orgs\/org-profile-[^/]+\/teams\/release-infrastructure$/,
   );
-  await expect(page.getByText(/will show members, repositories/)).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Release Infrastructure" }),
+  ).toBeVisible();
+  await expect(page.getByText("Fanout suppressed")).toBeVisible();
 
   await page.goto(`${seeded.organizationProfileHref}/teams/new`);
   const nestedParentValue =
