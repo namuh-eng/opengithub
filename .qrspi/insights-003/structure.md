@@ -41,7 +41,7 @@
 
 ## Phase 3: Chart Focus, Tooltip Data, and Safe Link Actions
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make chart point hover/focus and table interactions complete. Keyboard-focusing or hovering a clone/visitor chart point should reveal exact date, total, and unique values; referrer links should open externally with safe attributes; popular content links should open real repository paths.
 

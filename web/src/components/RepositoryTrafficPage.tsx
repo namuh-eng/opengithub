@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { RepositoryInsightsShell } from "@/components/RepositoryInsightsShell";
+import { RepositoryTrafficChart } from "@/components/RepositoryTrafficChart";
 import type {
   RepositoryOverview,
   RepositoryTrafficFetchResult,
-  RepositoryTrafficSeriesPoint,
   RepositoryTrafficView,
 } from "@/lib/api";
-import { repositoryCommitHistoryHref } from "@/lib/navigation";
+import {
+  repositoryCommitHistoryHref,
+  repositoryTrafficContentHref,
+} from "@/lib/navigation";
 
 type RepositoryTrafficPageProps = {
   repository: RepositoryOverview;
@@ -78,98 +81,11 @@ function TrafficMetric({
   );
 }
 
-function TrafficChart({
-  label,
-  points,
-  totalLabel,
-  uniqueLabel,
-}: {
-  label: string;
-  points: RepositoryTrafficSeriesPoint[];
-  totalLabel: string;
-  uniqueLabel: string;
-}) {
-  const maxTotal = Math.max(1, ...points.map((point) => point.total));
-
-  return (
-    <section className="card p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="t-label" style={{ color: "var(--ink-3)" }}>
-            {label}
-          </p>
-          <h2 className="t-h2 mt-2" style={{ color: "var(--ink-1)" }}>
-            Last 14 days
-          </h2>
-        </div>
-        <span className="chip soft">Accessible table included</span>
-      </div>
-
-      <div
-        aria-label={`${label} line chart`}
-        className="mt-5 grid min-h-48 grid-cols-[repeat(auto-fit,minmax(28px,1fr))] items-end gap-2"
-        role="img"
-      >
-        {points.map((point) => {
-          const height = Math.max(10, (point.total / maxTotal) * 100);
-          return (
-            <div className="grid min-w-0 gap-2" key={point.date}>
-              <div
-                aria-hidden="true"
-                className="flex h-32 items-end rounded-md"
-                style={{ background: "var(--surface-2)" }}
-              >
-                <div
-                  className="w-full rounded-md"
-                  style={{
-                    background:
-                      point.total > 0 ? "var(--accent)" : "var(--line-strong)",
-                    height: `${height}%`,
-                  }}
-                />
-              </div>
-              <span className="t-mono-sm text-center">
-                {formatNumber(point.total)}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="mt-5 overflow-x-auto">
-        <table className="w-full text-left t-sm">
-          <caption className="sr-only">{label} data table</caption>
-          <thead className="t-label" style={{ color: "var(--ink-3)" }}>
-            <tr>
-              <th className="py-2 pr-3">Date</th>
-              <th className="py-2 pr-3 text-right">{totalLabel}</th>
-              <th className="py-2 text-right">{uniqueLabel}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {points.map((point) => (
-              <tr
-                className="border-t"
-                key={`${label}-${point.date}`}
-                style={{ borderColor: "var(--line-soft)" }}
-              >
-                <td className="py-2 pr-3">{formatDate(point.date)}</td>
-                <td className="py-2 pr-3 text-right t-num">
-                  {formatNumber(point.total)}
-                </td>
-                <td className="py-2 text-right t-num">
-                  {formatNumber(point.unique)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
 function TrafficRows({ traffic }: { traffic: RepositoryTrafficView }) {
+  const owner = traffic.repository.ownerLogin;
+  const repo = traffic.repository.name;
+  const refName = traffic.repository.defaultBranch;
+
   return (
     <div className="grid gap-4 xl:grid-cols-2">
       <section className="card overflow-hidden">
@@ -236,7 +152,13 @@ function TrafficRows({ traffic }: { traffic: RepositoryTrafficView }) {
               <div className="min-w-0 flex-1">
                 <Link
                   className="break-words t-sm font-semibold hover:underline"
-                  href={content.href}
+                  href={repositoryTrafficContentHref({
+                    fallbackHref: content.href,
+                    owner,
+                    path: content.path,
+                    refName,
+                    repo,
+                  })}
                 >
                   {content.title || content.path}
                 </Link>
@@ -356,13 +278,13 @@ function TrafficReadyPage({
         </section>
 
         <div className="grid gap-4 xl:grid-cols-2">
-          <TrafficChart
+          <RepositoryTrafficChart
             label="Clones"
             points={traffic.clones}
             totalLabel="Clones"
             uniqueLabel="Unique cloners"
           />
-          <TrafficChart
+          <RepositoryTrafficChart
             label="Visitors"
             points={traffic.visitors}
             totalLabel="Views"

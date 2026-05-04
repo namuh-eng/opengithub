@@ -5475,5 +5475,21 @@
       "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
       "The direct focused Playwright smoke passed; the make test-e2e wrapper produced no output for 90 seconds and was terminated, matching the known local wrapper stall recorded in prior build-progress entries."
     ]
+  },
+  {
+    "feature_id": "insights-003",
+    "tests_written": [
+      "Completed Phase 3 Chart Focus, Tooltip Data, and Safe Link Actions without marking insights-003 build_pass=true.",
+      "Added RepositoryTrafficChart as a client component with focusable/hoverable clone and visitor chart points, exact selected-point details, stable chart dimensions, and accessible data-table fallback.",
+      "Added repositoryTrafficContentHref and wired popular content rows through repository browse routes while keeping referrer links external with noopener noreferrer.",
+      "Extended focused Vitest coverage for chart point accessible labels, focus/hover selected details, safe links, no dead anchors, no inert handlers, and Editorial banned-value guardrails.",
+      "Extended Playwright Traffic smoke to focus clone chart points, hover visitor chart points, verify exact values, verify safe/content links, check mobile no-overflow, and save ralph/screenshots/build/insights-003-phase3-chart-focus.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 still needs broader edge-case coverage for sparse windows, zero-traffic days, long referrer domains, long popular content paths, stale snapshots, internal/bot traffic exclusion metadata, and read-only permission states in browser.",
+      "Repeat chart keyboard traversal with screen-reader tooling; this phase validates focusable point labels and selected details through Testing Library and Playwright, but not a real screen reader.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "The make test-e2e wrapper again produced no output while child processes ran and was terminated; the direct full Playwright suite passed 127 tests as equivalent browser evidence."
+    ]
   }
 ]

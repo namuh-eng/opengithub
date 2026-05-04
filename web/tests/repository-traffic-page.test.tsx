@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { RepositoryTrafficPage } from "@/components/RepositoryTrafficPage";
 import type { RepositoryOverview, RepositoryTrafficView } from "@/lib/api";
@@ -170,6 +170,15 @@ describe("RepositoryTrafficPage", () => {
       screen.getByRole("img", { name: "Clones line chart" }),
     ).toBeVisible();
     expect(
+      screen.getByRole("button", {
+        name: "Clones May 7, 2026: 18 clones, 4 unique cloners",
+      }),
+    ).toBeVisible();
+    expect(screen.getAllByText("Selected point").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText("May 5, 2026: 10 clones, 3 unique cloners"),
+    ).toBeVisible();
+    expect(
       screen.getByRole("table", { name: "Clones data table" }),
     ).toBeVisible();
     expect(
@@ -207,6 +216,35 @@ describe("RepositoryTrafficPage", () => {
     for (const button of container.querySelectorAll("button")) {
       expect(button).toHaveAccessibleName();
     }
+  });
+
+  it("reveals exact traffic values when chart points receive focus or hover", () => {
+    render(
+      <RepositoryTrafficPage
+        repository={repositoryOverview()}
+        trafficResult={{ ok: true, traffic: trafficView() }}
+      />,
+    );
+
+    const clonePoint = screen.getByRole("button", {
+      name: "Clones May 7, 2026: 18 clones, 4 unique cloners",
+    });
+    fireEvent.focus(clonePoint);
+    expect(
+      screen.getByText("May 7, 2026: 18 clones, 4 unique cloners"),
+    ).toBeVisible();
+    expect(clonePoint).toHaveAttribute(
+      "aria-describedby",
+      "clones-traffic-point-details",
+    );
+
+    const visitorPoint = screen.getByRole("button", {
+      name: "Visitors May 6, 2026: 80 views, 32 unique visitors",
+    });
+    fireEvent.mouseEnter(visitorPoint);
+    expect(
+      screen.getByText("May 6, 2026: 80 views, 32 unique visitors"),
+    ).toBeVisible();
   });
 
   it("renders permission denial without leaking traffic counts", () => {

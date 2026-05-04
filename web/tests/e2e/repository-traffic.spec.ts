@@ -163,6 +163,16 @@ test("repository Traffic renders traffic analytics and concrete links", async ({
   await expect(
     page.getByRole("img", { name: "Clones line chart" }),
   ).toBeVisible();
+  const clonePoint = page.getByRole("button", {
+    name: /Clones .*12 clones, 5 unique cloners/,
+  });
+  await clonePoint.focus();
+  await expect(page.getByText(/12 clones, 5 unique cloners/)).toBeVisible();
+  const visitorPoint = page.getByRole("button", {
+    name: /Visitors .*48 views, 20 unique visitors/,
+  });
+  await visitorPoint.hover();
+  await expect(page.getByText(/48 views, 20 unique visitors/)).toBeVisible();
   await expect(
     page.getByRole("table", { name: "Clones data table" }),
   ).toBeVisible();
@@ -187,7 +197,7 @@ test("repository Traffic renders traffic analytics and concrete links", async ({
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/insights-003-phase2-traffic-overview.jpg",
+    path: "../ralph/screenshots/build/insights-003-phase3-chart-focus.jpg",
   });
 
   await page.setViewportSize({ width: 390, height: 844 });

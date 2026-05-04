@@ -836,6 +836,25 @@ export function repositoryTrafficHref(owner: string, repo: string) {
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/graphs/traffic`;
 }
 
+export function repositoryTrafficContentHref({
+  fallbackHref,
+  owner,
+  repo,
+  refName,
+  path,
+}: {
+  fallbackHref?: string | null;
+  owner: string;
+  repo: string;
+  refName: string;
+  path: string;
+}) {
+  if (path.trim()) {
+    return repositoryContentHref({ owner, repo, refName, path });
+  }
+  return fallbackHref?.trim() || repositoryTrafficHref(owner, repo);
+}
+
 export function repositoryContentHref({
   owner,
   repo,
