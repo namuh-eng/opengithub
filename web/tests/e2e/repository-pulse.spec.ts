@@ -83,9 +83,20 @@ test("repository Pulse renders live overview data and concrete destinations", as
       name: "Contributors Contributor commit activity",
     }),
   ).toHaveAttribute("href", /\/graphs\/contributors$/);
+  await page.getByRole("button", { name: "Period: Last week" }).click();
+  await expect(page.getByRole("menu", { name: "Pulse period" })).toBeVisible();
   await expect(
-    page.getByRole("link", { name: /Period: Last week/ }),
-  ).toHaveAttribute("href", /\/pulse$/);
+    page.getByRole("menuitem", { name: "Last 24 hours" }),
+  ).toHaveAttribute("href", /\/pulse\?period=24h$/);
+  await expect(
+    page.getByRole("menuitem", { name: "Last month" }),
+  ).toHaveAttribute("href", /\/pulse\?period=1m$/);
+  await page.getByRole("menuitem", { name: "Last 3 days" }).click();
+  await expect(page).toHaveURL(/\/pulse\?period=3d$/);
+  await expect(
+    page.getByRole("button", { name: "Period: Last 3 days" }),
+  ).toBeVisible();
+  await expect(page.getByText(/May \d+, 2026 - May \d+, 2026/)).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Commit history" }),
   ).toHaveAttribute("href", /\/commits\/main$/);
@@ -102,7 +113,7 @@ test("repository Pulse renders live overview data and concrete destinations", as
   ).toHaveAttribute("href", /\/issues\?state=closed/);
   await expect(page.getByRole("link", { name: /New issues/ })).toHaveAttribute(
     "href",
-    /\/issues\?/,
+    /\/issues\?state=open.*sort=created-desc/,
   );
   await expect(
     page.getByRole("img", { name: "Top committers bar chart" }),
@@ -114,6 +125,12 @@ test("repository Pulse renders live overview data and concrete destinations", as
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/insights-001-phase2-pulse-overview.jpg",
+    path: "../ralph/screenshots/build/insights-001-phase3-period-selector.jpg",
   });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator("body")).toHaveJSProperty("scrollLeft", 0);
+  await expect(
+    page.getByRole("button", { name: "Period: Last 3 days" }),
+  ).toBeVisible();
 });

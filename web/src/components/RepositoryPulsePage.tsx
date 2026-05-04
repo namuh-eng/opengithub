@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { RepositoryInsightsShell } from "@/components/RepositoryInsightsShell";
+import { RepositoryPulsePeriodSelector } from "@/components/RepositoryPulsePeriodSelector";
 import type {
   RepositoryOverview,
   RepositoryPulseActivityItem,
@@ -13,7 +14,6 @@ import {
   repositoryIssuesHref,
   repositoryProfileHref,
   repositoryPullRequestsHref,
-  repositoryPulseHref,
 } from "@/lib/navigation";
 
 type RepositoryPulsePageProps = {
@@ -84,7 +84,7 @@ function MetricCard({ metric }: { metric: RepositoryPulseMetric }) {
   return (
     <Link
       aria-label={`${metric.label} ${formatNumber(metric.count)}`}
-      className="card block p-4 hover:no-underline"
+      className="card block min-h-36 p-4 hover:no-underline"
       href={metric.href}
       style={{ color: "var(--ink-1)" }}
     >
@@ -93,7 +93,7 @@ function MetricCard({ metric }: { metric: RepositoryPulseMetric }) {
       </p>
       <div className="mt-3 flex items-end justify-between gap-3">
         <span className="t-h1 t-num">{formatNumber(metric.count)}</span>
-        <span className={metricTone(metric)}>Open list</span>
+        <span className={metricTone(metric)}>Open filtered list</span>
       </div>
     </Link>
   );
@@ -364,14 +364,12 @@ function PulseReadyPage({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link
-              className="btn"
-              href={repositoryPulseHref(owner, repo, {
-                period: pulse.period.key,
-              })}
-            >
-              Period: {pulse.period.label}
-            </Link>
+            <RepositoryPulsePeriodSelector
+              activePeriod={pulse.period.key}
+              owner={owner}
+              repo={repo}
+            />
+            <span className="chip active">Active period</span>
             <Link className="btn primary" href={commitHistoryHref}>
               Commit history
             </Link>

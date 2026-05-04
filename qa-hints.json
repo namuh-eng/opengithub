@@ -5314,5 +5314,23 @@
       "Stress imported repositories with many commits, releases, merged pull requests, closed/new issues, commits without file-change rows, deleted users, and long activity titles.",
       "The make test-e2e wrapper silently stalled and was terminated; direct full Playwright completed 125 tests successfully."
     ]
+  },
+  {
+    "feature_id": "insights-001",
+    "tests_written": [
+      "Completed Phase 3 Period Selector and Metric Navigation without marking insights-001 build_pass=true.",
+      "Added RepositoryPulsePeriodSelector with accessible menu button, concrete 24h/3d/1w/1m links, selected state, Escape close behavior, outside-click close behavior, and URL-backed period reloads.",
+      "Corrected the Pulse New issues metric destination so it opens a valid repository issues list state with created-desc ordering instead of the invalid state=created query.",
+      "Extended Rust Pulse contract coverage for 24h, 3d, 1w, 1m, invalid period validation, metric href shape, snapshot persistence, and no secret leakage.",
+      "Extended Vitest and Playwright coverage for period menu URL round trips, metric-card destinations, exact date range reloads, no dead controls, mobile no-overflow, and screenshot ralph/screenshots/build/insights-001-phase3-period-selector.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 still needs hardening for committer chart/table links, activity links, empty repositories, bot-only activity, deleted authors, and very large file-change counts.",
+      "Phase 5 still needs API docs, final accessibility/guardrail assertions, final screenshots, QA handoff, and build_pass bookkeeping.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Stress imported repositories with period-boundary activity exactly at start/end timestamps, long activity titles, mixed open/closed issue creation windows, and high-frequency snapshot refreshes.",
+      "Date range parameters are emitted on Pulse metric links, but issue/PR list date filtering needs deeper QA once final filter semantics are broadened beyond the current list state/sort handling.",
+      "The make test-e2e wrapper silently stalled and was terminated; focused direct Playwright for repository-pulse.spec.ts passed with screenshot evidence."
+    ]
   }
 ]

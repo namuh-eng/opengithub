@@ -331,6 +331,12 @@ async fn repository_pulse_returns_activity_aggregates_privacy_and_cache_metadata
         .as_str()
         .expect("metric href")
         .contains("/pulls?state=merged"));
+    let new_issues_href = body["metrics"][3]["href"]
+        .as_str()
+        .expect("new issues metric href");
+    assert!(new_issues_href.contains("/issues?state=open"));
+    assert!(new_issues_href.contains("sort=created-desc"));
+    assert!(!new_issues_href.contains("state=created"));
     assert_eq!(
         body["topCommitters"][0]["login"],
         committer.username.as_deref().expect("username")
@@ -389,6 +395,26 @@ async fn repository_pulse_returns_activity_aggregates_privacy_and_cache_metadata
     assert_eq!(empty_status, StatusCode::OK);
     assert_eq!(empty_body["period"]["key"], "3d");
     assert_eq!(empty_body["summary"]["commits"], 1);
+
+    let (week_status, week_body) = get_json(
+        app.clone(),
+        &format!("{base}/pulse?period=1w"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(week_status, StatusCode::OK);
+    assert_eq!(week_body["period"]["key"], "1w");
+    assert_eq!(week_body["summary"]["commits"], 1);
+
+    let (month_status, month_body) = get_json(
+        app.clone(),
+        &format!("{base}/pulse?period=1m"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(month_status, StatusCode::OK);
+    assert_eq!(month_body["period"]["key"], "1m");
+    assert_eq!(month_body["summary"]["commits"], 2);
 
     let (invalid_status, invalid_body) = get_json(
         app,

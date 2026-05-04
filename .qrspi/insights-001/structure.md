@@ -41,7 +41,7 @@
 
 ## Phase 3: Period Selector and Metric Navigation - query state drives aggregates
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make the Period control functional for `24h`, `3d`, `1w`, and `1m`, with URL-backed state and metric cards that navigate to real filtered issue or pull request pages. Changing periods should reload the server-backed Pulse metrics, keep the exact date range visible, and preserve repository context.
 

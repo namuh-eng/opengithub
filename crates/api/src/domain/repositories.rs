@@ -8365,8 +8365,13 @@ fn pulse_issues_href(
     started_at: DateTime<Utc>,
     ended_at: DateTime<Utc>,
 ) -> String {
+    let (state, sort) = if state == "created" {
+        ("open", "&sort=created-desc")
+    } else {
+        (state, "")
+    };
     format!(
-        "/{}/{}/issues?state={state}&since={}&until={}",
+        "/{}/{}/issues?state={state}{sort}&since={}&until={}",
         repository.owner_login,
         repository.name,
         started_at.to_rfc3339(),

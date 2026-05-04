@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { RepositoryPulsePage } from "@/components/RepositoryPulsePage";
 import type { RepositoryOverview, RepositoryPulseView } from "@/lib/api";
@@ -94,7 +94,7 @@ function pulseView(
         key: "new_issues",
         label: "New issues",
         count: 3,
-        href: "/namuh-eng/opengithub/issues?state=open",
+        href: "/namuh-eng/opengithub/issues?state=open&sort=created-desc&since=2026-05-01T00%3A00%3A00Z&until=2026-05-07T00%3A00%3A00Z",
       },
     ],
     summary: {
@@ -206,8 +206,9 @@ describe("RepositoryPulsePage", () => {
       }),
     ).toHaveAttribute("href", "/namuh-eng/opengithub/graphs/contributors");
     expect(
-      screen.getByRole("link", { name: "Period: Last week" }),
-    ).toHaveAttribute("href", "/namuh-eng/opengithub/pulse");
+      screen.getByRole("button", { name: "Period: Last week" }),
+    ).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("Active period")).toBeVisible();
     expect(
       screen.getByRole("link", { name: "Commit history" }),
     ).toHaveAttribute("href", "/namuh-eng/opengithub/commits/main");
@@ -225,6 +226,10 @@ describe("RepositoryPulsePage", () => {
     ).toHaveAttribute(
       "href",
       "/namuh-eng/opengithub/pulls?state=merged&from=2026-05-01",
+    );
+    expect(screen.getByRole("link", { name: /New issues/ })).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/issues?state=open&sort=created-desc&since=2026-05-01T00%3A00%3A00Z&until=2026-05-07T00%3A00%3A00Z",
     );
     expect(
       screen.getByRole("img", { name: "Top committers bar chart" }),
@@ -260,6 +265,48 @@ describe("RepositoryPulsePage", () => {
     );
     expect(container.querySelector('a[href="#"], a:not([href])')).toBeNull();
     expect(container.innerHTML).not.toContain("onClick={() => {}}");
+  });
+
+  it("opens a URL-backed period menu and closes it with Escape", () => {
+    render(
+      <RepositoryPulsePage
+        pulseResult={{
+          ok: true,
+          pulse: pulseView({
+            period: {
+              key: "3d",
+              label: "Last 3 days",
+              startedAt: "2026-05-04T00:00:00Z",
+              endedAt: "2026-05-07T00:00:00Z",
+            },
+          }),
+        }}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: "Period: Last 3 days" });
+    fireEvent.click(button);
+
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    const menu = screen.getByRole("menu", { name: "Pulse period" });
+    expect(
+      within(menu).getByRole("menuitem", { name: "Last 24 hours" }),
+    ).toHaveAttribute("href", "/namuh-eng/opengithub/pulse?period=24h");
+    expect(
+      within(menu).getByRole("menuitem", { name: /Last 3 days/ }),
+    ).toHaveAttribute("href", "/namuh-eng/opengithub/pulse?period=3d");
+    expect(
+      within(menu).getByRole("menuitem", { name: "Last week" }),
+    ).toHaveAttribute("href", "/namuh-eng/opengithub/pulse");
+    expect(
+      within(menu).getByRole("menuitem", { name: "Last month" }),
+    ).toHaveAttribute("href", "/namuh-eng/opengithub/pulse?period=1m");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(
+      screen.queryByRole("menu", { name: "Pulse period" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders truthful empty states and recovery links", () => {
