@@ -74,7 +74,7 @@
 
 ## Phase 5: Guardrails, API Docs, Browser Evidence, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `branches-001` only after the API, UI, search/tabs, row actions, activity/rules destinations, docs, screenshots, and QA handoff are verified. Mark `build_pass=true` only in this phase and leave `qa_pass=false`.
 

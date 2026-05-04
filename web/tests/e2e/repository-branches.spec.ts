@@ -145,7 +145,7 @@ test("branches overview renders live rows and concrete actions", async ({
   );
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/branches-001-phase4-activity.jpg",
+    path: "../ralph/screenshots/build/branches-001-final-activity.jpg",
   });
   await page.goto(`${seeded.treeRepositoryHref}/branches?tab=stale`);
 
@@ -171,6 +171,11 @@ test("branches overview renders live rows and concrete actions", async ({
   await expect(page.getByRole("button", { name: "Delete branch" })).toHaveCount(
     0,
   );
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/branches-001-final-directory.jpg",
+  });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${seeded.treeRepositoryHref}/branches?tab=stale`);
@@ -184,7 +189,7 @@ test("branches overview renders live rows and concrete actions", async ({
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/branches-001-phase3-filtered.jpg",
+    path: "../ralph/screenshots/build/branches-001-final-mobile.jpg",
   });
 
   await context.clearCookies();

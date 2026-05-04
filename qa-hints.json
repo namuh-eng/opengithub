@@ -5266,5 +5266,21 @@
       "Run keyboard-only and screen-reader traversal through branch rows, activity/rules links, recent commits, PR links, compare/history/tree navigation, and mobile no-overflow.",
       "Re-run Rust contract against a clean migrated database after the shared local migration drift for 202605030041 is resolved."
     ]
+  },
+  {
+    "feature_id": "branches-001",
+    "tests_written": [
+      "Completed Phase 5 Guardrails, API Docs, Browser Evidence, QA Handoff, and Build Pass and marked branches-001 build_pass=true.",
+      "Documented GET /api/repos/{owner}/{repo}/branches and GET /api/repos/{owner}/{repo}/branches/activity?branch=... in /docs/api, including auth/privacy, tabs, search, pagination, response shape, slash-containing branch hrefs, branch protection summaries, linked PR/status metadata, telemetry, missing-branch recovery, and no-secret error envelopes.",
+      "Extended API docs and branch-directory component assertions for endpoint coverage, accessible tab/search/action controls, semantic chips, Editorial token usage, no banned GitHub visual values/imports, no dead anchors, no inert inline handlers, and no unsafe HTML rendering.",
+      "Extended Playwright branch smoke to save final screenshots while exercising overview, all/stale tabs, search, pagination, slash-containing branch Activity navigation, rules/history/tree links, copy feedback, disabled destructive state, no dead controls, and mobile no-overflow."
+    ],
+    "needs_deeper_qa": [
+      "Repeat with a real Google OAuth session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Stress imported repositories with hundreds or thousands of branches, deep slash-containing refs, branch names near validation limits, missing target commits, multiple linked PRs, mixed check states, and stale protected refs.",
+      "Probe branch activity for very large commit histories, merge-heavy ahead/behind graphs, repositories where matching branch rules/rulesets change while the page is open, and branch deletion/restore once those mutation phases exist.",
+      "Run keyboard-only and screen-reader traversal through branch tabs, search, pagination, row links, copy controls, action menus, activity/rules links, recent commits, PR links, compare/history/tree navigation, and mobile no-overflow.",
+      "Re-run Rust branch contracts against a clean migrated database after the shared local migration drift for 202605030041 is resolved."
+    ]
   }
 ]

@@ -1048,6 +1048,127 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-branches-directory",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/branches?tab=stale&q=release&page=1&pageSize=30",
+    title: "Repository branches directory",
+    description:
+      "Returns the screen-ready branch directory contract for the Overview, Active, Stale, and All tabs, including search, pagination, default branch metadata, latest commits, check summaries, ahead/behind counts, linked pull requests, protection summaries, and row action capabilities.",
+    auth: "Signed opengithub session cookie with repository read access",
+    response: `{
+  "repository": {
+    "ownerLogin": "mona",
+    "name": "octo-app",
+    "defaultBranch": "main",
+    "visibility": "public",
+    "viewerPermission": "write"
+  },
+  "tabs": { "overview": 4, "active": 2, "stale": 1, "all": 4, "default": 1 },
+  "filters": { "tab": "stale", "query": "release", "staleCutoffDays": 90 },
+  "defaultBranch": {
+    "name": "main",
+    "qualifiedName": "refs/heads/main",
+    "isDefault": true,
+    "href": "/mona/octo-app/tree/main",
+    "commitsHref": "/mona/octo-app/commits/main",
+    "activityHref": "/mona/octo-app/branches/main",
+    "protection": {
+      "protected": true,
+      "matchingRuleCount": 1,
+      "matchingRulesetCount": 1,
+      "requiredStatusChecks": ["ci"],
+      "href": "/mona/octo-app/settings/branches?branch=main"
+    }
+  },
+  "branches": [
+    {
+      "name": "release/old-tree",
+      "classification": "stale",
+      "href": "/mona/octo-app/tree/release%2Fold-tree",
+      "commitsHref": "/mona/octo-app/commits/release%2Fold-tree",
+      "activityHref": "/mona/octo-app/branches/release%2Fold-tree",
+      "latestCommit": { "shortOid": "abcdef1", "subject": "Prepare release branch" },
+      "checks": { "status": "completed", "conclusion": "success", "totalCount": 2 },
+      "ahead": 1,
+      "behind": 4,
+      "pullRequest": { "number": 42, "state": "open", "draft": false, "href": "/mona/octo-app/pull/42" },
+      "capabilities": { "canCopy": true, "canViewActivity": true, "canViewRules": true, "canDelete": false }
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "pageSize": 30,
+  "hasNextPage": false,
+  "hasPreviousPage": false
+}`,
+    notes: [
+      "tab accepts overview, active, stale, or all; invalid tabs return validation_failed and page/pageSize are normalized by the API.",
+      "Search is case-insensitive over branch names and records bounded branch directory recent-visit telemetry for signed-in viewers.",
+      "Branch names with slashes are encoded as a single route segment in href fields so tree, commits, activity, and rules destinations stay reversible.",
+      "Private repositories require read access. Anonymous callers receive 401, unauthorized signed-in callers receive 403, and private-repository not-found responses are redacted.",
+      "Responses include presentation summaries only; raw check logs, private refs the viewer cannot read, session rows, tokens, and stack traces are never included.",
+    ],
+  },
+  {
+    id: "repo-branch-activity",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/branches/activity?branch=release%2Fold-tree",
+    title: "Repository branch activity",
+    description:
+      "Returns the branch activity drill-down contract used by branch row Activity links, including recent commits, recent pull requests, matching branch rules, check summaries, recovery links, and compare/tree/history destinations.",
+    auth: "Signed opengithub session cookie with repository read access",
+    response: `{
+  "repository": {
+    "ownerLogin": "mona",
+    "name": "octo-app",
+    "defaultBranch": "main",
+    "visibility": "public"
+  },
+  "branch": {
+    "name": "release/old-tree",
+    "qualifiedName": "refs/heads/release/old-tree",
+    "isDefault": false,
+    "updatedAt": "2026-05-01T00:00:00Z",
+    "ahead": 1,
+    "behind": 4,
+    "checks": { "status": "completed", "conclusion": "success", "totalCount": 2 },
+    "protection": { "protected": true, "matchingRuleCount": 1, "matchingRulesetCount": 0 }
+  },
+  "recentCommits": [
+    {
+      "oid": "abcdef1234567890",
+      "shortOid": "abcdef1",
+      "subject": "Prepare release branch",
+      "href": "/mona/octo-app/commit/abcdef1234567890",
+      "status": { "conclusion": "success", "totalCount": 2, "href": "/mona/octo-app/actions?commit=abcdef1234567890" }
+    }
+  ],
+  "recentPullRequests": [{ "number": 42, "title": "Release branch", "href": "/mona/octo-app/pull/42" }],
+  "protectionEvents": [
+    {
+      "sourceType": "branch_rule",
+      "name": "Release branches",
+      "enforcement": "active",
+      "href": "/mona/octo-app/settings/branches?branch=release%2Fold-tree",
+      "requiredStatusChecks": ["ci"]
+    }
+  ],
+  "links": {
+    "branchesHref": "/mona/octo-app/branches",
+    "treeHref": "/mona/octo-app/tree/release%2Fold-tree",
+    "commitsHref": "/mona/octo-app/commits/release%2Fold-tree",
+    "compareHref": "/mona/octo-app/compare/main...release%2Fold-tree",
+    "rulesHref": "/mona/octo-app/settings/branches?branch=release%2Fold-tree"
+  }
+}`,
+    notes: [
+      "branch is required and accepts slash-containing branch names; malformed or missing branch values return validation_failed.",
+      "Missing branches return a non-leaky recovery payload with a Branches link instead of exposing private ref names or target OIDs.",
+      "The same repository privacy rules as the branch directory apply: 401 for anonymous callers, 403 for unauthorized signed-in callers, and redacted private not-found responses.",
+      "Rules and check data are summaries for navigation and presentation only; raw rule bypass actors, check logs, tokens, session rows, and stack traces are never included.",
+    ],
+  },
+  {
     id: "repo-settings-read",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/settings",

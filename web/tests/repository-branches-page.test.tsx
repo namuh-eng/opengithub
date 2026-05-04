@@ -392,4 +392,53 @@ describe("repository branches page", () => {
       within(row as HTMLElement).queryAllByRole("link", { name: "Activity" }),
     ).toHaveLength(1);
   });
+
+  it("keeps the final branch surface accessible, token-based, and safe", () => {
+    const { container } = render(
+      <RepositoryBranchesPage
+        branchesResult={{ ok: true, branches: branchesView() }}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(screen.getByRole("tablist")).toBeVisible();
+    for (const tabName of ["Overview 2", "Active 1", "Stale 1", "All 3"]) {
+      expect(screen.getByRole("tab", { name: tabName })).toHaveAttribute(
+        "href",
+        expect.stringContaining("/namuh-eng/opengithub/branches"),
+      );
+    }
+    expect(screen.getByLabelText("Search branches")).toHaveClass("input");
+    expect(
+      screen.getByRole("button", {
+        name: "Copy branch name feature/editorial-branches",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getAllByRole("link", { name: "Activity" }).at(-1),
+    ).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/branches/feature%2Feditorial-branches",
+    );
+    expect(
+      screen.getAllByRole("link", { name: "Commits" }).at(-1),
+    ).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/commits/feature%2Feditorial-branches",
+    );
+    expect(screen.getAllByText("Open").at(-1)).toHaveClass("chip");
+    expect(screen.getByRole("link", { name: "Draft #42" })).toHaveClass("chip");
+
+    expect(container.querySelector('a[href="#"], a:not([href])')).toBeNull();
+    for (const button of container.querySelectorAll("button")) {
+      expect(button).toHaveAccessibleName();
+      expect(button.getAttribute("onclick")).toBeNull();
+    }
+    expect(container.querySelector("[dangerouslySetInnerHTML]")).toBeNull();
+    expect(container.innerHTML).toContain("var(--ink-1)");
+    expect(container.innerHTML).toContain("var(--line)");
+    expect(container.innerHTML).not.toMatch(
+      /#0969da|#1f883d|#1a7f37|#cf222e|#82071e|#f6f8fa|#1f2328|#d0d7de|#59636e|#f1aeb5|#fff1f3|@primer\/|Octicon/i,
+    );
+  });
 });

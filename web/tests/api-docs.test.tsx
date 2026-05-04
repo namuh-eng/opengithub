@@ -504,6 +504,42 @@ describe("ApiDocsPage", () => {
     ).toBeVisible();
     expect(
       screen.getByText(
+        "/api/repos/{owner}/{repo}/branches?tab=stale&q=release&page=1&pageSize=30",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Repository branches directory",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Overview, Active, Stale, and All tabs/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Branch names with slashes are encoded/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/branch directory recent-visit telemetry/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/branches/activity?branch=release%2Fold-tree",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Repository branch activity" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/recent commits, recent pull requests/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Missing branches return a non-leaky recovery payload/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/raw rule bypass actors, check logs, tokens/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
         "/api/repos/{owner}/{repo}/pulls/{number}/files?view=unified&whitespace=show",
       ),
     ).toBeVisible();
