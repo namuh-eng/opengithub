@@ -37,6 +37,7 @@ import {
   getRepositoryActionsWorkflowDashboardFromCookie,
   getRepositoryBlameFromCookie,
   getRepositoryBlobFromCookie,
+  getRepositoryBranchActivityFromCookie,
   getRepositoryBranchesFromCookie,
   getRepositoryBranchSettingsFromCookie,
   getRepositoryCommitDetailFromCookie,
@@ -83,6 +84,7 @@ import {
   type PersonalAccessTokenNewContextFetchResult,
   type ProfileRepositoryListQuery,
   type RepositoryActionsDashboardQuery,
+  type RepositoryBranchActivityFetchResult,
   type RepositoryBranchesFetchResult,
   type RepositoryIssueListQuery,
   type RepositoryPullRequestDiffQuery,
@@ -487,6 +489,20 @@ export async function getRepositoryBranches(
     owner,
     repo,
     options,
+  );
+}
+
+export async function getRepositoryBranchActivity(
+  owner: string,
+  repo: string,
+  branch: string,
+): Promise<RepositoryBranchActivityFetchResult> {
+  const requestHeaders = await headers();
+  return getRepositoryBranchActivityFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    branch,
   );
 }
 

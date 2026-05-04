@@ -859,6 +859,38 @@ pub struct RepositoryBranchesEmptyState {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct RepositoryBranchActivityView {
+    pub repository: RepositoryBranchesRepository,
+    pub branch: RepositoryBranchDirectoryRow,
+    pub recent_commits: Vec<RepositoryCommitListItem>,
+    pub recent_pull_requests: Vec<RepositoryBranchPullRequestSummary>,
+    pub protection_events: Vec<RepositoryBranchProtectionEvent>,
+    pub links: RepositoryBranchActivityLinks,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryBranchProtectionEvent {
+    pub source_type: String,
+    pub name: String,
+    pub enforcement: BranchPolicyEnforcement,
+    pub href: String,
+    pub required_status_checks: Vec<String>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryBranchActivityLinks {
+    pub branches_href: String,
+    pub tree_href: String,
+    pub commits_href: String,
+    pub compare_href: String,
+    pub rules_href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct RepositoryCommitDetailView {
     pub repository: RepositoryCommitDetailRepository,
     pub commit: RepositoryCommitDetailCommit,
@@ -1945,6 +1977,27 @@ pub async fn repository_branches_for_actor_by_owner_name(
         return Err(RepositoryError::PermissionDenied);
     }
     repository_branches_for_repository(pool, &repository, actor_user_id, query)
+        .await
+        .map(Some)
+}
+
+pub async fn repository_branch_activity_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    branch: &str,
+) -> Result<Option<RepositoryBranchActivityView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    repository_branch_activity_for_repository(pool, &repository, actor_user_id, branch)
         .await
         .map(Some)
 }
@@ -7381,6 +7434,174 @@ async fn repository_branches_for_repository(
             message: "Adjust the branch tab or search query to recover the repository branch list."
                 .to_owned(),
             reset_href: format!("/{}/{}/branches", repository.owner_login, repository.name),
+        },
+    })
+}
+
+async fn repository_branch_activity_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    branch: &str,
+) -> Result<RepositoryBranchActivityView, RepositoryError> {
+    let branch = branch.trim();
+    if branch.is_empty() || branch.chars().count() > 120 || branch.starts_with("refs/") {
+        return Err(RepositoryError::InvalidBranchDirectoryQuery(
+            "branch name must be a short branch ref".to_owned(),
+        ));
+    }
+    let branch = normalize_repository_path(branch)?;
+    let directory = repository_branches_for_repository(
+        pool,
+        repository,
+        actor_user_id,
+        RepositoryBranchesQuery {
+            tab: Some("all"),
+            query: Some(&branch),
+            page: 1,
+            page_size: 100,
+        },
+    )
+    .await?;
+    let Some(branch_row) = directory
+        .branches
+        .into_iter()
+        .chain(directory.default_branch)
+        .find(|row| row.name == branch)
+    else {
+        return Err(RepositoryError::RefNotFoundWithRecovery {
+            ref_name: branch.clone(),
+            recovery_href: format!("/{}/{}/branches", repository.owner_login, repository.name),
+            default_branch_href: repository_tree_href(repository, &repository.default_branch, ""),
+        });
+    };
+
+    let resolved_ref = resolve_repository_ref(pool, repository, Some(&branch)).await?;
+    let history = repository_commit_history(
+        pool,
+        repository,
+        &resolved_ref,
+        None,
+        RepositoryCommitHistoryQuery {
+            ref_name: Some(&branch),
+            path: None,
+            author: None,
+            until: None,
+            page: 1,
+            page_size: 6,
+        },
+    )
+    .await?;
+    let recent_commits = history
+        .groups
+        .into_iter()
+        .flat_map(|group| group.commits)
+        .take(6)
+        .collect();
+
+    let recent_pull_requests = sqlx::query(
+        r#"
+        SELECT number, title, state, COALESCE(is_draft, false) AS draft
+        FROM pull_requests
+        WHERE repository_id = $1 AND head_ref = $2
+        ORDER BY updated_at DESC, number DESC
+        LIMIT 6
+        "#,
+    )
+    .bind(repository.id)
+    .bind(&branch)
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|row| RepositoryBranchPullRequestSummary {
+        number: row.get("number"),
+        title: row.get("title"),
+        state: row.get("state"),
+        draft: row.get("draft"),
+        href: format!(
+            "/{}/{}/pull/{}",
+            repository.owner_login,
+            repository.name,
+            row.get::<i64, _>("number")
+        ),
+    })
+    .collect::<Vec<_>>();
+
+    let can_admin = can_admin_repository(pool, repository, actor_user_id).await?;
+    let branch_refs = repository_branch_ref_summaries(pool, repository.id).await?;
+    let rules = repository_branch_rules(pool, repository.id, &branch_refs, can_admin).await?;
+    let rulesets = repository_rulesets(pool, repository.id, &branch_refs, can_admin).await?;
+    let mut protection_events = Vec::new();
+    for rule in rules {
+        if rule.enforcement != BranchPolicyEnforcement::Disabled
+            && branch_pattern_matches(&rule.pattern, &branch)
+        {
+            protection_events.push(RepositoryBranchProtectionEvent {
+                source_type: "rule".to_owned(),
+                name: rule
+                    .description
+                    .clone()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or_else(|| rule.pattern.clone()),
+                enforcement: rule.enforcement,
+                href: format!(
+                    "/{}/{}/settings/branches?branch={}",
+                    repository.owner_login,
+                    repository.name,
+                    percent_encode_segment(&branch)
+                ),
+                required_status_checks: rule.requirements.required_status_checks,
+                updated_at: rule.updated_at,
+            });
+        }
+    }
+    for ruleset in rulesets {
+        if ruleset.enforcement != BranchPolicyEnforcement::Disabled
+            && ruleset
+                .patterns
+                .iter()
+                .any(|pattern| branch_pattern_matches(pattern, &branch))
+        {
+            protection_events.push(RepositoryBranchProtectionEvent {
+                source_type: "ruleset".to_owned(),
+                name: ruleset.name,
+                enforcement: ruleset.enforcement,
+                href: format!(
+                    "/{}/{}/settings/branches?branch={}",
+                    repository.owner_login,
+                    repository.name,
+                    percent_encode_segment(&branch)
+                ),
+                required_status_checks: ruleset.requirements.required_status_checks,
+                updated_at: ruleset.updated_at,
+            });
+        }
+    }
+    protection_events.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+
+    Ok(RepositoryBranchActivityView {
+        repository: directory.repository,
+        branch: branch_row,
+        recent_commits,
+        recent_pull_requests,
+        protection_events,
+        links: RepositoryBranchActivityLinks {
+            branches_href: format!("/{}/{}/branches", repository.owner_login, repository.name),
+            tree_href: repository_tree_href(repository, &branch, ""),
+            commits_href: repository_history_href(repository, &branch, ""),
+            compare_href: format!(
+                "/{}/{}/compare/{}...{}",
+                repository.owner_login,
+                repository.name,
+                percent_encode_segment(&repository.default_branch),
+                percent_encode_segment(&branch)
+            ),
+            rules_href: format!(
+                "/{}/{}/settings/branches?branch={}",
+                repository.owner_login,
+                repository.name,
+                percent_encode_segment(&branch)
+            ),
         },
     })
 }

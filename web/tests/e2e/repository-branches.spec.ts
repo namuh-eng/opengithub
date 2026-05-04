@@ -61,6 +61,7 @@ async function expectNoDeadControls(page: Page) {
 }
 
 test.skip(!databaseUrl, "repository branches smoke needs a database URL");
+test.setTimeout(90_000);
 
 test("branches overview renders live rows and concrete actions", async ({
   page,
@@ -123,6 +124,30 @@ test("branches overview renders live rows and concrete actions", async ({
   await expect(
     page.getByRole("link", { name: "release/old-tree" }),
   ).toBeVisible();
+  const staleBranchRow = page
+    .getByRole("link", { name: "release/old-tree" })
+    .locator("xpath=ancestor::article[1]");
+  await staleBranchRow.getByRole("link", { name: "Activity" }).click();
+  await expect(page).toHaveURL(/\/branches\/release%2Fold-tree$/);
+  await expect(
+    page.getByRole("heading", { name: "release/old-tree" }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Branches" })).toHaveAttribute(
+    "href",
+    /\/branches$/,
+  );
+  await expect(
+    page.getByRole("link", { name: "Commit history" }),
+  ).toHaveAttribute("href", /\/commits\/release%2Fold-tree$/);
+  await expect(page.getByRole("link", { name: "View rules" })).toHaveAttribute(
+    "href",
+    /\/settings\/branches\?branch=release%2Fold-tree/,
+  );
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/branches-001-phase4-activity.jpg",
+  });
+  await page.goto(`${seeded.treeRepositoryHref}/branches?tab=stale`);
 
   await page
     .getByRole("button", { name: /Copy branch name/ })

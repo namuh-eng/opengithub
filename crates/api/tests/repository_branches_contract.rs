@@ -360,6 +360,59 @@ async fn repository_branches_returns_screen_ready_metadata_privacy_and_filters()
         .expect("href")
         .contains("/tree/feature%2Fpolicy"));
 
+    let (activity_status, activity_body) = send_json(
+        app.clone(),
+        &format!("{base}/branches/activity?branch=feature%2Fpolicy"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(activity_status, StatusCode::OK);
+    assert_eq!(activity_body["branch"]["name"], "feature/policy");
+    assert_eq!(
+        activity_body["branch"]["protection"]["matchingRulesetCount"],
+        1
+    );
+    assert_eq!(
+        activity_body["recentCommits"][0]["subject"],
+        "Add protected branch metadata"
+    );
+    assert_eq!(activity_body["recentPullRequests"][0]["number"], 17);
+    assert_eq!(
+        activity_body["protectionEvents"][0]["name"],
+        "Feature branches"
+    );
+    assert_eq!(
+        activity_body["protectionEvents"][0]["requiredStatusChecks"][0],
+        "security/review"
+    );
+    assert!(activity_body["links"]["treeHref"]
+        .as_str()
+        .expect("tree href")
+        .contains("/tree/feature%2Fpolicy"));
+    assert!(!activity_body.to_string().contains("test-session-secret"));
+
+    let (missing_activity_status, missing_activity_body) = send_json(
+        app.clone(),
+        &format!("{base}/branches/activity?branch=missing"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(missing_activity_status, StatusCode::NOT_FOUND);
+    assert_eq!(missing_activity_body["error"]["code"], "ref_not_found");
+    assert_eq!(
+        missing_activity_body["details"]["recoveryHref"],
+        format!("/{}/{}/branches", repository.owner_login, repository.name)
+    );
+
+    let (private_activity_status, private_activity_body) = send_json(
+        app.clone(),
+        &format!("{base}/branches/activity?branch=feature%2Fpolicy"),
+        Some(&outsider_cookie),
+    )
+    .await;
+    assert_eq!(private_activity_status, StatusCode::NOT_FOUND);
+    assert_eq!(private_activity_body["error"]["code"], "not_found");
+
     let (stale_status, stale_body) = send_json(
         app.clone(),
         &format!("{base}/branches?tab=stale"),

@@ -63,6 +63,7 @@ use crate::{
         remove_repository_team_access_by_owner_name,
         repository_access_settings_for_actor_by_owner_name,
         repository_blame_for_actor_by_owner_name, repository_blob_for_actor_by_owner_name,
+        repository_branch_activity_for_actor_by_owner_name,
         repository_branch_settings_for_actor_by_owner_name,
         repository_branches_for_actor_by_owner_name,
         repository_commit_detail_context_for_actor_by_owner_name,
@@ -111,6 +112,7 @@ pub fn router() -> Router<AppState> {
             get(commit_detail_context),
         )
         .route("/:owner/:repo/branches", get(branches))
+        .route("/:owner/:repo/branches/activity", get(branch_activity))
         .route("/:owner/:repo/refs", get(refs))
         .route("/:owner/:repo/file-finder", get(file_finder))
         .route("/:owner/:repo/releases", get(releases).post(create_release))
@@ -370,6 +372,12 @@ struct BranchesQuery {
     page: Option<i64>,
     #[serde(alias = "page_size")]
     page_size: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BranchActivityQuery {
+    branch: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -760,6 +768,34 @@ async fn branches(
             page: pagination.page,
             page_size: pagination.page_size,
         },
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn branch_activity(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<BranchActivityQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = repository_branch_activity_for_actor_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        &query.branch,
     )
     .await
     .map_err(map_repository_error)?

@@ -2441,6 +2441,36 @@ export type RepositoryBranchesFetchResult =
   | { ok: true; branches: RepositoryBranchesView }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type RepositoryBranchActivityView = {
+  repository: RepositoryBranchesRepository;
+  branch: RepositoryBranchDirectoryRow;
+  recentCommits: RepositoryCommitListItem[];
+  recentPullRequests: RepositoryBranchPullRequestSummary[];
+  protectionEvents: RepositoryBranchProtectionEvent[];
+  links: RepositoryBranchActivityLinks;
+};
+
+export type RepositoryBranchProtectionEvent = {
+  sourceType: string;
+  name: string;
+  enforcement: BranchPolicyEnforcement;
+  href: string;
+  requiredStatusChecks: string[];
+  updatedAt: string;
+};
+
+export type RepositoryBranchActivityLinks = {
+  branchesHref: string;
+  treeHref: string;
+  commitsHref: string;
+  compareHref: string;
+  rulesHref: string;
+};
+
+export type RepositoryBranchActivityFetchResult =
+  | { ok: true; activity: RepositoryBranchActivityView }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type WebhookContentType = "json" | "form" | string;
 
 export type WebhookEventSelection = "push" | "everything" | "selected" | string;
@@ -8789,6 +8819,52 @@ export async function getRepositoryBranchesFromCookie(
   return {
     ok: true,
     branches: (await response.json()) as RepositoryBranchesView,
+  };
+}
+
+export async function getRepositoryBranchActivityFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  branch: string,
+): Promise<RepositoryBranchActivityFetchResult> {
+  const params = new URLSearchParams({ branch });
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches/activity?${params.toString()}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository branch activity is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Repository branch activity is unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    activity: (await response.json()) as RepositoryBranchActivityView,
   };
 }
 

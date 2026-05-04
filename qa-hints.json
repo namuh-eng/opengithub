@@ -5250,5 +5250,21 @@
       "Deletion and restore remain intentionally disabled/deferred in the branches page action menu until a later mutation phase; QA should verify no fake-success destructive behavior is exposed.",
       "The make test-e2e wrapper silently stalled and was terminated; direct full Playwright completed 124 tests successfully after clearing stale dev-server state."
     ]
+  },
+  {
+    "feature_id": "branches-001",
+    "tests_written": [
+      "Completed Phase 4 Branch Activity and Rules Drill-Downs without marking branches-001 build_pass=true.",
+      "Added authenticated GET /api/repos/{owner}/{repo}/branches/activity?branch=... with repository privacy, slash-containing branch handling, missing-branch recovery details, recent commits, recent PRs, matching protection events, status summaries, and concrete tree/history/compare/rules links.",
+      "Added /{owner}/{repo}/branches/{branch} Editorial activity page with branch summary, recent commits, pull requests, matching rules, compare/tree/history/rules navigation, unavailable recovery, and no-dead-control coverage.",
+      "Extended Rust contract, Vitest component tests, and Playwright branch smoke; screenshot saved at ralph/screenshots/build/branches-001-phase4-activity.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 5 still needs API docs, final accessibility/guardrail assertions, final screenshots, QA handoff, and build_pass bookkeeping.",
+      "Repeat with a real Google OAuth session using TEST_ACCOUNT_EMAIL and imported repositories with hundreds of branches, deep slash-containing refs, branch names near validation limits, missing target commits, multiple PRs per branch, and mixed workflow states.",
+      "Probe branch activity for very large commit histories, merge-heavy ahead/behind graphs, protected default branches, and repositories where matching branch rules/rulesets change while the page is open.",
+      "Run keyboard-only and screen-reader traversal through branch rows, activity/rules links, recent commits, PR links, compare/history/tree navigation, and mobile no-overflow.",
+      "Re-run Rust contract against a clean migrated database after the shared local migration drift for 202605030041 is resolved."
+    ]
   }
 ]

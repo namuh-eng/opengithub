@@ -57,7 +57,7 @@
 
 ## Phase 4: Branch Activity and Rules Drill-Downs - row destinations are useful
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Ensure branch row destinations do not land on placeholders. Activity should open a repository-scoped branch activity/read surface, and View rules should land on the applicable branch protection/ruleset context rather than a generic dead link. This phase should stay read-oriented except for existing settings contracts already implemented by `settings-004`.
 
