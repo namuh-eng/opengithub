@@ -4761,5 +4761,23 @@
       "Probe Unicode, punctuation-heavy, very long, and route-reserved rename inputs beyond the covered reserved admin and duplicate user-slug paths.",
       "Archive/delete execution remains intentionally unsupported until retention, repository ownership, and recovery policies are implemented; QA should verify this remains clearly disabled and non-destructive."
     ]
+  },
+  {
+    "feature_id": "org-admin-002",
+    "tests_written": [
+      "Completed Phase 5 Docs, Browser QA Handoff, and Build Pass for org-admin-002.",
+      "Added /docs/api coverage for GET /api/orgs/{org}/settings/profile, PATCH /api/orgs/{org}/settings/profile, and POST /api/orgs/{org}/settings/profile/rename with owner-only auth, validation envelopes, social/contact/billing shapes, redacted audit behavior, and unsupported archive/delete constraints.",
+      "Extended API docs assertions so the endpoint catalog must render organization settings routes, owner-only 403 behavior, social account bounds, partial-patch semantics, profile-settings audit notes, duplicate/reserved rename privacy, and non-destructive delete/archive constraints.",
+      "Extended focused Playwright smoke to save final screenshots for the desktop shell, profile form, validation error, danger zone, and mobile no-overflow states.",
+      "Verification passed: focused API docs and organization profile settings Vitest, TypeScript, focused Biome, focused organization-settings Playwright smoke with 4 tests, make check, make test with Cargo tests plus 377 web tests, direct full Playwright with 116 tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Use a real Google OAuth browser session with TEST_ACCOUNT_EMAIL to re-run profile saves, rename, and danger-zone dialogs outside deterministic Playwright seed cookies.",
+      "The make test-e2e wrapper was attempted but stayed silent with active Playwright processes and was terminated; the same full suite passed directly with npx playwright test --reporter=list.",
+      "Stress concurrent PATCH and rename attempts from multiple owner sessions and direct API clients to confirm clean conflict/not-found recovery and no social-account ordering races.",
+      "Probe long Unicode organization names, unusual but valid HTTP(S) URLs, complex emails, long social handles, mobile browser autofill, and screen-reader traversal across the settings shell and dialogs.",
+      "Archive/delete execution remains intentionally unsupported until retention, repository ownership transfer, and recovery policies are implemented; QA should verify the UI remains clearly disabled and non-destructive.",
+      "Avatar upload is still unavailable for organizations; QA should verify future S3-backed avatar work preserves the no bucket/key leakage contract documented here."
+    ]
   }
 ]

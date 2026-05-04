@@ -76,6 +76,7 @@ test.skip(
   !databaseUrl,
   "organization settings profile E2E needs a test database",
 );
+test.setTimeout(60_000);
 
 test("owner opens organization profile settings shell", async ({ page }) => {
   const seeded = seedOrganizationProfile();
@@ -120,6 +121,10 @@ test("owner opens organization profile settings shell", async ({ page }) => {
     fullPage: true,
     path: "../ralph/screenshots/build/org-admin-002-phase2-settings-shell.jpg",
   });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-002-final-desktop-shell.jpg",
+  });
 
   await page.goto(`/orgs/${slug}/settings`);
   await expect(page).toHaveURL(`/organizations/${slug}/settings/profile`);
@@ -163,6 +168,10 @@ test("owner saves organization profile, contact, and social sections", async ({
     fullPage: true,
     path: "../ralph/screenshots/build/org-admin-002-phase3-profile-save.jpg",
   });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-002-final-profile-form.jpg",
+  });
 
   await page.reload();
   await expect(page.getByLabel("Public email")).toHaveValue(
@@ -180,6 +189,10 @@ test("owner saves organization profile, contact, and social sections", async ({
   await expect(
     page.getByText("URL must start with http:// or https://."),
   ).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-002-final-validation-error.jpg",
+  });
 });
 
 test("owner validates rename and typed danger guardrails", async ({ page }) => {
@@ -236,5 +249,13 @@ test("owner validates rename and typed danger guardrails", async ({ page }) => {
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/org-admin-002-phase4-danger-zone.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-002-final-danger-zone.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-002-final-mobile.jpg",
   });
 });

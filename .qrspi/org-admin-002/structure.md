@@ -79,7 +79,7 @@
 
 ## Phase 5: Docs, Browser QA Handoff, and Build Pass - finish org-admin-002
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Document the organization settings API and complete final build-loop bookkeeping. Mark `org-admin-002.build_pass=true` only after owner-only API access, Editorial settings shell, real save flows, rename/danger-zone guardrails, browser smoke, and QA handoff are verified.
 

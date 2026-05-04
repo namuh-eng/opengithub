@@ -87,6 +87,115 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "organization-profile-settings-read",
+    method: "GET",
+    path: "/api/orgs/{org}/settings/profile",
+    title: "Read organization profile settings",
+    description:
+      "Returns the owner-only organization settings contract used by the Editorial profile settings shell.",
+    auth: "Signed opengithub session cookie with organization owner role",
+    response: `{
+  "organization": {
+    "id": "org_01",
+    "slug": "acme-labs",
+    "displayName": "Acme Labs",
+    "settingsHref": "/organizations/acme-labs/settings/profile"
+  },
+  "profile": {
+    "displayName": "Acme Labs",
+    "description": "Open collaboration tools",
+    "websiteUrl": "https://opengithub.namuh.co",
+    "location": "Seoul, KR",
+    "publicEmail": "public@example.com",
+    "contactEmail": "owners@example.com",
+    "billingEmail": "finance@example.com",
+    "avatar": { "state": "unavailable" }
+  },
+  "socialAccounts": [
+    { "provider": "x", "value": "@opengithub" },
+    { "provider": "mastodon", "value": "https://social.example/@opengithub" }
+  ],
+  "danger": {
+    "archiveSupported": false,
+    "deleteSupported": false
+  }
+}`,
+    notes: [
+      "Anonymous callers receive 401; organization members without owner role receive 403 without settings-only contact or billing fields.",
+      "The response includes four bounded social account providers and omits raw S3 bucket/object metadata for avatars.",
+      "Archive and delete eligibility is explicit so the browser can render disabled non-destructive guardrails while billing and retention policies remain out of scope.",
+    ],
+  },
+  {
+    id: "organization-profile-settings-update",
+    method: "PATCH",
+    path: "/api/orgs/{org}/settings/profile",
+    title: "Update organization profile settings",
+    description:
+      "Persists independent profile, contact, billing-email, location, and social-account updates for organization owners.",
+    auth: "Signed opengithub session cookie with organization owner role",
+    request: `{
+  "displayName": "Acme Labs",
+  "description": "Open collaboration tools",
+  "websiteUrl": "https://opengithub.namuh.co",
+  "location": "Seoul, KR",
+  "publicEmail": "public@example.com",
+  "contactEmail": "owners@example.com",
+  "billingEmail": "finance@example.com",
+  "socialAccounts": [
+    { "provider": "x", "value": "@opengithub" },
+    { "provider": "mastodon", "value": "https://social.example/@opengithub" }
+  ]
+}`,
+    response: `{
+  "organization": {
+    "slug": "acme-labs",
+    "displayName": "Acme Labs"
+  },
+  "profile": {
+    "publicEmail": "public@example.com",
+    "contactEmail": "owners@example.com",
+    "billingEmail": "finance@example.com"
+  },
+  "socialAccounts": [
+    { "provider": "x", "value": "@opengithub" }
+  ]
+}`,
+    notes: [
+      "Partial patches preserve fields that are omitted by a section-specific Save button.",
+      "Validation rejects blank display names, non-HTTP(S) URLs, invalid emails, oversized values, and unsupported social providers with validation_failed envelopes.",
+      "Every successful write records an organization.profile_settings.update audit event with redacted metadata; contact and billing emails are not copied into audit payloads.",
+    ],
+  },
+  {
+    id: "organization-profile-settings-rename",
+    method: "POST",
+    path: "/api/orgs/{org}/settings/profile/rename",
+    title: "Rename organization slug",
+    description:
+      "Renames an organization after owner confirmation, slug normalization, and availability checks.",
+    auth: "Signed opengithub session cookie with organization owner role",
+    request: `{
+  "newSlug": "acme-platform",
+  "confirmation": "acme-labs"
+}`,
+    response: `{
+  "organization": {
+    "slug": "acme-platform",
+    "displayName": "Acme Labs",
+    "settingsHref": "/organizations/acme-platform/settings/profile"
+  },
+  "profile": {
+    "displayName": "Acme Labs"
+  }
+}`,
+    notes: [
+      "Reserved, duplicate user, and duplicate organization slugs return the same slug_unavailable envelope without leaking private account details or reserved-source metadata.",
+      "The old slug returns not_found after a successful rename, and the browser replaces the URL with the returned settingsHref.",
+      "Renames write organization.rename audit events; archive and delete execution remain unsupported and non-destructive until retention and recovery policies are implemented.",
+    ],
+  },
+  {
     id: "personal-access-tokens-list",
     method: "GET",
     path: "/api/settings/tokens",

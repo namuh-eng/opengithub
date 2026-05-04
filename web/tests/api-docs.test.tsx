@@ -74,6 +74,28 @@ describe("ApiDocsPage", () => {
     expect(
       screen.getByText(/contact email and company fields are not written/),
     ).toBeVisible();
+    expect(
+      screen.getAllByText("/api/orgs/{org}/settings/profile")[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/orgs/{org}/settings/profile/rename"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/organization members without owner role receive 403/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/four bounded social account providers/),
+    ).toBeVisible();
+    expect(screen.getByText(/Partial patches preserve fields/)).toBeVisible();
+    expect(
+      screen.getByText(/organization.profile_settings.update audit event/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Reserved, duplicate user, and duplicate organization/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/archive and delete execution remain unsupported/),
+    ).toBeVisible();
     expect(screen.getByText("/api/repos/{owner}/{repo}/issues")).toBeVisible();
     expect(
       screen.getAllByText("/api/repos/{owner}/{repo}/settings")[0],
