@@ -106,6 +106,19 @@ function updatedProfileSettings(
   };
 }
 
+function renamedProfileSettings(slug: string): OrganizationProfileSettings {
+  const current = profileSettings();
+  return {
+    ...current,
+    organization: {
+      ...current.organization,
+      href: `/orgs/${slug}`,
+      settingsHref: `/organizations/${slug}/settings/profile`,
+      slug,
+    },
+  };
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -195,8 +208,11 @@ describe("OrganizationProfileSettingsForm", () => {
       screen.getByRole("button", { name: "Save profile changes" }),
     ).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: "Danger actions unavailable" }),
-    ).toBeDisabled();
+      screen.getByRole("button", { name: "Archive organization" }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Delete organization" }),
+    ).toBeEnabled();
     expect(container.querySelectorAll(".card").length).toBeGreaterThan(4);
     expect(container.querySelector('a[href="#"], a:not([href])')).toBeNull();
     for (const button of screen.getAllByRole("button")) {
@@ -333,5 +349,75 @@ describe("OrganizationProfileSettingsForm", () => {
       screen.getByText("URL must start with http:// or https://."),
     ).toBeVisible();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("renames with slug confirmation and keeps archive/delete guarded by typed dialogs", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: async () => renamedProfileSettings("acme-research"),
+      ok: true,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { container } = render(
+      <OrganizationProfileSettingsForm settings={profileSettings()} />,
+    );
+
+    fireEvent.change(screen.getByLabelText("New organization slug"), {
+      target: { value: "Acme Research" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    expect(screen.getByText("Type acme-labs to confirm rename.")).toBeVisible();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Confirm current slug"), {
+      target: { value: "acme-labs" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    await waitFor(() =>
+      expect(screen.getByText("Organization renamed")).toBeVisible(),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/organizations/acme-labs/settings/profile/actions",
+      expect.objectContaining({
+        body: JSON.stringify({ name: "Acme Research" }),
+        method: "POST",
+      }),
+    );
+    expect(screen.getByLabelText("New organization slug")).toHaveValue(
+      "acme-research",
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Archive organization" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Archive organization" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Type slug to archive" }),
+    ).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Confirm archive acme-research"), {
+      target: { value: "acme-research" },
+    });
+    expect(
+      screen.getByRole("button", { name: "Archive unavailable" }),
+    ).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(
+      screen.queryByRole("dialog", { name: "Archive organization" }),
+    ).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Delete organization" }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Delete organization" }),
+    ).toBeVisible();
+    fireEvent.change(screen.getByLabelText("Confirm delete acme-research"), {
+      target: { value: "acme-research" },
+    });
+    expect(
+      screen.getByRole("button", { name: "Delete unavailable" }),
+    ).toBeDisabled();
+    expect(container.querySelector('a[href="#"], a:not([href])')).toBeNull();
   });
 });

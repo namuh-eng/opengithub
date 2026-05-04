@@ -306,6 +306,89 @@ async fn organization_profile_settings_are_owner_only_and_persist_profile_fields
     assert!(!audit_text.contains("public@example.com"));
     assert!(!audit_text.contains("contact@example.com"));
     assert!(!audit_text.contains("opengithub.example"));
+
+    let conflict_slug = format!("{marker}-taken");
+    sqlx::query("UPDATE users SET username = $1 WHERE id = $2")
+        .bind(&conflict_slug)
+        .bind(member.id)
+        .execute(&pool)
+        .await
+        .expect("conflicting user slug should update");
+    let (conflict_status, _, conflict_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/orgs/{marker}/settings/profile/rename"),
+        Some(&owner_cookie),
+        Some(json!({ "name": conflict_slug })),
+    )
+    .await;
+    assert_eq!(conflict_status, StatusCode::CONFLICT);
+    assert_eq!(conflict_body["error"]["code"], "conflict");
+    assert_eq!(
+        conflict_body["error"]["message"],
+        "organization slug is already taken"
+    );
+    assert!(!conflict_body.to_string().contains("user"));
+
+    let reserved_slug = format!("{marker}-reserved");
+    sqlx::query("INSERT INTO reserved_slugs (slug, reason) VALUES ($1, 'contract reserved slug')")
+        .bind(&reserved_slug)
+        .execute(&pool)
+        .await
+        .expect("reserved slug should insert");
+    let (reserved_status, _, reserved_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/orgs/{marker}/settings/profile/rename"),
+        Some(&owner_cookie),
+        Some(json!({ "name": reserved_slug })),
+    )
+    .await;
+    assert_eq!(reserved_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(reserved_body["error"]["code"], "validation_failed");
+    assert_eq!(
+        reserved_body["error"]["message"],
+        "This organization slug is not available."
+    );
+    assert!(!reserved_body.to_string().contains("contract reserved slug"));
+
+    let renamed_slug = format!("{marker}-renamed");
+    let (rename_status, rename_headers, rename_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &format!("/api/orgs/{marker}/settings/profile/rename"),
+        Some(&owner_cookie),
+        Some(json!({ "name": format!("  {renamed_slug}  ") })),
+    )
+    .await;
+    assert_eq!(rename_status, StatusCode::OK);
+    assert_json(&rename_headers);
+    assert_eq!(rename_body["organization"]["slug"], renamed_slug);
+    assert_eq!(
+        rename_body["organization"]["settingsHref"],
+        format!("/organizations/{renamed_slug}/settings/profile")
+    );
+
+    let (old_status, _, old_body) = send_json(
+        app.clone(),
+        Method::GET,
+        &format!("/api/orgs/{marker}/settings/profile"),
+        Some(&owner_cookie),
+        None,
+    )
+    .await;
+    assert_eq!(old_status, StatusCode::NOT_FOUND);
+    assert_eq!(old_body["error"]["code"], "not_found");
+
+    let rename_audit = sqlx::query_scalar::<_, Value>(
+        "SELECT metadata FROM organization_audit_events WHERE organization_id = $1 AND event_type = 'organization.rename' ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(org.id)
+    .fetch_one(&pool)
+    .await
+    .expect("rename audit metadata should load");
+    assert_eq!(rename_audit["previousSlug"], marker);
+    assert_eq!(rename_audit["newSlug"], renamed_slug);
 }
 
 #[tokio::test]

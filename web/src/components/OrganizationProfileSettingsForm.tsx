@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { OrganizationProfileSettings } from "@/lib/api";
 
 type OrganizationProfileSettingsFormProps = {
@@ -8,20 +8,27 @@ type OrganizationProfileSettingsFormProps = {
 };
 
 type FormState = {
+  archiveConfirmation: string;
   billingEmail: string;
   companyName: string;
   contactEmail: string;
+  deleteConfirmation: string;
   description: string;
   displayName: string;
   location: string;
   publicEmail: string;
+  renameConfirmation: string;
+  renameName: string;
   socialAccounts: Record<string, string>;
   websiteUrl: string;
 };
 
-type FormErrors = Partial<Record<keyof FormState | "socialAccounts", string>>;
+type FormErrors = Partial<
+  Record<keyof FormState | "socialAccounts" | "rename", string>
+>;
 
 type SaveSection = "profile" | "contact" | "social";
+type DangerDialog = "archive" | "delete" | null;
 
 const SOCIAL_LABELS: Record<string, string> = {
   bluesky: "Bluesky",
@@ -45,13 +52,17 @@ function socialValue(settings: OrganizationProfileSettings, provider: string) {
 
 function settingsToForm(settings: OrganizationProfileSettings): FormState {
   return {
+    archiveConfirmation: "",
     billingEmail: valueOrEmpty(settings.profile.billingEmail),
     companyName: valueOrEmpty(settings.profile.companyName),
     contactEmail: valueOrEmpty(settings.profile.contactEmail),
+    deleteConfirmation: "",
     description: valueOrEmpty(settings.profile.description),
     displayName: settings.profile.displayName,
     location: valueOrEmpty(settings.profile.location),
     publicEmail: valueOrEmpty(settings.profile.publicEmail),
+    renameConfirmation: "",
+    renameName: settings.organization.slug,
     socialAccounts: Object.fromEntries(
       SOCIAL_PROVIDERS.map((provider) => [
         provider,
@@ -142,6 +153,30 @@ function validateSocial(form: FormState): FormErrors {
         socialAccounts: `${SOCIAL_LABELS[tooLong]} must be 160 characters or fewer.`,
       }
     : {};
+}
+
+function normalizeSlug(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-")
+    .slice(0, 39);
+}
+
+function validateRename(form: FormState, currentSlug: string): FormErrors {
+  const normalizedSlug = normalizeSlug(form.renameName);
+  if (!normalizedSlug) {
+    return { renameName: "Organization slug must include a letter or number." };
+  }
+  if (normalizedSlug === currentSlug) {
+    return { renameName: "Choose a different organization slug." };
+  }
+  if (form.renameConfirmation.trim() !== currentSlug) {
+    return { renameConfirmation: `Type ${currentSlug} to confirm rename.` };
+  }
+  return {};
 }
 
 function SettingsCard({
@@ -278,16 +313,25 @@ function SectionSave({
 export function OrganizationProfileSettingsForm({
   settings,
 }: OrganizationProfileSettingsFormProps) {
+  const archiveButtonRef = useRef<HTMLButtonElement | null>(null);
+  const deleteButtonRef = useRef<HTMLButtonElement | null>(null);
   const [currentSettings, setCurrentSettings] = useState(settings);
   const [form, setForm] = useState(() => settingsToForm(settings));
   const [savedForm, setSavedForm] = useState(() => settingsToForm(settings));
   const [errors, setErrors] = useState<FormErrors>({});
   const [saving, setSaving] = useState<SaveSection | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [dangerDialog, setDangerDialog] = useState<DangerDialog>(null);
   const [toast, setToast] = useState<string | null>(null);
   const profile = currentSettings.profile;
+  const currentSlug = currentSettings.organization.slug;
+  const renamePreview = normalizeSlug(form.renameName);
   const avatarLabel =
     currentSettings.organization.name || currentSettings.organization.slug;
   const canEdit = currentSettings.viewerState.canEditProfile;
+  const canRename = currentSettings.viewerState.canRename;
+  const archiveReady = form.archiveConfirmation.trim() === currentSlug;
+  const deleteReady = form.deleteConfirmation.trim() === currentSlug;
   const profileDirty = useMemo(
     () =>
       JSON.stringify(profilePayload(form)) !==
@@ -306,6 +350,17 @@ export function OrganizationProfileSettingsForm({
       JSON.stringify(socialPayload(savedForm)),
     [form, savedForm],
   );
+
+  useEffect(() => {
+    if (!dangerDialog) return;
+    const selector =
+      dangerDialog === "archive"
+        ? 'input[name="archiveConfirmation"]'
+        : 'input[name="deleteConfirmation"]';
+    window.setTimeout(() => {
+      document.querySelector<HTMLInputElement>(selector)?.focus();
+    }, 0);
+  }, [dangerDialog]);
 
   function patchForm(patch: Partial<FormState>) {
     setForm((current) => ({ ...current, ...patch }));
@@ -330,6 +385,17 @@ export function OrganizationProfileSettingsForm({
     setSavedForm(nextForm);
     setToast(message);
     setErrors({});
+  }
+
+  function closeDangerDialog() {
+    const previousDialog = dangerDialog;
+    setDangerDialog(null);
+    if (previousDialog === "archive") {
+      archiveButtonRef.current?.focus();
+    }
+    if (previousDialog === "delete") {
+      deleteButtonRef.current?.focus();
+    }
   }
 
   async function saveSection(section: SaveSection) {
@@ -388,6 +454,45 @@ export function OrganizationProfileSettingsForm({
       );
     } finally {
       setSaving(null);
+    }
+  }
+
+  async function renameOrganization() {
+    const nextErrors = validateRename(form, currentSlug);
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+
+    setRenaming(true);
+    try {
+      const response = await fetch(
+        `/organizations/${encodeURIComponent(currentSlug)}/settings/profile/actions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: form.renameName.trim() }),
+        },
+      );
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          body?.error?.message ?? "Organization could not be renamed",
+        );
+      }
+      const nextSettings = body as OrganizationProfileSettings;
+      applySettings(nextSettings, "Organization renamed");
+      window.history.replaceState(
+        null,
+        "",
+        nextSettings.organization.settingsHref,
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Organization could not be renamed";
+      setErrors({ rename: message });
+    } finally {
+      setRenaming(false);
     }
   }
 
@@ -599,37 +704,168 @@ export function OrganizationProfileSettingsForm({
       <SettingsCard kicker="Danger zone" title="Organization controls">
         <div className="grid gap-3">
           <div
-            className="flex flex-col gap-3 rounded-md p-4 sm:flex-row sm:items-center sm:justify-between"
+            className="grid min-w-0 gap-4 rounded-md p-4"
             style={{ border: "1px solid var(--line)" }}
           >
-            <div>
+            <div className="min-w-0">
               <p className="t-sm font-semibold">Rename organization</p>
-              <p className="t-xs mt-1">
-                Slug validation and confirmation are scheduled for the next
-                organization settings phase.
+              <p className="t-xs mt-1 break-words">
+                Rename changes the organization URL after the server confirms
+                owner access and slug availability.
               </p>
             </div>
-            <button className="btn sm" disabled type="button">
-              Rename unavailable
-            </button>
+            <div className="grid min-w-0 gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+              <Field
+                disabled={!canRename || renaming}
+                error={errors.renameName}
+                help={renamePreview ? `Preview: @${renamePreview}` : undefined}
+                label="New organization slug"
+                name="renameName"
+                onChange={(value) => patchForm({ renameName: value })}
+                value={form.renameName}
+              />
+              <Field
+                disabled={!canRename || renaming}
+                error={errors.renameConfirmation}
+                help={`Type ${currentSlug} before renaming.`}
+                label="Confirm current slug"
+                name="renameConfirmation"
+                onChange={(value) => patchForm({ renameConfirmation: value })}
+                value={form.renameConfirmation}
+              />
+              <button
+                className="btn sm"
+                disabled={!canRename || renaming}
+                onClick={() => void renameOrganization()}
+                type="button"
+              >
+                {renaming ? "Renaming..." : "Rename"}
+              </button>
+            </div>
+            {errors.rename ? (
+              <p className="t-xs" role="alert" style={{ color: "var(--err)" }}>
+                {errors.rename}
+              </p>
+            ) : null}
           </div>
           <div
-            className="flex flex-col gap-3 rounded-md p-4 sm:flex-row sm:items-center sm:justify-between"
+            className="flex min-w-0 flex-col gap-3 rounded-md p-4 sm:flex-row sm:items-center sm:justify-between"
             style={{ border: "1px solid var(--line)" }}
           >
-            <div>
+            <div className="min-w-0">
               <p className="t-sm font-semibold">Archive or delete</p>
-              <p className="t-xs mt-1">
-                Destructive actions stay disabled until retention guardrails are
+              <p className="t-xs mt-1 break-words">
+                Archive and delete execution are disabled until organization
+                retention, repository ownership, and recovery policies are
                 implemented.
               </p>
             </div>
-            <button className="btn sm" disabled type="button">
-              Danger actions unavailable
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                className="btn sm"
+                onClick={() => setDangerDialog("archive")}
+                ref={archiveButtonRef}
+                type="button"
+              >
+                Archive organization
+              </button>
+              <button
+                className="btn sm"
+                onClick={() => setDangerDialog("delete")}
+                ref={deleteButtonRef}
+                type="button"
+              >
+                Delete organization
+              </button>
+            </div>
           </div>
         </div>
       </SettingsCard>
+
+      {dangerDialog ? (
+        <div
+          aria-labelledby={`${dangerDialog}-organization-title`}
+          aria-modal="true"
+          className="fixed inset-0 z-50 grid place-items-center p-4"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              closeDangerDialog();
+            }
+          }}
+          role="dialog"
+          style={{
+            background: "color-mix(in oklch, var(--ink-1) 35%, transparent)",
+          }}
+        >
+          <div className="card max-w-lg p-5">
+            <p className="t-label" style={{ color: "var(--ink-3)" }}>
+              Danger zone
+            </p>
+            <h3 className="t-h2 mt-2" id={`${dangerDialog}-organization-title`}>
+              {dangerDialog === "archive"
+                ? "Archive organization"
+                : "Delete organization"}
+            </h3>
+            <p className="t-sm mt-3 break-words">
+              Type <span className="t-mono-sm">{currentSlug}</span> to confirm
+              that you understand this control. Execution is intentionally
+              disabled until organization retention guardrails are available.
+            </p>
+            <div className="mt-4">
+              <Field
+                help={
+                  dangerDialog === "archive"
+                    ? "Archive execution is unavailable in this phase."
+                    : "Delete execution is unavailable in this phase."
+                }
+                label={
+                  dangerDialog === "archive"
+                    ? `Confirm archive ${currentSlug}`
+                    : `Confirm delete ${currentSlug}`
+                }
+                name={
+                  dangerDialog === "archive"
+                    ? "archiveConfirmation"
+                    : "deleteConfirmation"
+                }
+                onChange={(value) =>
+                  dangerDialog === "archive"
+                    ? patchForm({ archiveConfirmation: value })
+                    : patchForm({ deleteConfirmation: value })
+                }
+                value={
+                  dangerDialog === "archive"
+                    ? form.archiveConfirmation
+                    : form.deleteConfirmation
+                }
+              />
+            </div>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                className="btn sm"
+                onClick={closeDangerDialog}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                aria-disabled="true"
+                className="btn sm"
+                disabled
+                type="button"
+              >
+                {dangerDialog === "archive"
+                  ? archiveReady
+                    ? "Archive unavailable"
+                    : "Type slug to archive"
+                  : deleteReady
+                    ? "Delete unavailable"
+                    : "Type slug to delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

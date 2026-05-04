@@ -181,3 +181,60 @@ test("owner saves organization profile, contact, and social sections", async ({
     page.getByText("URL must start with http:// or https://."),
   ).toBeVisible();
 });
+
+test("owner validates rename and typed danger guardrails", async ({ page }) => {
+  const seeded = seedOrganizationProfile();
+  await signIn(page, seeded);
+  const slug = slugFromProfileHref(seeded.organizationProfileHref);
+  const nextSlug = `${slug}-renamed`;
+
+  await page.goto(`/organizations/${slug}/settings/profile`);
+  await page.getByLabel("New organization slug").fill("admin");
+  await page.getByLabel("Confirm current slug").fill(slug);
+  await page.getByRole("button", { name: "Rename" }).click();
+  await expect(
+    page.getByText("This organization slug is not available."),
+  ).toBeVisible();
+
+  await page.getByLabel("New organization slug").fill(nextSlug);
+  await page.getByLabel("Confirm current slug").fill(slug);
+  await page.getByRole("button", { name: "Rename" }).click();
+  await expect(page.getByText("Organization renamed")).toBeVisible();
+  await expect(page).toHaveURL(`/organizations/${nextSlug}/settings/profile`);
+  await expect(page.getByLabel("New organization slug")).toHaveValue(nextSlug);
+
+  await page.getByRole("button", { name: "Archive organization" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Archive organization" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Type slug to archive" }),
+  ).toBeDisabled();
+  await page.getByLabel(`Confirm archive ${nextSlug}`).fill(nextSlug);
+  await expect(
+    page.getByRole("button", { name: "Archive unavailable" }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Archive organization" }),
+  ).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Delete organization" }).click();
+  await page.getByLabel(`Confirm delete ${nextSlug}`).fill(nextSlug);
+  await expect(
+    page.getByRole("button", { name: "Delete unavailable" }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expectNoDeadControls(page);
+
+  await page.setViewportSize({ width: 390, height: 900 });
+  const bodyWidths = await page.locator("body").evaluate((body) => ({
+    clientWidth: body.clientWidth,
+    scrollWidth: body.scrollWidth,
+  }));
+  expect(bodyWidths.scrollWidth).toBeLessThanOrEqual(bodyWidths.clientWidth);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-002-phase4-danger-zone.jpg",
+  });
+});

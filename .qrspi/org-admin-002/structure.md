@@ -61,7 +61,7 @@
 
 ## Phase 4: Rename, Archive, Delete, and UX Guardrails - destructive controls without billing scope
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Complete the danger-zone affordances required by the PRD without adding billing or paid-plan provisioning. Rename validates slug availability and requires confirmation; archive/delete dialogs require typed slug and stay disabled until prerequisites are met. Unsupported destructive backend operations may remain disabled only when the UI clearly states why and has no inert handlers.
 

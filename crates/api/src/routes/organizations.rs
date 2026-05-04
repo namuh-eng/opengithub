@@ -13,12 +13,12 @@ use crate::{
         organizations::{
             create_organization_from_signup, organization_people, organization_profile_settings,
             organization_repositories, organization_slug_availability, public_organization_profile,
-            update_organization_profile_settings, CreateOrganizationRequest, CreatedOrganization,
-            OrganizationCreateError, OrganizationPeopleList, OrganizationPeopleListQuery,
-            OrganizationProfileError, OrganizationProfileSettings,
+            rename_organization, update_organization_profile_settings, CreateOrganizationRequest,
+            CreatedOrganization, OrganizationCreateError, OrganizationPeopleList,
+            OrganizationPeopleListQuery, OrganizationProfileError, OrganizationProfileSettings,
             OrganizationProfileSettingsPatch, OrganizationRepositoryList,
             OrganizationRepositoryListQuery, OrganizationSettingsError,
-            OrganizationSlugAvailability, PublicOrganizationProfile,
+            OrganizationSlugAvailability, PublicOrganizationProfile, RenameOrganizationRequest,
         },
         packages::{
             mutate_package_settings, owner_packages, package_detail, package_settings,
@@ -41,6 +41,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/orgs/:org/settings/profile",
             get(get_profile_settings).patch(patch_profile_settings),
+        )
+        .route(
+            "/api/orgs/:org/settings/profile/rename",
+            post(rename_profile_settings),
         )
         .route("/api/orgs/:org/repositories", get(public_repositories))
         .route("/api/orgs/:org/people", get(public_people))
@@ -124,6 +128,21 @@ async fn patch_profile_settings(
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let settings = update_organization_profile_settings(pool, &org, actor.0.id, request)
+        .await
+        .map_err(map_organization_settings_error)?;
+
+    Ok(Json(settings))
+}
+
+async fn rename_profile_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(org): Path<String>,
+    RestJson(request): RestJson<RenameOrganizationRequest>,
+) -> Result<Json<OrganizationProfileSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = rename_organization(pool, &org, actor.0.id, request)
         .await
         .map_err(map_organization_settings_error)?;
 
@@ -438,6 +457,11 @@ fn map_organization_settings_error(
             StatusCode::UNPROCESSABLE_ENTITY,
             "validation_failed",
             message,
+        ),
+        OrganizationSettingsError::Conflict => error_response(
+            StatusCode::CONFLICT,
+            "conflict",
+            "organization slug is already taken",
         ),
         OrganizationSettingsError::Sqlx(_) => error_response(
             StatusCode::INTERNAL_SERVER_ERROR,

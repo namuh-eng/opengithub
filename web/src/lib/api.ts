@@ -141,6 +141,10 @@ export type UpdateOrganizationProfileSettingsRequest = {
   socialAccounts?: Array<Pick<OrganizationSocialAccount, "provider" | "value">>;
 };
 
+export type RenameOrganizationRequest = {
+  name: string;
+};
+
 export type UnlinkSignInMethodResponse = {
   removedId: string;
   settings: AccountSecuritySettings;
@@ -4685,6 +4689,36 @@ export async function updateOrganizationProfileSettingsFromCookie(
       body?.error.message ?? "Organization profile settings update failed",
       { cause: body },
     );
+  }
+
+  return (await response.json()) as OrganizationProfileSettings;
+}
+
+export async function renameOrganizationFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  input: RenameOrganizationRequest,
+): Promise<OrganizationProfileSettings> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/settings/profile/rename`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const body = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(body?.error.message ?? "Organization rename failed", {
+      cause: body,
+    });
   }
 
   return (await response.json()) as OrganizationProfileSettings;

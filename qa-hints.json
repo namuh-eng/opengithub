@@ -4742,5 +4742,24 @@
       "Probe long Unicode organization names, social handles, URLs, locations, and emails across desktop/mobile and with browser autofill enabled.",
       "Confirm production S3 avatar support can reuse the placeholder avatar metadata contract without exposing bucket keys once avatar upload is implemented."
     ]
+  },
+  {
+    "feature_id": "org-admin-002",
+    "tests_written": [
+      "Completed Phase 4 Rename, Archive, Delete, and UX Guardrails without marking org-admin-002 build_pass=true.",
+      "Added owner-only POST /api/orgs/{org}/settings/profile/rename with slug normalization, availability checks, generic reserved/conflict envelopes, organization slug update, and organization.rename audit events.",
+      "Extended the Editorial organization settings form with confirmed rename, server error rendering, URL replacement after rename, archive/delete dialogs, typed-slug guardrails, disabled unsupported destructive execution, focus return, mobile wrapping, and no inert controls.",
+      "Focused Rust contract covers rename success, old-slug 404, audit metadata, duplicate user slug conflict without leaking existing kind, reserved slug validation without leaking reserved reason, and existing owner-only profile settings behavior.",
+      "Focused Vitest covers rename confirmation, POST payload, success state, archive/delete typed dialogs, disabled unavailable destructive buttons, no dead anchors, and named controls.",
+      "Focused Playwright covers reserved-slug rename recovery, successful rename redirect, archive/delete typed guardrails, no dead controls, mobile no-overflow, and screenshot ralph/screenshots/build/org-admin-002-phase4-danger-zone.jpg.",
+      "Verification passed: focused organization_profile_settings_contract, focused organization profile settings Vitest, TypeScript, focused Biome, make check, make test with Cargo tests plus 377 web tests, focused Playwright organization settings smoke, direct full Playwright with 116 tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 5 must document the organization settings and rename endpoints, add API docs assertions, run final browser evidence, and set org-admin-002.build_pass=true only after final verification.",
+      "Use a real Google OAuth browser session with TEST_ACCOUNT_EMAIL to re-run rename and danger-zone guardrails outside deterministic Playwright seed cookies.",
+      "Stress concurrent rename attempts from two owner sessions and direct API clients to confirm one success and clean conflict/not-found recovery for stale slugs.",
+      "Probe Unicode, punctuation-heavy, very long, and route-reserved rename inputs beyond the covered reserved admin and duplicate user-slug paths.",
+      "Archive/delete execution remains intentionally unsupported until retention, repository ownership, and recovery policies are implemented; QA should verify this remains clearly disabled and non-destructive."
+    ]
   }
 ]

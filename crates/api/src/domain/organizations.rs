@@ -270,6 +270,12 @@ pub struct OrganizationProfileSettingsPatch {
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct RenameOrganizationRequest {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct OrganizationSocialAccountInput {
     pub provider: String,
     pub value: String,
@@ -283,6 +289,8 @@ pub enum OrganizationSettingsError {
     Forbidden,
     #[error("{0}")]
     Validation(String),
+    #[error("organization slug is already taken")]
+    Conflict,
     #[error("database error")]
     Sqlx(#[from] sqlx::Error),
 }
@@ -793,6 +801,75 @@ pub async fn update_organization_profile_settings(
     organization_profile_settings(pool, slug, actor_user_id).await
 }
 
+pub async fn rename_organization(
+    pool: &PgPool,
+    slug: &str,
+    actor_user_id: Uuid,
+    request: RenameOrganizationRequest,
+) -> Result<OrganizationProfileSettings, OrganizationSettingsError> {
+    let row = organization_settings_row(pool, slug)
+        .await?
+        .ok_or(OrganizationSettingsError::NotFound)?;
+    ensure_organization_owner(pool, row.id, actor_user_id).await?;
+
+    let new_slug = normalize_organization_slug(&request.name);
+    validate_organization_slug(&new_slug).map_err(OrganizationSettingsError::Validation)?;
+    if new_slug.eq_ignore_ascii_case(&row.slug) {
+        return Err(OrganizationSettingsError::Validation(
+            "Choose a different organization slug before renaming.".to_owned(),
+        ));
+    }
+
+    let availability = organization_slug_availability(pool, &request.name)
+        .await
+        .map_err(|error| match error {
+            OrganizationCreateError::Validation(message) => {
+                OrganizationSettingsError::Validation(message)
+            }
+            OrganizationCreateError::ReservedSlug => OrganizationSettingsError::Validation(
+                "This organization slug is not available.".to_owned(),
+            ),
+            OrganizationCreateError::DuplicateSlug => OrganizationSettingsError::Conflict,
+            OrganizationCreateError::Sqlx(error) => OrganizationSettingsError::Sqlx(error),
+        })?;
+    if availability.reserved {
+        return Err(OrganizationSettingsError::Validation(
+            "This organization slug is not available.".to_owned(),
+        ));
+    }
+    if availability.existing_kind.is_some() {
+        return Err(OrganizationSettingsError::Conflict);
+    }
+
+    let mut tx = pool.begin().await?;
+    sqlx::query("UPDATE organizations SET slug = $2 WHERE id = $1")
+        .bind(row.id)
+        .bind(&new_slug)
+        .execute(&mut *tx)
+        .await
+        .map_err(map_settings_unique_slug_error)?;
+    sqlx::query(
+        r#"
+        INSERT INTO organization_audit_events (
+            organization_id, actor_user_id, event_type, metadata
+        )
+        VALUES ($1, $2, 'organization.rename', $3)
+        "#,
+    )
+    .bind(row.id)
+    .bind(actor_user_id)
+    .bind(json!({
+        "previousSlug": row.slug,
+        "newSlug": new_slug,
+        "redacted": []
+    }))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    organization_profile_settings(pool, &new_slug, actor_user_id).await
+}
+
 fn normalize_display_name(name: &str) -> Result<String, OrganizationCreateError> {
     let display_name = name.split_whitespace().collect::<Vec<_>>().join(" ");
     if display_name.is_empty() {
@@ -1004,6 +1081,15 @@ fn map_unique_slug_error(error: sqlx::Error) -> OrganizationCreateError {
             OrganizationCreateError::DuplicateSlug
         }
         _ => OrganizationCreateError::Sqlx(error),
+    }
+}
+
+fn map_settings_unique_slug_error(error: sqlx::Error) -> OrganizationSettingsError {
+    match &error {
+        sqlx::Error::Database(database_error) if database_error.is_unique_violation() => {
+            OrganizationSettingsError::Conflict
+        }
+        _ => OrganizationSettingsError::Sqlx(error),
     }
 }
 
