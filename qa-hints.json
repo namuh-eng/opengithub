@@ -5136,5 +5136,21 @@
       "Exercise screen-reader and keyboard traversal of the summary sidebar and copy control on desktop and mobile.",
       "The shared local test database still reports the known modified migration warning for 202605030041; rerun contract tests against a clean migrated database after that drift is resolved."
     ]
+  },
+  {
+    "feature_id": "commits-002",
+    "tests_written": [
+      "Completed Phase 2 Diff File Tree and Unified Diff Rendering without marking commits-002 build_pass=true.",
+      "Extended GET /api/repos/{owner}/{repo}/commits/{sha} with diffSummary, fileTree, and files containing path/status/addition/deletion metadata, Raw/View links, binary/large flags, hunk headers, and old/new line rows derived from repository_files snapshots.",
+      "Rendered the commit detail diff as an Editorial two-pane surface with changed-file sidebar anchors, per-file stats, language chips, Raw/View file actions, and tokenized unified diff rows.",
+      "Extended Rust contract, Vitest component, and Playwright smoke coverage; screenshot saved at ralph/screenshots/build/commits-002-phase2-diff.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 still needs interactive file filtering, in-page code search, active file focus management, and mobile wrapping assertions.",
+      "Phase 4 still needs API-backed context expansion plus harder binary, large, renamed, deleted, and generated-file edge cases.",
+      "Repeat with a real imported repository and Google OAuth session containing merge commits, reordered lines, large diffs, binary blobs, renamed files, and mixed Actions/signature states.",
+      "The Phase 2 hunk builder is intentionally bounded and line-position based; verify complex moved-block diffs once context expansion lands.",
+      "Re-run the Rust contract against a clean migrated database after the shared local migration drift is resolved."
+    ]
   }
 ]

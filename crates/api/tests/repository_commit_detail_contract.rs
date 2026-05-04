@@ -194,6 +194,42 @@ async fn repository_commit_detail_returns_summary_contract_without_leaking_priva
     )
     .await
     .expect("main branch should upsert");
+    for (commit_id, path, content, oid) in [
+        (
+            base_commit.id,
+            "src/main.rs",
+            "fn main() {\n    println!(\"old\");\n}\n",
+            "blob-base-main",
+        ),
+        (
+            detail_commit.id,
+            "src/main.rs",
+            "fn main() {\n    println!(\"new\");\n}\n",
+            "blob-detail-main",
+        ),
+        (
+            detail_commit.id,
+            "docs/commit-detail.md",
+            "# Commit detail\n",
+            "blob-detail-docs",
+        ),
+    ] {
+        sqlx::query(
+            r#"
+            INSERT INTO repository_files (repository_id, commit_id, path, content, oid, byte_size)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            "#,
+        )
+        .bind(repository.id)
+        .bind(commit_id)
+        .bind(path)
+        .bind(content)
+        .bind(oid)
+        .bind(content.len() as i64)
+        .execute(&pool)
+        .await
+        .expect("repository file should insert");
+    }
     sqlx::query(
         r#"
         INSERT INTO repository_commit_status_summaries
@@ -245,7 +281,23 @@ async fn repository_commit_detail_returns_summary_contract_without_leaking_priva
     assert_eq!(body["branches"][0]["name"], "main");
     assert_eq!(body["status"]["conclusion"], "success");
     assert_eq!(body["verification"]["verified"], false);
-    assert_eq!(body["diffPlaceholder"]["state"], "pending_phase");
+    assert_eq!(body["diffPlaceholder"]["state"], "ready");
+    assert_eq!(body["diffSummary"]["totalFiles"], 2);
+    assert_eq!(body["diffSummary"]["additions"], 2);
+    assert_eq!(body["diffSummary"]["deletions"], 1);
+    assert_eq!(body["fileTree"][0]["path"], "docs/commit-detail.md");
+    assert_eq!(body["files"][0]["status"], "added");
+    assert_eq!(body["files"][0]["hunks"][0]["lines"][0]["kind"], "added");
+    assert_eq!(body["files"][1]["path"], "src/main.rs");
+    assert_eq!(body["files"][1]["hunks"][0]["lines"][1]["kind"], "removed");
+    assert_eq!(body["files"][1]["hunks"][0]["lines"][2]["kind"], "added");
+    assert_eq!(
+        body["files"][1]["rawHref"],
+        format!(
+            "/{}/{}/raw/{}/src/main.rs",
+            repository.owner_login, repository.name, detail_commit.oid
+        )
+    );
     assert_eq!(
         body["commit"]["browseHref"],
         format!(

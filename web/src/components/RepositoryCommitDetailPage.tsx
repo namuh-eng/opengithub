@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { CopyButton } from "@/components/CopyButton";
 import type {
+  RepositoryCommitDetailFile,
+  RepositoryCommitDetailLine,
   RepositoryCommitDetailView,
   RepositoryCommitStatusSummary,
   RepositoryCommitVerificationSummary,
@@ -95,6 +97,137 @@ function verificationClass(verification: RepositoryCommitVerificationSummary) {
   return "chip soft";
 }
 
+function fileStatusMark(status: string) {
+  if (status === "added") return "A";
+  if (status === "removed") return "D";
+  if (status === "renamed") return "R";
+  return "M";
+}
+
+function linePrefix(line: RepositoryCommitDetailLine) {
+  if (line.kind === "added") return "+";
+  if (line.kind === "removed") return "-";
+  return " ";
+}
+
+function lineBackground(line: RepositoryCommitDetailLine) {
+  if (line.kind === "added")
+    return "color-mix(in oklab, var(--ok) 10%, transparent)";
+  if (line.kind === "removed")
+    return "color-mix(in oklab, var(--err) 10%, transparent)";
+  return "transparent";
+}
+
+function lineAccent(line: RepositoryCommitDetailLine) {
+  if (line.kind === "added") return "var(--ok)";
+  if (line.kind === "removed") return "var(--err)";
+  return "var(--ink-4)";
+}
+
+function formatByteSize(byteSize: number) {
+  if (byteSize < 1024) return `${byteSize} bytes`;
+  const kib = byteSize / 1024;
+  if (kib < 1024) return `${kib.toFixed(1)} KB`;
+  return `${(kib / 1024).toFixed(1)} MB`;
+}
+
+function DiffLine({ line }: { line: RepositoryCommitDetailLine }) {
+  return (
+    <div
+      className="grid min-w-[760px] grid-cols-[64px_64px_32px_minmax(0,1fr)] border-b t-mono-sm"
+      style={{
+        background: lineBackground(line),
+        borderColor: "var(--line-soft)",
+      }}
+    >
+      <span
+        className="select-none px-3 py-1.5 text-right"
+        style={{ color: "var(--ink-4)" }}
+      >
+        {line.oldLine ?? ""}
+      </span>
+      <span
+        className="select-none border-l px-3 py-1.5 text-right"
+        style={{ borderColor: "var(--line-soft)", color: "var(--ink-4)" }}
+      >
+        {line.newLine ?? ""}
+      </span>
+      <span
+        className="select-none border-l px-2 py-1.5"
+        style={{ borderColor: "var(--line-soft)", color: lineAccent(line) }}
+      >
+        {linePrefix(line)}
+      </span>
+      <code className="min-w-0 whitespace-pre px-2 py-1.5">{line.content}</code>
+    </div>
+  );
+}
+
+function CommitDiffFile({ file }: { file: RepositoryCommitDetailFile }) {
+  return (
+    <article className="card overflow-hidden" id={file.anchor}>
+      <div
+        className="flex flex-wrap items-center gap-3 border-b px-4 py-3"
+        style={{ background: "var(--surface-2)", borderColor: "var(--line)" }}
+      >
+        <span className="t-mono-sm" style={{ color: "var(--ink-3)" }}>
+          {fileStatusMark(file.status)}
+        </span>
+        <h3 className="t-mono-sm min-w-0 flex-1 break-all">{file.path}</h3>
+        {file.language ? (
+          <span className="chip soft">{file.language}</span>
+        ) : null}
+        <span className="t-xs t-num">
+          <span style={{ color: "var(--ok)" }}>+{file.additions}</span>{" "}
+          <span style={{ color: "var(--err)" }}>-{file.deletions}</span>
+        </span>
+        <Link className="btn ghost sm" href={file.rawHref}>
+          Raw
+        </Link>
+        <Link className="btn sm" href={file.viewHref}>
+          View file
+        </Link>
+      </div>
+      {file.isBinary || file.isLarge ? (
+        <div className="px-4 py-5">
+          <p className="t-sm" style={{ color: "var(--ink-3)" }}>
+            {file.isBinary
+              ? "Binary file diff is not rendered inline."
+              : `Large file diff is bounded inline (${formatByteSize(file.byteSize)}).`}
+          </p>
+        </div>
+      ) : file.hunks.length ? (
+        <div className="overflow-x-auto">
+          {file.hunks.map((hunk) => (
+            <div key={hunk.id}>
+              <div
+                className="border-b px-4 py-2 t-mono-sm"
+                style={{
+                  background: "var(--surface-3)",
+                  borderColor: "var(--line-soft)",
+                  color: "var(--ink-3)",
+                }}
+              >
+                {hunk.header}
+              </div>
+              {hunk.lines.map((line) => (
+                <DiffLine key={`${hunk.id}-${line.position}`} line={line} />
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="px-4 py-5">
+          <p className="t-sm" style={{ color: "var(--ink-3)" }}>
+            This file has summary metadata, but no expanded text rows are
+            available.
+          </p>
+        </div>
+      )}
+    </article>
+  );
+}
+
 export function RepositoryCommitDetailPage({
   detail,
 }: RepositoryCommitDetailPageProps) {
@@ -181,30 +314,80 @@ export function RepositoryCommitDetailPage({
             )}
           </section>
 
-          <section className="card overflow-hidden" aria-label="Commit diff">
+          <section className="space-y-4" aria-label="Commit diff">
             <div
-              className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3"
+              className="card flex flex-wrap items-center justify-between gap-3 px-4 py-3"
               style={{
-                borderColor: "var(--line-soft)",
                 background: "var(--surface-2)",
               }}
             >
               <div>
                 <h2 className="t-h3">Changed files</h2>
-                <p className="mt-1 t-xs">{detail.diffPlaceholder.nextPhase}</p>
+                <p className="mt-1 t-xs">
+                  <span className="t-num">{detail.diffSummary.totalFiles}</span>{" "}
+                  files changed with{" "}
+                  <span className="t-num" style={{ color: "var(--ok)" }}>
+                    +{detail.diffSummary.additions}
+                  </span>{" "}
+                  <span className="t-num" style={{ color: "var(--err)" }}>
+                    -{detail.diffSummary.deletions}
+                  </span>
+                </p>
               </div>
-              <span className="chip soft">Summary ready</span>
+              <span className="chip ok">Diff ready</span>
             </div>
-            <div className="p-6">
-              <p className="t-body" style={{ color: "var(--ink-3)" }}>
-                {detail.diffPlaceholder.message}
-              </p>
-              <div className="mt-4 flex flex-wrap gap-2">
+            <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
+              <aside className="card h-fit p-2" aria-label="Changed file tree">
+                <div
+                  className="border-b px-2 py-2 t-label"
+                  style={{ borderColor: "var(--line-soft)" }}
+                >
+                  Files
+                </div>
+                <nav
+                  aria-label="Changed file tree"
+                  className="mt-2 max-h-[520px] space-y-1 overflow-y-auto"
+                >
+                  {detail.fileTree.map((node) => (
+                    <a
+                      className="flex items-center gap-2 rounded-[var(--radius)] px-2 py-1.5 t-sm hover:bg-[var(--hover)]"
+                      href={node.href}
+                      key={node.path}
+                      style={{ paddingLeft: 8 + node.depth * 12 }}
+                    >
+                      <span
+                        className="t-mono-sm"
+                        style={{ color: "var(--ink-4)" }}
+                      >
+                        {fileStatusMark(node.status)}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate t-mono-sm">
+                        {node.name}
+                      </span>
+                      <span
+                        className="t-xs t-num"
+                        style={{ color: "var(--ink-4)" }}
+                      >
+                        +{node.additions}/-{node.deletions}
+                      </span>
+                    </a>
+                  ))}
+                </nav>
+              </aside>
+              <div className="min-w-0 space-y-4">
+                {detail.files.length ? (
+                  detail.files.map((file) => (
+                    <CommitDiffFile file={file} key={file.path} />
+                  ))
+                ) : (
+                  <div className="card p-6">
+                    <p className="t-body" style={{ color: "var(--ink-3)" }}>
+                      {detail.diffPlaceholder.message}
+                    </p>
+                  </div>
+                )}
                 <Link className="btn sm" href={commit.browseHref}>
                   Browse files at this commit
-                </Link>
-                <Link className="btn ghost sm" href={detail.status.href}>
-                  View check summary
                 </Link>
               </div>
             </div>

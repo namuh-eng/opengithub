@@ -1622,6 +1622,9 @@ export type RepositoryCommitDetailView = {
   status: RepositoryCommitStatusSummary;
   verification: RepositoryCommitVerificationSummary;
   diffPlaceholder: RepositoryCommitDetailDiffPlaceholder;
+  diffSummary: RepositoryCommitDetailDiffSummary;
+  fileTree: RepositoryCommitDetailFileTreeNode[];
+  files: RepositoryCommitDetailFile[];
 };
 
 export type RepositoryCommitDetailRepository = {
@@ -1665,6 +1668,57 @@ export type RepositoryCommitDetailDiffPlaceholder = {
   state: string;
   message: string;
   nextPhase: string;
+};
+
+export type RepositoryCommitDetailDiffSummary = {
+  totalFiles: number;
+  additions: number;
+  deletions: number;
+};
+
+export type RepositoryCommitDetailFileTreeNode = {
+  path: string;
+  name: string;
+  depth: number;
+  status: string;
+  additions: number;
+  deletions: number;
+  href: string;
+};
+
+export type RepositoryCommitDetailFile = {
+  path: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  byteSize: number;
+  blobOid: string | null;
+  language: string | null;
+  anchor: string;
+  href: string;
+  rawHref: string;
+  viewHref: string;
+  isBinary: boolean;
+  isLarge: boolean;
+  hunks: RepositoryCommitDetailHunk[];
+};
+
+export type RepositoryCommitDetailHunk = {
+  id: string;
+  header: string;
+  oldStart: number;
+  oldLines: number;
+  newStart: number;
+  newLines: number;
+  lines: RepositoryCommitDetailLine[];
+};
+
+export type RepositoryCommitDetailLine = {
+  kind: "context" | "added" | "removed" | string;
+  oldLine: number | null;
+  newLine: number | null;
+  content: string;
+  position: number;
 };
 
 export type RepositoryLanguageSummary = {

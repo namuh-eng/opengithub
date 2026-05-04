@@ -1,3 +1,12 @@
+2026-05-04 - commits-002 phase 2 diff file tree and unified rendering
+
+- Completed Phase 2 from `.qrspi/commits-002/structure.md`: commit detail now returns and renders real changed files, file tree anchors, and unified diff rows without marking `commits-002.build_pass=true`.
+- Extended the Rust commit-detail contract with `diffSummary`, `fileTree`, and `files` payloads derived from `repository_files` snapshots against the first parent commit, including per-file status, additions/deletions, language/path metadata, Raw/View links, binary/large placeholders, hunk headers, and old/new line rows.
+- Replaced the Phase 1 diff placeholder with an Editorial two-pane diff surface on `/{owner}/{repo}/commit/{sha}`: changed-file sidebar, per-file cards, tokenized added/removed rows, concrete Raw/View file links, and browse-at-commit recovery.
+- Extended focused Rust, Vitest, and Playwright coverage for diff payload shape, file-tree destinations, unified rows, Raw/View links, no dead controls, and screenshot `ralph/screenshots/build/commits-002-phase2-diff.jpg`.
+- Verification passed: focused `repository_commit_detail_contract`, focused `repository-commit-detail-page` Vitest, focused Biome, `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`, `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 406 web tests, focused Playwright commit-detail smoke, full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false SESSION_SECRET=playwright-session-secret-with-enough-entropy SESSION_COOKIE_NAME=og_session DASHBOARD_E2E_SKIP_MIGRATIONS=1 make test-e2e` with 123 tests, and mandatory Editorial banned-value scan.
+- `prd.json` remains `build_pass:false` because Phases 3-5 remain. Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-04 - commits-001 phase 5 final QA handoff
 
 - Completed Phase 5 from `.qrspi/commits-001/structure.md`: repository commit history is now locked as a completed vertical slice and `commits-001.build_pass=true`.

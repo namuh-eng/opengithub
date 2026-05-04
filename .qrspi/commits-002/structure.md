@@ -24,7 +24,7 @@
 
 ## Phase 2: Diff File Tree and Unified Diff Rendering
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Extend the commit-detail contract and page so the diff area renders real changed files, a collapsible file tree, per-file stats, and unified diff rows with old/new line numbers. This phase makes the primary commit review surface useful end-to-end for text changes.
 

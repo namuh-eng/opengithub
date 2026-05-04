@@ -741,6 +741,9 @@ pub struct RepositoryCommitDetailView {
     pub status: RepositoryCommitStatusSummary,
     pub verification: RepositoryCommitVerificationSummary,
     pub diff_placeholder: RepositoryCommitDetailDiffPlaceholder,
+    pub diff_summary: RepositoryCommitDetailDiffSummary,
+    pub file_tree: Vec<RepositoryCommitDetailFileTreeNode>,
+    pub files: Vec<RepositoryCommitDetailFile>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -794,6 +797,67 @@ pub struct RepositoryCommitDetailDiffPlaceholder {
     pub state: String,
     pub message: String,
     pub next_phase: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCommitDetailDiffSummary {
+    pub total_files: i64,
+    pub additions: i64,
+    pub deletions: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCommitDetailFileTreeNode {
+    pub path: String,
+    pub name: String,
+    pub depth: i64,
+    pub status: String,
+    pub additions: i64,
+    pub deletions: i64,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCommitDetailFile {
+    pub path: String,
+    pub status: String,
+    pub additions: i64,
+    pub deletions: i64,
+    pub byte_size: i64,
+    pub blob_oid: Option<String>,
+    pub language: Option<String>,
+    pub anchor: String,
+    pub href: String,
+    pub raw_href: String,
+    pub view_href: String,
+    pub is_binary: bool,
+    pub is_large: bool,
+    pub hunks: Vec<RepositoryCommitDetailHunk>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCommitDetailHunk {
+    pub id: String,
+    pub header: String,
+    pub old_start: i64,
+    pub old_lines: i64,
+    pub new_start: i64,
+    pub new_lines: i64,
+    pub lines: Vec<RepositoryCommitDetailLine>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCommitDetailLine {
+    pub kind: String,
+    pub old_line: Option<i64>,
+    pub new_line: Option<i64>,
+    pub content: String,
+    pub position: i64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -6960,6 +7024,37 @@ async fn repository_commit_detail(
     .execute(pool)
     .await;
 
+    let diff_files = repository_commit_detail_files(
+        pool,
+        repository,
+        commit_id,
+        parents.first().map(|parent| parent.oid.as_str()),
+        &oid,
+    )
+    .await?;
+    let diff_summary = RepositoryCommitDetailDiffSummary {
+        total_files: diff_files.len() as i64,
+        additions: diff_files.iter().map(|file| file.additions).sum(),
+        deletions: diff_files.iter().map(|file| file.deletions).sum(),
+    };
+    let file_tree = diff_files
+        .iter()
+        .map(|file| RepositoryCommitDetailFileTreeNode {
+            path: file.path.clone(),
+            name: file
+                .path
+                .rsplit('/')
+                .next()
+                .unwrap_or(&file.path)
+                .to_owned(),
+            depth: file.path.matches('/').count() as i64,
+            status: file.status.clone(),
+            additions: file.additions,
+            deletions: file.deletions,
+            href: format!("#{}", file.anchor),
+        })
+        .collect::<Vec<_>>();
+
     Ok(RepositoryCommitDetailView {
         repository: RepositoryCommitDetailRepository {
             owner_login: repository.owner_login.clone(),
@@ -7013,11 +7108,259 @@ async fn repository_commit_detail(
             signature_summary: signature.signature_summary,
         },
         diff_placeholder: RepositoryCommitDetailDiffPlaceholder {
-            state: "pending_phase".to_owned(),
-            message: "Diff rendering arrives in the next commit-detail slice.".to_owned(),
-            next_phase: "Phase 2: Diff File Tree and Unified Diff Rendering".to_owned(),
+            state: if diff_summary.total_files == 0 {
+                "empty".to_owned()
+            } else {
+                "ready".to_owned()
+            },
+            message: if diff_summary.total_files == 0 {
+                "No file changes were recorded for this commit.".to_owned()
+            } else {
+                "Diff file tree and unified rows are available.".to_owned()
+            },
+            next_phase: "Phase 3: Diff Filter, In-Page Search, and Focus Behavior".to_owned(),
         },
+        diff_summary,
+        file_tree,
+        files: diff_files,
     })
+}
+
+#[derive(Debug, Clone)]
+struct CommitDetailSnapshotFile {
+    content: String,
+    oid: String,
+    byte_size: i64,
+}
+
+async fn repository_commit_detail_files(
+    pool: &PgPool,
+    repository: &Repository,
+    commit_id: Uuid,
+    parent_oid: Option<&str>,
+    commit_oid: &str,
+) -> Result<Vec<RepositoryCommitDetailFile>, RepositoryError> {
+    let current_files = commit_detail_snapshot_files(pool, repository.id, commit_id).await?;
+    let parent_files = if let Some(parent_oid) = parent_oid {
+        if let Some(parent_commit_id) = sqlx::query_scalar::<_, Uuid>(
+            "SELECT id FROM commits WHERE repository_id = $1 AND oid = $2",
+        )
+        .bind(repository.id)
+        .bind(parent_oid)
+        .fetch_optional(pool)
+        .await?
+        {
+            commit_detail_snapshot_files(pool, repository.id, parent_commit_id).await?
+        } else {
+            BTreeMap::new()
+        }
+    } else {
+        BTreeMap::new()
+    };
+
+    let mut paths = current_files.keys().cloned().collect::<BTreeSet<_>>();
+    paths.extend(parent_files.keys().cloned());
+    let mut files = Vec::new();
+    for path in paths {
+        let current = current_files.get(&path);
+        let parent = parent_files.get(&path);
+        if current.map(|file| file.oid.as_str()) == parent.map(|file| file.oid.as_str()) {
+            continue;
+        }
+        let status = match (parent, current) {
+            (None, Some(_)) => "added",
+            (Some(_), None) => "removed",
+            (Some(_), Some(_)) => "modified",
+            (None, None) => continue,
+        }
+        .to_owned();
+        let old_content = parent.map(|file| file.content.as_str()).unwrap_or("");
+        let new_content = current.map(|file| file.content.as_str()).unwrap_or("");
+        let is_binary = old_content.contains('\0') || new_content.contains('\0');
+        let byte_size = current.or(parent).map(|file| file.byte_size).unwrap_or(0);
+        let is_large = byte_size > 200_000;
+        let (hunks, additions, deletions) = if is_binary || is_large {
+            (Vec::new(), 0, 0)
+        } else {
+            commit_detail_hunks_for_file(&path, old_content, new_content)
+        };
+        let anchor = commit_detail_anchor_for_path(&path);
+        let encoded_path = percent_encode_path(&path);
+        let view_href = format!(
+            "/{}/{}/blob/{}/{}",
+            repository.owner_login, repository.name, commit_oid, encoded_path
+        );
+        files.push(RepositoryCommitDetailFile {
+            path: path.clone(),
+            status,
+            additions,
+            deletions,
+            byte_size,
+            blob_oid: current.or(parent).map(|file| file.oid.clone()),
+            language: language_for_path(&path),
+            href: format!(
+                "/{}/{}/commit/{}#{}",
+                repository.owner_login, repository.name, commit_oid, anchor
+            ),
+            raw_href: format!(
+                "/{}/{}/raw/{}/{}",
+                repository.owner_login, repository.name, commit_oid, encoded_path
+            ),
+            view_href,
+            anchor,
+            is_binary,
+            is_large,
+            hunks,
+        });
+    }
+    Ok(files)
+}
+
+async fn commit_detail_snapshot_files(
+    pool: &PgPool,
+    repository_id: Uuid,
+    commit_id: Uuid,
+) -> Result<BTreeMap<String, CommitDetailSnapshotFile>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT path, content, oid, byte_size
+        FROM repository_files
+        WHERE repository_id = $1 AND commit_id = $2
+        ORDER BY lower(path)
+        "#,
+    )
+    .bind(repository_id)
+    .bind(commit_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let path: String = row.get("path");
+            (
+                path.clone(),
+                CommitDetailSnapshotFile {
+                    content: row.get("content"),
+                    oid: row.get("oid"),
+                    byte_size: row.get("byte_size"),
+                },
+            )
+        })
+        .collect())
+}
+
+fn commit_detail_hunks_for_file(
+    path: &str,
+    old_content: &str,
+    new_content: &str,
+) -> (Vec<RepositoryCommitDetailHunk>, i64, i64) {
+    let old_lines = old_content.lines().collect::<Vec<_>>();
+    let new_lines = new_content.lines().collect::<Vec<_>>();
+    let mut lines = Vec::new();
+    let mut old_line = 1_i64;
+    let mut new_line = 1_i64;
+    let mut position = 1_i64;
+    let mut additions = 0_i64;
+    let mut deletions = 0_i64;
+    let max_len = old_lines.len().max(new_lines.len());
+    for index in 0..max_len {
+        match (old_lines.get(index), new_lines.get(index)) {
+            (Some(old), Some(new)) if old == new => {
+                lines.push(RepositoryCommitDetailLine {
+                    kind: "context".to_owned(),
+                    old_line: Some(old_line),
+                    new_line: Some(new_line),
+                    content: (*old).to_owned(),
+                    position,
+                });
+                old_line += 1;
+                new_line += 1;
+                position += 1;
+            }
+            (Some(old), Some(new)) => {
+                lines.push(RepositoryCommitDetailLine {
+                    kind: "removed".to_owned(),
+                    old_line: Some(old_line),
+                    new_line: None,
+                    content: (*old).to_owned(),
+                    position,
+                });
+                old_line += 1;
+                position += 1;
+                deletions += 1;
+                lines.push(RepositoryCommitDetailLine {
+                    kind: "added".to_owned(),
+                    old_line: None,
+                    new_line: Some(new_line),
+                    content: (*new).to_owned(),
+                    position,
+                });
+                new_line += 1;
+                position += 1;
+                additions += 1;
+            }
+            (Some(old), None) => {
+                lines.push(RepositoryCommitDetailLine {
+                    kind: "removed".to_owned(),
+                    old_line: Some(old_line),
+                    new_line: None,
+                    content: (*old).to_owned(),
+                    position,
+                });
+                old_line += 1;
+                position += 1;
+                deletions += 1;
+            }
+            (None, Some(new)) => {
+                lines.push(RepositoryCommitDetailLine {
+                    kind: "added".to_owned(),
+                    old_line: None,
+                    new_line: Some(new_line),
+                    content: (*new).to_owned(),
+                    position,
+                });
+                new_line += 1;
+                position += 1;
+                additions += 1;
+            }
+            (None, None) => {}
+        }
+    }
+    if lines.is_empty() {
+        return (Vec::new(), additions, deletions);
+    }
+    let header = format!(
+        "@@ -1,{} +1,{} @@ {}",
+        old_lines.len(),
+        new_lines.len(),
+        path
+    );
+    (
+        vec![RepositoryCommitDetailHunk {
+            id: format!("{}-hunk-1", commit_detail_anchor_for_path(path)),
+            header,
+            old_start: 1,
+            old_lines: old_lines.len() as i64,
+            new_start: 1,
+            new_lines: new_lines.len() as i64,
+            lines,
+        }],
+        additions,
+        deletions,
+    )
+}
+
+fn commit_detail_anchor_for_path(path: &str) -> String {
+    let mut output = String::from("diff-");
+    for byte in path.bytes() {
+        if byte.is_ascii_alphanumeric() {
+            output.push(byte as char);
+        } else {
+            output.push('-');
+        }
+    }
+    output.trim_end_matches('-').to_owned()
 }
 
 fn split_commit_message(message: &str) -> (String, Option<String>) {

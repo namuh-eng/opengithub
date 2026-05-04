@@ -69,10 +69,105 @@ function commitDetail(
       signatureSummary: "Verified signature from an active GPG key.",
     },
     diffPlaceholder: {
-      state: "pending_phase",
-      message: "Diff rendering arrives in the next commit-detail slice.",
-      nextPhase: "Phase 2: Diff File Tree and Unified Diff Rendering",
+      state: "ready",
+      message: "Diff file tree and unified rows are available.",
+      nextPhase: "Phase 3: Diff Filter, In-Page Search, and Focus Behavior",
     },
+    diffSummary: {
+      totalFiles: 2,
+      additions: 2,
+      deletions: 1,
+    },
+    fileTree: [
+      {
+        path: "crates/api/src/routes/repositories.rs",
+        name: "repositories.rs",
+        depth: 3,
+        status: "modified",
+        additions: 1,
+        deletions: 1,
+        href: "#diff-crates-api-src-routes-repositories-rs",
+      },
+      {
+        path: "web/src/components/Commit.tsx",
+        name: "Commit.tsx",
+        depth: 3,
+        status: "added",
+        additions: 1,
+        deletions: 0,
+        href: "#diff-web-src-components-Commit-tsx",
+      },
+    ],
+    files: [
+      {
+        path: "crates/api/src/routes/repositories.rs",
+        status: "modified",
+        additions: 1,
+        deletions: 1,
+        byteSize: 120,
+        blobOid: "blob-1",
+        language: "Rust",
+        anchor: "diff-crates-api-src-routes-repositories-rs",
+        href: "/mona/octo-app/commit/abcdef1234567890#diff-crates-api-src-routes-repositories-rs",
+        rawHref:
+          "/mona/octo-app/raw/abcdef1234567890/crates/api/src/routes/repositories.rs",
+        viewHref:
+          "/mona/octo-app/blob/abcdef1234567890/crates/api/src/routes/repositories.rs",
+        isBinary: false,
+        isLarge: false,
+        hunks: [
+          {
+            id: "diff-crates-api-src-routes-repositories-rs-hunk-1",
+            header: "@@ -1,2 +1,2 @@ crates/api/src/routes/repositories.rs",
+            oldStart: 1,
+            oldLines: 2,
+            newStart: 1,
+            newLines: 2,
+            lines: [
+              {
+                kind: "context",
+                oldLine: 1,
+                newLine: 1,
+                content: "pub fn routes() {",
+                position: 1,
+              },
+              {
+                kind: "removed",
+                oldLine: 2,
+                newLine: null,
+                content: "  todo!()",
+                position: 2,
+              },
+              {
+                kind: "added",
+                oldLine: null,
+                newLine: 2,
+                content: "  commit_detail()",
+                position: 3,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        path: "web/src/components/Commit.tsx",
+        status: "added",
+        additions: 1,
+        deletions: 0,
+        byteSize: 60,
+        blobOid: "blob-2",
+        language: "TypeScript",
+        anchor: "diff-web-src-components-Commit-tsx",
+        href: "/mona/octo-app/commit/abcdef1234567890#diff-web-src-components-Commit-tsx",
+        rawHref:
+          "/mona/octo-app/raw/abcdef1234567890/web/src/components/Commit.tsx",
+        viewHref:
+          "/mona/octo-app/blob/abcdef1234567890/web/src/components/Commit.tsx",
+        isBinary: false,
+        isLarge: false,
+        hunks: [],
+      },
+    ],
   };
   return { ...base, ...overrides };
 }
@@ -116,7 +211,27 @@ describe("RepositoryCommitDetailPage", () => {
       "href",
       "/mona/octo-app/pull/12",
     );
-    expect(screen.getByText(/Diff rendering arrives/)).toBeVisible();
+    expect(screen.getByText(/files changed with/)).toBeVisible();
+    expect(
+      screen.getByRole("navigation", { name: "Changed file tree" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: /repositories.rs/ }),
+    ).toHaveAttribute("href", "#diff-crates-api-src-routes-repositories-rs");
+    expect(
+      screen.getByText("@@ -1,2 +1,2 @@ crates/api/src/routes/repositories.rs"),
+    ).toBeVisible();
+    expect(screen.getByText("commit_detail()")).toBeVisible();
+    expect(screen.getAllByRole("link", { name: "Raw" })[0]).toHaveAttribute(
+      "href",
+      "/mona/octo-app/raw/abcdef1234567890/crates/api/src/routes/repositories.rs",
+    );
+    expect(
+      screen.getAllByRole("link", { name: "View file" })[0],
+    ).toHaveAttribute(
+      "href",
+      "/mona/octo-app/blob/abcdef1234567890/crates/api/src/routes/repositories.rs",
+    );
     expect(
       container.querySelectorAll('a[href="#"], a:not([href])'),
     ).toHaveLength(0);

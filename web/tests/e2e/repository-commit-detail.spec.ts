@@ -83,7 +83,7 @@ test.beforeEach(async ({ page }) => {
   await waitForApiHealth(page);
 });
 
-test("signed-in commit detail renders summary controls and copy feedback", async ({
+test("signed-in commit detail renders summary controls and unified diff", async ({
   page,
 }) => {
   const seeded = seedSession({ DASHBOARD_E2E_TREE_REFS: "1" });
@@ -115,9 +115,21 @@ test("signed-in commit detail renders summary controls and copy feedback", async
   await expect(
     page.getByRole("heading", { name: "Changed files" }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Changed file tree" }),
+  ).toBeVisible();
+  await expect(page.getByText(/files changed with/)).toBeVisible();
+  await expect(page.locator("article.card[id^='diff-']").first()).toBeVisible();
+  await expect(page.getByRole("link", { name: "Raw" }).first()).toHaveAttribute(
+    "href",
+    new RegExp(`${repositoryHref}/raw/`),
+  );
+  await expect(
+    page.getByRole("link", { name: "View file" }).first(),
+  ).toHaveAttribute("href", new RegExp(`${repositoryHref}/blob/`));
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/commits-002-phase1-summary.jpg",
+    path: "../ralph/screenshots/build/commits-002-phase2-diff.jpg",
   });
 });
