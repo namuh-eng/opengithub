@@ -11,11 +11,13 @@ use crate::{
     auth::extractor::AuthenticatedUser,
     domain::{
         organizations::{
-            create_organization_from_signup, organization_people, organization_profile_settings,
-            organization_repositories, organization_slug_availability, public_organization_profile,
-            rename_organization, update_organization_profile_settings, CreateOrganizationRequest,
-            CreatedOrganization, OrganizationCreateError, OrganizationPeopleList,
-            OrganizationPeopleListQuery, OrganizationProfileError, OrganizationProfileSettings,
+            create_organization_from_signup, organization_people, organization_people_admin,
+            organization_profile_settings, organization_repositories,
+            organization_slug_availability, public_organization_profile, rename_organization,
+            update_organization_profile_settings, CreateOrganizationRequest, CreatedOrganization,
+            OrganizationCreateError, OrganizationPeopleAdmin, OrganizationPeopleAdminError,
+            OrganizationPeopleAdminQuery, OrganizationPeopleList, OrganizationPeopleListQuery,
+            OrganizationProfileError, OrganizationProfileSettings,
             OrganizationProfileSettingsPatch, OrganizationRepositoryList,
             OrganizationRepositoryListQuery, OrganizationSettingsError,
             OrganizationSlugAvailability, PublicOrganizationProfile, RenameOrganizationRequest,
@@ -48,6 +50,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/api/orgs/:org/repositories", get(public_repositories))
         .route("/api/orgs/:org/people", get(public_people))
+        .route("/api/orgs/:org/people/admin", get(admin_people))
         .route("/api/orgs/:org/packages", get(public_packages))
         .route(
             "/api/orgs/:org/packages/:package_type/:package_name",
@@ -197,6 +200,31 @@ async fn public_people(
     )
     .await
     .map_err(map_organization_profile_error)?;
+
+    Ok(Json(people))
+}
+
+async fn admin_people(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(org): Path<String>,
+    Query(query): Query<OrganizationPeopleAdminRouteQuery>,
+) -> Result<Json<OrganizationPeopleAdmin>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let people = organization_people_admin(
+        pool,
+        &org,
+        actor.0.id,
+        OrganizationPeopleAdminQuery {
+            tab: query.tab.as_deref(),
+            query: query.q.as_deref(),
+            page: query.page,
+            page_size: query.page_size,
+        },
+    )
+    .await
+    .map_err(map_organization_people_admin_error)?;
 
     Ok(Json(people))
 }
@@ -355,6 +383,16 @@ struct OrganizationPeopleQuery {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct OrganizationPeopleAdminRouteQuery {
+    tab: Option<String>,
+    q: Option<String>,
+    page: Option<i64>,
+    #[serde(alias = "page_size")]
+    page_size: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct OwnerPackagesQuery {
     q: Option<String>,
     #[serde(rename = "type")]
@@ -435,6 +473,33 @@ fn map_organization_profile_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal_error",
             "organization profile could not be loaded",
+        ),
+    }
+}
+
+fn map_organization_people_admin_error(
+    error: OrganizationPeopleAdminError,
+) -> (StatusCode, Json<ErrorEnvelope>) {
+    match error {
+        OrganizationPeopleAdminError::NotFound => error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "organization people administration was not found",
+        ),
+        OrganizationPeopleAdminError::Forbidden => error_response(
+            StatusCode::FORBIDDEN,
+            "forbidden",
+            "organization people administration requires owner or admin access",
+        ),
+        OrganizationPeopleAdminError::InvalidFilter(message) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            message,
+        ),
+        OrganizationPeopleAdminError::Sqlx(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "organization people administration could not be loaded",
         ),
     }
 }

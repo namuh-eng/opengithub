@@ -6,7 +6,7 @@
 
 ## Phase 1: Owner People Admin API Contract - list members, tabs, and mutation state
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the authenticated owner/admin organization people management contract while preserving the current public `/api/orgs/{org}/people` read behavior. Owners/admins can load Members, Outside collaborators, Pending collaborators, Invitations, Failed invitations, and Security Managers with search, counts, row capabilities, 2FA/session signals, role/source metadata, and export URLs. Non-admin members and outsiders must not see admin-only details.
 

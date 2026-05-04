@@ -409,6 +409,130 @@ pub struct OrganizationPeopleFilters {
     pub page_size: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationPeopleAdmin {
+    pub organization: OrganizationSettingsIdentity,
+    pub tab: OrganizationPeopleAdminTab,
+    pub filters: OrganizationPeopleAdminFilters,
+    pub counts: OrganizationPeopleAdminCounts,
+    pub rows: ListEnvelope<OrganizationPeopleAdminRow>,
+    pub invitations: ListEnvelope<OrganizationInvitationRow>,
+    pub exports: Vec<OrganizationPeopleAdminExport>,
+    pub viewer_state: OrganizationPeopleAdminViewerState,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum OrganizationPeopleAdminTab {
+    Members,
+    OutsideCollaborators,
+    PendingCollaborators,
+    Invitations,
+    FailedInvitations,
+    SecurityManagers,
+}
+
+impl OrganizationPeopleAdminTab {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Members => "members",
+            Self::OutsideCollaborators => "outside_collaborators",
+            Self::PendingCollaborators => "pending_collaborators",
+            Self::Invitations => "invitations",
+            Self::FailedInvitations => "failed_invitations",
+            Self::SecurityManagers => "security_managers",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationPeopleAdminRow {
+    pub user_id: Uuid,
+    pub login: String,
+    pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub href: String,
+    pub role: String,
+    pub membership_visibility: String,
+    pub outside_collaborator: bool,
+    pub security_manager: bool,
+    pub two_factor_enabled: bool,
+    pub has_active_session: bool,
+    pub team_count: i64,
+    pub roles_count: i64,
+    pub membership_source: String,
+    pub joined_at: DateTime<Utc>,
+    pub action_state: OrganizationPeopleAdminActionState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationInvitationRow {
+    pub id: Uuid,
+    pub invited_user_id: Option<Uuid>,
+    pub invited_login: Option<String>,
+    pub invited_email: String,
+    pub role: String,
+    pub team_count: i64,
+    pub status: String,
+    pub email_delivery_status: String,
+    pub email_delivery_error: Option<String>,
+    pub invited_by_user_id: Uuid,
+    pub expires_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+    pub can_retry: bool,
+    pub can_cancel: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationPeopleAdminFilters {
+    pub tab: OrganizationPeopleAdminTab,
+    pub query: Option<String>,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationPeopleAdminCounts {
+    pub members: i64,
+    pub outside_collaborators: i64,
+    pub pending_collaborators: i64,
+    pub invitations: i64,
+    pub failed_invitations: i64,
+    pub security_managers: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationPeopleAdminExport {
+    pub format: String,
+    pub href: String,
+    pub available: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationPeopleAdminActionState {
+    pub can_change_visibility: bool,
+    pub can_change_role: bool,
+    pub can_remove: bool,
+    pub final_owner: bool,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationPeopleAdminViewerState {
+    pub role: String,
+    pub can_admin_people: bool,
+    pub can_invite: bool,
+    pub can_export: bool,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct OrganizationRepositoryListQuery<'a> {
     pub query: Option<&'a str>,
@@ -427,12 +551,32 @@ pub struct OrganizationPeopleListQuery<'a> {
     pub page_size: Option<i64>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct OrganizationPeopleAdminQuery<'a> {
+    pub tab: Option<&'a str>,
+    pub query: Option<&'a str>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum OrganizationProfileError {
     #[error("organization profile was not found")]
     NotFound,
     #[error("invalid organization repository filter: {0}")]
     InvalidRepositoryFilter(String),
+    #[error("database error")]
+    Sqlx(#[from] sqlx::Error),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum OrganizationPeopleAdminError {
+    #[error("organization people administration was not found")]
+    NotFound,
+    #[error("organization people administration requires owner or admin access")]
+    Forbidden,
+    #[error("invalid organization people filter: {0}")]
+    InvalidFilter(String),
     #[error("database error")]
     Sqlx(#[from] sqlx::Error),
 }
@@ -1467,6 +1611,90 @@ pub async fn organization_people(
     })
 }
 
+pub async fn organization_people_admin(
+    pool: &PgPool,
+    slug: &str,
+    actor_user_id: Uuid,
+    query: OrganizationPeopleAdminQuery<'_>,
+) -> Result<OrganizationPeopleAdmin, OrganizationPeopleAdminError> {
+    let organization = organization_by_slug(pool, slug)
+        .await
+        .map_err(map_profile_error_to_people_admin)?;
+    let viewer_role = viewer_role(pool, organization.id, Some(actor_user_id)).await?;
+    if viewer_role.is_none() && organization.profile_visibility == "private" {
+        return Err(OrganizationPeopleAdminError::NotFound);
+    }
+    let Some(role) = viewer_role else {
+        return Err(OrganizationPeopleAdminError::Forbidden);
+    };
+    if !matches!(role.as_str(), "owner" | "admin") {
+        return Err(OrganizationPeopleAdminError::Forbidden);
+    }
+
+    let filters = normalize_organization_people_admin_filters(query)?;
+    let counts = organization_people_admin_counts(pool, organization.id).await?;
+    let exports = organization_people_admin_exports(&organization.slug, &filters);
+
+    let (rows, invitations, row_total, invitation_total) = match filters.tab {
+        OrganizationPeopleAdminTab::Members
+        | OrganizationPeopleAdminTab::OutsideCollaborators
+        | OrganizationPeopleAdminTab::SecurityManagers => {
+            let mut rows =
+                organization_people_admin_member_rows(pool, organization.id, filters.tab).await?;
+            apply_organization_people_admin_member_search(&mut rows, filters.query.as_deref());
+            let total = rows.len() as i64;
+            let rows = paginate_vec(rows, filters.page, filters.page_size);
+            (rows, Vec::new(), total, 0)
+        }
+        OrganizationPeopleAdminTab::PendingCollaborators
+        | OrganizationPeopleAdminTab::Invitations
+        | OrganizationPeopleAdminTab::FailedInvitations => {
+            let mut invitations =
+                organization_people_admin_invitation_rows(pool, organization.id, filters.tab)
+                    .await?;
+            apply_organization_people_admin_invitation_search(
+                &mut invitations,
+                filters.query.as_deref(),
+            );
+            let total = invitations.len() as i64;
+            let invitations = paginate_vec(invitations, filters.page, filters.page_size);
+            (Vec::new(), invitations, 0, total)
+        }
+    };
+
+    Ok(OrganizationPeopleAdmin {
+        organization: OrganizationSettingsIdentity {
+            id: organization.id,
+            slug: organization.slug.clone(),
+            name: organization.display_name,
+            href: format!("/orgs/{}", organization.slug),
+            settings_href: format!("/organizations/{}/settings/profile", organization.slug),
+        },
+        tab: filters.tab,
+        filters: filters.clone(),
+        counts,
+        rows: ListEnvelope {
+            items: rows,
+            total: row_total,
+            page: filters.page,
+            page_size: filters.page_size,
+        },
+        invitations: ListEnvelope {
+            items: invitations,
+            total: invitation_total,
+            page: filters.page,
+            page_size: filters.page_size,
+        },
+        exports,
+        viewer_state: OrganizationPeopleAdminViewerState {
+            role,
+            can_admin_people: true,
+            can_invite: true,
+            can_export: true,
+        },
+    })
+}
+
 async fn organization_by_slug(
     pool: &PgPool,
     slug: &str,
@@ -1512,6 +1740,44 @@ fn normalize_organization_people_filters(
         page: pagination.page,
         page_size: pagination.page_size,
     }
+}
+
+fn normalize_organization_people_admin_filters(
+    query: OrganizationPeopleAdminQuery<'_>,
+) -> Result<OrganizationPeopleAdminFilters, OrganizationPeopleAdminError> {
+    let pagination = normalize_pagination(query.page, query.page_size);
+    let tab = match query.tab.unwrap_or("members").trim() {
+        "" | "members" => OrganizationPeopleAdminTab::Members,
+        "outside" | "outside-collaborators" | "outside_collaborators" => {
+            OrganizationPeopleAdminTab::OutsideCollaborators
+        }
+        "pending" | "pending-collaborators" | "pending_collaborators" => {
+            OrganizationPeopleAdminTab::PendingCollaborators
+        }
+        "invitations" | "invites" => OrganizationPeopleAdminTab::Invitations,
+        "failed" | "failed-invitations" | "failed_invitations" => {
+            OrganizationPeopleAdminTab::FailedInvitations
+        }
+        "security" | "security-managers" | "security_managers" => {
+            OrganizationPeopleAdminTab::SecurityManagers
+        }
+        other => {
+            return Err(OrganizationPeopleAdminError::InvalidFilter(format!(
+                "unsupported organization people tab: {other}"
+            )));
+        }
+    };
+    let normalized_query = query.query.and_then(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.chars().take(120).collect::<String>())
+    });
+
+    Ok(OrganizationPeopleAdminFilters {
+        tab,
+        query: normalized_query,
+        page: pagination.page,
+        page_size: pagination.page_size,
+    })
 }
 
 fn normalize_organization_repository_filters(
@@ -1774,6 +2040,295 @@ async fn visible_organization_people_rows(
             }
         })
         .collect())
+}
+
+async fn organization_people_admin_counts(
+    pool: &PgPool,
+    organization_id: Uuid,
+) -> Result<OrganizationPeopleAdminCounts, sqlx::Error> {
+    let row = sqlx::query(
+        r#"
+        SELECT
+            COUNT(*) FILTER (WHERE outside_collaborator = false AND security_manager = false)::bigint AS members,
+            COUNT(*) FILTER (WHERE outside_collaborator = true)::bigint AS outside_collaborators,
+            COUNT(*) FILTER (WHERE security_manager = true)::bigint AS security_managers
+        FROM organization_memberships
+        WHERE organization_id = $1
+        "#,
+    )
+    .bind(organization_id)
+    .fetch_one(pool)
+    .await?;
+    let invitation_row = sqlx::query(
+        r#"
+        SELECT
+            COUNT(*) FILTER (WHERE status = 'pending' AND invited_user_id IS NOT NULL)::bigint AS pending_collaborators,
+            COUNT(*) FILTER (WHERE status = 'pending')::bigint AS invitations,
+            COUNT(*) FILTER (WHERE status = 'failed' OR email_delivery_status = 'failed')::bigint AS failed_invitations
+        FROM organization_invitations
+        WHERE organization_id = $1
+        "#,
+    )
+    .bind(organization_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(OrganizationPeopleAdminCounts {
+        members: row.get("members"),
+        outside_collaborators: row.get("outside_collaborators"),
+        pending_collaborators: invitation_row.get("pending_collaborators"),
+        invitations: invitation_row.get("invitations"),
+        failed_invitations: invitation_row.get("failed_invitations"),
+        security_managers: row.get("security_managers"),
+    })
+}
+
+async fn organization_people_admin_member_rows(
+    pool: &PgPool,
+    organization_id: Uuid,
+    tab: OrganizationPeopleAdminTab,
+) -> Result<Vec<OrganizationPeopleAdminRow>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
+        SELECT users.id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS login,
+               users.display_name,
+               users.avatar_url,
+               organization_memberships.role,
+               organization_memberships.membership_visibility,
+               organization_memberships.outside_collaborator,
+               organization_memberships.security_manager,
+               organization_memberships.created_at,
+               COALESCE(team_counts.total, 0)::bigint AS team_count,
+               COALESCE(active_sessions.total, 0)::bigint AS active_session_count,
+               owner_counts.total::bigint AS owner_count
+        FROM organization_memberships
+        JOIN users ON users.id = organization_memberships.user_id
+        CROSS JOIN (
+            SELECT COUNT(*) AS total
+            FROM organization_memberships
+            WHERE organization_id = $1 AND role = 'owner'
+        ) owner_counts
+        LEFT JOIN (
+            SELECT team_memberships.user_id, COUNT(*) AS total
+            FROM team_memberships
+            JOIN teams ON teams.id = team_memberships.team_id
+            WHERE teams.organization_id = $1
+            GROUP BY team_memberships.user_id
+        ) team_counts ON team_counts.user_id = users.id
+        LEFT JOIN (
+            SELECT user_id, COUNT(*) AS total
+            FROM sessions
+            WHERE user_id IS NOT NULL
+              AND revoked_at IS NULL
+              AND expires_at > now()
+            GROUP BY user_id
+        ) active_sessions ON active_sessions.user_id = users.id
+        WHERE organization_memberships.organization_id = $1
+          AND (
+            ($2 = 'members' AND organization_memberships.outside_collaborator = false AND organization_memberships.security_manager = false)
+            OR ($2 = 'outside_collaborators' AND organization_memberships.outside_collaborator = true)
+            OR ($2 = 'security_managers' AND organization_memberships.security_manager = true)
+          )
+        ORDER BY
+            CASE organization_memberships.role
+                WHEN 'owner' THEN 0
+                WHEN 'admin' THEN 1
+                ELSE 2
+            END ASC,
+            lower(COALESCE(NULLIF(users.display_name, ''), NULLIF(users.username, ''), users.email)) ASC,
+            lower(COALESCE(NULLIF(users.username, ''), users.email)) ASC
+        "#,
+    )
+    .bind(organization_id)
+    .bind(tab.as_str())
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let login: String = row.get("login");
+            let role: String = row.get("role");
+            let outside_collaborator: bool = row.get("outside_collaborator");
+            let security_manager: bool = row.get("security_manager");
+            let owner_count: i64 = row.get("owner_count");
+            let final_owner = role == "owner" && owner_count <= 1;
+            let membership_source = if security_manager {
+                "security_manager"
+            } else if outside_collaborator {
+                "outside_collaborator"
+            } else {
+                "organization"
+            };
+            OrganizationPeopleAdminRow {
+                user_id: row.get("id"),
+                href: format!("/{login}"),
+                login,
+                display_name: row.get("display_name"),
+                avatar_url: row.get("avatar_url"),
+                role: role.clone(),
+                membership_visibility: row.get("membership_visibility"),
+                outside_collaborator,
+                security_manager,
+                two_factor_enabled: false,
+                has_active_session: row.get::<i64, _>("active_session_count") > 0,
+                team_count: row.get("team_count"),
+                roles_count: 1 + row.get::<i64, _>("team_count"),
+                membership_source: membership_source.to_owned(),
+                joined_at: row.get("created_at"),
+                action_state: OrganizationPeopleAdminActionState {
+                    can_change_visibility: true,
+                    can_change_role: !final_owner,
+                    can_remove: !final_owner,
+                    final_owner,
+                    reason: final_owner.then(|| "final_owner".to_owned()),
+                },
+            }
+        })
+        .collect())
+}
+
+async fn organization_people_admin_invitation_rows(
+    pool: &PgPool,
+    organization_id: Uuid,
+    tab: OrganizationPeopleAdminTab,
+) -> Result<Vec<OrganizationInvitationRow>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
+        SELECT organization_invitations.id,
+               organization_invitations.invited_user_id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS invited_login,
+               organization_invitations.invited_email,
+               organization_invitations.role,
+               cardinality(organization_invitations.team_ids)::bigint AS team_count,
+               organization_invitations.status,
+               organization_invitations.email_delivery_status,
+               organization_invitations.email_delivery_error,
+               organization_invitations.invited_by_user_id,
+               organization_invitations.expires_at,
+               organization_invitations.created_at
+        FROM organization_invitations
+        LEFT JOIN users ON users.id = organization_invitations.invited_user_id
+        WHERE organization_invitations.organization_id = $1
+          AND (
+            ($2 = 'pending_collaborators' AND organization_invitations.status = 'pending' AND organization_invitations.invited_user_id IS NOT NULL)
+            OR ($2 = 'invitations' AND organization_invitations.status = 'pending')
+            OR ($2 = 'failed_invitations' AND (organization_invitations.status = 'failed' OR organization_invitations.email_delivery_status = 'failed'))
+          )
+        ORDER BY organization_invitations.created_at DESC, lower(organization_invitations.invited_email) ASC
+        "#,
+    )
+    .bind(organization_id)
+    .bind(tab.as_str())
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let status: String = row.get("status");
+            let email_delivery_status: String = row.get("email_delivery_status");
+            OrganizationInvitationRow {
+                id: row.get("id"),
+                invited_user_id: row.get("invited_user_id"),
+                invited_login: row.get("invited_login"),
+                invited_email: row.get("invited_email"),
+                role: row.get("role"),
+                team_count: row.get("team_count"),
+                status: status.clone(),
+                email_delivery_status: email_delivery_status.clone(),
+                email_delivery_error: row.get("email_delivery_error"),
+                invited_by_user_id: row.get("invited_by_user_id"),
+                expires_at: row.get("expires_at"),
+                created_at: row.get("created_at"),
+                can_retry: status == "failed" || email_delivery_status == "failed",
+                can_cancel: status == "pending",
+            }
+        })
+        .collect())
+}
+
+fn apply_organization_people_admin_member_search(
+    rows: &mut Vec<OrganizationPeopleAdminRow>,
+    query: Option<&str>,
+) {
+    let Some(query) = query else {
+        return;
+    };
+    let needle = query.to_ascii_lowercase();
+    rows.retain(|row| {
+        row.login.to_ascii_lowercase().contains(&needle)
+            || row
+                .display_name
+                .as_deref()
+                .unwrap_or_default()
+                .to_ascii_lowercase()
+                .contains(&needle)
+            || row.role.to_ascii_lowercase().contains(&needle)
+    });
+}
+
+fn apply_organization_people_admin_invitation_search(
+    rows: &mut Vec<OrganizationInvitationRow>,
+    query: Option<&str>,
+) {
+    let Some(query) = query else {
+        return;
+    };
+    let needle = query.to_ascii_lowercase();
+    rows.retain(|row| {
+        row.invited_email.to_ascii_lowercase().contains(&needle)
+            || row
+                .invited_login
+                .as_deref()
+                .unwrap_or_default()
+                .to_ascii_lowercase()
+                .contains(&needle)
+            || row.role.to_ascii_lowercase().contains(&needle)
+    });
+}
+
+fn organization_people_admin_exports(
+    slug: &str,
+    filters: &OrganizationPeopleAdminFilters,
+) -> Vec<OrganizationPeopleAdminExport> {
+    ["json", "csv"]
+        .into_iter()
+        .map(|format| {
+            let mut href = format!(
+                "/api/orgs/{slug}/people/export?format={format}&tab={}",
+                filters.tab.as_str()
+            );
+            if let Some(query) = &filters.query {
+                href.push_str("&q=");
+                href.push_str(&query.replace(' ', "+"));
+            }
+            OrganizationPeopleAdminExport {
+                format: format.to_owned(),
+                href,
+                available: true,
+            }
+        })
+        .collect()
+}
+
+fn paginate_vec<T>(items: Vec<T>, page: i64, page_size: i64) -> Vec<T> {
+    let offset = ((page - 1) * page_size) as usize;
+    let limit = page_size as usize;
+    items.into_iter().skip(offset).take(limit).collect()
+}
+
+fn map_profile_error_to_people_admin(
+    error: OrganizationProfileError,
+) -> OrganizationPeopleAdminError {
+    match error {
+        OrganizationProfileError::NotFound => OrganizationPeopleAdminError::NotFound,
+        OrganizationProfileError::InvalidRepositoryFilter(message) => {
+            OrganizationPeopleAdminError::InvalidFilter(message)
+        }
+        OrganizationProfileError::Sqlx(error) => OrganizationPeopleAdminError::Sqlx(error),
+    }
 }
 
 fn organization_repository_language_options(

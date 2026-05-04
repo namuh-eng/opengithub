@@ -3264,3 +3264,12 @@
 - Created `.qrspi/org-admin-003/structure.md` for the first incomplete PRD feature, splitting organization people administration into five vertical phases: owner/admin admin-list API contract, Editorial people management shell, invitations with SES delivery state, membership mutations/exports, and final docs/browser/QA/build-pass bookkeeping.
 - No source implementation was started because `org-admin-003.needs_structure=true` and the build-loop contract requires the structure outline first, then `<promise>NEXT</promise>`.
 - Verified `org-admin-003.build_pass=false`, `qa_pass=false`, and all structure phases remain unchecked for the next invocation.
+
+2026-05-04 - org-admin-003 phase 1 owner people admin API contract
+
+- Completed Phase 1 from `.qrspi/org-admin-003/structure.md`: organization owners/admins can now load the admin people management contract without marking `org-admin-003.build_pass=true`.
+- Added additive migration `202605040012_organization_people_admin` for membership visibility, outside-collaborator/security-manager markers, organization invitation lifecycle rows, email delivery status/error metadata, expiry state, and lookup indexes.
+- Added `GET /api/orgs/{org}/people/admin` with authenticated owner/admin authorization, private-org outsider 404 privacy, non-admin 403, tab normalization, search/pagination, counts for Members/Outside/Pending/Invitations/Failed/Security Managers, row action capability flags, active-session signal, team/role counts, export affordances, and invitation rows with token hashes redacted.
+- Added focused Rust contract coverage for owner/admin reads, anonymous/member/outsider-private denial, tab counts, search, pagination, membership visibility/source, active-session signal, team counts, final-owner capability flags, pending/failed invitation states, retry/cancel affordances, and no secret/token leakage.
+- Verification passed: `cargo fmt --all`; focused `organization_people_admin_contract`; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 377 web tests; mandatory Editorial banned-value scan returned zero matches.
+- Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first and the structure outline marks browser smoke optional for this phase. `prd.json` remains `build_pass:false` because Phases 2-5 remain.

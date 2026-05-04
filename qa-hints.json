@@ -4779,5 +4779,22 @@
       "Archive/delete execution remains intentionally unsupported until retention, repository ownership transfer, and recovery policies are implemented; QA should verify the UI remains clearly disabled and non-destructive.",
       "Avatar upload is still unavailable for organizations; QA should verify future S3-backed avatar work preserves the no bucket/key leakage contract documented here."
     ]
+  },
+  {
+    "feature_id": "org-admin-003",
+    "tests_written": [
+      "Completed Phase 1 Owner People Admin API Contract without marking org-admin-003 build_pass=true.",
+      "Added additive organization people admin migration for membership visibility, outside/security-manager markers, organization invitations, delivery status/error metadata, expiry state, and indexes.",
+      "Added authenticated GET /api/orgs/{org}/people/admin with owner/admin access, private-org outsider 404, member 403, tabs, counts, search, pagination, row capabilities, active-session signal, team/role counts, export affordances, and redacted invitation rows.",
+      "Focused Rust contract covers owner/admin reads, unauthorized/member/private-outsider denial, tab counts, search, pagination, membership source/visibility, active-session flags, final-owner capability flags, invitation pending/failed states, retry/cancel flags, and no token/secret leakage.",
+      "Verification passed: cargo fmt, focused organization_people_admin_contract, make check, make test with Cargo tests plus 377 web tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 must verify the Editorial people management shell at /orgs/{org}/people renders the admin contract without dead controls or GitHub visual regressions.",
+      "Phase 3 must verify real invite/retry/cancel mutations, 7-day expiry, SES degraded delivery handling, duplicate invite conflicts, and audit redaction.",
+      "Phase 4 must verify membership visibility, role changes, removal, final-owner guards, and JSON/CSV exports against the API.",
+      "Run browser smoke once UI is wired; this phase was backend-only and browser smoke is optional in the structure outline.",
+      "Probe high-volume organizations, long Unicode display names/emails, and concurrent invitation inserts beyond the focused admin-read contract."
+    ]
   }
 ]
