@@ -34,6 +34,59 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     notes: ["Anonymous callers receive a standard 401 error envelope."],
   },
   {
+    id: "organization-slug-availability",
+    method: "GET",
+    path: "/api/organizations/slug-availability?name=Acme%20Labs",
+    title: "Check organization slug availability",
+    description:
+      "Normalizes a proposed organization name and reports whether the resulting URL slug can be used by the signed-in user before submitting the create form.",
+    auth: "Signed opengithub session cookie",
+    response: `{
+  "normalizedSlug": "acme-labs",
+  "available": true,
+  "reason": null,
+  "existingKind": null
+}`,
+    notes: [
+      "The same normalizer is used by the browser preview and POST /api/organizations.",
+      "Reserved slugs and existing user or organization logins return available=false without leaking private account metadata.",
+      "Validation errors use the standard validation_failed envelope and never include stack traces.",
+    ],
+  },
+  {
+    id: "organization-create",
+    method: "POST",
+    path: "/api/organizations",
+    title: "Create organization",
+    description:
+      "Creates a Free organization from the onboarding flow with owner membership, default policy settings, and a redacted audit event.",
+    auth: "Signed opengithub session cookie",
+    request: `{
+  "name": "Acme Labs",
+  "contactEmail": "admin@example.com",
+  "ownershipType": "business",
+  "companyName": "Acme Labs Inc.",
+  "termsAccepted": true
+}`,
+    response: `{
+  "id": "org_01",
+  "slug": "acme-labs",
+  "displayName": "Acme Labs",
+  "contactEmail": "admin@example.com",
+  "ownershipType": "business",
+  "termsOfServiceType": "free_organization_terms",
+  "companyName": "Acme Labs Inc.",
+  "href": "/orgs/acme-labs"
+}`,
+    notes: [
+      "Only the Free plan is provisioned in the MVP; paid plan cards remain informational browser states.",
+      "The creator receives the owner role in organization_memberships in the same transaction.",
+      "New rows receive default organization_policy_settings before the API returns success.",
+      "Duplicate, reserved, invalid email, missing terms, and rate-limit failures return stable error envelopes for inline form rendering.",
+      "organization_audit_events store redacted create metadata only; contact email and company fields are not written to audit payloads.",
+    ],
+  },
+  {
     id: "personal-access-tokens-list",
     method: "GET",
     path: "/api/settings/tokens",

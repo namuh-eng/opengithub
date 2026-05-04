@@ -3,6 +3,8 @@ import { expect, type Page, test } from "@playwright/test";
 
 const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 
+test.setTimeout(60_000);
+
 type SeededSession = {
   cookieName: string;
   cookieValue: string;
@@ -84,6 +86,10 @@ test("signed-in organization plan picker opens setup and validates slugs", async
   await expect(
     page.getByRole("button", { name: "Team plan unavailable" }),
   ).toBeDisabled();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-001-final-plan-picker.jpg",
+  });
 
   await page
     .getByRole("button", { name: "Create a free organization" })
@@ -98,7 +104,13 @@ test("signed-in organization plan picker opens setup and validates slugs", async
   await expect(
     page.getByText(`opengithub.namuh.co/${normalized}`),
   ).toBeVisible();
-  await expect(page.getByText(`${normalized} is available.`)).toBeVisible();
+  await expect(page.getByRole("status")).toContainText(
+    `${normalized} is available.`,
+  );
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-001-final-setup-form.jpg",
+  });
 
   await page.getByLabel("Organization name *").fill("settings");
   await expect(
@@ -117,7 +129,7 @@ test("signed-in organization plan picker opens setup and validates slugs", async
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-001-phase2-plan-picker.jpg",
+    path: "../ralph/screenshots/build/org-admin-001-final-validation-error.jpg",
   });
 });
 
@@ -147,7 +159,7 @@ test("organization create setup stays usable on mobile", async ({ page }) => {
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-001-phase4-mobile.jpg",
+    path: "../ralph/screenshots/build/org-admin-001-final-mobile.jpg",
   });
 });
 
@@ -216,6 +228,18 @@ test("signed-in user creates a free organization and sees it in navigation", asy
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-001-phase3-create-redirect.jpg",
+    path: "../ralph/screenshots/build/org-admin-001-final-create-redirect.jpg",
   });
+
+  await page.goto("/organizations/new");
+  await page
+    .getByRole("button", { name: "Create a free organization" })
+    .click();
+  await page.getByLabel("Organization name *").fill(uniqueName);
+  await expect(
+    page.getByText(/already taken|not available|reserved/i),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Create organization" }),
+  ).toBeDisabled();
 });

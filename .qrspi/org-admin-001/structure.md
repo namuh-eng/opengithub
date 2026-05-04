@@ -76,7 +76,7 @@
 
 ## Phase 5: Docs, Browser QA Handoff, and Build Pass - finish org-admin-001
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Document the organization creation API and complete final build-loop bookkeeping. Mark `org-admin-001.build_pass=true` only after API contract, Editorial UI, real browser create flow, validation, redirect behavior, and QA handoff are verified.
 

@@ -49,6 +49,31 @@ describe("ApiDocsPage", () => {
         /Signed-out and outside viewers see public members only/,
       ),
     ).toBeVisible();
+    expect(
+      screen.getByText("/api/organizations/slug-availability?name=Acme%20Labs"),
+    ).toBeVisible();
+    expect(screen.getByText("/api/organizations")).toBeVisible();
+    expect(
+      screen.getByText(
+        /Reserved slugs and existing user or organization logins return available=false/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /The creator receives the owner role in organization_memberships/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/default organization_policy_settings/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Duplicate, reserved, invalid email, missing terms, and rate-limit failures/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/contact email and company fields are not written/),
+    ).toBeVisible();
     expect(screen.getByText("/api/repos/{owner}/{repo}/issues")).toBeVisible();
     expect(
       screen.getAllByText("/api/repos/{owner}/{repo}/settings")[0],

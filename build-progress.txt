@@ -1,3 +1,12 @@
+2026-05-04 - org-admin-001 phase 5 final QA handoff
+
+- Completed Phase 5 from `.qrspi/org-admin-001/structure.md`: the organization creation flow is now locked as a completed vertical slice and `org-admin-001.build_pass=true`.
+- Added `/docs/api` coverage for `GET /api/organizations/slug-availability` and `POST /api/organizations`, including auth, validation envelopes, reserved slug behavior, terms acceptance, default owner membership, default policy settings, and audit redaction.
+- Extended API docs assertions and final Playwright organization-create smoke for plan picker, live slug validation, setup form, duplicate/reserved-name failures, real create submit, redirect to the new org, app-shell org presence, mobile no-overflow, keyboard recovery, and no dead controls.
+- Saved final screenshots: `ralph/screenshots/build/org-admin-001-final-plan-picker.jpg`, `org-admin-001-final-setup-form.jpg`, `org-admin-001-final-validation-error.jpg`, `org-admin-001-final-create-redirect.jpg`, and `org-admin-001-final-mobile.jpg`.
+- Verification passed: focused API docs and organization-create Vitest, focused Biome, `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`, `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 371 web tests, focused Playwright `organization-create.spec.ts` with 5 tests, full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false SESSION_SECRET=playwright-session-secret-with-enough-entropy SESSION_COOKIE_NAME=og_session DASHBOARD_E2E_SKIP_MIGRATIONS=1 make test-e2e` with 113 tests, and mandatory Editorial banned-value scan.
+- The first focused Playwright attempt timed out while the dev stack was still warming; the page snapshot showed the expected availability status had arrived. The test now uses a 60s file budget and role-based status assertion, and the rerun passed.
+
 2026-05-04 - org-admin-001 phase 2 Editorial organization plan picker and setup form
 
 - Completed Phase 2 from `.qrspi/org-admin-001/structure.md`: `/organizations/new` now renders a real protected Editorial organization creation plan picker and setup form without marking `org-admin-001.build_pass=true`.

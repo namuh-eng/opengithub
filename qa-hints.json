@@ -4669,5 +4669,23 @@
       "Test very long organization names, email addresses, company names, and translated copy on narrow mobile widths beyond the covered 390px smoke.",
       "Confirm reserved_slugs stays synchronized with future app routes such as org settings, docs, and package registry paths."
     ]
+  },
+  {
+    "feature_id": "org-admin-001",
+    "tests_written": [
+      "Completed Phase 5 Docs, Browser QA Handoff, and Build Pass; org-admin-001 build_pass is now true and qa_pass remains false for QA.",
+      "Documented GET /api/organizations/slug-availability and POST /api/organizations in /docs/api with auth, request/response examples, reserved-slug behavior, default owner membership, default policy settings, validation envelopes, rate-limit failures, and audit redaction notes.",
+      "Extended API docs Vitest assertions for organization creation endpoints, stable validation notes, owner membership, default policy settings, and no contact/company audit payload leakage.",
+      "Extended Playwright organization-create smoke for final plan picker, setup form, validation-error, create/redirect, duplicate-name disabled state, app-shell organization navigation, mobile no-overflow, keyboard recovery, and no dead controls.",
+      "Saved final evidence screenshots: org-admin-001-final-plan-picker.jpg, org-admin-001-final-setup-form.jpg, org-admin-001-final-validation-error.jpg, org-admin-001-final-create-redirect.jpg, and org-admin-001-final-mobile.jpg.",
+      "Verification passed: focused API docs and organization create Vitest, focused Biome, make check, make test with Cargo tests plus 371 web tests, focused organization Playwright smoke with 5 tests, full make test-e2e with 113 tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Use a real Google OAuth browser session with TEST_ACCOUNT_EMAIL to re-run the create flow outside the deterministic Playwright seed session.",
+      "Stress concurrent duplicate organization creates from two browser sessions and direct API clients to confirm one success and one clean conflict envelope.",
+      "Probe slug normalization with Unicode, punctuation-only names, very long names, route-reserved words added after this phase, and collisions with private users or organizations.",
+      "Perform manual screen-reader traversal for the plan cards, availability status region, field errors, ownership radio group, terms checkbox, and post-create organization profile redirect.",
+      "Verify production rate-limit behavior once the shared rate-limit primitive is connected server-side; this build verifies client rendering of 429/rate_limited envelopes and existing contract guardrails."
+    ]
   }
 ]
