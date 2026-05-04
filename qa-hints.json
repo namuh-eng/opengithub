@@ -5643,5 +5643,22 @@
       "Dependency extraction is intentionally bounded to npm, Cargo, and pip manifests in Phase 1; malformed manifests and additional ecosystems need final edge-case coverage in Phase 5.",
       "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema after manually applying the additive Phase 1 migration."
     ]
+  },
+  {
+    "feature_id": "insights-005",
+    "tests_written": [
+      "Completed Phase 2 Editorial Dependencies Page and Query Filters without marking insights-005 build_pass=true.",
+      "Added typed Next.js dependency graph DTOs, signed-cookie fetch/session plumbing, /{owner}/{repo}/network/dependencies App Router page, dependency/dependent/package navigation helpers, Editorial Dependencies page, and URL-backed query/ecosystem/relationship filters.",
+      "Added focused Vitest coverage for default render, active Insights and Dependencies tabs, query/ecosystem/relationship filter hrefs, summary cards, manifest/lockfile links, dependency row details/advisory actions, empty/unavailable states, no dead anchors, no inert handlers, unsafe-markup guardrails, and banned GitHub visual guardrails.",
+      "Added focused Playwright smoke that seeds real default-branch repository_files manifests, verifies signed-session Dependencies rendering, query and ecosystem filters, relationship chips, SBOM affordance href, no dead controls, mobile no-overflow, and screenshot ralph/screenshots/build/insights-005-phase2-dependencies.jpg.",
+      "Verification passed: focused Vitest dependency graph page tests, focused direct Playwright dependency graph smoke, full make check, full make test with Cargo tests plus 444 web tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 still needs real SBOM export job creation, artifact download, audit metadata, and browser feedback states; the Phase 2 Export SBOM link is intentionally the existing API affordance only.",
+      "Phase 4 still needs Dependents API/page filters, public-only dependent repository visibility, owner/package narrowing, and warning disclosure coverage.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Run keyboard-only and screen-reader traversal for the Dependencies tab, filter menu, relationship chips, empty/unavailable states, long package names, and mobile layout.",
+      "make test-e2e wrapper produced no output for 90 seconds and was terminated to avoid stale child processes; direct focused Playwright passed with screenshot evidence."
+    ]
   }
 ]

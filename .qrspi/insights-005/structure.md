@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial Dependencies Page and Query Filters - default dependency graph UI
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement `/{owner}/{repo}/network/dependencies` using the Editorial Insights shell with Dependency graph selected and Dependencies tab active. The page should render the search query-builder input, ecosystem select-panel filter, total count, dependency rows, relationship chips, manifest/lockfile links, license copy, row options menu, empty state, and unavailable state from the Phase 1 API.
 

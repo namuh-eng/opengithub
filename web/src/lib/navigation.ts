@@ -859,6 +859,45 @@ export function repositoryForksHref(
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/forks${query ? `?${query}` : ""}`;
 }
 
+export function repositoryDependenciesHref(
+  owner: string,
+  repo: string,
+  options: {
+    query?: string | null;
+    ecosystem?: string | null;
+    relationship?: string | null;
+  } = {},
+) {
+  const params = new URLSearchParams();
+  if (options.query?.trim()) params.set("q", options.query.trim());
+  if (options.ecosystem?.trim())
+    params.set("ecosystem", options.ecosystem.trim());
+  if (options.relationship?.trim()) {
+    params.set("relationship", options.relationship.trim());
+  }
+  const query = params.toString();
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/network/dependencies${query ? `?${query}` : ""}`;
+}
+
+export function repositoryDependentsHref(owner: string, repo: string) {
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/network/dependents`;
+}
+
+export function repositoryDependencyPackageHref({
+  fallbackHref,
+  ecosystem,
+  name,
+}: {
+  fallbackHref?: string | null;
+  ecosystem: string;
+  name: string;
+}) {
+  return (
+    fallbackHref?.trim() ||
+    `/packages/${encodeURIComponent(ecosystem)}/${encodeURIComponent(name)}`
+  );
+}
+
 export function repositoryTrafficContentHref({
   fallbackHref,
   owner,

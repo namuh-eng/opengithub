@@ -44,6 +44,7 @@ import {
   getRepositoryCommitHistoryFromCookie,
   getRepositoryContributorsFromCookie,
   getRepositoryCreationOptionsFromCookie,
+  getRepositoryDependenciesFromCookie,
   getRepositoryFileFinderFromCookie,
   getRepositoryForksFromCookie,
   getRepositoryFromCookie,
@@ -92,6 +93,8 @@ import {
   type RepositoryBranchActivityFetchResult,
   type RepositoryBranchesFetchResult,
   type RepositoryContributorsFetchResult,
+  type RepositoryDependenciesFetchResult,
+  type RepositoryDependenciesQuery,
   type RepositoryForksFetchResult,
   type RepositoryForksQuery,
   type RepositoryIssueListQuery,
@@ -580,6 +583,20 @@ export async function getRepositoryForks(
 ): Promise<RepositoryForksFetchResult> {
   const requestHeaders = await headers();
   return getRepositoryForksFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    options,
+  );
+}
+
+export async function getRepositoryDependencies(
+  owner: string,
+  repo: string,
+  options: RepositoryDependenciesQuery = {},
+): Promise<RepositoryDependenciesFetchResult> {
+  const requestHeaders = await headers();
+  return getRepositoryDependenciesFromCookie(
     requestHeaders.get("cookie"),
     owner,
     repo,

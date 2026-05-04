@@ -2847,6 +2847,109 @@ export type RepositoryForksQuery = {
   sort?: string | null;
 };
 
+export type RepositoryDependenciesView = {
+  repository: RepositoryNetworkRepository;
+  filters: RepositoryDependencyFilters;
+  summary: RepositoryDependencySummary;
+  manifests: RepositoryDependencyManifest[];
+  dependencies: RepositoryDependencyRow[];
+  availability: RepositoryDependencyGraphAvailability;
+  export: RepositoryDependencyExportState;
+  links: RepositoryDependencyLinks;
+  freshness: RepositoryNetworkFreshness;
+};
+
+export type RepositoryDependencyFilters = {
+  query: string | null;
+  ecosystem: string | null;
+  relationship: string | null;
+};
+
+export type RepositoryDependencySummary = {
+  total: number;
+  directCount: number;
+  transitiveCount: number;
+  ecosystemCounts: RepositoryDependencyEcosystemCount[];
+  manifestCount: number;
+  advisoryCount: number;
+};
+
+export type RepositoryDependencyEcosystemCount = {
+  ecosystem: string;
+  count: number;
+};
+
+export type RepositoryDependencyManifest = {
+  id: string;
+  path: string;
+  ecosystem: string;
+  lockfilePath: string | null;
+  dependencyCount: number;
+  detectedAt: string;
+  href: string;
+  lockfileHref: string | null;
+};
+
+export type RepositoryDependencyPackage = {
+  id: string;
+  ecosystem: string;
+  name: string;
+  href: string;
+};
+
+export type RepositoryDependencyAdvisorySummary = {
+  identifier: string;
+  severity: string;
+  title: string;
+  href: string;
+};
+
+export type RepositoryDependencyRow = {
+  id: string;
+  package: RepositoryDependencyPackage;
+  version: string | null;
+  relationship: string;
+  license: string | null;
+  manifestPath: string;
+  manifestHref: string;
+  lockfilePath: string | null;
+  lockfileHref: string | null;
+  detectedAt: string;
+  advisories: RepositoryDependencyAdvisorySummary[];
+  detailsHref: string;
+  advisoryHref: string | null;
+};
+
+export type RepositoryDependencyGraphAvailability = {
+  enabled: boolean;
+  indexed: boolean;
+  supportedEcosystems: string[];
+  message: string;
+  unavailableReason: string | null;
+};
+
+export type RepositoryDependencyExportState = {
+  supported: boolean;
+  href: string;
+  latestStatus: string | null;
+};
+
+export type RepositoryDependencyLinks = {
+  dependenciesHref: string;
+  dependentsHref: string;
+  exportSbomHref: string;
+};
+
+export type RepositoryDependenciesFetchResult =
+  | { ok: true; dependencies: RepositoryDependenciesView }
+  | { ok: false; status: number; code: string | null; message: string };
+
+export type RepositoryDependenciesQuery = {
+  query?: string | null;
+  ecosystem?: string | null;
+  relationship?: string | null;
+};
+
 export type WebhookContentType = "json" | "form" | string;
 
 export type WebhookEventSelection = "push" | "everything" | "selected" | string;
@@ -9495,6 +9598,65 @@ export async function getRepositoryForksFromCookie(
   return {
     ok: true,
     forks: (await response.json()) as RepositoryForksView,
+  };
+}
+
+function repositoryDependenciesQueryString(
+  options: RepositoryDependenciesQuery = {},
+) {
+  const params = new URLSearchParams();
+  if (options.query?.trim()) params.set("q", options.query.trim());
+  if (options.ecosystem?.trim())
+    params.set("ecosystem", options.ecosystem.trim());
+  if (options.relationship?.trim()) {
+    params.set("relationship", options.relationship.trim());
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+export async function getRepositoryDependenciesFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  options: RepositoryDependenciesQuery = {},
+): Promise<RepositoryDependenciesFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/network/dependencies${repositoryDependenciesQueryString(options)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository dependencies are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Repository dependencies are unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    dependencies: (await response.json()) as RepositoryDependenciesView,
   };
 }
 
