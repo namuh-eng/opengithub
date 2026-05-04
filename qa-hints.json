@@ -5052,5 +5052,22 @@
       "Probe combined author/date/path pagination once the URL-backed toolbar lands in later phases.",
       "Browser smoke was skipped for this API-first phase per the structure outline."
     ]
+  },
+  {
+    "feature_id": "commits-001",
+    "tests_written": [
+      "Completed Phase 2 Editorial Commit History Page without marking commits-001 build_pass=true.",
+      "Typed the frontend commit-history DTO around the grouped Phase 1 API contract and forwarded ref/path/author/until/page query params through signed-cookie server fetches.",
+      "Rendered the default branch commit history with the repository header, compact toolbar, grouped commit rows, PR links, status links, verification chips, short-SHA links, browse-at-commit links, overflow link menus, empty state, and pagination.",
+      "Added focused Vitest coverage for grouped rows, concrete destinations, active filter chips, empty-state recovery, pagination URLs, and no dead anchors.",
+      "Added focused Playwright coverage that creates a real repository through the UI, opens /commits/main, verifies grouped commit links, checks summary links, browse links, no dead controls, and saves ralph/screenshots/build/commits-001-phase2-default-history.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 must replace the simple ref button with a searchable branch/tag selector and preserve filter state while switching refs.",
+      "Run a real Google OAuth session against a repository with a long imported history, merge commits, PR links, mixed check conclusions, and signed/unsigned commits.",
+      "Probe branch names containing slashes once the ref selector lands; the Phase 2 route supports simple refs and path-scoped history, but slash-containing refs need the planned selector disambiguation.",
+      "Repeat mobile and screen-reader traversal after the selector/filter popovers are implemented in later phases.",
+      "Exercise path-scoped histories for renamed files and binary paths with multiple commits; Phase 2 browser smoke covered the default branch history only."
+    ]
   }
 ]

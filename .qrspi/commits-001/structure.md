@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial Commit History Page - default branch history renders real data
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the minimal `RepositoryCommitHistoryView` with the full Editorial commit-history page for `/{owner}/{repo}/commits/{branch}`. The default view should render the repository shell, Commit history heading, compact toolbar, date-grouped rows, verified badges, status buttons, short SHA buttons, browse-at-commit links, and row overflow controls with no inert buttons.
 

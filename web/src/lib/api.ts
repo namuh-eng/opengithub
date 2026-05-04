@@ -1529,16 +1529,88 @@ export type RepositoryBlameView = RepositoryBlobView & {
   lines: RepositoryBlameLine[];
 };
 
-export type RepositoryCommitHistoryItem = {
+export type RepositoryCommitHistoryView = {
+  repository: RepositoryCommitHistoryRepository;
+  resolvedRef: RepositoryCommitResolvedRef;
+  filters: RepositoryCommitHistoryFilters;
+  groups: RepositoryCommitGroup[];
+  authorOptions: RepositoryCommitAuthorOption[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+};
+
+export type RepositoryCommitHistoryRepository = {
+  ownerLogin: string;
+  name: string;
+  defaultBranch: string;
+  visibility: RepositoryVisibility | string;
+};
+
+export type RepositoryCommitResolvedRef = {
+  shortName: string;
+  qualifiedName: string;
+  kind: string;
+  targetOid: string | null;
+  href: string;
+};
+
+export type RepositoryCommitHistoryFilters = {
+  path: string | null;
+  author: string | null;
+  until: string | null;
+};
+
+export type RepositoryCommitGroup = {
+  date: string;
+  commits: RepositoryCommitListItem[];
+};
+
+export type RepositoryCommitListItem = {
   oid: string;
   shortOid: string;
   message: string;
+  subject: string;
+  body: string | null;
   href: string;
+  browseHref: string;
   committedAt: string;
   authorLogin: string | null;
+  authorAvatarUrl: string | null;
+  pullRequests: RepositoryCommitPullRequestLink[];
+  status: RepositoryCommitStatusSummary;
+  verification: RepositoryCommitVerificationSummary;
+};
+
+export type RepositoryCommitPullRequestLink = {
+  number: number;
+  title: string;
+  href: string;
+  state: string;
+};
+
+export type RepositoryCommitStatusSummary = {
+  status: string;
+  conclusion: string | null;
+  totalCount: number;
+  completedCount: number;
+  failedCount: number;
+  href: string;
+};
+
+export type RepositoryCommitVerificationSummary = {
   verified: boolean;
-  signatureState: "verified" | "unverified" | "vigilant_unverified";
+  signatureState: "verified" | "unverified" | "vigilant_unverified" | string;
   signatureSummary: string | null;
+};
+
+export type RepositoryCommitAuthorOption = {
+  login: string;
+  avatarUrl: string | null;
+  count: number;
+  active: boolean;
 };
 
 export type RepositoryLanguageSummary = {
@@ -9110,11 +9182,29 @@ export async function getRepositoryCommitHistoryFromCookie(
   repo: string,
   refName: string,
   path = "",
-): Promise<ListEnvelope<RepositoryCommitHistoryItem> | null> {
+  options: {
+    author?: string | null;
+    until?: string | null;
+    page?: number | null;
+    pageSize?: number | null;
+  } = {},
+): Promise<RepositoryCommitHistoryView | null> {
   const params = new URLSearchParams({ ref: refName });
   const normalizedPath = path.replace(/^\/+|\/+$/g, "");
   if (normalizedPath) {
     params.set("path", normalizedPath);
+  }
+  if (options.author?.trim()) {
+    params.set("author", options.author.trim());
+  }
+  if (options.until?.trim()) {
+    params.set("until", options.until.trim());
+  }
+  if (options.page && Number.isFinite(options.page)) {
+    params.set("page", String(options.page));
+  }
+  if (options.pageSize && Number.isFinite(options.pageSize)) {
+    params.set("pageSize", String(options.pageSize));
   }
   let response: Response;
   try {
@@ -9133,7 +9223,7 @@ export async function getRepositoryCommitHistoryFromCookie(
     return null;
   }
 
-  return (await response.json()) as ListEnvelope<RepositoryCommitHistoryItem>;
+  return (await response.json()) as RepositoryCommitHistoryView;
 }
 
 export async function getRepositoryRefsFromCookie(

@@ -595,6 +595,12 @@ export async function getRepositoryCommitHistory(
   repo: string,
   refName: string,
   path: string,
+  options: {
+    author?: string | null;
+    until?: string | null;
+    page?: number | null;
+    pageSize?: number | null;
+  } = {},
 ) {
   const requestHeaders = await headers();
   return getRepositoryCommitHistoryFromCookie(
@@ -603,6 +609,7 @@ export async function getRepositoryCommitHistory(
     repo,
     refName,
     path,
+    options,
   );
 }
 

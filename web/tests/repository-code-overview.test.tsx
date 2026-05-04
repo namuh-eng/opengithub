@@ -1066,34 +1066,96 @@ describe("RepositoryCodeOverview", () => {
     render(
       <RepositoryCommitHistoryView
         history={{
-          items: [
+          repository: {
+            ownerLogin: "mona",
+            name: "octo-app",
+            defaultBranch: "main",
+            visibility: "public",
+          },
+          resolvedRef: {
+            shortName: "main",
+            qualifiedName: "refs/heads/main",
+            kind: "branch",
+            targetOid: "abcdef1234567890",
+            href: "/mona/octo-app/tree/main/src/index.ts",
+          },
+          filters: {
+            path: "src/index.ts",
+            author: null,
+            until: null,
+          },
+          groups: [
             {
-              oid: "abcdef1234567890",
-              shortOid: "abcdef1",
-              message: "Initial commit",
-              href: "/mona/octo-app/commit/abcdef1234567890",
-              committedAt: "2026-04-30T00:00:00Z",
-              authorLogin: "mona",
-              verified: true,
-              signatureState: "verified",
-              signatureSummary: "Verified signature from an active GPG key.",
+              date: "2026-04-30",
+              commits: [
+                {
+                  oid: "abcdef1234567890",
+                  shortOid: "abcdef1",
+                  message: "Initial commit",
+                  subject: "Initial commit",
+                  body: null,
+                  href: "/mona/octo-app/commit/abcdef1234567890",
+                  browseHref: "/mona/octo-app/tree/abcdef1234567890",
+                  committedAt: "2026-04-30T00:00:00Z",
+                  authorLogin: "mona",
+                  authorAvatarUrl: null,
+                  pullRequests: [
+                    {
+                      number: 42,
+                      title: "Ship first commit",
+                      href: "/mona/octo-app/pull/42",
+                      state: "merged",
+                    },
+                  ],
+                  status: {
+                    status: "completed",
+                    conclusion: "success",
+                    totalCount: 2,
+                    completedCount: 2,
+                    failedCount: 0,
+                    href: "/mona/octo-app/actions?commit=abcdef1234567890",
+                  },
+                  verification: {
+                    verified: true,
+                    signatureState: "verified",
+                    signatureSummary:
+                      "Verified signature from an active GPG key.",
+                  },
+                },
+              ],
             },
           ],
           total: 1,
           page: 1,
           pageSize: 30,
+          hasNextPage: false,
+          hasPreviousPage: false,
+          authorOptions: [
+            {
+              login: "mona",
+              avatarUrl: null,
+              count: 1,
+              active: false,
+            },
+          ],
         }}
-        owner="mona"
-        path="src/index.ts"
-        refName="main"
-        repo="octo-app"
       />,
     );
 
     expect(
       screen.getByRole("link", { name: /Initial commit/ }),
     ).toHaveAttribute("href", "/mona/octo-app/commit/abcdef1234567890");
-    expect(screen.getByText("abcdef1")).toBeVisible();
+    expect(screen.getByRole("link", { name: "abcdef1" })).toHaveAttribute(
+      "href",
+      "/mona/octo-app/commit/abcdef1234567890",
+    );
+    expect(screen.getByRole("link", { name: "#42" })).toHaveAttribute(
+      "href",
+      "/mona/octo-app/pull/42",
+    );
+    expect(
+      screen.getByRole("link", { name: "2 checks passed" }),
+    ).toHaveAttribute("href", "/mona/octo-app/actions?commit=abcdef1234567890");
     expect(screen.getByText("Verified")).toBeVisible();
     expect(
       screen.getByText("Verified signature from an active GPG key."),

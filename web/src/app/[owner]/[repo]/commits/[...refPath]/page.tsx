@@ -1,28 +1,44 @@
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
-import { RepositoryCommitHistoryView } from "@/components/RepositoryPathViews";
+import { RepositoryCommitHistoryPage } from "@/components/RepositoryCommitHistoryPage";
 import { getRepositoryCommitHistory, getSession } from "@/lib/server-session";
 
 type RepositoryCommitsPageProps = {
   params: Promise<{
     owner: string;
     repo: string;
-    ref: string;
-    path?: string[];
+    refPath: string[];
+  }>;
+  searchParams?: Promise<{
+    author?: string;
+    until?: string;
+    page?: string;
+    pageSize?: string;
   }>;
 };
 
+function numberParam(value: string | undefined) {
+  if (!value) {
+    return null;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 export default async function RepositoryCommitsPage({
   params,
+  searchParams,
 }: RepositoryCommitsPageProps) {
-  const [{ owner, repo, ref, path = [] }, session] = await Promise.all([
+  const [{ owner, repo, refPath }, query, session] = await Promise.all([
     params,
+    searchParams,
     getSession(),
   ]);
   const ownerLogin = decodeURIComponent(owner);
   const repositoryName = decodeURIComponent(repo);
-  const refName = decodeURIComponent(ref);
-  const repositoryPath = path.map(decodeURIComponent).join("/");
+  const [encodedRef = "main", ...encodedPath] = refPath;
+  const refName = decodeURIComponent(encodedRef);
+  const repositoryPath = encodedPath.map(decodeURIComponent).join("/");
   const history =
     session.authenticated && session.user
       ? await getRepositoryCommitHistory(
@@ -30,19 +46,19 @@ export default async function RepositoryCommitsPage({
           repositoryName,
           refName,
           repositoryPath,
+          {
+            author: query?.author ?? null,
+            until: query?.until ?? null,
+            page: numberParam(query?.page),
+            pageSize: numberParam(query?.pageSize),
+          },
         )
       : null;
 
   return (
     <AppShell session={session}>
       {history ? (
-        <RepositoryCommitHistoryView
-          history={history}
-          owner={ownerLogin}
-          path={repositoryPath}
-          refName={refName}
-          repo={repositoryName}
-        />
+        <RepositoryCommitHistoryPage history={history} />
       ) : (
         <section className="mx-auto max-w-6xl px-6 py-8">
           <div className="rounded-md border border-[var(--line)] bg-[var(--surface)] p-5">

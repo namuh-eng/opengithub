@@ -512,6 +512,95 @@ export const SEARCH_TABS = [
   },
 ] as const satisfies readonly QueryTab[];
 
+function encodePathSegments(path: string) {
+  return path.split("/").filter(Boolean).map(encodeURIComponent).join("/");
+}
+
+export function repositoryCommitHistoryHref({
+  owner,
+  repo,
+  refName,
+  path,
+  author,
+  until,
+  page,
+  pageSize,
+}: {
+  owner: string;
+  repo: string;
+  refName: string;
+  path?: string | null;
+  author?: string | null;
+  until?: string | null;
+  page?: number | null;
+  pageSize?: number | null;
+}) {
+  const encodedPath = path ? encodePathSegments(path) : "";
+  const suffix = encodedPath ? `/${encodedPath}` : "";
+  const params = new URLSearchParams();
+  if (author?.trim()) {
+    params.set("author", author.trim());
+  }
+  if (until?.trim()) {
+    params.set("until", until.trim());
+  }
+  if (page && page > 1) {
+    params.set("page", String(page));
+  }
+  if (pageSize && pageSize !== 30) {
+    params.set("pageSize", String(pageSize));
+  }
+  const query = params.toString();
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(
+    repo,
+  )}/commits/${encodeURIComponent(refName)}${suffix}${query ? `?${query}` : ""}`;
+}
+
+export function repositoryCommitDetailHref({
+  owner,
+  repo,
+  oid,
+}: {
+  owner: string;
+  repo: string;
+  oid: string;
+}) {
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(
+    repo,
+  )}/commit/${encodeURIComponent(oid)}`;
+}
+
+export function repositoryBrowseAtCommitHref({
+  owner,
+  repo,
+  oid,
+  path,
+}: {
+  owner: string;
+  repo: string;
+  oid: string;
+  path?: string | null;
+}) {
+  const encodedPath = path ? encodePathSegments(path) : "";
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(
+    repo,
+  )}/tree/${encodeURIComponent(oid)}${encodedPath ? `/${encodedPath}` : ""}`;
+}
+
+export function repositoryCommitStatusHref({
+  owner,
+  repo,
+  oid,
+}: {
+  owner: string;
+  repo: string;
+  oid: string;
+}) {
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(
+    repo,
+  )}/actions?commit=${encodeURIComponent(oid)}`;
+}
+
 export type SearchModalAction =
   | {
       href: string;

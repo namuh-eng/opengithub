@@ -1,15 +1,16 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { RepositoryBlobViewer } from "@/components/RepositoryBlobViewer";
+import { RepositoryCommitHistoryPage } from "@/components/RepositoryCommitHistoryPage";
 import { RepositoryTreeBrowser } from "@/components/RepositoryTreeBrowser";
 import type {
-  ListEnvelope,
   RepositoryBlameView,
   RepositoryBlobView,
-  RepositoryCommitHistoryItem,
   RepositoryPathBreadcrumb,
   RepositoryPathOverview,
 } from "@/lib/api";
+
+export { RepositoryCommitHistoryPage as RepositoryCommitHistoryView };
 
 function Breadcrumbs({
   breadcrumbs,
@@ -123,83 +124,6 @@ export function RepositoryBlobViewPage({
           initialMode={initialMode}
           initialSymbolsOpen={initialSymbolsOpen}
         />
-      </main>
-    </div>
-  );
-}
-
-export function RepositoryCommitHistoryView({
-  owner,
-  repo,
-  refName,
-  path,
-  history,
-}: {
-  owner: string;
-  repo: string;
-  refName: string;
-  path: string;
-  history: ListEnvelope<RepositoryCommitHistoryItem>;
-}) {
-  return (
-    <div>
-      <RepositoryPathHeader owner={owner} repo={repo}>
-        <h1 className="t-h3" style={{ color: "var(--ink-1)" }}>
-          Commit history for {path || refName}
-        </h1>
-      </RepositoryPathHeader>
-      <main className="mx-auto max-w-7xl px-6 py-6">
-        <div
-          className="overflow-hidden rounded-md"
-          style={{
-            border: "1px solid var(--line)",
-            background: "var(--surface)",
-          }}
-        >
-          {history.items.map((commit) => (
-            <Link
-              className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b px-4 py-3 text-sm last:border-b-0 hover:bg-[var(--surface-2)] max-md:grid-cols-1"
-              href={commit.href}
-              key={commit.oid}
-              style={{ borderColor: "var(--line-soft)" }}
-            >
-              <span className="min-w-0">
-                <span
-                  className="block truncate font-semibold"
-                  style={{ color: "var(--ink-1)" }}
-                >
-                  {commit.message}
-                </span>
-                <span
-                  className="mt-1 block t-xs"
-                  style={{ color: "var(--ink-3)" }}
-                >
-                  {commit.authorLogin ?? "Unknown author"}
-                  {commit.signatureSummary ? (
-                    <>
-                      {" "}
-                      <span aria-hidden="true">·</span>{" "}
-                      <span
-                        className={`chip ${commit.verified ? "ok" : "warn"}`}
-                      >
-                        {commit.verified ? "Verified" : "Unverified"}
-                      </span>{" "}
-                      <span>{commit.signatureSummary}</span>
-                    </>
-                  ) : null}
-                </span>
-              </span>
-              <span className="t-mono-sm" style={{ color: "var(--accent)" }}>
-                {commit.shortOid}
-              </span>
-            </Link>
-          ))}
-          {history.items.length === 0 ? (
-            <p className="p-6 t-sm" style={{ color: "var(--ink-3)" }}>
-              No commits are recorded for this path.
-            </p>
-          ) : null}
-        </div>
       </main>
     </div>
   );
