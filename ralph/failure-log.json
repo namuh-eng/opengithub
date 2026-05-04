@@ -2599,6 +2599,14 @@
       "exit_code": 0,
       "category": "test_failure",
       "attempt": 256
+    },
+    {
+      "timestamp": "2026-05-04T10:47:49.040419",
+      "phase": "build",
+      "feature": "build_cycle_1",
+      "exit_code": 0,
+      "category": "test_failure",
+      "attempt": 257
     }
   ]
 }
