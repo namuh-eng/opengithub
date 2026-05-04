@@ -3321,3 +3321,13 @@
 - Created `.qrspi/org-admin-004/structure.md` for the first incomplete PRD feature, splitting organization teams into five vertical phases: teams directory API contract, Editorial teams directory UI, team creation/nesting rules, team detail with permissions/mentions/notifications, and final docs/browser/QA/build-pass bookkeeping.
 - No source implementation was started because `org-admin-004.needs_structure=true` and the build-loop contract requires the structure outline first, then `<promise>NEXT</promise>`.
 - Verified `org-admin-004.build_pass=false`, `qa_pass=false`, and all structure phases remain unchecked for the next invocation.
+
+2026-05-04 - org-admin-004 phase 1 teams directory API contract
+
+- Completed Phase 1 from `.qrspi/org-admin-004/structure.md`: authenticated organization members can now load `/api/orgs/{org}/teams` without marking `org-admin-004.build_pass=true`.
+- Added additive migration `202605041630_organization_teams_admin` for team parent pointers, visible/secret visibility, notification preference state, team mention index storage, and team/audit lookup indexes.
+- Added Rust teams-directory DTOs and `organization_teams_directory` with private-org outsider 404 privacy, public-org outsider 403, secret-team visibility limited to owners/admins or team members, search/visibility pagination, parent summaries/options, aggregate member/repository/child counts, empty-state data, and capability flags.
+- Added authenticated `GET /api/orgs/{org}/teams` route with standard validation, forbidden/not-found, database, and internal error envelopes.
+- Added focused Rust contract coverage for anonymous 401, outsider privacy/forbidden behavior, member visible-team lists, secret-team privacy, owner/admin full lists, search/filter/pagination, parent fields, repository/member/child counts, empty-state columns/CTAs, capability flags, and invite/token redaction.
+- Verification passed: `cargo fmt --all`; focused `organization_teams_contract` against `opengithub_identity_test`; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 383 web tests; mandatory Editorial banned-value scan returned zero matches.
+- Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first and the structure outline marks browser smoke optional for this phase. The local test database still reports the pre-existing dirty migration warning for `202605030041`, but the new teams contract executed and passed after continuing on the already-applied schema. `prd.json` remains `build_pass:false` because Phases 2-5 remain.

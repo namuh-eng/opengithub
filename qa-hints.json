@@ -4872,5 +4872,21 @@
       "Probe CSV escaping with commas, quotes, newlines, long Unicode names/emails, very large organizations, outside collaborator and security manager tabs, and screen-reader traversal of all dialogs.",
       "Bulk membership execution remains an explicit unsupported disabled-safe placeholder; QA should confirm it never appears as an enabled write path without a backend contract."
     ]
+  },
+  {
+    "feature_id": "org-admin-004",
+    "tests_written": [
+      "Completed Phase 1 Teams Directory API Contract without marking org-admin-004 build_pass=true.",
+      "Added authenticated GET /api/orgs/{org}/teams with q, visibility, page, and pageSize normalization.",
+      "Focused Rust contract covers anonymous 401, outsider private-org 404, public-org outsider 403, member visible-team list, secret-team privacy, owner/admin full list, search/filter/pagination, parent summary fields, repository/member/child counts, empty-state columns and CTAs, capability flags, and no invite/token leakage.",
+      "Verification passed: cargo fmt, focused organization_teams_contract, make check, make test with Cargo tests plus 383 web tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 must verify the Editorial /orgs/{org}/teams directory UI, empty state CTAs, search/filter form, row navigation, and mobile no-overflow.",
+      "Run a real Google OAuth browser session with TEST_ACCOUNT_EMAIL once the UI exists to confirm member/admin/secret visibility outside deterministic test cookies.",
+      "Stress large organizations with many nested teams, long Unicode team names/slugs, and concurrent membership/visibility changes while listing teams.",
+      "The local shared test database reports a pre-existing dirty migration warning for 202605030041; QA should use a clean migrated database before treating migration hygiene as resolved.",
+      "Phase 3 and Phase 4 still need creation, nesting, team detail, permission cascade, mention indexing, and notification fanout verification."
+    ]
   }
 ]

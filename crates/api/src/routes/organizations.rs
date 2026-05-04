@@ -16,16 +16,18 @@ use crate::{
             cancel_organization_invitation, create_organization_from_signup,
             create_organization_invitation, export_organization_people, organization_people,
             organization_people_admin, organization_profile_settings, organization_repositories,
-            organization_slug_availability, public_organization_profile,
-            remove_organization_member, rename_organization, retry_organization_invitation,
-            update_organization_member_role, update_organization_member_visibility,
-            update_organization_profile_settings, CreateOrganizationInvitation,
-            CreateOrganizationRequest, CreatedOrganization, OrganizationCreateError,
-            OrganizationPeopleAdmin, OrganizationPeopleAdminError, OrganizationPeopleAdminQuery,
-            OrganizationPeopleList, OrganizationPeopleListQuery, OrganizationProfileError,
-            OrganizationProfileSettings, OrganizationProfileSettingsPatch,
-            OrganizationRepositoryList, OrganizationRepositoryListQuery, OrganizationSettingsError,
-            OrganizationSlugAvailability, PublicOrganizationProfile, RenameOrganizationRequest,
+            organization_slug_availability, organization_teams_directory,
+            public_organization_profile, remove_organization_member, rename_organization,
+            retry_organization_invitation, update_organization_member_role,
+            update_organization_member_visibility, update_organization_profile_settings,
+            CreateOrganizationInvitation, CreateOrganizationRequest, CreatedOrganization,
+            OrganizationCreateError, OrganizationPeopleAdmin, OrganizationPeopleAdminError,
+            OrganizationPeopleAdminQuery, OrganizationPeopleList, OrganizationPeopleListQuery,
+            OrganizationProfileError, OrganizationProfileSettings,
+            OrganizationProfileSettingsPatch, OrganizationRepositoryList,
+            OrganizationRepositoryListQuery, OrganizationSettingsError,
+            OrganizationSlugAvailability, OrganizationTeamsDirectory, OrganizationTeamsError,
+            OrganizationTeamsQuery, PublicOrganizationProfile, RenameOrganizationRequest,
             UpdateOrganizationMembershipRole, UpdateOrganizationMembershipVisibility,
         },
         packages::{
@@ -56,6 +58,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/api/orgs/:org/repositories", get(public_repositories))
         .route("/api/orgs/:org/people", get(public_people))
+        .route("/api/orgs/:org/teams", get(org_teams))
         .route("/api/orgs/:org/people/admin", get(admin_people))
         .route("/api/orgs/:org/people/export", get(export_people))
         .route(
@@ -233,6 +236,31 @@ async fn public_people(
     .map_err(map_organization_profile_error)?;
 
     Ok(Json(people))
+}
+
+async fn org_teams(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(org): Path<String>,
+    Query(query): Query<OrganizationTeamsRouteQuery>,
+) -> Result<Json<OrganizationTeamsDirectory>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let teams = organization_teams_directory(
+        pool,
+        &org,
+        actor.0.id,
+        OrganizationTeamsQuery {
+            query: query.q.as_deref(),
+            visibility: query.visibility.as_deref(),
+            page: query.page,
+            page_size: query.page_size,
+        },
+    )
+    .await
+    .map_err(map_organization_teams_error)?;
+
+    Ok(Json(teams))
 }
 
 async fn admin_people(
@@ -550,6 +578,16 @@ struct OrganizationPeopleAdminRouteQuery {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct OrganizationTeamsRouteQuery {
+    q: Option<String>,
+    visibility: Option<String>,
+    page: Option<i64>,
+    #[serde(alias = "page_size")]
+    page_size: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct OwnerPackagesQuery {
     q: Option<String>,
     #[serde(rename = "type")]
@@ -667,6 +705,33 @@ fn map_organization_people_admin_error(
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal_error",
             "organization people administration could not be loaded",
+        ),
+    }
+}
+
+fn map_organization_teams_error(
+    error: OrganizationTeamsError,
+) -> (StatusCode, Json<ErrorEnvelope>) {
+    match error {
+        OrganizationTeamsError::NotFound => error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "organization teams were not found",
+        ),
+        OrganizationTeamsError::Forbidden => error_response(
+            StatusCode::FORBIDDEN,
+            "forbidden",
+            "organization teams require organization membership",
+        ),
+        OrganizationTeamsError::InvalidFilter(message) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            message,
+        ),
+        OrganizationTeamsError::Sqlx(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "organization teams could not be loaded",
         ),
     }
 }

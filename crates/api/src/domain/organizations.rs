@@ -536,6 +536,101 @@ pub struct OrganizationPeopleAdminViewerState {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct OrganizationTeamsDirectory {
+    pub organization: OrganizationSettingsIdentity,
+    #[serde(flatten)]
+    pub envelope: ListEnvelope<OrganizationTeamSummary>,
+    pub filters: OrganizationTeamsFilters,
+    pub counts: OrganizationTeamsCounts,
+    pub parent_options: Vec<OrganizationTeamParentOption>,
+    pub empty_state: OrganizationTeamsEmptyState,
+    pub viewer_state: OrganizationTeamsViewerState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationTeamSummary {
+    pub id: Uuid,
+    pub slug: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub href: String,
+    pub visibility: String,
+    pub mentionable: bool,
+    pub notifications_enabled: bool,
+    pub member_count: i64,
+    pub repository_count: i64,
+    pub child_team_count: i64,
+    pub parent: Option<OrganizationTeamParentOption>,
+    pub viewer_capabilities: OrganizationTeamCapabilities,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationTeamParentOption {
+    pub id: Uuid,
+    pub slug: String,
+    pub name: String,
+    pub href: String,
+    pub visibility: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationTeamCapabilities {
+    pub can_view: bool,
+    pub can_manage: bool,
+    pub can_join: bool,
+    pub can_mention: bool,
+    pub is_member: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationTeamsFilters {
+    pub query: Option<String>,
+    pub visibility: String,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationTeamsCounts {
+    pub total: i64,
+    pub visible: i64,
+    pub secret: i64,
+    pub member_teams: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationTeamsEmptyState {
+    pub title: String,
+    pub columns: Vec<OrganizationTeamsEmptyStateColumn>,
+    pub new_team_href: String,
+    pub learn_more_href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationTeamsEmptyStateColumn {
+    pub title: String,
+    pub body: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationTeamsViewerState {
+    pub role: String,
+    pub can_admin_teams: bool,
+    pub can_create_team: bool,
+    pub can_view_secret_teams: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateOrganizationInvitation {
     pub email_or_login: String,
     pub role: String,
@@ -590,6 +685,14 @@ pub struct OrganizationPeopleAdminQuery<'a> {
     pub page_size: Option<i64>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct OrganizationTeamsQuery<'a> {
+    pub query: Option<&'a str>,
+    pub visibility: Option<&'a str>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum OrganizationProfileError {
     #[error("organization profile was not found")]
@@ -612,6 +715,18 @@ pub enum OrganizationPeopleAdminError {
     InvalidFilter(String),
     #[error("invalid organization people mutation: {0}")]
     Validation(String),
+    #[error("database error")]
+    Sqlx(#[from] sqlx::Error),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum OrganizationTeamsError {
+    #[error("organization teams were not found")]
+    NotFound,
+    #[error("organization teams require membership")]
+    Forbidden,
+    #[error("invalid organization teams filter: {0}")]
+    InvalidFilter(String),
     #[error("database error")]
     Sqlx(#[from] sqlx::Error),
 }
@@ -1646,6 +1761,83 @@ pub async fn organization_people(
     })
 }
 
+pub async fn organization_teams_directory(
+    pool: &PgPool,
+    slug: &str,
+    actor_user_id: Uuid,
+    query: OrganizationTeamsQuery<'_>,
+) -> Result<OrganizationTeamsDirectory, OrganizationTeamsError> {
+    let organization = organization_by_slug(pool, slug)
+        .await
+        .map_err(map_profile_error_to_teams)?;
+    let viewer_role = viewer_role(pool, organization.id, Some(actor_user_id)).await?;
+    if viewer_role.is_none() && organization.profile_visibility == "private" {
+        return Err(OrganizationTeamsError::NotFound);
+    }
+    let Some(role) = viewer_role else {
+        return Err(OrganizationTeamsError::Forbidden);
+    };
+
+    let filters = normalize_organization_teams_filters(query)?;
+    let can_admin_teams = matches!(role.as_str(), "owner" | "admin");
+    let member_can_create = organization_members_can_create_teams(pool, organization.id).await?;
+    let can_create_team = can_admin_teams || member_can_create;
+    let can_view_secret_teams = can_admin_teams;
+    let mut teams =
+        organization_team_directory_rows(pool, &organization, actor_user_id, can_admin_teams)
+            .await?;
+    let counts = organization_team_counts(&teams);
+    let parent_options = organization_team_parent_options(&teams, &organization.slug);
+
+    apply_organization_team_filters(&mut teams, &filters);
+    let total = teams.len() as i64;
+    let items = paginate_vec(teams, filters.page, filters.page_size);
+
+    Ok(OrganizationTeamsDirectory {
+        organization: OrganizationSettingsIdentity {
+            id: organization.id,
+            slug: organization.slug.clone(),
+            name: organization.display_name,
+            href: format!("/orgs/{}", organization.slug),
+            settings_href: format!("/organizations/{}/settings/profile", organization.slug),
+        },
+        envelope: ListEnvelope {
+            items,
+            total,
+            page: filters.page,
+            page_size: filters.page_size,
+        },
+        filters,
+        counts,
+        parent_options,
+        empty_state: OrganizationTeamsEmptyState {
+            title: "Organize people by team".to_owned(),
+            columns: vec![
+                OrganizationTeamsEmptyStateColumn {
+                    title: "Flexible repository access".to_owned(),
+                    body: "Grant repository permissions to a team once, then keep membership in one place.".to_owned(),
+                },
+                OrganizationTeamsEmptyStateColumn {
+                    title: "Request-to-join teams".to_owned(),
+                    body: "Give members a discoverable home for shared work without exposing private teams.".to_owned(),
+                },
+                OrganizationTeamsEmptyStateColumn {
+                    title: "Team mentions".to_owned(),
+                    body: "Mention visible teams to notify the right group when issues, pull requests, or reviews need attention.".to_owned(),
+                },
+            ],
+            new_team_href: format!("/orgs/{}/teams/new", organization.slug),
+            learn_more_href: "/docs/api#organization-teams".to_owned(),
+        },
+        viewer_state: OrganizationTeamsViewerState {
+            role,
+            can_admin_teams,
+            can_create_team,
+            can_view_secret_teams,
+        },
+    })
+}
+
 pub async fn organization_people_admin(
     pool: &PgPool,
     slug: &str,
@@ -2444,6 +2636,34 @@ fn normalize_organization_people_admin_filters(
     })
 }
 
+fn normalize_organization_teams_filters(
+    query: OrganizationTeamsQuery<'_>,
+) -> Result<OrganizationTeamsFilters, OrganizationTeamsError> {
+    let pagination = normalize_pagination(query.page, query.page_size);
+    let normalized_query = query.query.and_then(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.chars().take(120).collect::<String>())
+    });
+    let visibility = match query.visibility.unwrap_or("all").trim() {
+        "" | "all" => "all",
+        "visible" | "public" => "visible",
+        "secret" | "private" => "secret",
+        "member" | "mine" | "member-teams" => "member",
+        other => {
+            return Err(OrganizationTeamsError::InvalidFilter(format!(
+                "unsupported organization teams visibility filter: {other}"
+            )));
+        }
+    };
+
+    Ok(OrganizationTeamsFilters {
+        query: normalized_query,
+        visibility: visibility.to_owned(),
+        page: pagination.page,
+        page_size: pagination.page_size,
+    })
+}
+
 fn normalize_organization_repository_filters(
     query: OrganizationRepositoryListQuery<'_>,
 ) -> Result<OrganizationRepositoryFilters, OrganizationProfileError> {
@@ -3033,6 +3253,77 @@ fn map_profile_error_to_people_admin(
     }
 }
 
+fn map_profile_error_to_teams(error: OrganizationProfileError) -> OrganizationTeamsError {
+    match error {
+        OrganizationProfileError::NotFound => OrganizationTeamsError::NotFound,
+        OrganizationProfileError::InvalidRepositoryFilter(message) => {
+            OrganizationTeamsError::InvalidFilter(message)
+        }
+        OrganizationProfileError::Sqlx(error) => OrganizationTeamsError::Sqlx(error),
+    }
+}
+
+fn organization_team_counts(teams: &[OrganizationTeamSummary]) -> OrganizationTeamsCounts {
+    OrganizationTeamsCounts {
+        total: teams.len() as i64,
+        visible: teams
+            .iter()
+            .filter(|team| team.visibility == "visible")
+            .count() as i64,
+        secret: teams
+            .iter()
+            .filter(|team| team.visibility == "secret")
+            .count() as i64,
+        member_teams: teams
+            .iter()
+            .filter(|team| team.viewer_capabilities.is_member)
+            .count() as i64,
+    }
+}
+
+fn organization_team_parent_options(
+    teams: &[OrganizationTeamSummary],
+    organization_slug: &str,
+) -> Vec<OrganizationTeamParentOption> {
+    teams
+        .iter()
+        .filter(|team| team.visibility == "visible")
+        .map(|team| OrganizationTeamParentOption {
+            id: team.id,
+            slug: team.slug.clone(),
+            name: team.name.clone(),
+            href: format!("/orgs/{organization_slug}/teams/{}", team.slug),
+            visibility: team.visibility.clone(),
+        })
+        .collect()
+}
+
+fn apply_organization_team_filters(
+    teams: &mut Vec<OrganizationTeamSummary>,
+    filters: &OrganizationTeamsFilters,
+) {
+    if let Some(query) = &filters.query {
+        let needle = query.to_ascii_lowercase();
+        teams.retain(|team| {
+            team.slug.to_ascii_lowercase().contains(&needle)
+                || team.name.to_ascii_lowercase().contains(&needle)
+                || team
+                    .description
+                    .as_deref()
+                    .unwrap_or_default()
+                    .to_ascii_lowercase()
+                    .contains(&needle)
+        });
+    }
+
+    match filters.visibility.as_str() {
+        "visible" => teams.retain(|team| team.visibility == "visible"),
+        "secret" => teams.retain(|team| team.visibility == "secret"),
+        "member" => teams.retain(|team| team.viewer_capabilities.can_mention),
+        _ => {}
+    }
+}
+
 fn organization_repository_language_options(
     repositories: &[OrganizationRepositoryListItem],
 ) -> Vec<OrganizationRepositoryFilterOption> {
@@ -3288,6 +3579,138 @@ async fn visible_repository_ids(
     .await?;
 
     Ok(rows.into_iter().map(|row| row.get("id")).collect())
+}
+
+async fn organization_members_can_create_teams(
+    pool: &PgPool,
+    organization_id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(
+            (
+                SELECT members_can_create_teams
+                FROM organization_policy_settings
+                WHERE organization_id = $1
+            ),
+            true
+        )
+        "#,
+    )
+    .bind(organization_id)
+    .fetch_one(pool)
+    .await
+}
+
+async fn organization_team_directory_rows(
+    pool: &PgPool,
+    organization: &OrganizationRow,
+    actor_user_id: Uuid,
+    can_admin_teams: bool,
+) -> Result<Vec<OrganizationTeamSummary>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
+        SELECT teams.id,
+               teams.slug,
+               teams.name,
+               teams.description,
+               teams.visibility,
+               teams.notifications_enabled,
+               teams.updated_at,
+               parent.id AS parent_id,
+               parent.slug AS parent_slug,
+               parent.name AS parent_name,
+               parent.visibility AS parent_visibility,
+               COALESCE(member_counts.total, 0)::bigint AS member_count,
+               COALESCE(repository_counts.total, 0)::bigint AS repository_count,
+               COALESCE(child_counts.total, 0)::bigint AS child_team_count,
+               EXISTS (
+                   SELECT 1
+                   FROM team_memberships viewer_membership
+                   WHERE viewer_membership.team_id = teams.id
+                     AND viewer_membership.user_id = $2
+               ) AS is_team_member
+        FROM teams
+        LEFT JOIN teams parent ON parent.id = teams.parent_team_id
+        LEFT JOIN (
+            SELECT team_id, COUNT(*)::bigint AS total
+            FROM team_memberships
+            GROUP BY team_id
+        ) member_counts ON member_counts.team_id = teams.id
+        LEFT JOIN (
+            SELECT team_id, COUNT(*)::bigint AS total
+            FROM repository_team_permissions
+            GROUP BY team_id
+        ) repository_counts ON repository_counts.team_id = teams.id
+        LEFT JOIN (
+            SELECT parent_team_id, COUNT(*)::bigint AS total
+            FROM teams
+            WHERE parent_team_id IS NOT NULL
+            GROUP BY parent_team_id
+        ) child_counts ON child_counts.parent_team_id = teams.id
+        WHERE teams.organization_id = $1
+          AND (
+              teams.visibility = 'visible'
+              OR $3
+              OR EXISTS (
+                  SELECT 1
+                  FROM team_memberships viewer_membership
+                  WHERE viewer_membership.team_id = teams.id
+                    AND viewer_membership.user_id = $2
+              )
+          )
+        ORDER BY lower(teams.name), lower(teams.slug)
+        "#,
+    )
+    .bind(organization.id)
+    .bind(actor_user_id)
+    .bind(can_admin_teams)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let visibility = row.get::<String, _>("visibility");
+            let is_team_member = row.get::<bool, _>("is_team_member");
+            let mentionable = visibility == "visible" || can_admin_teams || is_team_member;
+            let parent_id = row.get::<Option<Uuid>, _>("parent_id");
+            let parent = parent_id.map(|id| OrganizationTeamParentOption {
+                id,
+                slug: row.get("parent_slug"),
+                name: row.get("parent_name"),
+                href: format!(
+                    "/orgs/{}/teams/{}",
+                    organization.slug,
+                    row.get::<String, _>("parent_slug")
+                ),
+                visibility: row.get("parent_visibility"),
+            });
+            let slug = row.get::<String, _>("slug");
+            OrganizationTeamSummary {
+                id: row.get("id"),
+                slug: slug.clone(),
+                name: row.get("name"),
+                description: row.get("description"),
+                href: format!("/orgs/{}/teams/{slug}", organization.slug),
+                visibility: visibility.clone(),
+                mentionable,
+                notifications_enabled: row.get("notifications_enabled"),
+                member_count: row.get("member_count"),
+                repository_count: row.get("repository_count"),
+                child_team_count: row.get("child_team_count"),
+                parent,
+                viewer_capabilities: OrganizationTeamCapabilities {
+                    can_view: true,
+                    can_manage: can_admin_teams,
+                    can_join: visibility == "visible" && !is_team_member,
+                    can_mention: mentionable,
+                    is_member: is_team_member,
+                },
+                updated_at: row.get("updated_at"),
+            }
+        })
+        .collect())
 }
 
 async fn pinned_repositories(

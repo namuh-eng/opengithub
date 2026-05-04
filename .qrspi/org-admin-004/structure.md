@@ -6,7 +6,7 @@
 
 ## Phase 1: Teams Directory API Contract - list, visibility, search, and empty state data
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the authenticated Rust contract for `/api/orgs/{org}/teams` while preserving existing concrete team detail URLs. Organization members can list visible teams, owners/admins can see secret teams and management affordances, and empty organizations receive the three-column explanatory empty-state payload required by the PRD.
 
