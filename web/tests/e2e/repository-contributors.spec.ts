@@ -142,7 +142,7 @@ test("repository Contributors renders default analytics and concrete drilldowns"
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/insights-002-phase3-controls.jpg",
+    path: "../ralph/screenshots/build/insights-002-final-directory.jpg",
   });
 
   await page.getByRole("button", { name: "Period: Last week" }).click();
@@ -170,6 +170,16 @@ test("repository Contributors renders default analytics and concrete drilldowns"
   ).toHaveAttribute("download", "repository-contributors.csv");
   await page.getByRole("button", { name: "Copy CSV" }).click();
   await expect(page.getByText("CSV copied")).toBeVisible();
+  await page.goto(`${seeded.treeRepositoryHref}/pulse`);
+  await page
+    .getByRole("link", {
+      name: "Contributors Contributor commit activity",
+    })
+    .click();
+  await expect(page).toHaveURL(/\/graphs\/contributors$/);
+  await expect(
+    page.getByRole("heading", { name: "Contributor analytics" }),
+  ).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 900 });
   await expect(
@@ -184,6 +194,6 @@ test("repository Contributors renders default analytics and concrete drilldowns"
   expect(horizontalOverflow).toBe(false);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/insights-002-phase4-edge-cases.jpg",
+    path: "../ralph/screenshots/build/insights-002-final-mobile.jpg",
   });
 });

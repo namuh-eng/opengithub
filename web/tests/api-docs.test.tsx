@@ -372,18 +372,55 @@ describe("ApiDocsPage", () => {
       screen.getByRole("heading", { name: "Repository Pulse insights" }),
     ).toBeVisible();
     expect(
-      screen.getByText(/Supported period values are 24h, 3d, 1w, and 1m/),
+      screen.getAllByText(/Supported period values are 24h, 3d, 1w, and 1m/)[0],
     ).toBeVisible();
     expect(
       screen.getByText(/metric hrefs so browser cards navigate/),
     ).toBeVisible();
-    expect(screen.getByText(/authorStatus and isBot metadata/)).toBeVisible();
     expect(
-      screen.getByText(/repository_insight_snapshots stores/),
+      screen.getAllByText(/authorStatus and isBot metadata/)[0],
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(/repository_insight_snapshots stores/)[0],
     ).toBeVisible();
     expect(
       screen.getAllByText(/Private repository outsiders receive not_found/)[0],
     ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/graphs/contributors?period=1w&start=2026-05-01T00:00:00Z&end=2026-05-07T00:00:00Z",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Repository Contributors insights",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /repository-wide weekly commit buckets, top contributor rows/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/default branch through repository_git_refs/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Optional start and end range bounds are parsed as RFC3339/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Merge commits and empty commits are excluded/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/authorStatus and isBot metadata for active, bot/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/repository_contributors_weekly stores bounded rollups/),
+    ).toBeVisible();
+    expect(screen.getAllByText(/private commit OIDs/).length).toBeGreaterThan(
+      2,
+    );
     expect(
       screen.getByText("/api/repos/{owner}/{repo}/releases?page=1&pageSize=30"),
     ).toBeVisible();

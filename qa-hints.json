@@ -5427,5 +5427,22 @@
       "Probe range boundaries exactly at weekStart/weekEnd timestamps and concurrent contributors snapshot refreshes against a clean migrated database after the shared 202605030041 local migration drift is resolved.",
       "Run keyboard-only and screen-reader traversal through the Contributors period menu, range sliders, CSV actions, chart/table fallback, contributor profile links, commit-total links, empty-state links, and mobile layout."
     ]
+  },
+  {
+    "feature_id": "insights-002",
+    "tests_written": [
+      "Completed Phase 5 API Docs, Browser Evidence, QA Handoff, and Build Pass and marked insights-002 build_pass=true.",
+      "Documented GET /api/repos/{owner}/{repo}/graphs/contributors in /docs/api, including auth/privacy, default-branch scoping, period/range query params, merge/empty commit exclusion, line-count threshold omission, weekly response shape, contributor rows, cache behavior, telemetry, and no-secret error envelopes.",
+      "Extended API docs and Contributors component assertions for endpoint coverage, accessible chart/table fallback, table column headers, keyboard-focusable controls, semantic chips, Editorial token usage, no banned GitHub visual values/imports, no dead anchors, no inert inline handlers, and unsafe-markup guardrails.",
+      "Extended Playwright Contributors smoke to exercise Insights navigation from Pulse, period/range controls, data table, CSV copy/download, contributor profile links, commit-total links, no dead controls, mobile no-overflow, and final screenshots ralph/screenshots/build/insights-002-final-directory.jpg and insights-002-final-mobile.jpg.",
+      "Focused Rust contributors contract passed against the local test database with the known 202605030041 pre-applied migration warning; focused Vitest, TypeScript, Biome, and direct Playwright all passed before full verification."
+    ],
+    "needs_deeper_qa": [
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Stress very large histories above the 5000-commit line-count threshold, bot-only repositories, multiple unmatched imported author identities, deleted-user transitions once deletion is supported, and multi-week browser fixtures with older default-branch commits.",
+      "Probe range boundaries exactly at weekStart/weekEnd timestamps, invalid RFC3339/date inputs, out-of-period ranges, and concurrent contributors snapshot refreshes against a clean migrated database after the shared 202605030041 local migration drift is resolved.",
+      "Run keyboard-only and screen-reader traversal through the Contributors period menu, range sliders, CSV actions, chart/table fallback, contributor profile links, commit-total links, empty-state links, Insights sidebar, and mobile layout.",
+      "Verify read-only repository permissions in browser with a non-admin member; unit/API coverage asserts privacy and access shape, but the focused signed-session smoke uses an owner fixture."
+    ]
   }
 ]

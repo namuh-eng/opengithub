@@ -216,18 +216,36 @@ describe("RepositoryContributorsPage", () => {
     const table = screen.getByRole("table", {
       name: "Repository contributors data table",
     });
+    expect(
+      within(table).getByRole("columnheader", { name: "Scope" }),
+    ).toBeVisible();
+    expect(
+      within(table).getByRole("columnheader", { name: "Week" }),
+    ).toBeVisible();
+    expect(
+      within(table).getByRole("columnheader", { name: "Commits" }),
+    ).toBeVisible();
     expect(within(table).getAllByText("Repository")[0]).toBeVisible();
     expect(within(table).getAllByText("mona")[0]).toBeVisible();
     expect(within(table).getAllByText("May 4, 2026")[0]).toBeVisible();
 
     expect(container.querySelectorAll(".card").length).toBeGreaterThan(4);
+    expect(container.querySelector(".chip.ok")).not.toBeNull();
+    expect(container.querySelector(".chip.info")).not.toBeNull();
     expect(container.innerHTML).toContain("var(--accent)");
     expect(container.innerHTML).not.toMatch(
-      /#0969da|#1f883d|#cf222e|@primer\/|Octicon/i,
+      /#0969da|#1f883d|#1a7f37|#cf222e|#82071e|#f6f8fa|#1f2328|#d0d7de|#59636e|#f1aeb5|#fff1f3|@primer\/|Octicon/i,
     );
     expect(container.querySelector('a[href="#"], a:not([href])')).toBeNull();
     expect(container.innerHTML).not.toContain("onClick={() => {}}");
     expect(container.innerHTML).not.toContain("dangerouslySetInnerHTML");
+    const focusable = Array.from(
+      container.querySelectorAll("a[href], button, input"),
+    );
+    expect(focusable.length).toBeGreaterThanOrEqual(12);
+    for (const node of focusable) {
+      expect(node).not.toHaveAttribute("tabindex", "-1");
+    }
     for (const button of container.querySelectorAll("button")) {
       expect(button).toHaveAccessibleName();
     }

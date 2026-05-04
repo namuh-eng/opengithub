@@ -2083,6 +2083,89 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-contributors",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/graphs/contributors?period=1w&start=2026-05-01T00:00:00Z&end=2026-05-07T00:00:00Z",
+    title: "Repository Contributors insights",
+    description:
+      "Returns the screen-ready Contributors analytics contract for the default branch, including repository-wide weekly commit buckets, top contributor rows, period and range metadata, line-count threshold state, CSV-ready table values, profile and commit-history links, and cache freshness metadata.",
+    auth: "Public repositories are readable by signed-in users; private repositories require read permission; anonymous callers receive 401",
+    response: `{
+  "repository": {
+    "ownerLogin": "mona",
+    "name": "octo-app",
+    "defaultBranch": "main",
+    "visibility": "public",
+    "viewerPermission": "write",
+    "href": "/mona/octo-app"
+  },
+  "period": {
+    "key": "1w",
+    "label": "Last week",
+    "startedAt": "2026-05-01T00:00:00Z",
+    "endedAt": "2026-05-07T00:00:00Z",
+    "bucketCount": 2
+  },
+  "threshold": {
+    "commitLimit": 5000,
+    "commitsConsidered": 12,
+    "lineCountsOmitted": false,
+    "message": "Line additions and deletions are included for this bounded commit range."
+  },
+  "totals": {
+    "commits": 12,
+    "authors": 2,
+    "additions": 420,
+    "deletions": 90
+  },
+  "weeks": [
+    {
+      "weekStart": "2026-05-01T00:00:00Z",
+      "weekEnd": "2026-05-04T00:00:00Z",
+      "commits": 4,
+      "additions": 120,
+      "deletions": 30
+    }
+  ],
+  "contributors": [
+    {
+      "userId": "user_01",
+      "login": "mona",
+      "authorStatus": "active",
+      "isBot": false,
+      "avatarUrl": null,
+      "totalCommits": 9,
+      "totalAdditions": 320,
+      "totalDeletions": 45,
+      "profileHref": "/mona",
+      "commitsHref": "/mona/octo-app/commits/main?author=mona&since=2026-05-01T00%3A00%3A00Z&until=2026-05-07T00%3A00%3A00Z",
+      "weeks": [
+        {
+          "weekStart": "2026-05-04T00:00:00Z",
+          "commits": 6,
+          "additions": 220,
+          "deletions": 35
+        }
+      ]
+    }
+  ],
+  "snapshot": {
+    "cacheKey": "contributors:main:1w:202605010000:202605070000",
+    "computedAt": "2026-05-07T00:00:00Z",
+    "expiresAt": "2026-05-07T00:10:00Z",
+    "stale": false
+  }
+}`,
+    notes: [
+      "The endpoint resolves analytics from the repository default branch through repository_git_refs; branch names with slashes are encoded in commit-history hrefs as a single reversible route segment.",
+      "Supported period values are 24h, 3d, 1w, and 1m. Optional start and end range bounds are parsed as RFC3339 timestamps or dates, clipped to the selected period, and invalid ranges return validation_failed.",
+      "Merge commits and empty commits are excluded. Repositories over the commitLimit keep commit counts but omit additions/deletions with null table values and a truthful threshold message.",
+      "Contributor rows include authorStatus and isBot metadata for active, bot, and unmatched/deleted authors; unmatched authors link back to a repository-safe destination rather than leaking private user records.",
+      "repository_contributors_weekly stores bounded rollups and repository_insight_snapshots stores cache freshness keyed by repository, default branch, period, and range. recent_insight_views records signed-in viewer telemetry only.",
+      "Private repository outsiders receive not_found, anonymous callers receive 401, and error envelopes never include actor emails, OAuth data, session rows, tokens, storage keys, stack traces, or private commit OIDs.",
+    ],
+  },
+  {
     id: "repo-releases-list",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/releases?page=1&pageSize=30",
