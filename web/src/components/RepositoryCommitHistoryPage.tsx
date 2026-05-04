@@ -12,6 +12,7 @@ import {
   repositoryCommitHistoryHref,
   repositoryCommitStatusHref,
 } from "@/lib/navigation";
+import { RepositoryCommitRefSelector } from "./RepositoryCommitRefSelector";
 
 type RepositoryCommitHistoryPageProps = {
   history: RepositoryCommitHistoryView;
@@ -393,17 +394,15 @@ export function RepositoryCommitHistoryPage({
       <main className="mx-auto max-w-7xl space-y-4 px-6 py-6">
         <section className="card p-3" aria-label="Commit history filters">
           <div className="flex flex-wrap items-center gap-2">
-            <Link
-              className="btn sm"
-              href={repositoryCommitHistoryHref({
-                owner,
-                repo,
-                refName,
-                path: activePath,
-              })}
-            >
-              {refName}
-            </Link>
+            <RepositoryCommitRefSelector
+              activeRef={refName}
+              author={history.filters.author}
+              defaultBranch={history.repository.defaultBranch}
+              owner={owner}
+              path={activePath}
+              repo={repo}
+              until={history.filters.until}
+            />
             <details className="relative">
               <summary className="btn sm inline-flex cursor-pointer list-none">
                 {history.filters.author ?? "All users"}

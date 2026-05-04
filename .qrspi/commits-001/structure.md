@@ -40,7 +40,7 @@
 
 ## Phase 3: Branch and Tag Selector - ref changes drive commit history
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make the branch selector dialog functional on commit-history pages. Searching branches/tags, switching tabs, and selecting a ref should reload the same commit-history page for that ref while preserving author/date/path filters when valid.
 

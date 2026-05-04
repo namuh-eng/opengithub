@@ -5069,5 +5069,22 @@
       "Repeat mobile and screen-reader traversal after the selector/filter popovers are implemented in later phases.",
       "Exercise path-scoped histories for renamed files and binary paths with multiple commits; Phase 2 browser smoke covered the default branch history only."
     ]
+  },
+  {
+    "feature_id": "commits-001",
+    "tests_written": [
+      "Completed Phase 3 Branch and Tag Selector without marking commits-001 build_pass=true.",
+      "Added RepositoryCommitRefSelector for /commits pages using the real /refs proxy contract, with branch/tag tabs, searchable Find a branch or tag input, default and selected badges, current ref indication, View all branches link, and filter-preserving commit-history hrefs.",
+      "Wired the commit-history toolbar to preserve active path, author, and until filters when switching refs, including slash-containing branch names encoded as a single ref segment.",
+      "Extended focused Vitest coverage for branch search, tag search, selected/default badges, concrete ref hrefs, filter preservation, and the branches link.",
+      "Extended Playwright coverage with deterministic signed-cookie sessions and seeded Postgres refs for switching main -> feature/tree-nav -> v1.0.0 while preserving until filters, checking no dead controls, and saving ralph/screenshots/build/commits-001-phase3-ref-selector.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 must implement the author selector and date filter as URL-backed reversible controls.",
+      "Run a real Google OAuth session against an imported repository with many branches, many tags, protected default branch metadata, and refs that differ by case.",
+      "Probe ref searches with very long branch names, unicode ref names, deleted target commits, and refs whose current path no longer exists.",
+      "Exercise keyboard and screen-reader traversal through the details-based selector on desktop and mobile.",
+      "The make test-e2e wrapper was terminated after a silent stall; direct full Playwright completed the same suite with 121 passing tests."
+    ]
   }
 ]

@@ -6,9 +6,10 @@ const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 type SeededSession = {
   cookieName: string;
   cookieValue: string;
+  treeRepositoryHref?: string;
 };
 
-function seedSession(): SeededSession {
+function seedSession(extraEnv: Record<string, string> = {}): SeededSession {
   if (!databaseUrl) {
     throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
   }
@@ -29,6 +30,7 @@ function seedSession(): SeededSession {
         ...process.env,
         DASHBOARD_E2E_EMPTY: "1",
         SESSION_COOKIE_NAME: "og_session",
+        ...extraEnv,
       },
     },
   ).toString();
@@ -122,5 +124,61 @@ test("signed-in commit history renders grouped rows and live links", async ({
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/commits-001-phase2-default-history.jpg",
+  });
+});
+
+test("commit history branch and tag selector reloads refs with filters preserved", async ({
+  page,
+}) => {
+  const seeded = seedSession({ DASHBOARD_E2E_TREE_REFS: "1" });
+  await signIn(page, seeded);
+  expect(seeded.treeRepositoryHref).toBeTruthy();
+  const repositoryHref = seeded.treeRepositoryHref as string;
+
+  await page.goto(
+    `${repositoryHref}/commits/main?until=2099-01-01T00%3A00%3A00Z`,
+  );
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Commit history" }),
+  ).toBeVisible();
+
+  await page.getByLabel("Switch branches or tags. Current ref main").click();
+  await expect(page.getByLabel("Find a branch or tag")).toBeVisible();
+  await expect(
+    page.getByRole("menuitemradio", { name: /main.*Default.*Selected/ }),
+  ).toBeVisible();
+  await page.getByLabel("Find a branch or tag").fill("feature");
+  await page.getByRole("menuitemradio", { name: /feature\/tree-nav/ }).click();
+  await expect(page).toHaveURL(
+    new RegExp(
+      `${repositoryHref}/commits/feature%2Ftree-nav\\?until=2099-01-01T00%3A00%3A00Z`,
+    ),
+  );
+  await expect(page.getByText("Default history for")).toBeVisible();
+  await expect(
+    page
+      .locator("p")
+      .filter({ hasText: "Default history for feature/tree-nav" }),
+  ).toBeVisible();
+
+  await page
+    .getByLabel("Switch branches or tags. Current ref feature/tree-nav")
+    .click();
+  await page.getByLabel("Find a branch or tag").fill("v1");
+  await page.getByRole("button", { name: /Tags/ }).click();
+  await page.getByRole("menuitemradio", { name: /v1\.0\.0/ }).click();
+  await expect(page).toHaveURL(
+    new RegExp(
+      `${repositoryHref}/commits/v1\\.0\\.0\\?until=2099-01-01T00%3A00%3A00Z`,
+    ),
+  );
+  await expect(
+    page.locator("p").filter({ hasText: "Default history for v1.0.0" }),
+  ).toBeVisible();
+  await expectNoDeadControls(page);
+  await page.getByLabel("Switch branches or tags. Current ref v1.0.0").click();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/commits-001-phase3-ref-selector.jpg",
   });
 });
