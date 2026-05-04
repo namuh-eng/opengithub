@@ -41,7 +41,7 @@
 
 ## Phase 3: Submit Create and Redirect - the form creates the organization end to end
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire the setup form submission to `POST /api/organizations` and redirect to the new organization profile or settings profile route after a successful create. Client and server validation must agree, inline failures must stay on the form, and double-submit/race behavior must be deterministic.
 

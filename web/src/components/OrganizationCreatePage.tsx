@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   type ChangeEvent,
   type FormEvent,
@@ -14,6 +15,9 @@ import type { OrganizationSlugAvailability } from "@/lib/api";
 type PlanId = "free" | "team" | "enterprise";
 type OwnershipType = "personal" | "business";
 type AvailabilityStatus = "idle" | "checking" | "error";
+type FieldErrors = Partial<
+  Record<"name" | "contactEmail" | "companyName" | "termsAccepted", string>
+>;
 
 const PLANS: Array<{
   id: PlanId;
@@ -86,6 +90,7 @@ function availabilityCopy(
 }
 
 export function OrganizationCreatePage() {
+  const router = useRouter();
   const [step, setStep] = useState<"plans" | "setup">("plans");
   const [name, setName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
@@ -96,7 +101,9 @@ export function OrganizationCreatePage() {
     useState<OrganizationSlugAvailability | null>(null);
   const [availabilityStatus, setAvailabilityStatus] =
     useState<AvailabilityStatus>("idle");
+  const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const setupHeadingRef = useRef<HTMLHeadingElement>(null);
 
   const normalizedSlug = availability?.normalizedSlug || normalizePreview(name);
@@ -115,6 +122,7 @@ export function OrganizationCreatePage() {
     contactEmail.trim().length > 0 &&
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail);
   const canCreate =
+    !submitting &&
     Boolean(name.trim()) &&
     Boolean(normalizedSlug) &&
     availability?.available === true &&
@@ -175,18 +183,121 @@ export function OrganizationCreatePage() {
 
   function updateOwnership(event: ChangeEvent<HTMLInputElement>) {
     const next = event.target.value as OwnershipType;
+    setFormError(null);
+    setFieldErrors({});
     setOwnershipType(next);
     if (next === "personal") {
       setCompanyName("");
     }
   }
 
-  function submitSetup(event: FormEvent<HTMLFormElement>) {
+  function fieldForApiError(message: string) {
+    const normalized = message.toLowerCase();
+    if (
+      normalized.includes("slug") ||
+      normalized.includes("organization name")
+    ) {
+      return "name" as const;
+    }
+    if (normalized.includes("email")) {
+      return "contactEmail" as const;
+    }
+    if (normalized.includes("company") || normalized.includes("institution")) {
+      return "companyName" as const;
+    }
+    if (normalized.includes("terms")) {
+      return "termsAccepted" as const;
+    }
+    return null;
+  }
+
+  function validateFields(): FieldErrors {
+    const errors: FieldErrors = {};
+    if (!name.trim() || !normalizedSlug) {
+      errors.name = "Organization name is required.";
+    } else if (availability?.available !== true) {
+      errors.name =
+        availability?.reason ??
+        "Confirm an available organization URL before creating.";
+    }
+    if (!contactEmail.trim()) {
+      errors.contactEmail = "Contact email is required.";
+    } else if (emailInvalid) {
+      errors.contactEmail = "Enter a valid contact email.";
+    }
+    if (ownershipType === "business" && !companyName.trim()) {
+      errors.companyName =
+        "Company or institution name is required for business organizations.";
+    }
+    if (!termsAccepted) {
+      errors.termsAccepted =
+        "Accept the organization terms before creating an organization.";
+    }
+    return errors;
+  }
+
+  async function submitSetup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canCreate) {
+    if (submitting) {
+      return;
+    }
+
+    setFormError(null);
+    setFieldErrors({});
+    const nextFieldErrors = validateFields();
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors);
       setFormError(
         "Complete the required fields and confirm the organization URL before creating.",
       );
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const response = await fetch("/organizations/new/create", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name,
+          contactEmail,
+          ownershipType,
+          companyName: ownershipType === "business" ? companyName : null,
+          termsAccepted,
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        const message =
+          body?.error?.message ?? "Organization could not be created.";
+        const field =
+          (body?.details?.field as keyof FieldErrors | undefined) ??
+          fieldForApiError(message);
+        if (field) {
+          setFieldErrors({ [field]: message });
+        } else {
+          setFormError(message);
+        }
+        if (body?.error?.code === "conflict" || field === "name") {
+          setAvailability((current) =>
+            current
+              ? {
+                  ...current,
+                  available: false,
+                  reason: message,
+                  existingKind: "organization",
+                }
+              : current,
+          );
+        }
+        setSubmitting(false);
+        return;
+      }
+
+      router.push(body.href ?? `/orgs/${body.slug}`);
+    } catch {
+      setFormError("Organization could not be created. Try again.");
+      setSubmitting(false);
     }
   }
 
@@ -312,9 +423,14 @@ export function OrganizationCreatePage() {
                 <span className="input">
                   <input
                     aria-describedby="organization-url-preview organization-availability"
+                    aria-invalid={fieldErrors.name ? "true" : "false"}
                     autoComplete="organization"
                     onChange={(event) => {
                       setFormError(null);
+                      setFieldErrors((current) => ({
+                        ...current,
+                        name: undefined,
+                      }));
                       setName(event.target.value);
                     }}
                     placeholder="Acme Labs"
@@ -343,7 +459,7 @@ export function OrganizationCreatePage() {
                   id="organization-availability"
                   role="status"
                 >
-                  {availabilityMessage}
+                  {fieldErrors.name ?? availabilityMessage}
                 </p>
               </div>
 
@@ -354,11 +470,22 @@ export function OrganizationCreatePage() {
                 <span className="input">
                   <input
                     aria-describedby={
-                      emailInvalid ? "contact-email-error" : undefined
+                      fieldErrors.contactEmail || emailInvalid
+                        ? "contact-email-error"
+                        : undefined
+                    }
+                    aria-invalid={
+                      fieldErrors.contactEmail || emailInvalid
+                        ? "true"
+                        : "false"
                     }
                     inputMode="email"
                     onChange={(event) => {
                       setFormError(null);
+                      setFieldErrors((current) => ({
+                        ...current,
+                        contactEmail: undefined,
+                      }));
                       setContactEmail(event.target.value);
                     }}
                     placeholder="admin@example.com"
@@ -366,14 +493,14 @@ export function OrganizationCreatePage() {
                     value={contactEmail}
                   />
                 </span>
-                {emailInvalid ? (
+                {fieldErrors.contactEmail || emailInvalid ? (
                   <span
                     className="t-sm"
                     id="contact-email-error"
                     role="alert"
                     style={{ color: "var(--err)" }}
                   >
-                    Enter a valid contact email.
+                    {fieldErrors.contactEmail ?? "Enter a valid contact email."}
                   </span>
                 ) : null}
               </label>
@@ -429,23 +556,51 @@ export function OrganizationCreatePage() {
                   </span>
                   <span className="input">
                     <input
+                      aria-invalid={fieldErrors.companyName ? "true" : "false"}
+                      aria-describedby={
+                        fieldErrors.companyName
+                          ? "company-name-error"
+                          : undefined
+                      }
                       onChange={(event) => {
                         setFormError(null);
+                        setFieldErrors((current) => ({
+                          ...current,
+                          companyName: undefined,
+                        }));
                         setCompanyName(event.target.value);
                       }}
                       placeholder="Acme Inc."
                       value={companyName}
                     />
                   </span>
+                  {fieldErrors.companyName ? (
+                    <span
+                      className="t-sm"
+                      id="company-name-error"
+                      role="alert"
+                      style={{ color: "var(--err)" }}
+                    >
+                      {fieldErrors.companyName}
+                    </span>
+                  ) : null}
                 </label>
               ) : null}
 
               <label className="card flex cursor-pointer gap-3 p-4">
                 <input
+                  aria-describedby={
+                    fieldErrors.termsAccepted ? "terms-error" : undefined
+                  }
+                  aria-invalid={fieldErrors.termsAccepted ? "true" : "false"}
                   aria-label="I accept the organization terms for this Free plan."
                   checked={termsAccepted}
                   onChange={(event) => {
                     setFormError(null);
+                    setFieldErrors((current) => ({
+                      ...current,
+                      termsAccepted: undefined,
+                    }));
                     setTermsAccepted(event.target.checked);
                   }}
                   type="checkbox"
@@ -454,6 +609,16 @@ export function OrganizationCreatePage() {
                   I accept the organization terms for this Free plan.
                 </span>
               </label>
+              {fieldErrors.termsAccepted ? (
+                <p
+                  className="t-sm"
+                  id="terms-error"
+                  role="alert"
+                  style={{ color: "var(--err)" }}
+                >
+                  {fieldErrors.termsAccepted}
+                </p>
+              ) : null}
             </div>
 
             <div className="mt-6 flex flex-wrap gap-2">
@@ -462,7 +627,7 @@ export function OrganizationCreatePage() {
                 disabled={!canCreate}
                 type="submit"
               >
-                Create organization
+                {submitting ? "Creating..." : "Create organization"}
               </button>
               <Link className="btn" href="/dashboard">
                 Cancel
@@ -486,8 +651,8 @@ export function OrganizationCreatePage() {
                 Next step
               </p>
               <p className="mt-2 t-sm" style={{ color: "var(--ink-2)" }}>
-                Phase 3 will submit this form to the Rust API and redirect to
-                the new organization after persistence succeeds.
+                Creating the organization adds you as owner and opens the new
+                organization profile after persistence succeeds.
               </p>
             </div>
           </aside>

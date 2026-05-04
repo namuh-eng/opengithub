@@ -1,6 +1,20 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { NextRequest } from "next/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { POST as createOrganizationRoute } from "@/app/organizations/new/create/route";
 import { OrganizationCreatePage } from "@/components/OrganizationCreatePage";
+import {
+  type CreatedOrganization,
+  createOrganizationFromCookie,
+} from "@/lib/api";
+
+const routerPush = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: routerPush,
+  }),
+}));
 
 function availability(normalizedSlug: string, available = true) {
   return {
@@ -20,8 +34,28 @@ function mockFetch(response: unknown, ok = true) {
   }) as unknown as typeof fetch;
 }
 
+function createdOrganization(
+  overrides: Partial<CreatedOrganization> = {},
+): CreatedOrganization {
+  return {
+    id: "org-1",
+    slug: "acme-labs",
+    displayName: "Acme Labs",
+    contactEmail: "admin@example.com",
+    ownershipType: "business",
+    companyName: "Acme Inc.",
+    termsOfServiceType: "free_organization_terms",
+    role: "owner",
+    href: "/orgs/acme-labs",
+    settingsHref: "/organizations/acme-labs/settings/profile",
+    createdAt: "2026-05-04T00:00:00Z",
+    ...overrides,
+  };
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
+  routerPush.mockReset();
 });
 
 describe("OrganizationCreatePage", () => {
@@ -115,5 +149,203 @@ describe("OrganizationCreatePage", () => {
     for (const button of screen.getAllByRole("button")) {
       expect(button).toHaveAccessibleName();
     }
+  });
+
+  it("submits organization creation, disables duplicate submits, and redirects", async () => {
+    let resolveCreate: (value: Response) => void = () => {};
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        json: async () => availability("acme-labs"),
+        ok: true,
+      })
+      .mockReturnValueOnce(
+        new Promise<Response>((resolve) => {
+          resolveCreate = resolve;
+        }),
+      );
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    render(<OrganizationCreatePage />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create a free organization" }),
+    );
+    fireEvent.change(screen.getByLabelText("Organization name *"), {
+      target: { value: "Acme Labs" },
+    });
+    await waitFor(() => {
+      expect(screen.getByText("acme-labs is available.")).toBeVisible();
+    });
+    fireEvent.change(screen.getByLabelText("Contact email *"), {
+      target: { value: "admin@example.com" },
+    });
+    fireEvent.click(screen.getByLabelText("Business or institution"));
+    fireEvent.change(screen.getByLabelText("Company name *"), {
+      target: { value: "Acme Inc." },
+    });
+    fireEvent.click(
+      screen.getByLabelText(
+        "I accept the organization terms for this Free plan.",
+      ),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create organization" }),
+    );
+    expect(screen.getByRole("button", { name: "Creating..." })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Creating..." }));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenLastCalledWith("/organizations/new/create", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "Acme Labs",
+        contactEmail: "admin@example.com",
+        ownershipType: "business",
+        companyName: "Acme Inc.",
+        termsAccepted: true,
+      }),
+    });
+
+    resolveCreate(
+      new Response(JSON.stringify(createdOrganization()), { status: 201 }),
+    );
+    await waitFor(() =>
+      expect(routerPush).toHaveBeenCalledWith("/orgs/acme-labs"),
+    );
+  });
+
+  it("keeps entered values and renders inline API validation failures", async () => {
+    global.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        json: async () => availability("acme-labs"),
+        ok: true,
+      })
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              code: "conflict",
+              message: "organization slug is already taken",
+            },
+            status: 409,
+          }),
+          { status: 409 },
+        ),
+      ) as unknown as typeof fetch;
+
+    render(<OrganizationCreatePage />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create a free organization" }),
+    );
+    fireEvent.change(screen.getByLabelText("Organization name *"), {
+      target: { value: "Acme Labs" },
+    });
+    await waitFor(() => {
+      expect(screen.getByText("acme-labs is available.")).toBeVisible();
+    });
+    fireEvent.change(screen.getByLabelText("Contact email *"), {
+      target: { value: "admin@example.com" },
+    });
+    fireEvent.click(
+      screen.getByLabelText(
+        "I accept the organization terms for this Free plan.",
+      ),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create organization" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("organization slug is already taken"),
+      ).toBeVisible();
+    });
+    expect(screen.getByLabelText("Organization name *")).toHaveValue(
+      "Acme Labs",
+    );
+    expect(screen.getByLabelText("Contact email *")).toHaveValue(
+      "admin@example.com",
+    );
+    expect(routerPush).not.toHaveBeenCalled();
+  });
+});
+
+describe("organization create API helpers", () => {
+  it("creates organizations with the signed session cookie", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(createdOrganization()), {
+        status: 201,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubEnv("API_URL", "http://api.local");
+
+    await expect(
+      createOrganizationFromCookie("og_session=value", {
+        name: "Acme Labs",
+        contactEmail: "admin@example.com",
+        ownershipType: "business",
+        companyName: "Acme Inc.",
+        termsAccepted: true,
+      }),
+    ).resolves.toMatchObject({ href: "/orgs/acme-labs" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://api.local/api/organizations",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: "og_session=value",
+        },
+        body: JSON.stringify({
+          name: "Acme Labs",
+          contactEmail: "admin@example.com",
+          ownershipType: "business",
+          companyName: "Acme Inc.",
+          termsAccepted: true,
+        }),
+        cache: "no-store",
+      },
+    );
+  });
+
+  it("proxies organization creation and preserves API error envelopes", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: { code: "conflict", message: "organization slug is taken" },
+          status: 409,
+        }),
+        { status: 409 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubEnv("API_URL", "http://api.local");
+
+    const request = new Request(
+      "http://localhost:3015/organizations/new/create",
+      {
+        method: "POST",
+        headers: {
+          cookie: "og_session=value",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          name: "Acme Labs",
+          contactEmail: "admin@example.com",
+          ownershipType: "personal",
+          termsAccepted: true,
+        }),
+      },
+    ) as NextRequest;
+
+    const response = await createOrganizationRoute(request);
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "conflict" },
+      status: 409,
+    });
   });
 });

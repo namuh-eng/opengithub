@@ -135,3 +135,38 @@ test("organization create setup stays usable on mobile", async ({ page }) => {
   await expect(page.getByText("opengithub.namuh.co/mobile-org")).toBeVisible();
   await expectNoHorizontalOverflow(page);
 });
+
+test("signed-in user creates a free organization and sees it in navigation", async ({
+  page,
+}) => {
+  const seeded = seedSession();
+  await signIn(page, seeded);
+
+  await page.goto("/organizations/new");
+  await page
+    .getByRole("button", { name: "Create a free organization" })
+    .click();
+
+  const uniqueName = `Created Org ${Date.now().toString(36)}`;
+  const normalized = uniqueName.toLowerCase().replaceAll(/\s+/g, "-");
+  await page.getByLabel("Organization name *").fill(uniqueName);
+  await expect(page.getByText(`${normalized} is available.`)).toBeVisible();
+  await page.getByLabel("Contact email *").fill("admin@example.com");
+  await page.getByLabel("Business or institution").check();
+  await page.getByLabel("Company name *").fill("Created Org Inc.");
+  await page
+    .getByLabel("I accept the organization terms for this Free plan.")
+    .check();
+  await page.getByRole("button", { name: "Create organization" }).click();
+
+  await expect(page).toHaveURL(new RegExp(`/orgs/${normalized}(?:$|[/?#])`));
+  await expect(page.getByRole("heading", { name: uniqueName })).toBeVisible();
+  await page.reload();
+  await page.getByRole("button", { name: "Global menu" }).click();
+  await expect(page.getByRole("menuitem", { name: uniqueName })).toBeVisible();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-001-phase3-create-redirect.jpg",
+  });
+});

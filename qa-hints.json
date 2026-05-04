@@ -4633,5 +4633,23 @@
       "Confirm availability and validation failures never disclose private organization/user details beyond generic reserved/taken copy.",
       "Recheck local test DB migration drift before future full-suite E2E; this smoke required applying existing 202605040010_organization_create_flow.up.sql to opengithub_identity_test."
     ]
+  },
+  {
+    "feature_id": "org-admin-001",
+    "tests_written": [
+      "Completed Phase 3 Submit Create and Redirect without marking org-admin-001 build_pass=true.",
+      "Added typed createOrganizationFromCookie and same-origin POST /organizations/new/create forwarding to Rust POST /api/organizations with current session cookies.",
+      "Wired the Editorial setup form to submit real create requests, disable duplicate submits, show field-level API validation failures, preserve entered values after errors, and redirect to the created /orgs/{slug} profile.",
+      "Extended Rust contract coverage for concurrent duplicate creates, canonical lowercase slug casing, lowercased contact email persistence, and personal ownership company-name redaction.",
+      "Focused Vitest covers successful submit, duplicate-submit guard, redirect target, inline API failures, value preservation, helper request shape, and proxy error-envelope preservation.",
+      "Focused Playwright covers signed-in browser creation, redirect to the new organization profile, app-shell organization navigation after refresh, no dead controls, and screenshot ralph/screenshots/build/org-admin-001-phase3-create-redirect.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Exercise simultaneous browser submissions from two sessions for the same normalized slug and confirm exactly one create wins with a clean inline conflict for the loser.",
+      "Probe API/client validation parity for reserved slugs, invalid contact email, business company-name requirements, punctuation-heavy names, and names that normalize to an empty slug.",
+      "Verify app-shell organization navigation ordering and cache freshness for users with many organizations and teams.",
+      "Run accessibility traversal on the submitting state, field error associations, error summary, redirect path, and mobile layout after Phase 4 hardening.",
+      "Recheck local SQLx migration replay drift before future full-suite E2E; focused browser smoke used the skip-migrations seed path against the already-migrated local database."
+    ]
   }
 ]

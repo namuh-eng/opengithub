@@ -329,3 +329,80 @@ async fn create_organization_rejects_anonymous_reserved_duplicates_and_invalid_f
     assert_eq!(duplicate_status, StatusCode::CONFLICT);
     assert_eq!(duplicate_body["error"]["code"], "conflict");
 }
+
+#[tokio::test]
+async fn create_organization_handles_races_canonical_casing_and_personal_company_redaction() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping organization create race contract; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let actor = create_user(&pool, "org-race").await;
+    let cookie = cookie_header(&pool, &config, &actor).await;
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let unique = Uuid::new_v4().simple().to_string();
+    let race_name = format!("Race Org {unique}");
+
+    let payload = json!({
+        "name": race_name,
+        "contactEmail": "Race.Owner@Example.COM",
+        "ownershipType": "personal",
+        "companyName": "Should Not Persist",
+        "termsAccepted": true
+    });
+    let first = send_json(
+        app.clone(),
+        Method::POST,
+        "/api/organizations",
+        Some(&cookie),
+        Some(payload.clone()),
+    );
+    let second = send_json(
+        app.clone(),
+        Method::POST,
+        "/api/organizations",
+        Some(&cookie),
+        Some(payload),
+    );
+    let ((first_status, first_body), (second_status, second_body)) = tokio::join!(first, second);
+
+    let created_body = if first_status == StatusCode::CREATED {
+        assert_eq!(second_status, StatusCode::CONFLICT);
+        assert_eq!(second_body["error"]["code"], "conflict");
+        first_body
+    } else {
+        assert_eq!(second_status, StatusCode::CREATED);
+        assert_eq!(first_status, StatusCode::CONFLICT);
+        assert_eq!(first_body["error"]["code"], "conflict");
+        second_body
+    };
+
+    let slug = created_body["slug"].as_str().expect("slug should exist");
+    assert!(slug.starts_with("race-org-"));
+    assert_eq!(slug, slug.to_ascii_lowercase());
+    assert_eq!(created_body["displayName"], format!("Race Org {unique}"));
+    assert_eq!(created_body["contactEmail"], "race.owner@example.com");
+    assert_eq!(created_body["companyName"], Value::Null);
+
+    let organization_id = Uuid::parse_str(
+        created_body["id"]
+            .as_str()
+            .expect("created organization id should exist"),
+    )
+    .expect("organization id should parse");
+    let persisted: (String, String, Option<String>) = sqlx::query_as(
+        r#"
+        SELECT slug, contact_email, company_name
+        FROM organizations
+        WHERE id = $1
+        "#,
+    )
+    .bind(organization_id)
+    .fetch_one(&pool)
+    .await
+    .expect("organization row should persist");
+    assert_eq!(persisted.0, slug);
+    assert_eq!(persisted.1, "race.owner@example.com");
+    assert_eq!(persisted.2, None);
+}

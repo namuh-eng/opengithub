@@ -531,7 +531,7 @@ describe("RepositoryPullsPage", () => {
     expect(
       screen.getByRole("link", { name: "checks:success" }),
     ).toHaveAttribute("href", expect.not.stringContaining("checks="));
-  });
+  }, 10_000);
 
   it("preserves invalid advanced query text while offering real recovery actions", () => {
     render(

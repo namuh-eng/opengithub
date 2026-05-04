@@ -2128,6 +2128,28 @@ export type OrganizationSlugAvailability = {
   existingKind: string | null;
 };
 
+export type CreateOrganizationRequest = {
+  name: string;
+  contactEmail: string;
+  ownershipType: "personal" | "business";
+  companyName?: string | null;
+  termsAccepted: boolean;
+};
+
+export type CreatedOrganization = {
+  id: string;
+  slug: string;
+  displayName: string;
+  contactEmail: string;
+  ownershipType: "personal" | "business" | string;
+  companyName: string | null;
+  termsOfServiceType: string;
+  role: string;
+  href: string;
+  settingsHref: string;
+  createdAt: string;
+};
+
 export type CreateRepositoryRequest = {
   ownerType: RepositoryOwnerType;
   ownerId: string;
@@ -8655,6 +8677,35 @@ export async function getOrganizationSlugAvailabilityFromCookie(
   }
 
   return (await response.json()) as OrganizationSlugAvailability;
+}
+
+export async function createOrganizationFromCookie(
+  cookie: string | null | undefined,
+  request: CreateOrganizationRequest,
+): Promise<CreatedOrganization> {
+  const response = await fetch(`${apiBaseUrl()}/api/organizations`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(cookie ? { cookie } : {}),
+    },
+    body: JSON.stringify(request),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const body = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      body?.error.message ?? "Organization could not be created",
+      {
+        cause: body,
+      },
+    );
+  }
+
+  return (await response.json()) as CreatedOrganization;
 }
 
 export async function createRepositoryFromCookie(
