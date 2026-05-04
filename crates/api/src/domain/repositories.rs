@@ -628,22 +628,114 @@ pub struct RepositoryBlameCommit {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub struct RepositoryCommitHistoryItem {
+pub struct RepositoryCommitHistoryView {
+    pub repository: RepositoryCommitHistoryRepository,
+    pub resolved_ref: RepositoryCommitResolvedRef,
+    pub filters: RepositoryCommitHistoryFilters,
+    pub groups: Vec<RepositoryCommitGroup>,
+    pub author_options: Vec<RepositoryCommitAuthorOption>,
+    pub total: i64,
+    pub page: i64,
+    pub page_size: i64,
+    pub has_next_page: bool,
+    pub has_previous_page: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCommitHistoryRepository {
+    pub owner_login: String,
+    pub name: String,
+    pub default_branch: String,
+    pub visibility: RepositoryVisibility,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCommitResolvedRef {
+    pub short_name: String,
+    pub qualified_name: String,
+    pub kind: String,
+    pub target_oid: Option<String>,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCommitHistoryFilters {
+    pub path: Option<String>,
+    pub author: Option<String>,
+    pub until: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCommitGroup {
+    pub date: String,
+    pub commits: Vec<RepositoryCommitListItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCommitListItem {
     pub oid: String,
     pub short_oid: String,
     pub message: String,
+    pub subject: String,
+    pub body: Option<String>,
     pub href: String,
+    pub browse_href: String,
     pub committed_at: DateTime<Utc>,
     pub author_login: Option<String>,
+    pub author_avatar_url: Option<String>,
+    pub pull_requests: Vec<RepositoryCommitPullRequestLink>,
+    pub status: RepositoryCommitStatusSummary,
+    pub verification: RepositoryCommitVerificationSummary,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCommitPullRequestLink {
+    pub number: i64,
+    pub title: String,
+    pub href: String,
+    pub state: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCommitStatusSummary {
+    pub status: String,
+    pub conclusion: Option<String>,
+    pub total_count: i64,
+    pub completed_count: i64,
+    pub failed_count: i64,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCommitVerificationSummary {
     pub verified: bool,
     pub signature_state: super::signing_keys::SignatureVerificationState,
     pub signature_summary: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCommitAuthorOption {
+    pub login: String,
+    pub avatar_url: Option<String>,
+    pub count: i64,
+    pub active: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct RepositoryCommitHistoryQuery<'a> {
     pub ref_name: Option<&'a str>,
     pub path: Option<&'a str>,
+    pub author: Option<&'a str>,
+    pub until: Option<DateTime<Utc>>,
     pub page: i64,
     pub page_size: i64,
 }
@@ -1953,7 +2045,7 @@ pub async fn repository_commit_history_for_actor_by_owner_name(
     owner_login: &str,
     name: &str,
     query: RepositoryCommitHistoryQuery<'_>,
-) -> Result<Option<ListEnvelope<RepositoryCommitHistoryItem>>, RepositoryError> {
+) -> Result<Option<RepositoryCommitHistoryView>, RepositoryError> {
     let Some(repository) =
         get_repository_for_actor_by_owner_name(pool, actor_user_id, owner_login, name).await?
     else {
@@ -1961,21 +2053,33 @@ pub async fn repository_commit_history_for_actor_by_owner_name(
     };
     let resolved_ref = resolve_repository_ref(pool, &repository, query.ref_name).await?;
     let path = normalize_repository_path(query.path.unwrap_or(""))?;
-    let files = list_repository_files_for_resolved_ref(pool, repository.id, &resolved_ref).await?;
-    if !path.is_empty()
-        && !files
-            .iter()
-            .any(|file| file.path == path || file.path.starts_with(&format!("{path}/")))
-    {
-        return Err(repository_path_not_found_error(&repository, &path));
+    if !path.is_empty() {
+        let path_prefix = format!("{path}/%");
+        let exists = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM repository_files
+                WHERE repository_id = $1
+                  AND (path = $2 OR path LIKE $3)
+            )
+            "#,
+        )
+        .bind(repository.id)
+        .bind(&path)
+        .bind(&path_prefix)
+        .fetch_one(pool)
+        .await?;
+        if !exists {
+            return Err(repository_path_not_found_error(&repository, &path));
+        }
     }
     repository_commit_history(
         pool,
         &repository,
-        &resolved_ref.short_name,
+        &resolved_ref,
         Some(path.as_str()).filter(|value| !value.is_empty()),
-        query.page,
-        query.page_size,
+        query,
     )
     .await
     .map(Some)
@@ -6321,13 +6425,12 @@ fn blame_lines(content: &str) -> Vec<String> {
 async fn repository_commit_history(
     pool: &PgPool,
     repository: &Repository,
-    _ref_name: &str,
+    resolved_ref: &RepositoryResolvedRef,
     path: Option<&str>,
-    page: i64,
-    page_size: i64,
-) -> Result<ListEnvelope<RepositoryCommitHistoryItem>, RepositoryError> {
-    let page = page.max(1);
-    let page_size = page_size.clamp(1, 100);
+    query: RepositoryCommitHistoryQuery<'_>,
+) -> Result<RepositoryCommitHistoryView, RepositoryError> {
+    let page = query.page.max(1);
+    let page_size = query.page_size.clamp(1, 100);
     let offset = (page - 1) * page_size;
     let path = path.unwrap_or("");
     let path_prefix = if path.is_empty() {
@@ -6335,78 +6438,202 @@ async fn repository_commit_history(
     } else {
         Some(format!("{path}/%"))
     };
+    let normalized_author = query
+        .author
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned);
+    let until = query.until;
+    let target_oid = resolved_ref.target_oid.as_deref();
 
-    let total = if path.is_empty() {
-        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM commits WHERE repository_id = $1")
-            .bind(repository.id)
-            .fetch_one(pool)
-            .await?
-    } else {
-        sqlx::query_scalar::<_, i64>(
-            r#"
-            SELECT count(DISTINCT commits.id)
+    let author_options_rows = sqlx::query(
+        r#"
+        WITH RECURSIVE reachable AS (
+            SELECT c.id, c.oid, c.parent_oids
+            FROM commits c
+            WHERE c.repository_id = $1
+              AND ($2::text IS NULL OR c.oid = $2)
+            UNION
+            SELECT parent.id, parent.oid, parent.parent_oids
+            FROM commits parent
+            JOIN reachable child ON parent.oid = ANY(child.parent_oids)
+            WHERE parent.repository_id = $1
+        ),
+        scoped AS (
+            SELECT DISTINCT commits.id, commits.author_user_id
             FROM commits
-            JOIN repository_files ON repository_files.commit_id = commits.id
+            JOIN reachable ON reachable.id = commits.id
+            LEFT JOIN repository_files ON repository_files.commit_id = commits.id
             WHERE commits.repository_id = $1
-              AND (repository_files.path = $2 OR repository_files.path LIKE $3)
-            "#,
+              AND ($3::text = '' OR repository_files.path = $3 OR repository_files.path LIKE $4)
         )
-        .bind(repository.id)
-        .bind(path)
-        .bind(path_prefix.as_deref().unwrap_or(""))
-        .fetch_one(pool)
-        .await?
-    };
+        SELECT COALESCE(NULLIF(users.username, ''), users.email) AS login,
+               users.avatar_url,
+               count(*)::bigint AS count
+        FROM scoped
+        JOIN users ON users.id = scoped.author_user_id
+        GROUP BY COALESCE(NULLIF(users.username, ''), users.email), users.avatar_url
+        ORDER BY lower(COALESCE(NULLIF(users.username, ''), users.email)) ASC
+        "#,
+    )
+    .bind(repository.id)
+    .bind(target_oid)
+    .bind(path)
+    .bind(path_prefix.as_deref().unwrap_or(""))
+    .fetch_all(pool)
+    .await?;
 
-    let rows = if path.is_empty() {
-        sqlx::query(
-            r#"
-            SELECT commits.oid, commits.message, commits.committed_at,
-                   COALESCE(NULLIF(users.username, ''), users.email) AS author_login,
-                   commits.author_user_id,
-                   commits.signature_fingerprint,
-                   commits.signature_summary
-            FROM commits
-            LEFT JOIN users ON users.id = commits.author_user_id
-            WHERE commits.repository_id = $1
-            ORDER BY commits.committed_at DESC, commits.created_at DESC
-            LIMIT $2 OFFSET $3
-            "#,
+    let author_options = author_options_rows
+        .into_iter()
+        .map(|row| {
+            let login: String = row.get("login");
+            RepositoryCommitAuthorOption {
+                active: normalized_author
+                    .as_deref()
+                    .is_some_and(|author| author.eq_ignore_ascii_case(&login)),
+                login,
+                avatar_url: row.get("avatar_url"),
+                count: row.get("count"),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    if let Some(author) = normalized_author.as_deref() {
+        if !author_options
+            .iter()
+            .any(|option| option.login.eq_ignore_ascii_case(author))
+        {
+            return Err(RepositoryError::PathNotFound);
+        }
+    }
+
+    let total = sqlx::query_scalar::<_, i64>(
+        r#"
+        WITH RECURSIVE reachable AS (
+            SELECT c.id, c.oid, c.parent_oids
+            FROM commits c
+            WHERE c.repository_id = $1
+              AND ($2::text IS NULL OR c.oid = $2)
+            UNION
+            SELECT parent.id, parent.oid, parent.parent_oids
+            FROM commits parent
+            JOIN reachable child ON parent.oid = ANY(child.parent_oids)
+            WHERE parent.repository_id = $1
         )
-        .bind(repository.id)
-        .bind(page_size)
-        .bind(offset)
-        .fetch_all(pool)
-        .await?
-    } else {
-        sqlx::query(
-            r#"
-            SELECT DISTINCT commits.oid, commits.message, commits.committed_at,
-                   COALESCE(NULLIF(users.username, ''), users.email) AS author_login,
-                   commits.author_user_id,
-                   commits.signature_fingerprint,
-                   commits.signature_summary
-            FROM commits
-            JOIN repository_files ON repository_files.commit_id = commits.id
-            LEFT JOIN users ON users.id = commits.author_user_id
-            WHERE commits.repository_id = $1
-              AND (repository_files.path = $2 OR repository_files.path LIKE $3)
-            ORDER BY commits.committed_at DESC
-            LIMIT $4 OFFSET $5
-            "#,
+        SELECT count(DISTINCT commits.id)::bigint
+        FROM commits
+        JOIN reachable ON reachable.id = commits.id
+        LEFT JOIN repository_files ON repository_files.commit_id = commits.id
+        LEFT JOIN users ON users.id = commits.author_user_id
+        WHERE commits.repository_id = $1
+          AND ($3::text = '' OR repository_files.path = $3 OR repository_files.path LIKE $4)
+          AND ($5::text IS NULL OR lower(COALESCE(NULLIF(users.username, ''), users.email)) = lower($5))
+          AND ($6::timestamptz IS NULL OR commits.committed_at <= $6)
+        "#,
+    )
+    .bind(repository.id)
+    .bind(target_oid)
+    .bind(path)
+    .bind(path_prefix.as_deref().unwrap_or(""))
+    .bind(normalized_author.as_deref())
+    .bind(until)
+    .fetch_one(pool)
+    .await?;
+
+    let rows = sqlx::query(
+        r#"
+        WITH RECURSIVE reachable AS (
+            SELECT c.id, c.oid, c.parent_oids
+            FROM commits c
+            WHERE c.repository_id = $1
+              AND ($2::text IS NULL OR c.oid = $2)
+            UNION
+            SELECT parent.id, parent.oid, parent.parent_oids
+            FROM commits parent
+            JOIN reachable child ON parent.oid = ANY(child.parent_oids)
+            WHERE parent.repository_id = $1
         )
-        .bind(repository.id)
-        .bind(path)
-        .bind(path_prefix.as_deref().unwrap_or(""))
-        .bind(page_size)
-        .bind(offset)
-        .fetch_all(pool)
-        .await?
-    };
+        SELECT DISTINCT commits.id,
+               commits.oid,
+               commits.message,
+               commits.committed_at,
+               commits.created_at AS sort_created_at,
+               COALESCE(NULLIF(users.username, ''), users.email) AS author_login,
+               users.avatar_url AS author_avatar_url,
+               commits.author_user_id,
+               commits.signature_fingerprint,
+               commits.signature_summary,
+               COALESCE(statuses.status, workflow_statuses.status, 'pending') AS status,
+               COALESCE(statuses.conclusion, workflow_statuses.conclusion) AS conclusion,
+               COALESCE(statuses.total_count, workflow_statuses.total_count, 0)::bigint AS total_count,
+               COALESCE(statuses.completed_count, workflow_statuses.completed_count, 0)::bigint AS completed_count,
+               COALESCE(statuses.failed_count, workflow_statuses.failed_count, 0)::bigint AS failed_count,
+               COALESCE(pr_links.links, '[]'::jsonb) AS pull_requests
+        FROM commits
+        JOIN reachable ON reachable.id = commits.id
+        LEFT JOIN repository_files ON repository_files.commit_id = commits.id
+        LEFT JOIN users ON users.id = commits.author_user_id
+        LEFT JOIN repository_commit_status_summaries statuses ON statuses.commit_id = commits.id
+        LEFT JOIN LATERAL (
+            SELECT CASE
+                    WHEN count(*) FILTER (WHERE workflow_runs.status IN ('queued', 'in_progress')) > 0 THEN 'running'
+                    WHEN count(*) = 0 THEN NULL
+                    ELSE 'completed'
+                   END AS status,
+                   CASE
+                    WHEN count(*) = 0 THEN NULL
+                    WHEN count(*) FILTER (WHERE workflow_runs.conclusion = 'failure') > 0 THEN 'failure'
+                    WHEN count(*) FILTER (WHERE workflow_runs.conclusion = 'cancelled') > 0 THEN 'cancelled'
+                    WHEN count(*) FILTER (WHERE workflow_runs.conclusion = 'success') = count(*) THEN 'success'
+                    ELSE NULL
+                   END AS conclusion,
+                   count(*)::bigint AS total_count,
+                   count(*) FILTER (WHERE workflow_runs.status = 'completed')::bigint AS completed_count,
+                   count(*) FILTER (WHERE workflow_runs.conclusion = 'failure')::bigint AS failed_count
+            FROM workflow_runs
+            WHERE workflow_runs.repository_id = commits.repository_id
+              AND (workflow_runs.commit_id = commits.id OR workflow_runs.head_sha = commits.oid)
+        ) workflow_statuses ON true
+        LEFT JOIN LATERAL (
+            SELECT jsonb_agg(
+                jsonb_build_object(
+                    'number', pull_requests.number,
+                    'title', pull_requests.title,
+                    'href', format('/%s/%s/pull/%s', $7::text, $8::text, pull_requests.number),
+                    'state', pull_requests.state
+                )
+                ORDER BY pull_requests.number
+            ) AS links
+            FROM pull_request_commits
+            JOIN pull_requests ON pull_requests.id = pull_request_commits.pull_request_id
+            WHERE pull_request_commits.commit_id = commits.id
+        ) pr_links ON true
+        WHERE commits.repository_id = $1
+          AND ($3::text = '' OR repository_files.path = $3 OR repository_files.path LIKE $4)
+          AND ($5::text IS NULL OR lower(COALESCE(NULLIF(users.username, ''), users.email)) = lower($5))
+          AND ($6::timestamptz IS NULL OR commits.committed_at <= $6)
+        ORDER BY commits.committed_at DESC, commits.created_at DESC
+        LIMIT $9 OFFSET $10
+        "#,
+    )
+    .bind(repository.id)
+    .bind(target_oid)
+    .bind(path)
+    .bind(path_prefix.as_deref().unwrap_or(""))
+    .bind(normalized_author.as_deref())
+    .bind(until)
+    .bind(&repository.owner_login)
+    .bind(&repository.name)
+    .bind(page_size)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
 
     let mut items = Vec::with_capacity(rows.len());
     for row in rows {
         let oid: String = row.get("oid");
+        let message: String = row.get("message");
+        let (subject, body) = split_commit_message(&message);
         let signature_fingerprint: Option<String> = row.get("signature_fingerprint");
         let stored_signature_summary: Option<String> = row.get("signature_summary");
         let signature = super::signing_keys::signature_presentation_for_user(
@@ -6420,28 +6647,99 @@ async fn repository_commit_history(
             super::signing_keys::SigningKeyError::Sqlx(error) => RepositoryError::Sqlx(error),
             _ => RepositoryError::GitStorageFailed,
         })?;
-        items.push(RepositoryCommitHistoryItem {
+        let pull_requests: Vec<RepositoryCommitPullRequestLink> =
+            serde_json::from_value(row.get("pull_requests")).unwrap_or_default();
+        items.push(RepositoryCommitListItem {
             short_oid: oid.chars().take(7).collect(),
             href: format!(
                 "/{}/{}/commit/{}",
                 repository.owner_login, repository.name, oid
             ),
-            oid,
-            message: row.get("message"),
+            browse_href: format!(
+                "/{}/{}/tree/{}",
+                repository.owner_login, repository.name, oid
+            ),
+            oid: oid.clone(),
+            message,
+            subject,
+            body,
             committed_at: row.get("committed_at"),
             author_login: row.get("author_login"),
-            verified: signature.verified,
-            signature_state: signature.signature_state,
-            signature_summary: signature.signature_summary,
+            author_avatar_url: row.get("author_avatar_url"),
+            pull_requests,
+            status: RepositoryCommitStatusSummary {
+                status: row.get("status"),
+                conclusion: row.get("conclusion"),
+                total_count: row.get("total_count"),
+                completed_count: row.get("completed_count"),
+                failed_count: row.get("failed_count"),
+                href: format!(
+                    "/{}/{}/actions?commit={}",
+                    repository.owner_login, repository.name, oid
+                ),
+            },
+            verification: RepositoryCommitVerificationSummary {
+                verified: signature.verified,
+                signature_state: signature.signature_state,
+                signature_summary: signature.signature_summary,
+            },
         });
     }
 
-    Ok(ListEnvelope {
-        items,
+    Ok(RepositoryCommitHistoryView {
+        repository: RepositoryCommitHistoryRepository {
+            owner_login: repository.owner_login.clone(),
+            name: repository.name.clone(),
+            default_branch: repository.default_branch.clone(),
+            visibility: repository.visibility.clone(),
+        },
+        resolved_ref: RepositoryCommitResolvedRef {
+            short_name: resolved_ref.short_name.clone(),
+            qualified_name: resolved_ref.qualified_name.clone(),
+            kind: resolved_ref.kind.clone(),
+            target_oid: resolved_ref.target_oid.clone(),
+            href: repository_tree_href(repository, &resolved_ref.short_name, path),
+        },
+        filters: RepositoryCommitHistoryFilters {
+            path: Some(path.to_owned()).filter(|value| !value.is_empty()),
+            author: normalized_author,
+            until,
+        },
+        groups: group_commit_history_items(items),
+        author_options,
         total,
         page,
         page_size,
+        has_next_page: offset + page_size < total,
+        has_previous_page: page > 1,
     })
+}
+
+fn split_commit_message(message: &str) -> (String, Option<String>) {
+    let mut parts = message.splitn(2, '\n');
+    let subject = parts.next().unwrap_or("").trim().to_owned();
+    let body = parts
+        .next()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned);
+    (subject, body)
+}
+
+fn group_commit_history_items(items: Vec<RepositoryCommitListItem>) -> Vec<RepositoryCommitGroup> {
+    let mut groups: Vec<RepositoryCommitGroup> = Vec::new();
+    for item in items {
+        let date = item.committed_at.date_naive().to_string();
+        if let Some(group) = groups.last_mut().filter(|group| group.date == date) {
+            group.commits.push(item);
+        } else {
+            groups.push(RepositoryCommitGroup {
+                date,
+                commits: vec![item],
+            });
+        }
+    }
+    groups
 }
 
 async fn upsert_repository_search_index(

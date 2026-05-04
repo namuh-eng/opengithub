@@ -5035,5 +5035,22 @@
       "Run screen-reader traversal and keyboard-only review across the long settings page, confirmation dialog, disabled policy states, and mobile layout.",
       "When destructive repository deletion/transfer and issue deletion execution are fully implemented, retest the currently disabled policy-controlled affordances end to end."
     ]
+  },
+  {
+    "feature_id": "commits-001",
+    "tests_written": [
+      "Completed Phase 1 Commit List Contract without marking commits-001 build_pass=true.",
+      "GET /api/repos/{owner}/{repo}/commits now returns repository context, resolved ref metadata, filters, grouped commits, author options, pagination flags, PR links, status summaries, browse/detail hrefs, and verification summaries.",
+      "The endpoint resolves branch/tag refs through repository_git_refs, walks commit ancestry from the resolved target, and supports path, author, until/before date, page, and pageSize filters.",
+      "Added additive commit-history metadata migration for repository_commit_status_summaries and repository_commit_recent_visits.",
+      "Focused Rust contract covers anonymous 401, private outsider 403, branch/tag resolution, grouped rows, pagination, path/author filters, PR/status/signature shape, missing-ref recovery, missing-path errors, and redaction."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 must update the UI to consume the new grouped API contract and save browser screenshots.",
+      "Run the focused contract against a clean migration database after the repo's duplicate/modified migration drift is resolved; the shared local test database needed the additive Phase 1 migration applied manually before DB assertions ran.",
+      "Stress long commit ancestry chains, merge commits with multiple parents, and commits touching the same path across renamed files.",
+      "Probe combined author/date/path pagination once the URL-backed toolbar lands in later phases.",
+      "Browser smoke was skipped for this API-first phase per the structure outline."
+    ]
   }
 ]

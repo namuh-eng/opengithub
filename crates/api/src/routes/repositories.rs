@@ -5,6 +5,7 @@ use axum::{
     routing::{delete, get, patch, post, put},
     Json, Router,
 };
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
@@ -334,6 +335,9 @@ struct CommitsQuery {
     #[serde(rename = "ref")]
     ref_name: Option<String>,
     path: Option<String>,
+    author: Option<String>,
+    until: Option<DateTime<Utc>>,
+    before: Option<DateTime<Utc>>,
     page: Option<i64>,
     #[serde(alias = "page_size")]
     page_size: Option<i64>,
@@ -633,6 +637,8 @@ async fn commits(
         RepositoryCommitHistoryQuery {
             ref_name: query.ref_name.as_deref(),
             path: query.path.as_deref(),
+            author: query.author.as_deref(),
+            until: query.until.or(query.before),
             page: pagination.page,
             page_size: pagination.page_size,
         },

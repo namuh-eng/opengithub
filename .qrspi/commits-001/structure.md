@@ -6,7 +6,7 @@
 
 ## Phase 1: Commit List Contract - API returns screen-ready grouped history
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Upgrade the existing authenticated commit-history endpoint from a thin list of commits into a repository commit-list view that resolves the requested branch/tag/ref, supports path-scoped history, groups rows by commit date, and returns the metadata the screen needs. This phase is API-first and keeps the current UI functional.
 
