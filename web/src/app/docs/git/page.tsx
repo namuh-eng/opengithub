@@ -27,6 +27,14 @@ const restPackageCommands = `curl -H "Authorization: Bearer oghp_your_token" \\
 echo "$OPENGITHUB_TOKEN" | docker login opengithub.namuh.co \\
   -u "$OPENGITHUB_ACTOR" --password-stdin
 docker pull opengithub.namuh.co/mona/octo-image:latest`;
+const sshKeyCommands = `ssh-keygen -t ed25519 -C "mona@example.com"
+cat ~/.ssh/id_ed25519.pub
+
+# Add the public key in /settings/keys before SSH transport is enabled.
+# opengithub stores the SHA256 fingerprint and never stores private keys.`;
+const signingKeyCommands = `gpg --armor --export mona@example.com
+git config --global user.signingkey 0F1E2D3C4B5A6978
+git config --global commit.gpgsign true`;
 
 export default async function GitDocsPage() {
   const session = await getSession();
@@ -129,6 +137,58 @@ export default async function GitDocsPage() {
 
         <section className="mt-8 space-y-3">
           <h2 className="t-h3" style={{ color: "var(--ink-1)" }}>
+            SSH public keys
+          </h2>
+          <p className="t-body" style={{ color: "var(--ink-3)" }}>
+            Add public SSH keys in Developer Settings so future SSH transport
+            can validate the key fingerprint without storing private material.
+            Revoked keys remain in account history, are excluded from
+            authentication, and keep their audit trail.
+          </p>
+          <DeveloperCommandBlock
+            copyLabel="Copy SSH setup"
+            label="SSH key setup"
+            value={sshKeyCommands}
+          />
+          <ul
+            className="list-inside list-disc space-y-1 t-sm leading-6"
+            style={{ color: "var(--ink-3)" }}
+          >
+            <li>
+              Supported public-key rows show key type, SHA256 fingerprint,
+              read/write access, source, added date, and last-used state.
+            </li>
+            <li>
+              Duplicate active fingerprints are rejected before a new key is
+              stored.
+            </li>
+          </ul>
+        </section>
+
+        <section className="mt-8 space-y-3">
+          <h2 className="t-h3" style={{ color: "var(--ink-1)" }}>
+            Commit signing and vigilant mode
+          </h2>
+          <p className="t-body" style={{ color: "var(--ink-3)" }}>
+            Upload armored public GPG keys for commit and tag verification.
+            Active GPG fingerprints mark matching user-attributed commits as
+            verified. Vigilant mode flags unsigned or untrusted commits
+            attributed to you as unverified until a trusted signing key matches.
+          </p>
+          <DeveloperCommandBlock
+            copyLabel="Copy signing setup"
+            label="GPG signing"
+            value={signingKeyCommands}
+          />
+          <p className="t-sm" style={{ color: "var(--ink-3)" }}>
+            Raw armored public keys are accepted only when adding a key. API
+            responses and browser rows show fingerprints, key IDs, extracted
+            email addresses, and revoked state without returning the armor.
+          </p>
+        </section>
+
+        <section className="mt-8 space-y-3">
+          <h2 className="t-h3" style={{ color: "var(--ink-1)" }}>
             Raw files and archives
           </h2>
           <DeveloperCommandBlock
@@ -144,6 +204,9 @@ export default async function GitDocsPage() {
           </Link>
           <Link className="btn ghost" href="/settings/tokens">
             Token settings
+          </Link>
+          <Link className="btn ghost" href="/settings/keys">
+            Key settings
           </Link>
           <Link className="btn ghost" href="/docs/get-started">
             Setup guide

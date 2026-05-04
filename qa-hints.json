@@ -4555,5 +4555,24 @@
       "Run browser QA on pages with mixed verified, unverified, and vigilant-unverified commit histories once fixtures include signed commit metadata.",
       "Check that raw SSH public keys and armored GPG public keys remain absent from API responses, audit metadata, browser output, and logs."
     ]
+  },
+  {
+    "feature_id": "credentials-002",
+    "tests_written": [
+      "Completed Phase 5 API Docs, Browser QA Handoff, and Build-Pass Bookkeeping; credentials-002.build_pass is now true and qa_pass remains false.",
+      "Added /docs/api endpoint coverage for GET /api/settings/keys, POST/DELETE SSH keys, POST/DELETE GPG keys, and PATCH /api/settings/keys/vigilant-mode.",
+      "Expanded /docs/git with SSH public-key setup, duplicate fingerprint guidance, GPG commit-signing setup, and vigilant-mode signature presentation rules.",
+      "Extended API docs Vitest assertions for signing-key endpoint paths, raw key redaction, duplicate fingerprint validation, GPG signature behavior, and vigilant-mode audit events.",
+      "Extended the developer keys Playwright smoke to cover /settings/keys SSH/GPG create-delete, vigilant-mode toggle, /docs/git, /docs/api, copy buttons, no inert controls, and final screenshots.",
+      "Browser smoke screenshots saved at ralph/screenshots/build/credentials-002-final-docs-git.jpg and ralph/screenshots/build/credentials-002-final-docs-api.jpg.",
+      "Verification passed: focused Vitest, TypeScript, focused Biome, mandatory Editorial banned-value scan, make check, make test with 358 web tests, focused Playwright developer-keys smoke, and full make test-e2e with 108 Playwright tests."
+    ],
+    "needs_deeper_qa": [
+      "Run real SSH transport parity once SSH clone/push is introduced: public-key handshake, read-only versus read-write enforcement, revoked-key denial, and last-used timestamp refresh.",
+      "Probe malformed and real-world SSH/GPG parser edge cases including security-key formats, RSA/ECDSA variants, multi-identity GPG exports, subkeys, expiration/revocation packets, comments, unusual armor whitespace, duplicate races, and oversized invalid payloads.",
+      "Exercise concurrent create/delete and vigilant-mode toggles across multiple signed-in sessions to confirm rollback and audit ordering.",
+      "Validate real Google reauth parity when sudo mode moves beyond local email confirmation.",
+      "Run accessibility traversal on the SSH/GPG forms, delete alertdialogs, copyable docs snippets, vigilant-mode checkbox, status announcements, and mobile wrapping with many keys."
+    ]
   }
 ]

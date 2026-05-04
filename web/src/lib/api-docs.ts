@@ -189,6 +189,171 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "signing-keys-list",
+    method: "GET",
+    path: "/api/settings/keys",
+    title: "List SSH and GPG keys",
+    description:
+      "Returns the signed-in user's SSH keys, GPG keys, vigilant-mode preference, and sudo state for Developer Settings.",
+    auth: "Signed opengithub session cookie",
+    response: `{
+  "sshKeys": [
+    {
+      "id": "ssh_key_01",
+      "title": "Work laptop",
+      "keyType": "ssh-ed25519",
+      "fingerprintSha256": "SHA256:abc123",
+      "accessMode": "read_write",
+      "source": "browser",
+      "lastUsedAt": null,
+      "revokedAt": null,
+      "createdAt": "2026-05-04T00:00:00Z"
+    }
+  ],
+  "gpgKeys": [
+    {
+      "id": "gpg_key_01",
+      "title": "Release signing",
+      "primaryFingerprint": "0F1E2D3C4B5A6978",
+      "keyId": "4B5A6978",
+      "emails": ["mona@example.com"],
+      "revokedAt": null
+    }
+  ],
+  "vigilantMode": true,
+  "sudo": { "active": false, "requiredFor": ["revoke_signing_key"] }
+}`,
+    notes: [
+      "Responses expose fingerprints and metadata only; raw SSH public keys and armored GPG blocks are not serialized.",
+      "Revoked keys remain visible with revokedAt for audit history and cannot authenticate or verify future signatures.",
+      "Anonymous callers receive 401; the browser renders an explicit sign-in state without leaking key metadata.",
+    ],
+  },
+  {
+    id: "ssh-key-create",
+    method: "POST",
+    path: "/api/settings/keys/ssh",
+    title: "Add SSH key",
+    description:
+      "Validates a public SSH key, derives its SHA256 fingerprint, enforces active per-user uniqueness, and returns the metadata row.",
+    auth: "Signed opengithub session cookie",
+    request: `{
+  "title": "Work laptop",
+  "keyType": "ssh-ed25519",
+  "publicKey": "ssh-ed25519 AAAAC3Nza... mona@laptop",
+  "accessMode": "read_write"
+}`,
+    response: `{
+  "sshKey": {
+    "id": "ssh_key_01",
+    "title": "Work laptop",
+    "keyType": "ssh-ed25519",
+    "fingerprintSha256": "SHA256:abc123",
+    "accessMode": "read_write",
+    "revokedAt": null
+  }
+}`,
+    notes: [
+      "Validation checks the declared key type, wire key type, base64 body, bounded title, and allowed read_write/read_only access mode.",
+      "Duplicate active fingerprints return validation_failed without exposing the existing key row.",
+      "Security audit events store redacted key metadata only.",
+    ],
+  },
+  {
+    id: "ssh-key-revoke",
+    method: "DELETE",
+    path: "/api/settings/keys/ssh/{key_id}",
+    title: "Revoke SSH key",
+    description:
+      "Revokes one owned SSH key behind sudo mode while preserving the key row for account security history.",
+    auth: "Signed opengithub session cookie with active sudo grant",
+    response: `{
+  "revokedAt": "2026-05-04T13:00:00Z",
+  "sshKey": {
+    "id": "ssh_key_01",
+    "title": "Work laptop",
+    "fingerprintSha256": "SHA256:abc123",
+    "revokedAt": "2026-05-04T13:00:00Z"
+  }
+}`,
+    notes: [
+      "Sudo mode uses the same short-lived session grant as token revocation.",
+      "Unknown, already-revoked, or cross-user key IDs return stable error envelopes.",
+      "Future SSH authentication helpers ignore revoked keys and never expose public key material.",
+    ],
+  },
+  {
+    id: "gpg-key-create",
+    method: "POST",
+    path: "/api/settings/keys/gpg",
+    title: "Add GPG key",
+    description:
+      "Validates an armored public GPG key, extracts signing metadata, stores the public-key fingerprint, and returns redacted summary rows.",
+    auth: "Signed opengithub session cookie",
+    request: `{
+  "title": "Release signing",
+  "armoredPublicKey": "-----BEGIN PGP PUBLIC KEY BLOCK-----..."
+}`,
+    response: `{
+  "gpgKey": {
+    "id": "gpg_key_01",
+    "title": "Release signing",
+    "primaryFingerprint": "0F1E2D3C4B5A6978",
+    "keyId": "4B5A6978",
+    "emails": ["mona@example.com"],
+    "revokedAt": null
+  }
+}`,
+    notes: [
+      "The armored public key is accepted only on create and is not returned by list or mutation responses.",
+      "Active GPG fingerprints drive commit and tag signature presentation for commits attributed to the user.",
+      "Malformed armor, duplicate active fingerprints, and oversized titles return validation_failed.",
+    ],
+  },
+  {
+    id: "gpg-key-revoke",
+    method: "DELETE",
+    path: "/api/settings/keys/gpg/{key_id}",
+    title: "Revoke GPG key",
+    description:
+      "Revokes one owned GPG key behind sudo mode and stops it from verifying future commit or tag signatures.",
+    auth: "Signed opengithub session cookie with active sudo grant",
+    response: `{
+  "revokedAt": "2026-05-04T13:00:00Z",
+  "gpgKey": {
+    "id": "gpg_key_01",
+    "title": "Release signing",
+    "primaryFingerprint": "0F1E2D3C4B5A6978",
+    "revokedAt": "2026-05-04T13:00:00Z"
+  }
+}`,
+    notes: [
+      "Revoked GPG keys stay in settings history but are excluded from verified signature classification.",
+      "Typed browser confirmation plus sudo mode protects destructive signing-key changes.",
+      "Security audit events retain key IDs, fingerprints, and action metadata without raw armor.",
+    ],
+  },
+  {
+    id: "vigilant-mode-update",
+    method: "PATCH",
+    path: "/api/settings/keys/vigilant-mode",
+    title: "Update vigilant mode",
+    description:
+      "Persists whether unsigned or untrusted commits attributed to the user should be presented as unverified.",
+    auth: "Signed opengithub session cookie",
+    request: `{
+  "enabled": true
+}`,
+    response: `{
+  "vigilantMode": true
+}`,
+    notes: [
+      "The preference is stored on users.vigilant_mode and writes a vigilant_mode.update security audit event when it changes.",
+      "Commit and tag presentation uses active GPG fingerprints first, then applies vigilant-mode unverified messaging for unsigned or untrusted user-attributed work.",
+      "The browser rolls back the checkbox if the Rust API rejects the update.",
+    ],
+  },
+  {
     id: "repos-list",
     method: "GET",
     path: "/api/repos?page=1&pageSize=30",

@@ -138,4 +138,59 @@ test("SSH key settings create and delete a public key", async ({ page }) => {
     fullPage: true,
     path: "../ralph/screenshots/build/credentials-002-phase3-gpg-vigilant.jpg",
   });
+
+  await page.goto("/docs/git");
+  await expect(page.getByText("SSH public keys")).toBeVisible();
+  await expect(
+    page.getByText("Commit signing and vigilant mode"),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Revoked keys remain in account history/),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Active GPG fingerprints mark matching/),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Copy SSH setup" }).click();
+  await expect(page.getByRole("status").last()).toContainText(
+    /Copied|unavailable/,
+  );
+  await page.getByRole("button", { name: "Copy signing setup" }).click();
+  await expect(page.getByRole("status").last()).toContainText(
+    /Copied|unavailable/,
+  );
+  await expect(
+    page.getByRole("link", { name: "Key settings" }),
+  ).toHaveAttribute("href", "/settings/keys");
+  await expect(page.locator("article")).not.toContainText("api.github.com");
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/credentials-002-final-docs-git.jpg",
+  });
+
+  await page.goto("/docs/api");
+  await expect(
+    page.locator("code").filter({ hasText: /^\/api\/settings\/keys$/ }),
+  ).toBeVisible();
+  await expect(
+    page.locator("code").filter({ hasText: /^\/api\/settings\/keys\/ssh$/ }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator("code")
+      .filter({ hasText: /^\/api\/settings\/keys\/gpg\/\{key_id\}$/ }),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator("code")
+      .filter({ hasText: /^\/api\/settings\/keys\/vigilant-mode$/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/raw SSH public keys and armored GPG blocks/),
+  ).toBeVisible();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/credentials-002-final-docs-api.jpg",
+  });
 });

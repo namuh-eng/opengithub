@@ -534,6 +534,28 @@ describe("ApiDocsPage", () => {
     expect(
       screen.getByText(/fine-grained tokens can be limited to selected/),
     ).toBeVisible();
+    expect(screen.getByText("/api/settings/keys")).toBeVisible();
+    expect(screen.getByText("/api/settings/keys/ssh")).toBeVisible();
+    expect(screen.getByText("/api/settings/keys/ssh/{key_id}")).toBeVisible();
+    expect(screen.getByText("/api/settings/keys/gpg")).toBeVisible();
+    expect(screen.getByText("/api/settings/keys/gpg/{key_id}")).toBeVisible();
+    expect(screen.getByText("/api/settings/keys/vigilant-mode")).toBeVisible();
+    expect(
+      screen.getByText(/raw SSH public keys and armored GPG blocks/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Duplicate active fingerprints return validation_failed/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Active GPG fingerprints drive commit and tag signature/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/users.vigilant_mode and writes a vigilant_mode.update/),
+    ).toBeVisible();
   });
 
   it("opens examples without placeholder links or inert controls", () => {

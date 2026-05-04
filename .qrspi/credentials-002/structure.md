@@ -75,7 +75,7 @@
 
 ## Phase 5: API Docs, Browser QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Lock `credentials-002` as a completed feature after docs, browser evidence, QA hints, and build-loop bookkeeping are current.
 
