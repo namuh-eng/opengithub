@@ -79,7 +79,7 @@
 
 ## Phase 5: Docs, Browser QA Handoff, and Build Pass - finish org-admin-005
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Document organization member privilege endpoints, collect final browser evidence, update QA hints, and mark `org-admin-005.build_pass=true` only after every policy card and enforced API path is verified.
 

@@ -5017,5 +5017,23 @@
       "Probe policy flips while repository settings and Pages source forms are open, especially stale submit behavior after policy changes.",
       "The full make test-e2e wrapper was terminated after a silent stall; direct focused Playwright passed 8 tests and no matching child processes remained after cleanup."
     ]
+  },
+  {
+    "feature_id": "org-admin-005",
+    "tests_written": [
+      "Completed Phase 5 Docs, Browser QA Handoff, and Build Pass for org-admin-005.",
+      "Documented GET/PATCH /api/orgs/{org}/settings/member-privileges with owner-only auth, schema fields, confirmation_required behavior, audit redaction, default policy row creation, base permission inheritance, policy locks, and cross-feature policy enforcement notes.",
+      "Extended API docs tests to assert the member-privileges endpoint paths, read/update headings, confirmation behavior, audit notes, base permission inheritance, and policy_locked cross-feature denial notes.",
+      "Extended final Playwright smoke to exercise every visible policy card, confirmation dialogs, repository creation member constraints, direct-admin member Pages policy denial, team creation unavailable state, no dead controls, and mobile no-overflow.",
+      "Saved final browser screenshots for long page, confirmation dialog, policy state, constrained repository creation, Pages denial, and mobile layout."
+    ],
+    "needs_deeper_qa": [
+      "Repeat the complete member-privileges flow with a real Google OAuth owner session using TEST_ACCOUNT_EMAIL rather than deterministic signed-cookie fixtures.",
+      "Probe concurrent policy writes from two owner sessions and stale browser forms during repository creation, Pages source changes, and team creation.",
+      "Stress large organizations with many repositories, teams, inherited base permission rows, and long policy-lock reasons.",
+      "Recheck base repository permission cache invalidation immediately after none/read/write/admin flips across direct and inherited team grants.",
+      "Run screen-reader traversal and keyboard-only review across the long settings page, confirmation dialog, disabled policy states, and mobile layout.",
+      "When destructive repository deletion/transfer and issue deletion execution are fully implemented, retest the currently disabled policy-controlled affordances end to end."
+    ]
   }
 ]

@@ -196,6 +196,89 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "organization-member-privileges",
+    method: "GET",
+    path: "/api/orgs/{org}/settings/member-privileges",
+    title: "Read organization member privileges",
+    description:
+      "Returns the owner-only organization policy settings that drive base repository permissions, repository creation choices, Pages publishing, team creation, app access, discussions, forking, and destructive repository affordances.",
+    auth: "Signed opengithub session cookie with organization owner role",
+    response: `{
+  "organization": {
+    "slug": "acme-labs",
+    "settingsHref": "/organizations/acme-labs/settings/member_privileges"
+  },
+  "policies": {
+    "baseRepositoryPermission": "read",
+    "membersCanCreatePublicRepositories": true,
+    "membersCanCreatePrivateRepositories": true,
+    "membersCanCreateInternalRepositories": false,
+    "membersCanForkPrivateRepositories": true,
+    "repositoryDiscussionsEnabled": true,
+    "projectsBasePermission": "write",
+    "pagesPublicPublishing": true,
+    "pagesPrivatePublishing": true,
+    "appAccessRequestPolicy": "owners_and_members",
+    "membersCanChangeRepositoryVisibility": false,
+    "membersCanDeleteRepositories": false,
+    "membersCanTransferRepositories": false,
+    "membersCanDeleteIssues": false,
+    "membersCanCreateTeams": true
+  },
+  "capabilities": {
+    "canUpdate": true,
+    "requiresConfirmationFields": [
+      "baseRepositoryPermission",
+      "projectsBasePermission"
+    ],
+    "locks": []
+  }
+}`,
+    notes: [
+      "Anonymous callers receive 401; organization members, admins, and private-organization outsiders without owner role cannot read this settings-only policy surface.",
+      "The API creates a default organization_policy_settings row before returning, so every owner receives a complete policy object.",
+      "Base repository permission is inherited by organization members for repository authorization, while explicit direct and team permissions preserve the strongest role.",
+      "Repository creation, team creation, Pages publishing, discussions, forking, app-access, visibility, transfer, delete, and issue-delete UI surfaces consume the policy lock fields instead of rendering dead controls.",
+    ],
+  },
+  {
+    id: "organization-member-privileges-update",
+    method: "PATCH",
+    path: "/api/orgs/{org}/settings/member-privileges",
+    title: "Update organization member privileges",
+    description:
+      "Persists partial organization policy changes and returns the refreshed member-privileges contract for the long Editorial settings page.",
+    auth: "Signed opengithub session cookie with organization owner role",
+    request: `{
+  "baseRepositoryPermission": "none",
+  "membersCanCreatePublicRepositories": false,
+  "pagesPrivatePublishing": false,
+  "membersCanCreateTeams": false,
+  "confirmation": "confirm"
+}`,
+    response: `{
+  "policies": {
+    "baseRepositoryPermission": "none",
+    "membersCanCreatePublicRepositories": false,
+    "pagesPrivatePublishing": false,
+    "membersCanCreateTeams": false
+  },
+  "capabilities": {
+    "requiresConfirmationFields": [
+      "baseRepositoryPermission",
+      "projectsBasePermission"
+    ],
+    "locks": []
+  }
+}`,
+    notes: [
+      "Partial patches preserve omitted policy fields and validate enum values for baseRepositoryPermission, projectsBasePermission, and appAccessRequestPolicy.",
+      "Base repository permission and Projects base permission changes return confirmation_required until the browser resubmits with confirmation=confirm.",
+      "Successful writes record redacted organization.policy.update audit events with old/new JSON values and no session secrets, OAuth data, or repository private metadata.",
+      "Policy-denied repository creation, Pages source updates, team creation, and repository settings mutations return policy_locked envelopes with a member-privileges settings link for owners.",
+    ],
+  },
+  {
     id: "organization-teams",
     method: "GET",
     path: "/api/orgs/{org}/teams?q=platform&visibility=all&page=1&pageSize=30",

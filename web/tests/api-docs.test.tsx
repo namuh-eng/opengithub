@@ -110,7 +110,7 @@ describe("ApiDocsPage", () => {
       ),
     ).toBeVisible();
     expect(
-      screen.getByText(/default organization_policy_settings/),
+      screen.getAllByText(/default organization_policy_settings/)[0],
     ).toBeVisible();
     expect(
       screen.getByText(
@@ -141,6 +141,42 @@ describe("ApiDocsPage", () => {
     ).toBeVisible();
     expect(
       screen.getByText(/archive and delete execution remain unsupported/),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText("/api/orgs/{org}/settings/member-privileges")[0],
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Read organization member privileges",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Update organization member privileges",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Base repository permission is inherited by organization members/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Repository creation, team creation, Pages publishing, discussions, forking/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Base repository permission and Projects base permission changes return confirmation_required/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/organization.policy.update audit events/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Policy-denied repository creation, Pages source updates, team creation/,
+      ),
     ).toBeVisible();
     expect(
       screen.getByText(

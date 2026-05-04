@@ -7,7 +7,32 @@ type SeededOrganizationProfile = {
   cookieName: string;
   cookieValue: string;
   organizationProfileHref: string;
+  profileActionCookieValue: string;
 };
+
+function sqlLiteral(value: string) {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function runSqlValue(sql: string) {
+  if (!databaseUrl) {
+    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
+  }
+  return execFileSync("psql", [databaseUrl, "-tA", "-c", sql], {
+    env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
+  })
+    .toString()
+    .trim();
+}
+
+function runSql(sql: string) {
+  if (!databaseUrl) {
+    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
+  }
+  execFileSync("psql", [databaseUrl, "-v", "ON_ERROR_STOP=1", "-c", sql], {
+    env: { ...process.env, PGSSLMODE: process.env.PGSSLMODE ?? "disable" },
+  });
+}
 
 function seedOrganizationProfile(): SeededOrganizationProfile {
   if (!databaseUrl) {
@@ -36,7 +61,11 @@ function seedOrganizationProfile(): SeededOrganizationProfile {
   return JSON.parse(output) as SeededOrganizationProfile;
 }
 
-async function signIn(page: Page, seeded: SeededOrganizationProfile) {
+async function signIn(
+  page: Page,
+  seeded: SeededOrganizationProfile,
+  cookieValue = seeded.cookieValue,
+) {
   await page.context().addCookies([
     {
       domain: "localhost",
@@ -45,7 +74,7 @@ async function signIn(page: Page, seeded: SeededOrganizationProfile) {
       path: "/",
       sameSite: "Lax",
       secure: false,
-      value: seeded.cookieValue,
+      value: cookieValue,
     },
   ]);
 }
@@ -80,6 +109,14 @@ test("owner manages organization member privileges", async ({ page }) => {
   const seeded = seedOrganizationProfile();
   await signIn(page, seeded);
   const slug = slugFromProfileHref(seeded.organizationProfileHref);
+  const repositoryName = runSqlValue(`
+    SELECT repositories.name
+    FROM repositories
+    JOIN organizations ON organizations.id = repositories.owner_organization_id
+    WHERE organizations.slug = ${sqlLiteral(slug)}
+    ORDER BY repositories.created_at ASC
+    LIMIT 1
+  `);
 
   await page.goto(`/organizations/${slug}/settings/member_privileges`);
   await expect(
@@ -97,6 +134,10 @@ test("owner manages organization member privileges", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Team creation" }),
   ).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-005-final-long-page.jpg",
+  });
 
   await page.getByLabel("Public repositories").uncheck();
   await page.getByRole("button", { name: "Save repository creation" }).click();
@@ -104,11 +145,57 @@ test("owner manages organization member privileges", async ({ page }) => {
     page.getByText("Repository creation policy updated"),
   ).toBeVisible();
 
+  await page.getByLabel("Private repository forking").uncheck();
+  await page.getByLabel("Repository discussions").uncheck();
+  await page.getByRole("button", { name: "Save repository features" }).click();
+  await expect(
+    page.getByText("Repository feature policy updated"),
+  ).toBeVisible();
+
+  const projectsGroup = page.getByRole("group", {
+    name: "Default project role",
+  });
+  await projectsGroup.getByLabel("Admin").check();
+  await page.getByRole("button", { name: "Save Projects permission" }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Confirm organization policy change" }),
+  ).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-005-final-base-confirmation.jpg",
+  });
+  await page.getByRole("button", { name: "Confirm and save" }).click();
+  await expect(
+    page.getByText("Projects base permission updated"),
+  ).toBeVisible();
+
+  await page.getByLabel("Public Pages publishing").uncheck();
+  await page.getByRole("button", { name: "Save Pages policy" }).click();
+  await expect(page.getByText("Pages publishing policy updated")).toBeVisible();
+
+  await page.getByLabel("Owners only").check();
+  await page.getByRole("button", { name: "Save app access" }).click();
+  await expect(
+    page.getByText("App access request policy updated"),
+  ).toBeVisible();
+
+  await page.getByLabel("Repository visibility changes").check();
+  await page.getByLabel("Repository deletion").check();
+  await page.getByLabel("Repository transfers").check();
+  await page.getByLabel("Issue deletion").check();
+  await page.getByRole("button", { name: "Save destructive actions" }).click();
+  await expect(
+    page.getByText("Destructive action policy updated"),
+  ).toBeVisible();
+
   await page.getByLabel("Members can create teams").uncheck();
   await page.getByRole("button", { name: "Save team creation" }).click();
   await expect(page.getByText("Team creation policy updated")).toBeVisible();
 
-  await page.getByLabel("None").nth(0).check();
+  const basePermissionGroup = page.getByRole("group", {
+    name: "Default repository role",
+  });
+  await basePermissionGroup.getByLabel("None").check();
   await page.getByRole("button", { name: "Save base permission" }).click();
   await expect(
     page.getByRole("dialog", { name: "Confirm organization policy change" }),
@@ -121,13 +208,89 @@ test("owner manages organization member privileges", async ({ page }) => {
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/org-admin-005-phase2-member-privileges.jpg",
+    path: "../ralph/screenshots/build/org-admin-005-final-policy-state.jpg",
   });
 
+  await page.context().clearCookies();
+  await signIn(page, seeded, seeded.profileActionCookieValue);
+  await page.goto("/new");
+  await page.getByLabel("Owner *").selectOption({ label: slug });
+  await expect(
+    page
+      .getByRole("combobox", { name: /Choose visibility/ })
+      .locator("option")
+      .filter({ hasText: "Public - disabled by organization policy" }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByText(
+      "Organization policy prevents members from creating public repositories.",
+    ),
+  ).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-005-final-repository-create-constrained.jpg",
+  });
+
+  runSql(`
+    WITH org AS (
+      SELECT id FROM organizations WHERE slug = ${sqlLiteral(slug)}
+    ),
+    repo AS (
+      SELECT id
+      FROM repositories
+      WHERE owner_organization_id = (SELECT id FROM org)
+        AND name = ${sqlLiteral(repositoryName)}
+    ),
+    member AS (
+      SELECT user_id
+      FROM organization_memberships
+      WHERE organization_id = (SELECT id FROM org)
+        AND role = 'member'
+      ORDER BY created_at ASC
+      LIMIT 1
+    )
+    INSERT INTO repository_permissions (repository_id, user_id, role, source)
+    VALUES ((SELECT id FROM repo), (SELECT user_id FROM member), 'admin', 'direct')
+    ON CONFLICT (repository_id, user_id)
+    DO UPDATE SET role = EXCLUDED.role, source = EXCLUDED.source;
+  `);
+
+  await page.context().clearCookies();
+  await signIn(page, seeded, seeded.profileActionCookieValue);
+  await page.goto(`/${slug}/${repositoryName}/settings/pages`);
+  await expect(
+    page.getByText(
+      "Organization policy prevents Pages publishing for public repositories.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByLabel("Source", { exact: true })).toBeDisabled();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-005-final-pages-denial.jpg",
+  });
+
+  await page.context().clearCookies();
+  await signIn(page, seeded, seeded.profileActionCookieValue);
+  await page.goto(`/orgs/${slug}/teams/new`);
+  await expect(
+    page.getByRole("heading", { name: "Team creation unavailable" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      `Creating teams for ${slug} requires organization owner, admin, or member team-creation access.`,
+    ),
+  ).toBeVisible();
+
   await page.setViewportSize({ width: 390, height: 900 });
+  await signIn(page, seeded);
+  await page.goto(`/organizations/${slug}/settings/member_privileges`);
   const bodyWidths = await page.locator("body").evaluate((body) => ({
     clientWidth: body.clientWidth,
     scrollWidth: body.scrollWidth,
   }));
   expect(bodyWidths.scrollWidth).toBeLessThanOrEqual(bodyWidths.clientWidth);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-005-final-mobile.jpg",
+  });
 });
