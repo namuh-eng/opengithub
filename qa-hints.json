@@ -5380,5 +5380,20 @@
       "Repeat against a clean migrated database after the shared local migration drift for 202605030041 is resolved; this phase manually applied the additive contributors migration to the shared test DB.",
       "Use a real Google OAuth browser session once the UI phase lands; this phase was API-only and browser smoke was optional by structure."
     ]
+  },
+  {
+    "feature_id": "insights-002",
+    "tests_written": [
+      "Completed Phase 2 Editorial Contributors Page and Insights Shell Integration without marking insights-002 build_pass=true.",
+      "Added typed Contributors frontend DTOs, signed-cookie server fetch helper, repositoryContributorsHref, /{owner}/{repo}/graphs/contributors route, Editorial Contributors period selector, accessible repository-wide chart region, contributor sections, data-table fallback, unavailable state, and concrete profile/commit-history/data-table links.",
+      "Added focused Vitest coverage for default render, active Insights sidebar state, default branch/threshold copy, period menu URLs, chart/table fallback, contributor links, empty/line-count omission states, no dead anchors, no inert handlers, unsafe-markup guardrails, and banned GitHub value guardrails.",
+      "Added Playwright browser smoke that seeds real Postgres commit file-change rows for the dashboard fixture, verifies signed-session Contributors rendering, URL-backed period navigation, concrete drilldowns, no dead controls, and saves ralph/screenshots/build/insights-002-phase2-contributors-overview.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 still needs range sliders, data-table toggle panel behavior, CSV copy/download actions, and range-preserving contributor commit links.",
+      "Phase 4 still needs larger edge-case browser coverage for empty repositories, bot-only histories, unmatched/deleted authors, slash-containing default branches, long logins, and very large histories over the line-count threshold.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Full make test-e2e and direct full Playwright were attempted but stalled silently in this environment; focused direct Playwright for repository-contributors.spec.ts passed with screenshot evidence."
+    ]
   }
 ]

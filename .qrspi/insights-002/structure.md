@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial Contributors Page and Insights Shell Integration - default analytics render
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement `/{owner}/{repo}/graphs/contributors` using the existing Editorial Insights shell with Contributors selected. The default page should render the default-branch scope, threshold/line-count explanatory copy, period control affordance, chart action buttons, accessible repository-wide commits-over-time chart, range slider structure, top contributor sections, per-contributor bar charts, and always-available data tables with no inert controls.
 

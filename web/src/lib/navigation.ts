@@ -800,6 +800,19 @@ export function repositoryPulseHref(
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulse${query ? `?${query}` : ""}`;
 }
 
+export function repositoryContributorsHref(
+  owner: string,
+  repo: string,
+  options: { period?: string | null } = {},
+) {
+  const params = new URLSearchParams();
+  if (options.period?.trim() && options.period.trim() !== "1w") {
+    params.set("period", options.period.trim());
+  }
+  const query = params.toString();
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/graphs/contributors${query ? `?${query}` : ""}`;
+}
+
 export function repositoryReleaseHref(
   owner: string,
   repo: string,

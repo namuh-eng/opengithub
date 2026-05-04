@@ -1,3 +1,12 @@
+2026-05-05 - insights-002 phase 2 Editorial Contributors page
+
+- Completed Phase 2 from `.qrspi/insights-002/structure.md`: repository Contributors now has an Editorial Insights page backed by the Rust contributors endpoint without marking `insights-002.build_pass=true`.
+- Added typed Contributors DTOs and signed-cookie fetch helpers, `repositoryContributorsHref`, the `/[owner]/[repo]/graphs/contributors` Next route, an accessible period selector, persistent chart region with empty-state fallback, contributor sections, data table, unavailable state, and concrete profile/commit-history/data-table links.
+- Added focused Vitest coverage for default branch scope, threshold copy, active Insights sidebar state, URL-backed period menu, chart/table fallback, contributor links, empty/line-count omission states, Editorial token guardrails, no dead anchors, no inert handlers, and unsafe-markup guardrails.
+- Added Playwright smoke `repository-contributors.spec.ts` that seeds real Postgres commit file-change rows for the dashboard fixture, verifies signed-session Contributors rendering, period navigation, concrete drilldowns, no dead controls, and saves `ralph/screenshots/build/insights-002-phase2-contributors-overview.jpg`.
+- Verification passed: focused `repository-contributors-page` Vitest, web TypeScript, focused Biome, focused Playwright `repository-contributors.spec.ts`, full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`, full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 429 web tests, and mandatory Editorial banned-value scan.
+- Full `make test-e2e` and direct full Playwright were attempted with the same signed-session/test DB environment but stalled silently before producing a result and were terminated; the focused Playwright browser smoke passed. `prd.json` remains `build_pass:false` because Phases 3-5 remain. Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-05 - insights-001 phase 5 final QA handoff
 
 - Completed Phase 5 from `.qrspi/insights-001/structure.md`: repository Pulse Insights is now locked as a completed vertical slice and `insights-001.build_pass=true`.

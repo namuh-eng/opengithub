@@ -2559,6 +2559,87 @@ export type RepositoryPulseFetchResult =
   | { ok: true; pulse: RepositoryPulseView }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type RepositoryContributorsView = {
+  repository: RepositoryContributorsRepository;
+  period: RepositoryContributorsPeriod;
+  threshold: RepositoryContributorsThreshold;
+  totals: RepositoryContributorsTotals;
+  weeks: RepositoryContributorsWeek[];
+  contributors: RepositoryContributorRow[];
+  snapshot: RepositoryContributorSnapshot;
+};
+
+export type RepositoryContributorsRepository = {
+  ownerLogin: string;
+  name: string;
+  defaultBranch: string;
+  visibility: RepositoryVisibility | string;
+  viewerPermission: string;
+  href: string;
+};
+
+export type RepositoryContributorsPeriod = {
+  key: string;
+  label: string;
+  startedAt: string;
+  endedAt: string;
+  bucketCount: number;
+};
+
+export type RepositoryContributorsThreshold = {
+  commitLimit: number;
+  commitsConsidered: number;
+  lineCountsOmitted: boolean;
+  message: string;
+};
+
+export type RepositoryContributorsTotals = {
+  commits: number;
+  authors: number;
+  additions: number | null;
+  deletions: number | null;
+};
+
+export type RepositoryContributorsWeek = {
+  weekStart: string;
+  weekEnd: string;
+  commits: number;
+  additions: number | null;
+  deletions: number | null;
+};
+
+export type RepositoryContributorRow = {
+  userId: string | null;
+  login: string;
+  authorStatus: string;
+  isBot: boolean;
+  avatarUrl: string | null;
+  totalCommits: number;
+  totalAdditions: number | null;
+  totalDeletions: number | null;
+  profileHref: string;
+  commitsHref: string;
+  weeks: RepositoryContributorWeek[];
+};
+
+export type RepositoryContributorWeek = {
+  weekStart: string;
+  commits: number;
+  additions: number | null;
+  deletions: number | null;
+};
+
+export type RepositoryContributorSnapshot = {
+  cacheKey: string;
+  computedAt: string;
+  expiresAt: string;
+  stale: boolean;
+};
+
+export type RepositoryContributorsFetchResult =
+  | { ok: true; contributors: RepositoryContributorsView }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type WebhookContentType = "json" | "form" | string;
 
 export type WebhookEventSelection = "push" | "everything" | "selected" | string;
@@ -9003,6 +9084,56 @@ export async function getRepositoryPulseFromCookie(
   return {
     ok: true,
     pulse: (await response.json()) as RepositoryPulseView,
+  };
+}
+
+export async function getRepositoryContributorsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  options: { period?: string | null } = {},
+): Promise<RepositoryContributorsFetchResult> {
+  const params = new URLSearchParams();
+  if (options.period?.trim()) {
+    params.set("period", options.period.trim());
+  }
+  const query = params.toString();
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/graphs/contributors${query ? `?${query}` : ""}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository Contributors is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Repository Contributors is unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    contributors: (await response.json()) as RepositoryContributorsView,
   };
 }
 
