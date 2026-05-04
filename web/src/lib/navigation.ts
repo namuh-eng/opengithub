@@ -840,8 +840,23 @@ export function repositoryNetworkHref(owner: string, repo: string) {
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/network`;
 }
 
-export function repositoryForksHref(owner: string, repo: string) {
-  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/forks`;
+export function repositoryForksHref(
+  owner: string,
+  repo: string,
+  options: {
+    period?: string | null;
+    repositoryType?: string | null;
+    sort?: string | null;
+  } = {},
+) {
+  const params = new URLSearchParams();
+  if (options.period?.trim()) params.set("period", options.period.trim());
+  if (options.repositoryType?.trim()) {
+    params.set("type", options.repositoryType.trim());
+  }
+  if (options.sort?.trim()) params.set("sort", options.sort.trim());
+  const query = params.toString();
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/forks${query ? `?${query}` : ""}`;
 }
 
 export function repositoryTrafficContentHref({

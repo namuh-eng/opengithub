@@ -135,11 +135,22 @@ function seedNetwork(repositoryHref: string) {
         JOIN users ON users.id = repositories.owner_user_id
         WHERE users.username = 'network-two-${suffix}'
           AND repositories.name = 'network-archived-${suffix}'
+      ),
+      source AS (
+        SELECT repositories.created_by_user_id
+        FROM repositories
+        LEFT JOIN users ON users.id = repositories.owner_user_id
+        LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
+        WHERE COALESCE(users.username, organizations.slug) = ${sqlLiteral(decodedOwner)}
+          AND repositories.name = ${sqlLiteral(decodedRepo)}
+        LIMIT 1
       )
       INSERT INTO repository_stars (user_id, repository_id)
       SELECT created_by_user_id, id FROM fork_one
       UNION ALL
       SELECT created_by_user_id, id FROM fork_two
+      UNION ALL
+      SELECT source.created_by_user_id, fork_two.id FROM source, fork_two
       ON CONFLICT DO NOTHING;
       `,
     ],
@@ -216,15 +227,49 @@ test("repository Network renders readable fork graph and concrete links", async 
     `${seeded.treeRepositoryHref}/forks`,
   );
 
+  await page.getByRole("link", { name: "View forks" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Forked repositories" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Forks Forked repositories" }),
+  ).toHaveAttribute("aria-current", "page");
+  await page.getByRole("button", { name: "Period: Last month" }).click();
+  await page.getByRole("menuitem", { name: /All time/ }).click();
+  await expect(page).toHaveURL(
+    /\/forks\?period=all&type=all&sort=most_starred/,
+  );
+  await page
+    .getByRole("button", { name: "Repository type: All repositories" })
+    .click();
+  await page.getByRole("menuitem", { name: /Starred by you/ }).click();
+  await expect(page).toHaveURL(/type=starred/);
+  await page.getByRole("button", { name: "Sort: Most starred" }).click();
+  await page.getByRole("menuitem", { name: /Recently pushed/ }).click();
+  await expect(page).toHaveURL(/sort=recently_pushed/);
+  await expect(
+    page.getByRole("list", { name: "Repository forks list" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Save defaults" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Save defaults" }).click();
+  await expect(page.getByText("Saved for this repository")).toBeVisible();
+  await expect(
+    page.getByRole("link", {
+      name: /network-two-.*\/network-archived-.* tree/,
+    }),
+  ).toHaveAttribute("href", /\/tree\/main$/);
+
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/insights-004-phase2-network.jpg",
+    path: "../ralph/screenshots/build/insights-004-phase3-forks-filters.jpg",
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(
-    page.getByRole("heading", { name: "Repository network" }),
+    page.getByRole("heading", { name: "Forked repositories" }),
   ).toBeVisible();
   const horizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,

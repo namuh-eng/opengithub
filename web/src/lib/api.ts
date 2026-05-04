@@ -2783,6 +2783,70 @@ export type RepositoryNetworkFetchResult =
   | { ok: true; network: RepositoryNetworkView }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type RepositoryForksView = {
+  repository: RepositoryNetworkRepository;
+  filters: RepositoryForkFilters;
+  defaults: RepositoryForkDefaults;
+  total: number;
+  hiddenPrivateForks: number;
+  forks: RepositoryForkRow[];
+  freshness: RepositoryNetworkFreshness;
+  links: RepositoryNetworkLinks;
+};
+
+export type RepositoryForkFilters = {
+  period: RepositoryForkPeriod;
+  repositoryType: RepositoryForkType;
+  sort: RepositoryForkSort;
+};
+
+export type RepositoryForkPeriod = {
+  key: string;
+  label: string;
+  startedAt: string | null;
+  endedAt: string;
+};
+
+export type RepositoryForkType =
+  | "all"
+  | "active"
+  | "inactive"
+  | "archived"
+  | "starred"
+  | string;
+
+export type RepositoryForkSort =
+  | "most_starred"
+  | "recently_pushed"
+  | "recently_created"
+  | "recently_updated"
+  | "name"
+  | string;
+
+export type RepositoryForkDefaults = {
+  saved: boolean;
+  matchesCurrent: boolean;
+  periodKey: string;
+  repositoryType: string;
+  sortKey: string;
+  savedAt: string | null;
+};
+
+export type RepositoryForkRow = RepositoryNetworkForkNode & {
+  active: boolean;
+  badges: string[];
+};
+
+export type RepositoryForksFetchResult =
+  | { ok: true; forks: RepositoryForksView }
+  | { ok: false; status: number; code: string | null; message: string };
+
+export type RepositoryForksQuery = {
+  period?: string | null;
+  repositoryType?: string | null;
+  sort?: string | null;
+};
+
 export type WebhookContentType = "json" | "form" | string;
 
 export type WebhookEventSelection = "push" | "everything" | "selected" | string;
@@ -9376,6 +9440,93 @@ export async function getRepositoryNetworkFromCookie(
     ok: true,
     network: (await response.json()) as RepositoryNetworkView,
   };
+}
+
+function repositoryForksQueryString(options: RepositoryForksQuery = {}) {
+  const params = new URLSearchParams();
+  if (options.period?.trim()) params.set("period", options.period.trim());
+  if (options.repositoryType?.trim()) {
+    params.set("type", options.repositoryType.trim());
+  }
+  if (options.sort?.trim()) params.set("sort", options.sort.trim());
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+export async function getRepositoryForksFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  options: RepositoryForksQuery = {},
+): Promise<RepositoryForksFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/forks${repositoryForksQueryString(options)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository forks are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Repository forks are unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    forks: (await response.json()) as RepositoryForksView,
+  };
+}
+
+export async function saveRepositoryForkDefaultsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  options: Required<RepositoryForksQuery>,
+): Promise<RepositoryForksView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/forks/defaults`,
+    {
+      method: "PUT",
+      headers: {
+        ...(cookie ? { cookie } : {}),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(options),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const body = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(body?.error.message ?? "Repository fork defaults failed", {
+      cause: body,
+    });
+  }
+
+  return (await response.json()) as RepositoryForksView;
 }
 
 function repositorySettingsErrorResult(

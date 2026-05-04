@@ -5573,5 +5573,23 @@
       "Run screen-reader traversal for the Insights sidebar, Network graph list, fork metric chips, and empty/unavailable states; this phase validates accessible names through Testing Library and Playwright but not a real screen reader.",
       "The Network page reads Phase 1 projection data and does not implement Forks filters or saved defaults yet; those remain in later phases."
     ]
+  },
+  {
+    "feature_id": "insights-004",
+    "tests_written": [
+      "Completed Phase 3 Forks Page Filters, Sorting, and Saved Defaults without marking insights-004 build_pass=true.",
+      "Added PUT /api/repos/{owner}/{repo}/forks/defaults with actor-scoped saved defaults, validation, standard auth/privacy envelopes, and refreshed Forks response metadata.",
+      "Added typed Forks DTOs, signed-cookie fetch/mutation helpers, server-session wrapper, /{owner}/{repo}/forks page, and the local /forks/defaults route used by the client save action.",
+      "Added RepositoryForksPage and RepositoryForkFilters with URL-backed Period/Repository type/Sort menus, selected states, active filter chips, saved/default/custom feedback, dense fork rows, metric links, empty/unavailable states, and Editorial tokens/primitives only.",
+      "Extended focused Rust contract coverage, Forks Vitest coverage, and Playwright browser smoke for filter URL transitions, saved defaults, no dead controls, mobile no-overflow, and screenshot ralph/screenshots/build/insights-004-phase3-forks-filters.jpg.",
+      "Tightened the existing Traffic read-only browser assertion to scope count-leak checks to the unavailable details region after the full direct Playwright suite exposed shell-text collisions."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 still needs broader edge-case coverage for empty public repositories, unreadable private forks in browser, archived/stale/starred fork combinations, metric ties, very long owner/repository names, and mobile layouts across both Network and Forks.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Run keyboard-only and screen-reader traversal for the Forks filter menus, save-defaults status feedback, fork metric chips, owner/repository links, empty state, unavailable state, and mobile layout.",
+      "Exercise saved-default overwrite and error recovery against a clean migrated database after the shared local 202605030041 migration drift is resolved.",
+      "The full direct Playwright suite passed 128 tests and initially found one existing Traffic privacy-test scoping issue; after the scoped assertion fix, focused Traffic read-only Playwright passed. A full direct rerun was not repeated after that targeted fix."
+    ]
   }
 ]

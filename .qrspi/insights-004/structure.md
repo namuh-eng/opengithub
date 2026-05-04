@@ -40,7 +40,7 @@
 
 ## Phase 3: Forks Page Filters, Sorting, and Saved Defaults
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement `/{owner}/{repo}/forks` with URL-backed Period, Repository type, and Sort menus plus a real Save defaults flow. Filter changes should update list content and URL state; the defaults button should save actor-scoped defaults only when state differs.
 

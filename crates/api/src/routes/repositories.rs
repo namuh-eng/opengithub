@@ -76,8 +76,8 @@ use crate::{
         repository_path_overview_for_actor_by_owner_name, repository_pulse_for_actor_by_owner_name,
         repository_refs_for_actor_by_owner_name, repository_settings_for_actor_by_owner_name,
         repository_traffic_for_actor_by_owner_name, repository_watch_settings_by_owner_name,
-        set_repository_star_by_owner_name, set_repository_watch_by_owner_name,
-        update_repository_branch_rule_by_owner_name,
+        save_repository_fork_defaults_by_owner_name, set_repository_star_by_owner_name,
+        set_repository_watch_by_owner_name, update_repository_branch_rule_by_owner_name,
         update_repository_collaborator_access_by_owner_name,
         update_repository_ruleset_by_owner_name, update_repository_settings_by_owner_name,
         update_repository_team_access_by_owner_name,
@@ -121,6 +121,7 @@ pub fn router() -> Router<AppState> {
         .route("/:owner/:repo/graphs/contributors", get(contributors))
         .route("/:owner/:repo/graphs/traffic", get(traffic))
         .route("/:owner/:repo/network", get(network))
+        .route("/:owner/:repo/forks/defaults", put(save_fork_defaults))
         .route("/:owner/:repo/refs", get(refs))
         .route("/:owner/:repo/file-finder", get(file_finder))
         .route("/:owner/:repo/releases", get(releases).post(create_release))
@@ -405,6 +406,15 @@ struct ContributorsQuery {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ForksQuery {
+    period: Option<String>,
+    #[serde(alias = "type")]
+    repository_type: Option<String>,
+    sort: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ForkDefaultsRequest {
     period: Option<String>,
     #[serde(alias = "type")]
     repository_type: Option<String>,
@@ -968,6 +978,38 @@ async fn forks(
             period: query.period.as_deref(),
             repository_type: query.repository_type.as_deref(),
             sort: query.sort.as_deref(),
+        },
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn save_fork_defaults(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Json(request): Json<ForkDefaultsRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = save_repository_fork_defaults_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        RepositoryForksQuery {
+            period: request.period.as_deref(),
+            repository_type: request.repository_type.as_deref(),
+            sort: request.sort.as_deref(),
         },
     )
     .await

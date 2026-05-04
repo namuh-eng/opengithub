@@ -258,21 +258,24 @@ test("repository Traffic hides counts from read-only collaborators", async ({
   );
 
   await page.goto(`${seeded.trafficReadOnlyRepositoryHref}/graphs/traffic`);
+  const unavailable = page.getByRole("region", {
+    name: "Traffic unavailable details",
+  });
   await expect(
-    page.getByRole("heading", { name: "Traffic unavailable" }),
+    unavailable.getByRole("heading", { name: "Traffic unavailable" }),
   ).toBeVisible();
   await expect(
-    page.getByText(
+    unavailable.getByText(
       "Repository traffic is available to users with push access.",
     ),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Back to Code" }),
+    unavailable.getByRole("link", { name: "Back to Code" }),
   ).toHaveAttribute("href", seeded.trafficReadOnlyRepositoryHref);
-  await expect(page.getByText("42")).toHaveCount(0);
-  await expect(page.getByText("24")).toHaveCount(0);
+  await expect(unavailable.getByText("42")).toHaveCount(0);
+  await expect(unavailable.getByText("24")).toHaveCount(0);
   await expect(
-    page.getByText("https://search.opengithub.local/results?q=traffic"),
+    unavailable.getByText("https://search.opengithub.local/results?q=traffic"),
   ).toHaveCount(0);
   await expectNoDeadControls(page);
 });

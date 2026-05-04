@@ -370,7 +370,7 @@ export function RepositoryTrafficPage({
   if (!trafficResult.ok) {
     return (
       <RepositoryInsightsShell activeSection="traffic" repository={repository}>
-        <section className="card p-5">
+        <section aria-label="Traffic unavailable details" className="card p-5">
           <p className="t-label" style={{ color: "var(--ink-3)" }}>
             Traffic
           </p>

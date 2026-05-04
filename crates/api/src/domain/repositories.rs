@@ -2633,6 +2633,61 @@ pub async fn repository_forks_for_actor_by_owner_name(
         .map(Some)
 }
 
+pub async fn save_repository_fork_defaults_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    query: RepositoryForksQuery<'_>,
+) -> Result<Option<RepositoryForksView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+
+    let period_key = normalize_fork_period(query.period)?;
+    let repository_type = normalize_fork_type(query.repository_type)?;
+    let sort = normalize_fork_sort(query.sort)?;
+    sqlx::query(
+        r#"
+        INSERT INTO saved_fork_filter_defaults (
+            repository_id, user_id, period_key, repository_type, sort_key, saved_at
+        )
+        VALUES ($1, $2, $3, $4, $5, now())
+        ON CONFLICT (repository_id, user_id) DO UPDATE SET
+            period_key = EXCLUDED.period_key,
+            repository_type = EXCLUDED.repository_type,
+            sort_key = EXCLUDED.sort_key,
+            saved_at = now()
+        "#,
+    )
+    .bind(repository.id)
+    .bind(actor_user_id)
+    .bind(period_key.key())
+    .bind(repository_type.key())
+    .bind(sort.key())
+    .execute(pool)
+    .await?;
+
+    repository_forks_for_repository(
+        pool,
+        &repository,
+        actor_user_id,
+        RepositoryForksQuery {
+            period: Some(period_key.key()),
+            repository_type: Some(repository_type.key()),
+            sort: Some(sort.key()),
+        },
+    )
+    .await
+    .map(Some)
+}
+
 pub async fn repository_file_finder_for_actor_by_owner_name(
     pool: &PgPool,
     actor_user_id: Uuid,

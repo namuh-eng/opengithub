@@ -12,8 +12,8 @@ use opengithub_api::{
         repositories::{
             create_repository, grant_repository_permission, insert_commit,
             repository_forks_for_actor_by_owner_name, repository_network_for_actor_by_owner_name,
-            upsert_git_ref, CreateCommit, CreateRepository, RepositoryForksQuery, RepositoryOwner,
-            RepositoryVisibility,
+            save_repository_fork_defaults_by_owner_name, upsert_git_ref, CreateCommit,
+            CreateRepository, RepositoryForksQuery, RepositoryOwner, RepositoryVisibility,
         },
     },
 };
@@ -122,6 +122,37 @@ async fn get_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (Status
     }
     let response = app
         .oneshot(builder.body(Body::empty()).expect("request should build"))
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    (
+        status,
+        serde_json::from_slice(&bytes).expect("response should be json"),
+    )
+}
+
+async fn put_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    payload: Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method("PUT")
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(payload.to_string()))
+                .expect("request should build"),
+        )
         .await
         .expect("request should run");
     let status = response.status();
@@ -383,6 +414,26 @@ async fn repository_network_and_forks_return_readable_projection_filters_and_def
     assert!(forks.defaults.matches_current);
     assert_eq!(forks.hidden_private_forks, 1);
 
+    let saved = save_repository_fork_defaults_by_owner_name(
+        &pool,
+        actor.id,
+        &repository.owner_login,
+        &repository.name,
+        RepositoryForksQuery {
+            period: Some("24h"),
+            repository_type: Some("active"),
+            sort: Some("recently_created"),
+        },
+    )
+    .await
+    .expect("fork defaults should save")
+    .expect("fork defaults repository should exist");
+    assert!(saved.defaults.saved);
+    assert!(saved.defaults.matches_current);
+    assert_eq!(saved.defaults.period_key, "24h");
+    assert_eq!(saved.defaults.repository_type, "active");
+    assert_eq!(saved.defaults.sort_key, "recently_created");
+
     let route = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
     let (status, body) = get_json(
         route.clone(),
@@ -409,6 +460,43 @@ async fn repository_network_and_forks_return_readable_projection_filters_and_def
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
     assert_eq!(body["error"]["code"], "validation_failed");
     assert!(!body.to_string().contains("test-session-secret"));
+
+    let (status, body) = put_json(
+        route.clone(),
+        &format!(
+            "/api/repos/{}/{}/forks/defaults",
+            repository.owner_login, repository.name
+        ),
+        Some(&actor_cookie),
+        json!({
+            "period": "all",
+            "repositoryType": "starred",
+            "sort": "recently_pushed"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body["defaults"]["matchesCurrent"]
+        .as_bool()
+        .unwrap_or(false));
+    assert_eq!(body["defaults"]["periodKey"], "all");
+
+    let (status, body) = put_json(
+        route.clone(),
+        &format!(
+            "/api/repos/{}/{}/forks/defaults",
+            repository.owner_login, repository.name
+        ),
+        Some(&actor_cookie),
+        json!({
+            "period": "all",
+            "repositoryType": "starred",
+            "sort": "surprise"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["error"]["code"], "validation_failed");
 
     let (status, body) = get_json(
         route.clone(),
