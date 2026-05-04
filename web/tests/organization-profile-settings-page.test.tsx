@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { OrganizationProfileSettingsForm } from "@/components/OrganizationProfileSettingsForm";
 import { OrganizationSettingsShell } from "@/components/OrganizationSettingsShell";
 import type {
@@ -93,6 +93,23 @@ function profileSettings(
   return { ...base, ...overrides };
 }
 
+function updatedProfileSettings(
+  patch: Partial<OrganizationProfileSettings["profile"]>,
+): OrganizationProfileSettings {
+  const current = profileSettings();
+  return {
+    ...current,
+    profile: {
+      ...current.profile,
+      ...patch,
+    },
+  };
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe("OrganizationSettingsShell", () => {
   it("renders organization context, grouped navigation, and concrete context-switcher links", () => {
     const settings = profileSettings();
@@ -185,5 +202,136 @@ describe("OrganizationProfileSettingsForm", () => {
     for (const button of screen.getAllByRole("button")) {
       expect(button).toHaveAccessibleName(/.+/);
     }
+  });
+
+  it("saves public profile changes through the organization actions route", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      json: async () =>
+        updatedProfileSettings({
+          description: "Maintainer tools with calmer defaults.",
+          displayName: "Acme Research",
+          websiteUrl: "https://research.example",
+        }),
+      ok: true,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<OrganizationProfileSettingsForm settings={profileSettings()} />);
+
+    fireEvent.change(screen.getByLabelText("Organization display name"), {
+      target: { value: "Acme Research" },
+    });
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "Maintainer tools with calmer defaults." },
+    });
+    fireEvent.change(screen.getByLabelText("URL"), {
+      target: { value: "https://research.example" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save profile changes" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText("Public profile updated")).toBeVisible(),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/organizations/acme-labs/settings/profile/actions",
+      expect.objectContaining({
+        body: JSON.stringify({
+          companyName: "Acme Inc.",
+          description: "Maintainer tools with calmer defaults.",
+          displayName: "Acme Research",
+          location: "Seoul",
+          publicEmail: "hello@example.com",
+          websiteUrl: "https://research.example",
+        }),
+        method: "PATCH",
+      }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Save profile changes" }),
+    ).toBeDisabled();
+  });
+
+  it("saves contact and social sections independently and shows server errors without local persistence", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        json: async () =>
+          updatedProfileSettings({
+            billingEmail: "finance@example.com",
+            contactEmail: "ops@example.com",
+          }),
+        ok: true,
+      })
+      .mockResolvedValueOnce({
+        json: async () => ({
+          error: {
+            code: "validation_failed",
+            message: "Unsupported social provider.",
+          },
+          status: 422,
+        }),
+        ok: false,
+      });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<OrganizationProfileSettingsForm settings={profileSettings()} />);
+
+    fireEvent.change(screen.getByLabelText("Contact email"), {
+      target: { value: "ops@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Billing email"), {
+      target: { value: "finance@example.com" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save contact changes" }),
+    );
+    await waitFor(() =>
+      expect(screen.getByText("Administrative contact updated")).toBeVisible(),
+    );
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/organizations/acme-labs/settings/profile/actions",
+      expect.objectContaining({
+        body: JSON.stringify({
+          billingEmail: "finance@example.com",
+          contactEmail: "ops@example.com",
+        }),
+        method: "PATCH",
+      }),
+    );
+
+    fireEvent.change(screen.getByLabelText("X"), {
+      target: { value: "@broken" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save social accounts" }),
+    );
+    await waitFor(() =>
+      expect(screen.getByText("Unsupported social provider.")).toBeVisible(),
+    );
+    expect(screen.getByLabelText("X")).toHaveValue("@broken");
+  });
+
+  it("validates obvious bad values before calling the API", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<OrganizationProfileSettingsForm settings={profileSettings()} />);
+
+    fireEvent.change(screen.getByLabelText("Organization display name"), {
+      target: { value: " " },
+    });
+    fireEvent.change(screen.getByLabelText("URL"), {
+      target: { value: "javascript:alert(1)" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save profile changes" }),
+    );
+
+    expect(
+      screen.getByText("Organization display name is required."),
+    ).toBeVisible();
+    expect(
+      screen.getByText("URL must start with http:// or https://."),
+    ).toBeVisible();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

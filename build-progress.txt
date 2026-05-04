@@ -1,3 +1,13 @@
+2026-05-04 - org-admin-002 phase 3 profile/contact/social mutations
+
+- Completed Phase 3 from `.qrspi/org-admin-002/structure.md`: organization profile settings now have real server-confirmed saves for public profile, administrative contact/billing email, and social accounts without marking `org-admin-002.build_pass=true`.
+- Added a same-origin `/organizations/{org}/settings/profile/actions` PATCH route that forwards section saves to the Rust `PATCH /api/orgs/{org}/settings/profile` endpoint with the signed session cookie and stable JSON error envelopes.
+- Converted `OrganizationProfileSettingsForm` from read-only fields to an Editorial client form with dirty-state Save buttons, pending states, client-side validation for obvious name/URL/email/social errors, success chips, server error rendering, reload-safe state application, and disabled avatar upload with no inert controls.
+- Extended focused Vitest coverage for public profile save payloads, independent contact save, social server errors without local-only persistence, client validation, no dead controls, and Editorial token guardrails.
+- Extended Playwright smoke for owner profile/contact/social saves, reload persistence, validation recovery, no dead controls, and screenshot `ralph/screenshots/build/org-admin-002-phase3-profile-save.jpg`.
+- Verification passed: focused `organization-profile-settings-page` Vitest, web TypeScript, focused Biome, `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`, `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 376 web tests, focused Playwright `organization-settings-profile.spec.ts`, full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false SESSION_SECRET=playwright-session-secret-with-enough-entropy SESSION_COOKIE_NAME=og_session DASHBOARD_E2E_SKIP_MIGRATIONS=1 make test-e2e` with 115 tests, and mandatory Editorial banned-value scan.
+- Marked Phase 3 as done in `.qrspi/org-admin-002/structure.md`; `prd.json` remains `build_pass:false` because rename/danger-zone guardrails and final docs/bookkeeping phases remain.
+
 2026-05-04 - org-admin-001 phase 5 final QA handoff
 
 - Completed Phase 5 from `.qrspi/org-admin-001/structure.md`: the organization creation flow is now locked as a completed vertical slice and `org-admin-001.build_pass=true`.

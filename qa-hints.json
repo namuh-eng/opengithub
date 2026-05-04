@@ -4723,5 +4723,24 @@
       "Full make test-e2e was attempted but the silent wrapper hung and was terminated after focused smoke passed; re-run after local Playwright wrapper stability is addressed.",
       "Local opengithub_identity_test needed the existing 202605040011 organization profile settings migration applied manually because it was missing Phase 1 columns/table."
     ]
+  },
+  {
+    "feature_id": "org-admin-002",
+    "tests_written": [
+      "Completed Phase 3 Profile, Contact, and Social Mutations without marking org-admin-002 build_pass=true.",
+      "Added same-origin /organizations/{org}/settings/profile/actions PATCH forwarding to the Rust owner-only organization settings API with session cookies and JSON error envelopes.",
+      "Converted the Editorial organization profile settings form from read-only fields to section-specific server-confirmed saves for public profile, administrative contact/billing email, and social accounts.",
+      "Added dirty-state Save enablement, pending states, client validation for obvious URL/email/name failures, success chips, server error rendering, and disabled avatar upload with no inert controls.",
+      "Focused Vitest covers public profile save payloads, independent contact save, social server errors without local-only persistence, client validation, no dead controls, and Editorial guardrails.",
+      "Focused Playwright covers owner save flows for profile/contact/social sections, reload persistence, validation recovery, no dead controls, and screenshot ralph/screenshots/build/org-admin-002-phase3-profile-save.jpg.",
+      "Verification passed: focused Vitest, TypeScript, focused Biome, make check, make test with Cargo tests plus 376 web tests, focused Playwright organization settings smoke, full make test-e2e with 115 tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 must verify rename, archive, and delete guardrails with typed-slug confirmation, slug availability conflicts, keyboard focus recovery, and mobile no-overflow.",
+      "Use a real Google OAuth browser session with TEST_ACCOUNT_EMAIL to re-run profile saves outside deterministic Playwright seed cookies.",
+      "Stress concurrent PATCH requests from two owner sessions, especially social account replacement ordering and simultaneous contact/profile saves.",
+      "Probe long Unicode organization names, social handles, URLs, locations, and emails across desktop/mobile and with browser autofill enabled.",
+      "Confirm production S3 avatar support can reuse the placeholder avatar metadata contract without exposing bucket keys once avatar upload is implemented."
+    ]
   }
 ]

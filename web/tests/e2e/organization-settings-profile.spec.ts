@@ -57,6 +57,21 @@ async function expectNoDeadControls(page: Page) {
   }
 }
 
+function slugFromProfileHref(href: string) {
+  const parts = href.split("/").filter(Boolean);
+  const organizationsIndex = parts.indexOf("organizations");
+  if (organizationsIndex >= 0 && parts[organizationsIndex + 1]) {
+    return parts[organizationsIndex + 1];
+  }
+  const orgsIndex = parts.indexOf("orgs");
+  if (orgsIndex >= 0 && parts[orgsIndex + 1]) {
+    return parts[orgsIndex + 1];
+  }
+  throw new Error(
+    `seeded organization profile href did not include a slug: ${href}`,
+  );
+}
+
 test.skip(
   !databaseUrl,
   "organization settings profile E2E needs a test database",
@@ -65,10 +80,7 @@ test.skip(
 test("owner opens organization profile settings shell", async ({ page }) => {
   const seeded = seedOrganizationProfile();
   await signIn(page, seeded);
-  const slug = seeded.organizationProfileHref.split("/").filter(Boolean).at(-1);
-  if (!slug) {
-    throw new Error("seeded organization profile href did not include a slug");
-  }
+  const slug = slugFromProfileHref(seeded.organizationProfileHref);
 
   await page.goto(`/organizations/${slug}/settings/profile`);
   await expect(
@@ -111,4 +123,61 @@ test("owner opens organization profile settings shell", async ({ page }) => {
 
   await page.goto(`/orgs/${slug}/settings`);
   await expect(page).toHaveURL(`/organizations/${slug}/settings/profile`);
+});
+
+test("owner saves organization profile, contact, and social sections", async ({
+  page,
+}) => {
+  const seeded = seedOrganizationProfile();
+  await signIn(page, seeded);
+  const slug = slugFromProfileHref(seeded.organizationProfileHref);
+
+  await page.goto(`/organizations/${slug}/settings/profile`);
+  await page
+    .getByLabel("Organization display name")
+    .fill(`Editorial ${slug.slice(-6)}`);
+  await page
+    .getByLabel("Description")
+    .fill("A persisted organization profile update from the browser.");
+  await page.getByLabel("URL").fill("https://opengithub.namuh.co");
+  await page.getByLabel("Location").fill("Seoul, KR");
+  await page.getByLabel("Public email").fill("public@example.com");
+  await page.getByRole("button", { name: "Save profile changes" }).click();
+  await expect(page.getByText("Public profile updated")).toBeVisible();
+
+  await page.getByLabel("Contact email").fill("owners@example.com");
+  await page.getByLabel("Billing email").fill("finance@example.com");
+  await page.getByRole("button", { name: "Save contact changes" }).click();
+  await expect(page.getByText("Administrative contact updated")).toBeVisible();
+
+  await page
+    .getByRole("textbox", { exact: true, name: "X" })
+    .fill("@opengithub");
+  await page
+    .getByRole("textbox", { exact: true, name: "Mastodon" })
+    .fill("https://social.example/@opengithub");
+  await page.getByRole("button", { name: "Save social accounts" }).click();
+  await expect(page.getByText("Social accounts updated")).toBeVisible();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-002-phase3-profile-save.jpg",
+  });
+
+  await page.reload();
+  await expect(page.getByLabel("Public email")).toHaveValue(
+    "public@example.com",
+  );
+  await expect(page.getByLabel("Contact email")).toHaveValue(
+    "owners@example.com",
+  );
+  await expect(
+    page.getByRole("textbox", { exact: true, name: "X" }),
+  ).toHaveValue("@opengithub");
+
+  await page.getByLabel("URL").fill("javascript:alert(1)");
+  await page.getByRole("button", { name: "Save profile changes" }).click();
+  await expect(
+    page.getByText("URL must start with http:// or https://."),
+  ).toBeVisible();
 });

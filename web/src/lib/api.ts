@@ -129,6 +129,18 @@ export type OrganizationProfileSettingsFetchResult =
   | { ok: true; settings: OrganizationProfileSettings }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type UpdateOrganizationProfileSettingsRequest = {
+  displayName?: string;
+  description?: string | null;
+  websiteUrl?: string | null;
+  location?: string | null;
+  publicEmail?: string | null;
+  contactEmail?: string | null;
+  billingEmail?: string | null;
+  companyName?: string | null;
+  socialAccounts?: Array<Pick<OrganizationSocialAccount, "provider" | "value">>;
+};
+
 export type UnlinkSignInMethodResponse = {
   removedId: string;
   settings: AccountSecuritySettings;
@@ -4645,6 +4657,37 @@ export async function getOrganizationProfileSettingsFromCookie(
     ok: true,
     settings: (await response.json()) as OrganizationProfileSettings,
   };
+}
+
+export async function updateOrganizationProfileSettingsFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  input: UpdateOrganizationProfileSettingsRequest,
+): Promise<OrganizationProfileSettings> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/settings/profile`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const body = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      body?.error.message ?? "Organization profile settings update failed",
+      { cause: body },
+    );
+  }
+
+  return (await response.json()) as OrganizationProfileSettings;
 }
 
 export async function getOrganizationRepositoriesFromCookie(

@@ -43,7 +43,7 @@
 
 ## Phase 3: Profile, Contact, and Social Mutations - save independent sections
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire every editable public-profile/contact/social section to the Rust API. Each Save button must submit a real PATCH, show confirmed success or field-level error feedback, preserve server state on failure, and refresh the page data without local-only persistence.
 
