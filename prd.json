@@ -1275,7 +1275,7 @@
     "dependent_on": [
       "auth-001"
     ],
-    "build_pass": false
+    "build_pass": true
   },
   {
     "id": "org-admin-001",

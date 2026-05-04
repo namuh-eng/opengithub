@@ -110,6 +110,13 @@ fn seed_organization_profile() -> bool {
     )
 }
 
+fn seed_account_security_second_identity() -> bool {
+    matches!(
+        std::env::var("ACCOUNT_SECURITY_E2E").as_deref(),
+        Ok("1" | "true" | "yes")
+    )
+}
+
 fn search_e2e_marker() -> Option<String> {
     std::env::var("SEARCH_E2E_MARKER")
         .ok()
@@ -154,11 +161,29 @@ async fn main() -> anyhow::Result<()> {
         None,
     )
     .await?;
+    opengithub_api::domain::identity::upsert_oauth_account(
+        &pool,
+        user.id,
+        "google",
+        &format!("dashboard-google-{suffix}"),
+        &user.email,
+    )
+    .await?;
     sqlx::query("UPDATE users SET username = $1 WHERE id = $2")
         .bind(&username)
         .bind(user.id)
         .execute(&pool)
         .await?;
+    if seed_account_security_second_identity() {
+        opengithub_api::domain::identity::upsert_oauth_account(
+            &pool,
+            user.id,
+            "google",
+            &format!("dashboard-google-second-{suffix}"),
+            &format!("{username}+second@opengithub.local"),
+        )
+        .await?;
+    }
     let profile_action_viewer_username = format!("profile-viewer-{}", &suffix[..12]);
     let profile_action_viewer = upsert_user_by_email(
         &pool,

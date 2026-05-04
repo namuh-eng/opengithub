@@ -127,6 +127,97 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "account-security-settings",
+    method: "GET",
+    path: "/api/settings/security",
+    title: "Read account security settings",
+    description:
+      "Returns linked Google sign-in methods, session-bound sudo state, and the disabled 2FA placeholder for Personal Settings.",
+    auth: "Signed opengithub session cookie",
+    response: `{
+  "signInMethods": [
+    {
+      "id": "oauth_01",
+      "provider": "google",
+      "displayLabel": "Google",
+      "email": "mona@example.com",
+      "canUnlink": false,
+      "linkedAt": "2026-05-04T00:00:00Z"
+    }
+  ],
+  "sudo": {
+    "active": false,
+    "expiresAt": null,
+    "requiredFor": ["link_google_account", "unlink_sign_in_method"]
+  },
+  "twoFactor": { "enabled": false, "available": false }
+}`,
+    notes: [
+      "Raw Google provider subject IDs are never returned to the browser.",
+      "canUnlink is false when the account has only one sign-in method.",
+      "2FA remains visible but disabled while Google-only auth is the supported sign-in method.",
+    ],
+  },
+  {
+    id: "account-security-sudo",
+    method: "POST",
+    path: "/api/settings/security/sudo",
+    title: "Create account-security sudo grant",
+    description:
+      "Confirms the current account email and enables a 30-minute sudo window for sign-in method changes.",
+    auth: "Signed opengithub session cookie",
+    request: `{
+  "confirmation": "mona@example.com"
+}`,
+    response: `{
+  "sudo": {
+    "active": true,
+    "expiresAt": "2026-05-04T12:30:00Z",
+    "requiredFor": ["link_google_account", "unlink_sign_in_method"]
+  },
+  "signInMethods": []
+}`,
+    notes: [
+      "The grant is session-bound and also mirrors the expiry to sessions.elevated_until for account-security auditability.",
+      "Invalid confirmation returns sudo_confirmation_failed.",
+    ],
+  },
+  {
+    id: "account-security-unlink-method",
+    method: "DELETE",
+    path: "/api/settings/security/sign-in-methods/{account_id}",
+    title: "Unlink sign-in method",
+    description:
+      "Removes one linked Google OAuth account from the signed-in user after sudo confirmation.",
+    auth: "Signed opengithub session cookie with active sudo grant",
+    response: `{
+  "removedId": "oauth_02",
+  "settings": {
+    "signInMethods": [
+      { "id": "oauth_01", "provider": "google", "canUnlink": false }
+    ]
+  }
+}`,
+    notes: [
+      "The last remaining sign-in method is protected with a last_identity conflict.",
+      "Unlinking writes a redacted sign_in_method.unlink security audit event.",
+    ],
+  },
+  {
+    id: "account-security-link-google",
+    method: "GET",
+    path: "/api/settings/security/google/link",
+    title: "Start linked Google account flow",
+    description:
+      "Starts a sudo-protected Google OAuth flow from Account Security for adding another sign-in method.",
+    auth: "Signed opengithub session cookie with active sudo grant",
+    response: "302 Found to Google OAuth",
+    notes: [
+      "The endpoint refuses to redirect without active sudo mode.",
+      "The redirect uses the same Google OAuth provider as normal sign-in and returns to /settings/security.",
+    ],
+  },
+  {
     id: "personal-access-token-create",
     method: "POST",
     path: "/api/settings/tokens",

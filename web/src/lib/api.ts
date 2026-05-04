@@ -49,6 +49,36 @@ export type PersonalAccessTokenSudoState = {
   requiredFor: string[];
 };
 
+export type AccountSignInMethod = {
+  id: string;
+  provider: string;
+  email: string;
+  displayLabel: string;
+  avatarUrl: string | null;
+  linkedAt: string;
+  updatedAt: string;
+  canUnlink: boolean;
+};
+
+export type AccountSecuritySettings = {
+  signInMethods: AccountSignInMethod[];
+  sudo: PersonalAccessTokenSudoState;
+  twoFactor: {
+    enabled: boolean;
+    available: boolean;
+    reason: string;
+  };
+};
+
+export type AccountSecuritySettingsFetchResult =
+  | { ok: true; settings: AccountSecuritySettings }
+  | { ok: false; status: number; code: string | null; message: string };
+
+export type UnlinkSignInMethodResponse = {
+  removedId: string;
+  settings: AccountSecuritySettings;
+};
+
 export type PersonalAccessTokenList = {
   tokens: PersonalAccessTokenSummary[];
   sudo: PersonalAccessTokenSudoState;
@@ -4051,6 +4081,104 @@ export async function createSudoGrantFromCookie(
   }
 
   return (await response.json()) as { sudo: PersonalAccessTokenSudoState };
+}
+
+export async function getAccountSecuritySettingsFromCookie(
+  cookie: string | null | undefined,
+): Promise<AccountSecuritySettingsFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}/api/settings/security`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Account security settings are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Account security settings are unavailable right now.";
+    try {
+      const body = (await response.json()) as ApiErrorEnvelope;
+      code = body.error.code ?? null;
+      message = body.error.message ?? message;
+    } catch {
+      // keep fallback
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    settings: (await response.json()) as AccountSecuritySettings,
+  };
+}
+
+export async function createAccountSecuritySudoFromCookie(
+  cookie: string | null | undefined,
+  input: { confirmation: string },
+): Promise<AccountSecuritySettings> {
+  const response = await fetch(`${apiBaseUrl()}/api/settings/security/sudo`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(cookie ? { cookie } : {}),
+    },
+    body: JSON.stringify(input),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    let envelope: ApiErrorEnvelope | null = null;
+    try {
+      envelope = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      envelope = null;
+    }
+    throw new Error(
+      envelope?.error.message ?? "Sudo mode could not be enabled.",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as AccountSecuritySettings;
+}
+
+export async function unlinkSignInMethodFromCookie(
+  cookie: string | null | undefined,
+  accountId: string,
+): Promise<UnlinkSignInMethodResponse> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/settings/security/sign-in-methods/${encodeURIComponent(
+      accountId,
+    )}`,
+    {
+      method: "DELETE",
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    let envelope: ApiErrorEnvelope | null = null;
+    try {
+      envelope = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      envelope = null;
+    }
+    throw new Error(
+      envelope?.error.message ?? "Sign-in method could not be unlinked.",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as UnlinkSignInMethodResponse;
 }
 
 export async function getKeySettingsFromCookie(

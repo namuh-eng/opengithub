@@ -1,3 +1,4 @@
+pub mod account_security;
 pub mod actions;
 pub mod actions_secrets;
 pub mod app_shell;

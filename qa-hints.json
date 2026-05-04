@@ -4574,5 +4574,25 @@
       "Validate real Google reauth parity when sudo mode moves beyond local email confirmation.",
       "Run accessibility traversal on the SSH/GPG forms, delete alertdialogs, copyable docs snippets, vigilant-mode checkbox, status announcements, and mobile wrapping with many keys."
     ]
+  },
+  {
+    "feature_id": "security-001",
+    "tests_written": [
+      "Built /settings/security as a server-backed Editorial account security page with linked Google sign-in methods, sudo confirmation, last-identity protection, disabled 2FA placeholder, and no inert controls.",
+      "Added Rust GET /api/settings/security, POST /api/settings/security/sudo, DELETE /api/settings/security/sign-in-methods/{account_id}, and sudo-gated GET /api/settings/security/google/link.",
+      "Added sessions.elevated_until migration and mirrored 30-minute sudo grants from sudo_grants to the session row.",
+      "Added /docs/api coverage for account security settings, account-security sudo, unlinking sign-in methods, and the sudo-gated Google link flow.",
+      "Focused Rust contract test covers anonymous 401, linked method redaction, invalid sudo confirmation, elevated_until persistence, sudo-required unlink, last-identity conflict, and successful second-method unlink.",
+      "Focused Vitest covers the AccountSecurityPage linked Google rows, last-identity disabled unlink, sudo confirmation, unlink confirmation, no inert anchors, and Editorial guardrails.",
+      "Focused Playwright smoke passed for signed-in /settings/security sudo enablement, second Google method unlink, last-identity protection, disabled 2FA, no dead controls, mobile no-overflow, and screenshot ralph/screenshots/build/security-001-account-security.jpg.",
+      "Verification passed: cargo fmt --all --check, focused Rust contract, focused Vitest/API docs, make check, make test with 361 web tests, focused Playwright smoke, full make test-e2e with 109 Playwright tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Exercise real Google OAuth link callback behavior with two distinct Google accounts once provider test-account switching is available.",
+      "Probe account-takeover edges: provider subject already linked to another user, stale sudo grants, expired sessions, concurrent unlink attempts, and deleting the last identity across simultaneous browser sessions.",
+      "Validate real reauthentication parity when sudo mode moves from local email confirmation to Google reauth.",
+      "Run keyboard and screen-reader traversal on the sudo form, unlink confirmation panel, status announcements, disabled 2FA card, and mobile wrapping with long account emails.",
+      "Confirm security audit event redaction for unlink operations in logs and API responses."
+    ]
   }
 ]

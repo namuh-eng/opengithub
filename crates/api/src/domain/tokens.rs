@@ -400,6 +400,12 @@ pub async fn create_sudo_grant(
     .bind(expires_at)
     .execute(pool)
     .await?;
+    sqlx::query("UPDATE sessions SET elevated_until = $3 WHERE id = $1 AND user_id = $2")
+        .bind(session_id)
+        .bind(user_id)
+        .bind(expires_at)
+        .execute(pool)
+        .await?;
 
     sqlx::query(
         r#"
