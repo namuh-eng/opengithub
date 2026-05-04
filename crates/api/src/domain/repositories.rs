@@ -891,6 +891,102 @@ pub struct RepositoryBranchActivityLinks {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct RepositoryPulseView {
+    pub repository: RepositoryPulseRepository,
+    pub period: RepositoryPulsePeriod,
+    pub metrics: Vec<RepositoryPulseMetric>,
+    pub summary: RepositoryPulseSummary,
+    pub top_committers: Vec<RepositoryPulseCommitter>,
+    pub releases: Vec<RepositoryPulseActivityItem>,
+    pub merged_pull_requests: Vec<RepositoryPulseActivityItem>,
+    pub issue_activity: Vec<RepositoryPulseActivityItem>,
+    pub snapshot: RepositoryPulseSnapshot,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryPulseRepository {
+    pub owner_login: String,
+    pub name: String,
+    pub default_branch: String,
+    pub visibility: RepositoryVisibility,
+    pub viewer_permission: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryPulsePeriod {
+    pub key: String,
+    pub label: String,
+    pub started_at: DateTime<Utc>,
+    pub ended_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryPulseMetric {
+    pub key: String,
+    pub label: String,
+    pub count: i64,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryPulseSummary {
+    pub sentence: String,
+    pub commits: i64,
+    pub files_changed: i64,
+    pub additions: i64,
+    pub deletions: i64,
+    pub authors: i64,
+    pub merged_pull_requests: i64,
+    pub open_pull_requests: i64,
+    pub closed_issues: i64,
+    pub new_issues: i64,
+    pub open_issues: i64,
+    pub releases: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryPulseCommitter {
+    pub user_id: Option<Uuid>,
+    pub login: String,
+    pub avatar_url: Option<String>,
+    pub commits: i64,
+    pub files_changed: i64,
+    pub additions: i64,
+    pub deletions: i64,
+    pub profile_href: String,
+    pub commits_href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryPulseActivityItem {
+    pub kind: String,
+    pub number: Option<i64>,
+    pub title: String,
+    pub state: String,
+    pub author_login: Option<String>,
+    pub author_avatar_url: Option<String>,
+    pub href: String,
+    pub occurred_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryPulseSnapshot {
+    pub cache_key: String,
+    pub computed_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub stale: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct RepositoryCommitDetailView {
     pub repository: RepositoryCommitDetailRepository,
     pub commit: RepositoryCommitDetailCommit,
@@ -1053,6 +1149,11 @@ pub struct RepositoryBranchesQuery<'a> {
     pub query: Option<&'a str>,
     pub page: i64,
     pub page_size: i64,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RepositoryPulseQuery<'a> {
+    pub period: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1571,6 +1672,8 @@ pub enum RepositoryError {
     InvalidBranchPolicy(String),
     #[error("invalid branch directory query: {0}")]
     InvalidBranchDirectoryQuery(String),
+    #[error("invalid repository pulse query: {0}")]
+    InvalidPulseQuery(String),
     #[error("invalid commit diff context: {0}")]
     InvalidDiffContext(String),
     #[error("repository branch policy already exists")]
@@ -1998,6 +2101,27 @@ pub async fn repository_branch_activity_for_actor_by_owner_name(
         return Err(RepositoryError::PermissionDenied);
     }
     repository_branch_activity_for_repository(pool, &repository, actor_user_id, branch)
+        .await
+        .map(Some)
+}
+
+pub async fn repository_pulse_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    query: RepositoryPulseQuery<'_>,
+) -> Result<Option<RepositoryPulseView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    repository_pulse_for_repository(pool, &repository, actor_user_id, query)
         .await
         .map(Some)
 }
@@ -7736,6 +7860,518 @@ async fn record_branch_directory_visit(
     .execute(pool)
     .await?;
     Ok(())
+}
+
+async fn repository_pulse_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    query: RepositoryPulseQuery<'_>,
+) -> Result<RepositoryPulseView, RepositoryError> {
+    let period_key = normalize_pulse_period(query.period)?;
+    let ended_at = Utc::now();
+    let started_at = pulse_period_start(period_key, ended_at);
+    let viewer_permission = viewer_permission_for_user(pool, repository, actor_user_id)
+        .await?
+        .unwrap_or_else(|| "read".to_owned());
+    let cache_key = format!(
+        "{}:{}:{}",
+        period_key,
+        started_at.format("%Y%m%d%H%M"),
+        ended_at.format("%Y%m%d%H%M")
+    );
+
+    let aggregate = sqlx::query(
+        r#"
+        WITH period_commits AS (
+            SELECT id, author_user_id
+            FROM commits
+            WHERE repository_id = $1
+              AND committed_at >= $2
+              AND committed_at <= $3
+        ),
+        issue_only AS (
+            SELECT issues.*
+            FROM issues
+            LEFT JOIN pull_requests ON pull_requests.issue_id = issues.id
+            WHERE issues.repository_id = $1 AND pull_requests.id IS NULL
+        )
+        SELECT
+            (SELECT count(*)::bigint FROM period_commits) AS commits,
+            (SELECT count(DISTINCT author_user_id)::bigint FROM period_commits WHERE author_user_id IS NOT NULL) AS authors,
+            (SELECT count(DISTINCT commit_file_changes.path)::bigint
+             FROM commit_file_changes
+             JOIN period_commits ON period_commits.id = commit_file_changes.commit_id) AS files_changed,
+            (SELECT COALESCE(sum(commit_file_changes.additions), 0)::bigint
+             FROM commit_file_changes
+             JOIN period_commits ON period_commits.id = commit_file_changes.commit_id) AS additions,
+            (SELECT COALESCE(sum(commit_file_changes.deletions), 0)::bigint
+             FROM commit_file_changes
+             JOIN period_commits ON period_commits.id = commit_file_changes.commit_id) AS deletions,
+            (SELECT count(*)::bigint FROM pull_requests
+             WHERE repository_id = $1 AND state = 'merged' AND merged_at >= $2 AND merged_at <= $3) AS merged_pull_requests,
+            (SELECT count(*)::bigint FROM pull_requests
+             WHERE repository_id = $1 AND state = 'open') AS open_pull_requests,
+            (SELECT count(*)::bigint FROM issue_only
+             WHERE state = 'closed' AND closed_at >= $2 AND closed_at <= $3) AS closed_issues,
+            (SELECT count(*)::bigint FROM issue_only
+             WHERE created_at >= $2 AND created_at <= $3) AS new_issues,
+            (SELECT count(*)::bigint FROM issue_only
+             WHERE state = 'open') AS open_issues,
+            (SELECT count(*)::bigint FROM releases
+             WHERE repository_id = $1 AND draft = false AND published_at >= $2 AND published_at <= $3) AS releases
+        "#,
+    )
+    .bind(repository.id)
+    .bind(started_at)
+    .bind(ended_at)
+    .fetch_one(pool)
+    .await?;
+
+    let summary = RepositoryPulseSummary {
+        commits: aggregate.get("commits"),
+        authors: aggregate.get("authors"),
+        files_changed: aggregate.get("files_changed"),
+        additions: aggregate.get("additions"),
+        deletions: aggregate.get("deletions"),
+        merged_pull_requests: aggregate.get("merged_pull_requests"),
+        open_pull_requests: aggregate.get("open_pull_requests"),
+        closed_issues: aggregate.get("closed_issues"),
+        new_issues: aggregate.get("new_issues"),
+        open_issues: aggregate.get("open_issues"),
+        releases: aggregate.get("releases"),
+        sentence: String::new(),
+    };
+    let summary = RepositoryPulseSummary {
+        sentence: pulse_summary_sentence(&summary, period_key),
+        ..summary
+    };
+
+    let metrics = vec![
+        RepositoryPulseMetric {
+            key: "merged_pull_requests".to_owned(),
+            label: "Merged pull requests".to_owned(),
+            count: summary.merged_pull_requests,
+            href: pulse_pull_requests_href(repository, "merged", started_at, ended_at),
+        },
+        RepositoryPulseMetric {
+            key: "open_pull_requests".to_owned(),
+            label: "Open pull requests".to_owned(),
+            count: summary.open_pull_requests,
+            href: format!(
+                "/{}/{}/pulls?state=open",
+                repository.owner_login, repository.name
+            ),
+        },
+        RepositoryPulseMetric {
+            key: "closed_issues".to_owned(),
+            label: "Closed issues".to_owned(),
+            count: summary.closed_issues,
+            href: pulse_issues_href(repository, "closed", started_at, ended_at),
+        },
+        RepositoryPulseMetric {
+            key: "new_issues".to_owned(),
+            label: "New issues".to_owned(),
+            count: summary.new_issues,
+            href: pulse_issues_href(repository, "created", started_at, ended_at),
+        },
+    ];
+
+    let top_committers =
+        repository_pulse_top_committers(pool, repository, started_at, ended_at).await?;
+    let releases = repository_pulse_releases(pool, repository, started_at, ended_at).await?;
+    let merged_pull_requests =
+        repository_pulse_merged_pull_requests(pool, repository, started_at, ended_at).await?;
+    let issue_activity =
+        repository_pulse_issue_activity(pool, repository, started_at, ended_at).await?;
+    let snapshot = record_repository_pulse_snapshot(
+        pool,
+        repository.id,
+        actor_user_id,
+        period_key,
+        &cache_key,
+        &summary,
+    )
+    .await?;
+
+    Ok(RepositoryPulseView {
+        repository: RepositoryPulseRepository {
+            owner_login: repository.owner_login.clone(),
+            name: repository.name.clone(),
+            default_branch: repository.default_branch.clone(),
+            visibility: repository.visibility.clone(),
+            viewer_permission,
+            href: format!("/{}/{}", repository.owner_login, repository.name),
+        },
+        period: RepositoryPulsePeriod {
+            key: period_key.to_owned(),
+            label: pulse_period_label(period_key).to_owned(),
+            started_at,
+            ended_at,
+        },
+        metrics,
+        summary,
+        top_committers,
+        releases,
+        merged_pull_requests,
+        issue_activity,
+        snapshot,
+    })
+}
+
+fn normalize_pulse_period(period: Option<&str>) -> Result<&'static str, RepositoryError> {
+    match period
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("1w")
+    {
+        "24h" => Ok("24h"),
+        "3d" => Ok("3d"),
+        "1w" => Ok("1w"),
+        "1m" => Ok("1m"),
+        other => Err(RepositoryError::InvalidPulseQuery(format!(
+            "unsupported period `{other}`"
+        ))),
+    }
+}
+
+fn pulse_period_start(period_key: &str, ended_at: DateTime<Utc>) -> DateTime<Utc> {
+    match period_key {
+        "24h" => ended_at - chrono::Duration::hours(24),
+        "3d" => ended_at - chrono::Duration::days(3),
+        "1m" => ended_at - chrono::Duration::days(30),
+        _ => ended_at - chrono::Duration::days(7),
+    }
+}
+
+fn pulse_period_label(period_key: &str) -> &'static str {
+    match period_key {
+        "24h" => "Last 24 hours",
+        "3d" => "Last 3 days",
+        "1m" => "Last month",
+        _ => "Last week",
+    }
+}
+
+fn pulse_summary_sentence(summary: &RepositoryPulseSummary, period_key: &str) -> String {
+    format!(
+        "{} authors pushed {} commits touching {} files with {} additions and {} deletions in the {} window.",
+        summary.authors,
+        summary.commits,
+        summary.files_changed,
+        summary.additions,
+        summary.deletions,
+        period_key
+    )
+}
+
+async fn repository_pulse_top_committers(
+    pool: &PgPool,
+    repository: &Repository,
+    started_at: DateTime<Utc>,
+    ended_at: DateTime<Utc>,
+) -> Result<Vec<RepositoryPulseCommitter>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT commits.author_user_id,
+               COALESCE(NULLIF(users.username, ''), users.email, 'unknown') AS login,
+               users.avatar_url,
+               count(DISTINCT commits.id)::bigint AS commits,
+               count(DISTINCT commit_file_changes.path)::bigint AS files_changed,
+               COALESCE(sum(commit_file_changes.additions), 0)::bigint AS additions,
+               COALESCE(sum(commit_file_changes.deletions), 0)::bigint AS deletions
+        FROM commits
+        LEFT JOIN users ON users.id = commits.author_user_id
+        LEFT JOIN commit_file_changes ON commit_file_changes.commit_id = commits.id
+        WHERE commits.repository_id = $1
+          AND commits.committed_at >= $2
+          AND commits.committed_at <= $3
+        GROUP BY commits.author_user_id, login, users.avatar_url
+        ORDER BY count(DISTINCT commits.id) DESC,
+                 COALESCE(sum(commit_file_changes.additions), 0) DESC,
+                 lower(COALESCE(NULLIF(users.username, ''), users.email, 'unknown')) ASC
+        LIMIT 10
+        "#,
+    )
+    .bind(repository.id)
+    .bind(started_at)
+    .bind(ended_at)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let login: String = row.get("login");
+            RepositoryPulseCommitter {
+                user_id: row.get("author_user_id"),
+                profile_href: format!("/{login}"),
+                commits_href: format!(
+                    "/{}/{}/commits/{}?author={}",
+                    repository.owner_login,
+                    repository.name,
+                    percent_encode_segment(&repository.default_branch),
+                    percent_encode_segment(&login)
+                ),
+                login,
+                avatar_url: row.get("avatar_url"),
+                commits: row.get("commits"),
+                files_changed: row.get("files_changed"),
+                additions: row.get("additions"),
+                deletions: row.get("deletions"),
+            }
+        })
+        .collect())
+}
+
+async fn repository_pulse_releases(
+    pool: &PgPool,
+    repository: &Repository,
+    started_at: DateTime<Utc>,
+    ended_at: DateTime<Utc>,
+) -> Result<Vec<RepositoryPulseActivityItem>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT releases.tag_name,
+               COALESCE(NULLIF(releases.name, ''), releases.tag_name) AS title,
+               releases.prerelease,
+               releases.published_at,
+               COALESCE(NULLIF(users.username, ''), users.email) AS author_login,
+               users.avatar_url AS author_avatar_url
+        FROM releases
+        LEFT JOIN users ON users.id = releases.author_user_id
+        WHERE releases.repository_id = $1
+          AND releases.draft = false
+          AND releases.published_at >= $2
+          AND releases.published_at <= $3
+        ORDER BY releases.published_at DESC, lower(releases.tag_name)
+        LIMIT 10
+        "#,
+    )
+    .bind(repository.id)
+    .bind(started_at)
+    .bind(ended_at)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let tag: String = row.get("tag_name");
+            RepositoryPulseActivityItem {
+                kind: "release".to_owned(),
+                number: None,
+                title: row.get("title"),
+                state: if row.get::<bool, _>("prerelease") {
+                    "prerelease".to_owned()
+                } else {
+                    "published".to_owned()
+                },
+                author_login: row.get("author_login"),
+                author_avatar_url: row.get("author_avatar_url"),
+                href: format!(
+                    "/{}/{}/releases/tag/{}",
+                    repository.owner_login,
+                    repository.name,
+                    percent_encode_segment(&tag)
+                ),
+                occurred_at: row
+                    .get::<Option<DateTime<Utc>>, _>("published_at")
+                    .unwrap_or_else(Utc::now),
+            }
+        })
+        .collect())
+}
+
+async fn repository_pulse_merged_pull_requests(
+    pool: &PgPool,
+    repository: &Repository,
+    started_at: DateTime<Utc>,
+    ended_at: DateTime<Utc>,
+) -> Result<Vec<RepositoryPulseActivityItem>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT pull_requests.number,
+               pull_requests.title,
+               pull_requests.state,
+               pull_requests.merged_at,
+               COALESCE(NULLIF(users.username, ''), users.email) AS author_login,
+               users.avatar_url AS author_avatar_url
+        FROM pull_requests
+        LEFT JOIN users ON users.id = pull_requests.author_user_id
+        WHERE pull_requests.repository_id = $1
+          AND pull_requests.state = 'merged'
+          AND pull_requests.merged_at >= $2
+          AND pull_requests.merged_at <= $3
+        ORDER BY pull_requests.merged_at DESC, pull_requests.number DESC
+        LIMIT 10
+        "#,
+    )
+    .bind(repository.id)
+    .bind(started_at)
+    .bind(ended_at)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let number: i64 = row.get("number");
+            RepositoryPulseActivityItem {
+                kind: "pull_request".to_owned(),
+                number: Some(number),
+                title: row.get("title"),
+                state: row.get("state"),
+                author_login: row.get("author_login"),
+                author_avatar_url: row.get("author_avatar_url"),
+                href: format!(
+                    "/{}/{}/pull/{number}",
+                    repository.owner_login, repository.name
+                ),
+                occurred_at: row
+                    .get::<Option<DateTime<Utc>>, _>("merged_at")
+                    .unwrap_or_else(Utc::now),
+            }
+        })
+        .collect())
+}
+
+async fn repository_pulse_issue_activity(
+    pool: &PgPool,
+    repository: &Repository,
+    started_at: DateTime<Utc>,
+    ended_at: DateTime<Utc>,
+) -> Result<Vec<RepositoryPulseActivityItem>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT issues.number,
+               issues.title,
+               issues.state,
+               COALESCE(issues.closed_at, issues.created_at) AS occurred_at,
+               COALESCE(NULLIF(users.username, ''), users.email) AS author_login,
+               users.avatar_url AS author_avatar_url
+        FROM issues
+        LEFT JOIN pull_requests ON pull_requests.issue_id = issues.id
+        LEFT JOIN users ON users.id = issues.author_user_id
+        WHERE issues.repository_id = $1
+          AND pull_requests.id IS NULL
+          AND (
+            (issues.created_at >= $2 AND issues.created_at <= $3)
+            OR (issues.closed_at >= $2 AND issues.closed_at <= $3)
+          )
+        ORDER BY occurred_at DESC, issues.number DESC
+        LIMIT 10
+        "#,
+    )
+    .bind(repository.id)
+    .bind(started_at)
+    .bind(ended_at)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let number: i64 = row.get("number");
+            RepositoryPulseActivityItem {
+                kind: "issue".to_owned(),
+                number: Some(number),
+                title: row.get("title"),
+                state: row.get("state"),
+                author_login: row.get("author_login"),
+                author_avatar_url: row.get("author_avatar_url"),
+                href: format!(
+                    "/{}/{}/issues/{number}",
+                    repository.owner_login, repository.name
+                ),
+                occurred_at: row
+                    .get::<Option<DateTime<Utc>>, _>("occurred_at")
+                    .unwrap_or_else(Utc::now),
+            }
+        })
+        .collect())
+}
+
+async fn record_repository_pulse_snapshot(
+    pool: &PgPool,
+    repository_id: Uuid,
+    user_id: Uuid,
+    period_key: &str,
+    cache_key: &str,
+    summary: &RepositoryPulseSummary,
+) -> Result<RepositoryPulseSnapshot, RepositoryError> {
+    let snapshot = serde_json::to_value(summary).unwrap_or_else(|_| json!({}));
+    let row = sqlx::query(
+        r#"
+        INSERT INTO repository_insight_snapshots (
+            repository_id, period_key, cache_key, snapshot, computed_at, expires_at
+        )
+        VALUES ($1, $2, $3, $4, now(), now() + interval '10 minutes')
+        ON CONFLICT (repository_id, period_key, cache_key) DO UPDATE SET
+            snapshot = EXCLUDED.snapshot,
+            computed_at = now(),
+            expires_at = now() + interval '10 minutes'
+        RETURNING computed_at, expires_at
+        "#,
+    )
+    .bind(repository_id)
+    .bind(period_key)
+    .bind(cache_key)
+    .bind(Json(snapshot))
+    .fetch_one(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO recent_insight_views (repository_id, user_id, period_key, viewed_at)
+        VALUES ($1, $2, $3, now())
+        ON CONFLICT (repository_id, user_id, period_key)
+        DO UPDATE SET viewed_at = now()
+        "#,
+    )
+    .bind(repository_id)
+    .bind(user_id)
+    .bind(period_key)
+    .execute(pool)
+    .await?;
+
+    let expires_at: DateTime<Utc> = row.get("expires_at");
+    Ok(RepositoryPulseSnapshot {
+        cache_key: cache_key.to_owned(),
+        computed_at: row.get("computed_at"),
+        expires_at,
+        stale: expires_at <= Utc::now(),
+    })
+}
+
+fn pulse_pull_requests_href(
+    repository: &Repository,
+    state: &str,
+    started_at: DateTime<Utc>,
+    ended_at: DateTime<Utc>,
+) -> String {
+    format!(
+        "/{}/{}/pulls?state={state}&since={}&until={}",
+        repository.owner_login,
+        repository.name,
+        started_at.to_rfc3339(),
+        ended_at.to_rfc3339()
+    )
+}
+
+fn pulse_issues_href(
+    repository: &Repository,
+    state: &str,
+    started_at: DateTime<Utc>,
+    ended_at: DateTime<Utc>,
+) -> String {
+    format!(
+        "/{}/{}/issues?state={state}&since={}&until={}",
+        repository.owner_login,
+        repository.name,
+        started_at.to_rfc3339(),
+        ended_at.to_rfc3339()
+    )
 }
 
 async fn repository_commit_detail(

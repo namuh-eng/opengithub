@@ -6,7 +6,7 @@
 
 ## Phase 1: Pulse API Contract and Snapshot Cache - screen-ready activity aggregates
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add an authenticated read contract for `GET /api/repos/{owner}/{repo}/pulse` that computes the Pulse summary for one normalized period without replacing the placeholder UI yet. The response should include repository metadata, period bounds, overview counts, linked metric destinations, a natural-language summary payload, top committers, releases, merged PRs, issue activity, and cache freshness metadata.
 

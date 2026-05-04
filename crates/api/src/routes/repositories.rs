@@ -71,10 +71,10 @@ use crate::{
         repository_commit_history_for_actor_by_owner_name, repository_creation_options,
         repository_file_finder_for_actor_by_owner_name, repository_name_availability,
         repository_overview_for_viewer_by_owner_name,
-        repository_path_overview_for_actor_by_owner_name, repository_refs_for_actor_by_owner_name,
-        repository_settings_for_actor_by_owner_name, repository_watch_settings_by_owner_name,
-        set_repository_star_by_owner_name, set_repository_watch_by_owner_name,
-        update_repository_branch_rule_by_owner_name,
+        repository_path_overview_for_actor_by_owner_name, repository_pulse_for_actor_by_owner_name,
+        repository_refs_for_actor_by_owner_name, repository_settings_for_actor_by_owner_name,
+        repository_watch_settings_by_owner_name, set_repository_star_by_owner_name,
+        set_repository_watch_by_owner_name, update_repository_branch_rule_by_owner_name,
         update_repository_collaborator_access_by_owner_name,
         update_repository_ruleset_by_owner_name, update_repository_settings_by_owner_name,
         update_repository_team_access_by_owner_name,
@@ -82,9 +82,9 @@ use crate::{
         RepositoryAccessInviteRequest, RepositoryAccessRolePatch, RepositoryAccessTeamGrantRequest,
         RepositoryBootstrapRequest, RepositoryBranchRuleMutation, RepositoryBranchesQuery,
         RepositoryCommitDetailContextQuery, RepositoryCommitHistoryQuery, RepositoryError,
-        RepositoryFileFinderQuery, RepositoryOwner, RepositoryPathQuery, RepositoryRefsQuery,
-        RepositoryRulesetMutation, RepositorySettingsPatch, RepositoryVisibility,
-        RepositoryWatchSettingsPatch,
+        RepositoryFileFinderQuery, RepositoryOwner, RepositoryPathQuery, RepositoryPulseQuery,
+        RepositoryRefsQuery, RepositoryRulesetMutation, RepositorySettingsPatch,
+        RepositoryVisibility, RepositoryWatchSettingsPatch,
     },
     domain::webhooks::{
         create_repository_webhook_by_owner_name, delete_repository_webhook_by_owner_name,
@@ -113,6 +113,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/:owner/:repo/branches", get(branches))
         .route("/:owner/:repo/branches/activity", get(branch_activity))
+        .route("/:owner/:repo/pulse", get(pulse))
         .route("/:owner/:repo/refs", get(refs))
         .route("/:owner/:repo/file-finder", get(file_finder))
         .route("/:owner/:repo/releases", get(releases).post(create_release))
@@ -378,6 +379,12 @@ struct BranchesQuery {
 #[serde(rename_all = "camelCase")]
 struct BranchActivityQuery {
     branch: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PulseQuery {
+    period: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -796,6 +803,36 @@ async fn branch_activity(
         &owner,
         &repo,
         &query.branch,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn pulse(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<PulseQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = repository_pulse_for_actor_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        RepositoryPulseQuery {
+            period: query.period.as_deref(),
+        },
     )
     .await
     .map_err(map_repository_error)?
@@ -2490,6 +2527,7 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         | RepositoryError::InvalidAccessRole(_)
         | RepositoryError::InvalidBranchPolicy(_)
         | RepositoryError::InvalidBranchDirectoryQuery(_)
+        | RepositoryError::InvalidPulseQuery(_)
         | RepositoryError::InvalidDiffContext(_)
         | RepositoryError::MergeMethodRequired
         | RepositoryError::DefaultMergeMethodDisabled

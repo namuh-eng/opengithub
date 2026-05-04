@@ -3598,3 +3598,12 @@
 - Created `.qrspi/insights-001/structure.md` for the first incomplete PRD feature, splitting repository Pulse into five vertical phases: Pulse API contract and snapshot cache, Editorial Insights shell and overview page, URL-backed period selector and metric links, committer/activity interactions plus bounded edge cases, and final docs/browser/QA/build-pass bookkeeping.
 - No source implementation was started because `insights-001.needs_structure=true` and no structure outline existed at invocation start; the build-loop contract requires the outline first, then `<promise>NEXT</promise>`.
 - Verified `insights-001.build_pass=false`, `qa_pass=false`, and all structure phases remain unchecked for the next invocation.
+
+2026-05-05 - insights-001 phase 1 Pulse API contract and snapshot cache
+
+- Completed Phase 1 from `.qrspi/insights-001/structure.md`: repository Pulse now has a screen-ready Rust API contract without marking `insights-001.build_pass=true`.
+- Added additive Pulse migrations for `commit_file_changes`, `repository_insight_snapshots`, and `recent_insight_views`, with bounded period keys, cache keys, JSON snapshot payloads, and recent per-user view telemetry.
+- Added authenticated `GET /api/repos/{owner}/{repo}/pulse` with signed-session auth, public/private repository visibility behavior, normalized `period` values (`24h`, `3d`, `1w`, `1m`), inclusive date bounds, summary metrics, metric destination hrefs, natural-language summary text, top committer rollups, release activity, merged PR activity, issue activity, and cache freshness metadata.
+- Added focused Rust contract coverage for anonymous 401, private outsider 404 privacy, aggregate counts, top committer ordering, metric/activity href shape, snapshot persistence, recent-view telemetry, invalid period 422, and no session-secret leakage.
+- Verification passed: focused `repository_pulse_contract` against the local test database after manually applying the additive Phase 1 migration around the known `202605030041` dirty migration warning; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 420 web tests; mandatory Editorial banned-value scan returned zero matches.
+- Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first and `.qrspi/insights-001/structure.md` marks browser smoke optional for this phase. `prd.json` remains `build_pass:false` because Phases 2-5 remain.

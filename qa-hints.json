@@ -5282,5 +5282,21 @@
       "Run keyboard-only and screen-reader traversal through branch tabs, search, pagination, row links, copy controls, action menus, activity/rules links, recent commits, PR links, compare/history/tree navigation, and mobile no-overflow.",
       "Re-run Rust branch contracts against a clean migrated database after the shared local migration drift for 202605030041 is resolved."
     ]
+  },
+  {
+    "feature_id": "insights-001",
+    "tests_written": [
+      "Completed Phase 1 Pulse API Contract and Snapshot Cache without marking insights-001 build_pass=true.",
+      "Added authenticated GET /api/repos/{owner}/{repo}/pulse with period normalization for 24h, 3d, 1w, and 1m; private repository outsider 404 privacy; repository metadata; summary counts; metric hrefs; top committers; release, merged PR, and issue activity lists; and bounded snapshot/view telemetry.",
+      "Added additive commit_file_changes, repository_insight_snapshots, and recent_insight_views migrations so Pulse can return file/addition/deletion rollups and cache freshness metadata.",
+      "Added focused Rust contract coverage for anonymous denial, private-repo privacy, aggregate counts, metric destinations, top committer ordering, activity hrefs, snapshot persistence, recent-view telemetry, invalid period validation, and no secret leakage."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 still needs the Editorial Insights shell, real /{owner}/{repo}/pulse UI, browser smoke screenshot, and no-dead-control checks.",
+      "Repeat against a clean migrated database after the shared local migration drift for 202605030041 is resolved; this phase manually applied the additive Pulse migration to the shared test DB.",
+      "Probe imported repositories with large commit histories, missing/deleted commit authors, commits without file-change rows, bot-heavy activity, draft/prerelease releases, and overlapping issue/PR records.",
+      "Validate period-boundary behavior around exact start/end timestamps, time zones, and high-frequency refreshes that update repository_insight_snapshots.",
+      "Use a real Google OAuth browser session once the UI phase lands; this phase was API-only and browser smoke was optional by structure."
+    ]
   }
 ]
