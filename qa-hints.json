@@ -5152,5 +5152,21 @@
       "The Phase 2 hunk builder is intentionally bounded and line-position based; verify complex moved-block diffs once context expansion lands.",
       "Re-run the Rust contract against a clean migrated database after the shared local migration drift is resolved."
     ]
+  },
+  {
+    "feature_id": "commits-002",
+    "tests_written": [
+      "Completed Phase 3 Diff Filter, In-Page Search, and Focus Behavior without marking commits-002 build_pass=true.",
+      "Converted RepositoryCommitDetailPage into a client diff surface with URL-safe concrete links preserved, file filter state, code search state, safe mark-based highlighting, visible match counts, no-match empty states, and active-file focus management from the file tree.",
+      "Extended Vitest coverage for file filtering, clear filters, code search highlighting without unsafe HTML, no-match states, selected-file focus, Editorial guardrails, and no placeholder anchors or click handlers.",
+      "Extended Playwright commit-detail smoke for signed-in filter/search/file-selection interactions, no dead controls, and screenshot ralph/screenshots/build/commits-002-phase3-search-filter.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 still needs API-backed context expansion plus binary, large, renamed, deleted, and generated-file edge cases.",
+      "Repeat the filter/search/focus flow with a real Google OAuth session and an imported repository containing many changed files, repeated search terms, very long paths, unicode filenames, binary diffs, and large generated files.",
+      "Probe keyboard-only traversal through the filter fields, file tree buttons, highlighted code matches, Raw/View links, and mobile wrapping.",
+      "Search highlighting is client-side and limited to visible bounded diff rows until Phase 4 context expansion lands.",
+      "Re-run contract and E2E checks against a clean migrated database after the shared local migration drift is resolved."
+    ]
   }
 ]

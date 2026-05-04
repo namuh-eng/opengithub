@@ -41,7 +41,7 @@
 
 ## Phase 3: Diff Filter, In-Page Search, and Focus Behavior
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make the diff controls interactive: Filter files narrows the file tree and visible diff files, Search within code highlights matches in visible diff content, and selecting a file tree row scrolls/focuses the matching diff file without layout jumps.
 

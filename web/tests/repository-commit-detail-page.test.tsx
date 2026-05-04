@@ -216,8 +216,8 @@ describe("RepositoryCommitDetailPage", () => {
       screen.getByRole("navigation", { name: "Changed file tree" }),
     ).toBeVisible();
     expect(
-      screen.getByRole("link", { name: /repositories.rs/ }),
-    ).toHaveAttribute("href", "#diff-crates-api-src-routes-repositories-rs");
+      screen.getByRole("button", { name: /repositories.rs/ }),
+    ).toBeVisible();
     expect(
       screen.getByText("@@ -1,2 +1,2 @@ crates/api/src/routes/repositories.rs"),
     ).toBeVisible();
@@ -250,7 +250,106 @@ describe("RepositoryCommitDetailPage", () => {
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith("abcdef1234567890"),
     );
-    expect(screen.getByRole("status")).toHaveTextContent("Full SHA copied");
+    expect(screen.getByText("Full SHA copied")).toHaveAttribute(
+      "role",
+      "status",
+    );
+  });
+
+  it("filters changed files, clears filters, and reports empty states", () => {
+    render(<RepositoryCommitDetailPage detail={commitDetail()} />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Filter files" }), {
+      target: { value: "Commit.tsx" },
+    });
+
+    expect(screen.getByRole("button", { name: /Commit.tsx/ })).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: /repositories.rs/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("article", {
+        name: /Diff for web\/src\/components\/Commit.tsx/,
+      }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("article", {
+        name: /Diff for crates\/api\/src\/routes\/repositories.rs/,
+      }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("1 visible file");
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Filter files" }), {
+      target: { value: "missing.rs" },
+    });
+    expect(
+      screen.getAllByText("No changed files match this filter."),
+    ).toHaveLength(2);
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Clear filters" })[0],
+    );
+    expect(
+      screen.getByRole("button", { name: /repositories.rs/ }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: /Commit.tsx/ })).toBeVisible();
+  });
+
+  it("highlights code search safely and reports visible match counts", () => {
+    render(<RepositoryCommitDetailPage detail={commitDetail()} />);
+
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Search within code" }),
+      {
+        target: { value: "commit_detail" },
+      },
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("1 match");
+    const highlight = screen.getByText("commit_detail");
+    expect(highlight.tagName).toBe("MARK");
+
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Search within code" }),
+      {
+        target: { value: "<script>" },
+      },
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("0 matches");
+    expect(
+      screen.getByText("No visible diff lines match this search."),
+    ).toBeVisible();
+  });
+
+  it("focuses a diff file from the file tree without placeholder handlers", async () => {
+    const scrollIntoView = vi.fn();
+    const focus = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    const animationFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        callback(0);
+        return 1;
+      });
+    vi.spyOn(HTMLElement.prototype, "focus").mockImplementation(focus);
+
+    render(<RepositoryCommitDetailPage detail={commitDetail()} />);
+
+    const fileButton = screen.getByRole("button", { name: /Commit.tsx/ });
+    fireEvent.click(fileButton);
+
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
+    expect(focus).toHaveBeenCalled();
+    expect(fileButton).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("article", {
+        name: /Diff for web\/src\/components\/Commit.tsx selected/,
+      }),
+    ).toBeVisible();
+    animationFrame.mockRestore();
   });
 
   it("keeps Editorial guardrails and root-commit fallback", () => {

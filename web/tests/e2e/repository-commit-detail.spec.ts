@@ -111,7 +111,9 @@ test("signed-in commit detail renders summary controls and unified diff", async 
     new RegExp(`${repositoryHref}/actions\\?commit=`),
   );
   await page.getByRole("button", { name: "Copy full SHA" }).click();
-  await expect(page.getByRole("status")).toContainText(/copied|unavailable/i);
+  await expect(
+    page.getByText(/Full SHA copied|Clipboard unavailable/),
+  ).toHaveAttribute("role", "status");
   await expect(
     page.getByRole("heading", { name: "Changed files" }),
   ).toBeVisible();
@@ -120,6 +122,40 @@ test("signed-in commit detail renders summary controls and unified diff", async 
   ).toBeVisible();
   await expect(page.getByText(/files changed with/)).toBeVisible();
   await expect(page.locator("article.card[id^='diff-']").first()).toBeVisible();
+  const firstCodeLine = (
+    (await page
+      .locator("article.card[id^='diff-'] code")
+      .first()
+      .textContent()) ?? ""
+  ).trim();
+  const searchTerm =
+    firstCodeLine.split(/\s+/).find((word) => word.length >= 4) ??
+    firstCodeLine;
+  expect(searchTerm).toBeTruthy();
+  await page
+    .getByRole("textbox", { name: "Search within code" })
+    .fill(searchTerm);
+  await expect(page.locator("mark").first()).toContainText(searchTerm);
+  await page.getByRole("textbox", { name: "Filter files" }).fill("README");
+  await expect(
+    page.getByRole("status").filter({ hasText: /visible file/ }),
+  ).toContainText(/visible file/);
+  await expect(
+    page.getByRole("button", { name: /README/i }).first(),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: /README/i })
+    .first()
+    .click();
+  await expect(page.locator("article.card[id^='diff-']").first()).toBeFocused();
+  await page.getByRole("textbox", { name: "Filter files" }).fill("not-present");
+  await expect(
+    page.getByText("No changed files match this filter.").first(),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Clear filters" }).first().click();
+  await expect(
+    page.getByRole("button", { name: /README/i }).first(),
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: "Raw" }).first()).toHaveAttribute(
     "href",
     new RegExp(`${repositoryHref}/raw/`),
@@ -130,6 +166,6 @@ test("signed-in commit detail renders summary controls and unified diff", async 
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/commits-002-phase2-diff.jpg",
+    path: "../ralph/screenshots/build/commits-002-phase3-search-filter.jpg",
   });
 });

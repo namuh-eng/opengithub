@@ -1,7 +1,12 @@
+"use client";
+
 import Link from "next/link";
+import type React from "react";
+import { useMemo, useState } from "react";
 import { CopyButton } from "@/components/CopyButton";
 import type {
   RepositoryCommitDetailFile,
+  RepositoryCommitDetailFileTreeNode,
   RepositoryCommitDetailLine,
   RepositoryCommitDetailView,
   RepositoryCommitStatusSummary,
@@ -131,7 +136,100 @@ function formatByteSize(byteSize: number) {
   return `${(kib / 1024).toFixed(1)} MB`;
 }
 
-function DiffLine({ line }: { line: RepositoryCommitDetailLine }) {
+function normalizeQuery(value: string) {
+  return value.trim().toLocaleLowerCase();
+}
+
+function textMatches(value: string, query: string) {
+  return value.toLocaleLowerCase().includes(query);
+}
+
+function countLineMatches(line: RepositoryCommitDetailLine, query: string) {
+  if (!query) return 0;
+  const haystack = line.content.toLocaleLowerCase();
+  let count = 0;
+  let index = haystack.indexOf(query);
+  while (index >= 0) {
+    count += 1;
+    index = haystack.indexOf(query, index + query.length);
+  }
+  return count;
+}
+
+function searchMatchCount(
+  files: RepositoryCommitDetailFile[],
+  searchQuery: string,
+) {
+  const normalized = normalizeQuery(searchQuery);
+  if (!normalized) return 0;
+  return files.reduce(
+    (fileTotal, file) =>
+      fileTotal +
+      file.hunks.reduce(
+        (hunkTotal, hunk) =>
+          hunkTotal +
+          hunk.lines.reduce(
+            (lineTotal, line) => lineTotal + countLineMatches(line, normalized),
+            0,
+          ),
+        0,
+      ),
+    0,
+  );
+}
+
+function HighlightedCode({
+  content,
+  searchQuery,
+}: {
+  content: string;
+  searchQuery: string;
+}) {
+  const normalizedQuery = normalizeQuery(searchQuery);
+  if (!normalizedQuery) {
+    return <>{content}</>;
+  }
+
+  const lowerContent = content.toLocaleLowerCase();
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  let matchIndex = lowerContent.indexOf(normalizedQuery);
+  while (matchIndex >= 0) {
+    if (matchIndex > cursor) {
+      parts.push(content.slice(cursor, matchIndex));
+    }
+    const match = content.slice(
+      matchIndex,
+      matchIndex + normalizedQuery.length,
+    );
+    parts.push(
+      <mark
+        className="rounded-[var(--radius)] px-0.5"
+        key={`${matchIndex}-${match}`}
+        style={{
+          background: "var(--accent-soft)",
+          color: "var(--ink-1)",
+        }}
+      >
+        {match}
+      </mark>,
+    );
+    cursor = matchIndex + normalizedQuery.length;
+    matchIndex = lowerContent.indexOf(normalizedQuery, cursor);
+  }
+  if (cursor < content.length) {
+    parts.push(content.slice(cursor));
+  }
+  return <>{parts}</>;
+}
+
+function DiffLine({
+  line,
+  searchQuery,
+}: {
+  line: RepositoryCommitDetailLine;
+  searchQuery: string;
+}) {
   return (
     <div
       className="grid min-w-[760px] grid-cols-[64px_64px_32px_minmax(0,1fr)] border-b t-mono-sm"
@@ -158,14 +256,29 @@ function DiffLine({ line }: { line: RepositoryCommitDetailLine }) {
       >
         {linePrefix(line)}
       </span>
-      <code className="min-w-0 whitespace-pre px-2 py-1.5">{line.content}</code>
+      <code className="min-w-0 whitespace-pre px-2 py-1.5">
+        <HighlightedCode content={line.content} searchQuery={searchQuery} />
+      </code>
     </div>
   );
 }
 
-function CommitDiffFile({ file }: { file: RepositoryCommitDetailFile }) {
+function RepositoryCommitDiffFile({
+  file,
+  isActive,
+  searchQuery,
+}: {
+  file: RepositoryCommitDetailFile;
+  isActive: boolean;
+  searchQuery: string;
+}) {
   return (
-    <article className="card overflow-hidden" id={file.anchor}>
+    <article
+      aria-label={`Diff for ${file.path}${isActive ? " selected" : ""}`}
+      className="card scroll-mt-24 overflow-hidden outline-none"
+      id={file.anchor}
+      tabIndex={-1}
+    >
       <div
         className="flex flex-wrap items-center gap-3 border-b px-4 py-3"
         style={{ background: "var(--surface-2)", borderColor: "var(--line)" }}
@@ -211,7 +324,11 @@ function CommitDiffFile({ file }: { file: RepositoryCommitDetailFile }) {
                 {hunk.header}
               </div>
               {hunk.lines.map((line) => (
-                <DiffLine key={`${hunk.id}-${line.position}`} line={line} />
+                <DiffLine
+                  key={`${hunk.id}-${line.position}`}
+                  line={line}
+                  searchQuery={searchQuery}
+                />
               ))}
             </div>
           ))}
@@ -228,6 +345,105 @@ function CommitDiffFile({ file }: { file: RepositoryCommitDetailFile }) {
   );
 }
 
+function RepositoryCommitFileTree({
+  activeFilePath,
+  fileTree,
+  onSelectFile,
+}: {
+  activeFilePath: string | null;
+  fileTree: RepositoryCommitDetailFileTreeNode[];
+  onSelectFile: (node: RepositoryCommitDetailFileTreeNode) => void;
+}) {
+  return (
+    <nav
+      aria-label="Changed file tree"
+      className="mt-2 max-h-[520px] space-y-1 overflow-y-auto"
+    >
+      {fileTree.map((node) => {
+        const active = node.path === activeFilePath;
+        return (
+          <button
+            aria-pressed={active}
+            className="flex w-full items-center gap-2 rounded-[var(--radius)] px-2 py-1.5 text-left t-sm hover:bg-[var(--hover)]"
+            key={node.path}
+            onClick={() => onSelectFile(node)}
+            style={{
+              background: active ? "var(--accent-soft)" : "transparent",
+              paddingLeft: 8 + node.depth * 12,
+            }}
+            type="button"
+          >
+            <span className="sr-only">
+              {active ? "Selected file " : "Focus file "}
+            </span>
+            <span className="t-mono-sm" style={{ color: "var(--ink-4)" }}>
+              {fileStatusMark(node.status)}
+            </span>
+            <span className="min-w-0 flex-1 truncate t-mono-sm">
+              {node.name}
+            </span>
+            <span className="t-xs t-num" style={{ color: "var(--ink-4)" }}>
+              +{node.additions}/-{node.deletions}
+            </span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+function RepositoryCommitDiffSearch({
+  fileFilter,
+  matchCount,
+  onClear,
+  onFileFilterChange,
+  onSearchQueryChange,
+  searchQuery,
+  visibleFileCount,
+}: {
+  fileFilter: string;
+  matchCount: number;
+  onClear: () => void;
+  onFileFilterChange: (value: string) => void;
+  onSearchQueryChange: (value: string) => void;
+  searchQuery: string;
+  visibleFileCount: number;
+}) {
+  return (
+    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+      <label className="block">
+        <span className="t-label">Filter files</span>
+        <input
+          aria-label="Filter files"
+          className="input mt-2 h-9 w-full px-3 t-sm"
+          onChange={(event) => onFileFilterChange(event.target.value)}
+          placeholder="Path or filename"
+          value={fileFilter}
+        />
+      </label>
+      <label className="block">
+        <span className="t-label">Search within code</span>
+        <input
+          aria-label="Search within code"
+          className="input mt-2 h-9 w-full px-3 t-sm"
+          onChange={(event) => onSearchQueryChange(event.target.value)}
+          placeholder="Function, selector, or text"
+          value={searchQuery}
+        />
+      </label>
+      <button className="btn sm" onClick={onClear} type="button">
+        Clear filters
+      </button>
+      <p className="t-xs md:col-span-3" role="status">
+        {visibleFileCount} visible {visibleFileCount === 1 ? "file" : "files"}
+        {searchQuery.trim()
+          ? ` · ${matchCount} ${matchCount === 1 ? "match" : "matches"}`
+          : ""}
+      </p>
+    </div>
+  );
+}
+
 export function RepositoryCommitDetailPage({
   detail,
 }: RepositoryCommitDetailPageProps) {
@@ -235,6 +451,47 @@ export function RepositoryCommitDetailPage({
   const commit = detail.commit;
   const author = commit.authorLogin ?? "Unknown author";
   const statusText = statusLabel(detail.status);
+  const [fileFilter, setFileFilter] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeFilePath, setActiveFilePath] = useState<string | null>(
+    detail.files[0]?.path ?? null,
+  );
+  const normalizedFileFilter = normalizeQuery(fileFilter);
+  const visibleFiles = useMemo(
+    () =>
+      normalizedFileFilter
+        ? detail.files.filter((file) =>
+            textMatches(file.path, normalizedFileFilter),
+          )
+        : detail.files,
+    [detail.files, normalizedFileFilter],
+  );
+  const visibleFilePaths = useMemo(
+    () => new Set(visibleFiles.map((file) => file.path)),
+    [visibleFiles],
+  );
+  const visibleFileTree = useMemo(
+    () => detail.fileTree.filter((node) => visibleFilePaths.has(node.path)),
+    [detail.fileTree, visibleFilePaths],
+  );
+  const matchCount = useMemo(
+    () => searchMatchCount(visibleFiles, searchQuery),
+    [searchQuery, visibleFiles],
+  );
+
+  function clearDiffFilters() {
+    setFileFilter("");
+    setSearchQuery("");
+  }
+
+  function selectFile(node: RepositoryCommitDetailFileTreeNode) {
+    setActiveFilePath(node.path);
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(node.href.replace(/^#/, ""));
+      target?.scrollIntoView({ block: "start", behavior: "smooth" });
+      target?.focus();
+    });
+  }
 
   return (
     <div>
@@ -336,6 +593,22 @@ export function RepositoryCommitDetailPage({
               </div>
               <span className="chip ok">Diff ready</span>
             </div>
+            <section className="card p-4" aria-label="Diff controls">
+              <RepositoryCommitDiffSearch
+                fileFilter={fileFilter}
+                matchCount={matchCount}
+                onClear={clearDiffFilters}
+                onFileFilterChange={setFileFilter}
+                onSearchQueryChange={setSearchQuery}
+                searchQuery={searchQuery}
+                visibleFileCount={visibleFiles.length}
+              />
+              {searchQuery.trim() && matchCount === 0 ? (
+                <p className="mt-3 t-sm" style={{ color: "var(--ink-3)" }}>
+                  No visible diff lines match this search.
+                </p>
+              ) : null}
+            </section>
             <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)]">
               <aside className="card h-fit p-2" aria-label="Changed file tree">
                 <div
@@ -344,41 +617,44 @@ export function RepositoryCommitDetailPage({
                 >
                   Files
                 </div>
-                <nav
-                  aria-label="Changed file tree"
-                  className="mt-2 max-h-[520px] space-y-1 overflow-y-auto"
-                >
-                  {detail.fileTree.map((node) => (
-                    <a
-                      className="flex items-center gap-2 rounded-[var(--radius)] px-2 py-1.5 t-sm hover:bg-[var(--hover)]"
-                      href={node.href}
-                      key={node.path}
-                      style={{ paddingLeft: 8 + node.depth * 12 }}
-                    >
-                      <span
-                        className="t-mono-sm"
-                        style={{ color: "var(--ink-4)" }}
-                      >
-                        {fileStatusMark(node.status)}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate t-mono-sm">
-                        {node.name}
-                      </span>
-                      <span
-                        className="t-xs t-num"
-                        style={{ color: "var(--ink-4)" }}
-                      >
-                        +{node.additions}/-{node.deletions}
-                      </span>
-                    </a>
-                  ))}
-                </nav>
+                {visibleFileTree.length ? (
+                  <RepositoryCommitFileTree
+                    activeFilePath={activeFilePath}
+                    fileTree={visibleFileTree}
+                    onSelectFile={selectFile}
+                  />
+                ) : (
+                  <p
+                    className="px-2 py-4 t-sm"
+                    style={{ color: "var(--ink-3)" }}
+                  >
+                    No changed files match this filter.
+                  </p>
+                )}
               </aside>
               <div className="min-w-0 space-y-4">
-                {detail.files.length ? (
-                  detail.files.map((file) => (
-                    <CommitDiffFile file={file} key={file.path} />
+                {visibleFiles.length ? (
+                  visibleFiles.map((file) => (
+                    <RepositoryCommitDiffFile
+                      file={file}
+                      isActive={file.path === activeFilePath}
+                      key={file.path}
+                      searchQuery={searchQuery}
+                    />
                   ))
+                ) : normalizedFileFilter ? (
+                  <div className="card p-6">
+                    <p className="t-body" style={{ color: "var(--ink-3)" }}>
+                      No changed files match this filter.
+                    </p>
+                    <button
+                      className="btn mt-4 sm"
+                      onClick={clearDiffFilters}
+                      type="button"
+                    >
+                      Clear filters
+                    </button>
+                  </div>
                 ) : (
                   <div className="card p-6">
                     <p className="t-body" style={{ color: "var(--ink-3)" }}>
