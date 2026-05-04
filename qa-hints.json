@@ -5540,5 +5540,21 @@
       "Phase 4 still needs edge-case coverage for archived/stale/starred forks, metric ties, slash-containing default branches, long owner/repository names, and mobile no-overflow.",
       "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL once UI phases land; this iteration was structure-only."
     ]
+  },
+  {
+    "feature_id": "insights-004",
+    "tests_written": [
+      "Completed Phase 1 Network API Contract and Projection Cache without marking insights-004 build_pass=true.",
+      "Added repository_network_forks and saved_fork_filter_defaults storage for fork graph projections, metric counts, classification flags, freshness, and actor-scoped saved filter defaults.",
+      "Added authenticated GET /api/repos/{owner}/{repo}/network and GET /api/repos/{owner}/{repo}/forks backed by readable-only fork projection, private fork omission, period/type/sort validation, deterministic ordering, graph/tree hrefs, freshness metadata, and saved-default metadata.",
+      "Added focused Rust contract coverage for source/fork seeding, hidden private forks, stars/issues/PR metrics, slash-containing default branch tree hrefs, saved defaults, route validation, private repository privacy, anonymous 401, projection cache writes, and no secret leakage."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 still needs browser smoke for /{owner}/{repo}/network, including graph/list rendering, tree/fork links, empty state, and Editorial visual guardrails.",
+      "Phase 3 still needs URL-backed Forks filters, keyboard menu behavior, saved-default success/error feedback, and no-dead-control verification.",
+      "Phase 4 still needs edge-case coverage for archived/stale/starred forks, metric ties beyond the Phase 1 baseline, long owner/repository names, and mobile no-overflow.",
+      "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema after manually applying the additive Phase 1 migration.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL once UI phases land; this phase is API-only."
+    ]
   }
 ]

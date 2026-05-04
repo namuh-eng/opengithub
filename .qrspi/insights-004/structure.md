@@ -6,7 +6,7 @@
 
 ## Phase 1: Network API Contract and Projection Cache - screen-ready fork graph data
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add authenticated read contracts for the repository Network and Forks data without replacing the placeholder UI yet. `GET /api/repos/{owner}/{repo}/network` should return the 50 most recently pushed readable forks, upstream repository metadata, projection freshness, graph/tree hrefs, and daily update copy. `GET /api/repos/{owner}/{repo}/forks` should return filterable fork rows plus saved-default metadata.
 

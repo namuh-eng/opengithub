@@ -70,7 +70,8 @@ use crate::{
         repository_commit_detail_for_actor_by_owner_name,
         repository_commit_history_for_actor_by_owner_name,
         repository_contributors_for_actor_by_owner_name, repository_creation_options,
-        repository_file_finder_for_actor_by_owner_name, repository_name_availability,
+        repository_file_finder_for_actor_by_owner_name, repository_forks_for_actor_by_owner_name,
+        repository_name_availability, repository_network_for_actor_by_owner_name,
         repository_overview_for_viewer_by_owner_name,
         repository_path_overview_for_actor_by_owner_name, repository_pulse_for_actor_by_owner_name,
         repository_refs_for_actor_by_owner_name, repository_settings_for_actor_by_owner_name,
@@ -84,10 +85,10 @@ use crate::{
         RepositoryAccessInviteRequest, RepositoryAccessRolePatch, RepositoryAccessTeamGrantRequest,
         RepositoryBootstrapRequest, RepositoryBranchRuleMutation, RepositoryBranchesQuery,
         RepositoryCommitDetailContextQuery, RepositoryCommitHistoryQuery,
-        RepositoryContributorsQuery, RepositoryError, RepositoryFileFinderQuery, RepositoryOwner,
-        RepositoryPathQuery, RepositoryPulseQuery, RepositoryRefsQuery, RepositoryRulesetMutation,
-        RepositorySettingsPatch, RepositoryTrafficQuery, RepositoryVisibility,
-        RepositoryWatchSettingsPatch,
+        RepositoryContributorsQuery, RepositoryError, RepositoryFileFinderQuery,
+        RepositoryForksQuery, RepositoryOwner, RepositoryPathQuery, RepositoryPulseQuery,
+        RepositoryRefsQuery, RepositoryRulesetMutation, RepositorySettingsPatch,
+        RepositoryTrafficQuery, RepositoryVisibility, RepositoryWatchSettingsPatch,
     },
     domain::webhooks::{
         create_repository_webhook_by_owner_name, delete_repository_webhook_by_owner_name,
@@ -119,6 +120,7 @@ pub fn router() -> Router<AppState> {
         .route("/:owner/:repo/pulse", get(pulse))
         .route("/:owner/:repo/graphs/contributors", get(contributors))
         .route("/:owner/:repo/graphs/traffic", get(traffic))
+        .route("/:owner/:repo/network", get(network))
         .route("/:owner/:repo/refs", get(refs))
         .route("/:owner/:repo/file-finder", get(file_finder))
         .route("/:owner/:repo/releases", get(releases).post(create_release))
@@ -300,7 +302,7 @@ pub fn router() -> Router<AppState> {
                 .put(watch)
                 .delete(unwatch),
         )
-        .route("/:owner/:repo/forks", post(fork))
+        .route("/:owner/:repo/forks", get(forks).post(fork))
         .route("/:owner/:repo", get(read))
 }
 
@@ -398,6 +400,15 @@ struct ContributorsQuery {
     period: Option<String>,
     start: Option<String>,
     end: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ForksQuery {
+    period: Option<String>,
+    #[serde(alias = "type")]
+    repository_type: Option<String>,
+    sort: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -905,6 +916,59 @@ async fn traffic(
         &owner,
         &repo,
         RepositoryTrafficQuery,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn network(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = repository_network_for_actor_by_owner_name(pool, actor.0.id, &owner, &repo)
+        .await
+        .map_err(map_repository_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "repository was not found".to_owned(),
+            )
+        })?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn forks(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<ForksQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = repository_forks_for_actor_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        RepositoryForksQuery {
+            period: query.period.as_deref(),
+            repository_type: query.repository_type.as_deref(),
+            sort: query.sort.as_deref(),
+        },
     )
     .await
     .map_err(map_repository_error)?
@@ -2610,6 +2674,7 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         | RepositoryError::InvalidBranchDirectoryQuery(_)
         | RepositoryError::InvalidPulseQuery(_)
         | RepositoryError::InvalidContributorsQuery(_)
+        | RepositoryError::InvalidForksQuery(_)
         | RepositoryError::InvalidDiffContext(_)
         | RepositoryError::MergeMethodRequired
         | RepositoryError::DefaultMergeMethodDisabled

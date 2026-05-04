@@ -206,6 +206,7 @@ fn map_dashboard_error(error: DashboardError) -> (StatusCode, Json<ErrorEnvelope
         | DashboardError::Repositories(RepositoryError::InvalidBranchDirectoryQuery(_))
         | DashboardError::Repositories(RepositoryError::InvalidPulseQuery(_))
         | DashboardError::Repositories(RepositoryError::InvalidContributorsQuery(_))
+        | DashboardError::Repositories(RepositoryError::InvalidForksQuery(_))
         | DashboardError::Repositories(RepositoryError::InvalidDiffContext(_))
         | DashboardError::Repositories(RepositoryError::MergeMethodRequired)
         | DashboardError::Repositories(RepositoryError::DefaultMergeMethodDisabled)

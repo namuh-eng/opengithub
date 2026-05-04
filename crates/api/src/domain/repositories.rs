@@ -1166,6 +1166,216 @@ pub struct RepositoryTrafficSnapshot {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct RepositoryNetworkView {
+    pub repository: RepositoryNetworkRepository,
+    pub summary: RepositoryNetworkSummary,
+    pub forks: Vec<RepositoryNetworkForkNode>,
+    pub freshness: RepositoryNetworkFreshness,
+    pub links: RepositoryNetworkLinks,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryNetworkRepository {
+    pub id: Uuid,
+    pub owner_login: String,
+    pub name: String,
+    pub default_branch: String,
+    pub visibility: RepositoryVisibility,
+    pub viewer_permission: String,
+    pub href: String,
+    pub tree_href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryNetworkSummary {
+    pub total_readable_forks: i64,
+    pub projected_forks: i64,
+    pub hidden_private_forks: i64,
+    pub copy: String,
+    pub update_note: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryNetworkForkNode {
+    pub repository_id: Uuid,
+    pub owner_login: String,
+    pub owner_avatar_url: Option<String>,
+    pub name: String,
+    pub description: Option<String>,
+    pub visibility: RepositoryVisibility,
+    pub default_branch: String,
+    pub is_archived: bool,
+    pub is_starred_by_actor: bool,
+    pub stars_count: i64,
+    pub forks_count: i64,
+    pub open_issues_count: i64,
+    pub open_pull_requests_count: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub pushed_at: DateTime<Utc>,
+    pub href: String,
+    pub owner_href: String,
+    pub tree_href: String,
+    pub network_href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryNetworkFreshness {
+    pub computed_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub stale: bool,
+    pub cadence: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryNetworkLinks {
+    pub forks_href: String,
+    pub tree_href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryForksView {
+    pub repository: RepositoryNetworkRepository,
+    pub filters: RepositoryForkFilters,
+    pub defaults: RepositoryForkDefaults,
+    pub total: i64,
+    pub hidden_private_forks: i64,
+    pub forks: Vec<RepositoryForkRow>,
+    pub freshness: RepositoryNetworkFreshness,
+    pub links: RepositoryNetworkLinks,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryForkFilters {
+    pub period: RepositoryForkPeriod,
+    pub repository_type: RepositoryForkType,
+    pub sort: RepositoryForkSort,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RepositoryForkPeriodKey {
+    Last24Hours,
+    Last3Days,
+    LastWeek,
+    LastMonth,
+    All,
+}
+
+impl RepositoryForkPeriodKey {
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Last24Hours => "24h",
+            Self::Last3Days => "3d",
+            Self::LastWeek => "1w",
+            Self::LastMonth => "1m",
+            Self::All => "all",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Last24Hours => "Last 24 hours",
+            Self::Last3Days => "Last 3 days",
+            Self::LastWeek => "Last week",
+            Self::LastMonth => "Last month",
+            Self::All => "All time",
+        }
+    }
+
+    fn since(self, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
+        match self {
+            Self::Last24Hours => Some(now - chrono::Duration::hours(24)),
+            Self::Last3Days => Some(now - chrono::Duration::days(3)),
+            Self::LastWeek => Some(now - chrono::Duration::weeks(1)),
+            Self::LastMonth => Some(now - chrono::Duration::days(30)),
+            Self::All => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryForkPeriod {
+    pub key: String,
+    pub label: String,
+    pub started_at: Option<DateTime<Utc>>,
+    pub ended_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RepositoryForkType {
+    All,
+    Active,
+    Inactive,
+    Archived,
+    Starred,
+}
+
+impl RepositoryForkType {
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Active => "active",
+            Self::Inactive => "inactive",
+            Self::Archived => "archived",
+            Self::Starred => "starred",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RepositoryForkSort {
+    MostStarred,
+    RecentlyPushed,
+    RecentlyCreated,
+    RecentlyUpdated,
+    Name,
+}
+
+impl RepositoryForkSort {
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::MostStarred => "most_starred",
+            Self::RecentlyPushed => "recently_pushed",
+            Self::RecentlyCreated => "recently_created",
+            Self::RecentlyUpdated => "recently_updated",
+            Self::Name => "name",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryForkDefaults {
+    pub saved: bool,
+    pub matches_current: bool,
+    pub period_key: String,
+    pub repository_type: String,
+    pub sort_key: String,
+    pub saved_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryForkRow {
+    #[serde(flatten)]
+    pub node: RepositoryNetworkForkNode,
+    pub active: bool,
+    pub badges: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct RepositoryContributorSnapshot {
     pub cache_key: String,
     pub computed_at: DateTime<Utc>,
@@ -1353,6 +1563,13 @@ pub struct RepositoryContributorsQuery<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub struct RepositoryTrafficQuery;
+
+#[derive(Debug, Clone, Copy)]
+pub struct RepositoryForksQuery<'a> {
+    pub period: Option<&'a str>,
+    pub repository_type: Option<&'a str>,
+    pub sort: Option<&'a str>,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct RepositoryRefsQuery<'a> {
@@ -1874,6 +2091,8 @@ pub enum RepositoryError {
     InvalidPulseQuery(String),
     #[error("invalid repository contributors query: {0}")]
     InvalidContributorsQuery(String),
+    #[error("invalid repository forks query: {0}")]
+    InvalidForksQuery(String),
     #[error("user needs push access to view repository traffic")]
     TrafficAccessDenied,
     #[error("invalid commit diff context: {0}")]
@@ -2369,6 +2588,47 @@ pub async fn repository_traffic_for_actor_by_owner_name(
         return Err(RepositoryError::TrafficAccessDenied);
     }
     repository_traffic_for_repository(pool, &repository, actor_user_id, query)
+        .await
+        .map(Some)
+}
+
+pub async fn repository_network_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+) -> Result<Option<RepositoryNetworkView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    repository_network_for_repository(pool, &repository, actor_user_id)
+        .await
+        .map(Some)
+}
+
+pub async fn repository_forks_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    query: RepositoryForksQuery<'_>,
+) -> Result<Option<RepositoryForksView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    repository_forks_for_repository(pool, &repository, actor_user_id, query)
         .await
         .map(Some)
 }
@@ -8685,6 +8945,557 @@ fn pulse_issues_href(
         started_at.to_rfc3339(),
         ended_at.to_rfc3339()
     )
+}
+
+const NETWORK_FORK_LIMIT: i64 = 50;
+
+async fn repository_network_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+) -> Result<RepositoryNetworkView, RepositoryError> {
+    let now = Utc::now();
+    let viewer_permission = viewer_permission_for_user(pool, repository, actor_user_id)
+        .await?
+        .unwrap_or_else(|| "read".to_owned());
+    let since = RepositoryForkPeriodKey::LastMonth.since(now);
+    let all_nodes = repository_readable_fork_nodes(pool, repository, actor_user_id, since).await?;
+    let hidden_private_forks =
+        repository_hidden_private_fork_count(pool, repository, actor_user_id).await?;
+    let forks = all_nodes
+        .into_iter()
+        .take(NETWORK_FORK_LIMIT as usize)
+        .collect::<Vec<_>>();
+    let freshness =
+        record_repository_network_projection(pool, repository.id, &forks, now, "network").await?;
+
+    Ok(RepositoryNetworkView {
+        repository: repository_network_repository(pool, repository, actor_user_id, viewer_permission)
+            .await?,
+        summary: RepositoryNetworkSummary {
+            total_readable_forks: repository_readable_fork_count(pool, repository, actor_user_id)
+                .await?,
+            projected_forks: forks.len() as i64,
+            hidden_private_forks,
+            copy: "Network graph shows the most recently pushed readable forks in this repository network.".to_owned(),
+            update_note: "Repository network projections refresh daily from fork and branch activity.".to_owned(),
+        },
+        forks,
+        freshness,
+        links: repository_network_links(repository),
+    })
+}
+
+async fn repository_forks_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    query: RepositoryForksQuery<'_>,
+) -> Result<RepositoryForksView, RepositoryError> {
+    let now = Utc::now();
+    let period_key = normalize_fork_period(query.period)?;
+    let repository_type = normalize_fork_type(query.repository_type)?;
+    let sort = normalize_fork_sort(query.sort)?;
+    let since = period_key.since(now);
+    let node_since = if repository_type == RepositoryForkType::Inactive {
+        None
+    } else {
+        since
+    };
+    let mut nodes =
+        repository_readable_fork_nodes(pool, repository, actor_user_id, node_since).await?;
+    nodes.retain(|node| match repository_type {
+        RepositoryForkType::All => true,
+        RepositoryForkType::Active => {
+            !node.is_archived && node.pushed_at >= since.unwrap_or(DateTime::<Utc>::MIN_UTC)
+        }
+        RepositoryForkType::Inactive => {
+            !node.is_archived && since.is_some_and(|value| node.pushed_at < value)
+        }
+        RepositoryForkType::Archived => node.is_archived,
+        RepositoryForkType::Starred => node.is_starred_by_actor,
+    });
+    sort_fork_nodes(&mut nodes, sort);
+    let hidden_private_forks =
+        repository_hidden_private_fork_count(pool, repository, actor_user_id).await?;
+    let freshness =
+        record_repository_network_projection(pool, repository.id, &nodes, now, "forks").await?;
+    let defaults = repository_fork_defaults(
+        pool,
+        repository.id,
+        actor_user_id,
+        period_key,
+        repository_type,
+        sort,
+    )
+    .await?;
+    let forks = nodes
+        .into_iter()
+        .map(|node| {
+            let active =
+                !node.is_archived && since.map(|value| node.pushed_at >= value).unwrap_or(true);
+            let mut badges = Vec::new();
+            if active {
+                badges.push("active".to_owned());
+            } else {
+                badges.push("inactive".to_owned());
+            }
+            if node.is_archived {
+                badges.push("archived".to_owned());
+            }
+            if node.is_starred_by_actor {
+                badges.push("starred".to_owned());
+            }
+            RepositoryForkRow {
+                node,
+                active,
+                badges,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    Ok(RepositoryForksView {
+        repository: repository_network_repository(
+            pool,
+            repository,
+            actor_user_id,
+            viewer_permission_for_user(pool, repository, actor_user_id)
+                .await?
+                .unwrap_or_else(|| "read".to_owned()),
+        )
+        .await?,
+        filters: RepositoryForkFilters {
+            period: RepositoryForkPeriod {
+                key: period_key.key().to_owned(),
+                label: period_key.label().to_owned(),
+                started_at: since,
+                ended_at: now,
+            },
+            repository_type,
+            sort,
+        },
+        defaults,
+        total: forks.len() as i64,
+        hidden_private_forks,
+        forks,
+        freshness,
+        links: repository_network_links(repository),
+    })
+}
+
+async fn repository_network_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    viewer_permission: String,
+) -> Result<RepositoryNetworkRepository, RepositoryError> {
+    let tree_href = repository_tree_href(repository, &repository.default_branch, "");
+    let _ = actor_user_id;
+    let _ = pool;
+    Ok(RepositoryNetworkRepository {
+        id: repository.id,
+        owner_login: repository.owner_login.clone(),
+        name: repository.name.clone(),
+        default_branch: repository.default_branch.clone(),
+        visibility: repository.visibility.clone(),
+        viewer_permission,
+        href: format!("/{}/{}", repository.owner_login, repository.name),
+        tree_href,
+    })
+}
+
+fn repository_network_links(repository: &Repository) -> RepositoryNetworkLinks {
+    RepositoryNetworkLinks {
+        forks_href: format!("/{}/{}/forks", repository.owner_login, repository.name),
+        tree_href: repository_tree_href(repository, &repository.default_branch, ""),
+    }
+}
+
+async fn repository_readable_fork_count(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+) -> Result<i64, RepositoryError> {
+    let nodes = repository_readable_fork_nodes(pool, repository, actor_user_id, None).await?;
+    Ok(nodes.len() as i64)
+}
+
+async fn repository_hidden_private_fork_count(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+) -> Result<i64, RepositoryError> {
+    let total = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*)::bigint FROM repository_forks WHERE source_repository_id = $1",
+    )
+    .bind(repository.id)
+    .fetch_one(pool)
+    .await?;
+    let readable = repository_readable_fork_count(pool, repository, actor_user_id).await?;
+    Ok((total - readable).max(0))
+}
+
+async fn repository_readable_fork_nodes(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    since: Option<DateTime<Utc>>,
+) -> Result<Vec<RepositoryNetworkForkNode>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        WITH actor_orgs AS (
+            SELECT organization_id FROM organization_memberships WHERE user_id = $2
+        ),
+        fork_latest_commit AS (
+            SELECT DISTINCT ON (repository_git_refs.repository_id)
+                   repository_git_refs.repository_id,
+                   COALESCE(commits.committed_at, repository_git_refs.updated_at) AS pushed_at
+            FROM repository_git_refs
+            LEFT JOIN commits ON commits.id = repository_git_refs.target_commit_id
+            WHERE repository_git_refs.kind = 'branch'
+            ORDER BY repository_git_refs.repository_id,
+                     CASE WHEN repository_git_refs.name LIKE 'refs/heads/%' THEN 0 ELSE 1 END,
+                     COALESCE(commits.committed_at, repository_git_refs.updated_at) DESC
+        ),
+        readable_forks AS (
+            SELECT forks.id,
+                   forks.owner_user_id,
+                   forks.owner_organization_id,
+                   COALESCE(NULLIF(owner_user.username, ''), owner_user.email, organizations.slug) AS owner_login,
+                   owner_user.avatar_url AS owner_avatar_url,
+                   forks.name,
+                   forks.description,
+                   forks.visibility,
+                   forks.default_branch,
+                   forks.is_archived,
+                   forks.created_at,
+                   forks.updated_at,
+                   COALESCE(fork_latest_commit.pushed_at, forks.updated_at, repository_forks.created_at) AS pushed_at
+            FROM repository_forks
+            JOIN repositories forks ON forks.id = repository_forks.fork_repository_id
+            LEFT JOIN users owner_user ON owner_user.id = forks.owner_user_id
+            LEFT JOIN organizations ON organizations.id = forks.owner_organization_id
+            LEFT JOIN fork_latest_commit ON fork_latest_commit.repository_id = forks.id
+            WHERE repository_forks.source_repository_id = $1
+              AND (
+                forks.visibility = 'public'
+                OR forks.owner_user_id = $2
+                OR EXISTS (
+                    SELECT 1 FROM repository_permissions
+                    WHERE repository_permissions.repository_id = forks.id
+                      AND repository_permissions.user_id = $2
+                      AND repository_permissions.role IN ('owner', 'admin', 'maintain', 'write', 'triage', 'read')
+                )
+                OR (
+                    forks.visibility = 'internal'
+                    AND forks.owner_organization_id IN (SELECT organization_id FROM actor_orgs)
+                )
+              )
+        )
+        SELECT readable_forks.*,
+               COALESCE(star_counts.count, 0)::bigint AS stars_count,
+               COALESCE(child_fork_counts.count, 0)::bigint AS forks_count,
+               COALESCE(issue_counts.count, 0)::bigint AS open_issues_count,
+               COALESCE(pull_counts.count, 0)::bigint AS open_pull_requests_count,
+               EXISTS (
+                   SELECT 1 FROM repository_stars
+                   WHERE repository_stars.repository_id = readable_forks.id
+                     AND repository_stars.user_id = $2
+               ) AS is_starred_by_actor
+        FROM readable_forks
+        LEFT JOIN LATERAL (
+            SELECT count(*)::bigint AS count FROM repository_stars WHERE repository_id = readable_forks.id
+        ) star_counts ON true
+        LEFT JOIN LATERAL (
+            SELECT count(*)::bigint AS count FROM repository_forks WHERE source_repository_id = readable_forks.id
+        ) child_fork_counts ON true
+        LEFT JOIN LATERAL (
+            SELECT count(*)::bigint AS count
+            FROM issues
+            WHERE issues.repository_id = readable_forks.id
+              AND issues.state = 'open'
+              AND NOT EXISTS (
+                  SELECT 1 FROM pull_requests WHERE pull_requests.issue_id = issues.id
+              )
+        ) issue_counts ON true
+        LEFT JOIN LATERAL (
+            SELECT count(*)::bigint AS count
+            FROM pull_requests
+            WHERE pull_requests.repository_id = readable_forks.id
+              AND pull_requests.state = 'open'
+        ) pull_counts ON true
+        WHERE ($3::timestamptz IS NULL OR readable_forks.pushed_at >= $3)
+        ORDER BY readable_forks.pushed_at DESC,
+                 lower(readable_forks.owner_login) ASC,
+                 lower(readable_forks.name) ASC
+        "#,
+    )
+    .bind(repository.id)
+    .bind(actor_user_id)
+    .bind(since)
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            let owner_login: String = row.get("owner_login");
+            let name: String = row.get("name");
+            let default_branch: String = row.get("default_branch");
+            let fork_repository = Repository {
+                id: row.get("id"),
+                owner_user_id: row.get("owner_user_id"),
+                owner_organization_id: row.get("owner_organization_id"),
+                owner_login: owner_login.clone(),
+                name: name.clone(),
+                description: row.get("description"),
+                visibility: RepositoryVisibility::try_from(
+                    row.get::<String, _>("visibility").as_str(),
+                )?,
+                default_branch: default_branch.clone(),
+                is_archived: row.get("is_archived"),
+                created_by_user_id: Uuid::nil(),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+            };
+            Ok(RepositoryNetworkForkNode {
+                repository_id: fork_repository.id,
+                owner_login: owner_login.clone(),
+                owner_avatar_url: row.get("owner_avatar_url"),
+                name: name.clone(),
+                description: fork_repository.description.clone(),
+                visibility: fork_repository.visibility.clone(),
+                default_branch,
+                is_archived: fork_repository.is_archived,
+                is_starred_by_actor: row.get("is_starred_by_actor"),
+                stars_count: row.get("stars_count"),
+                forks_count: row.get("forks_count"),
+                open_issues_count: row.get("open_issues_count"),
+                open_pull_requests_count: row.get("open_pull_requests_count"),
+                created_at: fork_repository.created_at,
+                updated_at: fork_repository.updated_at,
+                pushed_at: row.get("pushed_at"),
+                href: format!("/{owner_login}/{name}"),
+                owner_href: format!("/{owner_login}"),
+                tree_href: repository_tree_href(
+                    &fork_repository,
+                    &fork_repository.default_branch,
+                    "",
+                ),
+                network_href: format!("/{owner_login}/{name}/network"),
+            })
+        })
+        .collect::<Result<Vec<_>, RepositoryError>>()
+}
+
+async fn record_repository_network_projection(
+    pool: &PgPool,
+    repository_id: Uuid,
+    forks: &[RepositoryNetworkForkNode],
+    now: DateTime<Utc>,
+    cache_kind: &str,
+) -> Result<RepositoryNetworkFreshness, RepositoryError> {
+    for fork in forks {
+        sqlx::query(
+            r#"
+            INSERT INTO repository_network_forks (
+                source_repository_id, fork_repository_id, pushed_at, stars_count, forks_count,
+                open_issues_count, open_pull_requests_count, is_active, is_archived,
+                is_starred_by_actor, computed_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+            ON CONFLICT (source_repository_id, fork_repository_id) DO UPDATE SET
+                pushed_at = EXCLUDED.pushed_at,
+                stars_count = EXCLUDED.stars_count,
+                forks_count = EXCLUDED.forks_count,
+                open_issues_count = EXCLUDED.open_issues_count,
+                open_pull_requests_count = EXCLUDED.open_pull_requests_count,
+                is_active = EXCLUDED.is_active,
+                is_archived = EXCLUDED.is_archived,
+                is_starred_by_actor = EXCLUDED.is_starred_by_actor,
+                computed_at = now()
+            "#,
+        )
+        .bind(repository_id)
+        .bind(fork.repository_id)
+        .bind(fork.pushed_at)
+        .bind(fork.stars_count)
+        .bind(fork.forks_count)
+        .bind(fork.open_issues_count)
+        .bind(fork.open_pull_requests_count)
+        .bind(!fork.is_archived && fork.pushed_at >= now - chrono::Duration::days(30))
+        .bind(fork.is_archived)
+        .bind(fork.is_starred_by_actor)
+        .execute(pool)
+        .await?;
+    }
+
+    let snapshot = json!({
+        "kind": cache_kind,
+        "forks": forks.len(),
+        "limit": NETWORK_FORK_LIMIT,
+    });
+    let row = sqlx::query(
+        r#"
+        INSERT INTO repository_insight_snapshots (
+            repository_id, period_key, cache_key, snapshot, computed_at, expires_at
+        )
+        VALUES ($1, '1m', $2, $3, now(), now() + interval '1 day')
+        ON CONFLICT (repository_id, period_key, cache_key) DO UPDATE SET
+            snapshot = EXCLUDED.snapshot,
+            computed_at = now(),
+            expires_at = now() + interval '1 day'
+        RETURNING computed_at, expires_at
+        "#,
+    )
+    .bind(repository_id)
+    .bind(format!("{cache_kind}:network-forks"))
+    .bind(Json(snapshot))
+    .fetch_one(pool)
+    .await?;
+    let expires_at: DateTime<Utc> = row.get("expires_at");
+    Ok(RepositoryNetworkFreshness {
+        computed_at: row.get("computed_at"),
+        expires_at,
+        stale: expires_at <= Utc::now(),
+        cadence: "daily".to_owned(),
+    })
+}
+
+async fn repository_fork_defaults(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Uuid,
+    period: RepositoryForkPeriodKey,
+    repository_type: RepositoryForkType,
+    sort: RepositoryForkSort,
+) -> Result<RepositoryForkDefaults, RepositoryError> {
+    let row = sqlx::query(
+        r#"
+        SELECT period_key, repository_type, sort_key, saved_at
+        FROM saved_fork_filter_defaults
+        WHERE repository_id = $1 AND user_id = $2
+        "#,
+    )
+    .bind(repository_id)
+    .bind(actor_user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let Some(row) = row else {
+        return Ok(RepositoryForkDefaults {
+            saved: false,
+            matches_current: period == RepositoryForkPeriodKey::LastMonth
+                && repository_type == RepositoryForkType::All
+                && sort == RepositoryForkSort::MostStarred,
+            period_key: "1m".to_owned(),
+            repository_type: "all".to_owned(),
+            sort_key: "most_starred".to_owned(),
+            saved_at: None,
+        });
+    };
+    let period_key: String = row.get("period_key");
+    let repository_type_key: String = row.get("repository_type");
+    let sort_key: String = row.get("sort_key");
+    Ok(RepositoryForkDefaults {
+        saved: true,
+        matches_current: period_key == period.key()
+            && repository_type_key == repository_type.key()
+            && sort_key == sort.key(),
+        period_key,
+        repository_type: repository_type_key,
+        sort_key,
+        saved_at: row.get("saved_at"),
+    })
+}
+
+fn normalize_fork_period(period: Option<&str>) -> Result<RepositoryForkPeriodKey, RepositoryError> {
+    match period
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("1m")
+    {
+        "24h" => Ok(RepositoryForkPeriodKey::Last24Hours),
+        "3d" => Ok(RepositoryForkPeriodKey::Last3Days),
+        "1w" => Ok(RepositoryForkPeriodKey::LastWeek),
+        "1m" => Ok(RepositoryForkPeriodKey::LastMonth),
+        "all" => Ok(RepositoryForkPeriodKey::All),
+        other => Err(RepositoryError::InvalidForksQuery(format!(
+            "unsupported period `{other}`"
+        ))),
+    }
+}
+
+fn normalize_fork_type(
+    repository_type: Option<&str>,
+) -> Result<RepositoryForkType, RepositoryError> {
+    match repository_type
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("all")
+    {
+        "all" => Ok(RepositoryForkType::All),
+        "active" => Ok(RepositoryForkType::Active),
+        "inactive" => Ok(RepositoryForkType::Inactive),
+        "archived" => Ok(RepositoryForkType::Archived),
+        "starred" => Ok(RepositoryForkType::Starred),
+        other => Err(RepositoryError::InvalidForksQuery(format!(
+            "unsupported repository type `{other}`"
+        ))),
+    }
+}
+
+fn normalize_fork_sort(sort: Option<&str>) -> Result<RepositoryForkSort, RepositoryError> {
+    match sort
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("most_starred")
+    {
+        "most_starred" | "stargazers" => Ok(RepositoryForkSort::MostStarred),
+        "recently_pushed" | "pushed" => Ok(RepositoryForkSort::RecentlyPushed),
+        "recently_created" | "created" => Ok(RepositoryForkSort::RecentlyCreated),
+        "recently_updated" | "updated" => Ok(RepositoryForkSort::RecentlyUpdated),
+        "name" => Ok(RepositoryForkSort::Name),
+        other => Err(RepositoryError::InvalidForksQuery(format!(
+            "unsupported sort `{other}`"
+        ))),
+    }
+}
+
+fn sort_fork_nodes(nodes: &mut [RepositoryNetworkForkNode], sort: RepositoryForkSort) {
+    nodes.sort_by(|left, right| match sort {
+        RepositoryForkSort::MostStarred => right
+            .stars_count
+            .cmp(&left.stars_count)
+            .then_with(|| right.pushed_at.cmp(&left.pushed_at))
+            .then_with(|| fork_name_cmp(left, right)),
+        RepositoryForkSort::RecentlyPushed => right
+            .pushed_at
+            .cmp(&left.pushed_at)
+            .then_with(|| fork_name_cmp(left, right)),
+        RepositoryForkSort::RecentlyCreated => right
+            .created_at
+            .cmp(&left.created_at)
+            .then_with(|| fork_name_cmp(left, right)),
+        RepositoryForkSort::RecentlyUpdated => right
+            .updated_at
+            .cmp(&left.updated_at)
+            .then_with(|| fork_name_cmp(left, right)),
+        RepositoryForkSort::Name => fork_name_cmp(left, right),
+    });
+}
+
+fn fork_name_cmp(
+    left: &RepositoryNetworkForkNode,
+    right: &RepositoryNetworkForkNode,
+) -> std::cmp::Ordering {
+    left.owner_login
+        .to_ascii_lowercase()
+        .cmp(&right.owner_login.to_ascii_lowercase())
+        .then_with(|| {
+            left.name
+                .to_ascii_lowercase()
+                .cmp(&right.name.to_ascii_lowercase())
+        })
 }
 
 const TRAFFIC_PERIOD_KEY: &str = "14d";
