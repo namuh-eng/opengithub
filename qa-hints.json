@@ -4837,5 +4837,23 @@
       "Stress concurrent duplicate invites/retries/cancels from multiple owner/admin sessions and direct API clients.",
       "Probe long Unicode usernames/emails, invalid domains, canceled/expired invitation edge cases, and screen-reader traversal of the invite dialog and invitation row actions."
     ]
+  },
+  {
+    "feature_id": "org-admin-003",
+    "tests_written": [
+      "Completed Phase 4 Membership Mutations and Exports without marking org-admin-003 build_pass=true.",
+      "Added owner/admin visibility, role, member removal, and filtered JSON/CSV export endpoints with final-owner protections, audit rows, and team-membership cleanup.",
+      "Wired same-origin web action/export routes and upgraded the Editorial people shell row menus with concrete visibility actions, role confirmation, removal confirmation, refreshed state, and feedback.",
+      "Focused Rust contract covers visibility persistence, role mutation, final-owner demotion block, member removal, team-membership cleanup, unauthorized export denial, filtered CSV response headers/body, audit rows, and no email/token leakage.",
+      "Focused Vitest covers concrete visibility/role/remove action payloads, dialogs, feedback, existing invite/retry/cancel behavior, export links, and no dead anchors.",
+      "Focused Playwright covers the owner people shell, search/pagination, invite/retry/cancel, visibility toggle, role confirmation, removal confirmation, no dead anchors, mobile no-overflow, and screenshot ralph/screenshots/build/org-admin-003-phase4-member-actions.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 5 must document the organization people admin endpoints, run final full-suite verification, save final screenshots, and set org-admin-003 build_pass=true.",
+      "Run a real Google OAuth browser session with TEST_ACCOUNT_EMAIL to confirm visibility, role, removal, and export downloads outside deterministic Playwright seed cookies.",
+      "Stress concurrent final-owner demote/remove attempts, role changes from multiple owner/admin sessions, and export requests during membership mutation races.",
+      "Probe CSV escaping with commas, quotes, newlines, long Unicode names, large orgs, outside collaborator/security manager tabs, and screen-reader traversal of the role/remove dialogs.",
+      "Bulk membership execution remains an explicit unsupported placeholder; QA should verify it stays disabled-safe and does not imply a hidden write path."
+    ]
   }
 ]

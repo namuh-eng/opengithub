@@ -137,6 +137,39 @@ async fn request_json(
     (status, headers, value)
 }
 
+async fn request_text(
+    app: axum::Router,
+    method: Method,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Option<Value>,
+) -> (StatusCode, HeaderMap, String) {
+    let mut builder = Request::builder().method(method).uri(uri);
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    if body.is_some() {
+        builder = builder.header(header::CONTENT_TYPE, "application/json");
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(
+                    body.map_or_else(String::new, |body| body.to_string()),
+                ))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let headers = response.headers().clone();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let text = String::from_utf8(bytes.to_vec()).expect("response should be UTF-8");
+    (status, headers, text)
+}
+
 fn assert_json(headers: &HeaderMap) {
     assert!(headers
         .get(header::CONTENT_TYPE)
@@ -529,6 +562,220 @@ async fn organization_people_admin_invites_retries_and_cancels_people() {
     .await
     .expect("audit events should count");
     assert_eq!(audit_events, 3);
+}
+
+#[tokio::test]
+async fn organization_people_admin_mutates_memberships_and_exports_filtered_rows() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping organization people mutation scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("orgpeoplemutate{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner"), "Org Owner").await;
+    let second_owner = create_user(&pool, &format!("{marker}-second-owner"), "Second Owner").await;
+    let admin = create_user(&pool, &format!("{marker}-admin"), "Admin Person").await;
+    let member = create_user(&pool, &format!("{marker}-member"), "Member Person").await;
+    let outsider = create_user(&pool, &format!("{marker}-outsider"), "Outside Person").await;
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let member_cookie = cookie_header(&pool, &config, &member).await;
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+
+    let org = create_organization(
+        &pool,
+        CreateOrganization {
+            slug: marker.clone(),
+            display_name: "People Mutation Guild".to_owned(),
+            description: Some("People mutation contract".to_owned()),
+            owner_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("organization should create");
+    sqlx::query(
+        r#"
+        INSERT INTO organization_memberships (organization_id, user_id, role, membership_visibility)
+        VALUES
+            ($1, $2, 'owner', 'public'),
+            ($1, $3, 'admin', 'private'),
+            ($1, $4, 'member', 'public')
+        "#,
+    )
+    .bind(org.id)
+    .bind(second_owner.id)
+    .bind(admin.id)
+    .bind(member.id)
+    .execute(&pool)
+    .await
+    .expect("members should insert");
+    let team_id = sqlx::query_scalar::<_, Uuid>(
+        "INSERT INTO teams (organization_id, slug, name) VALUES ($1, $2, 'Mutation Team') RETURNING id",
+    )
+    .bind(org.id)
+    .bind(format!("{marker}-team"))
+    .fetch_one(&pool)
+    .await
+    .expect("team should insert");
+    sqlx::query("INSERT INTO team_memberships (team_id, user_id, role) VALUES ($1, $2, 'member')")
+        .bind(team_id)
+        .bind(member.id)
+        .execute(&pool)
+        .await
+        .expect("team member should insert");
+
+    let (unauthorized_export_status, _, unauthorized_export_body) = request_text(
+        app.clone(),
+        Method::GET,
+        &format!("/api/orgs/{marker}/people/export?format=json"),
+        Some(&member_cookie),
+        None,
+    )
+    .await;
+    assert_eq!(unauthorized_export_status, StatusCode::FORBIDDEN);
+    assert!(!unauthorized_export_body.contains(&admin.email));
+
+    let (visibility_status, _, visibility_body) = request_json(
+        app.clone(),
+        Method::PATCH,
+        &format!(
+            "/api/orgs/{marker}/people/members/{admin_id}/visibility",
+            admin_id = admin.id
+        ),
+        Some(&owner_cookie),
+        json!({ "visibility": "public" }),
+    )
+    .await;
+    assert_eq!(visibility_status, StatusCode::OK);
+    assert!(visibility_body["rows"]["items"]
+        .as_array()
+        .expect("rows")
+        .iter()
+        .any(|row| row["login"] == format!("{marker}-admin")
+            && row["membershipVisibility"] == "public"));
+
+    let (role_status, _, role_body) = request_json(
+        app.clone(),
+        Method::PATCH,
+        &format!(
+            "/api/orgs/{marker}/people/members/{admin_id}/role",
+            admin_id = admin.id
+        ),
+        Some(&owner_cookie),
+        json!({ "role": "member" }),
+    )
+    .await;
+    assert_eq!(role_status, StatusCode::OK);
+    assert!(role_body["rows"]["items"]
+        .as_array()
+        .expect("rows")
+        .iter()
+        .any(|row| row["login"] == format!("{marker}-admin") && row["role"] == "member"));
+
+    let (csv_status, csv_headers, csv_body) = request_text(
+        app.clone(),
+        Method::GET,
+        &format!("/api/orgs/{marker}/people/export?format=csv&q=admin"),
+        Some(&owner_cookie),
+        None,
+    )
+    .await;
+    assert_eq!(csv_status, StatusCode::OK);
+    assert!(csv_headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("text/csv")));
+    assert!(csv_headers
+        .get(header::CONTENT_DISPOSITION)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.contains("attachment")));
+    assert!(csv_body.contains(&format!("{marker}-admin")));
+    assert!(!csv_body.contains(&format!("{marker}-owner")));
+    assert!(!csv_body.contains(&admin.email));
+
+    let (remove_status, _, remove_body) = request_json(
+        app.clone(),
+        Method::DELETE,
+        &format!(
+            "/api/orgs/{marker}/people/members/{member_id}",
+            member_id = member.id
+        ),
+        Some(&owner_cookie),
+        json!({}),
+    )
+    .await;
+    assert_eq!(remove_status, StatusCode::OK);
+    assert!(remove_body["rows"]["items"]
+        .as_array()
+        .expect("rows")
+        .iter()
+        .all(|row| row["login"] != format!("{marker}-member")));
+    let team_memberships = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*)::bigint FROM team_memberships WHERE team_id = $1 AND user_id = $2",
+    )
+    .bind(team_id)
+    .bind(member.id)
+    .fetch_one(&pool)
+    .await
+    .expect("team membership count");
+    assert_eq!(team_memberships, 0);
+
+    sqlx::query("DELETE FROM organization_memberships WHERE organization_id = $1 AND user_id = $2")
+        .bind(org.id)
+        .bind(second_owner.id)
+        .execute(&pool)
+        .await
+        .expect("second owner should delete");
+    let (final_owner_status, _, final_owner_body) = request_json(
+        app.clone(),
+        Method::PATCH,
+        &format!(
+            "/api/orgs/{marker}/people/members/{owner_id}/role",
+            owner_id = owner.id
+        ),
+        Some(&owner_cookie),
+        json!({ "role": "member" }),
+    )
+    .await;
+    assert_eq!(final_owner_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(final_owner_body["error"]["code"], "validation_failed");
+    assert!(final_owner_body["error"]["message"]
+        .as_str()
+        .expect("error message")
+        .contains("final organization owner"));
+
+    let audit_events = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT count(*)::bigint
+        FROM organization_audit_events
+        WHERE organization_id = $1
+          AND event_type IN (
+            'organization.people.visibility_update',
+            'organization.people.role_update',
+            'organization.people.member_remove',
+            'organization.people.export'
+          )
+        "#,
+    )
+    .bind(org.id)
+    .fetch_one(&pool)
+    .await
+    .expect("audit events should count");
+    assert_eq!(audit_events, 4);
+
+    let (missing_status, _, missing_body) = request_json(
+        app,
+        Method::DELETE,
+        &format!(
+            "/api/orgs/{marker}/people/members/{outsider_id}",
+            outsider_id = outsider.id
+        ),
+        Some(&owner_cookie),
+        json!({}),
+    )
+    .await;
+    assert_eq!(missing_status, StatusCode::NOT_FOUND);
+    assert_eq!(missing_body["error"]["code"], "not_found");
 }
 
 #[tokio::test]

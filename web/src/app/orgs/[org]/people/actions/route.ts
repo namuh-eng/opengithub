@@ -42,6 +42,29 @@ function parseMutation(input: unknown): OrganizationInvitationMutation | null {
     const invitationId = stringField(body, "invitationId");
     return invitationId ? { action, invitationId } : null;
   }
+  if (action === "visibility") {
+    const userId = stringField(body, "userId");
+    const visibility = stringField(body, "visibility");
+    if (!userId || (visibility !== "public" && visibility !== "private")) {
+      return null;
+    }
+    return { action, userId, visibility };
+  }
+  if (action === "role") {
+    const userId = stringField(body, "userId");
+    const role = stringField(body, "role");
+    if (
+      !userId ||
+      (role !== "owner" && role !== "admin" && role !== "member")
+    ) {
+      return null;
+    }
+    return { action, userId, role };
+  }
+  if (action === "remove") {
+    const userId = stringField(body, "userId");
+    return userId ? { action, userId } : null;
+  }
 
   return null;
 }

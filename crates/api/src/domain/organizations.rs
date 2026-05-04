@@ -543,6 +543,27 @@ pub struct CreateOrganizationInvitation {
     pub team_ids: Vec<Uuid>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateOrganizationMembershipVisibility {
+    pub visibility: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateOrganizationMembershipRole {
+    pub role: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationPeopleExport {
+    pub format: String,
+    pub filename: String,
+    pub content_type: String,
+    pub body: String,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct OrganizationRepositoryListQuery<'a> {
     pub query: Option<&'a str>,
@@ -1921,6 +1942,238 @@ pub async fn cancel_organization_invitation(
     .await
 }
 
+pub async fn update_organization_member_visibility(
+    pool: &PgPool,
+    slug: &str,
+    actor_user_id: Uuid,
+    member_user_id: Uuid,
+    request: UpdateOrganizationMembershipVisibility,
+) -> Result<OrganizationPeopleAdmin, OrganizationPeopleAdminError> {
+    let organization = require_people_admin_organization(pool, slug, actor_user_id).await?;
+    let visibility = normalize_membership_visibility(&request.visibility)?;
+    let row = sqlx::query(
+        r#"
+        UPDATE organization_memberships
+        SET membership_visibility = $1
+        WHERE organization_id = $2 AND user_id = $3
+        RETURNING role, membership_visibility
+        "#,
+    )
+    .bind(&visibility)
+    .bind(organization.id)
+    .bind(member_user_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(OrganizationPeopleAdminError::NotFound)?;
+
+    insert_organization_people_audit_event(
+        pool,
+        organization.id,
+        actor_user_id,
+        "organization.people.visibility_update",
+        json!({
+            "targetUserId": member_user_id,
+            "role": row.get::<String, _>("role"),
+            "membershipVisibility": row.get::<String, _>("membership_visibility")
+        }),
+    )
+    .await?;
+
+    organization_people_admin(
+        pool,
+        &organization.slug,
+        actor_user_id,
+        OrganizationPeopleAdminQuery {
+            tab: Some("members"),
+            query: None,
+            page: Some(1),
+            page_size: None,
+        },
+    )
+    .await
+}
+
+pub async fn update_organization_member_role(
+    pool: &PgPool,
+    slug: &str,
+    actor_user_id: Uuid,
+    member_user_id: Uuid,
+    request: UpdateOrganizationMembershipRole,
+) -> Result<OrganizationPeopleAdmin, OrganizationPeopleAdminError> {
+    let organization = require_people_admin_organization(pool, slug, actor_user_id).await?;
+    let role = normalize_membership_role(&request.role)?;
+    let current = organization_member_role(pool, organization.id, member_user_id)
+        .await?
+        .ok_or(OrganizationPeopleAdminError::NotFound)?;
+    ensure_not_final_owner(pool, organization.id, member_user_id, &current).await?;
+
+    sqlx::query(
+        r#"
+        UPDATE organization_memberships
+        SET role = $1
+        WHERE organization_id = $2 AND user_id = $3
+        "#,
+    )
+    .bind(&role)
+    .bind(organization.id)
+    .bind(member_user_id)
+    .execute(pool)
+    .await?;
+
+    insert_organization_people_audit_event(
+        pool,
+        organization.id,
+        actor_user_id,
+        "organization.people.role_update",
+        json!({
+            "targetUserId": member_user_id,
+            "oldRole": current,
+            "newRole": role
+        }),
+    )
+    .await?;
+
+    organization_people_admin(
+        pool,
+        &organization.slug,
+        actor_user_id,
+        OrganizationPeopleAdminQuery {
+            tab: Some("members"),
+            query: None,
+            page: Some(1),
+            page_size: None,
+        },
+    )
+    .await
+}
+
+pub async fn remove_organization_member(
+    pool: &PgPool,
+    slug: &str,
+    actor_user_id: Uuid,
+    member_user_id: Uuid,
+) -> Result<OrganizationPeopleAdmin, OrganizationPeopleAdminError> {
+    let organization = require_people_admin_organization(pool, slug, actor_user_id).await?;
+    let current = organization_member_role(pool, organization.id, member_user_id)
+        .await?
+        .ok_or(OrganizationPeopleAdminError::NotFound)?;
+    ensure_not_final_owner(pool, organization.id, member_user_id, &current).await?;
+
+    sqlx::query(
+        r#"
+        DELETE FROM team_memberships
+        USING teams
+        WHERE team_memberships.team_id = teams.id
+          AND teams.organization_id = $1
+          AND team_memberships.user_id = $2
+        "#,
+    )
+    .bind(organization.id)
+    .bind(member_user_id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        DELETE FROM organization_memberships
+        WHERE organization_id = $1 AND user_id = $2
+        "#,
+    )
+    .bind(organization.id)
+    .bind(member_user_id)
+    .execute(pool)
+    .await?;
+
+    insert_organization_people_audit_event(
+        pool,
+        organization.id,
+        actor_user_id,
+        "organization.people.member_remove",
+        json!({
+            "targetUserId": member_user_id,
+            "oldRole": current
+        }),
+    )
+    .await?;
+
+    organization_people_admin(
+        pool,
+        &organization.slug,
+        actor_user_id,
+        OrganizationPeopleAdminQuery {
+            tab: Some("members"),
+            query: None,
+            page: Some(1),
+            page_size: None,
+        },
+    )
+    .await
+}
+
+pub async fn export_organization_people(
+    pool: &PgPool,
+    slug: &str,
+    actor_user_id: Uuid,
+    format: &str,
+    query: OrganizationPeopleAdminQuery<'_>,
+) -> Result<OrganizationPeopleExport, OrganizationPeopleAdminError> {
+    let organization = require_people_admin_organization(pool, slug, actor_user_id).await?;
+    let filters = normalize_organization_people_admin_filters(query)?;
+    let normalized_format = match format.trim().to_ascii_lowercase().as_str() {
+        "json" => "json",
+        "csv" => "csv",
+        _ => {
+            return Err(OrganizationPeopleAdminError::InvalidFilter(
+                "Choose json or csv export format.".to_owned(),
+            ));
+        }
+    };
+
+    let mut rows =
+        organization_people_admin_member_rows(pool, organization.id, filters.tab).await?;
+    apply_organization_people_admin_member_search(&mut rows, filters.query.as_deref());
+    let filename = format!(
+        "{}-people-{}.{}",
+        organization.slug,
+        filters.tab.as_str(),
+        normalized_format
+    );
+    let (body, content_type) = if normalized_format == "json" {
+        (
+            serde_json::to_string(&rows).map_err(|error| {
+                OrganizationPeopleAdminError::Validation(format!(
+                    "Could not serialize organization people export: {error}"
+                ))
+            })?,
+            "application/json; charset=utf-8".to_owned(),
+        )
+    } else {
+        (
+            organization_people_rows_to_csv(&rows),
+            "text/csv; charset=utf-8".to_owned(),
+        )
+    };
+
+    insert_organization_people_audit_event(
+        pool,
+        organization.id,
+        actor_user_id,
+        "organization.people.export",
+        json!({
+            "format": normalized_format,
+            "tab": filters.tab.as_str(),
+            "query": filters.query
+        }),
+    )
+    .await?;
+
+    Ok(OrganizationPeopleExport {
+        format: normalized_format.to_owned(),
+        filename,
+        content_type,
+        body,
+    })
+}
+
 async fn organization_by_slug(
     pool: &PgPool,
     slug: &str,
@@ -2022,6 +2275,28 @@ fn normalize_invitation_role(value: &str) -> Result<String, OrganizationPeopleAd
     }
 }
 
+fn normalize_membership_visibility(value: &str) -> Result<String, OrganizationPeopleAdminError> {
+    let visibility = value.trim();
+    if matches!(visibility, "public" | "private") {
+        Ok(visibility.to_owned())
+    } else {
+        Err(OrganizationPeopleAdminError::Validation(
+            "Choose public or private membership visibility.".to_owned(),
+        ))
+    }
+}
+
+fn normalize_membership_role(value: &str) -> Result<String, OrganizationPeopleAdminError> {
+    let role = value.trim();
+    if matches!(role, "owner" | "admin" | "member") {
+        Ok(role.to_owned())
+    } else {
+        Err(OrganizationPeopleAdminError::Validation(
+            "Choose owner, admin, or member for the organization role.".to_owned(),
+        ))
+    }
+}
+
 async fn validate_invitation_team_ids(
     pool: &PgPool,
     organization_id: Uuid,
@@ -2044,6 +2319,51 @@ async fn validate_invitation_team_ids(
             "Choose teams that belong to this organization.".to_owned(),
         ))
     }
+}
+
+async fn organization_member_role(
+    pool: &PgPool,
+    organization_id: Uuid,
+    member_user_id: Uuid,
+) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT role
+        FROM organization_memberships
+        WHERE organization_id = $1 AND user_id = $2
+        "#,
+    )
+    .bind(organization_id)
+    .bind(member_user_id)
+    .fetch_optional(pool)
+    .await
+}
+
+async fn ensure_not_final_owner(
+    pool: &PgPool,
+    organization_id: Uuid,
+    member_user_id: Uuid,
+    current_role: &str,
+) -> Result<(), OrganizationPeopleAdminError> {
+    if current_role != "owner" {
+        return Ok(());
+    }
+    let owner_count = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT count(*)::bigint
+        FROM organization_memberships
+        WHERE organization_id = $1 AND role = 'owner'
+        "#,
+    )
+    .bind(organization_id)
+    .fetch_one(pool)
+    .await?;
+    if owner_count <= 1 {
+        return Err(OrganizationPeopleAdminError::Validation(format!(
+            "Cannot demote or remove final organization owner {member_user_id}."
+        )));
+    }
+    Ok(())
 }
 
 async fn insert_organization_people_audit_event(
@@ -2655,6 +2975,44 @@ fn organization_people_admin_exports(
             }
         })
         .collect()
+}
+
+fn organization_people_rows_to_csv(rows: &[OrganizationPeopleAdminRow]) -> String {
+    let mut csv = String::from(
+        "user_id,login,display_name,role,membership_visibility,two_factor_enabled,has_active_session,team_count,roles_count,membership_source,joined_at\n",
+    );
+    for row in rows {
+        let values = [
+            row.user_id.to_string(),
+            row.login.clone(),
+            row.display_name.clone().unwrap_or_default(),
+            row.role.clone(),
+            row.membership_visibility.clone(),
+            row.two_factor_enabled.to_string(),
+            row.has_active_session.to_string(),
+            row.team_count.to_string(),
+            row.roles_count.to_string(),
+            row.membership_source.clone(),
+            row.joined_at.to_rfc3339(),
+        ];
+        csv.push_str(
+            &values
+                .into_iter()
+                .map(csv_escape)
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        csv.push('\n');
+    }
+    csv
+}
+
+fn csv_escape(value: String) -> String {
+    if value.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value
+    }
 }
 
 fn paginate_vec<T>(items: Vec<T>, page: i64, page_size: i64) -> Vec<T> {

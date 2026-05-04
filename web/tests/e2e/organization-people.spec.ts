@@ -135,11 +135,39 @@ test("organization people routes render owner admin controls with URL-backed sea
   await expect(
     page.getByRole("link", { name: "Search: Profile Action x" }),
   ).toHaveAttribute("href", /\/people\?pageSize=1$/);
+  await page.getByRole("button", { name: "Visibility: public" }).click();
+  await page.getByRole("button", { name: "Private membership" }).click();
+  await expect(page.getByText(/membership is now private/)).toBeVisible();
+  const profileRow = page
+    .locator("article")
+    .filter({ hasText: "Profile Action Viewer" });
+  await profileRow.getByRole("button", { name: "Row actions" }).click();
+  await profileRow.getByRole("button", { name: "Change role" }).click();
+  await page
+    .getByLabel("Change role for Profile Action Viewer")
+    .getByRole("combobox")
+    .selectOption("admin");
+  await page.getByRole("button", { name: "Confirm role change" }).click();
+  await expect(page.getByText(/is now admin/)).toBeVisible();
+  await profileRow
+    .getByRole("button", { name: "Remove from organization" })
+    .click();
+  await page.getByRole("button", { name: "Confirm removal" }).click();
+  await expect(
+    page.getByText(/was removed from the organization/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Open Profile Action Viewer" }),
+  ).toHaveCount(0);
   await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
 
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/org-admin-003-phase3-invitations.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-003-phase4-member-actions.jpg",
   });
   await page.screenshot({
     fullPage: true,

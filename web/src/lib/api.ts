@@ -810,7 +810,18 @@ export type OrganizationInvitationMutation =
       teamIds?: string[];
     }
   | { action: "retry"; invitationId: string }
-  | { action: "cancel"; invitationId: string };
+  | { action: "cancel"; invitationId: string }
+  | {
+      action: "visibility";
+      userId: string;
+      visibility: "public" | "private";
+    }
+  | {
+      action: "role";
+      userId: string;
+      role: "owner" | "admin" | "member";
+    }
+  | { action: "remove"; userId: string };
 
 export type OwnerPackageList = {
   items: OwnerPackageListItem[];
@@ -4975,8 +4986,19 @@ export async function mutateOrganizationPeopleAdminFromCookie(
     };
   } else if (mutation.action === "retry") {
     path = `${path}/${encodeURIComponent(mutation.invitationId)}/retry`;
-  } else {
+  } else if (mutation.action === "cancel") {
     path = `${path}/${encodeURIComponent(mutation.invitationId)}`;
+    method = "DELETE";
+  } else if (mutation.action === "visibility") {
+    path = `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/people/members/${encodeURIComponent(mutation.userId)}/visibility`;
+    method = "PATCH";
+    body = { visibility: mutation.visibility };
+  } else if (mutation.action === "role") {
+    path = `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/people/members/${encodeURIComponent(mutation.userId)}/role`;
+    method = "PATCH";
+    body = { role: mutation.role };
+  } else {
+    path = `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/people/members/${encodeURIComponent(mutation.userId)}`;
     method = "DELETE";
   }
 

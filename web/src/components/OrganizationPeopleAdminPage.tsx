@@ -145,17 +145,31 @@ function SearchSummary({
 }
 
 function MemberRow({
+  busyAction,
+  onChangeRole,
+  onRemove,
   onToggle,
+  onVisibility,
   row,
   selected,
 }: {
+  busyAction: string | null;
+  onChangeRole: (row: OrganizationPeopleAdminRow, role: string) => void;
+  onRemove: (row: OrganizationPeopleAdminRow) => void;
   onToggle: (checked: boolean) => void;
+  onVisibility: (row: OrganizationPeopleAdminRow, visibility: string) => void;
   row: OrganizationPeopleAdminRow;
   selected: boolean;
 }) {
   const [visibilityOpen, setVisibilityOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [roleOpen, setRoleOpen] = useState(false);
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const [nextRole, setNextRole] = useState<"owner" | "admin" | "member">(
+    row.role === "owner" || row.role === "admin" ? row.role : "member",
+  );
   const displayName = row.displayName?.trim() || row.login;
+  const rowBusy = busyAction?.endsWith(row.userId) ?? false;
 
   return (
     <article className="list-row py-4">
@@ -239,15 +253,33 @@ function MemberRow({
               role="menu"
               style={{ background: "var(--surface-2)" }}
             >
-              <button className="btn sm" disabled type="button">
+              <button
+                className="btn sm"
+                disabled={
+                  rowBusy ||
+                  !row.actionState.canChangeVisibility ||
+                  row.membershipVisibility === "public"
+                }
+                onClick={() => onVisibility(row, "public")}
+                type="button"
+              >
                 Public membership
               </button>
-              <button className="btn sm" disabled type="button">
+              <button
+                className="btn sm"
+                disabled={
+                  rowBusy ||
+                  !row.actionState.canChangeVisibility ||
+                  row.membershipVisibility === "private"
+                }
+                onClick={() => onVisibility(row, "private")}
+                type="button"
+              >
                 Private membership
               </button>
               <p className="t-xs">
-                Visibility changes are wired in the next membership mutation
-                phase.
+                Public membership appears on the public organization people
+                list. Private membership stays admin-visible only.
               </p>
             </div>
           ) : null}
@@ -260,6 +292,7 @@ function MemberRow({
               <button
                 className="btn sm"
                 disabled={!row.actionState.canChangeRole}
+                onClick={() => setRoleOpen(true)}
                 type="button"
               >
                 Change role
@@ -267,6 +300,7 @@ function MemberRow({
               <button
                 className="btn sm"
                 disabled={!row.actionState.canRemove}
+                onClick={() => setRemoveOpen(true)}
                 type="button"
               >
                 Remove from organization
@@ -274,9 +308,90 @@ function MemberRow({
               <p className="t-xs">
                 {row.actionState.finalOwner
                   ? "Final owners cannot be demoted or removed."
-                  : "Role and removal confirmations are enabled in the membership mutation phase."}
+                  : "Role and removal changes require confirmation and write an organization audit event."}
               </p>
             </div>
+          ) : null}
+          {roleOpen ? (
+            <form
+              aria-label={`Change role for ${displayName}`}
+              className="card grid gap-2 p-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                onChangeRole(row, nextRole);
+                setRoleOpen(false);
+              }}
+              role="dialog"
+              style={{ background: "var(--surface-2)" }}
+            >
+              <p className="t-h3">Confirm role change</p>
+              <label className="grid gap-1">
+                <span className="t-label">New role</span>
+                <select
+                  className="input"
+                  onChange={(event) =>
+                    setNextRole(
+                      event.currentTarget.value as "owner" | "admin" | "member",
+                    )
+                  }
+                  value={nextRole}
+                >
+                  <option value="member">Member</option>
+                  <option value="admin">Admin</option>
+                  <option value="owner">Owner</option>
+                </select>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="btn sm accent"
+                  disabled={rowBusy}
+                  type="submit"
+                >
+                  Confirm role change
+                </button>
+                <button
+                  className="btn sm"
+                  onClick={() => setRoleOpen(false)}
+                  type="button"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : null}
+          {removeOpen ? (
+            <section
+              aria-label={`Remove ${displayName}`}
+              className="card grid gap-2 p-3"
+              role="dialog"
+              style={{ background: "var(--surface-2)" }}
+            >
+              <p className="t-h3">Remove {displayName}?</p>
+              <p className="t-xs">
+                This removes organization membership and team assignments. The
+                final owner cannot be removed.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="btn sm accent"
+                  disabled={rowBusy}
+                  onClick={() => {
+                    onRemove(row);
+                    setRemoveOpen(false);
+                  }}
+                  type="button"
+                >
+                  Confirm removal
+                </button>
+                <button
+                  className="btn sm"
+                  onClick={() => setRemoveOpen(false)}
+                  type="button"
+                >
+                  Cancel
+                </button>
+              </div>
+            </section>
           ) : null}
         </div>
       </div>
@@ -705,8 +820,38 @@ export function OrganizationPeopleAdminPage({
           <div className="px-5">
             {visibleRows.map((row) => (
               <MemberRow
+                busyAction={busyAction}
                 key={row.userId}
+                onChangeRole={(item, role) =>
+                  runPeopleAction(
+                    { action: "role", userId: item.userId, role },
+                    `${item.login} is now ${roleLabel(role).toLowerCase()}.`,
+                    `role-${item.userId}`,
+                  )
+                }
+                onRemove={(item) =>
+                  runPeopleAction(
+                    { action: "remove", userId: item.userId },
+                    `${item.login} was removed from the organization.`,
+                    `remove-${item.userId}`,
+                  ).then((ok) => {
+                    if (ok) {
+                      setSelected((current) => {
+                        const next = new Set(current);
+                        next.delete(item.userId);
+                        return next;
+                      });
+                    }
+                  })
+                }
                 onToggle={(checked) => setRowSelected(row.userId, checked)}
+                onVisibility={(item, visibility) =>
+                  runPeopleAction(
+                    { action: "visibility", userId: item.userId, visibility },
+                    `${item.login} membership is now ${visibility}.`,
+                    `visibility-${item.userId}`,
+                  )
+                }
                 row={row}
                 selected={selected.has(row.userId)}
               />

@@ -215,7 +215,133 @@ describe("OrganizationPeopleAdminPage", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Visibility: private" }),
     );
-    expect(screen.getByText(/Visibility changes are wired/)).toBeVisible();
+    expect(screen.getByText(/Public membership appears/)).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Public membership" }),
+    ).not.toBeDisabled();
+  });
+
+  it("updates visibility, role, and removal through concrete people actions", async () => {
+    const privateState = adminPeople({
+      rows: {
+        items: [
+          member(),
+          member({
+            userId: "user-2",
+            login: "jaeyun",
+            displayName: "Jaeyun Ha",
+            role: "admin",
+            membershipVisibility: "public",
+            actionState: {
+              canChangeVisibility: true,
+              canChangeRole: true,
+              canRemove: true,
+              finalOwner: false,
+              reason: null,
+            },
+          }),
+        ],
+        page: 1,
+        pageSize: 30,
+        total: 2,
+      },
+    });
+    const roleState = adminPeople({
+      rows: {
+        items: [
+          member(),
+          member({
+            userId: "user-2",
+            login: "jaeyun",
+            displayName: "Jaeyun Ha",
+            role: "member",
+            membershipVisibility: "public",
+            actionState: {
+              canChangeVisibility: true,
+              canChangeRole: true,
+              canRemove: true,
+              finalOwner: false,
+              reason: null,
+            },
+          }),
+        ],
+        page: 1,
+        pageSize: 30,
+        total: 2,
+      },
+    });
+    const removedState = adminPeople({
+      rows: { items: [member()], page: 1, pageSize: 30, total: 1 },
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => privateState,
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => roleState,
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => removedState,
+      } as Response);
+
+    render(<OrganizationPeopleAdminPage admin={adminPeople()} org="namuh" />);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Visibility: private" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Public membership" }));
+    expect(
+      await screen.findByText("jaeyun membership is now public."),
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/orgs/namuh/people/actions",
+      expect.objectContaining({
+        body: JSON.stringify({
+          action: "visibility",
+          userId: "user-2",
+          visibility: "public",
+        }),
+      }),
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Row actions" })[1]);
+    fireEvent.click(screen.getByRole("button", { name: "Change role" }));
+    const roleDialog = screen.getByLabelText("Change role for Jaeyun Ha");
+    fireEvent.change(within(roleDialog).getByRole("combobox"), {
+      target: { value: "member" },
+    });
+    fireEvent.click(
+      within(roleDialog).getByRole("button", { name: "Confirm role change" }),
+    );
+    expect(await screen.findByText("jaeyun is now member.")).toBeVisible();
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/orgs/namuh/people/actions",
+      expect.objectContaining({
+        body: JSON.stringify({
+          action: "role",
+          userId: "user-2",
+          role: "member",
+        }),
+      }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove from organization" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirm removal" }));
+    expect(
+      await screen.findByText("jaeyun was removed from the organization."),
+    ).toBeVisible();
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/orgs/namuh/people/actions",
+      expect.objectContaining({
+        body: JSON.stringify({ action: "remove", userId: "user-2" }),
+      }),
+    );
   });
 
   it("renders invitation tabs without leaking token material", () => {

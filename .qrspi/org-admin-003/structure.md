@@ -60,7 +60,7 @@
 
 ## Phase 4: Membership Mutations and Exports - visibility, roles, removal, and downloads
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Complete owner/admin people management mutations and exports. Visibility changes, role changes, member removal, bulk action enablement, and JSON/CSV exports must hit real endpoints with final-owner protections and deterministic error feedback.
 
