@@ -5086,5 +5086,22 @@
       "Exercise keyboard and screen-reader traversal through the details-based selector on desktop and mobile.",
       "The make test-e2e wrapper was terminated after a silent stall; direct full Playwright completed the same suite with 121 passing tests."
     ]
+  },
+  {
+    "feature_id": "commits-001",
+    "tests_written": [
+      "Completed Phase 4 Author and Date Filters without marking commits-001 build_pass=true.",
+      "Added searchable RepositoryCommitAuthorSelector with avatar initials, counts, selected state, no-match empty state, All users clear link, and click-to-close behavior so the popover does not block active filter chips after client navigation.",
+      "Added RepositoryCommitDateFilter with date apply and clear links, validation feedback, author/path-preserving URL generation, and click-to-close behavior.",
+      "Extended RepositoryCommitHistoryPage with active author/date chips, individual clear links, no-results recovery, filter-preserving pagination, and lazy ref-selector fetching so closed popovers do not make background requests during tests.",
+      "Extended Rust commit-history contract coverage for until date filtering and combined author/date filtering; extended Vitest and Playwright coverage for author search, date apply/clear, combined query round trips, no dead controls, and screenshot ralph/screenshots/build/commits-001-phase4-filtered-history.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 5 still needs final API docs coverage, accessibility guardrails, final screenshots, and build_pass bookkeeping.",
+      "Repeat the commit-history filters with a real Google OAuth session and imported repository containing many authors, merge commits, signed commits, mixed check statuses, and very long branch/tag names.",
+      "Probe keyboard-only and screen-reader traversal through the details-based ref, author, and date popovers on desktop and mobile.",
+      "Stress combined author/date/path pagination around timezone boundaries and repositories with commits authored by users whose login/email casing differs.",
+      "The make test-e2e wrapper silently stalled once under stale dev-server state and was terminated; after clearing stale listeners, direct full Playwright completed 122 tests successfully."
+    ]
   }
 ]

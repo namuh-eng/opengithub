@@ -397,6 +397,35 @@ async fn repository_commit_history_returns_grouped_ref_filtered_screen_contract(
         "Adds grouped commits."
     );
 
+    let until_cutoff = (Utc::now() - Duration::hours(12)).to_rfc3339();
+    let encoded_until_cutoff = until_cutoff.replace(':', "%3A").replace('+', "%2B");
+    let (dated_status, dated_body) = send_json(
+        app.clone(),
+        &format!("{base}/commits?ref={encoded_ref}&until={encoded_until_cutoff}&pageSize=20"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(dated_status, StatusCode::OK);
+    assert!(dated_body["filters"]["until"].as_str().is_some());
+    assert_eq!(dated_body["total"], 2);
+    assert_eq!(
+        dated_body["groups"][0]["commits"][0]["subject"],
+        "Document commit history"
+    );
+
+    let (combined_status, combined_body) = send_json(
+        app.clone(),
+        &format!(
+            "{base}/commits?ref={encoded_ref}&author={author_login}&until={encoded_until_cutoff}&pageSize=20"
+        ),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(combined_status, StatusCode::OK);
+    assert_eq!(combined_body["filters"]["author"], author_login);
+    assert!(combined_body["filters"]["until"].as_str().is_some());
+    assert_eq!(combined_body["total"], 1);
+
     let (tag_status, tag_body) = send_json(
         app.clone(),
         &format!("{base}/commits?ref=history-v1"),

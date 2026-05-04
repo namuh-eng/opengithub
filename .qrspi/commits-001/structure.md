@@ -56,7 +56,7 @@
 
 ## Phase 4: Author and Date Filters - toolbar filters are URL-backed and reversible
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement the All users author selector and All time date filter. Selecting an author or date updates the URL, reloads grouped commit rows, preserves the selected ref/path, and Clear returns to the unfiltered history.
 

@@ -61,7 +61,10 @@ export function RepositoryCommitRefSelector({
   const base = `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
 
   useEffect(() => {
-    if (!open && refs.length > 0 && query === "") {
+    if (!open) {
+      return;
+    }
+    if (refs.length > 0 && query === "") {
       return;
     }
 

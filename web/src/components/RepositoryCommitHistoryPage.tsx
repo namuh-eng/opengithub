@@ -12,6 +12,8 @@ import {
   repositoryCommitHistoryHref,
   repositoryCommitStatusHref,
 } from "@/lib/navigation";
+import { RepositoryCommitAuthorSelector } from "./RepositoryCommitAuthorSelector";
+import { RepositoryCommitDateFilter } from "./RepositoryCommitDateFilter";
 import { RepositoryCommitRefSelector } from "./RepositoryCommitRefSelector";
 
 type RepositoryCommitHistoryPageProps = {
@@ -403,69 +405,23 @@ export function RepositoryCommitHistoryPage({
               repo={repo}
               until={history.filters.until}
             />
-            <details className="relative">
-              <summary className="btn sm inline-flex cursor-pointer list-none">
-                {history.filters.author ?? "All users"}
-              </summary>
-              <div
-                className="absolute left-0 z-20 mt-2 w-72 overflow-hidden rounded-md py-2"
-                style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--line)",
-                  boxShadow: "var(--shadow-md)",
-                }}
-              >
-                <Link
-                  className="block px-3 py-2 text-sm hover:bg-[var(--surface-2)]"
-                  href={repositoryCommitHistoryHref({
-                    owner,
-                    repo,
-                    refName,
-                    path: activePath,
-                    until: history.filters.until,
-                  })}
-                >
-                  All users
-                </Link>
-                {history.authorOptions.map((author) => (
-                  <Link
-                    className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--surface-2)]"
-                    href={repositoryCommitHistoryHref({
-                      owner,
-                      repo,
-                      refName,
-                      path: activePath,
-                      author: author.login,
-                      until: history.filters.until,
-                    })}
-                    key={author.login}
-                  >
-                    <span className="av sm">{initials(author.login)}</span>
-                    <span className="min-w-0 flex-1 truncate">
-                      {author.login}
-                    </span>
-                    <span className="t-xs t-num">{author.count}</span>
-                    {author.active ? (
-                      <span className="chip active">Selected</span>
-                    ) : null}
-                  </Link>
-                ))}
-              </div>
-            </details>
-            <Link
-              className="btn sm"
-              href={repositoryCommitHistoryHref({
-                owner,
-                repo,
-                refName,
-                path: activePath,
-                author: history.filters.author,
-              })}
-            >
-              {history.filters.until
-                ? `Until ${history.filters.until.slice(0, 10)}`
-                : "All time"}
-            </Link>
+            <RepositoryCommitAuthorSelector
+              activeAuthor={history.filters.author}
+              authors={history.authorOptions}
+              owner={owner}
+              path={activePath}
+              refName={refName}
+              repo={repo}
+              until={history.filters.until}
+            />
+            <RepositoryCommitDateFilter
+              author={history.filters.author}
+              owner={owner}
+              path={activePath}
+              refName={refName}
+              repo={repo}
+              until={history.filters.until}
+            />
             {history.filters.author || history.filters.until ? (
               <Link
                 className="chip active"
@@ -480,6 +436,41 @@ export function RepositoryCommitHistoryPage({
               </Link>
             ) : null}
           </div>
+          {history.filters.author || history.filters.until ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="t-xs" style={{ color: "var(--ink-3)" }}>
+                Active filters
+              </span>
+              {history.filters.author ? (
+                <Link
+                  className="chip soft"
+                  href={repositoryCommitHistoryHref({
+                    owner,
+                    repo,
+                    refName,
+                    path: activePath,
+                    until: history.filters.until,
+                  })}
+                >
+                  Author {history.filters.author} x
+                </Link>
+              ) : null}
+              {history.filters.until ? (
+                <Link
+                  className="chip soft"
+                  href={repositoryCommitHistoryHref({
+                    owner,
+                    repo,
+                    refName,
+                    path: activePath,
+                    author: history.filters.author,
+                  })}
+                >
+                  Until {history.filters.until.slice(0, 10)} x
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
         </section>
         <section className="card overflow-hidden" aria-label="Grouped commits">
           {history.groups.length > 0 ? (

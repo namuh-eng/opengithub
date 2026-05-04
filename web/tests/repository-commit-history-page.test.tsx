@@ -179,6 +179,111 @@ describe("RepositoryCommitHistoryPage", () => {
       "href",
       "/mona/octo-app/commits/main/src/main.rs?author=mona&until=2026-04-30T00%3A00%3A00Z&page=3",
     );
+    expect(screen.getByRole("link", { name: "Author mona x" })).toHaveAttribute(
+      "href",
+      "/mona/octo-app/commits/main/src/main.rs?until=2026-04-30T00%3A00%3A00Z",
+    );
+    expect(
+      screen.getByRole("link", { name: "Until 2026-04-30 x" }),
+    ).toHaveAttribute(
+      "href",
+      "/mona/octo-app/commits/main/src/main.rs?author=mona",
+    );
+  });
+
+  it("filters author options by search and builds reversible author URLs", () => {
+    render(
+      <RepositoryCommitHistoryPage
+        history={commitHistory({
+          filters: {
+            path: "docs/guide.md",
+            author: null,
+            until: "2026-04-30T23:59:59Z",
+          },
+          authorOptions: [
+            {
+              login: "mona",
+              avatarUrl: null,
+              count: 4,
+              active: false,
+            },
+            {
+              login: "hubot",
+              avatarUrl: null,
+              count: 2,
+              active: false,
+            },
+          ],
+        })}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByLabelText(
+        "Filter commits by author. Current author All users",
+      ),
+    );
+    fireEvent.change(screen.getByLabelText("Find an author"), {
+      target: { value: "hub" },
+    });
+
+    const authorDialog = screen.getByRole("dialog", {
+      name: "Filter commits by author",
+    });
+    expect(
+      within(authorDialog).queryByRole("link", { name: /mona/ }),
+    ).toBeNull();
+    expect(within(authorDialog).getByText("hubot")).toBeVisible();
+    expect(
+      within(authorDialog).getByRole("link", { name: /hubot/ }),
+    ).toHaveAttribute(
+      "href",
+      "/mona/octo-app/commits/main/docs/guide.md?author=hubot&until=2026-04-30T23%3A59%3A59Z",
+    );
+    expect(
+      within(authorDialog).getByRole("link", { name: /All users/ }),
+    ).toHaveAttribute(
+      "href",
+      "/mona/octo-app/commits/main/docs/guide.md?until=2026-04-30T23%3A59%3A59Z",
+    );
+  });
+
+  it("applies and clears date filters while preserving author and path", () => {
+    render(
+      <RepositoryCommitHistoryPage
+        history={commitHistory({
+          filters: {
+            path: "src/main.rs",
+            author: "mona",
+            until: null,
+          },
+          authorOptions: [
+            {
+              login: "mona",
+              avatarUrl: null,
+              count: 4,
+              active: true,
+            },
+          ],
+        })}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByLabelText("Filter commits by date. Current date All time"),
+    );
+    fireEvent.change(screen.getByLabelText("Until date"), {
+      target: { value: "2026-04-29" },
+    });
+
+    expect(screen.getByRole("link", { name: "Apply date" })).toHaveAttribute(
+      "href",
+      "/mona/octo-app/commits/main/src/main.rs?author=mona&until=2026-04-29T23%3A59%3A59Z",
+    );
+    expect(screen.getByRole("link", { name: "Clear date" })).toHaveAttribute(
+      "href",
+      "/mona/octo-app/commits/main/src/main.rs?author=mona",
+    );
   });
 
   it("searches branch and tag refs and preserves commit filters when switching refs", async () => {

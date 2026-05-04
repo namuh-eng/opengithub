@@ -182,3 +182,58 @@ test("commit history branch and tag selector reloads refs with filters preserved
     path: "../ralph/screenshots/build/commits-001-phase3-ref-selector.jpg",
   });
 });
+
+test("commit history author and date filters are reversible", async ({
+  page,
+}) => {
+  const seeded = seedSession({ DASHBOARD_E2E_TREE_REFS: "1" });
+  await signIn(page, seeded);
+  expect(seeded.treeRepositoryHref).toBeTruthy();
+  const repositoryHref = seeded.treeRepositoryHref as string;
+
+  await page.goto(`${repositoryHref}/commits/main`);
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Commit history" }),
+  ).toBeVisible();
+
+  await page
+    .getByLabel("Filter commits by author. Current author All users")
+    .click();
+  await page.getByLabel("Find an author").fill("dash");
+  const authorLink = page
+    .getByRole("dialog", { name: "Filter commits by author" })
+    .getByRole("link")
+    .filter({ hasNotText: "All users" })
+    .first();
+  const authorHref = await authorLink.getAttribute("href");
+  expect(authorHref).toContain("?author=");
+  await authorLink.click();
+  await expect(page).toHaveURL(
+    new RegExp(`${repositoryHref}/commits/main\\?author=`),
+  );
+  await expect(page.getByText("Active filters")).toBeVisible();
+
+  await page
+    .getByLabel("Filter commits by date. Current date All time")
+    .click();
+  await page.getByLabel("Until date").fill("2099-01-01");
+  await page.getByRole("link", { name: "Apply date" }).click();
+  await expect(page).toHaveURL(
+    new RegExp(
+      `${repositoryHref}/commits/main\\?author=.*until=2099-01-01T23%3A59%3A59Z`,
+    ),
+  );
+  await expect(page.getByText("Until 2099-01-01 x")).toBeVisible();
+
+  await page.getByRole("link", { name: "Until 2099-01-01 x" }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`${repositoryHref}/commits/main\\?author=`),
+  );
+  await page.getByRole("link", { name: "Clear filters" }).click();
+  await expect(page).toHaveURL(`${repositoryHref}/commits/main`);
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/commits-001-phase4-filtered-history.jpg",
+  });
+});
