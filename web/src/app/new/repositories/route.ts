@@ -6,7 +6,7 @@ import {
 } from "@/lib/api";
 
 const OWNER_TYPES = new Set(["user", "organization"]);
-const VISIBILITIES = new Set(["public", "private"]);
+const VISIBILITIES = new Set(["public", "private", "internal"]);
 
 function validationError(message: string) {
   return NextResponse.json(
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     return validationError("Owner and repository name are required");
   }
   if (!VISIBILITIES.has(body.visibility)) {
-    return validationError("Visibility must be public or private");
+    return validationError("Visibility must be public, private, or internal");
   }
 
   try {

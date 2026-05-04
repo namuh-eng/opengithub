@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type {
   RepositoryCreationOptions,
+  RepositoryCreationVisibilityOption,
   RepositoryNameAvailability,
   RepositoryOwnerType,
   RepositoryVisibility,
@@ -19,6 +20,11 @@ const VISIBILITY_COPY: Record<RepositoryVisibility, string> = {
   private: "You choose who can see and commit to this repository.",
   internal: "Organization members can see this repository.",
 };
+
+const DEFAULT_VISIBILITY_OPTIONS: RepositoryCreationVisibilityOption[] = [
+  { visibility: "public", enabled: true, reason: null },
+  { visibility: "private", enabled: true, reason: null },
+];
 
 function normalizePreview(value: string) {
   return value
@@ -90,6 +96,26 @@ export function RepositoryCreateForm({ options }: RepositoryCreateFormProps) {
   const selectedLicense = options.licenseTemplates.find(
     (template) => template.slug === licenseSlug,
   );
+  const visibilityOptions =
+    selectedOwner?.visibilityOptions?.length === 0 ||
+    !selectedOwner?.visibilityOptions
+      ? DEFAULT_VISIBILITY_OPTIONS
+      : selectedOwner.visibilityOptions;
+  const selectedVisibilityOption = visibilityOptions.find(
+    (option) => option.visibility === visibility,
+  );
+
+  useEffect(() => {
+    if (
+      selectedVisibilityOption?.enabled === false ||
+      !visibilityOptions.some((option) => option.visibility === visibility)
+    ) {
+      setVisibility(
+        visibilityOptions.find((option) => option.enabled)?.visibility ??
+          "public",
+      );
+    }
+  }, [selectedVisibilityOption, visibility, visibilityOptions]);
 
   async function checkAvailability(candidate = name) {
     if (!selectedOwner || !candidate.trim()) {
@@ -417,10 +443,36 @@ export function RepositoryCreateForm({ options }: RepositoryCreateFormProps) {
                   setVisibility(event.target.value as RepositoryVisibility)
                 }
               >
-                <option value="public">Public</option>
-                <option value="private">Private</option>
+                {visibilityOptions.map((option) => (
+                  <option
+                    disabled={!option.enabled}
+                    key={option.visibility}
+                    value={option.visibility}
+                  >
+                    {visibilityLabel(option.visibility)}
+                    {option.enabled ? "" : " - disabled by organization policy"}
+                  </option>
+                ))}
               </select>
             </label>
+            {visibilityOptions.some((option) => !option.enabled) ? (
+              <div
+                className="px-4 pb-4 pt-0 t-sm"
+                style={{ color: "var(--ink-3)" }}
+              >
+                {visibilityOptions
+                  .filter((option) => !option.enabled)
+                  .map((option) => (
+                    <p key={option.visibility}>
+                      <span className="chip warn mr-2">
+                        {visibilityLabel(option.visibility)}
+                      </span>
+                      {option.reason ??
+                        "Organization policy has disabled this visibility."}
+                    </p>
+                  ))}
+              </div>
+            ) : null}
 
             <label className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
               <span>
@@ -624,4 +676,8 @@ export function RepositoryCreateForm({ options }: RepositoryCreateFormProps) {
       </div>
     </form>
   );
+}
+
+function visibilityLabel(visibility: RepositoryVisibility) {
+  return visibility.charAt(0).toUpperCase() + visibility.slice(1);
 }

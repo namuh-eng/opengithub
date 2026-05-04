@@ -1,3 +1,14 @@
+2026-05-04 - org-admin-005 phase 3 repository creation policy and base permissions
+
+- Completed Phase 3 from `.qrspi/org-admin-005/structure.md`: organization repository creation and repository authorization now honor member privilege policy without marking `org-admin-005.build_pass=true`.
+- Extended Rust repository creation options to include member organizations plus per-owner public/private/internal visibility options with policy-disabled reasons, and enforced `members_can_create_*_repositories` on organization-owned creates with a redacted `policy_locked` error envelope.
+- Extended repository authorization so organization `base_repository_permission` participates as inherited access while direct user and team grants still win by strongest role; repository access settings now list base-permission inherited organization member rows as non-editable.
+- Updated `/new` to render disabled organization visibility options and policy reasons, allow internal visibility for organization owners, and preserve server-side policy errors for stale submits.
+- Added focused Rust and Vitest coverage for policy option rendering, private create denial, allowed public member create, base write inheritance, explicit admin override, outsider non-inheritance, disabled visibility options, and stale policy error display.
+- Saved browser smoke screenshot `ralph/screenshots/build/org-admin-005-phase3-repository-create-policy.jpg`.
+- Verification passed: `cargo check -p opengithub-api --tests`, web `npx tsc --noEmit`, focused `npm test -- repository-create.test.tsx`, focused Biome, `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`, `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 395 web tests, `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false SESSION_SECRET=playwright-session-secret-with-enough-entropy SESSION_COOKIE_NAME=og_session DASHBOARD_E2E_SKIP_MIGRATIONS=1 make test-e2e` with 119 tests, and mandatory Editorial banned-value scan.
+- The focused Rust policy test compiled but its DB assertions self-skipped under the existing local migration-drift pattern; the full Cargo test target still passed. `prd.json` remains `build_pass:false` because Phases 4-5 remain.
+
 2026-05-04 - org-admin-003 phase 2 Editorial people management shell
 
 - Completed Phase 2 from `.qrspi/org-admin-003/structure.md`: owner/admin viewers now get a real Editorial organization people administration shell without marking `org-admin-003.build_pass=true`.

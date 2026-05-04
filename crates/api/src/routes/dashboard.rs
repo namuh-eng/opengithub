@@ -5,10 +5,11 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::collections::HashMap;
 
 use crate::{
-    api_types::{database_unavailable, error_response, ErrorEnvelope},
+    api_types::{database_unavailable, error_response, error_response_with_details, ErrorEnvelope},
     auth::extractor::AuthenticatedUser,
     domain::{
         dashboard::{
@@ -218,6 +219,20 @@ fn map_dashboard_error(error: DashboardError) -> (StatusCode, Json<ErrorEnvelope
         | DashboardError::Repositories(RepositoryError::PermissionDenied) => {
             error_response(StatusCode::FORBIDDEN, "forbidden", error.to_string())
         }
+        DashboardError::Repositories(RepositoryError::OrganizationRepositoryCreationPolicy {
+            visibility,
+            reason,
+            settings_href,
+        }) => error_response_with_details(
+            StatusCode::FORBIDDEN,
+            "policy_locked",
+            reason.clone(),
+            json!({
+                "visibility": visibility,
+                "reason": reason,
+                "settingsHref": settings_href,
+            }),
+        ),
         DashboardError::Repositories(RepositoryError::ForkAlreadyExists) => {
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }

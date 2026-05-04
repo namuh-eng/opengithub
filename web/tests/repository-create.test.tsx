@@ -41,6 +41,21 @@ function creationOptions(): RepositoryCreationOptions {
         login: "octo-org",
         displayName: "Octo Org",
         avatarUrl: null,
+        visibilityOptions: [
+          { visibility: "public", enabled: true, reason: null },
+          {
+            visibility: "private",
+            enabled: false,
+            reason:
+              "Organization policy prevents members from creating private repositories.",
+          },
+          {
+            visibility: "internal",
+            enabled: false,
+            reason:
+              "Organization policy prevents members from creating internal repositories.",
+          },
+        ],
       },
     ],
     templates: [
@@ -412,6 +427,72 @@ describe("RepositoryCreateForm", () => {
         licenseTemplateSlug: "mit",
       }),
     });
+  });
+
+  it("renders organization visibility policy constraints and submits stale policy errors", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "policy_locked",
+            message:
+              "Organization policy prevents members from creating private repositories.",
+          },
+          status: 403,
+        }),
+        { status: 403 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<RepositoryCreateForm options={creationOptions()} />);
+
+    fireEvent.change(screen.getByLabelText("Owner *"), {
+      target: { value: "organization:org-1" },
+    });
+
+    const visibilitySelect = screen.getByRole("combobox", {
+      name: /Choose visibility/,
+    });
+    expect(
+      within(visibilitySelect).getByRole("option", {
+        name: /Private - disabled by organization policy/,
+      }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText(
+        "Organization policy prevents members from creating private repositories.",
+      ),
+    ).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText("Repository name *"), {
+      target: { value: "policy race" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create repository" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getAllByText(
+          "Organization policy prevents members from creating private repositories.",
+        ).length,
+      ).toBeGreaterThan(1),
+    );
+    expect(fetchMock).toHaveBeenCalledWith("/new/repositories", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ownerType: "organization",
+        ownerId: "org-1",
+        name: "policy race",
+        description: "",
+        visibility: "public",
+        defaultBranch: "main",
+        initializeReadme: false,
+        templateSlug: "blank",
+        gitignoreTemplateSlug: null,
+        licenseTemplateSlug: null,
+      }),
+    });
+    expect(routerPush).not.toHaveBeenCalled();
   });
 
   it("keeps form values and shows inline conflict errors", async () => {

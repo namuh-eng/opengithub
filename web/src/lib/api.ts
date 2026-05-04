@@ -2482,6 +2482,13 @@ export type WritableRepositoryOwner = {
   login: string;
   displayName: string;
   avatarUrl: string | null;
+  visibilityOptions?: RepositoryCreationVisibilityOption[];
+};
+
+export type RepositoryCreationVisibilityOption = {
+  visibility: RepositoryVisibility;
+  enabled: boolean;
+  reason: string | null;
 };
 
 export type RepositoryTemplateOption = {
@@ -2556,7 +2563,7 @@ export type CreateRepositoryRequest = {
   ownerId: string;
   name: string;
   description?: string | null;
-  visibility: Exclude<RepositoryVisibility, "internal">;
+  visibility: RepositoryVisibility;
   defaultBranch?: string | null;
   initializeReadme?: boolean;
   templateSlug?: string | null;
@@ -2579,7 +2586,7 @@ export type RepositoryImportRequest = {
   ownerId: string;
   name: string;
   description?: string | null;
-  visibility: Exclude<RepositoryVisibility, "internal">;
+  visibility: RepositoryVisibility;
 };
 
 export type RepositoryImportStatusName =

@@ -4977,5 +4977,26 @@
       "Policy-lock rendering is covered with injected DTOs because the current backend returns no locks until enterprise enforced_by fields exist; QA should revisit real lock rows when that backend source ships.",
       "The make test-e2e wrapper again stayed silent with active child processes and was terminated; direct Playwright completed the full suite successfully."
     ]
+  },
+  {
+    "feature_id": "org-admin-005",
+    "tests_written": [
+      "Completed Phase 3 Repository Creation and Base Permission Enforcement without marking org-admin-005 build_pass=true.",
+      "Repository creation options now include member organizations plus per-owner public/private/internal visibility policy states, including disabled reasons for policy-locked member choices.",
+      "Rust repository creation rejects policy-locked organization member creates with a policy_locked 403 envelope and redacted details while allowing owners/admins and policy-allowed member creates.",
+      "Repository authorization now treats organization base repository permission as an inherited candidate, with direct user grants and team grants preserving the strongest permission.",
+      "Repository access settings now show organization base permission rows as non-editable inherited access.",
+      "Focused Rust contract covers creation option policy state, private create denial, allowed public member creation, base write inheritance, explicit admin override, and outsider non-inheritance; local DB migration drift made this contract self-skip DB assertions under the existing repository pattern.",
+      "Focused Vitest covers disabled organization visibility options, policy reason rendering, stale policy error display, and no dead submit state.",
+      "Browser smoke screenshot saved at ralph/screenshots/build/org-admin-005-phase3-repository-create-policy.jpg.",
+      "Verification passed: cargo check -p opengithub-api --tests, web tsc, focused repository-create Vitest, focused Biome, make check, make test with Cargo tests plus 395 web tests, full make test-e2e with 119 Playwright tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 must enforce team creation, Pages publishing, discussions/forking/app/destructive policies across existing backend paths and UI affordances.",
+      "Run a real Google OAuth member session with TEST_ACCOUNT_EMAIL to repeat repository creation constraints outside deterministic signed-cookie fixtures.",
+      "Stress concurrent policy flips while a member has /new open, especially stale private/internal submits after options were loaded.",
+      "Probe large organization access settings because inherited base permission rows can add many non-editable member entries.",
+      "Re-run the focused Rust policy contract against a clean migrated database so its DB assertions execute instead of self-skipping on local migration drift."
+    ]
   }
 ]

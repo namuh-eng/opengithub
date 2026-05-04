@@ -43,7 +43,7 @@
 
 ## Phase 3: Repository Creation and Base Permission Enforcement
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make policy settings affect repository creation and repository authorization. Organization repository creation honors public/private/internal creation toggles, and organization members receive the configured base repository permission while explicit direct/team grants continue to win when higher.
 

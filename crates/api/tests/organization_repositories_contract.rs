@@ -9,8 +9,9 @@ use opengithub_api::{
     domain::{
         identity::{upsert_session, upsert_user_by_email, User},
         repositories::{
-            create_organization, create_repository, CreateOrganization, CreateRepository,
-            RepositoryOwner, RepositoryVisibility,
+            can_admin_repository, can_read_repository, can_write_repository, create_organization,
+            create_repository, grant_repository_permission, repository_permission_for_user,
+            CreateOrganization, CreateRepository, RepositoryOwner, RepositoryVisibility,
         },
     },
 };
@@ -109,6 +110,37 @@ async fn get_json(
     (status, headers, value)
 }
 
+async fn send_json(
+    app: axum::Router,
+    method: Method,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Option<Value>,
+) -> (StatusCode, HeaderMap, Value) {
+    let mut builder = Request::builder().method(method).uri(uri);
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    if body.is_some() {
+        builder = builder.header(header::CONTENT_TYPE, "application/json");
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(body.map_or_else(Body::empty, |value| Body::from(value.to_string())))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let headers = response.headers().clone();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = serde_json::from_slice(&bytes).expect("response should be JSON");
+    (status, headers, value)
+}
+
 fn assert_json(headers: &HeaderMap) {
     assert!(headers
         .get(header::CONTENT_TYPE)
@@ -138,6 +170,157 @@ fn option_count(body: &Value, field: &str, value: &str) -> i64 {
         .find(|option| option["value"] == value)
         .and_then(|option| option["count"].as_i64())
         .expect("filter option should exist")
+}
+
+#[tokio::test]
+async fn organization_repository_creation_policy_and_base_permissions_are_enforced() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping organization repository policy scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("orgpolicy{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let member = create_user(&pool, &format!("{marker}-member")).await;
+    let direct_admin = create_user(&pool, &format!("{marker}-admin")).await;
+    let outsider = create_user(&pool, &format!("{marker}-outsider")).await;
+    let member_cookie = cookie_header(&pool, &config, &member).await;
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+
+    let org = create_organization(
+        &pool,
+        CreateOrganization {
+            slug: marker.clone(),
+            display_name: "Policy Organization".to_owned(),
+            description: None,
+            owner_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("organization should create");
+    sqlx::query(
+        "INSERT INTO organization_memberships (organization_id, user_id, role) VALUES ($1, $2, 'member'), ($1, $3, 'member')",
+    )
+    .bind(org.id)
+    .bind(member.id)
+    .bind(direct_admin.id)
+    .execute(&pool)
+    .await
+    .expect("members should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO organization_policy_settings (
+            organization_id,
+            base_repository_permission,
+            members_can_create_public_repositories,
+            members_can_create_private_repositories,
+            members_can_create_internal_repositories
+        )
+        VALUES ($1, 'write', true, false, false)
+        ON CONFLICT (organization_id) DO UPDATE
+        SET base_repository_permission = 'write',
+            members_can_create_public_repositories = true,
+            members_can_create_private_repositories = false,
+            members_can_create_internal_repositories = false
+        "#,
+    )
+    .bind(org.id)
+    .execute(&pool)
+    .await
+    .expect("policy should upsert");
+
+    let (options_status, _, options_body) = get_json(
+        app.clone(),
+        "/api/repos/creation-options",
+        Some(&member_cookie),
+    )
+    .await;
+    assert_eq!(options_status, StatusCode::OK);
+    let org_owner = options_body["owners"]
+        .as_array()
+        .expect("owners should be present")
+        .iter()
+        .find(|owner| owner["login"] == marker)
+        .expect("member organization should be available as an owner");
+    assert!(org_owner["visibilityOptions"]
+        .as_array()
+        .expect("visibility options should be present")
+        .iter()
+        .any(|option| option["visibility"] == "public" && option["enabled"] == true));
+    assert!(org_owner["visibilityOptions"]
+        .as_array()
+        .expect("visibility options should be present")
+        .iter()
+        .any(|option| option["visibility"] == "private"
+            && option["enabled"] == false
+            && option["reason"]
+                .as_str()
+                .is_some_and(|reason| reason.contains("Organization policy"))));
+
+    let (denied_status, _, denied_body) = send_json(
+        app.clone(),
+        Method::POST,
+        "/api/repos",
+        Some(&member_cookie),
+        Some(json!({
+            "ownerType": "organization",
+            "ownerId": org.id,
+            "name": format!("{marker}-blocked-private"),
+            "visibility": "private",
+            "defaultBranch": "main"
+        })),
+    )
+    .await;
+    assert_eq!(denied_status, StatusCode::FORBIDDEN);
+    assert_eq!(denied_body["error"]["code"], "policy_locked");
+    assert_eq!(denied_body["details"]["visibility"], "private");
+    assert!(!denied_body.to_string().contains(&owner.email));
+
+    let allowed_repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::Organization { id: org.id },
+            name: format!("{marker}-public"),
+            description: Some("Base permission contract".to_owned()),
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: member.id,
+        },
+    )
+    .await
+    .expect("member should create an allowed public repository");
+
+    assert!(can_read_repository(&pool, &allowed_repo, member.id)
+        .await
+        .expect("read check should work"));
+    assert!(can_write_repository(&pool, &allowed_repo, member.id)
+        .await
+        .expect("write check should work"));
+    assert!(!can_admin_repository(&pool, &allowed_repo, member.id)
+        .await
+        .expect("admin check should work"));
+    let member_permission = repository_permission_for_user(&pool, allowed_repo.id, member.id)
+        .await
+        .expect("permission should load")
+        .expect("base permission should be present");
+    assert_eq!(member_permission.role.as_str(), "write");
+    assert_eq!(member_permission.source, "organization");
+    grant_repository_permission(
+        &pool,
+        allowed_repo.id,
+        direct_admin.id,
+        opengithub_api::domain::permissions::RepositoryRole::Admin,
+        "direct",
+    )
+    .await
+    .expect("direct grant should persist");
+    assert!(can_admin_repository(&pool, &allowed_repo, direct_admin.id)
+        .await
+        .expect("direct admin should win over base permission"));
+    assert!(!can_write_repository(&pool, &allowed_repo, outsider.id)
+        .await
+        .expect("outsider should not inherit base permission"));
 }
 
 #[tokio::test]

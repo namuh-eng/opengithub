@@ -9,7 +9,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::{
-    api_types::{database_unavailable, error_response, ErrorEnvelope},
+    api_types::{database_unavailable, error_response, error_response_with_details, ErrorEnvelope},
     auth::extractor::AuthenticatedUser,
     domain::{
         repositories::{CreateRepository, RepositoryError, RepositoryOwner, RepositoryVisibility},
@@ -150,6 +150,20 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         RepositoryError::OwnerPermissionDenied | RepositoryError::PermissionDenied => {
             error_response(StatusCode::FORBIDDEN, "forbidden", error.to_string())
         }
+        RepositoryError::OrganizationRepositoryCreationPolicy {
+            visibility,
+            reason,
+            settings_href,
+        } => error_response_with_details(
+            StatusCode::FORBIDDEN,
+            "policy_locked",
+            reason.clone(),
+            json!({
+                "visibility": visibility,
+                "reason": reason,
+                "settingsHref": settings_href,
+            }),
+        ),
         RepositoryError::OwnerNotFound
         | RepositoryError::NotFound
         | RepositoryError::AccessTargetNotFound

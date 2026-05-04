@@ -885,6 +885,15 @@ pub struct WritableRepositoryOwner {
     pub login: String,
     pub display_name: String,
     pub avatar_url: Option<String>,
+    pub visibility_options: Vec<RepositoryCreationVisibilityOption>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCreationVisibilityOption {
+    pub visibility: RepositoryVisibility,
+    pub enabled: bool,
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1072,6 +1081,12 @@ pub enum RepositoryError {
     OwnerNotFound,
     #[error("user does not have permission to create repositories for this owner")]
     OwnerPermissionDenied,
+    #[error("organization policy does not allow members to create {visibility} repositories")]
+    OrganizationRepositoryCreationPolicy {
+        visibility: String,
+        reason: String,
+        settings_href: String,
+    },
     #[error("user does not have repository access")]
     PermissionDenied,
     #[error("repository was not found")]
@@ -1153,6 +1168,10 @@ pub async fn repository_creation_options(
                COALESCE(NULLIF(users.username, ''), users.email) AS login,
                COALESCE(users.display_name, users.email) AS display_name,
                users.avatar_url,
+               NULL::text AS organization_role,
+               true AS members_can_create_public_repositories,
+               true AS members_can_create_private_repositories,
+               false AS members_can_create_internal_repositories,
                0 AS sort_order
         FROM users
         WHERE users.id = $1
@@ -1164,12 +1183,17 @@ pub async fn repository_creation_options(
                organizations.slug AS login,
                organizations.display_name,
                NULL::text AS avatar_url,
+               organization_memberships.role AS organization_role,
+               COALESCE(organization_policy_settings.members_can_create_public_repositories, true) AS members_can_create_public_repositories,
+               COALESCE(organization_policy_settings.members_can_create_private_repositories, true) AS members_can_create_private_repositories,
+               COALESCE(organization_policy_settings.members_can_create_internal_repositories, false) AS members_can_create_internal_repositories,
                1 AS sort_order
         FROM organizations
         JOIN organization_memberships
           ON organization_memberships.organization_id = organizations.id
+        LEFT JOIN organization_policy_settings
+          ON organization_policy_settings.organization_id = organizations.id
         WHERE organization_memberships.user_id = $1
-          AND organization_memberships.role IN ('owner', 'admin')
         ORDER BY sort_order ASC, login ASC
         "#,
     )
@@ -1180,11 +1204,12 @@ pub async fn repository_creation_options(
     let owners = owner_rows
         .into_iter()
         .map(|row| WritableRepositoryOwner {
-            owner_type: row.get("owner_type"),
-            id: row.get("id"),
-            login: row.get("login"),
+            owner_type: row.get::<String, _>("owner_type"),
+            id: row.get::<Uuid, _>("id"),
+            login: row.get::<String, _>("login"),
             display_name: row.get("display_name"),
             avatar_url: row.get("avatar_url"),
+            visibility_options: repository_creation_visibility_options_from_row(&row),
         })
         .collect();
 
@@ -1324,6 +1349,13 @@ pub async fn create_repository_with_bootstrap(
     bootstrap: RepositoryBootstrapRequest,
 ) -> Result<Repository, RepositoryError> {
     ensure_owner_can_create(pool, &input.owner, input.created_by_user_id).await?;
+    ensure_owner_visibility_can_create(
+        pool,
+        &input.owner,
+        input.created_by_user_id,
+        &input.visibility,
+    )
+    .await?;
     let normalized_name = normalize_repository_name(&input.name);
     validate_repository_name(&normalized_name).map_err(RepositoryError::InvalidName)?;
     let description = normalize_repository_description(input.description)?;
@@ -2354,6 +2386,20 @@ pub async fn repository_permission_for_user(
             FROM repository_team_permissions
             JOIN user_teams ON user_teams.id = repository_team_permissions.team_id
             WHERE repository_team_permissions.repository_id = $1
+            UNION ALL
+            SELECT repositories.id AS repository_id,
+                   $2 AS user_id,
+                   organization_policy_settings.base_repository_permission AS role,
+                   'organization' AS source,
+                   2 AS source_rank
+            FROM repositories
+            JOIN organization_policy_settings
+              ON organization_policy_settings.organization_id = repositories.owner_organization_id
+            JOIN organization_memberships
+              ON organization_memberships.organization_id = repositories.owner_organization_id
+             AND organization_memberships.user_id = $2
+            WHERE repositories.id = $1
+              AND organization_policy_settings.base_repository_permission <> 'none'
         )
         SELECT repository_id, user_id, role, source
         FROM candidates
@@ -3823,6 +3869,47 @@ async fn repository_access_people(
     }
 
     if let Some(organization_id) = repository.owner_organization_id {
+        let base_role = organization_base_repository_role(pool, organization_id).await?;
+        if let Some(base_role) = base_role {
+            let member_rows = sqlx::query(
+                r#"
+                SELECT users.id,
+                       COALESCE(NULLIF(users.username, ''), users.email) AS login,
+                       users.display_name,
+                       users.email,
+                       users.avatar_url
+                FROM organization_memberships
+                JOIN users ON users.id = organization_memberships.user_id
+                WHERE organization_memberships.organization_id = $1
+                ORDER BY lower(COALESCE(NULLIF(users.username, ''), users.email))
+                "#,
+            )
+            .bind(organization_id)
+            .fetch_all(pool)
+            .await?;
+
+            for row in member_rows {
+                let user_id: Uuid = row.try_get("id")?;
+                if people.iter().any(|person| person.user_id == user_id) {
+                    continue;
+                }
+                people.push(RepositoryAccessPerson {
+                    user_id,
+                    login: row.try_get("login")?,
+                    display_name: row.try_get("display_name")?,
+                    email: row.try_get("email")?,
+                    avatar_url: row.try_get("avatar_url")?,
+                    role: base_role,
+                    source: "organization".to_owned(),
+                    source_text: "Inherited from organization base permissions".to_owned(),
+                    team_slug: None,
+                    team_name: None,
+                    can_edit: false,
+                    can_remove: false,
+                });
+            }
+        }
+
         let team_rows = sqlx::query(
             r#"
             SELECT users.id,
@@ -4218,7 +4305,9 @@ async fn repository_settings_for_repository(
     let merge = repository_merge_settings_for_repository(pool, repository.id).await?;
     let branches = repository_branch_names(pool, repository.id).await?;
     let audit_events = repository_settings_audit_events(pool, repository.id).await?;
-    let viewer_permission: Option<String> = row.try_get("viewer_permission")?;
+    let viewer_permission = repository_permission_for_user(pool, repository.id, actor_user_id)
+        .await?
+        .map(|permission| permission.role.as_str().to_owned());
 
     Ok(Some(RepositorySettings {
         id: row.try_get("id")?,
@@ -4290,7 +4379,9 @@ async fn repository_branch_settings_for_repository(
         return Ok(None);
     };
 
-    let viewer_permission: Option<String> = row.try_get("viewer_permission")?;
+    let viewer_permission = repository_permission_for_user(pool, repository.id, actor_user_id)
+        .await?
+        .map(|permission| permission.role.as_str().to_owned());
     let viewer_permission = viewer_permission.unwrap_or_else(|| {
         if repository.owner_user_id == Some(actor_user_id) {
             RepositoryRole::Owner.as_str().to_owned()
@@ -7014,7 +7105,6 @@ async fn ensure_owner_can_create(
                     FROM organization_memberships
                     WHERE organization_id = $1
                       AND user_id = $2
-                      AND role IN ('owner', 'admin')
                 )
                 "#,
             )
@@ -7030,6 +7120,161 @@ async fn ensure_owner_can_create(
             }
         }
     }
+}
+
+async fn ensure_owner_visibility_can_create(
+    pool: &PgPool,
+    owner: &RepositoryOwner,
+    actor_user_id: Uuid,
+    visibility: &RepositoryVisibility,
+) -> Result<(), RepositoryError> {
+    let RepositoryOwner::Organization { id } = owner else {
+        if *visibility == RepositoryVisibility::Internal {
+            return Err(RepositoryError::InvalidVisibility(
+                "internal repositories require an organization owner".to_owned(),
+            ));
+        }
+        return Ok(());
+    };
+
+    let Some(row) = sqlx::query(
+        r#"
+        SELECT organizations.slug,
+               organization_memberships.role,
+               COALESCE(organization_policy_settings.members_can_create_public_repositories, true) AS members_can_create_public_repositories,
+               COALESCE(organization_policy_settings.members_can_create_private_repositories, true) AS members_can_create_private_repositories,
+               COALESCE(organization_policy_settings.members_can_create_internal_repositories, false) AS members_can_create_internal_repositories
+        FROM organization_memberships
+        JOIN organizations ON organizations.id = organization_memberships.organization_id
+        LEFT JOIN organization_policy_settings
+          ON organization_policy_settings.organization_id = organizations.id
+        WHERE organization_memberships.organization_id = $1
+          AND organization_memberships.user_id = $2
+        "#,
+    )
+    .bind(id)
+    .bind(actor_user_id)
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Err(RepositoryError::OwnerPermissionDenied);
+    };
+
+    let role: String = row.try_get("role")?;
+    if matches!(role.as_str(), "owner" | "admin") {
+        return Ok(());
+    }
+
+    let enabled = match visibility {
+        RepositoryVisibility::Public => row.try_get("members_can_create_public_repositories")?,
+        RepositoryVisibility::Private => row.try_get("members_can_create_private_repositories")?,
+        RepositoryVisibility::Internal => {
+            row.try_get("members_can_create_internal_repositories")?
+        }
+    };
+
+    if enabled {
+        Ok(())
+    } else {
+        let slug: String = row.try_get("slug")?;
+        Err(RepositoryError::OrganizationRepositoryCreationPolicy {
+            visibility: visibility.as_str().to_owned(),
+            reason: format!(
+                "Organization policy prevents members from creating {} repositories.",
+                visibility.as_str()
+            ),
+            settings_href: format!("/organizations/{slug}/settings/member_privileges"),
+        })
+    }
+}
+
+fn repository_creation_visibility_options_from_row(
+    row: &sqlx::postgres::PgRow,
+) -> Vec<RepositoryCreationVisibilityOption> {
+    let owner_type: String = row.get("owner_type");
+    if owner_type == "user" {
+        return vec![
+            RepositoryCreationVisibilityOption {
+                visibility: RepositoryVisibility::Public,
+                enabled: true,
+                reason: None,
+            },
+            RepositoryCreationVisibilityOption {
+                visibility: RepositoryVisibility::Private,
+                enabled: true,
+                reason: None,
+            },
+        ];
+    }
+
+    let role: Option<String> = row.try_get("organization_role").ok();
+    let is_admin = role
+        .as_deref()
+        .is_some_and(|value| matches!(value, "owner" | "admin"));
+    let policy_reason = |visibility: RepositoryVisibility| {
+        Some(format!(
+            "Organization policy prevents members from creating {} repositories.",
+            visibility.as_str()
+        ))
+    };
+    let values = [
+        (
+            RepositoryVisibility::Public,
+            row.try_get("members_can_create_public_repositories")
+                .unwrap_or(true),
+        ),
+        (
+            RepositoryVisibility::Private,
+            row.try_get("members_can_create_private_repositories")
+                .unwrap_or(true),
+        ),
+        (
+            RepositoryVisibility::Internal,
+            row.try_get("members_can_create_internal_repositories")
+                .unwrap_or(false),
+        ),
+    ];
+
+    values
+        .into_iter()
+        .map(|(visibility, policy_enabled)| {
+            let enabled = is_admin || policy_enabled;
+            RepositoryCreationVisibilityOption {
+                reason: if enabled {
+                    None
+                } else {
+                    policy_reason(visibility.clone())
+                },
+                visibility,
+                enabled,
+            }
+        })
+        .collect()
+}
+
+async fn organization_base_repository_role(
+    pool: &PgPool,
+    organization_id: Uuid,
+) -> Result<Option<RepositoryRole>, RepositoryError> {
+    let role = sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT base_repository_permission
+        FROM organization_policy_settings
+        WHERE organization_id = $1
+        "#,
+    )
+    .bind(organization_id)
+    .fetch_optional(pool)
+    .await?
+    .unwrap_or_else(|| "read".to_owned());
+
+    if role == "none" {
+        return Ok(None);
+    }
+
+    RepositoryRole::try_from(role.as_str())
+        .map(Some)
+        .map_err(|error| RepositoryError::Sqlx(sqlx::Error::Protocol(error.to_string())))
 }
 
 async fn repository_owner_login(
