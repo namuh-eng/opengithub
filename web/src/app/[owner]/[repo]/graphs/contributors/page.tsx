@@ -9,7 +9,7 @@ import {
 
 type RepositoryContributorsPageProps = {
   params: Promise<{ owner: string; repo: string }>;
-  searchParams?: Promise<{ period?: string }>;
+  searchParams?: Promise<{ period?: string; start?: string; end?: string }>;
 };
 
 export default async function RepositoryContributorsPage({
@@ -27,6 +27,8 @@ export default async function RepositoryContributorsPage({
     getRepository(ownerLogin, repositoryName),
     getRepositoryContributors(ownerLogin, repositoryName, {
       period: query?.period ?? null,
+      start: query?.start ?? null,
+      end: query?.end ?? null,
     }),
   ]);
 

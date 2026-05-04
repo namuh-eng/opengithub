@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { RepositoryContributorsPeriodSelector } from "@/components/RepositoryContributorsPeriodSelector";
+import { RepositoryContributorsControls } from "@/components/RepositoryContributorsControls";
+import { RepositoryContributorsDataTable } from "@/components/RepositoryContributorsDataTable";
 import { RepositoryInsightsShell } from "@/components/RepositoryInsightsShell";
 import type {
   RepositoryContributorRow,
@@ -288,100 +289,6 @@ function ContributorSections({
   );
 }
 
-function ContributorsDataTable({
-  contributors,
-  weeks,
-}: {
-  contributors: RepositoryContributorRow[];
-  weeks: RepositoryContributorsWeek[];
-}) {
-  return (
-    <section className="card overflow-hidden" id="contributors-data-table">
-      <div
-        className="border-b px-4 py-3"
-        style={{ borderColor: "var(--line)" }}
-      >
-        <p className="t-label" style={{ color: "var(--ink-3)" }}>
-          Data table
-        </p>
-        <h2 className="t-h3 mt-1" style={{ color: "var(--ink-1)" }}>
-          Weekly contributor values
-        </h2>
-      </div>
-      <div className="overflow-x-auto p-4">
-        <table className="w-full text-left t-sm">
-          <caption className="sr-only">
-            Repository contributors data table
-          </caption>
-          <thead className="t-label" style={{ color: "var(--ink-3)" }}>
-            <tr>
-              <th className="py-2 pr-3">Scope</th>
-              <th className="py-2 pr-3">Week</th>
-              <th className="py-2 pr-3 text-right">Commits</th>
-              <th className="py-2 pr-3 text-right">Additions</th>
-              <th className="py-2 text-right">Deletions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {weeks.map((week) => (
-              <tr
-                className="border-t"
-                key={`repo-${week.weekStart}`}
-                style={{ borderColor: "var(--line-soft)" }}
-              >
-                <td className="py-2 pr-3">Repository</td>
-                <td className="py-2 pr-3">{formatDate(week.weekStart)}</td>
-                <td className="py-2 pr-3 text-right t-num">
-                  {formatNumber(week.commits)}
-                </td>
-                <td className="py-2 pr-3 text-right t-num">
-                  {formatNumber(week.additions)}
-                </td>
-                <td className="py-2 text-right t-num">
-                  {formatNumber(week.deletions)}
-                </td>
-              </tr>
-            ))}
-            {contributors.flatMap((contributor) =>
-              contributor.weeks.map((week) => (
-                <tr
-                  className="border-t"
-                  key={`${contributor.login}-${week.weekStart}`}
-                  style={{ borderColor: "var(--line-soft)" }}
-                >
-                  <td className="py-2 pr-3">
-                    <Link
-                      className="break-words hover:underline"
-                      href={contributor.profileHref}
-                    >
-                      {contributor.login}
-                    </Link>
-                  </td>
-                  <td className="py-2 pr-3">{formatDate(week.weekStart)}</td>
-                  <td className="py-2 pr-3 text-right t-num">
-                    <Link
-                      className="hover:underline"
-                      href={contributor.commitsHref}
-                    >
-                      {formatNumber(week.commits)}
-                    </Link>
-                  </td>
-                  <td className="py-2 pr-3 text-right t-num">
-                    {formatNumber(week.additions)}
-                  </td>
-                  <td className="py-2 text-right t-num">
-                    {formatNumber(week.deletions)}
-                  </td>
-                </tr>
-              )),
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
-}
-
 function ContributorsReadyPage({
   contributors,
   repository,
@@ -435,14 +342,12 @@ function ContributorsReadyPage({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <RepositoryContributorsPeriodSelector
+            <RepositoryContributorsControls
               activePeriod={contributors.period.key}
               owner={owner}
               repo={repo}
+              weeks={contributors.weeks}
             />
-            <a className="btn" href="#contributors-data-table">
-              View as data table
-            </a>
             <Link className="btn primary" href={commitHistoryHref}>
               Commit history
             </Link>
@@ -475,7 +380,7 @@ function ContributorsReadyPage({
 
         <RepositoryCommitChart weeks={contributors.weeks} />
         <ContributorSections contributors={contributors.contributors} />
-        <ContributorsDataTable
+        <RepositoryContributorsDataTable
           contributors={contributors.contributors}
           weeks={contributors.weeks}
         />

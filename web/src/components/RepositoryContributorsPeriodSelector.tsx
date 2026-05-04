@@ -15,12 +15,16 @@ type RepositoryContributorsPeriodSelectorProps = {
   owner: string;
   repo: string;
   activePeriod: string;
+  start?: string | null;
+  end?: string | null;
 };
 
 export function RepositoryContributorsPeriodSelector({
   owner,
   repo,
   activePeriod,
+  start,
+  end,
 }: RepositoryContributorsPeriodSelectorProps) {
   const [open, setOpen] = useState(false);
   const menuId = useId();
@@ -79,6 +83,8 @@ export function RepositoryContributorsPeriodSelector({
                 className={`btn sm ghost justify-start ${selected ? "active" : ""}`}
                 href={repositoryContributorsHref(owner, repo, {
                   period: period.key,
+                  start,
+                  end,
                 })}
                 key={period.key}
                 role="menuitem"

@@ -9091,11 +9091,21 @@ export async function getRepositoryContributorsFromCookie(
   cookie: string | null | undefined,
   owner: string,
   repo: string,
-  options: { period?: string | null } = {},
+  options: {
+    period?: string | null;
+    start?: string | null;
+    end?: string | null;
+  } = {},
 ): Promise<RepositoryContributorsFetchResult> {
   const params = new URLSearchParams();
   if (options.period?.trim()) {
     params.set("period", options.period.trim());
+  }
+  if (options.start?.trim()) {
+    params.set("start", options.start.trim());
+  }
+  if (options.end?.trim()) {
+    params.set("end", options.end.trim());
   }
   const query = params.toString();
   let response: Response;

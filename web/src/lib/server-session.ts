@@ -527,7 +527,11 @@ export async function getRepositoryPulse(
 export async function getRepositoryContributors(
   owner: string,
   repo: string,
-  options: { period?: string | null } = {},
+  options: {
+    period?: string | null;
+    start?: string | null;
+    end?: string | null;
+  } = {},
 ): Promise<RepositoryContributorsFetchResult> {
   const requestHeaders = await headers();
   return getRepositoryContributorsFromCookie(

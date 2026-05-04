@@ -361,6 +361,8 @@ async fn repository_contributors_returns_default_branch_weekly_analytics_privacy
         &repository.name,
         RepositoryContributorsQuery {
             period: Some("24h"),
+            start: None,
+            end: None,
         },
     )
     .await;
@@ -474,8 +476,40 @@ async fn repository_contributors_returns_default_branch_weekly_analytics_privacy
     assert_eq!(month_body["period"]["key"], "1m");
     assert_eq!(month_body["totals"]["commits"], 4);
 
+    let week_start = month_body["weeks"][0]["weekStart"]
+        .as_str()
+        .expect("week start should be serialized");
+    let week_end = month_body["weeks"][0]["weekEnd"]
+        .as_str()
+        .expect("week end should be serialized");
+    let mut ranged_url = Url::parse(&format!("http://localhost{base}/graphs/contributors"))
+        .expect("ranged URL should parse");
+    ranged_url
+        .query_pairs_mut()
+        .append_pair("period", "1m")
+        .append_pair("start", week_start)
+        .append_pair("end", week_end);
+    let (range_status, range_body) = get_json(
+        app.clone(),
+        &format!(
+            "{}?{}",
+            ranged_url.path(),
+            ranged_url.query().expect("range query should exist")
+        ),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(range_status, StatusCode::OK, "body: {range_body}");
+    assert_eq!(range_body["period"]["key"], "1m");
+    assert_eq!(range_body["period"]["startedAt"], week_start);
+    assert_eq!(range_body["period"]["endedAt"], week_end);
+    assert!(range_body["snapshot"]["cacheKey"]
+        .as_str()
+        .expect("range cache key")
+        .contains("contributors:"));
+
     let (invalid_status, invalid_body) = get_json(
-        app,
+        app.clone(),
         &format!("{base}/graphs/contributors?period=forever"),
         Some(&owner_cookie),
     )
@@ -483,4 +517,13 @@ async fn repository_contributors_returns_default_branch_weekly_analytics_privacy
     assert_eq!(invalid_status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(invalid_body["error"]["code"], "validation_failed");
     assert!(!invalid_body.to_string().contains("test-session-secret"));
+
+    let (invalid_range_status, invalid_range_body) = get_json(
+        app,
+        &format!("{base}/graphs/contributors?period=1w&start=2026-05-08&end=2026-05-01"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(invalid_range_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(invalid_range_body["error"]["code"], "validation_failed");
 }

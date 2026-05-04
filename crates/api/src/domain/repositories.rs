@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -1258,6 +1258,8 @@ pub struct RepositoryPulseQuery<'a> {
 #[derive(Debug, Clone, Copy)]
 pub struct RepositoryContributorsQuery<'a> {
     pub period: Option<&'a str>,
+    pub start: Option<&'a str>,
+    pub end: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -8576,8 +8578,10 @@ async fn repository_contributors_for_repository(
     query: RepositoryContributorsQuery<'_>,
 ) -> Result<RepositoryContributorsView, RepositoryError> {
     let period_key = normalize_contributors_period(query.period)?;
-    let ended_at = Utc::now();
-    let started_at = pulse_period_start(period_key, ended_at);
+    let period_ended_at = Utc::now();
+    let period_started_at = pulse_period_start(period_key, period_ended_at);
+    let (started_at, ended_at) =
+        normalize_contributors_range(query.start, query.end, period_started_at, period_ended_at)?;
     let viewer_permission = viewer_permission_for_user(pool, repository, actor_user_id)
         .await?
         .unwrap_or_else(|| "read".to_owned());
@@ -8726,6 +8730,63 @@ fn normalize_contributors_period(period: Option<&str>) -> Result<&'static str, R
             "unsupported period `{other}`"
         ))),
     }
+}
+
+fn parse_contributors_range_bound(
+    bound: Option<&str>,
+    label: &str,
+) -> Result<Option<DateTime<Utc>>, RepositoryError> {
+    let Some(value) = bound.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+
+    if let Ok(parsed) = DateTime::parse_from_rfc3339(value) {
+        return Ok(Some(parsed.with_timezone(&Utc)));
+    }
+
+    if let Ok(parsed) = NaiveDate::parse_from_str(value, "%Y-%m-%d") {
+        let midnight = parsed.and_hms_opt(0, 0, 0).ok_or_else(|| {
+            RepositoryError::InvalidContributorsQuery(format!("invalid {label} range bound"))
+        })?;
+        return Ok(Some(Utc.from_utc_datetime(&midnight)));
+    }
+
+    Err(RepositoryError::InvalidContributorsQuery(format!(
+        "invalid {label} range bound `{value}`"
+    )))
+}
+
+fn normalize_contributors_range(
+    start: Option<&str>,
+    end: Option<&str>,
+    period_started_at: DateTime<Utc>,
+    period_ended_at: DateTime<Utc>,
+) -> Result<(DateTime<Utc>, DateTime<Utc>), RepositoryError> {
+    let requested_start = parse_contributors_range_bound(start, "start")?;
+    let requested_end = parse_contributors_range_bound(end, "end")?;
+
+    if let (Some(start), Some(end)) = (requested_start, requested_end) {
+        if start > end {
+            return Err(RepositoryError::InvalidContributorsQuery(
+                "start must be before end".to_owned(),
+            ));
+        }
+    }
+
+    let started_at = requested_start
+        .map(|start| start.max(period_started_at))
+        .unwrap_or(period_started_at);
+    let ended_at = requested_end
+        .map(|end| end.min(period_ended_at))
+        .unwrap_or(period_ended_at);
+
+    if started_at > ended_at {
+        return Err(RepositoryError::InvalidContributorsQuery(
+            "range does not overlap the selected period".to_owned(),
+        ));
+    }
+
+    Ok((started_at, ended_at))
 }
 
 async fn repository_contributors_weekly_rows(

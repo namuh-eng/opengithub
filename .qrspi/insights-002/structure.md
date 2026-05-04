@@ -40,7 +40,7 @@
 
 ## Phase 3: Period Controls, Range Sliders, Data Table, and Chart Actions
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make Contributors controls URL-backed and action-complete. Period options and start/end range sliders should constrain visible weekly data, View as data table should open a real accessible table panel, and chart action/export buttons should either download/copy real CSV data or be omitted. No placeholder menus, fake exports, or dead buttons.
 

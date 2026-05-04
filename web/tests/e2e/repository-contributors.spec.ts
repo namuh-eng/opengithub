@@ -120,11 +120,15 @@ test("repository Contributors renders default analytics and concrete drilldowns"
     page.getByRole("img", { name: "Repository commits over time chart" }),
   ).toBeVisible();
   await expect(
+    page.getByRole("button", { name: "View as data table" }),
+  ).toHaveAttribute("aria-expanded", "false");
+  await page.getByRole("button", { name: "View as data table" }).click();
+  await expect(
     page.getByRole("table", { name: "Repository contributors data table" }),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "View as data table" }).first(),
-  ).toHaveAttribute("href", "#contributors-data-table");
+  ).toHaveAttribute("href", "#contributors-data-table-panel");
   await expect(
     page.getByRole("link", { name: "Commit history" }),
   ).toHaveAttribute("href", /\/commits\/main$/);
@@ -138,7 +142,7 @@ test("repository Contributors renders default analytics and concrete drilldowns"
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/insights-002-phase2-contributors-overview.jpg",
+    path: "../ralph/screenshots/build/insights-002-phase3-controls.jpg",
   });
 
   await page.getByRole("button", { name: "Period: Last week" }).click();
@@ -156,7 +160,14 @@ test("repository Contributors renders default analytics and concrete drilldowns"
   await expect(
     page.getByRole("button", { name: "Period: Last 3 days" }),
   ).toBeVisible();
+  await expect(page.getByRole("slider", { name: "Start week" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Apply" })).toHaveAttribute(
+    "href",
+    /\/graphs\/contributors\?period=3d(&start=.*&end=.*)?$/,
+  );
   await expect(
-    page.getByRole("table", { name: "Repository contributors data table" }),
-  ).toBeVisible();
+    page.getByRole("link", { name: "Download CSV" }),
+  ).toHaveAttribute("download", "repository-contributors.csv");
+  await page.getByRole("button", { name: "Copy CSV" }).click();
+  await expect(page.getByText("CSV copied")).toBeVisible();
 });

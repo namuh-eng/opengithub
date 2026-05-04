@@ -5395,5 +5395,20 @@
       "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
       "Full make test-e2e and direct full Playwright were attempted but stalled silently in this environment; focused direct Playwright for repository-contributors.spec.ts passed with screenshot evidence."
     ]
+  },
+  {
+    "feature_id": "insights-002",
+    "tests_written": [
+      "Completed Phase 3 Period Controls, Range Sliders, Data Table, and Chart Actions without marking insights-002 build_pass=true.",
+      "Extended GET /api/repos/{owner}/{repo}/graphs/contributors with bounded start/end range query params, range cache keys, clipped period bounds, and validation for invalid or non-overlapping ranges.",
+      "Added URL-backed Contributors range controls, table-panel toggle, real CSV copy/download actions, and range-aware Contributors page fetch/navigation handling.",
+      "Extended Rust contract, Vitest component tests, and Playwright browser smoke for range query handling, period menu behavior, slider affordances, table toggle, CSV copy/download, no dead controls, and screenshot ralph/screenshots/build/insights-002-phase3-controls.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 still needs larger edge-case browser coverage for empty repositories, bot-only histories, unmatched/deleted authors, slash-containing default branches, long logins, mobile chart/table stress, and very large histories over the line-count threshold.",
+      "The direct browser smoke covered a seeded repository with one live weekly bucket; focused unit coverage exercises multi-week slider href generation. QA should stress multi-bucket browser fixtures with older default-branch commits.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Probe range boundaries exactly at weekStart/weekEnd timestamps, out-of-period ranges, and concurrent snapshot refreshes against a clean migrated database after the shared 202605030041 local migration drift is resolved."
+    ]
   }
 ]

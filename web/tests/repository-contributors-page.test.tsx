@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { RepositoryContributorsPage } from "@/components/RepositoryContributorsPage";
 import type { RepositoryContributorsView, RepositoryOverview } from "@/lib/api";
 
@@ -186,7 +186,11 @@ describe("RepositoryContributorsPage", () => {
     ).toHaveAttribute("aria-expanded", "false");
     expect(
       screen.getAllByRole("link", { name: "View as data table" })[0],
-    ).toHaveAttribute("href", "#contributors-data-table");
+    ).toHaveAttribute("href", "#contributors-data-table-panel");
+    expect(
+      screen.getByRole("button", { name: "View as data table" }),
+    ).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(screen.getByRole("button", { name: "View as data table" }));
     expect(
       screen.getByRole("link", { name: "Commit history" }),
     ).toHaveAttribute("href", "/namuh-eng/opengithub/commits/main");
@@ -226,6 +230,41 @@ describe("RepositoryContributorsPage", () => {
     for (const button of container.querySelectorAll("button")) {
       expect(button).toHaveAccessibleName();
     }
+  });
+
+  it("builds URL-backed range controls and real CSV actions", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(
+      <RepositoryContributorsPage
+        contributorsResult={{ ok: true, contributors: contributorsView() }}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(screen.getByRole("slider", { name: "Start week" })).toBeEnabled();
+    fireEvent.change(screen.getByRole("slider", { name: "Start week" }), {
+      target: { value: "1" },
+    });
+    expect(screen.getByRole("link", { name: "Apply" })).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/graphs/contributors?start=2026-05-04T00%3A00%3A00Z&end=2026-05-07T00%3A00%3A00Z",
+    );
+    expect(screen.getByRole("link", { name: "Clear" })).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/graphs/contributors",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy CSV" }));
+    expect(writeText).toHaveBeenCalledWith(
+      expect.stringContaining('"scope","week","commits"'),
+    );
+    expect(await screen.findByText("CSV copied")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Download CSV" })).toHaveAttribute(
+      "download",
+      "repository-contributors.csv",
+    );
   });
 
   it("opens a URL-backed Contributors period menu and closes it with Escape", () => {

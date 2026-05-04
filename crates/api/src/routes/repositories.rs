@@ -393,6 +393,8 @@ struct PulseQuery {
 #[serde(rename_all = "camelCase")]
 struct ContributorsQuery {
     period: Option<String>,
+    start: Option<String>,
+    end: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -870,6 +872,8 @@ async fn contributors(
         &repo,
         RepositoryContributorsQuery {
             period: query.period.as_deref(),
+            start: query.start.as_deref(),
+            end: query.end.as_deref(),
         },
     )
     .await

@@ -803,11 +803,21 @@ export function repositoryPulseHref(
 export function repositoryContributorsHref(
   owner: string,
   repo: string,
-  options: { period?: string | null } = {},
+  options: {
+    period?: string | null;
+    start?: string | null;
+    end?: string | null;
+  } = {},
 ) {
   const params = new URLSearchParams();
   if (options.period?.trim() && options.period.trim() !== "1w") {
     params.set("period", options.period.trim());
+  }
+  if (options.start?.trim()) {
+    params.set("start", options.start.trim());
+  }
+  if (options.end?.trim()) {
+    params.set("end", options.end.trim());
   }
   const query = params.toString();
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/graphs/contributors${query ? `?${query}` : ""}`;
