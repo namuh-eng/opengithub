@@ -5201,5 +5201,21 @@
       "Run keyboard-only and screen-reader traversal through the file tree, search results, Expand all lines, Raw/View links, status chips, and binary/large placeholders on desktop and mobile.",
       "Re-run the Rust contract against a clean migrated database after the shared local migration drift is resolved."
     ]
+  },
+  {
+    "feature_id": "branches-001",
+    "tests_written": [
+      "Completed Phase 1 Branch Directory API Contract without marking branches-001 build_pass=true.",
+      "Added authenticated GET /api/repos/{owner}/{repo}/branches with tab/search/page normalization, private repository outsider 404 privacy, branch classification counts, default/active/stale/all rows, latest commit summaries, status summaries, ahead/behind counts, linked PR summaries, protection/ruleset summaries, action capability flags, and bounded recent-visit telemetry.",
+      "Added additive repository_branch_directory_recent_visits migration for bounded tab/search visit state.",
+      "Added focused Rust contract coverage for anonymous denial, private outsider privacy, classification counts, search, pagination, default branch row, protection summaries, PR/status metadata, ahead/behind counts, capability flags, invalid tabs, telemetry, and secret redaction."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 still needs the Editorial branches overview UI, browser smoke screenshot, and frontend no-dead-control checks.",
+      "Repeat against a clean migrated database after the shared local migration drift for 202605030041 is resolved.",
+      "Probe large repositories with hundreds of branches, slash-containing refs, duplicate-looking branch/tag names, orphaned refs with missing commits, mixed workflow statuses, and multiple linked PRs per branch.",
+      "Verify real imported Git history where ahead/behind counts include merge commits and long ancestry chains.",
+      "Validate Google OAuth browser access once the UI phase lands; this phase was API-only and browser smoke was optional by structure."
+    ]
   }
 ]

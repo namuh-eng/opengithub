@@ -64,6 +64,7 @@ use crate::{
         repository_access_settings_for_actor_by_owner_name,
         repository_blame_for_actor_by_owner_name, repository_blob_for_actor_by_owner_name,
         repository_branch_settings_for_actor_by_owner_name,
+        repository_branches_for_actor_by_owner_name,
         repository_commit_detail_context_for_actor_by_owner_name,
         repository_commit_detail_for_actor_by_owner_name,
         repository_commit_history_for_actor_by_owner_name, repository_creation_options,
@@ -78,7 +79,7 @@ use crate::{
         update_repository_team_access_by_owner_name,
         update_repository_watch_settings_by_owner_name, CreateRepository,
         RepositoryAccessInviteRequest, RepositoryAccessRolePatch, RepositoryAccessTeamGrantRequest,
-        RepositoryBootstrapRequest, RepositoryBranchRuleMutation,
+        RepositoryBootstrapRequest, RepositoryBranchRuleMutation, RepositoryBranchesQuery,
         RepositoryCommitDetailContextQuery, RepositoryCommitHistoryQuery, RepositoryError,
         RepositoryFileFinderQuery, RepositoryOwner, RepositoryPathQuery, RepositoryRefsQuery,
         RepositoryRulesetMutation, RepositorySettingsPatch, RepositoryVisibility,
@@ -109,6 +110,7 @@ pub fn router() -> Router<AppState> {
             "/:owner/:repo/commits/:sha/context",
             get(commit_detail_context),
         )
+        .route("/:owner/:repo/branches", get(branches))
         .route("/:owner/:repo/refs", get(refs))
         .route("/:owner/:repo/file-finder", get(file_finder))
         .route("/:owner/:repo/releases", get(releases).post(create_release))
@@ -358,6 +360,16 @@ struct CommitDetailContextParams {
     hunk_id: String,
     #[serde(alias = "context_lines")]
     context_lines: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BranchesQuery {
+    tab: Option<String>,
+    q: Option<String>,
+    page: Option<i64>,
+    #[serde(alias = "page_size")]
+    page_size: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -726,6 +738,40 @@ async fn commit_detail_context(
     })?;
 
     Ok(Json(json!(context)))
+}
+
+async fn branches(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<BranchesQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let pagination = normalize_pagination(query.page, query.page_size);
+    let view = repository_branches_for_actor_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        RepositoryBranchesQuery {
+            tab: query.tab.as_deref(),
+            query: query.q.as_deref(),
+            page: pagination.page,
+            page_size: pagination.page_size,
+        },
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(view)))
 }
 
 async fn refs(
@@ -2407,6 +2453,7 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         | RepositoryError::InvalidWatchEvent(_)
         | RepositoryError::InvalidAccessRole(_)
         | RepositoryError::InvalidBranchPolicy(_)
+        | RepositoryError::InvalidBranchDirectoryQuery(_)
         | RepositoryError::InvalidDiffContext(_)
         | RepositoryError::MergeMethodRequired
         | RepositoryError::DefaultMergeMethodDisabled

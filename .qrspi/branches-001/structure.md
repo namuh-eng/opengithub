@@ -6,7 +6,7 @@
 
 ## Phase 1: Branch Directory API Contract - screen-ready branch metadata
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add an authenticated read contract for `GET /api/repos/{owner}/{repo}/branches` that returns the branch-directory view needed by the page without changing the existing settings/branches contract. The response should classify default, active, stale, and all branches; support search and pagination; and include row metadata for navigation, protection, checks, ahead/behind, linked PRs, and viewer actions.
 

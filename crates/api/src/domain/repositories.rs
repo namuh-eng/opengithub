@@ -732,6 +732,133 @@ pub struct RepositoryCommitAuthorOption {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct RepositoryBranchesView {
+    pub repository: RepositoryBranchesRepository,
+    pub tabs: RepositoryBranchClassificationCounts,
+    pub filters: RepositoryBranchesFilters,
+    pub default_branch: Option<RepositoryBranchDirectoryRow>,
+    pub branches: Vec<RepositoryBranchDirectoryRow>,
+    pub total: i64,
+    pub page: i64,
+    pub page_size: i64,
+    pub has_next_page: bool,
+    pub has_previous_page: bool,
+    pub empty_state: RepositoryBranchesEmptyState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryBranchesRepository {
+    pub owner_login: String,
+    pub name: String,
+    pub default_branch: String,
+    pub visibility: RepositoryVisibility,
+    pub viewer_permission: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryBranchesFilters {
+    pub tab: String,
+    pub query: Option<String>,
+    pub stale_cutoff_days: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryBranchClassificationCounts {
+    pub overview: i64,
+    pub active: i64,
+    pub stale: i64,
+    pub all: i64,
+    pub default: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryBranchDirectoryRow {
+    pub name: String,
+    pub qualified_name: String,
+    pub classification: String,
+    pub is_default: bool,
+    pub href: String,
+    pub commits_href: String,
+    pub activity_href: String,
+    pub latest_commit: Option<RepositoryBranchLatestCommitSummary>,
+    pub checks: RepositoryBranchCheckSummary,
+    pub protection: RepositoryBranchProtectionSummary,
+    pub ahead: i64,
+    pub behind: i64,
+    pub pull_request: Option<RepositoryBranchPullRequestSummary>,
+    pub capabilities: RepositoryBranchCapabilities,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryBranchLatestCommitSummary {
+    pub oid: String,
+    pub short_oid: String,
+    pub subject: String,
+    pub href: String,
+    pub committed_at: DateTime<Utc>,
+    pub author_login: Option<String>,
+    pub author_avatar_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryBranchCheckSummary {
+    pub status: String,
+    pub conclusion: Option<String>,
+    pub total_count: i64,
+    pub completed_count: i64,
+    pub failed_count: i64,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryBranchProtectionSummary {
+    pub protected: bool,
+    pub matching_rule_count: i64,
+    pub matching_ruleset_count: i64,
+    pub required_status_checks: Vec<String>,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryBranchPullRequestSummary {
+    pub number: i64,
+    pub title: String,
+    pub state: String,
+    pub draft: bool,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryBranchCapabilities {
+    pub can_copy: bool,
+    pub can_view_activity: bool,
+    pub can_view_rules: bool,
+    pub can_delete: bool,
+    pub delete_disabled_reason: Option<String>,
+    pub can_restore: bool,
+    pub restore_disabled_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryBranchesEmptyState {
+    pub title: String,
+    pub message: String,
+    pub reset_href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct RepositoryCommitDetailView {
     pub repository: RepositoryCommitDetailRepository,
     pub commit: RepositoryCommitDetailCommit,
@@ -884,6 +1011,14 @@ pub struct RepositoryCommitHistoryQuery<'a> {
     pub path: Option<&'a str>,
     pub author: Option<&'a str>,
     pub until: Option<DateTime<Utc>>,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RepositoryBranchesQuery<'a> {
+    pub tab: Option<&'a str>,
+    pub query: Option<&'a str>,
     pub page: i64,
     pub page_size: i64,
 }
@@ -1402,6 +1537,8 @@ pub enum RepositoryError {
     TeamAccessUnsupported,
     #[error("invalid branch policy: {0}")]
     InvalidBranchPolicy(String),
+    #[error("invalid branch directory query: {0}")]
+    InvalidBranchDirectoryQuery(String),
     #[error("invalid commit diff context: {0}")]
     InvalidDiffContext(String),
     #[error("repository branch policy already exists")]
@@ -1789,6 +1926,27 @@ pub async fn repository_refs_for_actor_by_owner_name(
         page_size,
         items,
     }))
+}
+
+pub async fn repository_branches_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    query: RepositoryBranchesQuery<'_>,
+) -> Result<Option<RepositoryBranchesView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    repository_branches_for_repository(pool, &repository, actor_user_id, query)
+        .await
+        .map(Some)
 }
 
 pub async fn repository_file_finder_for_actor_by_owner_name(
@@ -6898,6 +7056,465 @@ async fn repository_commit_history(
         has_next_page: offset + page_size < total,
         has_previous_page: page > 1,
     })
+}
+
+async fn repository_branches_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    query: RepositoryBranchesQuery<'_>,
+) -> Result<RepositoryBranchesView, RepositoryError> {
+    const STALE_CUTOFF_DAYS: i64 = 90;
+
+    let tab = query
+        .tab
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("overview")
+        .to_lowercase();
+    if !matches!(tab.as_str(), "overview" | "active" | "stale" | "all") {
+        return Err(RepositoryError::InvalidBranchDirectoryQuery(format!(
+            "unsupported tab `{tab}`"
+        )));
+    }
+    let normalized_query = query
+        .query
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned);
+    if normalized_query
+        .as_deref()
+        .is_some_and(|value| value.chars().count() > 120)
+    {
+        return Err(RepositoryError::InvalidBranchDirectoryQuery(
+            "search query must be 120 characters or fewer".to_owned(),
+        ));
+    }
+    let query_lower = normalized_query
+        .as_deref()
+        .map(str::to_lowercase)
+        .unwrap_or_default();
+    let page = query.page.max(1);
+    let page_size = query.page_size.clamp(1, 100);
+    let can_admin = can_admin_repository(pool, repository, actor_user_id).await?;
+    let viewer_permission = viewer_permission_for_user(pool, repository, actor_user_id)
+        .await?
+        .unwrap_or_else(|| "read".to_owned());
+
+    let rows = sqlx::query(
+        r#"
+        SELECT refs.name,
+               refs.updated_at,
+               commits.id AS commit_id,
+               commits.oid,
+               commits.message,
+               commits.committed_at,
+               COALESCE(NULLIF(users.username, ''), users.email) AS author_login,
+               users.avatar_url AS author_avatar_url,
+               COALESCE(statuses.status, workflow_statuses.status, 'pending') AS status,
+               COALESCE(statuses.conclusion, workflow_statuses.conclusion) AS conclusion,
+               COALESCE(statuses.total_count, workflow_statuses.total_count, 0)::bigint AS total_count,
+               COALESCE(statuses.completed_count, workflow_statuses.completed_count, 0)::bigint AS completed_count,
+               COALESCE(statuses.failed_count, workflow_statuses.failed_count, 0)::bigint AS failed_count,
+               pr_link.link AS pull_request
+        FROM repository_git_refs refs
+        LEFT JOIN commits ON commits.id = refs.target_commit_id
+        LEFT JOIN users ON users.id = commits.author_user_id
+        LEFT JOIN repository_commit_status_summaries statuses ON statuses.commit_id = commits.id
+        LEFT JOIN LATERAL (
+            SELECT CASE
+                    WHEN count(*) FILTER (WHERE workflow_runs.status IN ('queued', 'in_progress')) > 0 THEN 'running'
+                    WHEN count(*) = 0 THEN NULL
+                    ELSE 'completed'
+                   END AS status,
+                   CASE
+                    WHEN count(*) = 0 THEN NULL
+                    WHEN count(*) FILTER (WHERE workflow_runs.conclusion = 'failure') > 0 THEN 'failure'
+                    WHEN count(*) FILTER (WHERE workflow_runs.conclusion = 'cancelled') > 0 THEN 'cancelled'
+                    WHEN count(*) FILTER (WHERE workflow_runs.conclusion = 'success') = count(*) THEN 'success'
+                    ELSE NULL
+                   END AS conclusion,
+                   count(*)::bigint AS total_count,
+                   count(*) FILTER (WHERE workflow_runs.status = 'completed')::bigint AS completed_count,
+                   count(*) FILTER (WHERE workflow_runs.conclusion = 'failure')::bigint AS failed_count
+            FROM workflow_runs
+            WHERE workflow_runs.repository_id = refs.repository_id
+              AND (workflow_runs.commit_id = commits.id OR workflow_runs.head_sha = commits.oid)
+        ) workflow_statuses ON true
+        LEFT JOIN LATERAL (
+            SELECT jsonb_build_object(
+                'number', pull_requests.number,
+                'title', pull_requests.title,
+                'state', pull_requests.state,
+                'draft', COALESCE(pull_requests.is_draft, false),
+                'href', format('/%s/%s/pull/%s', $2::text, $3::text, pull_requests.number)
+            ) AS link
+            FROM pull_requests
+            WHERE pull_requests.repository_id = refs.repository_id
+              AND pull_requests.head_ref = regexp_replace(refs.name, '^refs/heads/', '')
+              AND pull_requests.state <> 'closed'
+            ORDER BY pull_requests.updated_at DESC, pull_requests.number DESC
+            LIMIT 1
+        ) pr_link ON true
+        WHERE refs.repository_id = $1 AND refs.kind = 'branch'
+        ORDER BY CASE WHEN refs.name = $4 THEN 0 ELSE 1 END,
+                 COALESCE(commits.committed_at, refs.updated_at) DESC,
+                 lower(refs.name) ASC
+        "#,
+    )
+    .bind(repository.id)
+    .bind(&repository.owner_login)
+    .bind(&repository.name)
+    .bind(format!("refs/heads/{}", repository.default_branch))
+    .fetch_all(pool)
+    .await?;
+
+    let branch_refs = repository_branch_ref_summaries(pool, repository.id).await?;
+    let rules = repository_branch_rules(pool, repository.id, &branch_refs, can_admin).await?;
+    let rulesets = repository_rulesets(pool, repository.id, &branch_refs, can_admin).await?;
+    let default_target_oid = rows
+        .iter()
+        .find(|row| {
+            let name: String = row.get("name");
+            branch_short_name(&name) == repository.default_branch
+        })
+        .and_then(|row| row.get::<Option<String>, _>("oid"));
+
+    let mut all_rows = Vec::new();
+    for row in rows {
+        let qualified_name: String = row.get("name");
+        let short_name = branch_short_name(&qualified_name);
+        let is_default = short_name == repository.default_branch;
+        let updated_at = row
+            .get::<Option<DateTime<Utc>>, _>("committed_at")
+            .unwrap_or_else(|| row.get("updated_at"));
+        let classification = if is_default {
+            "default"
+        } else if updated_at < Utc::now() - chrono::Duration::days(STALE_CUTOFF_DAYS) {
+            "stale"
+        } else {
+            "active"
+        }
+        .to_owned();
+        let oid = row.get::<Option<String>, _>("oid");
+        let (ahead, behind) = branch_ahead_behind(
+            pool,
+            repository.id,
+            oid.as_deref(),
+            default_target_oid.as_deref(),
+        )
+        .await?;
+        let protection = branch_protection_summary(repository, &short_name, &rules, &rulesets);
+        let latest_commit = oid.as_ref().map(|oid| {
+            let message: String = row.get("message");
+            let (subject, _) = split_commit_message(&message);
+            RepositoryBranchLatestCommitSummary {
+                short_oid: oid.chars().take(7).collect(),
+                href: format!(
+                    "/{}/{}/commit/{}",
+                    repository.owner_login, repository.name, oid
+                ),
+                oid: oid.clone(),
+                subject,
+                committed_at: row.get("committed_at"),
+                author_login: row.get("author_login"),
+                author_avatar_url: row.get("author_avatar_url"),
+            }
+        });
+        let pull_request = row
+            .get::<Option<serde_json::Value>, _>("pull_request")
+            .and_then(|value| serde_json::from_value(value).ok());
+        all_rows.push(RepositoryBranchDirectoryRow {
+            href: repository_tree_href(repository, &short_name, ""),
+            commits_href: repository_history_href(repository, &short_name, ""),
+            activity_href: format!(
+                "/{}/{}/branches/{}",
+                repository.owner_login,
+                repository.name,
+                percent_encode_segment(&short_name)
+            ),
+            checks: RepositoryBranchCheckSummary {
+                status: row.get("status"),
+                conclusion: row.get("conclusion"),
+                total_count: row.get("total_count"),
+                completed_count: row.get("completed_count"),
+                failed_count: row.get("failed_count"),
+                href: oid
+                    .as_ref()
+                    .map(|oid| {
+                        format!(
+                            "/{}/{}/actions?commit={}",
+                            repository.owner_login, repository.name, oid
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        format!("/{}/{}/actions", repository.owner_login, repository.name)
+                    }),
+            },
+            capabilities: RepositoryBranchCapabilities {
+                can_copy: true,
+                can_view_activity: true,
+                can_view_rules: protection.protected || can_admin,
+                can_delete: can_admin && !is_default && !protection.protected,
+                delete_disabled_reason: if is_default {
+                    Some("The default branch cannot be deleted.".to_owned())
+                } else if protection.protected {
+                    Some("Protected branches require policy changes before deletion.".to_owned())
+                } else if can_admin {
+                    None
+                } else {
+                    Some("Admin access is required to delete branches.".to_owned())
+                },
+                can_restore: false,
+                restore_disabled_reason: Some(
+                    "Branch restore is handled by a later mutation phase.".to_owned(),
+                ),
+            },
+            protection,
+            name: short_name,
+            qualified_name,
+            classification,
+            is_default,
+            latest_commit,
+            ahead,
+            behind,
+            pull_request,
+            updated_at,
+        });
+    }
+
+    let counts = RepositoryBranchClassificationCounts {
+        default: all_rows.iter().filter(|row| row.is_default).count() as i64,
+        active: all_rows
+            .iter()
+            .filter(|row| row.classification == "active")
+            .count() as i64,
+        stale: all_rows
+            .iter()
+            .filter(|row| row.classification == "stale")
+            .count() as i64,
+        all: all_rows.len() as i64,
+        overview: all_rows
+            .iter()
+            .filter(|row| row.is_default || row.classification == "active")
+            .count() as i64,
+    };
+    let default_branch = all_rows.iter().find(|row| row.is_default).cloned();
+    let mut filtered = all_rows
+        .into_iter()
+        .filter(|row| {
+            query_lower.is_empty()
+                || row.name.to_lowercase().contains(&query_lower)
+                || row.qualified_name.to_lowercase().contains(&query_lower)
+        })
+        .filter(|row| match tab.as_str() {
+            "overview" => !row.is_default && row.classification == "active",
+            "active" => row.classification == "active",
+            "stale" => row.classification == "stale",
+            "all" => true,
+            _ => false,
+        })
+        .collect::<Vec<_>>();
+    filtered.sort_by(|left, right| {
+        if left.is_default != right.is_default {
+            return left.is_default.cmp(&right.is_default).reverse();
+        }
+        right
+            .updated_at
+            .cmp(&left.updated_at)
+            .then_with(|| left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+    });
+    let total = filtered.len() as i64;
+    let offset = ((page - 1) * page_size) as usize;
+    let branches = filtered
+        .into_iter()
+        .skip(offset)
+        .take(page_size as usize)
+        .collect();
+
+    record_branch_directory_visit(
+        pool,
+        repository.id,
+        actor_user_id,
+        &tab,
+        normalized_query.as_deref().unwrap_or(""),
+        page,
+        page_size,
+    )
+    .await?;
+
+    Ok(RepositoryBranchesView {
+        repository: RepositoryBranchesRepository {
+            owner_login: repository.owner_login.clone(),
+            name: repository.name.clone(),
+            default_branch: repository.default_branch.clone(),
+            visibility: repository.visibility.clone(),
+            viewer_permission,
+        },
+        tabs: counts,
+        filters: RepositoryBranchesFilters {
+            tab: tab.clone(),
+            query: normalized_query.clone(),
+            stale_cutoff_days: STALE_CUTOFF_DAYS,
+        },
+        default_branch: if tab == "overview" {
+            default_branch.filter(|row| {
+                query_lower.is_empty()
+                    || row.name.to_lowercase().contains(&query_lower)
+                    || row.qualified_name.to_lowercase().contains(&query_lower)
+            })
+        } else {
+            None
+        },
+        branches,
+        total,
+        page,
+        page_size,
+        has_next_page: offset as i64 + page_size < total,
+        has_previous_page: page > 1,
+        empty_state: RepositoryBranchesEmptyState {
+            title: if normalized_query.is_some() {
+                "No branches matched this search".to_owned()
+            } else {
+                "No branches in this view".to_owned()
+            },
+            message: "Adjust the branch tab or search query to recover the repository branch list."
+                .to_owned(),
+            reset_href: format!("/{}/{}/branches", repository.owner_login, repository.name),
+        },
+    })
+}
+
+fn branch_short_name(qualified_name: &str) -> String {
+    qualified_name
+        .strip_prefix("refs/heads/")
+        .unwrap_or(qualified_name)
+        .to_owned()
+}
+
+fn branch_protection_summary(
+    repository: &Repository,
+    branch_name: &str,
+    rules: &[RepositoryBranchRule],
+    rulesets: &[RepositoryRuleset],
+) -> RepositoryBranchProtectionSummary {
+    let mut required_status_checks = BTreeSet::new();
+    let matching_rule_count = rules
+        .iter()
+        .filter(|rule| rule.enforcement != BranchPolicyEnforcement::Disabled)
+        .filter(|rule| branch_pattern_matches(&rule.pattern, branch_name))
+        .inspect(|rule| {
+            required_status_checks.extend(rule.requirements.required_status_checks.iter().cloned());
+        })
+        .count() as i64;
+    let matching_ruleset_count = rulesets
+        .iter()
+        .filter(|ruleset| ruleset.enforcement != BranchPolicyEnforcement::Disabled)
+        .filter(|ruleset| {
+            ruleset
+                .patterns
+                .iter()
+                .any(|pattern| branch_pattern_matches(pattern, branch_name))
+        })
+        .inspect(|ruleset| {
+            required_status_checks
+                .extend(ruleset.requirements.required_status_checks.iter().cloned());
+        })
+        .count() as i64;
+    RepositoryBranchProtectionSummary {
+        protected: matching_rule_count + matching_ruleset_count > 0,
+        matching_rule_count,
+        matching_ruleset_count,
+        required_status_checks: required_status_checks.into_iter().collect(),
+        href: format!(
+            "/{}/{}/settings/branches?branch={}",
+            repository.owner_login,
+            repository.name,
+            percent_encode_segment(branch_name)
+        ),
+    }
+}
+
+async fn branch_ahead_behind(
+    pool: &PgPool,
+    repository_id: Uuid,
+    branch_oid: Option<&str>,
+    default_oid: Option<&str>,
+) -> Result<(i64, i64), RepositoryError> {
+    let Some(branch_oid) = branch_oid else {
+        return Ok((0, 0));
+    };
+    let Some(default_oid) = default_oid else {
+        return Ok((0, 0));
+    };
+    if branch_oid == default_oid {
+        return Ok((0, 0));
+    }
+    let row = sqlx::query(
+        r#"
+        WITH RECURSIVE branch_ancestors AS (
+            SELECT c.oid, c.parent_oids
+            FROM commits c
+            WHERE c.repository_id = $1 AND c.oid = $2
+            UNION
+            SELECT parent.oid, parent.parent_oids
+            FROM commits parent
+            JOIN branch_ancestors child ON parent.oid = ANY(child.parent_oids)
+            WHERE parent.repository_id = $1
+        ),
+        default_ancestors AS (
+            SELECT c.oid, c.parent_oids
+            FROM commits c
+            WHERE c.repository_id = $1 AND c.oid = $3
+            UNION
+            SELECT parent.oid, parent.parent_oids
+            FROM commits parent
+            JOIN default_ancestors child ON parent.oid = ANY(child.parent_oids)
+            WHERE parent.repository_id = $1
+        )
+        SELECT
+            (SELECT count(*)::bigint FROM branch_ancestors WHERE oid NOT IN (SELECT oid FROM default_ancestors)) AS ahead,
+            (SELECT count(*)::bigint FROM default_ancestors WHERE oid NOT IN (SELECT oid FROM branch_ancestors)) AS behind
+        "#,
+    )
+    .bind(repository_id)
+    .bind(branch_oid)
+    .bind(default_oid)
+    .fetch_one(pool)
+    .await?;
+    Ok((row.get("ahead"), row.get("behind")))
+}
+
+async fn record_branch_directory_visit(
+    pool: &PgPool,
+    repository_id: Uuid,
+    user_id: Uuid,
+    tab: &str,
+    query: &str,
+    page: i64,
+    page_size: i64,
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        r#"
+        INSERT INTO repository_branch_directory_recent_visits (
+            repository_id, user_id, tab, query, page, page_size, viewed_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, now())
+        ON CONFLICT (repository_id, user_id, tab, query) DO UPDATE SET
+            page = EXCLUDED.page,
+            page_size = EXCLUDED.page_size,
+            viewed_at = now()
+        "#,
+    )
+    .bind(repository_id)
+    .bind(user_id)
+    .bind(tab)
+    .bind(query)
+    .bind(page)
+    .bind(page_size)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 async fn repository_commit_detail(

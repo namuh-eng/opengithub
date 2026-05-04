@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS repository_branch_directory_recent_visits;
