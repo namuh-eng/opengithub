@@ -64,6 +64,7 @@ use crate::{
         repository_access_settings_for_actor_by_owner_name,
         repository_blame_for_actor_by_owner_name, repository_blob_for_actor_by_owner_name,
         repository_branch_settings_for_actor_by_owner_name,
+        repository_commit_detail_context_for_actor_by_owner_name,
         repository_commit_detail_for_actor_by_owner_name,
         repository_commit_history_for_actor_by_owner_name, repository_creation_options,
         repository_file_finder_for_actor_by_owner_name, repository_name_availability,
@@ -77,10 +78,11 @@ use crate::{
         update_repository_team_access_by_owner_name,
         update_repository_watch_settings_by_owner_name, CreateRepository,
         RepositoryAccessInviteRequest, RepositoryAccessRolePatch, RepositoryAccessTeamGrantRequest,
-        RepositoryBootstrapRequest, RepositoryBranchRuleMutation, RepositoryCommitHistoryQuery,
-        RepositoryError, RepositoryFileFinderQuery, RepositoryOwner, RepositoryPathQuery,
-        RepositoryRefsQuery, RepositoryRulesetMutation, RepositorySettingsPatch,
-        RepositoryVisibility, RepositoryWatchSettingsPatch,
+        RepositoryBootstrapRequest, RepositoryBranchRuleMutation,
+        RepositoryCommitDetailContextQuery, RepositoryCommitHistoryQuery, RepositoryError,
+        RepositoryFileFinderQuery, RepositoryOwner, RepositoryPathQuery, RepositoryRefsQuery,
+        RepositoryRulesetMutation, RepositorySettingsPatch, RepositoryVisibility,
+        RepositoryWatchSettingsPatch,
     },
     domain::webhooks::{
         create_repository_webhook_by_owner_name, delete_repository_webhook_by_owner_name,
@@ -103,6 +105,10 @@ pub fn router() -> Router<AppState> {
         .route("/:owner/:repo/blame/*path", get(blame))
         .route("/:owner/:repo/commits", get(commits))
         .route("/:owner/:repo/commits/:sha", get(commit_detail))
+        .route(
+            "/:owner/:repo/commits/:sha/context",
+            get(commit_detail_context),
+        )
         .route("/:owner/:repo/refs", get(refs))
         .route("/:owner/:repo/file-finder", get(file_finder))
         .route("/:owner/:repo/releases", get(releases).post(create_release))
@@ -343,6 +349,15 @@ struct CommitsQuery {
     page: Option<i64>,
     #[serde(alias = "page_size")]
     page_size: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CommitDetailContextParams {
+    path: String,
+    hunk_id: String,
+    #[serde(alias = "context_lines")]
+    context_lines: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -678,6 +693,39 @@ async fn commit_detail(
             })?;
 
     Ok(Json(json!(view)))
+}
+
+async fn commit_detail_context(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, sha)): Path<(String, String, String)>,
+    Query(query): Query<CommitDetailContextParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let context = repository_commit_detail_context_for_actor_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        &sha,
+        RepositoryCommitDetailContextQuery {
+            path: &query.path,
+            hunk_id: &query.hunk_id,
+            context_lines: query.context_lines.unwrap_or(30),
+        },
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(context)))
 }
 
 async fn refs(
@@ -2359,6 +2407,7 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         | RepositoryError::InvalidWatchEvent(_)
         | RepositoryError::InvalidAccessRole(_)
         | RepositoryError::InvalidBranchPolicy(_)
+        | RepositoryError::InvalidDiffContext(_)
         | RepositoryError::MergeMethodRequired
         | RepositoryError::DefaultMergeMethodDisabled
         | RepositoryError::ArchivedRepositoryReadOnly

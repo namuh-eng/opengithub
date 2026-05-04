@@ -823,6 +823,7 @@ pub struct RepositoryCommitDetailFileTreeNode {
 #[serde(rename_all = "camelCase")]
 pub struct RepositoryCommitDetailFile {
     pub path: String,
+    pub previous_path: Option<String>,
     pub status: String,
     pub additions: i64,
     pub deletions: i64,
@@ -858,6 +859,23 @@ pub struct RepositoryCommitDetailLine {
     pub new_line: Option<i64>,
     pub content: String,
     pub position: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryCommitDetailContext {
+    pub path: String,
+    pub hunk_id: String,
+    pub lines: Vec<RepositoryCommitDetailLine>,
+    pub expanded: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RepositoryCommitDetailContextQuery<'a> {
+    pub path: &'a str,
+    pub hunk_id: &'a str,
+    pub context_lines: i64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1384,6 +1402,8 @@ pub enum RepositoryError {
     TeamAccessUnsupported,
     #[error("invalid branch policy: {0}")]
     InvalidBranchPolicy(String),
+    #[error("invalid commit diff context: {0}")]
+    InvalidDiffContext(String),
     #[error("repository branch policy already exists")]
     BranchPolicyConflict,
     #[error("repository branch policy was not found")]
@@ -2228,6 +2248,24 @@ pub async fn repository_commit_detail_for_actor_by_owner_name(
         return Ok(None);
     };
     repository_commit_detail(pool, &repository, actor_user_id, sha)
+        .await
+        .map(Some)
+}
+
+pub async fn repository_commit_detail_context_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    sha: &str,
+    query: RepositoryCommitDetailContextQuery<'_>,
+) -> Result<Option<RepositoryCommitDetailContext>, RepositoryError> {
+    let Some(repository) =
+        get_repository_for_actor_by_owner_name(pool, actor_user_id, owner_login, name).await?
+    else {
+        return Ok(None);
+    };
+    repository_commit_detail_context(pool, &repository, actor_user_id, sha, query)
         .await
         .map(Some)
 }
@@ -7126,6 +7164,79 @@ async fn repository_commit_detail(
     })
 }
 
+async fn repository_commit_detail_context(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    sha: &str,
+    query: RepositoryCommitDetailContextQuery<'_>,
+) -> Result<RepositoryCommitDetailContext, RepositoryError> {
+    let normalized_path = normalize_repository_path(query.path)?;
+    if normalized_path.is_empty() {
+        return Err(RepositoryError::InvalidDiffContext(
+            "path is required".to_owned(),
+        ));
+    }
+    let normalized_hunk_id = query.hunk_id.trim();
+    if normalized_hunk_id.is_empty() || normalized_hunk_id.len() > 180 {
+        return Err(RepositoryError::InvalidDiffContext(
+            "hunkId is invalid".to_owned(),
+        ));
+    }
+
+    let detail = repository_commit_detail(pool, repository, actor_user_id, sha).await?;
+    let file = detail
+        .files
+        .iter()
+        .find(|file| file.path == normalized_path)
+        .ok_or(RepositoryError::PathNotFound)?;
+    if file.is_binary || file.is_large {
+        return Err(RepositoryError::InvalidDiffContext(
+            "binary and large file diffs cannot expand inline context".to_owned(),
+        ));
+    }
+    let hunk = file
+        .hunks
+        .iter()
+        .find(|hunk| hunk.id == normalized_hunk_id)
+        .ok_or_else(|| RepositoryError::InvalidDiffContext("hunk was not found".to_owned()))?;
+
+    let bounded_lines =
+        bounded_commit_detail_context_lines(&hunk.lines, query.context_lines.clamp(3, 200));
+    Ok(RepositoryCommitDetailContext {
+        path: file.path.clone(),
+        hunk_id: hunk.id.clone(),
+        lines: bounded_lines,
+        expanded: true,
+        message: "Expanded context lines loaded.".to_owned(),
+    })
+}
+
+fn bounded_commit_detail_context_lines(
+    lines: &[RepositoryCommitDetailLine],
+    context_lines: i64,
+) -> Vec<RepositoryCommitDetailLine> {
+    if lines.len() <= 400 {
+        return lines.to_vec();
+    }
+    let context = context_lines.max(3) as usize;
+    let mut keep = BTreeSet::new();
+    for (index, line) in lines.iter().enumerate() {
+        if line.kind == "added" || line.kind == "removed" {
+            let start = index.saturating_sub(context);
+            let end = (index + context + 1).min(lines.len());
+            keep.extend(start..end);
+        }
+    }
+    if keep.is_empty() {
+        keep.extend(0..lines.len().min(400));
+    }
+    keep.into_iter()
+        .take(400)
+        .filter_map(|index| lines.get(index).cloned())
+        .collect()
+}
+
 #[derive(Debug, Clone)]
 struct CommitDetailSnapshotFile {
     content: String,
@@ -7158,16 +7269,54 @@ async fn repository_commit_detail_files(
         BTreeMap::new()
     };
 
+    let added_paths = current_files
+        .keys()
+        .filter(|path| !parent_files.contains_key(*path))
+        .cloned()
+        .collect::<Vec<_>>();
+    let removed_paths = parent_files
+        .keys()
+        .filter(|path| !current_files.contains_key(*path))
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut renamed_paths = BTreeMap::new();
+    let mut consumed_removed = BTreeSet::new();
+    for added_path in &added_paths {
+        let Some(current_file) = current_files.get(added_path) else {
+            continue;
+        };
+        if let Some(removed_path) = removed_paths.iter().find(|removed_path| {
+            !consumed_removed.contains(*removed_path)
+                && parent_files
+                    .get(*removed_path)
+                    .map(|file| file.oid.as_str())
+                    == Some(current_file.oid.as_str())
+        }) {
+            renamed_paths.insert(added_path.clone(), removed_path.clone());
+            consumed_removed.insert(removed_path.clone());
+        }
+    }
+
     let mut paths = current_files.keys().cloned().collect::<BTreeSet<_>>();
     paths.extend(parent_files.keys().cloned());
+    for removed_path in &consumed_removed {
+        paths.remove(removed_path);
+    }
     let mut files = Vec::new();
     for path in paths {
         let current = current_files.get(&path);
-        let parent = parent_files.get(&path);
-        if current.map(|file| file.oid.as_str()) == parent.map(|file| file.oid.as_str()) {
+        let previous_path = renamed_paths.get(&path).cloned();
+        let parent = previous_path
+            .as_ref()
+            .and_then(|renamed_path| parent_files.get(renamed_path))
+            .or_else(|| parent_files.get(&path));
+        if current.map(|file| file.oid.as_str()) == parent.map(|file| file.oid.as_str())
+            && previous_path.is_none()
+        {
             continue;
         }
         let status = match (parent, current) {
+            (Some(_), Some(_)) if previous_path.is_some() => "renamed",
             (None, Some(_)) => "added",
             (Some(_), None) => "removed",
             (Some(_), Some(_)) => "modified",
@@ -7192,6 +7341,7 @@ async fn repository_commit_detail_files(
         );
         files.push(RepositoryCommitDetailFile {
             path: path.clone(),
+            previous_path,
             status,
             additions,
             deletions,

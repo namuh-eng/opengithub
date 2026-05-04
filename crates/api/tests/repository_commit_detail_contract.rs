@@ -307,6 +307,37 @@ async fn repository_commit_detail_returns_summary_contract_without_leaking_priva
     );
     assert!(!body.to_string().to_lowercase().contains("token"));
 
+    let context_uri = format!(
+        "{base}/commits/{}/context?path=src/main.rs&hunkId=diff-src-main-rs-hunk-1&contextLines=80",
+        detail_commit.oid
+    );
+    let (context_status, context_body) =
+        get_json(app.clone(), &context_uri, Some(&owner_cookie)).await;
+    assert_eq!(context_status, StatusCode::OK, "body: {context_body}");
+    assert_eq!(context_body["path"], "src/main.rs");
+    assert_eq!(context_body["hunkId"], "diff-src-main-rs-hunk-1");
+    assert_eq!(context_body["expanded"], true);
+    assert_eq!(context_body["lines"][1]["kind"], "removed");
+    assert_eq!(
+        context_body["lines"][2]["content"],
+        "    println!(\"new\");"
+    );
+
+    let (invalid_context_status, invalid_context_body) = get_json(
+        app.clone(),
+        &format!(
+            "{base}/commits/{}/context?path=src/main.rs&hunkId=missing-hunk",
+            detail_commit.oid
+        ),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(invalid_context_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(invalid_context_body["error"]["code"], "validation_failed");
+    assert!(!invalid_context_body
+        .to_string()
+        .contains("test-session-secret"));
+
     let visit_count = sqlx::query_scalar::<_, i64>(
         "SELECT count(*) FROM repository_commit_recent_visits WHERE repository_id = $1 AND user_id = $2 AND ref_name = $3",
     )

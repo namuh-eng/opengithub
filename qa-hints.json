@@ -5168,5 +5168,22 @@
       "Search highlighting is client-side and limited to visible bounded diff rows until Phase 4 context expansion lands.",
       "Re-run contract and E2E checks against a clean migrated database after the shared local migration drift is resolved."
     ]
+  },
+  {
+    "feature_id": "commits-002",
+    "tests_written": [
+      "Completed Phase 4 Context Expansion and Bounded Diff Edge Cases without marking commits-002 build_pass=true.",
+      "Added authenticated GET /api/repos/{owner}/{repo}/commits/{sha}/context with repository visibility checks, path/hunk validation, bounded context windows, and redacted validation errors.",
+      "Added a same-origin Next context proxy and wired Expand all lines controls with loading, error, disabled-expanded feedback, and API-backed line replacement.",
+      "Hardened commit diff file metadata and UI labels for renamed, removed, large, and binary file states while preserving concrete Raw/View file links.",
+      "Extended Rust contract, Vitest component, and Playwright coverage; screenshot saved at ralph/screenshots/build/commits-002-phase4-expanded-context.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 5 still needs API docs, final accessibility guardrails, final browser screenshots, QA handoff, and build_pass bookkeeping.",
+      "Repeat with real Google OAuth and imported repositories containing true Git rename detection, deleted files, binary blobs, very large generated files, merge commits, and complex moved-block diffs.",
+      "Stress rapid repeated context expansion across many hunks and verify server-side bounds on extremely large hunks.",
+      "Probe keyboard and screen-reader traversal through Expand all lines, Raw/View file links, and binary/large placeholders on desktop and mobile.",
+      "The make test-e2e wrapper silently stalled again and was terminated; direct full Playwright completed 123 tests successfully."
+    ]
   }
 ]

@@ -1688,6 +1688,7 @@ export type RepositoryCommitDetailFileTreeNode = {
 
 export type RepositoryCommitDetailFile = {
   path: string;
+  previousPath: string | null;
   status: string;
   additions: number;
   deletions: number;
@@ -1719,6 +1720,14 @@ export type RepositoryCommitDetailLine = {
   newLine: number | null;
   content: string;
   position: number;
+};
+
+export type RepositoryCommitDetailContext = {
+  path: string;
+  hunkId: string;
+  lines: RepositoryCommitDetailLine[];
+  expanded: boolean;
+  message: string;
 };
 
 export type RepositoryLanguageSummary = {

@@ -148,6 +148,10 @@ test("signed-in commit detail renders summary controls and unified diff", async 
     .first()
     .click();
   await expect(page.locator("article.card[id^='diff-']").first()).toBeFocused();
+  await page.getByRole("button", { name: "Expand all lines" }).first().click();
+  await expect(
+    page.getByRole("button", { name: "Expanded" }).first(),
+  ).toBeDisabled();
   await page.getByRole("textbox", { name: "Filter files" }).fill("not-present");
   await expect(
     page.getByText("No changed files match this filter.").first(),
@@ -166,6 +170,6 @@ test("signed-in commit detail renders summary controls and unified diff", async 
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/commits-002-phase3-search-filter.jpg",
+    path: "../ralph/screenshots/build/commits-002-phase4-expanded-context.jpg",
   });
 });

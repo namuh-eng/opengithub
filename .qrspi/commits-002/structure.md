@@ -57,7 +57,7 @@
 
 ## Phase 4: Context Expansion and Bounded Diff Edge Cases
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add working Expand all lines controls and harden large, binary, renamed, deleted, and generated-file diff cases. This phase ensures every visible diff affordance either performs the real API-backed action or is explicitly disabled with a truthful reason.
 

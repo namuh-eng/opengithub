@@ -101,6 +101,7 @@ function commitDetail(
     files: [
       {
         path: "crates/api/src/routes/repositories.rs",
+        previousPath: null,
         status: "modified",
         additions: 1,
         deletions: 1,
@@ -151,6 +152,7 @@ function commitDetail(
       },
       {
         path: "web/src/components/Commit.tsx",
+        previousPath: null,
         status: "added",
         additions: 1,
         deletions: 0,
@@ -319,6 +321,112 @@ describe("RepositoryCommitDetailPage", () => {
     expect(
       screen.getByText("No visible diff lines match this search."),
     ).toBeVisible();
+  });
+
+  it("expands hunk context through the same-origin API with feedback", async () => {
+    const expandedLine = {
+      kind: "context",
+      oldLine: 4,
+      newLine: 4,
+      content: "expanded context from API",
+      position: 44,
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          path: "crates/api/src/routes/repositories.rs",
+          hunkId: "diff-crates-api-src-routes-repositories-rs-hunk-1",
+          lines: [expandedLine],
+          expanded: true,
+          message: "Expanded context lines loaded.",
+        }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<RepositoryCommitDetailPage detail={commitDetail()} />);
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Expand all lines" })[0],
+    );
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "/api/repos/mona/octo-app/commits/abcdef1234567890/context?",
+        ),
+        { cache: "no-store" },
+      ),
+    );
+    expect(await screen.findByText("expanded context from API")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Expanded" })).toBeDisabled();
+  });
+
+  it("shows bounded binary, large, renamed, and removed diff states", () => {
+    const detail = commitDetail();
+    detail.files = [
+      {
+        ...detail.files[0],
+        path: "src/routes/new.rs",
+        previousPath: "src/routes/old.rs",
+        status: "renamed",
+        anchor: "diff-src-routes-new-rs",
+        isBinary: false,
+        isLarge: false,
+      },
+      {
+        ...detail.files[0],
+        path: "assets/app.bin",
+        previousPath: null,
+        status: "modified",
+        anchor: "diff-assets-app-bin",
+        byteSize: 4096,
+        isBinary: true,
+        isLarge: false,
+        hunks: [],
+      },
+      {
+        ...detail.files[0],
+        path: "logs/large.txt",
+        previousPath: null,
+        status: "modified",
+        anchor: "diff-logs-large-txt",
+        byteSize: 320_000,
+        isBinary: false,
+        isLarge: true,
+        hunks: [],
+      },
+      {
+        ...detail.files[0],
+        path: "docs/removed.md",
+        previousPath: null,
+        status: "removed",
+        anchor: "diff-docs-removed-md",
+      },
+    ];
+    detail.fileTree = detail.files.map((file) => ({
+      path: file.path,
+      name: file.path.split("/").pop() ?? file.path,
+      depth: file.path.split("/").length - 1,
+      status: file.status,
+      additions: file.additions,
+      deletions: file.deletions,
+      href: `#${file.anchor}`,
+    }));
+    detail.diffSummary = {
+      totalFiles: detail.files.length,
+      additions: 4,
+      deletions: 3,
+    };
+
+    render(<RepositoryCommitDetailPage detail={detail} />);
+
+    expect(screen.getByText("Renamed")).toHaveClass("chip", "soft");
+    expect(screen.getByText(/Renamed from/)).toBeVisible();
+    expect(screen.getByText("Removed")).toHaveClass("chip", "soft");
+    expect(
+      screen.getByText("Binary file diff is not rendered inline."),
+    ).toBeVisible();
+    expect(screen.getByText(/Large file diff is bounded inline/)).toBeVisible();
   });
 
   it("focuses a diff file from the file tree without placeholder handlers", async () => {

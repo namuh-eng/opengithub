@@ -7,6 +7,7 @@ import { CopyButton } from "@/components/CopyButton";
 import type {
   RepositoryCommitDetailFile,
   RepositoryCommitDetailFileTreeNode,
+  RepositoryCommitDetailHunk,
   RepositoryCommitDetailLine,
   RepositoryCommitDetailView,
   RepositoryCommitStatusSummary,
@@ -107,6 +108,13 @@ function fileStatusMark(status: string) {
   if (status === "removed") return "D";
   if (status === "renamed") return "R";
   return "M";
+}
+
+function fileStatusLabel(status: string) {
+  if (status === "added") return "Added";
+  if (status === "removed") return "Removed";
+  if (status === "renamed") return "Renamed";
+  return "Modified";
 }
 
 function linePrefix(line: RepositoryCommitDetailLine) {
@@ -264,12 +272,23 @@ function DiffLine({
 }
 
 function RepositoryCommitDiffFile({
+  expandedHunks,
   file,
+  hunkErrors,
+  hunkLoading,
   isActive,
+  onExpandHunk,
   searchQuery,
 }: {
+  expandedHunks: Record<string, RepositoryCommitDetailLine[]>;
   file: RepositoryCommitDetailFile;
+  hunkErrors: Record<string, string>;
+  hunkLoading: Record<string, boolean>;
   isActive: boolean;
+  onExpandHunk: (
+    file: RepositoryCommitDetailFile,
+    hunk: RepositoryCommitDetailHunk,
+  ) => void;
   searchQuery: string;
 }) {
   return (
@@ -287,6 +306,12 @@ function RepositoryCommitDiffFile({
           {fileStatusMark(file.status)}
         </span>
         <h3 className="t-mono-sm min-w-0 flex-1 break-all">{file.path}</h3>
+        <span className="chip soft">{fileStatusLabel(file.status)}</span>
+        {file.previousPath ? (
+          <span className="t-xs break-all">
+            Renamed from <span className="t-mono-sm">{file.previousPath}</span>
+          </span>
+        ) : null}
         {file.language ? (
           <span className="chip soft">{file.language}</span>
         ) : null}
@@ -314,16 +339,41 @@ function RepositoryCommitDiffFile({
           {file.hunks.map((hunk) => (
             <div key={hunk.id}>
               <div
-                className="border-b px-4 py-2 t-mono-sm"
+                className="flex flex-wrap items-center gap-3 border-b px-4 py-2 t-mono-sm"
                 style={{
                   background: "var(--surface-3)",
                   borderColor: "var(--line-soft)",
                   color: "var(--ink-3)",
                 }}
               >
-                {hunk.header}
+                <span className="min-w-0 flex-1 break-all">{hunk.header}</span>
+                <button
+                  className="btn ghost sm"
+                  disabled={Boolean(
+                    expandedHunks[hunk.id] || hunkLoading[hunk.id],
+                  )}
+                  onClick={() => onExpandHunk(file, hunk)}
+                  type="button"
+                >
+                  {expandedHunks[hunk.id]
+                    ? "Expanded"
+                    : hunkLoading[hunk.id]
+                      ? "Expanding..."
+                      : "Expand all lines"}
+                </button>
               </div>
-              {hunk.lines.map((line) => (
+              {hunkErrors[hunk.id] ? (
+                <p
+                  className="border-b px-4 py-2 t-sm"
+                  style={{
+                    borderColor: "var(--line-soft)",
+                    color: "var(--err)",
+                  }}
+                >
+                  {hunkErrors[hunk.id]}
+                </p>
+              ) : null}
+              {(expandedHunks[hunk.id] ?? hunk.lines).map((line) => (
                 <DiffLine
                   key={`${hunk.id}-${line.position}`}
                   line={line}
@@ -456,6 +506,11 @@ export function RepositoryCommitDetailPage({
   const [activeFilePath, setActiveFilePath] = useState<string | null>(
     detail.files[0]?.path ?? null,
   );
+  const [expandedHunks, setExpandedHunks] = useState<
+    Record<string, RepositoryCommitDetailLine[]>
+  >({});
+  const [hunkLoading, setHunkLoading] = useState<Record<string, boolean>>({});
+  const [hunkErrors, setHunkErrors] = useState<Record<string, string>>({});
   const normalizedFileFilter = normalizeQuery(fileFilter);
   const visibleFiles = useMemo(
     () =>
@@ -491,6 +546,52 @@ export function RepositoryCommitDetailPage({
       target?.scrollIntoView({ block: "start", behavior: "smooth" });
       target?.focus();
     });
+  }
+
+  async function expandHunk(
+    file: RepositoryCommitDetailFile,
+    hunk: RepositoryCommitDetailHunk,
+  ) {
+    if (expandedHunks[hunk.id] || hunkLoading[hunk.id]) {
+      return;
+    }
+    setHunkLoading((current) => ({ ...current, [hunk.id]: true }));
+    setHunkErrors((current) => {
+      const next = { ...current };
+      delete next[hunk.id];
+      return next;
+    });
+    const params = new URLSearchParams({
+      path: file.path,
+      hunkId: hunk.id,
+      contextLines: "80",
+    });
+    try {
+      const response = await fetch(
+        `/api/repos/${encodeURIComponent(repository.ownerLogin)}/${encodeURIComponent(
+          repository.name,
+        )}/commits/${encodeURIComponent(commit.oid)}/context?${params.toString()}`,
+        { cache: "no-store" },
+      );
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message =
+          body?.error?.message ?? "Context lines could not be expanded.";
+        setHunkErrors((current) => ({ ...current, [hunk.id]: message }));
+        return;
+      }
+      setExpandedHunks((current) => ({
+        ...current,
+        [hunk.id]: body.lines ?? hunk.lines,
+      }));
+    } catch {
+      setHunkErrors((current) => ({
+        ...current,
+        [hunk.id]: "Context lines could not be expanded.",
+      }));
+    } finally {
+      setHunkLoading((current) => ({ ...current, [hunk.id]: false }));
+    }
   }
 
   return (
@@ -636,9 +737,13 @@ export function RepositoryCommitDetailPage({
                 {visibleFiles.length ? (
                   visibleFiles.map((file) => (
                     <RepositoryCommitDiffFile
+                      expandedHunks={expandedHunks}
                       file={file}
+                      hunkErrors={hunkErrors}
+                      hunkLoading={hunkLoading}
                       isActive={file.path === activeFilePath}
                       key={file.path}
+                      onExpandHunk={expandHunk}
                       searchQuery={searchQuery}
                     />
                   ))
