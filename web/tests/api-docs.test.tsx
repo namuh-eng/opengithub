@@ -14,7 +14,7 @@ describe("ApiDocsPage", () => {
         name: "Build against implemented opengithub APIs",
       }),
     ).toBeVisible();
-    expect(apiEndpointDocs.length).toBeGreaterThanOrEqual(41);
+    expect(apiEndpointDocs.length).toBeGreaterThanOrEqual(49);
 
     for (const endpoint of apiEndpointDocs) {
       const card = screen
@@ -42,12 +42,58 @@ describe("ApiDocsPage", () => {
       screen.getByText("/api/orgs/{org}/people?q=member&page=1&pageSize=30"),
     ).toBeVisible();
     expect(
-      screen.getByText(/Private organizations return not_found/),
+      screen.getAllByText(/Private organizations return not_found/)[0],
     ).toBeVisible();
     expect(
       screen.getByText(
         /Signed-out and outside viewers see public members only/,
       ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/orgs/{org}/people/admin?tab=members&q=member&page=1&pageSize=30",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/orgs/{org}/people/invitations"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/orgs/{org}/people/invitations/{invitation_id}/retry",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/orgs/{org}/people/invitations/{invitation_id}"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/orgs/{org}/people/members/{user_id}/visibility"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/orgs/{org}/people/members/{user_id}/role"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/orgs/{org}/people/members/{user_id}"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/orgs/{org}/people/export?format=csv&tab=members&q=member",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Supported tabs are members, outside_collaborators/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/emailDeliveryStatus=degraded or failed/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Demoting the final owner is blocked/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Removing the final owner is blocked/),
+    ).toBeVisible();
+    expect(screen.getByText(/format=csv returns text\/csv/)).toBeVisible();
+    expect(
+      screen.getByText(/never includes invitation tokens, raw session rows/),
     ).toBeVisible();
     expect(
       screen.getByText("/api/organizations/slug-availability?name=Acme%20Labs"),
@@ -134,7 +180,9 @@ describe("ApiDocsPage", () => {
     expect(
       screen.getByText(/Demoting the final owner\/admin access path/),
     ).toBeVisible();
-    expect(screen.getByText(/emailDeliveryStatus=degraded/)).toBeVisible();
+    expect(
+      screen.getAllByText(/emailDeliveryStatus=degraded/)[0],
+    ).toBeVisible();
     expect(
       screen.getAllByText("/api/repos/{owner}/{repo}/settings/branches")[0],
     ).toBeVisible();

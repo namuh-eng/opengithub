@@ -4855,5 +4855,22 @@
       "Probe CSV escaping with commas, quotes, newlines, long Unicode names, large orgs, outside collaborator/security manager tabs, and screen-reader traversal of the role/remove dialogs.",
       "Bulk membership execution remains an explicit unsupported placeholder; QA should verify it stays disabled-safe and does not imply a hidden write path."
     ]
+  },
+  {
+    "feature_id": "org-admin-003",
+    "tests_written": [
+      "Completed Phase 5 Docs, Browser QA Handoff, and Build Pass for org-admin-003.",
+      "Documented organization people admin endpoints in /docs/api: admin list, invite, retry, cancel, visibility, role, remove, and filtered JSON/CSV exports.",
+      "API docs tests assert owner/admin auth requirements, tab/filter shapes, SES degraded delivery behavior, final-owner protections, export notes, and token/secret redaction guarantees.",
+      "Final Playwright smoke covers admin tabs, search, row selection, final-owner disabled actions, invite degraded success, failed retry/cancel, visibility toggle, role confirmation, member removal, JSON/CSV export downloads, no dead anchors, and mobile no-overflow.",
+      "Final browser screenshots saved under ralph/screenshots/build/org-admin-003-final-*.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Run a real Google OAuth browser session with TEST_ACCOUNT_EMAIL to verify people administration outside deterministic Playwright seed cookies.",
+      "Verify production SES credentials transition invitation delivery from degraded/failed to an honest provider-confirmed state without faking success.",
+      "Stress concurrent duplicate invites, retry/cancel races, final-owner demote/remove races, and export requests while membership mutations are in flight.",
+      "Probe CSV escaping with commas, quotes, newlines, long Unicode names/emails, very large organizations, outside collaborator and security manager tabs, and screen-reader traversal of all dialogs.",
+      "Bulk membership execution remains an explicit unsupported disabled-safe placeholder; QA should confirm it never appears as an enabled write path without a backend contract."
+    ]
   }
 ]

@@ -1897,6 +1897,195 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "org-people-admin",
+    method: "GET",
+    path: "/api/orgs/{org}/people/admin?tab=members&q=member&page=1&pageSize=30",
+    title: "Administer organization people",
+    description:
+      "Loads the owner/admin people administration state with tab counts, filtered member or invitation rows, row action capabilities, export links, and pagination.",
+    auth: "Signed opengithub session cookie with organization owner or admin role",
+    response: `{
+  "organization": { "login": "namuh", "name": "Namuh Engineering" },
+  "viewerState": { "role": "owner", "canAdmin": true },
+  "tab": "members",
+  "counts": {
+    "members": 2,
+    "outsideCollaborators": 0,
+    "pendingCollaborators": 0,
+    "invitations": 1,
+    "failedInvitations": 1,
+    "securityManagers": 0
+  },
+  "rows": {
+    "items": [
+      {
+        "login": "mona",
+        "role": "owner",
+        "membershipVisibility": "public",
+        "actionState": { "canChangeRole": false, "canRemove": false, "finalOwner": true }
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "pageSize": 30
+  }
+}`,
+    notes: [
+      "Private organizations return not_found to outsiders; authenticated non-admin organization members receive 403.",
+      "Invitation token hashes, raw session data, private emails outside authorized rows, stack traces, and provider secrets are never returned.",
+      "Supported tabs are members, outside_collaborators, pending_collaborators, invitations, failed_invitations, and security_managers.",
+    ],
+  },
+  {
+    id: "org-people-invitations",
+    method: "POST",
+    path: "/api/orgs/{org}/people/invitations",
+    title: "Invite organization member",
+    description:
+      "Creates a pending organization invitation for a username or verified email, stores only a hashed token, records the SES delivery handoff state, and returns fresh admin people state.",
+    auth: "Signed opengithub session cookie with organization owner or admin role",
+    request: `{
+  "emailOrLogin": "member@example.com",
+  "role": "member",
+  "teamIds": []
+}`,
+    response: `{
+  "tab": "members",
+  "counts": { "invitations": 1, "failedInvitations": 1 },
+  "invitations": {
+    "items": [
+      {
+        "invitedEmail": "member@example.com",
+        "role": "member",
+        "emailDeliveryStatus": "degraded",
+        "canRetry": true,
+        "canCancel": true
+      }
+    ]
+  }
+}`,
+    notes: [
+      "Invitations expire after 7 days and duplicate pending invitations return a conflict envelope.",
+      "Missing or local SES credentials persist emailDeliveryStatus=degraded or failed instead of faking successful delivery.",
+      "Existing members, invalid roles, and invalid team choices use structured validation_failed or conflict envelopes.",
+    ],
+  },
+  {
+    id: "org-people-invitation-retry",
+    method: "POST",
+    path: "/api/orgs/{org}/people/invitations/{invitation_id}/retry",
+    title: "Retry organization invitation delivery",
+    description:
+      "Retries a failed organization invitation delivery, keeps the same redacted invitation contract, and returns refreshed people administration state.",
+    auth: "Signed opengithub session cookie with organization owner or admin role",
+    response: `{
+  "counts": { "invitations": 1, "failedInvitations": 0 },
+  "invitations": {
+    "items": [
+      { "emailDeliveryStatus": "degraded", "canRetry": true, "canCancel": true }
+    ]
+  }
+}`,
+    notes: [
+      "Retry writes an organization audit event and never exposes the invitation token hash.",
+      "Canceled, accepted, expired, or unknown invitations return a standard not_found or validation envelope.",
+    ],
+  },
+  {
+    id: "org-people-invitation-cancel",
+    method: "DELETE",
+    path: "/api/orgs/{org}/people/invitations/{invitation_id}",
+    title: "Cancel organization invitation",
+    description:
+      "Cancels a pending organization invitation, preserves audit history, and removes it from active invitation tabs.",
+    auth: "Signed opengithub session cookie with organization owner or admin role",
+    response: `{
+  "counts": { "invitations": 0, "failedInvitations": 0 },
+  "invitations": { "items": [], "total": 0, "page": 1, "pageSize": 30 }
+}`,
+    notes: [
+      "Cancel is idempotent for active pending invitations only; accepted or expired invitations are not silently mutated.",
+      "Audit metadata redacts target emails where the viewer is not authorized to see them.",
+    ],
+  },
+  {
+    id: "org-people-visibility",
+    method: "PATCH",
+    path: "/api/orgs/{org}/people/members/{user_id}/visibility",
+    title: "Update organization membership visibility",
+    description:
+      "Toggles a member between public and private organization membership visibility and returns fresh people administration state.",
+    auth: "Signed opengithub session cookie with organization owner or admin role",
+    request: `{
+  "visibility": "private"
+}`,
+    response: `{
+  "rows": {
+    "items": [
+      { "login": "mona", "membershipVisibility": "private" }
+    ]
+  }
+}`,
+    notes: [
+      "Public membership is reflected by the public people endpoint; private membership remains admin-visible only.",
+      "Every successful write inserts an organization.people.visibility audit event.",
+    ],
+  },
+  {
+    id: "org-people-role",
+    method: "PATCH",
+    path: "/api/orgs/{org}/people/members/{user_id}/role",
+    title: "Update organization member role",
+    description:
+      "Changes an organization member role after confirmation, enforces final-owner protections, and returns fresh admin people state.",
+    auth: "Signed opengithub session cookie with organization owner role",
+    request: `{
+  "role": "admin"
+}`,
+    response: `{
+  "rows": {
+    "items": [
+      { "login": "mona", "role": "admin" }
+    ]
+  }
+}`,
+    notes: [
+      "Demoting the final owner is blocked with a conflict envelope and the actionState.finalOwner flag explains the disabled browser control.",
+      "Role changes write organization.people.role audit events without leaking session payloads or stack traces.",
+    ],
+  },
+  {
+    id: "org-people-remove",
+    method: "DELETE",
+    path: "/api/orgs/{org}/people/members/{user_id}",
+    title: "Remove organization member",
+    description:
+      "Removes an organization member, cleans up team memberships, enforces final-owner protections, and returns fresh admin people state.",
+    auth: "Signed opengithub session cookie with organization owner role",
+    response: `{
+  "rows": { "items": [], "total": 0, "page": 1, "pageSize": 30 }
+}`,
+    notes: [
+      "Removing the final owner is blocked with a conflict envelope.",
+      "Successful removals write organization.people.remove audit events and do not delete the user account.",
+    ],
+  },
+  {
+    id: "org-people-export",
+    method: "GET",
+    path: "/api/orgs/{org}/people/export?format=csv&tab=members&q=member",
+    title: "Export filtered organization people",
+    description:
+      "Downloads the current owner/admin people filter as JSON or CSV with the same tab, search, and authorization rules used by the admin table.",
+    auth: "Signed opengithub session cookie with organization owner or admin role",
+    response: `login,display_name,role,membership_visibility,membership_source,team_count,roles_count,two_factor_enabled,has_active_session
+mona,Mona Lisa,owner,public,organization,0,1,true,true`,
+    notes: [
+      "format=json returns an application/json array; format=csv returns text/csv with content-disposition attachment headers.",
+      "CSV output is escaped for commas, quotes, and newlines, and never includes invitation tokens, raw session rows, provider secrets, or stack traces.",
+    ],
+  },
+  {
     id: "issues-create",
     method: "POST",
     path: "/api/repos/{owner}/{repo}/issues",

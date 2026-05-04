@@ -77,6 +77,19 @@ test("organization people routes render owner admin controls with URL-backed sea
   await expect(
     page.getByRole("button", { name: "Bulk action" }),
   ).toBeDisabled();
+  const ownerRow = page
+    .locator("article")
+    .filter({ hasText: "Dashboard Tester" });
+  await ownerRow.getByRole("button", { name: "Row actions" }).click();
+  await expect(
+    page.getByText("Final owners cannot be demoted or removed."),
+  ).toBeVisible();
+  await expect(
+    ownerRow.getByRole("button", { name: "Change role" }),
+  ).toBeDisabled();
+  await expect(
+    ownerRow.getByRole("button", { name: "Remove from organization" }),
+  ).toBeDisabled();
   await page.getByLabel("Select Profile Action Viewer").check();
   await expect(
     page.getByRole("button", { name: "Bulk action (1)" }),
@@ -88,8 +101,42 @@ test("organization people routes render owner admin controls with URL-backed sea
     "href",
     /\/api\/orgs\/org-profile-[^/]+\/people\/export\?format=json&tab=members/,
   );
+  const jsonExportHref = await page
+    .getByRole("link", { name: "Export JSON" })
+    .getAttribute("href");
+  expect(jsonExportHref).toBeTruthy();
+  const jsonExport = await page.request.get(jsonExportHref ?? "");
+  expect(jsonExport.status()).toBe(200);
+  expect(jsonExport.headers()["content-type"]).toContain("application/json");
+  const jsonExportBody = await jsonExport.text();
+  expect(jsonExportBody).toContain("Dashboard Tester");
+  expect(jsonExportBody).not.toContain("sha256:");
+  await expect(page.getByRole("link", { name: "Export CSV" })).toHaveAttribute(
+    "href",
+    /\/api\/orgs\/org-profile-[^/]+\/people\/export\?format=csv&tab=members/,
+  );
+  const csvExportHref = await page
+    .getByRole("link", { name: "Export CSV" })
+    .getAttribute("href");
+  expect(csvExportHref).toBeTruthy();
+  const csvExport = await page.request.get(csvExportHref ?? "");
+  expect(csvExport.status()).toBe(200);
+  expect(csvExport.headers()["content-type"]).toContain("text/csv");
+  expect(csvExport.headers()["content-disposition"]).toContain("attachment");
+  const csvExportBody = await csvExport.text();
+  expect(csvExportBody).toContain("login,display_name,role");
+  expect(csvExportBody).toContain("Dashboard Tester");
+  expect(csvExportBody).not.toContain("sha256:");
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-003-final-export-menu.jpg",
+  });
   await page.getByRole("button", { name: "Invite member" }).click();
   await expect(page.getByLabel("Invite member dialog")).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-003-final-invite-dialog.jpg",
+  });
   const inviteEmail = `phase3-${Date.now()}@opengithub.local`;
   await page.getByPlaceholder("member@example.com").fill(inviteEmail);
   await page.getByRole("combobox").selectOption("admin");
@@ -101,8 +148,16 @@ test("organization people routes render owner admin controls with URL-backed sea
 
   await page.getByRole("link", { name: /Failed invitations/ }).click();
   await expect(page.getByText("Email failed").first()).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-003-final-failed-invitations.jpg",
+  });
   await page.getByRole("button", { name: "Retry" }).first().click();
   await expect(page.getByText(/Retried invitation/)).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-003-final-pending-invitations.jpg",
+  });
   await page.getByRole("button", { name: "Cancel" }).first().click();
   await expect(page.getByText(/Canceled invitation/)).toBeVisible();
 
@@ -147,11 +202,19 @@ test("organization people routes render owner admin controls with URL-backed sea
     .getByLabel("Change role for Profile Action Viewer")
     .getByRole("combobox")
     .selectOption("admin");
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-003-final-role-confirmation.jpg",
+  });
   await page.getByRole("button", { name: "Confirm role change" }).click();
   await expect(page.getByText(/is now admin/)).toBeVisible();
   await profileRow
     .getByRole("button", { name: "Remove from organization" })
     .click();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-003-final-remove-confirmation.jpg",
+  });
   await page.getByRole("button", { name: "Confirm removal" }).click();
   await expect(
     page.getByText(/was removed from the organization/),
@@ -172,6 +235,10 @@ test("organization people routes render owner admin controls with URL-backed sea
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/org-admin-003-phase2-people-shell.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-003-final-members-table.jpg",
   });
   await page.screenshot({
     fullPage: true,
@@ -197,5 +264,9 @@ test("organization people routes render owner admin controls with URL-backed sea
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/orgs-002-final-people-mobile.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-003-final-mobile.jpg",
   });
 });

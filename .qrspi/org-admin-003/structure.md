@@ -77,7 +77,7 @@
 
 ## Phase 5: Docs, Browser QA Handoff, and Build Pass - finish org-admin-003
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Document the organization people administration API and complete final build-loop bookkeeping. Mark `org-admin-003.build_pass=true` only after admin listing, invitations, visibility/role/removal mutations, exports, browser smoke, and QA handoff are verified.
 
