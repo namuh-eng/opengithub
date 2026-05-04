@@ -1,23 +1,45 @@
-import { RepositoryFeaturePage } from "@/components/RepositoryFeaturePage";
+import { AppShell } from "@/components/AppShell";
+import { RepositoryPulsePage as RepositoryPulseView } from "@/components/RepositoryPulsePage";
+import { RepositoryUnavailablePage } from "@/components/RepositoryUnavailablePage";
+import {
+  getRepository,
+  getRepositoryPulse,
+  getSession,
+} from "@/lib/server-session";
 
 type RepositoryPulsePageProps = {
   params: Promise<{ owner: string; repo: string }>;
+  searchParams?: Promise<{ period?: string }>;
 };
 
 export default async function RepositoryPulsePage({
   params,
+  searchParams,
 }: RepositoryPulsePageProps) {
-  const { owner, repo } = await params;
-  const base = `/${decodeURIComponent(owner)}/${decodeURIComponent(repo)}`;
+  const [{ owner, repo }, query, session] = await Promise.all([
+    params,
+    searchParams,
+    getSession(),
+  ]);
+  const ownerLogin = decodeURIComponent(owner);
+  const repositoryName = decodeURIComponent(repo);
+  const [repository, pulseResult] = await Promise.all([
+    getRepository(ownerLogin, repositoryName),
+    getRepositoryPulse(ownerLogin, repositoryName, {
+      period: query?.period ?? null,
+    }),
+  ]);
 
   return (
-    <RepositoryFeaturePage
-      actions={[{ href: `${base}/commits/main`, label: "Commit history" }]}
-      activePath={`${base}/pulse`}
-      description="Repository activity, contributors, forks, traffic, and dependency insights will land after the collaboration data model is complete."
-      owner={owner}
-      repo={repo}
-      title="Insights"
-    />
+    <AppShell session={session}>
+      {repository ? (
+        <RepositoryPulseView
+          pulseResult={pulseResult}
+          repository={repository}
+        />
+      ) : (
+        <RepositoryUnavailablePage owner={ownerLogin} repo={repositoryName} />
+      )}
+    </AppShell>
   );
 }

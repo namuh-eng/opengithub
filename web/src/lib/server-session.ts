@@ -56,6 +56,7 @@ import {
   getRepositoryPullRequestFromCookie,
   getRepositoryPullRequestsFromCookie,
   getRepositoryPullRequestTimelineFromCookie,
+  getRepositoryPulseFromCookie,
   getRepositoryRefsFromCookie,
   getRepositoryReleaseDetailFromCookie,
   getRepositoryReleaseManagementContextFromCookie,
@@ -89,6 +90,7 @@ import {
   type RepositoryIssueListQuery,
   type RepositoryPullRequestDiffQuery,
   type RepositoryPullRequestListQuery,
+  type RepositoryPulseFetchResult,
   type RepositoryReleaseListQuery,
   type SearchSuggestionsQuery,
   searchCodeFromCookie,
@@ -503,6 +505,20 @@ export async function getRepositoryBranchActivity(
     owner,
     repo,
     branch,
+  );
+}
+
+export async function getRepositoryPulse(
+  owner: string,
+  repo: string,
+  options: { period?: string | null } = {},
+): Promise<RepositoryPulseFetchResult> {
+  const requestHeaders = await headers();
+  return getRepositoryPulseFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    options,
   );
 }
 

@@ -5298,5 +5298,21 @@
       "Validate period-boundary behavior around exact start/end timestamps, time zones, and high-frequency refreshes that update repository_insight_snapshots.",
       "Use a real Google OAuth browser session once the UI phase lands; this phase was API-only and browser smoke was optional by structure."
     ]
+  },
+  {
+    "feature_id": "insights-001",
+    "tests_written": [
+      "Completed Phase 2 Editorial Insights Shell and Pulse Overview without marking insights-001 build_pass=true.",
+      "Replaced the /{owner}/{repo}/pulse placeholder with a server-fetched Editorial Insights page backed by GET /api/repos/{owner}/{repo}/pulse.",
+      "Added typed Pulse frontend DTOs, signed-cookie server fetch helper, repository Insights sidebar links, Pulse overview metric cards, summary sentence, accessible top-committers chart plus table fallback, activity lists, unavailable state, and concrete recovery links.",
+      "Added focused Vitest coverage and Playwright browser smoke; screenshot saved at ralph/screenshots/build/insights-001-phase2-pulse-overview.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 still needs a full URL-backed Period selector menu for 24h, 3d, 1w, and 1m plus metric-link period preservation.",
+      "Phase 4 still needs hardening for committer/activity edge cases, missing authors, bot-heavy activity, very large file-change counts, empty repositories, and public/private permission differences.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Stress imported repositories with many commits, releases, merged pull requests, closed/new issues, commits without file-change rows, deleted users, and long activity titles.",
+      "The make test-e2e wrapper silently stalled and was terminated; direct full Playwright completed 125 tests successfully."
+    ]
   }
 ]

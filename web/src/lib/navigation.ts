@@ -28,6 +28,11 @@ export type RepositorySettingsSection = NavigationItem & {
   hrefSuffix: string;
 };
 
+export type RepositoryInsightsSection = NavigationItem & {
+  section: string;
+  hrefSuffix: string;
+};
+
 export type OrganizationSettingsSection = NavigationItem & {
   section: string;
   group: "general" | "access" | "integrations" | "danger";
@@ -340,6 +345,99 @@ export const REPOSITORY_SETTINGS_NAV_ITEMS = [
     protected: true,
   },
 ] as const satisfies readonly RepositorySettingsSection[];
+
+export const REPOSITORY_INSIGHTS_NAV_ITEMS = [
+  {
+    href: "",
+    hrefSuffix: "/pulse",
+    label: "Pulse",
+    section: "pulse",
+    kind: "repository",
+    description: "Activity summary for the selected period",
+    protected: false,
+  },
+  {
+    href: "",
+    hrefSuffix: "/graphs/contributors",
+    label: "Contributors",
+    section: "contributors",
+    kind: "repository",
+    description: "Contributor commit activity",
+    protected: false,
+  },
+  {
+    href: "",
+    hrefSuffix: "/community",
+    label: "Community standards",
+    section: "community",
+    kind: "repository",
+    description: "Health files and community checklist",
+    protected: false,
+  },
+  {
+    href: "",
+    hrefSuffix: "/graphs/commit-activity",
+    label: "Commits",
+    section: "commits",
+    kind: "repository",
+    description: "Commit activity over time",
+    protected: false,
+  },
+  {
+    href: "",
+    hrefSuffix: "/graphs/code-frequency",
+    label: "Code frequency",
+    section: "code-frequency",
+    kind: "repository",
+    description: "Line additions and deletions",
+    protected: false,
+  },
+  {
+    href: "",
+    hrefSuffix: "/network/dependencies",
+    label: "Dependency graph",
+    section: "dependency-graph",
+    kind: "repository",
+    description: "Dependencies and dependents",
+    protected: false,
+  },
+  {
+    href: "",
+    hrefSuffix: "/network",
+    label: "Network",
+    section: "network",
+    kind: "repository",
+    description: "Repository network activity",
+    protected: false,
+  },
+  {
+    href: "",
+    hrefSuffix: "/forks",
+    label: "Forks",
+    section: "forks",
+    kind: "repository",
+    description: "Forked repositories",
+    protected: false,
+  },
+  {
+    href: "",
+    hrefSuffix: "/actions/metrics/usage",
+    label: "Actions usage metrics",
+    section: "actions-usage",
+    kind: "repository",
+    description: "Workflow minutes and storage usage",
+    protected: false,
+  },
+  {
+    href: "",
+    hrefSuffix: "/actions/metrics/performance",
+    label: "Actions performance metrics",
+    section: "actions-performance",
+    kind: "repository",
+    description: "Workflow timing and reliability",
+    protected: false,
+  },
+] as const satisfies readonly RepositoryInsightsSection[];
 
 export const ORGANIZATION_SETTINGS_NAV_ITEMS = [
   {
@@ -687,6 +785,39 @@ export function repositoryCommitStatusHref({
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(
     repo,
   )}/actions?commit=${encodeURIComponent(oid)}`;
+}
+
+export function repositoryPulseHref(
+  owner: string,
+  repo: string,
+  options: { period?: string | null } = {},
+) {
+  const params = new URLSearchParams();
+  if (options.period?.trim() && options.period.trim() !== "1w") {
+    params.set("period", options.period.trim());
+  }
+  const query = params.toString();
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulse${query ? `?${query}` : ""}`;
+}
+
+export function repositoryReleaseHref(
+  owner: string,
+  repo: string,
+  tagName: string,
+) {
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/tag/${encodeURIComponent(tagName)}`;
+}
+
+export function repositoryProfileHref(login: string) {
+  return `/${encodeURIComponent(login)}`;
+}
+
+export function repositoryInsightsHref(
+  owner: string,
+  repo: string,
+  section: RepositoryInsightsSection,
+) {
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}${section.hrefSuffix}`;
 }
 
 export type SearchModalAction =

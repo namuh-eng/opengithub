@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial Insights Shell and Pulse Overview - default page renders real data
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the placeholder `/{owner}/{repo}/pulse` route with a real Editorial Insights page backed by the Phase 1 API. The default period should show the Insights sidebar, Pulse heading/date range, overview cards, linked counts, summary sentence, top committers chart, and compact activity lists with no inert controls.
 

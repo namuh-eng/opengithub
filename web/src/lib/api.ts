@@ -2471,6 +2471,90 @@ export type RepositoryBranchActivityFetchResult =
   | { ok: true; activity: RepositoryBranchActivityView }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type RepositoryPulseView = {
+  repository: RepositoryPulseRepository;
+  period: RepositoryPulsePeriod;
+  metrics: RepositoryPulseMetric[];
+  summary: RepositoryPulseSummary;
+  topCommitters: RepositoryPulseCommitter[];
+  releases: RepositoryPulseActivityItem[];
+  mergedPullRequests: RepositoryPulseActivityItem[];
+  issueActivity: RepositoryPulseActivityItem[];
+  snapshot: RepositoryPulseSnapshot;
+};
+
+export type RepositoryPulseRepository = {
+  ownerLogin: string;
+  name: string;
+  defaultBranch: string;
+  visibility: RepositoryVisibility | string;
+  viewerPermission: string;
+  href: string;
+};
+
+export type RepositoryPulsePeriod = {
+  key: string;
+  label: string;
+  startedAt: string;
+  endedAt: string;
+};
+
+export type RepositoryPulseMetric = {
+  key: string;
+  label: string;
+  count: number;
+  href: string;
+};
+
+export type RepositoryPulseSummary = {
+  sentence: string;
+  commits: number;
+  filesChanged: number;
+  additions: number;
+  deletions: number;
+  authors: number;
+  mergedPullRequests: number;
+  openPullRequests: number;
+  closedIssues: number;
+  newIssues: number;
+  openIssues: number;
+  releases: number;
+};
+
+export type RepositoryPulseCommitter = {
+  userId: string | null;
+  login: string;
+  avatarUrl: string | null;
+  commits: number;
+  filesChanged: number;
+  additions: number;
+  deletions: number;
+  profileHref: string;
+  commitsHref: string;
+};
+
+export type RepositoryPulseActivityItem = {
+  kind: string;
+  number: number | null;
+  title: string;
+  state: string;
+  authorLogin: string | null;
+  authorAvatarUrl: string | null;
+  href: string;
+  occurredAt: string;
+};
+
+export type RepositoryPulseSnapshot = {
+  cacheKey: string;
+  computedAt: string;
+  expiresAt: string;
+  stale: boolean;
+};
+
+export type RepositoryPulseFetchResult =
+  | { ok: true; pulse: RepositoryPulseView }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type WebhookContentType = "json" | "form" | string;
 
 export type WebhookEventSelection = "push" | "everything" | "selected" | string;
@@ -8865,6 +8949,56 @@ export async function getRepositoryBranchActivityFromCookie(
   return {
     ok: true,
     activity: (await response.json()) as RepositoryBranchActivityView,
+  };
+}
+
+export async function getRepositoryPulseFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  options: { period?: string | null } = {},
+): Promise<RepositoryPulseFetchResult> {
+  const params = new URLSearchParams();
+  if (options.period?.trim()) {
+    params.set("period", options.period.trim());
+  }
+  const query = params.toString();
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulse${query ? `?${query}` : ""}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository Pulse is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Repository Pulse is unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    pulse: (await response.json()) as RepositoryPulseView,
   };
 }
 
