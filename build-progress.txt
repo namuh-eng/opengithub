@@ -1,3 +1,14 @@
+2026-05-04 - org-admin-001 phase 2 Editorial organization plan picker and setup form
+
+- Completed Phase 2 from `.qrspi/org-admin-001/structure.md`: `/organizations/new` now renders a real protected Editorial organization creation plan picker and setup form without marking `org-admin-001.build_pass=true`.
+- Replaced the placeholder with `OrganizationCreatePage`, including Free/Team/Enterprise plan cards, Free-only progression, disabled paid plans, normalized organization URL preview, authenticated live slug availability, contact email, ownership radio group, conditional company name, terms checkbox, Back/Cancel controls, and a disabled Phase 3 Create handoff until submit wiring is built.
+- Added typed frontend organization availability helpers and a same-origin `/organizations/new/slug-availability` route that forwards the browser check to the Rust API with the current session cookie.
+- Fixed the Rust `organization_slug_availability` available-slug path so no existing user/org returns an available result instead of surfacing `RowNotFound` as an internal error.
+- Added focused Vitest and Playwright coverage for plan state, live availability, reserved-name feedback, conditional business field, terms gating, no dead controls, mobile no-overflow, and screenshot `ralph/screenshots/build/org-admin-001-phase2-plan-picker.jpg`.
+- Verification passed: focused `organization-create-page` Vitest, focused Biome, web TypeScript, `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`, `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 365 web tests, focused Playwright `organization-create.spec.ts`, full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false SESSION_SECRET=playwright-session-secret-with-enough-entropy SESSION_COOKIE_NAME=og_session DASHBOARD_E2E_SKIP_MIGRATIONS=1 make test-e2e` with 111 Playwright tests, and mandatory Editorial banned-value scan.
+- For browser smoke, applied existing additive migration `202605040010_organization_create_flow.up.sql` to the shared local test DB because the Playwright DB did not yet have `reserved_slugs`; future phases should keep using the skip-migrations seed path until the known dirty `202605030041` local history is resolved.
+- Marked Phase 2 as done in `.qrspi/org-admin-001/structure.md`; `prd.json` remains `build_pass:false` because Phases 3-5 remain.
+
 2026-05-04 - credentials-002 phase 4 commit and git authentication integration
 
 - Completed Phase 4 from `.qrspi/credentials-002/structure.md`: stored SSH/GPG keys now feed backend integration helpers and visible commit/tag signature presentation without marking `credentials-002.build_pass=true`.

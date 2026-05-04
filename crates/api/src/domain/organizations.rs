@@ -398,7 +398,7 @@ pub async fn organization_slug_availability(
     }
 
     if reason.is_none() {
-        existing_kind = sqlx::query_scalar::<_, Option<String>>(
+        existing_kind = sqlx::query_scalar::<_, String>(
             r#"
             SELECT existing_kind FROM (
                 SELECT 'organization'::text AS existing_kind
@@ -413,7 +413,7 @@ pub async fn organization_slug_availability(
             "#,
         )
         .bind(&normalized_slug)
-        .fetch_one(pool)
+        .fetch_optional(pool)
         .await?;
         if existing_kind.is_some() {
             reason = Some("This organization slug is already taken.".to_owned());

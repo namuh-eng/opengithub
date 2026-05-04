@@ -2119,6 +2119,15 @@ export type RepositoryNameAvailability = {
   reason: string | null;
 };
 
+export type OrganizationSlugAvailability = {
+  requestedName: string;
+  normalizedSlug: string;
+  available: boolean;
+  reason: string | null;
+  reserved: boolean;
+  existingKind: string | null;
+};
+
 export type CreateRepositoryRequest = {
   ownerType: RepositoryOwnerType;
   ownerId: string;
@@ -8617,6 +8626,35 @@ export async function getRepositoryNameAvailabilityFromCookie(
   }
 
   return (await response.json()) as RepositoryNameAvailability;
+}
+
+export function organizationSlugAvailabilityPath(name: string): string {
+  const params = new URLSearchParams({ name });
+  return `/api/organizations/slug-availability?${params.toString()}`;
+}
+
+export async function getOrganizationSlugAvailabilityFromCookie(
+  cookie: string | null | undefined,
+  name: string,
+): Promise<OrganizationSlugAvailability | null> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}${organizationSlugAvailabilityPath(name)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return null;
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return (await response.json()) as OrganizationSlugAvailability;
 }
 
 export async function createRepositoryFromCookie(

@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial Plan Picker and Setup Form - render the protected flow with live slug validation
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace `/organizations/new` placeholder with the real Editorial two-step flow. The first step shows Free, Team, and Enterprise plan cards; Free opens the setup form, while paid plans are disabled/info-only. The setup form derives a slug preview as the user types and validates availability through the Phase 1 endpoint without submitting.
 

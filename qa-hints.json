@@ -4612,5 +4612,26 @@
       "Confirm organization audit metadata and request logs never include raw contact email or company details beyond intended organization profile fields.",
       "Run real browser create flow after Phase 3 wires the form submission and redirect."
     ]
+  },
+  {
+    "feature_id": "org-admin-001",
+    "tests_written": [
+      "Completed Phase 2 Editorial Plan Picker and Setup Form without marking org-admin-001 build_pass=true.",
+      "Replaced /organizations/new placeholder with a protected AppShell-backed two-step Editorial organization creation surface.",
+      "Added Free, Team, and Enterprise plan cards; Free opens setup, paid plans are disabled/info-only.",
+      "Added setup form fields for organization name, live normalized URL preview, authenticated slug availability, contact email, personal/business ownership, conditional company name, terms checkbox, Back/Cancel controls, and disabled Create organization handoff for Phase 3.",
+      "Added same-origin /organizations/new/slug-availability route and typed frontend availability helpers over the Rust API.",
+      "Fixed the Rust organization_slug_availability available-slug path so no existing user/org returns available instead of RowNotFound/internal_error.",
+      "Focused Vitest covers plan state, Free CTA, disabled paid plans, live slug normalization/availability, reserved slug rendering, conditional company field, terms gating, no inert anchors/buttons, and Editorial guardrails.",
+      "Focused Playwright smoke covers signed-in plan picker, setup form, available/reserved slug feedback, business field, terms checkbox, no dead controls, mobile no-overflow, and screenshot ralph/screenshots/build/org-admin-001-phase2-plan-picker.jpg.",
+      "Verification passed: focused Vitest, focused Biome, web TypeScript, make check, make test with Cargo tests plus 365 web tests, focused Playwright organization create smoke, full make test-e2e with 111 Playwright tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 must verify real POST /api/organizations form submission, redirect to the created org route, duplicate-submit handling, and persisted app-shell organization navigation.",
+      "Probe slug availability with collisions against private users/orgs, punctuation-heavy names, Unicode input, long names near 39 characters, and rapid typing/abort races.",
+      "Run accessibility traversal on the plan picker, radio group, terms checkbox, inline availability status, form error summary, and mobile layout.",
+      "Confirm availability and validation failures never disclose private organization/user details beyond generic reserved/taken copy.",
+      "Recheck local test DB migration drift before future full-suite E2E; this smoke required applying existing 202605040010_organization_create_flow.up.sql to opengithub_identity_test."
+    ]
   }
 ]
