@@ -502,5 +502,35 @@ describe("RepositoryCommitDetailPage", () => {
     );
     expect(source).not.toContain('href="#"');
     expect(source).not.toContain("onClick={() => {}}");
+    expect(source).not.toContain("dangerouslySetInnerHTML");
+    expect(source).toContain("var(--accent-soft)");
+    expect(source).toContain("var(--ok)");
+    expect(source).toContain("var(--err)");
+  });
+
+  it("keeps semantic chips and accessible diff controls for final QA", () => {
+    render(<RepositoryCommitDetailPage detail={commitDetail()} />);
+
+    expect(screen.getByText("Verified")).toHaveClass("chip", "ok");
+    expect(screen.getByRole("link", { name: "3 checks passed" })).toHaveClass(
+      "chip",
+      "ok",
+    );
+    expect(screen.getByText("Modified")).toHaveClass("chip", "soft");
+    expect(screen.getByText("Added")).toHaveClass("chip", "soft");
+    expect(
+      screen.getByRole("textbox", { name: "Filter files" }),
+    ).toHaveAttribute("placeholder", "Path or filename");
+    expect(
+      screen.getByRole("textbox", { name: "Search within code" }),
+    ).toHaveAttribute("placeholder", "Function, selector, or text");
+    expect(
+      screen.getByRole("button", { name: "Expand all lines" }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole("article", {
+        name: /Diff for crates\/api\/src\/routes\/repositories.rs/,
+      }),
+    ).toHaveAttribute("tabindex", "-1");
   });
 });

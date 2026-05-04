@@ -942,6 +942,112 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-commit-detail",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/commits/{sha}",
+    title: "Repository commit detail",
+    description:
+      "Returns the screen-ready commit detail contract for the commit summary, parent/branch/PR links, status and signature chips, file tree, bounded unified diffs, Raw/View file actions, and binary or large-file placeholders.",
+    auth: "Signed opengithub session cookie with repository read access",
+    response: `{
+  "repository": {
+    "ownerLogin": "mona",
+    "name": "octo-app",
+    "defaultBranch": "main",
+    "visibility": "public",
+    "href": "/mona/octo-app",
+    "commitHistoryHref": "/mona/octo-app/commits/main"
+  },
+  "commit": {
+    "oid": "abcdef1234567890",
+    "shortOid": "abcdef1",
+    "subject": "Refactor router",
+    "body": "Move repository routes behind typed handlers.",
+    "href": "/mona/octo-app/commit/abcdef1234567890",
+    "browseHref": "/mona/octo-app/tree/abcdef1234567890",
+    "committedAt": "2026-04-30T00:00:00Z",
+    "authorLogin": "mona"
+  },
+  "parents": [{ "oid": "1234567890abcdef", "href": "/mona/octo-app/commit/1234567890abcdef" }],
+  "branches": [{ "name": "main", "href": "/mona/octo-app/commits/main" }],
+  "pullRequests": [{ "number": 12, "href": "/mona/octo-app/pull/12", "state": "merged" }],
+  "status": {
+    "status": "completed",
+    "conclusion": "success",
+    "totalCount": 3,
+    "completedCount": 3,
+    "failedCount": 0,
+    "href": "/mona/octo-app/actions?commit=abcdef1234567890"
+  },
+  "verification": {
+    "verified": true,
+    "signatureState": "verified",
+    "signatureSummary": "Verified signature from an active GPG key."
+  },
+  "diffSummary": { "totalFiles": 2, "additions": 12, "deletions": 4 },
+  "fileTree": [
+    {
+      "path": "src/router.rs",
+      "status": "modified",
+      "additions": 8,
+      "deletions": 2,
+      "href": "#diff-src-router-rs"
+    }
+  ],
+  "files": [
+    {
+      "path": "src/router.rs",
+      "status": "modified",
+      "rawHref": "/mona/octo-app/raw/abcdef1234567890/src/router.rs",
+      "viewHref": "/mona/octo-app/blob/abcdef1234567890/src/router.rs",
+      "isBinary": false,
+      "isLarge": false,
+      "hunks": [
+        {
+          "id": "diff-src-router-rs-hunk-1",
+          "header": "@@ -1,2 +1,2 @@ src/router.rs",
+          "lines": [{ "kind": "context", "oldLine": 1, "newLine": 1, "content": "pub fn routes() {" }]
+        }
+      ]
+    }
+  ]
+}`,
+    notes: [
+      "sha accepts an exact OID or an unambiguous abbreviation; malformed, missing, or ambiguous SHAs return stable validation/not_found envelopes without leaking private commit OIDs.",
+      "Private repositories require read access. Anonymous callers receive 401, unauthorized signed-in callers receive 403, and private-repository not-found responses are redacted.",
+      "Root commits return an empty parents array; merge commits return every parent link in commit order.",
+      "Binary and large files keep concrete Raw/View file actions while omitting inline hunks behind truthful bounded placeholders.",
+      "Status, signature, linked pull request, and branch/tag joins are presentation data only; raw check logs, signing keys, session rows, tokens, and stack traces are never included.",
+      "Successful reads may record repository_commit_recent_visits for the signed-in viewer without exposing that telemetry in the public response.",
+    ],
+  },
+  {
+    id: "repo-commit-detail-context",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/commits/{sha}/context?path=src/router.rs&hunkId=diff-src-router-rs-hunk-1&contextLines=80",
+    title: "Repository commit diff context",
+    description:
+      "Expands one commit-detail diff hunk with a bounded context window for the browser Expand all lines control.",
+    auth: "Signed opengithub session cookie with repository read access",
+    response: `{
+  "path": "src/router.rs",
+  "hunkId": "diff-src-router-rs-hunk-1",
+  "expanded": true,
+  "message": "Expanded context lines loaded.",
+  "lines": [
+    { "kind": "context", "oldLine": 1, "newLine": 1, "content": "pub fn routes() {" },
+    { "kind": "removed", "oldLine": 2, "newLine": null, "content": "  todo!()" },
+    { "kind": "added", "oldLine": null, "newLine": 2, "content": "  commit_detail()" }
+  ]
+}`,
+    notes: [
+      "path and hunkId must address a hunk already visible in the commit-detail response; invalid combinations return validation_failed.",
+      "contextLines is clamped server-side to a bounded window so large or generated files cannot force an unbounded diff response.",
+      "The same repository visibility, SHA resolution, private-access redaction, and no-secret error-envelope rules as the commit-detail endpoint apply.",
+      "The Next.js same-origin proxy forwards the current Rust session cookie so browser expansion never relies on client-side auth libraries.",
+    ],
+  },
+  {
     id: "repo-settings-read",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/settings",

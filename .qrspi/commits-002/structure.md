@@ -74,7 +74,7 @@
 
 ## Phase 5: API Docs, Browser QA Handoff, and Build Pass
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `commits-002` with API documentation, final browser evidence, QA handoff notes, full regression checks, and `prd.json` bookkeeping. This phase only marks the feature complete after the summary, diff, filters, search, expansion, copy, browse, parent, status, and raw/view controls are all live.
 

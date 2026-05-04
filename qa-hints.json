@@ -5185,5 +5185,21 @@
       "Probe keyboard and screen-reader traversal through Expand all lines, Raw/View file links, and binary/large placeholders on desktop and mobile.",
       "The make test-e2e wrapper silently stalled again and was terminated; direct full Playwright completed 123 tests successfully."
     ]
+  },
+  {
+    "feature_id": "commits-002",
+    "tests_written": [
+      "Completed Phase 5 API Docs, Browser QA Handoff, and Build Pass and marked commits-002 build_pass=true.",
+      "Documented GET /api/repos/{owner}/{repo}/commits/{sha} and GET /api/repos/{owner}/{repo}/commits/{sha}/context in /docs/api, including response shapes, SHA resolution, auth/privacy behavior, binary/large placeholders, context bounds, telemetry, and secret redaction rules.",
+      "Extended API docs and commit-detail component tests for endpoint coverage, semantic chips, accessible diff controls, no banned GitHub visual values/imports, no dead anchors, no inert click handlers, and safe mark-based search rendering.",
+      "Extended Playwright commit-detail smoke to save final expanded-context and mobile no-overflow screenshots while exercising summary links, copy SHA, file tree focus, filter, code search, context expansion, and Raw/View file links."
+    ],
+    "needs_deeper_qa": [
+      "Repeat with a real Google OAuth session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Stress imported repositories with true Git rename detection, deleted files, binary blobs, very large generated files, merge commits with multiple parents, ambiguous abbreviated SHAs, mixed check conclusions, and signed/untrusted signatures.",
+      "Probe rapid context expansion across many hunks and verify server-side contextLines clamping under large diffs.",
+      "Run keyboard-only and screen-reader traversal through the file tree, search results, Expand all lines, Raw/View links, status chips, and binary/large placeholders on desktop and mobile.",
+      "Re-run the Rust contract against a clean migrated database after the shared local migration drift is resolved."
+    ]
   }
 ]

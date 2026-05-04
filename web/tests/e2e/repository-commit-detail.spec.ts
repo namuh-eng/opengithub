@@ -170,6 +170,17 @@ test("signed-in commit detail renders summary controls and unified diff", async 
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/commits-002-phase4-expanded-context.jpg",
+    path: "../ralph/screenshots/build/commits-002-final-expanded-context.jpg",
+  });
+
+  await page.setViewportSize({ width: 390, height: 900 });
+  await expect(page.locator("body")).toBeVisible();
+  const horizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth + 2,
+  );
+  expect(horizontalOverflow).toBe(false);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/commits-002-final-mobile.jpg",
   });
 });

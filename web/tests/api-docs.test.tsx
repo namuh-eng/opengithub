@@ -14,7 +14,7 @@ describe("ApiDocsPage", () => {
         name: "Build against implemented opengithub APIs",
       }),
     ).toBeVisible();
-    expect(apiEndpointDocs.length).toBeGreaterThanOrEqual(49);
+    expect(apiEndpointDocs.length).toBeGreaterThanOrEqual(51);
 
     for (const endpoint of apiEndpointDocs) {
       const card = screen
@@ -455,6 +455,52 @@ describe("ApiDocsPage", () => {
     ).toBeGreaterThan(0);
     expect(
       screen.getByText(/raw check logs, signing keys, and secret material/),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/commits/{sha}"),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Repository commit detail" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /file tree, bounded unified diffs, Raw\/View file actions/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /sha accepts an exact OID or an unambiguous abbreviation/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Root commits return an empty parents array/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Binary and large files keep concrete Raw\/View file actions/,
+      ),
+    ).toBeVisible();
+    expect(screen.getByText(/repository_commit_recent_visits/)).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/commits/{sha}/context?path=src/router.rs&hunkId=diff-src-router-rs-hunk-1&contextLines=80",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Repository commit diff context",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Expands one commit-detail diff hunk/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/contextLines is clamped server-side/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /same-origin proxy forwards the current Rust session cookie/,
+      ),
     ).toBeVisible();
     expect(
       screen.getByText(
