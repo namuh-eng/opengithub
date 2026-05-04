@@ -70,6 +70,7 @@ use crate::{
         repository_commit_detail_for_actor_by_owner_name,
         repository_commit_history_for_actor_by_owner_name,
         repository_contributors_for_actor_by_owner_name, repository_creation_options,
+        repository_dependencies_for_actor_by_owner_name,
         repository_file_finder_for_actor_by_owner_name, repository_forks_for_actor_by_owner_name,
         repository_name_availability, repository_network_for_actor_by_owner_name,
         repository_overview_for_viewer_by_owner_name,
@@ -85,10 +86,11 @@ use crate::{
         RepositoryAccessInviteRequest, RepositoryAccessRolePatch, RepositoryAccessTeamGrantRequest,
         RepositoryBootstrapRequest, RepositoryBranchRuleMutation, RepositoryBranchesQuery,
         RepositoryCommitDetailContextQuery, RepositoryCommitHistoryQuery,
-        RepositoryContributorsQuery, RepositoryError, RepositoryFileFinderQuery,
-        RepositoryForksQuery, RepositoryOwner, RepositoryPathQuery, RepositoryPulseQuery,
-        RepositoryRefsQuery, RepositoryRulesetMutation, RepositorySettingsPatch,
-        RepositoryTrafficQuery, RepositoryVisibility, RepositoryWatchSettingsPatch,
+        RepositoryContributorsQuery, RepositoryDependencyQuery, RepositoryError,
+        RepositoryFileFinderQuery, RepositoryForksQuery, RepositoryOwner, RepositoryPathQuery,
+        RepositoryPulseQuery, RepositoryRefsQuery, RepositoryRulesetMutation,
+        RepositorySettingsPatch, RepositoryTrafficQuery, RepositoryVisibility,
+        RepositoryWatchSettingsPatch,
     },
     domain::webhooks::{
         create_repository_webhook_by_owner_name, delete_repository_webhook_by_owner_name,
@@ -120,6 +122,7 @@ pub fn router() -> Router<AppState> {
         .route("/:owner/:repo/pulse", get(pulse))
         .route("/:owner/:repo/graphs/contributors", get(contributors))
         .route("/:owner/:repo/graphs/traffic", get(traffic))
+        .route("/:owner/:repo/network/dependencies", get(dependencies))
         .route("/:owner/:repo/network", get(network))
         .route("/:owner/:repo/forks/defaults", put(save_fork_defaults))
         .route("/:owner/:repo/refs", get(refs))
@@ -410,6 +413,14 @@ struct ForksQuery {
     #[serde(alias = "type")]
     repository_type: Option<String>,
     sort: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DependenciesQuery {
+    q: Option<String>,
+    ecosystem: Option<String>,
+    relationship: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -926,6 +937,38 @@ async fn traffic(
         &owner,
         &repo,
         RepositoryTrafficQuery,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn dependencies(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<DependenciesQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = repository_dependencies_for_actor_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        RepositoryDependencyQuery {
+            query: query.q.as_deref(),
+            ecosystem: query.ecosystem.as_deref(),
+            relationship: query.relationship.as_deref(),
+        },
     )
     .await
     .map_err(map_repository_error)?
@@ -2643,6 +2686,12 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
                 "countsVisible": false,
             }),
         ),
+        RepositoryError::DependencyGraphUnavailable(reason) => error_response_with_details(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "dependency_graph_unavailable",
+            "Repository dependency graph is unavailable.".to_owned(),
+            json!({ "reason": reason }),
+        ),
         RepositoryError::OrganizationRepositoryCreationPolicy {
             visibility,
             reason,
@@ -2717,6 +2766,7 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         | RepositoryError::InvalidPulseQuery(_)
         | RepositoryError::InvalidContributorsQuery(_)
         | RepositoryError::InvalidForksQuery(_)
+        | RepositoryError::InvalidDependencyGraphQuery(_)
         | RepositoryError::InvalidDiffContext(_)
         | RepositoryError::MergeMethodRequired
         | RepositoryError::DefaultMergeMethodDisabled

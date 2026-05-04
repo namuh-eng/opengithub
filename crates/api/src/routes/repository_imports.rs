@@ -201,6 +201,7 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         | RepositoryError::InvalidPulseQuery(_)
         | RepositoryError::InvalidContributorsQuery(_)
         | RepositoryError::InvalidForksQuery(_)
+        | RepositoryError::InvalidDependencyGraphQuery(_)
         | RepositoryError::InvalidDiffContext(_)
         | RepositoryError::MergeMethodRequired
         | RepositoryError::DefaultMergeMethodDisabled
@@ -208,6 +209,7 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         | RepositoryError::UnknownTemplate(_)
         | RepositoryError::UnknownGitignoreTemplate(_)
         | RepositoryError::UnknownLicenseTemplate(_)
+        | RepositoryError::DependencyGraphUnavailable(_)
         | RepositoryError::TeamAccessUnsupported => error_response(
             StatusCode::UNPROCESSABLE_ENTITY,
             "validation_failed",

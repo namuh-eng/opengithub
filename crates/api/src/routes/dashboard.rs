@@ -207,6 +207,7 @@ fn map_dashboard_error(error: DashboardError) -> (StatusCode, Json<ErrorEnvelope
         | DashboardError::Repositories(RepositoryError::InvalidPulseQuery(_))
         | DashboardError::Repositories(RepositoryError::InvalidContributorsQuery(_))
         | DashboardError::Repositories(RepositoryError::InvalidForksQuery(_))
+        | DashboardError::Repositories(RepositoryError::InvalidDependencyGraphQuery(_))
         | DashboardError::Repositories(RepositoryError::InvalidDiffContext(_))
         | DashboardError::Repositories(RepositoryError::MergeMethodRequired)
         | DashboardError::Repositories(RepositoryError::DefaultMergeMethodDisabled)
@@ -215,6 +216,7 @@ fn map_dashboard_error(error: DashboardError) -> (StatusCode, Json<ErrorEnvelope
         | DashboardError::Repositories(RepositoryError::UnknownGitignoreTemplate(_))
         | DashboardError::Repositories(RepositoryError::UnknownLicenseTemplate(_))
         | DashboardError::Repositories(RepositoryError::TeamAccessUnsupported)
+        | DashboardError::Repositories(RepositoryError::DependencyGraphUnavailable(_))
         | DashboardError::Onboarding(OnboardingError::BlankHintKey) => error_response(
             StatusCode::UNPROCESSABLE_ENTITY,
             "validation_failed",

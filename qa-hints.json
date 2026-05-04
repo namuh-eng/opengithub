@@ -5626,5 +5626,22 @@
       "Stress large fork networks beyond 50 readable forks to confirm projection ordering, truncation clarity, and browser performance with realistic data volumes.",
       "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema."
     ]
+  },
+  {
+    "feature_id": "insights-005",
+    "tests_written": [
+      "Completed Phase 1 Dependencies API Contract and Extraction Storage without marking insights-005 build_pass=true.",
+      "Added additive dependency graph storage for manifests, packages, repository dependency rows, advisories, dependents, and SBOM export records.",
+      "Added GET /api/repos/{owner}/{repo}/network/dependencies with signed-session auth, repository read permission, private repository 404 privacy, query/ecosystem/relationship validation, screen-ready dependency rows, ecosystem counts, manifest metadata, availability, freshness, and SBOM export affordance metadata.",
+      "Implemented deterministic extraction from real default-branch repository_files for package.json/package-lock.json, Cargo.toml/Cargo.lock, and requirements.txt instead of mock rows.",
+      "Added focused Rust contract coverage that seeds real repository files and verifies extraction, direct/transitive rows, ecosystem filtering, search filtering, HTTP auth, private repository privacy, invalid filters, and no private path leakage."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 still needs the Editorial /{owner}/{repo}/network/dependencies UI, URL-backed filters, row menus, empty/unavailable states, browser smoke, and screenshot evidence.",
+      "Phase 3 still needs real SBOM export job creation, artifact download, audit metadata, and browser feedback states.",
+      "Phase 4 still needs Dependents API/page filters, public-only dependent repository visibility, owner/package narrowing, and warning disclosure coverage.",
+      "Dependency extraction is intentionally bounded to npm, Cargo, and pip manifests in Phase 1; malformed manifests and additional ecosystems need final edge-case coverage in Phase 5.",
+      "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema after manually applying the additive Phase 1 migration."
+    ]
   }
 ]

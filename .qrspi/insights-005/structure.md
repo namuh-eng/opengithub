@@ -6,7 +6,7 @@
 
 ## Phase 1: Dependencies API Contract and Extraction Storage - screen-ready dependency rows
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the repository-owned dependency graph read model and default Dependencies API without rendering the page yet. `GET /api/repos/{owner}/{repo}/network/dependencies` should return supported manifest/lockfile metadata, package rows, direct/transitive relationship state, ecosystem counts, advisory/detail hrefs, dependency-graph availability, and export affordance metadata. Extraction should index existing repository file contents from the default branch for the first supported ecosystems instead of using mock rows.
 

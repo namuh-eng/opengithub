@@ -1253,6 +1253,121 @@ pub struct RepositoryForksView {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct RepositoryDependenciesView {
+    pub repository: RepositoryNetworkRepository,
+    pub filters: RepositoryDependencyFilters,
+    pub summary: RepositoryDependencySummary,
+    pub manifests: Vec<RepositoryDependencyManifest>,
+    pub dependencies: Vec<RepositoryDependencyRow>,
+    pub availability: RepositoryDependencyGraphAvailability,
+    pub export: RepositoryDependencyExportState,
+    pub links: RepositoryDependencyLinks,
+    pub freshness: RepositoryNetworkFreshness,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryDependencyFilters {
+    pub query: Option<String>,
+    pub ecosystem: Option<String>,
+    pub relationship: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryDependencySummary {
+    pub total: i64,
+    pub direct_count: i64,
+    pub transitive_count: i64,
+    pub ecosystem_counts: Vec<RepositoryDependencyEcosystemCount>,
+    pub manifest_count: i64,
+    pub advisory_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryDependencyEcosystemCount {
+    pub ecosystem: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryDependencyManifest {
+    pub id: Uuid,
+    pub path: String,
+    pub ecosystem: String,
+    pub lockfile_path: Option<String>,
+    pub dependency_count: i64,
+    pub detected_at: DateTime<Utc>,
+    pub href: String,
+    pub lockfile_href: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryDependencyPackage {
+    pub id: Uuid,
+    pub ecosystem: String,
+    pub name: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryDependencyAdvisorySummary {
+    pub identifier: String,
+    pub severity: String,
+    pub title: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryDependencyRow {
+    pub id: Uuid,
+    pub package: RepositoryDependencyPackage,
+    pub version: Option<String>,
+    pub relationship: String,
+    pub license: Option<String>,
+    pub manifest_path: String,
+    pub manifest_href: String,
+    pub lockfile_path: Option<String>,
+    pub lockfile_href: Option<String>,
+    pub detected_at: DateTime<Utc>,
+    pub advisories: Vec<RepositoryDependencyAdvisorySummary>,
+    pub details_href: String,
+    pub advisory_href: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryDependencyGraphAvailability {
+    pub enabled: bool,
+    pub indexed: bool,
+    pub supported_ecosystems: Vec<String>,
+    pub message: String,
+    pub unavailable_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryDependencyExportState {
+    pub supported: bool,
+    pub href: String,
+    pub latest_status: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryDependencyLinks {
+    pub dependencies_href: String,
+    pub dependents_href: String,
+    pub export_sbom_href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct RepositoryForkFilters {
     pub period: RepositoryForkPeriod,
     pub repository_type: RepositoryForkType,
@@ -1569,6 +1684,13 @@ pub struct RepositoryForksQuery<'a> {
     pub period: Option<&'a str>,
     pub repository_type: Option<&'a str>,
     pub sort: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RepositoryDependencyQuery<'a> {
+    pub query: Option<&'a str>,
+    pub ecosystem: Option<&'a str>,
+    pub relationship: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -2093,6 +2215,10 @@ pub enum RepositoryError {
     InvalidContributorsQuery(String),
     #[error("invalid repository forks query: {0}")]
     InvalidForksQuery(String),
+    #[error("invalid repository dependency graph query: {0}")]
+    InvalidDependencyGraphQuery(String),
+    #[error("repository dependency graph is unavailable: {0}")]
+    DependencyGraphUnavailable(String),
     #[error("user needs push access to view repository traffic")]
     TrafficAccessDenied,
     #[error("invalid commit diff context: {0}")]
@@ -2631,6 +2757,37 @@ pub async fn repository_forks_for_actor_by_owner_name(
     repository_forks_for_repository(pool, &repository, actor_user_id, query)
         .await
         .map(Some)
+}
+
+pub async fn repository_dependencies_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    query: RepositoryDependencyQuery<'_>,
+) -> Result<Option<RepositoryDependenciesView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    repository_dependencies_for_repository(pool, &repository, actor_user_id, query)
+        .await
+        .map(Some)
+}
+
+pub async fn extract_repository_dependencies(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<(), RepositoryError> {
+    let repository = get_repository(pool, repository_id)
+        .await?
+        .ok_or(RepositoryError::NotFound)?;
+    extract_repository_dependencies_for_repository(pool, &repository).await
 }
 
 pub async fn save_repository_fork_defaults_by_owner_name(
@@ -9136,6 +9293,761 @@ async fn repository_forks_for_repository(
         freshness,
         links: repository_network_links(repository),
     })
+}
+
+async fn repository_dependencies_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    query: RepositoryDependencyQuery<'_>,
+) -> Result<RepositoryDependenciesView, RepositoryError> {
+    let filters = normalize_dependency_filters(query)?;
+    extract_repository_dependencies_for_repository(pool, repository).await?;
+    let viewer_permission = viewer_permission_for_user(pool, repository, actor_user_id)
+        .await?
+        .unwrap_or_else(|| "read".to_owned());
+    let manifests = repository_dependency_manifests(pool, repository).await?;
+    let mut dependencies = repository_dependency_rows(pool, repository).await?;
+
+    if let Some(ecosystem) = filters.ecosystem.as_deref() {
+        dependencies.retain(|row| row.package.ecosystem == ecosystem);
+    }
+    if let Some(relationship) = filters.relationship.as_deref() {
+        dependencies.retain(|row| row.relationship == relationship);
+    }
+    if let Some(query) = filters.query.as_deref() {
+        let needle = query.to_lowercase();
+        dependencies.retain(|row| {
+            row.package.name.to_lowercase().contains(&needle)
+                || row
+                    .version
+                    .as_deref()
+                    .unwrap_or_default()
+                    .to_lowercase()
+                    .contains(&needle)
+                || row.manifest_path.to_lowercase().contains(&needle)
+        });
+    }
+
+    let summary = repository_dependency_summary(&dependencies, manifests.len() as i64);
+    let export_href = format!(
+        "/api/repos/{}/{}/network/dependencies/sbom",
+        percent_encode_segment(&repository.owner_login),
+        percent_encode_segment(&repository.name)
+    );
+    let freshness =
+        record_repository_dependency_snapshot(pool, repository.id, dependencies.len() as i64)
+            .await?;
+    let indexed = !manifests.is_empty();
+
+    Ok(RepositoryDependenciesView {
+        repository: repository_network_repository(
+            pool,
+            repository,
+            actor_user_id,
+            viewer_permission,
+        )
+        .await?,
+        filters,
+        summary,
+        manifests,
+        dependencies,
+        availability: RepositoryDependencyGraphAvailability {
+            enabled: true,
+            indexed,
+            supported_ecosystems: vec!["npm".to_owned(), "cargo".to_owned(), "pip".to_owned()],
+            message: if indexed {
+                "Dependency graph is indexed from supported manifest and lock files.".to_owned()
+            } else {
+                "No supported dependency manifest was found on the default branch.".to_owned()
+            },
+            unavailable_reason: None,
+        },
+        export: RepositoryDependencyExportState {
+            supported: indexed,
+            href: export_href.clone(),
+            latest_status: repository_latest_sbom_status(pool, repository.id).await?,
+        },
+        links: RepositoryDependencyLinks {
+            dependencies_href: format!(
+                "/{}/{}/network/dependencies",
+                repository.owner_login, repository.name
+            ),
+            dependents_href: format!(
+                "/{}/{}/network/dependents",
+                repository.owner_login, repository.name
+            ),
+            export_sbom_href: export_href,
+        },
+        freshness,
+    })
+}
+
+#[derive(Debug, Clone)]
+struct ExtractedDependency {
+    ecosystem: &'static str,
+    name: String,
+    version: Option<String>,
+    relationship: &'static str,
+    license: Option<String>,
+    manifest_path: String,
+    lockfile_path: Option<String>,
+}
+
+async fn extract_repository_dependencies_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+) -> Result<(), RepositoryError> {
+    let resolved_ref =
+        resolve_repository_ref(pool, repository, Some(&repository.default_branch)).await?;
+    let files = list_repository_files_for_resolved_ref(pool, repository.id, &resolved_ref).await?;
+    let mut extracted = Vec::new();
+    extracted.extend(extract_npm_dependencies(&files));
+    extracted.extend(extract_cargo_dependencies(&files));
+    extracted.extend(extract_pip_dependencies(&files));
+
+    sqlx::query(
+        r#"
+        DELETE FROM dependency_manifests
+        WHERE repository_id = $1
+        "#,
+    )
+    .bind(repository.id)
+    .execute(pool)
+    .await?;
+
+    let mut by_manifest: BTreeMap<
+        (String, &'static str, Option<String>),
+        Vec<ExtractedDependency>,
+    > = BTreeMap::new();
+    for dependency in extracted {
+        by_manifest
+            .entry((
+                dependency.manifest_path.clone(),
+                dependency.ecosystem,
+                dependency.lockfile_path.clone(),
+            ))
+            .or_default()
+            .push(dependency);
+    }
+
+    for ((manifest_path, ecosystem, lockfile_path), dependencies) in by_manifest {
+        let manifest_id = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            INSERT INTO dependency_manifests (
+                repository_id, path, ecosystem, lockfile_path, dependency_count, detected_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, now(), now())
+            RETURNING id
+            "#,
+        )
+        .bind(repository.id)
+        .bind(&manifest_path)
+        .bind(ecosystem)
+        .bind(&lockfile_path)
+        .bind(dependencies.len() as i64)
+        .fetch_one(pool)
+        .await?;
+
+        for dependency in dependencies {
+            let package_id =
+                dependency_package_id(pool, dependency.ecosystem, &dependency.name).await?;
+            sqlx::query(
+                r#"
+                INSERT INTO repository_dependencies (
+                    repository_id, manifest_id, package_id, package_version, relationship,
+                    license, lockfile_path, detected_at, updated_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, now(), now())
+                "#,
+            )
+            .bind(repository.id)
+            .bind(manifest_id)
+            .bind(package_id)
+            .bind(&dependency.version)
+            .bind(dependency.relationship)
+            .bind(&dependency.license)
+            .bind(&dependency.lockfile_path)
+            .execute(pool)
+            .await?;
+        }
+    }
+
+    Ok(())
+}
+
+async fn dependency_package_id(
+    pool: &PgPool,
+    ecosystem: &str,
+    name: &str,
+) -> Result<Uuid, RepositoryError> {
+    if let Some(id) = sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM dependency_packages WHERE ecosystem = $1 AND lower(name) = lower($2)",
+    )
+    .bind(ecosystem)
+    .bind(name)
+    .fetch_optional(pool)
+    .await?
+    {
+        return Ok(id);
+    }
+
+    let href = dependency_package_href(ecosystem, name);
+    sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO dependency_packages (ecosystem, name, package_href, created_at, updated_at)
+        VALUES ($1, $2, $3, now(), now())
+        RETURNING id
+        "#,
+    )
+    .bind(ecosystem)
+    .bind(name)
+    .bind(href)
+    .fetch_one(pool)
+    .await
+    .map_err(RepositoryError::from)
+}
+
+fn extract_npm_dependencies(files: &[RepositoryFile]) -> Vec<ExtractedDependency> {
+    let mut result = Vec::new();
+    for manifest in files
+        .iter()
+        .filter(|file| file.path.ends_with("package.json"))
+    {
+        let lockfile_path = sibling_path(&manifest.path, "package-lock.json")
+            .filter(|path| files.iter().any(|file| file.path == *path));
+        let direct_names = npm_manifest_dependencies(&manifest.content);
+        for (name, version) in &direct_names {
+            result.push(ExtractedDependency {
+                ecosystem: "npm",
+                name: name.clone(),
+                version: version.clone(),
+                relationship: "direct",
+                license: None,
+                manifest_path: manifest.path.clone(),
+                lockfile_path: lockfile_path.clone(),
+            });
+        }
+        if let Some(lockfile_path) = lockfile_path.as_deref() {
+            if let Some(lockfile) = files.iter().find(|file| file.path == lockfile_path) {
+                for dependency in npm_lockfile_dependencies(
+                    &lockfile.content,
+                    &direct_names.keys().cloned().collect::<BTreeSet<_>>(),
+                ) {
+                    result.push(ExtractedDependency {
+                        ecosystem: "npm",
+                        name: dependency.0,
+                        version: dependency.1,
+                        relationship: "transitive",
+                        license: dependency.2,
+                        manifest_path: manifest.path.clone(),
+                        lockfile_path: Some(lockfile.path.clone()),
+                    });
+                }
+            }
+        }
+    }
+    result
+}
+
+fn npm_manifest_dependencies(content: &str) -> BTreeMap<String, Option<String>> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(content) else {
+        return BTreeMap::new();
+    };
+    let mut deps = BTreeMap::new();
+    for section in [
+        "dependencies",
+        "devDependencies",
+        "optionalDependencies",
+        "peerDependencies",
+    ] {
+        let Some(object) = value.get(section).and_then(|value| value.as_object()) else {
+            continue;
+        };
+        for (name, version) in object {
+            if !name.trim().is_empty() {
+                deps.insert(name.clone(), version.as_str().map(str::to_owned));
+            }
+        }
+    }
+    deps
+}
+
+fn npm_lockfile_dependencies(
+    content: &str,
+    direct_names: &BTreeSet<String>,
+) -> Vec<(String, Option<String>, Option<String>)> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(content) else {
+        return Vec::new();
+    };
+    let Some(packages) = value.get("packages").and_then(|value| value.as_object()) else {
+        return Vec::new();
+    };
+    let mut result = BTreeMap::new();
+    for (path, package) in packages {
+        let Some(name) = path.strip_prefix("node_modules/") else {
+            continue;
+        };
+        if name.contains("/node_modules/") || direct_names.contains(name) {
+            continue;
+        }
+        let version = package
+            .get("version")
+            .and_then(|value| value.as_str())
+            .map(str::to_owned);
+        let license = package
+            .get("license")
+            .and_then(|value| value.as_str())
+            .map(str::to_owned);
+        result.insert(name.to_owned(), (name.to_owned(), version, license));
+    }
+    result.into_values().collect()
+}
+
+fn extract_cargo_dependencies(files: &[RepositoryFile]) -> Vec<ExtractedDependency> {
+    let mut result = Vec::new();
+    for manifest in files
+        .iter()
+        .filter(|file| file.path.ends_with("Cargo.toml"))
+    {
+        let lockfile_path = sibling_path(&manifest.path, "Cargo.lock")
+            .filter(|path| files.iter().any(|file| file.path == *path));
+        let direct_names = cargo_manifest_dependencies(&manifest.content);
+        for (name, version) in &direct_names {
+            result.push(ExtractedDependency {
+                ecosystem: "cargo",
+                name: name.clone(),
+                version: version.clone(),
+                relationship: "direct",
+                license: None,
+                manifest_path: manifest.path.clone(),
+                lockfile_path: lockfile_path.clone(),
+            });
+        }
+        if let Some(lockfile_path) = lockfile_path.as_deref() {
+            if let Some(lockfile) = files.iter().find(|file| file.path == lockfile_path) {
+                for (name, version) in cargo_lockfile_dependencies(&lockfile.content, &direct_names)
+                {
+                    result.push(ExtractedDependency {
+                        ecosystem: "cargo",
+                        name,
+                        version,
+                        relationship: "transitive",
+                        license: None,
+                        manifest_path: manifest.path.clone(),
+                        lockfile_path: Some(lockfile.path.clone()),
+                    });
+                }
+            }
+        }
+    }
+    result
+}
+
+fn cargo_manifest_dependencies(content: &str) -> BTreeMap<String, Option<String>> {
+    let mut deps = BTreeMap::new();
+    let mut in_dependencies = false;
+    for raw_line in content.lines() {
+        let line = raw_line.split('#').next().unwrap_or("").trim();
+        if line.starts_with('[') && line.ends_with(']') {
+            let section = line.trim_matches(&['[', ']'][..]);
+            in_dependencies = matches!(
+                section,
+                "dependencies" | "dev-dependencies" | "build-dependencies"
+            );
+            continue;
+        }
+        if !in_dependencies || line.is_empty() {
+            continue;
+        }
+        let Some((name, value)) = line.split_once('=') else {
+            continue;
+        };
+        let name = name.trim().trim_matches('"');
+        if name.is_empty() {
+            continue;
+        }
+        deps.insert(name.to_owned(), extract_quoted_version(value));
+    }
+    deps
+}
+
+fn cargo_lockfile_dependencies(
+    content: &str,
+    direct_names: &BTreeMap<String, Option<String>>,
+) -> Vec<(String, Option<String>)> {
+    let mut result = BTreeMap::new();
+    let mut current_name: Option<String> = None;
+    let mut current_version: Option<String> = None;
+    for raw_line in content.lines().chain(std::iter::once("[[package]]")) {
+        let line = raw_line.trim();
+        if line == "[[package]]" {
+            if let Some(name) = current_name.take() {
+                if !direct_names.contains_key(&name) {
+                    result.insert(name.clone(), (name, current_version.take()));
+                }
+            }
+            current_version = None;
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("name = ") {
+            current_name = extract_quoted_version(value);
+        } else if let Some(value) = line.strip_prefix("version = ") {
+            current_version = extract_quoted_version(value);
+        }
+    }
+    result.into_values().collect()
+}
+
+fn extract_pip_dependencies(files: &[RepositoryFile]) -> Vec<ExtractedDependency> {
+    let mut result = Vec::new();
+    for manifest in files
+        .iter()
+        .filter(|file| file.path.ends_with("requirements.txt"))
+    {
+        for (name, version) in requirements_dependencies(&manifest.content) {
+            result.push(ExtractedDependency {
+                ecosystem: "pip",
+                name,
+                version,
+                relationship: "direct",
+                license: None,
+                manifest_path: manifest.path.clone(),
+                lockfile_path: None,
+            });
+        }
+    }
+    result
+}
+
+fn requirements_dependencies(content: &str) -> Vec<(String, Option<String>)> {
+    let mut result = Vec::new();
+    for raw_line in content.lines() {
+        let line = raw_line.split('#').next().unwrap_or("").trim();
+        if line.is_empty() || line.starts_with('-') {
+            continue;
+        }
+        let mut parts = line.splitn(2, ['=', '<', '>', '~', '!']);
+        let name = parts.next().unwrap_or("").trim();
+        if name.is_empty() {
+            continue;
+        }
+        let version = line
+            .split("==")
+            .nth(1)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned);
+        result.push((name.to_owned(), version));
+    }
+    result
+}
+
+fn extract_quoted_version(value: &str) -> Option<String> {
+    let value = value.trim();
+    if let Some(rest) = value.strip_prefix('"') {
+        return rest.split('"').next().map(str::to_owned);
+    }
+    if let Some(version_index) = value.find("version") {
+        let tail = &value[version_index + "version".len()..];
+        if let Some((_, version)) = tail.split_once('=') {
+            return extract_quoted_version(version);
+        }
+    }
+    None
+}
+
+fn sibling_path(path: &str, name: &str) -> Option<String> {
+    if path.is_empty() {
+        return Some(name.to_owned());
+    }
+    path.rsplit_once('/')
+        .map(|(parent, _)| format!("{parent}/{name}"))
+        .or_else(|| Some(name.to_owned()))
+}
+
+fn normalize_dependency_filters(
+    query: RepositoryDependencyQuery<'_>,
+) -> Result<RepositoryDependencyFilters, RepositoryError> {
+    let query_text = query.query.map(str::trim).filter(|value| !value.is_empty());
+    if let Some(value) = query_text {
+        if value.chars().count() > 120 {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(
+                "q must be 120 characters or fewer".to_owned(),
+            ));
+        }
+    }
+    let ecosystem = match query
+        .ecosystem
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(ecosystem @ ("npm" | "cargo" | "pip")) => Some(ecosystem.to_owned()),
+        Some(other) => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported ecosystem `{other}`"
+            )))
+        }
+        None => None,
+    };
+    let relationship = match query
+        .relationship
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(relationship @ ("direct" | "transitive")) => Some(relationship.to_owned()),
+        Some(other) => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported relationship `{other}`"
+            )))
+        }
+        None => None,
+    };
+    Ok(RepositoryDependencyFilters {
+        query: query_text.map(str::to_owned),
+        ecosystem,
+        relationship,
+    })
+}
+
+async fn repository_dependency_manifests(
+    pool: &PgPool,
+    repository: &Repository,
+) -> Result<Vec<RepositoryDependencyManifest>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, path, ecosystem, lockfile_path, dependency_count, detected_at
+        FROM dependency_manifests
+        WHERE repository_id = $1
+        ORDER BY lower(path) ASC
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            let path: String = row.get("path");
+            let lockfile_path: Option<String> = row.get("lockfile_path");
+            Ok(RepositoryDependencyManifest {
+                id: row.get("id"),
+                path: path.clone(),
+                ecosystem: row.get("ecosystem"),
+                lockfile_path: lockfile_path.clone(),
+                dependency_count: row.get("dependency_count"),
+                detected_at: row.get("detected_at"),
+                href: repository_blob_href(repository, &repository.default_branch, &path),
+                lockfile_href: lockfile_path
+                    .as_deref()
+                    .map(|path| repository_blob_href(repository, &repository.default_branch, path)),
+            })
+        })
+        .collect()
+}
+
+async fn repository_dependency_rows(
+    pool: &PgPool,
+    repository: &Repository,
+) -> Result<Vec<RepositoryDependencyRow>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT repository_dependencies.id,
+               dependency_packages.id AS package_id,
+               dependency_packages.ecosystem,
+               dependency_packages.name,
+               dependency_packages.package_href,
+               repository_dependencies.package_version,
+               repository_dependencies.relationship,
+               repository_dependencies.license,
+               dependency_manifests.path AS manifest_path,
+               repository_dependencies.lockfile_path,
+               repository_dependencies.detected_at
+        FROM repository_dependencies
+        JOIN dependency_packages ON dependency_packages.id = repository_dependencies.package_id
+        JOIN dependency_manifests ON dependency_manifests.id = repository_dependencies.manifest_id
+        WHERE repository_dependencies.repository_id = $1
+        ORDER BY dependency_packages.ecosystem ASC,
+                 lower(dependency_packages.name) ASC,
+                 repository_dependencies.relationship ASC
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut dependencies = Vec::new();
+    for row in rows {
+        let package_id: Uuid = row.get("package_id");
+        let ecosystem: String = row.get("ecosystem");
+        let name: String = row.get("name");
+        let manifest_path: String = row.get("manifest_path");
+        let lockfile_path: Option<String> = row.get("lockfile_path");
+        let advisories = repository_dependency_advisories(pool, package_id).await?;
+        let details_href = dependency_package_href(&ecosystem, &name);
+        dependencies.push(RepositoryDependencyRow {
+            id: row.get("id"),
+            package: RepositoryDependencyPackage {
+                id: package_id,
+                ecosystem: ecosystem.clone(),
+                name: name.clone(),
+                href: row
+                    .get::<Option<String>, _>("package_href")
+                    .unwrap_or_else(|| details_href.clone()),
+            },
+            version: row.get("package_version"),
+            relationship: row.get("relationship"),
+            license: row.get("license"),
+            manifest_path: manifest_path.clone(),
+            manifest_href: repository_blob_href(
+                repository,
+                &repository.default_branch,
+                &manifest_path,
+            ),
+            lockfile_path: lockfile_path.clone(),
+            lockfile_href: lockfile_path
+                .as_deref()
+                .map(|path| repository_blob_href(repository, &repository.default_branch, path)),
+            detected_at: row.get("detected_at"),
+            advisory_href: if advisories.is_empty() {
+                None
+            } else {
+                Some(format!(
+                    "/{}/{}/security/dependabot?q={}",
+                    repository.owner_login,
+                    repository.name,
+                    percent_encode_segment(&name)
+                ))
+            },
+            advisories,
+            details_href,
+        });
+    }
+    Ok(dependencies)
+}
+
+async fn repository_dependency_advisories(
+    pool: &PgPool,
+    package_id: Uuid,
+) -> Result<Vec<RepositoryDependencyAdvisorySummary>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT advisory_identifier, severity, title, advisory_href
+        FROM dependency_advisories
+        WHERE package_id = $1
+        ORDER BY
+            CASE severity
+                WHEN 'critical' THEN 0
+                WHEN 'high' THEN 1
+                WHEN 'moderate' THEN 2
+                ELSE 3
+            END,
+            lower(advisory_identifier) ASC
+        "#,
+    )
+    .bind(package_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| RepositoryDependencyAdvisorySummary {
+            identifier: row.get("advisory_identifier"),
+            severity: row.get("severity"),
+            title: row.get("title"),
+            href: row.get("advisory_href"),
+        })
+        .collect())
+}
+
+fn repository_dependency_summary(
+    dependencies: &[RepositoryDependencyRow],
+    manifest_count: i64,
+) -> RepositoryDependencySummary {
+    let mut ecosystem_counts = BTreeMap::<String, i64>::new();
+    let mut direct_count = 0;
+    let mut transitive_count = 0;
+    let mut advisory_count = 0;
+    for dependency in dependencies {
+        *ecosystem_counts
+            .entry(dependency.package.ecosystem.clone())
+            .or_default() += 1;
+        match dependency.relationship.as_str() {
+            "direct" => direct_count += 1,
+            "transitive" => transitive_count += 1,
+            _ => {}
+        }
+        advisory_count += dependency.advisories.len() as i64;
+    }
+    RepositoryDependencySummary {
+        total: dependencies.len() as i64,
+        direct_count,
+        transitive_count,
+        ecosystem_counts: ecosystem_counts
+            .into_iter()
+            .map(|(ecosystem, count)| RepositoryDependencyEcosystemCount { ecosystem, count })
+            .collect(),
+        manifest_count,
+        advisory_count,
+    }
+}
+
+async fn record_repository_dependency_snapshot(
+    pool: &PgPool,
+    repository_id: Uuid,
+    dependency_count: i64,
+) -> Result<RepositoryNetworkFreshness, RepositoryError> {
+    let row = sqlx::query(
+        r#"
+        INSERT INTO repository_insight_snapshots (
+            repository_id, period_key, cache_key, snapshot, computed_at, expires_at
+        )
+        VALUES ($1, '1m', 'dependency-graph:dependencies', $2, now(), now() + interval '1 day')
+        ON CONFLICT (repository_id, period_key, cache_key) DO UPDATE SET
+            snapshot = EXCLUDED.snapshot,
+            computed_at = now(),
+            expires_at = now() + interval '1 day'
+        RETURNING computed_at, expires_at
+        "#,
+    )
+    .bind(repository_id)
+    .bind(Json(json!({ "dependencyCount": dependency_count })))
+    .fetch_one(pool)
+    .await?;
+    let expires_at: DateTime<Utc> = row.get("expires_at");
+    Ok(RepositoryNetworkFreshness {
+        computed_at: row.get("computed_at"),
+        expires_at,
+        stale: expires_at <= Utc::now(),
+        cadence: "daily".to_owned(),
+    })
+}
+
+async fn repository_latest_sbom_status(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<Option<String>, RepositoryError> {
+    sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT status
+        FROM sbom_exports
+        WHERE repository_id = $1
+        ORDER BY created_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(RepositoryError::from)
+}
+
+fn dependency_package_href(ecosystem: &str, name: &str) -> String {
+    format!(
+        "/packages/{}/{}",
+        percent_encode_segment(ecosystem),
+        percent_encode_segment(name)
+    )
 }
 
 async fn repository_network_repository(
