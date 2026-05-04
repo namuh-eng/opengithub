@@ -68,7 +68,8 @@ use crate::{
         repository_branches_for_actor_by_owner_name,
         repository_commit_detail_context_for_actor_by_owner_name,
         repository_commit_detail_for_actor_by_owner_name,
-        repository_commit_history_for_actor_by_owner_name, repository_creation_options,
+        repository_commit_history_for_actor_by_owner_name,
+        repository_contributors_for_actor_by_owner_name, repository_creation_options,
         repository_file_finder_for_actor_by_owner_name, repository_name_availability,
         repository_overview_for_viewer_by_owner_name,
         repository_path_overview_for_actor_by_owner_name, repository_pulse_for_actor_by_owner_name,
@@ -81,10 +82,10 @@ use crate::{
         update_repository_watch_settings_by_owner_name, CreateRepository,
         RepositoryAccessInviteRequest, RepositoryAccessRolePatch, RepositoryAccessTeamGrantRequest,
         RepositoryBootstrapRequest, RepositoryBranchRuleMutation, RepositoryBranchesQuery,
-        RepositoryCommitDetailContextQuery, RepositoryCommitHistoryQuery, RepositoryError,
-        RepositoryFileFinderQuery, RepositoryOwner, RepositoryPathQuery, RepositoryPulseQuery,
-        RepositoryRefsQuery, RepositoryRulesetMutation, RepositorySettingsPatch,
-        RepositoryVisibility, RepositoryWatchSettingsPatch,
+        RepositoryCommitDetailContextQuery, RepositoryCommitHistoryQuery,
+        RepositoryContributorsQuery, RepositoryError, RepositoryFileFinderQuery, RepositoryOwner,
+        RepositoryPathQuery, RepositoryPulseQuery, RepositoryRefsQuery, RepositoryRulesetMutation,
+        RepositorySettingsPatch, RepositoryVisibility, RepositoryWatchSettingsPatch,
     },
     domain::webhooks::{
         create_repository_webhook_by_owner_name, delete_repository_webhook_by_owner_name,
@@ -114,6 +115,7 @@ pub fn router() -> Router<AppState> {
         .route("/:owner/:repo/branches", get(branches))
         .route("/:owner/:repo/branches/activity", get(branch_activity))
         .route("/:owner/:repo/pulse", get(pulse))
+        .route("/:owner/:repo/graphs/contributors", get(contributors))
         .route("/:owner/:repo/refs", get(refs))
         .route("/:owner/:repo/file-finder", get(file_finder))
         .route("/:owner/:repo/releases", get(releases).post(create_release))
@@ -384,6 +386,12 @@ struct BranchActivityQuery {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct PulseQuery {
+    period: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ContributorsQuery {
     period: Option<String>,
 }
 
@@ -831,6 +839,36 @@ async fn pulse(
         &owner,
         &repo,
         RepositoryPulseQuery {
+            period: query.period.as_deref(),
+        },
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn contributors(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<ContributorsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = repository_contributors_for_actor_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        RepositoryContributorsQuery {
             period: query.period.as_deref(),
         },
     )
@@ -2528,6 +2566,7 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         | RepositoryError::InvalidBranchPolicy(_)
         | RepositoryError::InvalidBranchDirectoryQuery(_)
         | RepositoryError::InvalidPulseQuery(_)
+        | RepositoryError::InvalidContributorsQuery(_)
         | RepositoryError::InvalidDiffContext(_)
         | RepositoryError::MergeMethodRequired
         | RepositoryError::DefaultMergeMethodDisabled

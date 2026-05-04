@@ -6,7 +6,7 @@
 
 ## Phase 1: Contributors API Contract and Weekly Rollup Cache - screen-ready analytics data
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add an authenticated read contract for `GET /api/repos/{owner}/{repo}/graphs/contributors` that returns default-branch contributor analytics without replacing the placeholder UI yet. The response should include repository/default-branch metadata, normalized period and date-range bounds, commit-threshold/line-count omission metadata, repository-wide weekly commit totals, contributor weekly rows, per-contributor totals, profile and commit-history hrefs, and cache freshness metadata.
 

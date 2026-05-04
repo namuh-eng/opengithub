@@ -1,0 +1,3 @@
+DROP INDEX IF EXISTS repository_contributors_weekly_author_idx;
+DROP INDEX IF EXISTS repository_contributors_weekly_repo_cache_idx;
+DROP TABLE IF EXISTS repository_contributors_weekly;

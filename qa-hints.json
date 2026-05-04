@@ -5364,5 +5364,21 @@
       "Run keyboard-only and screen-reader traversal through the Insights sidebar, period menu, metric cards, top committer chart/table, author links, commit-range links, activity links, empty-state CTAs, and mobile layout.",
       "Re-run Rust Pulse contracts against a clean migrated database after the shared local migration drift for 202605030041 is resolved."
     ]
+  },
+  {
+    "feature_id": "insights-002",
+    "tests_written": [
+      "Completed Phase 1 Contributors API Contract and Weekly Rollup Cache without marking insights-002 build_pass=true.",
+      "Added authenticated GET /api/repos/{owner}/{repo}/graphs/contributors with default-branch scoping through repository_git_refs, period normalization for 24h, 3d, 1w, and 1m, private repository outsider 404 privacy, weekly repository totals, contributor rows, profile and commit-history hrefs, bot/unmatched author metadata, threshold line-count metadata, snapshot cache metadata, and recent-view telemetry.",
+      "Added additive repository_contributors_weekly migration for bounded contributor rollup cache rows while reusing repository_insight_snapshots for contributors cache freshness.",
+      "Added focused Rust contract coverage for anonymous denial, private-repo privacy, slash-containing default branch refs, default-branch-only traversal, merge and empty commit exclusion, weekly aggregation, contributor totals, bot/unmatched authors, href shape, rollup/snapshot persistence, invalid period validation, and no secret leakage."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 still needs the Editorial /{owner}/{repo}/graphs/contributors page, Insights shell integration, chart/table render, browser smoke screenshot, and no-dead-control checks.",
+      "Phase 3 still needs URL-backed period and range controls, data-table toggles, and real chart export/copy actions.",
+      "Phase 4 still needs larger edge-case hardening for empty repositories, bot-only histories, deleted users, very large histories over the line-count threshold, and slash-containing branches in browser flows.",
+      "Repeat against a clean migrated database after the shared local migration drift for 202605030041 is resolved; this phase manually applied the additive contributors migration to the shared test DB.",
+      "Use a real Google OAuth browser session once the UI phase lands; this phase was API-only and browser smoke was optional by structure."
+    ]
   }
 ]

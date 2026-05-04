@@ -991,6 +991,101 @@ pub struct RepositoryPulseSnapshot {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct RepositoryContributorsView {
+    pub repository: RepositoryContributorsRepository,
+    pub period: RepositoryContributorsPeriod,
+    pub threshold: RepositoryContributorsThreshold,
+    pub totals: RepositoryContributorsTotals,
+    pub weeks: Vec<RepositoryContributorsWeek>,
+    pub contributors: Vec<RepositoryContributorRow>,
+    pub snapshot: RepositoryContributorSnapshot,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryContributorsRepository {
+    pub owner_login: String,
+    pub name: String,
+    pub default_branch: String,
+    pub visibility: RepositoryVisibility,
+    pub viewer_permission: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryContributorsPeriod {
+    pub key: String,
+    pub label: String,
+    pub started_at: DateTime<Utc>,
+    pub ended_at: DateTime<Utc>,
+    pub bucket_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryContributorsThreshold {
+    pub commit_limit: i64,
+    pub commits_considered: i64,
+    pub line_counts_omitted: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryContributorsTotals {
+    pub commits: i64,
+    pub authors: i64,
+    pub additions: Option<i64>,
+    pub deletions: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryContributorsWeek {
+    pub week_start: DateTime<Utc>,
+    pub week_end: DateTime<Utc>,
+    pub commits: i64,
+    pub additions: Option<i64>,
+    pub deletions: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryContributorRow {
+    pub user_id: Option<Uuid>,
+    pub login: String,
+    pub author_status: String,
+    pub is_bot: bool,
+    pub avatar_url: Option<String>,
+    pub total_commits: i64,
+    pub total_additions: Option<i64>,
+    pub total_deletions: Option<i64>,
+    pub profile_href: String,
+    pub commits_href: String,
+    pub weeks: Vec<RepositoryContributorWeek>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryContributorWeek {
+    pub week_start: DateTime<Utc>,
+    pub commits: i64,
+    pub additions: Option<i64>,
+    pub deletions: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryContributorSnapshot {
+    pub cache_key: String,
+    pub computed_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub stale: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct RepositoryCommitDetailView {
     pub repository: RepositoryCommitDetailRepository,
     pub commit: RepositoryCommitDetailCommit,
@@ -1157,6 +1252,11 @@ pub struct RepositoryBranchesQuery<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub struct RepositoryPulseQuery<'a> {
+    pub period: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RepositoryContributorsQuery<'a> {
     pub period: Option<&'a str>,
 }
 
@@ -1678,6 +1778,8 @@ pub enum RepositoryError {
     InvalidBranchDirectoryQuery(String),
     #[error("invalid repository pulse query: {0}")]
     InvalidPulseQuery(String),
+    #[error("invalid repository contributors query: {0}")]
+    InvalidContributorsQuery(String),
     #[error("invalid commit diff context: {0}")]
     InvalidDiffContext(String),
     #[error("repository branch policy already exists")]
@@ -2126,6 +2228,27 @@ pub async fn repository_pulse_for_actor_by_owner_name(
         return Err(RepositoryError::PermissionDenied);
     }
     repository_pulse_for_repository(pool, &repository, actor_user_id, query)
+        .await
+        .map(Some)
+}
+
+pub async fn repository_contributors_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    query: RepositoryContributorsQuery<'_>,
+) -> Result<Option<RepositoryContributorsView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    repository_contributors_for_repository(pool, &repository, actor_user_id, query)
         .await
         .map(Some)
 }
@@ -8442,6 +8565,497 @@ fn pulse_issues_href(
         started_at.to_rfc3339(),
         ended_at.to_rfc3339()
     )
+}
+
+const CONTRIBUTORS_LINE_COUNT_COMMIT_LIMIT: i64 = 5_000;
+
+async fn repository_contributors_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    query: RepositoryContributorsQuery<'_>,
+) -> Result<RepositoryContributorsView, RepositoryError> {
+    let period_key = normalize_contributors_period(query.period)?;
+    let ended_at = Utc::now();
+    let started_at = pulse_period_start(period_key, ended_at);
+    let viewer_permission = viewer_permission_for_user(pool, repository, actor_user_id)
+        .await?
+        .unwrap_or_else(|| "read".to_owned());
+    let cache_key = format!(
+        "contributors:{}:{}:{}:{}",
+        repository.default_branch,
+        period_key,
+        started_at.format("%Y%m%d%H%M"),
+        ended_at.format("%Y%m%d%H%M")
+    );
+
+    let aggregate = sqlx::query(
+        r#"
+        WITH RECURSIVE default_ref AS (
+            SELECT target_commit_id
+            FROM repository_git_refs
+            WHERE repository_id = $1
+              AND kind = 'branch'
+              AND name IN ($4, 'refs/heads/' || $4)
+            ORDER BY CASE WHEN name = 'refs/heads/' || $4 THEN 0 ELSE 1 END
+            LIMIT 1
+        ),
+        branch_commits AS (
+            SELECT commits.id, commits.oid, commits.author_user_id, commits.parent_oids, commits.committed_at
+            FROM commits
+            JOIN default_ref ON default_ref.target_commit_id = commits.id
+            WHERE commits.repository_id = $1
+            UNION
+            SELECT parent.id, parent.oid, parent.author_user_id, parent.parent_oids, parent.committed_at
+            FROM commits parent
+            JOIN branch_commits child ON parent.oid = ANY(child.parent_oids)
+            WHERE parent.repository_id = $1
+        ),
+        scoped_commits AS (
+            SELECT DISTINCT branch_commits.id, branch_commits.author_user_id, branch_commits.committed_at
+            FROM branch_commits
+            WHERE branch_commits.committed_at >= $2
+              AND branch_commits.committed_at <= $3
+              AND cardinality(branch_commits.parent_oids) <= 1
+              AND EXISTS (
+                SELECT 1 FROM commit_file_changes WHERE commit_file_changes.commit_id = branch_commits.id
+              )
+        )
+        SELECT count(*)::bigint AS commits,
+               count(DISTINCT author_user_id)::bigint AS authors,
+               COALESCE(sum(commit_file_changes.additions), 0)::bigint AS additions,
+               COALESCE(sum(commit_file_changes.deletions), 0)::bigint AS deletions
+        FROM scoped_commits
+        LEFT JOIN commit_file_changes ON commit_file_changes.commit_id = scoped_commits.id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(started_at)
+    .bind(ended_at)
+    .bind(&repository.default_branch)
+    .fetch_one(pool)
+    .await?;
+
+    let commits_considered: i64 = aggregate.get("commits");
+    let line_counts_omitted = commits_considered > CONTRIBUTORS_LINE_COUNT_COMMIT_LIMIT;
+    let weekly_rows = repository_contributors_weekly_rows(
+        pool,
+        repository,
+        started_at,
+        ended_at,
+        line_counts_omitted,
+    )
+    .await?;
+    let contributors =
+        repository_contributors_rows(pool, repository, started_at, ended_at, line_counts_omitted)
+            .await?;
+    record_repository_contributors_rollups(
+        pool,
+        repository.id,
+        period_key,
+        &cache_key,
+        &contributors,
+    )
+    .await?;
+    let snapshot = record_repository_contributors_snapshot(
+        pool,
+        repository.id,
+        actor_user_id,
+        period_key,
+        &cache_key,
+        RepositoryContributorsSnapshotInput {
+            commits: commits_considered,
+            contributors: contributors.len() as i64,
+            line_counts_omitted,
+        },
+    )
+    .await?;
+
+    Ok(RepositoryContributorsView {
+        repository: RepositoryContributorsRepository {
+            owner_login: repository.owner_login.clone(),
+            name: repository.name.clone(),
+            default_branch: repository.default_branch.clone(),
+            visibility: repository.visibility.clone(),
+            viewer_permission,
+            href: format!("/{}/{}", repository.owner_login, repository.name),
+        },
+        period: RepositoryContributorsPeriod {
+            key: period_key.to_owned(),
+            label: pulse_period_label(period_key).to_owned(),
+            started_at,
+            ended_at,
+            bucket_count: weekly_rows.len() as i64,
+        },
+        threshold: RepositoryContributorsThreshold {
+            commit_limit: CONTRIBUTORS_LINE_COUNT_COMMIT_LIMIT,
+            commits_considered,
+            line_counts_omitted,
+            message: if line_counts_omitted {
+                format!(
+                    "Line additions and deletions are omitted because this range includes more than {CONTRIBUTORS_LINE_COUNT_COMMIT_LIMIT} commits."
+                )
+            } else {
+                "Line additions and deletions are included for this bounded commit range."
+                    .to_owned()
+            },
+        },
+        totals: RepositoryContributorsTotals {
+            commits: commits_considered,
+            authors: aggregate.get("authors"),
+            additions: (!line_counts_omitted).then(|| aggregate.get("additions")),
+            deletions: (!line_counts_omitted).then(|| aggregate.get("deletions")),
+        },
+        weeks: weekly_rows,
+        contributors,
+        snapshot,
+    })
+}
+
+fn normalize_contributors_period(period: Option<&str>) -> Result<&'static str, RepositoryError> {
+    match period
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("1w")
+    {
+        "24h" => Ok("24h"),
+        "3d" => Ok("3d"),
+        "1w" => Ok("1w"),
+        "1m" => Ok("1m"),
+        other => Err(RepositoryError::InvalidContributorsQuery(format!(
+            "unsupported period `{other}`"
+        ))),
+    }
+}
+
+async fn repository_contributors_weekly_rows(
+    pool: &PgPool,
+    repository: &Repository,
+    started_at: DateTime<Utc>,
+    ended_at: DateTime<Utc>,
+    line_counts_omitted: bool,
+) -> Result<Vec<RepositoryContributorsWeek>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        WITH RECURSIVE default_ref AS (
+            SELECT target_commit_id
+            FROM repository_git_refs
+            WHERE repository_id = $1
+              AND kind = 'branch'
+              AND name IN ($4, 'refs/heads/' || $4)
+            ORDER BY CASE WHEN name = 'refs/heads/' || $4 THEN 0 ELSE 1 END
+            LIMIT 1
+        ),
+        branch_commits AS (
+            SELECT commits.id, commits.oid, commits.parent_oids, commits.committed_at
+            FROM commits
+            JOIN default_ref ON default_ref.target_commit_id = commits.id
+            WHERE commits.repository_id = $1
+            UNION
+            SELECT parent.id, parent.oid, parent.parent_oids, parent.committed_at
+            FROM commits parent
+            JOIN branch_commits child ON parent.oid = ANY(child.parent_oids)
+            WHERE parent.repository_id = $1
+        ),
+        scoped_commits AS (
+            SELECT DISTINCT branch_commits.id, branch_commits.committed_at
+            FROM branch_commits
+            WHERE branch_commits.committed_at >= $2
+              AND branch_commits.committed_at <= $3
+              AND cardinality(branch_commits.parent_oids) <= 1
+              AND EXISTS (
+                SELECT 1 FROM commit_file_changes WHERE commit_file_changes.commit_id = branch_commits.id
+              )
+        )
+        SELECT date_trunc('week', scoped_commits.committed_at)::timestamptz AS week_start,
+               (date_trunc('week', scoped_commits.committed_at) + interval '7 days')::timestamptz AS week_end,
+               count(DISTINCT scoped_commits.id)::bigint AS commits,
+               COALESCE(sum(commit_file_changes.additions), 0)::bigint AS additions,
+               COALESCE(sum(commit_file_changes.deletions), 0)::bigint AS deletions
+        FROM scoped_commits
+        LEFT JOIN commit_file_changes ON commit_file_changes.commit_id = scoped_commits.id
+        GROUP BY week_start, week_end
+        ORDER BY week_start ASC
+        "#,
+    )
+    .bind(repository.id)
+    .bind(started_at)
+    .bind(ended_at)
+    .bind(&repository.default_branch)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| RepositoryContributorsWeek {
+            week_start: row.get("week_start"),
+            week_end: row.get("week_end"),
+            commits: row.get("commits"),
+            additions: (!line_counts_omitted).then(|| row.get("additions")),
+            deletions: (!line_counts_omitted).then(|| row.get("deletions")),
+        })
+        .collect())
+}
+
+async fn repository_contributors_rows(
+    pool: &PgPool,
+    repository: &Repository,
+    started_at: DateTime<Utc>,
+    ended_at: DateTime<Utc>,
+    line_counts_omitted: bool,
+) -> Result<Vec<RepositoryContributorRow>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        WITH RECURSIVE default_ref AS (
+            SELECT target_commit_id
+            FROM repository_git_refs
+            WHERE repository_id = $1
+              AND kind = 'branch'
+              AND name IN ($4, 'refs/heads/' || $4)
+            ORDER BY CASE WHEN name = 'refs/heads/' || $4 THEN 0 ELSE 1 END
+            LIMIT 1
+        ),
+        branch_commits AS (
+            SELECT commits.id, commits.oid, commits.author_user_id, commits.parent_oids, commits.committed_at
+            FROM commits
+            JOIN default_ref ON default_ref.target_commit_id = commits.id
+            WHERE commits.repository_id = $1
+            UNION
+            SELECT parent.id, parent.oid, parent.author_user_id, parent.parent_oids, parent.committed_at
+            FROM commits parent
+            JOIN branch_commits child ON parent.oid = ANY(child.parent_oids)
+            WHERE parent.repository_id = $1
+        ),
+        scoped_commits AS (
+            SELECT DISTINCT branch_commits.id, branch_commits.author_user_id, branch_commits.committed_at
+            FROM branch_commits
+            WHERE branch_commits.committed_at >= $2
+              AND branch_commits.committed_at <= $3
+              AND cardinality(branch_commits.parent_oids) <= 1
+              AND EXISTS (
+                SELECT 1 FROM commit_file_changes WHERE commit_file_changes.commit_id = branch_commits.id
+              )
+        )
+        SELECT scoped_commits.author_user_id,
+               NULLIF(users.username, '') AS username,
+               users.email,
+               users.avatar_url,
+               date_trunc('week', scoped_commits.committed_at)::timestamptz AS week_start,
+               count(DISTINCT scoped_commits.id)::bigint AS commits,
+               COALESCE(sum(commit_file_changes.additions), 0)::bigint AS additions,
+               COALESCE(sum(commit_file_changes.deletions), 0)::bigint AS deletions
+        FROM scoped_commits
+        LEFT JOIN users ON users.id = scoped_commits.author_user_id
+        LEFT JOIN commit_file_changes ON commit_file_changes.commit_id = scoped_commits.id
+        GROUP BY scoped_commits.author_user_id, users.username, users.email, users.avatar_url, week_start
+        ORDER BY count(DISTINCT scoped_commits.id) DESC,
+                 week_start ASC,
+                 lower(COALESCE(NULLIF(users.username, ''), users.email, 'unmatched author')) ASC
+        "#,
+    )
+    .bind(repository.id)
+    .bind(started_at)
+    .bind(ended_at)
+    .bind(&repository.default_branch)
+    .fetch_all(pool)
+    .await?;
+
+    let mut contributors: BTreeMap<String, RepositoryContributorRow> = BTreeMap::new();
+    for row in rows {
+        let user_id: Option<Uuid> = row.get("author_user_id");
+        let username: Option<String> = row.get("username");
+        let email: Option<String> = row.get("email");
+        let login = username
+            .or(email)
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "Unmatched author".to_owned());
+        let key = user_id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| format!("unmatched:{login}"));
+        let is_bot = pulse_login_is_bot(&login);
+        let author_status = if user_id.is_none() {
+            "unmatched"
+        } else if is_bot {
+            "bot"
+        } else {
+            "active"
+        };
+        let commits: i64 = row.get("commits");
+        let additions: i64 = row.get("additions");
+        let deletions: i64 = row.get("deletions");
+        let week = RepositoryContributorWeek {
+            week_start: row.get("week_start"),
+            commits,
+            additions: (!line_counts_omitted).then_some(additions),
+            deletions: (!line_counts_omitted).then_some(deletions),
+        };
+        let entry = contributors
+            .entry(key)
+            .or_insert_with(|| RepositoryContributorRow {
+                user_id,
+                login: login.clone(),
+                author_status: author_status.to_owned(),
+                is_bot,
+                avatar_url: row.get("avatar_url"),
+                total_commits: 0,
+                total_additions: (!line_counts_omitted).then_some(0),
+                total_deletions: (!line_counts_omitted).then_some(0),
+                profile_href: if user_id.is_some() {
+                    format!("/{login}")
+                } else {
+                    format!("/{}/{}", repository.owner_login, repository.name)
+                },
+                commits_href: if user_id.is_some() {
+                    format!(
+                        "/{}/{}/commits/{}?author={}&since={}&until={}",
+                        repository.owner_login,
+                        repository.name,
+                        percent_encode_segment(&repository.default_branch),
+                        percent_encode_segment(&login),
+                        percent_encode_segment(&started_at.to_rfc3339()),
+                        percent_encode_segment(&ended_at.to_rfc3339())
+                    )
+                } else {
+                    format!(
+                        "/{}/{}/commits/{}?since={}&until={}",
+                        repository.owner_login,
+                        repository.name,
+                        percent_encode_segment(&repository.default_branch),
+                        percent_encode_segment(&started_at.to_rfc3339()),
+                        percent_encode_segment(&ended_at.to_rfc3339())
+                    )
+                },
+                weeks: Vec::new(),
+            });
+        entry.total_commits += commits;
+        if let Some(total) = entry.total_additions.as_mut() {
+            *total += additions;
+        }
+        if let Some(total) = entry.total_deletions.as_mut() {
+            *total += deletions;
+        }
+        entry.weeks.push(week);
+    }
+
+    let mut rows = contributors.into_values().collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        right.total_commits.cmp(&left.total_commits).then_with(|| {
+            left.login
+                .to_ascii_lowercase()
+                .cmp(&right.login.to_ascii_lowercase())
+        })
+    });
+    Ok(rows)
+}
+
+async fn record_repository_contributors_rollups(
+    pool: &PgPool,
+    repository_id: Uuid,
+    period_key: &str,
+    cache_key: &str,
+    contributors: &[RepositoryContributorRow],
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        r#"
+        DELETE FROM repository_contributors_weekly
+        WHERE repository_id = $1 AND period_key = $2 AND cache_key = $3
+        "#,
+    )
+    .bind(repository_id)
+    .bind(period_key)
+    .bind(cache_key)
+    .execute(pool)
+    .await?;
+
+    for contributor in contributors {
+        for week in &contributor.weeks {
+            sqlx::query(
+                r#"
+                INSERT INTO repository_contributors_weekly (
+                    repository_id, period_key, cache_key, bucket_start, bucket_end,
+                    author_user_id, author_login, commits, additions, deletions
+                )
+                VALUES ($1, $2, $3, $4, $4 + interval '7 days', $5, $6, $7, $8, $9)
+                "#,
+            )
+            .bind(repository_id)
+            .bind(period_key)
+            .bind(cache_key)
+            .bind(week.week_start)
+            .bind(contributor.user_id)
+            .bind(&contributor.login)
+            .bind(week.commits)
+            .bind(week.additions.unwrap_or(0))
+            .bind(week.deletions.unwrap_or(0))
+            .execute(pool)
+            .await?;
+        }
+    }
+
+    Ok(())
+}
+
+struct RepositoryContributorsSnapshotInput {
+    commits: i64,
+    contributors: i64,
+    line_counts_omitted: bool,
+}
+
+async fn record_repository_contributors_snapshot(
+    pool: &PgPool,
+    repository_id: Uuid,
+    user_id: Uuid,
+    period_key: &str,
+    cache_key: &str,
+    input: RepositoryContributorsSnapshotInput,
+) -> Result<RepositoryContributorSnapshot, RepositoryError> {
+    let snapshot = json!({
+        "kind": "contributors",
+        "commits": input.commits,
+        "contributors": input.contributors,
+        "lineCountsOmitted": input.line_counts_omitted,
+    });
+    let row = sqlx::query(
+        r#"
+        INSERT INTO repository_insight_snapshots (
+            repository_id, period_key, cache_key, snapshot, computed_at, expires_at
+        )
+        VALUES ($1, $2, $3, $4, now(), now() + interval '10 minutes')
+        ON CONFLICT (repository_id, period_key, cache_key) DO UPDATE SET
+            snapshot = EXCLUDED.snapshot,
+            computed_at = now(),
+            expires_at = now() + interval '10 minutes'
+        RETURNING computed_at, expires_at
+        "#,
+    )
+    .bind(repository_id)
+    .bind(period_key)
+    .bind(cache_key)
+    .bind(Json(snapshot))
+    .fetch_one(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO recent_insight_views (repository_id, user_id, period_key, viewed_at)
+        VALUES ($1, $2, $3, now())
+        ON CONFLICT (repository_id, user_id, period_key)
+        DO UPDATE SET viewed_at = now()
+        "#,
+    )
+    .bind(repository_id)
+    .bind(user_id)
+    .bind(period_key)
+    .execute(pool)
+    .await?;
+
+    let expires_at: DateTime<Utc> = row.get("expires_at");
+    Ok(RepositoryContributorSnapshot {
+        cache_key: cache_key.to_owned(),
+        computed_at: row.get("computed_at"),
+        expires_at,
+        stale: expires_at <= Utc::now(),
+    })
 }
 
 async fn repository_commit_detail(
