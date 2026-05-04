@@ -451,6 +451,56 @@ describe("ApiDocsPage", () => {
       ),
     ).toBeVisible();
     expect(screen.getAllByText(/environment secrets/)[0]).toBeVisible();
+    expect(screen.getByText("/api/repos/{owner}/{repo}/network")).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Repository Network insights",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(/50 most recently pushed readable forks/)[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /repository_network_forks stores bounded daily projection rows/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(/Branch names with slashes are encoded/)[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/forks?period=1m&type=starred&sort=most_starred",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Repository Forks list",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Supported period values are 24h, 3d, 1w, 1m, and all/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Supported sort values are most_starred/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/hiddenPrivateForks reports omitted forks/),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/forks/defaults"),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Save repository Forks defaults",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/actor-scoped in saved_fork_filter_defaults/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/same period, repository type, and sort enums/),
+    ).toBeVisible();
     expect(
       screen.getByText("/api/repos/{owner}/{repo}/releases?page=1&pageSize=30"),
     ).toBeVisible();
@@ -602,7 +652,7 @@ describe("ApiDocsPage", () => {
       screen.getByText(/Overview, Active, Stale, and All tabs/),
     ).toBeVisible();
     expect(
-      screen.getByText(/Branch names with slashes are encoded/),
+      screen.getByText(/tree, commits, activity, and rules destinations/),
     ).toBeVisible();
     expect(
       screen.getByText(/branch directory recent-visit telemetry/),

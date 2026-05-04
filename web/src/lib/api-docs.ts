@@ -1,4 +1,4 @@
-export type ApiDocMethod = "GET" | "POST" | "PATCH" | "DELETE";
+export type ApiDocMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
 export type ApiEndpointDoc = {
   id: string;
@@ -2243,6 +2243,157 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
       "Popular content rows link to repository blob paths on the default branch. Long paths and unsafe-looking text are returned as text, not HTML.",
       "repository_traffic_daily, repository_referrers_daily, and repository_popular_content_daily store bounded rollups; repository_insight_snapshots stores the cache payload and recent_insight_views records signed-in viewer telemetry.",
       "Error envelopes never include traffic counts, actor emails, OAuth data, session rows, tokens, storage keys, stack traces, environment secrets, or private commit OIDs.",
+    ],
+  },
+  {
+    id: "repo-network",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/network",
+    title: "Repository Network insights",
+    description:
+      "Returns the screen-ready repository Network graph contract for the 50 most recently pushed readable forks, including source repository metadata, bounded projection freshness, hidden private fork counts, and concrete fork, tree, issues, pulls, and network hrefs.",
+    auth: "Public repositories are readable by signed-in users; private repositories require read permission; anonymous callers receive 401",
+    response: `{
+  "repository": {
+    "ownerLogin": "mona",
+    "name": "octo-app",
+    "defaultBranch": "release/main",
+    "visibility": "private",
+    "viewerPermission": "read",
+    "href": "/mona/octo-app",
+    "treeHref": "/mona/octo-app/tree/release%2Fmain"
+  },
+  "summary": {
+    "totalReadableForks": 12,
+    "projectedForks": 12,
+    "hiddenPrivateForks": 2,
+    "copy": "Network graph shows the most recently pushed readable forks in this repository network.",
+    "updateNote": "Repository network projections refresh daily from fork and branch activity."
+  },
+  "forks": [
+    {
+      "repositoryId": "repo_fork_01",
+      "ownerLogin": "ashley",
+      "name": "octo-app-labs",
+      "visibility": "public",
+      "defaultBranch": "release/main",
+      "isArchived": false,
+      "isStarredByActor": true,
+      "starsCount": 3,
+      "forksCount": 1,
+      "openIssuesCount": 2,
+      "openPullRequestsCount": 1,
+      "createdAt": "2026-04-30T00:00:00Z",
+      "updatedAt": "2026-05-06T00:00:00Z",
+      "pushedAt": "2026-05-06T12:00:00Z",
+      "href": "/ashley/octo-app-labs",
+      "ownerHref": "/ashley",
+      "treeHref": "/ashley/octo-app-labs/tree/release%2Fmain",
+      "networkHref": "/ashley/octo-app-labs/network"
+    }
+  ],
+  "freshness": {
+    "computedAt": "2026-05-07T01:00:00Z",
+    "expiresAt": "2026-05-08T01:00:00Z",
+    "stale": false,
+    "cadence": "daily"
+  },
+  "links": {
+    "forksHref": "/mona/octo-app/forks",
+    "treeHref": "/mona/octo-app/tree/release%2Fmain"
+  }
+}`,
+    notes: [
+      "The Network graph is limited to the 50 most recently pushed readable forks so private forks, inaccessible fork names, and private owner metadata are never leaked.",
+      "repository_network_forks stores bounded daily projection rows derived from repository_forks, repository_git_refs, commits, stars, issues, and pull_requests; reads may refresh stale projections before responding.",
+      "Branch names with slashes are encoded as single reversible route segments in treeHref values, preserving links such as release/main without mutating upstream data.",
+      "Private repository outsiders receive not_found, anonymous callers receive 401, and error envelopes never include actor emails, OAuth data, session rows, tokens, storage keys, stack traces, environment secrets, or private commit OIDs.",
+    ],
+  },
+  {
+    id: "repo-forks",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/forks?period=1m&type=starred&sort=most_starred",
+    title: "Repository Forks list",
+    description:
+      "Returns the filterable Forks list contract for a repository network, including period/type/sort state, actor-scoped saved-default metadata, dense fork rows, hidden private fork counts, and daily projection freshness.",
+    auth: "Public repositories are readable by signed-in users; private repositories require read permission; anonymous callers receive 401",
+    response: `{
+  "repository": {
+    "ownerLogin": "mona",
+    "name": "octo-app",
+    "defaultBranch": "release/main",
+    "visibility": "private",
+    "viewerPermission": "read",
+    "href": "/mona/octo-app",
+    "treeHref": "/mona/octo-app/tree/release%2Fmain"
+  },
+  "filters": {
+    "period": {
+      "key": "1m",
+      "label": "Last month",
+      "startedAt": "2026-04-07T00:00:00Z",
+      "endedAt": "2026-05-07T00:00:00Z"
+    },
+    "repositoryType": "starred",
+    "sort": "most_starred"
+  },
+  "defaults": {
+    "saved": true,
+    "matchesCurrent": true,
+    "periodKey": "1m",
+    "repositoryType": "starred",
+    "sortKey": "most_starred",
+    "savedAt": "2026-05-07T00:30:00Z"
+  },
+  "total": 1,
+  "hiddenPrivateForks": 2,
+  "forks": [],
+  "freshness": {
+    "computedAt": "2026-05-07T01:00:00Z",
+    "expiresAt": "2026-05-08T01:00:00Z",
+    "stale": false,
+    "cadence": "daily"
+  },
+  "links": {
+    "forksHref": "/mona/octo-app/forks",
+    "treeHref": "/mona/octo-app/tree/release%2Fmain"
+  }
+}`,
+    notes: [
+      "Supported period values are 24h, 3d, 1w, 1m, and all. Supported type filters are all, active, inactive, archived, and starred.",
+      "Supported sort values are most_starred, recently_pushed, recently_created, recently_updated, and name_asc. Invalid filter values return validation_failed without stack traces.",
+      "Rows include archived, inactive, and starred badges plus created, updated, and pushed timestamps. Metric links point to repository-safe destinations and never mutate fork or upstream data.",
+      "Readable-only filtering is enforced before totals and row serialization. hiddenPrivateForks reports omitted forks without exposing private fork names, owner logins, branches, or metric counts.",
+    ],
+  },
+  {
+    id: "repo-forks-defaults",
+    method: "PUT",
+    path: "/api/repos/{owner}/{repo}/forks/defaults",
+    title: "Save repository Forks defaults",
+    description:
+      "Persists the signed-in actor's default Forks period, repository type, and sort choice for one source repository, then returns the refreshed Forks response metadata used by the browser Save defaults control.",
+    auth: "Signed opengithub session cookie with repository read permission",
+    request: `{
+  "period": "all",
+  "repositoryType": "starred",
+  "sort": "recently_pushed"
+}`,
+    response: `{
+  "defaults": {
+    "saved": true,
+    "matchesCurrent": true,
+    "periodKey": "all",
+    "repositoryType": "starred",
+    "sortKey": "recently_pushed",
+    "savedAt": "2026-05-07T00:45:00Z"
+  }
+}`,
+    notes: [
+      "The write is actor-scoped in saved_fork_filter_defaults and never mutates the upstream repository, fork repositories, or repository_network_forks projection rows.",
+      "Validation uses the same period, repository type, and sort enums as GET /api/repos/{owner}/{repo}/forks.",
+      "Anonymous callers receive 401, private outsiders receive not_found, and successful writes do not expose session cookies, OAuth provider data, token hashes, storage keys, stack traces, or private fork metadata.",
     ],
   },
   {

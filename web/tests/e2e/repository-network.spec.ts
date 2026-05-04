@@ -226,6 +226,10 @@ test("repository Network renders readable fork graph and concrete links", async 
     "href",
     `${seeded.treeRepositoryHref}/forks`,
   );
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/insights-004-final-network-desktop.jpg",
+  });
 
   await page.getByRole("link", { name: "View forks" }).click();
   await expect(
@@ -269,6 +273,10 @@ test("repository Network renders readable fork graph and concrete links", async 
     fullPage: true,
     path: "../ralph/screenshots/build/insights-004-phase4-edge-cases.jpg",
   });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/insights-004-final-forks-desktop.jpg",
+  });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(
@@ -278,4 +286,8 @@ test("repository Network renders readable fork graph and concrete links", async 
     () => document.documentElement.scrollWidth > window.innerWidth,
   );
   expect(horizontalOverflow).toBe(false);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/insights-004-final-mobile.jpg",
+  });
 });

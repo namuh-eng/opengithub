@@ -1,3 +1,11 @@
+2026-05-05 - insights-004 phase 5 final QA handoff
+
+- Completed Phase 5 from `.qrspi/insights-004/structure.md`: repository Network and Forks Insights are now locked as a completed vertical slice and `insights-004.build_pass=true`.
+- Added `/docs/api` coverage for `GET /api/repos/{owner}/{repo}/network`, `GET /api/repos/{owner}/{repo}/forks`, and `PUT /api/repos/{owner}/{repo}/forks/defaults`, including auth/privacy, readable-only 50-fork projection limits, period/type/sort enums, actor-scoped saved-default behavior, freshness metadata, slash-containing branch hrefs, hidden private fork reporting, and no-secret error envelopes.
+- Extended API docs assertions for Network/Forks/defaults endpoint visibility, projection storage, filter enum validation, saved-default scope, and private metadata redaction.
+- Extended the signed-session Playwright Network/Forks smoke to save final desktop and mobile evidence screenshots at `ralph/screenshots/build/insights-004-final-network-desktop.jpg`, `insights-004-final-forks-desktop.jpg`, and `insights-004-final-mobile.jpg`.
+- Verification passed: focused `repository_network_contract`, focused API docs/Network/Forks Vitest, focused Playwright `repository-network.spec.ts`, full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`, full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 442 web tests, direct full Playwright with 129 tests, and mandatory Editorial banned-value scan. The `make test-e2e` wrapper was attempted with the same signed-session environment but stayed silent until terminated; the direct Playwright equivalent passed.
+
 2026-05-05 - insights-002 phase 2 Editorial Contributors page
 
 - Completed Phase 2 from `.qrspi/insights-002/structure.md`: repository Contributors now has an Editorial Insights page backed by the Rust contributors endpoint without marking `insights-002.build_pass=true`.

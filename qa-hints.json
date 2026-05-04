@@ -5609,5 +5609,22 @@
       "Exercise unreadable private forks in a browser fixture with a distinct non-admin user; Rust coverage verifies omission and hidden counts, while Playwright focuses readable public forks.",
       "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema."
     ]
+  },
+  {
+    "feature_id": "insights-004",
+    "tests_written": [
+      "Completed Phase 5 API Docs, Browser Evidence, QA Handoff, and Build Pass and marked insights-004 build_pass=true.",
+      "Documented GET /api/repos/{owner}/{repo}/network, GET /api/repos/{owner}/{repo}/forks, and PUT /api/repos/{owner}/{repo}/forks/defaults in /docs/api, including auth/privacy, 50-fork readable-only projection limits, period/type/sort enums, actor-scoped saved defaults, freshness metadata, and no-secret error envelopes.",
+      "Extended API docs assertions for Network/Forks/defaults endpoint visibility, daily projection storage, slash-containing branch href encoding, readable-only hidden fork reporting, saved-default enum validation, and private metadata redaction.",
+      "Extended the signed-session Playwright Network/Forks smoke to save final desktop Network, desktop Forks, and mobile Forks screenshots under ralph/screenshots/build/insights-004-final-*.jpg.",
+      "Ran focused Rust Network contract coverage, focused API docs and Network/Forks Vitest coverage, focused Playwright Network/Forks smoke, full make check, full make test, direct full Playwright, and the mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Run keyboard-only and screen-reader traversal for the Network graph, Forks filter menus, save-defaults feedback, long fork labels, empty states, unavailable states, and mobile layout.",
+      "Exercise unreadable private forks in a browser fixture with a distinct non-admin user; Rust coverage verifies omission and hidden counts, while Playwright focuses readable public forks.",
+      "Stress large fork networks beyond 50 readable forks to confirm projection ordering, truncation clarity, and browser performance with realistic data volumes.",
+      "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema."
+    ]
   }
 ]

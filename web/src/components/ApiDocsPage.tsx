@@ -11,6 +11,7 @@ const methodChipClass: Record<ApiDocMethod, string> = {
   GET: "chip info",
   POST: "chip ok",
   PATCH: "chip warn",
+  PUT: "chip accent",
   DELETE: "chip err",
 };
 
