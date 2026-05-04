@@ -4906,5 +4906,24 @@
       "Stress long Unicode team names/slugs/descriptions, high team counts, pagination/filter combinations, and member visibility changes while a directory page is open.",
       "The New team CTA is concrete but intentionally lands on the future creation route for Phase 3; QA should not mark org-admin-004 build_pass until create/detail phases are complete."
     ]
+  },
+  {
+    "feature_id": "org-admin-004",
+    "tests_written": [
+      "Completed Phase 3 Team Creation and Nesting Rules without marking org-admin-004 build_pass=true.",
+      "Added POST /api/orgs/{org}/teams for owner/admin and policy-allowed member team creation with slugification, duplicate conflict handling, parent validation, secret nested-team rejection, maintainer membership for the creator, notification preference persistence, and redacted organization.team.create audit events.",
+      "Added /orgs/{org}/teams/new with an Editorial create form, parent-team selector, visible/secret radios, notification radios, cancel/docs links, field validation, pending/error states, and redirect to the created team URL.",
+      "Focused Rust contract covers create success, slugification, duplicate conflict, member-policy denial, invalid secret nesting, secret-parent rejection, creator maintainer membership, notification persistence, audit rows, and description redaction.",
+      "Focused Vitest covers create form payload/redirect, slug preview, cancel link, secret nested-team submit blocking, and no fake handlers.",
+      "Focused Playwright covers real page creation, redirect to team detail URL, secret nested-team disabled submit, and screenshot ralph/screenshots/build/org-admin-004-phase3-team-create.jpg.",
+      "Full direct Playwright passed 118 tests after the make test-e2e silent wrapper was terminated for known no-output/stuck behavior."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 must replace the team-detail placeholder with real members, repositories, child teams, inherited permissions, mentionability, and notification behavior before org-admin-004 can pass.",
+      "Run a real Google OAuth browser session with TEST_ACCOUNT_EMAIL to confirm owner/admin/member creation permissions outside deterministic Playwright seed cookies.",
+      "Stress concurrent duplicate team creation, long Unicode names/descriptions, high parent-team counts, and policy flips while a member create form is open.",
+      "Probe production notification fanout semantics after Phase 4 wires team mentions; Phase 3 only persists the notification preference.",
+      "The make test-e2e wrapper again produced no progress output and was terminated; direct Playwright completed the full suite successfully."
+    ]
   }
 ]

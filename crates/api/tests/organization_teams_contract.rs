@@ -112,6 +112,36 @@ async fn get_json(
     (status, headers, value)
 }
 
+async fn post_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, HeaderMap, Value) {
+    let mut builder = Request::builder()
+        .method(Method::POST)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_string()))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let headers = response.headers().clone();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = serde_json::from_slice(&bytes).expect("response should be JSON");
+    (status, headers, value)
+}
+
 fn assert_json(headers: &HeaderMap) {
     assert!(headers
         .get(header::CONTENT_TYPE)
@@ -469,4 +499,192 @@ async fn organization_teams_empty_state_and_private_org_privacy() {
             "Team mentions"
         ]
     );
+}
+
+#[tokio::test]
+async fn organization_team_create_validates_policy_parent_rules_and_audits() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping organization team create scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("orgteamcreate{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let member = create_user(&pool, &format!("{marker}-member")).await;
+    let blocked_member = create_user(&pool, &format!("{marker}-blocked")).await;
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let member_cookie = cookie_header(&pool, &config, &member).await;
+    let blocked_cookie = cookie_header(&pool, &config, &blocked_member).await;
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let org = create_organization(
+        &pool,
+        CreateOrganization {
+            slug: marker.clone(),
+            display_name: "Create Teams".to_owned(),
+            description: Some("Team creation contract".to_owned()),
+            owner_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("organization should create");
+    insert_org_member(&pool, org.id, member.id, "member").await;
+    let locked_org = create_organization(
+        &pool,
+        CreateOrganization {
+            slug: format!("{marker}-locked"),
+            display_name: "Locked Teams".to_owned(),
+            description: None,
+            owner_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("locked organization should create");
+    insert_org_member(&pool, locked_org.id, blocked_member.id, "member").await;
+    sqlx::query(
+        r#"
+        INSERT INTO organization_policy_settings (organization_id, members_can_create_teams)
+        VALUES ($1, false)
+        ON CONFLICT (organization_id)
+        DO UPDATE SET members_can_create_teams = false
+        "#,
+    )
+    .bind(locked_org.id)
+    .execute(&pool)
+    .await
+    .expect("policy should update");
+    let parent = insert_team(
+        &pool,
+        org.id,
+        &format!("{marker}-parent"),
+        "Parent",
+        "visible",
+        None,
+    )
+    .await;
+    let secret_parent = insert_team(
+        &pool,
+        org.id,
+        &format!("{marker}-secret-parent"),
+        "Secret Parent",
+        "secret",
+        None,
+    )
+    .await;
+
+    let (status, headers, created) = post_json(
+        app.clone(),
+        &format!("/api/orgs/{marker}/teams"),
+        Some(&member_cookie),
+        json!({
+            "name": "Release Infrastructure!",
+            "description": "Owns release trains.",
+            "parentTeamId": parent,
+            "visibility": "visible",
+            "notificationsEnabled": false
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_json(&headers);
+    assert_eq!(created["team"]["slug"], "release-infrastructure");
+    assert_eq!(created["team"]["parent"]["id"], parent.to_string());
+    assert_eq!(created["team"]["notificationsEnabled"], false);
+    assert_eq!(
+        created["destinationHref"],
+        format!("/orgs/{marker}/teams/release-infrastructure")
+    );
+    let membership_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint
+        FROM team_memberships
+        JOIN teams ON teams.id = team_memberships.team_id
+        WHERE teams.organization_id = $1
+          AND teams.slug = 'release-infrastructure'
+          AND team_memberships.user_id = $2
+          AND team_memberships.role = 'maintainer'
+        "#,
+    )
+    .bind(org.id)
+    .bind(member.id)
+    .fetch_one(&pool)
+    .await
+    .expect("membership count should load");
+    assert_eq!(membership_count, 1);
+    let audit_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint
+        FROM organization_audit_events
+        WHERE organization_id = $1
+          AND event_type = 'organization.team.create'
+          AND metadata->>'slug' = 'release-infrastructure'
+          AND metadata::text NOT LIKE '%Owns release trains%'
+        "#,
+    )
+    .bind(org.id)
+    .fetch_one(&pool)
+    .await
+    .expect("audit count should load");
+    assert_eq!(audit_count, 1);
+
+    let (status, _, duplicate) = post_json(
+        app.clone(),
+        &format!("/api/orgs/{marker}/teams"),
+        Some(&owner_cookie),
+        json!({
+            "name": "Release Infrastructure",
+            "visibility": "visible",
+            "notificationsEnabled": true
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(duplicate["error"]["code"], "conflict");
+
+    let (status, _, secret_nested) = post_json(
+        app.clone(),
+        &format!("/api/orgs/{marker}/teams"),
+        Some(&owner_cookie),
+        json!({
+            "name": "Private Child",
+            "parentTeamId": parent,
+            "visibility": "secret",
+            "notificationsEnabled": true
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(secret_nested["error"]["code"], "validation_failed");
+
+    let (status, _, secret_parent_error) = post_json(
+        app.clone(),
+        &format!("/api/orgs/{marker}/teams"),
+        Some(&owner_cookie),
+        json!({
+            "name": "Visible Child",
+            "parentTeamId": secret_parent,
+            "visibility": "visible",
+            "notificationsEnabled": true
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(secret_parent_error["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("Secret teams cannot be used as parent"));
+
+    let (status, _, blocked) = post_json(
+        app.clone(),
+        &format!("/api/orgs/{}-locked/teams", marker),
+        Some(&blocked_cookie),
+        json!({
+            "name": "Blocked Member Team",
+            "visibility": "visible",
+            "notificationsEnabled": true
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(blocked["error"]["code"], "forbidden");
 }

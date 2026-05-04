@@ -14,21 +14,22 @@ use crate::{
     domain::{
         organizations::{
             cancel_organization_invitation, create_organization_from_signup,
-            create_organization_invitation, export_organization_people, organization_people,
-            organization_people_admin, organization_profile_settings, organization_repositories,
-            organization_slug_availability, organization_teams_directory,
-            public_organization_profile, remove_organization_member, rename_organization,
-            retry_organization_invitation, update_organization_member_role,
+            create_organization_invitation, create_organization_team, export_organization_people,
+            organization_people, organization_people_admin, organization_profile_settings,
+            organization_repositories, organization_slug_availability,
+            organization_teams_directory, public_organization_profile, remove_organization_member,
+            rename_organization, retry_organization_invitation, update_organization_member_role,
             update_organization_member_visibility, update_organization_profile_settings,
-            CreateOrganizationInvitation, CreateOrganizationRequest, CreatedOrganization,
-            OrganizationCreateError, OrganizationPeopleAdmin, OrganizationPeopleAdminError,
-            OrganizationPeopleAdminQuery, OrganizationPeopleList, OrganizationPeopleListQuery,
-            OrganizationProfileError, OrganizationProfileSettings,
+            CreateOrganizationInvitation, CreateOrganizationRequest, CreateOrganizationTeam,
+            CreatedOrganization, OrganizationCreateError, OrganizationPeopleAdmin,
+            OrganizationPeopleAdminError, OrganizationPeopleAdminQuery, OrganizationPeopleList,
+            OrganizationPeopleListQuery, OrganizationProfileError, OrganizationProfileSettings,
             OrganizationProfileSettingsPatch, OrganizationRepositoryList,
             OrganizationRepositoryListQuery, OrganizationSettingsError,
-            OrganizationSlugAvailability, OrganizationTeamsDirectory, OrganizationTeamsError,
-            OrganizationTeamsQuery, PublicOrganizationProfile, RenameOrganizationRequest,
-            UpdateOrganizationMembershipRole, UpdateOrganizationMembershipVisibility,
+            OrganizationSlugAvailability, OrganizationTeamCreateResult, OrganizationTeamsDirectory,
+            OrganizationTeamsError, OrganizationTeamsQuery, PublicOrganizationProfile,
+            RenameOrganizationRequest, UpdateOrganizationMembershipRole,
+            UpdateOrganizationMembershipVisibility,
         },
         packages::{
             mutate_package_settings, owner_packages, package_detail, package_settings,
@@ -58,7 +59,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/api/orgs/:org/repositories", get(public_repositories))
         .route("/api/orgs/:org/people", get(public_people))
-        .route("/api/orgs/:org/teams", get(org_teams))
+        .route("/api/orgs/:org/teams", get(org_teams).post(create_org_team))
         .route("/api/orgs/:org/people/admin", get(admin_people))
         .route("/api/orgs/:org/people/export", get(export_people))
         .route(
@@ -261,6 +262,21 @@ async fn org_teams(
     .map_err(map_organization_teams_error)?;
 
     Ok(Json(teams))
+}
+
+async fn create_org_team(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(org): Path<String>,
+    RestJson(request): RestJson<CreateOrganizationTeam>,
+) -> Result<(StatusCode, Json<OrganizationTeamCreateResult>), (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let team = create_organization_team(pool, &org, actor.0.id, request)
+        .await
+        .map_err(map_organization_teams_error)?;
+
+    Ok((StatusCode::CREATED, Json(team)))
 }
 
 async fn admin_people(
@@ -722,6 +738,11 @@ fn map_organization_teams_error(
             StatusCode::FORBIDDEN,
             "forbidden",
             "organization teams require organization membership",
+        ),
+        OrganizationTeamsError::Conflict => error_response(
+            StatusCode::CONFLICT,
+            "conflict",
+            "team slug is already taken",
         ),
         OrganizationTeamsError::InvalidFilter(message) => error_response(
             StatusCode::UNPROCESSABLE_ENTITY,

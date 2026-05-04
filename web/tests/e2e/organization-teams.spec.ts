@@ -124,3 +124,51 @@ test("organization teams directory supports owner/member views, filters, and nav
     "/docs/api#organization-teams",
   );
 });
+
+test("organization team creation validates nesting and redirects to the created team", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const seeded = seedOrganizationTeams();
+  await signIn(page, seeded);
+
+  await page.goto(`${seeded.organizationProfileHref}/teams/new`);
+  await expect(
+    page.getByRole("heading", { name: "Create team" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Parent team")).toContainText("Platform");
+  const parentValue =
+    (await page
+      .getByLabel("Parent team")
+      .locator("option")
+      .nth(1)
+      .getAttribute("value")) ?? "";
+  await page.getByLabel("Team name").fill("Release Infrastructure");
+  await page.getByLabel("Description").fill("Owns release trains.");
+  await page.getByLabel("Parent team").selectOption(parentValue);
+  await page.getByLabel("Disabled").check();
+  await page.getByRole("button", { name: "Create team" }).click();
+  await expect(page).toHaveURL(
+    /\/orgs\/org-profile-[^/]+\/teams\/release-infrastructure$/,
+  );
+  await expect(page.getByText(/will show members, repositories/)).toBeVisible();
+
+  await page.goto(`${seeded.organizationProfileHref}/teams/new`);
+  const nestedParentValue =
+    (await page
+      .getByLabel("Parent team")
+      .locator("option")
+      .nth(1)
+      .getAttribute("value")) ?? "";
+  await page.getByLabel("Team name").fill("Private Child");
+  await page.getByLabel("Secret").check();
+  await page.getByLabel("Parent team").selectOption(nestedParentValue);
+  await expect(
+    page.getByRole("button", { name: "Create team" }),
+  ).toBeDisabled();
+
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/org-admin-004-phase3-team-create.jpg",
+  });
+});

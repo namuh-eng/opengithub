@@ -883,6 +883,19 @@ export type OrganizationTeamsQuery = {
   pageSize?: number;
 };
 
+export type CreateOrganizationTeamRequest = {
+  name: string;
+  description?: string | null;
+  parentTeamId?: string | null;
+  visibility: "visible" | "secret";
+  notificationsEnabled: boolean;
+};
+
+export type OrganizationTeamCreateResult = {
+  team: OrganizationTeamSummary;
+  destinationHref: string;
+};
+
 export type OrganizationInvitationMutation =
   | {
       action: "invite";
@@ -5085,6 +5098,36 @@ export async function getOrganizationTeamsFromCookie(
   }
 
   return (await response.json()) as OrganizationTeamsDirectory;
+}
+
+export async function createOrganizationTeamFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  input: CreateOrganizationTeamRequest,
+): Promise<OrganizationTeamCreateResult> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/teams`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(input),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const envelope = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(envelope?.error.message ?? "Team creation failed", {
+      cause: envelope,
+    });
+  }
+
+  return (await response.json()) as OrganizationTeamCreateResult;
 }
 
 export async function mutateOrganizationPeopleAdminFromCookie(

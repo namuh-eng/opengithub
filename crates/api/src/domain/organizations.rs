@@ -631,6 +631,25 @@ pub struct OrganizationTeamsViewerState {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct CreateOrganizationTeam {
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub parent_team_id: Option<Uuid>,
+    pub visibility: String,
+    pub notifications_enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationTeamCreateResult {
+    pub team: OrganizationTeamSummary,
+    pub destination_href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateOrganizationInvitation {
     pub email_or_login: String,
     pub role: String,
@@ -725,6 +744,8 @@ pub enum OrganizationTeamsError {
     NotFound,
     #[error("organization teams require membership")]
     Forbidden,
+    #[error("organization teams conflict")]
+    Conflict,
     #[error("invalid organization teams filter: {0}")]
     InvalidFilter(String),
     #[error("database error")]
@@ -1838,6 +1859,125 @@ pub async fn organization_teams_directory(
     })
 }
 
+pub async fn create_organization_team(
+    pool: &PgPool,
+    slug: &str,
+    actor_user_id: Uuid,
+    request: CreateOrganizationTeam,
+) -> Result<OrganizationTeamCreateResult, OrganizationTeamsError> {
+    let organization = organization_by_slug(pool, slug)
+        .await
+        .map_err(map_profile_error_to_teams)?;
+    let role = viewer_role(pool, organization.id, Some(actor_user_id))
+        .await?
+        .ok_or(OrganizationTeamsError::Forbidden)?;
+    let can_admin_teams = matches!(role.as_str(), "owner" | "admin");
+    let member_can_create = organization_members_can_create_teams(pool, organization.id).await?;
+    if !can_admin_teams && !member_can_create {
+        return Err(OrganizationTeamsError::Forbidden);
+    }
+
+    let normalized_name = request.name.trim().chars().take(80).collect::<String>();
+    if normalized_name.is_empty() {
+        return Err(OrganizationTeamsError::InvalidFilter(
+            "Team name is required.".to_owned(),
+        ));
+    }
+    let team_slug = normalize_team_slug(&normalized_name);
+    validate_team_slug(&team_slug).map_err(OrganizationTeamsError::InvalidFilter)?;
+    let description = request.description.and_then(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.chars().take(280).collect::<String>())
+    });
+    let visibility = match request.visibility.trim() {
+        "" | "visible" | "public" => "visible",
+        "secret" | "private" => "secret",
+        other => {
+            return Err(OrganizationTeamsError::InvalidFilter(format!(
+                "unsupported team visibility: {other}"
+            )));
+        }
+    };
+
+    if visibility == "secret" && request.parent_team_id.is_some() {
+        return Err(OrganizationTeamsError::InvalidFilter(
+            "Secret teams cannot be nested under another team.".to_owned(),
+        ));
+    }
+
+    if let Some(parent_team_id) = request.parent_team_id {
+        validate_team_parent(pool, organization.id, parent_team_id).await?;
+    }
+
+    let mut tx = pool.begin().await?;
+    let inserted_team_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO teams (
+            organization_id, parent_team_id, slug, name, description, visibility,
+            notifications_enabled
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id
+        "#,
+    )
+    .bind(organization.id)
+    .bind(request.parent_team_id)
+    .bind(&team_slug)
+    .bind(&normalized_name)
+    .bind(&description)
+    .bind(visibility)
+    .bind(request.notifications_enabled)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(map_team_create_insert_error)?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO team_memberships (team_id, user_id, role)
+        VALUES ($1, $2, 'maintainer')
+        ON CONFLICT (team_id, user_id) DO UPDATE SET role = 'maintainer'
+        "#,
+    )
+    .bind(inserted_team_id)
+    .bind(actor_user_id)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO organization_audit_events (
+            organization_id, actor_user_id, event_type, metadata
+        )
+        VALUES ($1, $2, 'organization.team.create', $3)
+        "#,
+    )
+    .bind(organization.id)
+    .bind(actor_user_id)
+    .bind(json!({
+        "teamId": inserted_team_id,
+        "slug": team_slug,
+        "visibility": visibility,
+        "parentTeamId": request.parent_team_id,
+        "notificationsEnabled": request.notifications_enabled,
+        "redacted": []
+    }))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    let teams =
+        organization_team_directory_rows(pool, &organization, actor_user_id, can_admin_teams)
+            .await?;
+    let team = teams
+        .into_iter()
+        .find(|team| team.id == inserted_team_id)
+        .ok_or(OrganizationTeamsError::NotFound)?;
+    Ok(OrganizationTeamCreateResult {
+        destination_href: team.href.clone(),
+        team,
+    })
+}
+
 pub async fn organization_people_admin(
     pool: &PgPool,
     slug: &str,
@@ -2662,6 +2802,47 @@ fn normalize_organization_teams_filters(
         page: pagination.page,
         page_size: pagination.page_size,
     })
+}
+
+fn normalize_team_slug(name: &str) -> String {
+    let mut slug = String::new();
+    let mut pending_dash = false;
+
+    for character in name.trim().chars().flat_map(char::to_lowercase) {
+        if character.is_ascii_alphanumeric() {
+            if pending_dash && !slug.is_empty() {
+                slug.push('-');
+            }
+            pending_dash = false;
+            slug.push(character);
+        } else {
+            pending_dash = !slug.is_empty();
+        }
+
+        if slug.len() >= 80 {
+            break;
+        }
+    }
+
+    slug.trim_matches('-').to_owned()
+}
+
+fn validate_team_slug(slug: &str) -> Result<(), String> {
+    if slug.is_empty() {
+        return Err("Team name must include at least one letter or number.".to_owned());
+    }
+    if slug.len() > 80 {
+        return Err("Team slug must be 80 characters or fewer.".to_owned());
+    }
+    if !slug.chars().all(|character| {
+        character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
+    }) {
+        return Err("Team slug may only use lowercase letters, numbers, and hyphens.".to_owned());
+    }
+    if slug.starts_with('-') || slug.ends_with('-') || slug.contains("--") {
+        return Err("Team slug cannot start, end, or repeat hyphens.".to_owned());
+    }
+    Ok(())
 }
 
 fn normalize_organization_repository_filters(
@@ -3600,6 +3781,69 @@ async fn organization_members_can_create_teams(
     .bind(organization_id)
     .fetch_one(pool)
     .await
+}
+
+async fn validate_team_parent(
+    pool: &PgPool,
+    organization_id: Uuid,
+    parent_team_id: Uuid,
+) -> Result<(), OrganizationTeamsError> {
+    let row = sqlx::query(
+        r#"
+        SELECT id, visibility
+        FROM teams
+        WHERE organization_id = $1 AND id = $2
+        "#,
+    )
+    .bind(organization_id)
+    .bind(parent_team_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some(row) = row else {
+        return Err(OrganizationTeamsError::InvalidFilter(
+            "Choose a parent team that belongs to this organization.".to_owned(),
+        ));
+    };
+    if row.get::<String, _>("visibility") == "secret" {
+        return Err(OrganizationTeamsError::InvalidFilter(
+            "Secret teams cannot be used as parent teams.".to_owned(),
+        ));
+    }
+
+    let ancestor_count: i64 = sqlx::query_scalar(
+        r#"
+        WITH RECURSIVE ancestors AS (
+            SELECT id, parent_team_id
+            FROM teams
+            WHERE organization_id = $1 AND id = $2
+            UNION ALL
+            SELECT parent.id, parent.parent_team_id
+            FROM teams parent
+            JOIN ancestors ON ancestors.parent_team_id = parent.id
+            WHERE parent.organization_id = $1
+        )
+        SELECT COUNT(*)::bigint FROM ancestors
+        "#,
+    )
+    .bind(organization_id)
+    .bind(parent_team_id)
+    .fetch_one(pool)
+    .await?;
+    if ancestor_count > 24 {
+        return Err(OrganizationTeamsError::InvalidFilter(
+            "Team nesting is too deep.".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn map_team_create_insert_error(error: sqlx::Error) -> OrganizationTeamsError {
+    if let sqlx::Error::Database(database_error) = &error {
+        if database_error.code().as_deref() == Some("23505") {
+            return OrganizationTeamsError::Conflict;
+        }
+    }
+    OrganizationTeamsError::Sqlx(error)
 }
 
 async fn organization_team_directory_rows(

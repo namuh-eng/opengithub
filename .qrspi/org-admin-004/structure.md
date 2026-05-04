@@ -41,7 +41,7 @@
 
 ## Phase 3: Team Creation and Nesting Rules - create visible or secret teams safely
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire `/orgs/{org}/teams/new` to a real Rust creation endpoint. Owners/admins, and members only when organization policy allows, can create teams with slugified unique names, description, optional visible parent team, visibility, and notification preference. Secret teams cannot be nested, and no team may create a parent cycle.
 

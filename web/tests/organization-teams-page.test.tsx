@@ -1,10 +1,28 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { OrganizationTeamCreatePage } from "@/components/OrganizationTeamCreatePage";
 import { OrganizationTeamsPage } from "@/components/OrganizationTeamsPage";
 import type {
   OrganizationTeamSummary,
   OrganizationTeamsDirectory,
 } from "@/lib/api";
+
+const pushMock = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: pushMock }),
+}));
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  pushMock.mockReset();
+});
 
 function team(
   overrides: Partial<OrganizationTeamSummary> = {},
@@ -293,5 +311,99 @@ describe("OrganizationTeamsPage", () => {
       "href",
       "/orgs/namuh/teams?q=frontend&visibility=visible&page=3&pageSize=10",
     );
+  });
+
+  it("renders the team create form with parent options and submits concrete payloads", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        destinationHref: "/orgs/namuh/teams/release-infrastructure",
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <OrganizationTeamCreatePage
+        directory={teamsDirectory({
+          parentOptions: [
+            {
+              id: "team-1",
+              slug: "platform",
+              name: "Platform",
+              href: "/orgs/namuh/teams/platform",
+              visibility: "visible",
+            },
+          ],
+        })}
+        org="namuh"
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Team name"), {
+      target: { value: "Release Infrastructure!" },
+    });
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "Owns release trains." },
+    });
+    fireEvent.change(screen.getByLabelText("Parent team"), {
+      target: { value: "team-1" },
+    });
+    fireEvent.click(screen.getByLabelText("Disabled"));
+    fireEvent.click(screen.getByRole("button", { name: "Create team" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith("/orgs/namuh/teams/actions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Release Infrastructure!",
+          description: "Owns release trains.",
+          parentTeamId: "team-1",
+          visibility: "visible",
+          notificationsEnabled: false,
+        }),
+      }),
+    );
+    await waitFor(() =>
+      expect(pushMock).toHaveBeenCalledWith(
+        "/orgs/namuh/teams/release-infrastructure",
+      ),
+    );
+    expect(screen.getByText("@release-infrastructure")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Cancel" })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/teams",
+    );
+  });
+
+  it("blocks secret nested teams before submitting", () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <OrganizationTeamCreatePage
+        directory={teamsDirectory({
+          parentOptions: [
+            {
+              id: "team-1",
+              slug: "platform",
+              name: "Platform",
+              href: "/orgs/namuh/teams/platform",
+              visibility: "visible",
+            },
+          ],
+        })}
+        org="namuh"
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Team name"), {
+      target: { value: "Private Child" },
+    });
+    fireEvent.click(screen.getByLabelText("Secret"));
+    fireEvent.change(screen.getByLabelText("Parent team"), {
+      target: { value: "team-1" },
+    });
+
+    expect(screen.getByRole("button", { name: "Create team" })).toBeDisabled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
