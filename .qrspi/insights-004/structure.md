@@ -58,7 +58,7 @@
 
 ## Phase 4: Fork Metadata Edge Cases and Link-Complete Drilldowns
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Harden Network/Forks for repositories with no forks, unreadable private forks, archived/stale forks, slash-containing default branches, long owner/repository names, ties in metrics, and users without saved defaults. Every visible fork row, metric, owner avatar/name, repository name, and tree/network action should navigate to a real page or present a truthful unavailable state.
 

@@ -188,6 +188,9 @@ describe("RepositoryForksPage", () => {
       screen.getByRole("button", { name: "Defaults Saved" }),
     ).toBeDisabled();
     expect(screen.getByText("Default filters")).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Switch to tree view" }),
+    ).toHaveAttribute("href", "/namuh-eng/opengithub/tree/release%2Fmain");
 
     fireEvent.click(screen.getByRole("button", { name: "Period: Last month" }));
     expect(screen.getByRole("menu", { name: "Period options" })).toBeVisible();
@@ -213,6 +216,11 @@ describe("RepositoryForksPage", () => {
     expect(screen.getByText("archived")).toBeVisible();
     expect(screen.getByText("starred")).toBeVisible();
     expect(screen.getByText("No fork description provided.")).toBeVisible();
+    expect(
+      within(list).getByRole("link", {
+        name: "long-owner-name-that-wraps/opengithub-experiment-with-a-very-long-name",
+      }),
+    ).toHaveClass("break-words");
 
     expect(container.querySelectorAll(".card").length).toBeGreaterThan(4);
     expect(container.querySelector(".chip.ok")).not.toBeNull();

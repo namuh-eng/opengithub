@@ -260,11 +260,14 @@ test("repository Network renders readable fork graph and concrete links", async 
       name: /network-two-.*\/network-archived-.* tree/,
     }),
   ).toHaveAttribute("href", /\/tree\/main$/);
+  await expect(
+    page.getByRole("link", { name: "Switch to tree view" }),
+  ).toHaveAttribute("href", /\/tree\//);
 
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/insights-004-phase3-forks-filters.jpg",
+    path: "../ralph/screenshots/build/insights-004-phase4-edge-cases.jpg",
   });
 
   await page.setViewportSize({ width: 390, height: 844 });

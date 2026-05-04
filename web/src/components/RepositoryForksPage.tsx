@@ -170,6 +170,7 @@ function ForksReadyPage({
   const owner = forks.repository.ownerLogin;
   const repo = forks.repository.name;
   const isEmpty = forks.forks.length === 0;
+  const treeHref = forks.links.treeHref || forks.repository.treeHref;
 
   return (
     <RepositoryInsightsShell activeSection="forks" repository={repository}>
@@ -196,7 +197,7 @@ function ForksReadyPage({
               {forks.freshness.stale ? "Stale projection" : "Fresh projection"}
             </span>
             <span className="chip soft">{forks.freshness.cadence}</span>
-            <Link className="btn" href={repositoryNetworkHref(owner, repo)}>
+            <Link className="btn" href={treeHref}>
               Switch to tree view
             </Link>
           </div>

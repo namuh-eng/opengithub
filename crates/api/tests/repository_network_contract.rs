@@ -301,6 +301,20 @@ async fn repository_network_and_forks_return_readable_projection_filters_and_def
     )
     .await;
     let _ = child;
+    let archived = seed_fork(
+        &pool,
+        repository.id,
+        &owner,
+        "archived",
+        RepositoryVisibility::Public,
+        now - Duration::days(2),
+    )
+    .await;
+    sqlx::query("UPDATE repositories SET is_archived = true, default_branch = 'feature/special' WHERE id = $1")
+        .bind(archived.id)
+        .execute(&pool)
+        .await
+        .expect("archived fork should update");
 
     for _ in 0..3 {
         sqlx::query("INSERT INTO repository_stars (user_id, repository_id) VALUES ($1, $2)")
@@ -377,12 +391,16 @@ async fn repository_network_and_forks_return_readable_projection_filters_and_def
     .await
     .expect("network should load")
     .expect("network should exist");
-    assert_eq!(network.summary.projected_forks, 2);
+    assert_eq!(network.summary.projected_forks, 3);
     assert_eq!(network.summary.hidden_private_forks, 1);
     assert!(network
         .forks
         .iter()
         .all(|fork| fork.repository_id != private.id));
+    assert!(network
+        .forks
+        .iter()
+        .any(|fork| fork.repository_id == archived.id && fork.is_archived));
     let popular_node = network
         .forks
         .iter()
@@ -413,6 +431,90 @@ async fn repository_network_and_forks_return_readable_projection_filters_and_def
     assert!(forks.defaults.saved);
     assert!(forks.defaults.matches_current);
     assert_eq!(forks.hidden_private_forks, 1);
+
+    let inactive = repository_forks_for_actor_by_owner_name(
+        &pool,
+        actor.id,
+        &repository.owner_login,
+        &repository.name,
+        RepositoryForksQuery {
+            period: Some("1w"),
+            repository_type: Some("inactive"),
+            sort: Some("name"),
+        },
+    )
+    .await
+    .expect("inactive forks should load")
+    .expect("inactive forks repository should exist");
+    assert_eq!(inactive.total, 1);
+    assert_eq!(inactive.forks[0].node.repository_id, stale.id);
+    assert!(inactive.forks[0].badges.contains(&"inactive".to_owned()));
+
+    let archived_forks = repository_forks_for_actor_by_owner_name(
+        &pool,
+        actor.id,
+        &repository.owner_login,
+        &repository.name,
+        RepositoryForksQuery {
+            period: Some("all"),
+            repository_type: Some("archived"),
+            sort: Some("recently_pushed"),
+        },
+    )
+    .await
+    .expect("archived forks should load")
+    .expect("archived forks repository should exist");
+    assert_eq!(archived_forks.total, 1);
+    assert_eq!(archived_forks.forks[0].node.repository_id, archived.id);
+    assert!(archived_forks.forks[0]
+        .badges
+        .contains(&"archived".to_owned()));
+    assert!(archived_forks.forks[0]
+        .node
+        .tree_href
+        .contains("/tree/feature%2Fspecial"));
+
+    let owner_forks_without_defaults = repository_forks_for_actor_by_owner_name(
+        &pool,
+        owner.id,
+        &repository.owner_login,
+        &repository.name,
+        RepositoryForksQuery {
+            period: Some("1m"),
+            repository_type: Some("all"),
+            sort: Some("most_starred"),
+        },
+    )
+    .await
+    .expect("forks should load without saved defaults")
+    .expect("forks repository should exist");
+    assert!(!owner_forks_without_defaults.defaults.saved);
+    assert!(owner_forks_without_defaults.defaults.matches_current);
+
+    let empty_public = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("network-empty-{}", Uuid::new_v4().simple()),
+            description: Some("Empty network source".to_owned()),
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("empty public source should create");
+    let empty_network = repository_network_for_actor_by_owner_name(
+        &pool,
+        actor.id,
+        &empty_public.owner_login,
+        &empty_public.name,
+    )
+    .await
+    .expect("empty network should load")
+    .expect("empty network should exist");
+    assert_eq!(empty_network.summary.total_readable_forks, 0);
+    assert!(empty_network.forks.is_empty());
 
     let saved = save_repository_fork_defaults_by_owner_name(
         &pool,

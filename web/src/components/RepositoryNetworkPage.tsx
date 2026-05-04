@@ -42,6 +42,20 @@ function ownerInitial(login: string) {
   return login.trim().slice(0, 2).toUpperCase() || "OG";
 }
 
+function networkForkBadges(fork: RepositoryNetworkForkNode) {
+  const badges = [fork.isArchived ? "inactive" : "active"];
+  if (fork.isArchived) badges.push("archived");
+  if (fork.isStarredByActor) badges.push("starred");
+  return badges;
+}
+
+function badgeClass(badge: string) {
+  if (badge === "active") return "chip ok";
+  if (badge === "starred") return "chip accent";
+  if (badge === "inactive" || badge === "archived") return "chip warn";
+  return "chip soft";
+}
+
 function ForkMetric({
   href,
   label,
@@ -70,6 +84,7 @@ function ForkNode({
   index: number;
 }) {
   const offset = Math.min(index, 5) * 16;
+  const badges = networkForkBadges(fork);
   return (
     <article
       className="list-row grid gap-3 px-4 py-4 md:grid-cols-[minmax(0,1fr)_auto]"
@@ -111,12 +126,11 @@ function ForkNode({
                 {fork.ownerLogin}/{fork.name}
               </Link>
               <span className="chip soft">{fork.visibility}</span>
-              {fork.isArchived ? (
-                <span className="chip warn">archived</span>
-              ) : null}
-              {fork.isStarredByActor ? (
-                <span className="chip accent">starred</span>
-              ) : null}
+              {badges.map((badge) => (
+                <span className={badgeClass(badge)} key={badge}>
+                  {badge}
+                </span>
+              ))}
             </div>
             {fork.description ? (
               <p

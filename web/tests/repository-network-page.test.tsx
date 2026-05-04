@@ -203,9 +203,16 @@ describe("RepositoryNetworkPage", () => {
     expect(
       within(graph).getByRole("link", { name: "1 pull requests" }),
     ).toHaveAttribute("href", "/ashley/opengithub-labs/pulls");
+    expect(screen.getByText("active")).toBeVisible();
+    expect(screen.getByText("inactive")).toBeVisible();
     expect(screen.getByText("archived")).toBeVisible();
     expect(screen.getByText("starred")).toBeVisible();
     expect(screen.getByText("No fork description provided.")).toBeVisible();
+    expect(
+      within(graph).getByRole("link", {
+        name: "long-owner-name-that-wraps/opengithub-experiment-with-a-very-long-name",
+      }),
+    ).toHaveClass("break-words");
 
     expect(container.querySelectorAll(".card").length).toBeGreaterThan(4);
     expect(container.querySelector(".chip.ok")).not.toBeNull();

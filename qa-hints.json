@@ -5591,5 +5591,23 @@
       "Exercise saved-default overwrite and error recovery against a clean migrated database after the shared local 202605030041 migration drift is resolved.",
       "The full direct Playwright suite passed 128 tests and initially found one existing Traffic privacy-test scoping issue; after the scoped assertion fix, focused Traffic read-only Playwright passed. A full direct rerun was not repeated after that targeted fix."
     ]
+  },
+  {
+    "feature_id": "insights-004",
+    "tests_written": [
+      "Completed Phase 4 Fork Metadata Edge Cases and Link-Complete Drilldowns without marking insights-004 build_pass=true.",
+      "Added Network active/inactive badge rendering and corrected the Forks Switch to tree view action to navigate to the repository tree href.",
+      "Extended Rust contract coverage for empty public repositories, unreadable private fork omission, archived forks, inactive period filtering, starred defaults, missing saved defaults, slash-containing default branches, invalid defaults payloads, projection cache writes, and no secret leakage.",
+      "Extended Network/Forks component assertions for long owner/repository wrapping, semantic chips, concrete tree/network/issues/pulls links, no dead anchors, no inert handlers, unsafe-markup guardrails, and Editorial banned-value guardrails.",
+      "Extended the signed-session Playwright Network/Forks smoke to cover graph-to-forks navigation, filters, saved defaults, archived row tree hrefs, Switch to tree view, no dead controls, mobile no-overflow, and screenshot ralph/screenshots/build/insights-004-phase4-edge-cases.jpg.",
+      "Ran focused Rust contract coverage, focused Network/Forks Vitest coverage, focused Playwright, full make check, full make test, direct full Playwright with 129 passed, and the mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 5 still needs /docs/api coverage for Network/Forks/defaults, final browser screenshots, final QA handoff, prd.json build_pass=true, and final build-progress bookkeeping.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Run keyboard-only and screen-reader traversal for the Network graph, Forks filter menus, save-defaults feedback, long fork labels, empty states, and unavailable states.",
+      "Exercise unreadable private forks in a browser fixture with a distinct non-admin user; Rust coverage verifies omission and hidden counts, while Playwright focuses readable public forks.",
+      "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema."
+    ]
   }
 ]

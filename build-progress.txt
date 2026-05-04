@@ -3601,6 +3601,16 @@
 - Verification passed: focused `repository_branches_contract` against the local test database with the known `202605030041` pre-applied migration warning; focused `web/tests/repository-branches-page.test.tsx` and `web/tests/repository-branch-activity-page.test.tsx`; `cd web && npx tsc --noEmit --pretty false`; focused Biome checks; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 419 web tests; focused direct Playwright `repository-branches.spec.ts`; direct full Playwright with 124 tests; mandatory Editorial banned-value scan returned zero matches.
 - `prd.json` remains `build_pass:false` because Phase 5 remains. Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
 
+2026-05-05 - insights-004 phase 4 fork metadata edge cases and link-complete drilldowns
+
+- Completed Phase 4 from `.qrspi/insights-004/structure.md`: Network/Forks now handles empty networks, archived/stale/starred forks, missing saved defaults, slash-containing default branches, long labels, and link-complete row actions without marking `insights-004.build_pass=true`.
+- Added Network active/inactive badges, kept archived/starred semantic chips, and corrected the Forks "Switch to tree view" link to the repository tree href instead of the Network page.
+- Extended the Rust Network/Forks contract for empty public repositories, unreadable private fork omission, archived forks, inactive period filtering, missing saved defaults, invalid defaults payloads, slash-containing branch tree hrefs, projection persistence, and no secret leakage.
+- Extended Network/Forks Vitest coverage for long-label wrapping, semantic chips, concrete owner/repository/tree/network/issues/pulls destinations, no dead controls, no inert handlers, unsafe-markup guardrails, and Editorial visual guardrails.
+- Extended the signed-session Playwright smoke for Network-to-Forks navigation, filter combinations, saved defaults, archived row tree hrefs, Switch to tree view, no dead controls, mobile no-overflow, and screenshot `ralph/screenshots/build/insights-004-phase4-edge-cases.jpg`.
+- Verification passed: focused `repository_network_contract` against the local test database with the known `202605030041` pre-applied migration warning; focused `web/tests/repository-network-page.test.tsx` and `web/tests/repository-forks-page.test.tsx`; focused Biome checks; focused direct Playwright `repository-network.spec.ts`; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 442 web tests; direct full Playwright with 129 tests; mandatory Editorial banned-value scan returned zero matches.
+- `prd.json` remains `build_pass:false` because Phase 5 remains. Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-05 - insights-003 phase 5 final docs, browser evidence, and build pass
 
 - Completed Phase 5 from `.qrspi/insights-003/structure.md`: repository Traffic analytics is now locked as a completed vertical slice and `insights-003.build_pass=true`.
