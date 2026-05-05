@@ -27,6 +27,9 @@ use crate::{
         update_repository_actions_variable_by_owner_name, ActionsSecretMutation,
         ActionsSecretsError, ActionsVariableMutation,
     },
+    domain::discussions::{
+        repository_discussions_for_actor_by_owner_name, RepositoryDiscussionsQuery,
+    },
     domain::pages::{
         connect_repository_pages_actions_deployment_by_owner_name,
         recheck_repository_pages_dns_by_owner_name, remove_repository_pages_domain_by_owner_name,
@@ -163,6 +166,11 @@ pub fn router() -> Router<AppState> {
             get(download_sbom_export),
         )
         .route("/:owner/:repo/network", get(network))
+        .route("/:owner/:repo/discussions", get(discussions))
+        .route(
+            "/:owner/:repo/discussions/categories/:category_slug",
+            get(discussions_category),
+        )
         .route("/:owner/:repo/security", get(security_overview))
         .route(
             "/:owner/:repo/security/advisories",
@@ -1309,6 +1317,78 @@ struct SecurityAdvisoriesQueryParams {
     sort: Option<String>,
     page: Option<i64>,
     page_size: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DiscussionsQueryParams {
+    q: Option<String>,
+    label: Option<String>,
+    state: Option<String>,
+    answered: Option<String>,
+    locked: Option<String>,
+    pinned: Option<String>,
+    sort: Option<String>,
+    page: Option<i64>,
+    page_size: Option<i64>,
+}
+
+async fn discussions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<DiscussionsQueryParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    repository_discussions_response(state, headers, owner, repo, None, query).await
+}
+
+async fn discussions_category(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, category_slug)): Path<(String, String, String)>,
+    Query(query): Query<DiscussionsQueryParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    repository_discussions_response(state, headers, owner, repo, Some(category_slug), query).await
+}
+
+async fn repository_discussions_response(
+    state: AppState,
+    headers: HeaderMap,
+    owner: String,
+    repo: String,
+    category_slug: Option<String>,
+    query: DiscussionsQueryParams,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = repository_discussions_for_actor_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        category_slug.as_deref(),
+        RepositoryDiscussionsQuery {
+            q: query.q.as_deref(),
+            label: query.label.as_deref(),
+            state: query.state.as_deref(),
+            answered: query.answered.as_deref(),
+            locked: query.locked.as_deref(),
+            pinned: query.pinned.as_deref(),
+            sort: query.sort.as_deref(),
+            page: query.page,
+            page_size: query.page_size,
+        },
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository discussions were not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(view)))
 }
 
 async fn security_advisories(

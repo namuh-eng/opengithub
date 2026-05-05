@@ -10,7 +10,7 @@ Repository tabs already include a Discussions destination, organization policy e
 
 ## Phase 1: Discussion List API Contract and Persistence - screen-ready list data
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add repository-owned discussion list persistence and authenticated/readable API contracts without rendering the page yet. The API should support repository read permission, private repository 404 privacy, category-scoped reads, query-backed filters, sorting, pinned rows, labels, category rail data, helpful contributors, community links, and viewer-specific vote state.
 

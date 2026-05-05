@@ -6174,5 +6174,22 @@
       "Repeat list/detail/edit/create/publish browser QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
       "Verify notification delivery fanout and dependency advisory feed linkage in a seeded database with real advisory collaborators/watchers; unit and contract coverage assert writes, but local browser seeding was blocked."
     ]
+  },
+  {
+    "feature_id": "discussions-001",
+    "tests_written": [
+      "Completed Phase 1 Discussion List API Contract and Persistence without marking discussions-001 build_pass=true.",
+      "Added additive repository discussions persistence for categories, discussions, comments, labels, votes, pins, community links, and activity events with repository/category/state/activity/vote indexes.",
+      "Added GET /api/repos/{owner}/{repo}/discussions and GET /api/repos/{owner}/{repo}/discussions/categories/{slug} with signed-session auth, repository privacy checks, disabled policy state, q/label/state/answered/locked/pinned/sort/page normalization, pinned rows, category rail data, label summaries, helpful contributors, community links, pagination, and viewer vote state.",
+      "Added typed frontend DTOs and cookie-backed getRepositoryDiscussionsFromCookie helper without client-side auth.",
+      "Added focused Rust contract coverage for unauthenticated denial, private outsider privacy, query and label filtering, top sorting, category route filtering, pinned rows, labels, vote state, helpful contributors, community links, malformed sort validation, and no session-secret leakage.",
+      "Verification passed: cargo check -p opengithub-api --tests; focused repository_discussions_contract compiled and executed under its database guard; cd web && npx tsc --noEmit --pretty false; cd web && npx biome check src/lib/api.ts; full TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check; full same-env make test with Cargo tests plus 486 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 still needs the Editorial repository Discussions list UI, URL-backed filters, category rail rendering, concrete row/category/new links, and browser screenshots.",
+      "Phase 3 still needs authenticated upvote and unvote mutation endpoints with optimistic UI and notification/activity side effects.",
+      "The focused DB-backed contract test could not seed data in this workspace because localhost:55432 rejected the available postgres credentials; the test compiled and executed its skip guard. Re-run with a credentialed TEST_DATABASE_URL to exercise the seeded assertions.",
+      "Browser smoke was skipped because Phase 1 is API-first and .qrspi/discussions-001/structure.md marks browser smoke optional for this phase."
+    ]
   }
 ]

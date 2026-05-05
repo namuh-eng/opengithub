@@ -4433,6 +4433,135 @@ export type ApiErrorEnvelope = {
   } | null;
 };
 
+export type DiscussionRepositorySummary = {
+  id: string;
+  owner: string;
+  name: string;
+  visibility: RepositoryVisibility | string;
+  isArchived: boolean;
+  href: string;
+  discussionsHref: string;
+};
+
+export type DiscussionViewer = {
+  authenticated: boolean;
+  permission: string | null;
+  canRead: boolean;
+  canVote: boolean;
+  canCreate: boolean;
+};
+
+export type DiscussionFilterState = {
+  query: string;
+  label: string | null;
+  state: "open" | "closed" | "all" | string;
+  answered: boolean | null;
+  locked: boolean | null;
+  pinned: boolean | null;
+  sort: "latest" | "newest" | "top" | "most_commented" | string;
+  category: string | null;
+  page: number;
+  pageSize: number;
+};
+
+export type DiscussionCategorySummary = {
+  id: string;
+  slug: string;
+  name: string;
+  emoji: string;
+  description: string | null;
+  count: number;
+  openCount: number;
+  href: string;
+  active: boolean;
+};
+
+export type DiscussionLabelSummary = {
+  id: string;
+  name: string;
+  color: string;
+  description: string | null;
+  count: number;
+};
+
+export type DiscussionAuthorSummary = {
+  id: string | null;
+  login: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+};
+
+export type DiscussionRow = {
+  id: string;
+  number: number;
+  title: string;
+  state: "open" | "closed" | string;
+  answered: boolean;
+  locked: boolean;
+  pinned: boolean;
+  category: DiscussionCategorySummary;
+  labels: DiscussionLabelSummary[];
+  author: DiscussionAuthorSummary;
+  commentsCount: number;
+  votesCount: number;
+  viewerVoted: boolean;
+  href: string;
+  createdAt: string;
+  updatedAt: string;
+  lastActivityAt: string;
+};
+
+export type PinnedDiscussionCard = {
+  discussion: DiscussionRow;
+  position: number;
+  pinnedAt: string;
+};
+
+export type HelpfulContributorSummary = {
+  user: DiscussionAuthorSummary;
+  commentsCount: number;
+  helpfulCount: number;
+};
+
+export type CommunityLinkSummary = {
+  id: string;
+  label: string;
+  href: string;
+  kind: string;
+};
+
+export type RepositoryDiscussionsView = {
+  repository: DiscussionRepositorySummary;
+  viewer: DiscussionViewer;
+  enabled: boolean;
+  disabledReason: string | null;
+  filters: DiscussionFilterState;
+  categories: DiscussionCategorySummary[];
+  labels: DiscussionLabelSummary[];
+  pinned: PinnedDiscussionCard[];
+  helpfulContributors: HelpfulContributorSummary[];
+  communityLinks: CommunityLinkSummary[];
+  items: DiscussionRow[];
+  openCount: number;
+  closedCount: number;
+  total: number;
+  page: number;
+  pageSize: number;
+  hasNextPage: boolean;
+};
+
+export type RepositoryDiscussionsQuery = {
+  q?: string;
+  label?: string;
+  state?: string;
+  answered?: boolean | string;
+  locked?: boolean | string;
+  pinned?: boolean | string;
+  sort?: string;
+  page?: number;
+  pageSize?: number;
+};
+
 export type ActionsWorkflowLatestRun = {
   id: string;
   runNumber: number;
@@ -13375,4 +13504,68 @@ export async function bulkUpdateNotificationTriageFromCookie(
     });
   }
   return body as NotificationBulkTriageResponse;
+}
+
+export async function getRepositoryDiscussionsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  query: RepositoryDiscussionsQuery = {},
+  categorySlug?: string | null,
+): Promise<RepositoryDiscussionsView | ApiErrorEnvelope> {
+  const path = repositoryDiscussionsPath(owner, repo, query, categorySlug);
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${path}`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Repository discussions are temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "repository_discussions_failed",
+          message: "Repository discussions could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as RepositoryDiscussionsView;
+}
+
+function repositoryDiscussionsPath(
+  owner: string,
+  repo: string,
+  query: RepositoryDiscussionsQuery,
+  categorySlug?: string | null,
+): string {
+  const base = categorySlug
+    ? `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/categories/${encodeURIComponent(categorySlug)}`
+    : `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions`;
+  const params = new URLSearchParams();
+  if (query.q) params.set("q", query.q);
+  if (query.label) params.set("label", query.label);
+  if (query.state) params.set("state", query.state);
+  if (query.answered !== undefined)
+    params.set("answered", String(query.answered));
+  if (query.locked !== undefined) params.set("locked", String(query.locked));
+  if (query.pinned !== undefined) params.set("pinned", String(query.pinned));
+  if (query.sort) params.set("sort", query.sort);
+  if (query.page) params.set("page", String(query.page));
+  if (query.pageSize) params.set("page_size", String(query.pageSize));
+  const search = params.toString();
+  return search ? `${base}?${search}` : base;
 }
