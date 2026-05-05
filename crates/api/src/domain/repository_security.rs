@@ -3,7 +3,7 @@ use regex::{Captures, Regex};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use sqlx::{PgPool, Row};
+use sqlx::{PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
 
 use super::{
@@ -282,6 +282,26 @@ pub struct RepositorySecurityAdvisoryMutation {
     pub cvss_vector: Option<String>,
     pub cvss_score: Option<f64>,
     pub cvss_metrics: Value,
+    pub cwes: Vec<CweReference>,
+    pub credits: Vec<AdvisoryCreditMutation>,
+    pub collaborators: Vec<AdvisoryCollaboratorMutation>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySecurityAdvisoryCreate {
+    pub title: String,
+    pub summary: Option<String>,
+    pub details_markdown: Option<String>,
+    pub cve_id: Option<String>,
+    pub severity: Option<String>,
+    pub package_ecosystem: Option<String>,
+    pub package_name: Option<String>,
+    pub affected_versions: Option<String>,
+    pub patched_versions: Option<String>,
+    pub cvss_vector: Option<String>,
+    pub cvss_score: Option<f64>,
+    pub cvss_metrics: Option<Value>,
     pub cwes: Vec<CweReference>,
     pub credits: Vec<AdvisoryCreditMutation>,
     pub collaborators: Vec<AdvisoryCollaboratorMutation>,
@@ -1371,6 +1391,57 @@ pub async fn update_repository_security_advisory_for_actor_by_owner_name(
     }
     let ghsa_id = normalize_ghsa_id(ghsa_id)?;
     update_repository_security_advisory(pool, &repository, actor_user_id, &ghsa_id, mutation).await
+}
+
+pub async fn create_repository_security_advisory_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    request: RepositorySecurityAdvisoryCreate,
+) -> Result<Option<RepositorySecurityAdvisoryDetail>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if !can_write_repository(pool, &repository, actor_user_id).await? {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if repository.is_archived {
+        return Err(RepositoryError::ArchivedRepositoryReadOnly);
+    }
+    create_repository_security_advisory(pool, &repository, actor_user_id, request).await
+}
+
+pub async fn publish_repository_security_advisory_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    ghsa_id: &str,
+) -> Result<Option<RepositorySecurityAdvisoryDetail>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if !can_write_repository(pool, &repository, actor_user_id).await? {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if repository.is_archived {
+        return Err(RepositoryError::ArchivedRepositoryReadOnly);
+    }
+    let ghsa_id = normalize_ghsa_id(ghsa_id)?;
+    publish_repository_security_advisory(pool, &repository, actor_user_id, &ghsa_id).await
 }
 
 pub async fn repository_dependabot_alert_detail_for_actor_by_owner_name(
@@ -3677,6 +3748,253 @@ async fn update_repository_security_advisory(
         .await
 }
 
+async fn create_repository_security_advisory(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    request: RepositorySecurityAdvisoryCreate,
+) -> Result<Option<RepositorySecurityAdvisoryDetail>, RepositoryError> {
+    let title = validate_advisory_text(&request.title, "title", 240)?;
+    let summary = match request.summary.as_deref() {
+        Some(value) if !value.trim().is_empty() => validate_advisory_text(value, "summary", 1000)?,
+        _ => "Draft advisory details are being prepared.".to_owned(),
+    };
+    let details_markdown = match request.details_markdown.as_deref() {
+        Some(value) if !value.trim().is_empty() => {
+            validate_advisory_text(value, "details", 20_000)?
+        }
+        _ => summary.clone(),
+    };
+    let severity = match request.severity.as_deref() {
+        Some(value) if !value.trim().is_empty() => validate_advisory_severity(value)?,
+        _ => "moderate".to_owned(),
+    };
+    let cve_id = validate_optional_cve(request.cve_id.as_deref())?;
+    let package_ecosystem = normalize_optional_advisory_text(
+        request.package_ecosystem.as_deref(),
+        "package ecosystem",
+        80,
+    )?;
+    let package_name =
+        normalize_optional_advisory_text(request.package_name.as_deref(), "package name", 160)?;
+    let affected_versions = normalize_optional_advisory_text(
+        request.affected_versions.as_deref(),
+        "affected versions",
+        240,
+    )?;
+    let patched_versions = normalize_optional_advisory_text(
+        request.patched_versions.as_deref(),
+        "patched versions",
+        240,
+    )?;
+    let cvss_vector =
+        normalize_optional_advisory_text(request.cvss_vector.as_deref(), "CVSS vector", 240)?;
+    if let Some(score) = request.cvss_score {
+        if !(0.0..=10.0).contains(&score) {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(
+                "CVSS score must be between 0 and 10".to_owned(),
+            ));
+        }
+    }
+    let cwes = validate_advisory_cwes(&request.cwes)?;
+    let credits = validate_advisory_credits(&request.credits)?;
+    let mut collaborators = validate_advisory_collaborators(&request.collaborators)?;
+    let author_login = actor_login(pool, actor_user_id).await?;
+    if !collaborators.iter().any(|row| row.login == author_login) {
+        collaborators.push(AdvisoryCollaboratorMutation {
+            login: author_login.clone(),
+            role: "author".to_owned(),
+        });
+    }
+    let rendered = render_markdown(
+        Some(pool),
+        RenderMarkdownInput {
+            markdown: details_markdown.clone(),
+            repository_id: Some(repository.id),
+            owner: Some(repository.owner_login.clone()),
+            repo: Some(repository.name.clone()),
+            ref_name: Some(repository.default_branch.clone()),
+            enable_task_toggles: Some(false),
+        },
+    )
+    .await
+    .map_err(markdown_error)?;
+    let ghsa_id = next_repository_ghsa_id(pool, repository.id).await?;
+    let advisory_href = format!(
+        "/{}/{}/security/advisories/{}",
+        repository.owner_login, repository.name, ghsa_id
+    );
+    let cvss_metrics = request.cvss_metrics.unwrap_or_else(|| json!({}));
+
+    let mut tx = pool.begin().await?;
+    let advisory_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO repository_security_advisories (
+            repository_id, advisory_identifier, ghsa_id, cve_id, severity, status, title,
+            summary, package_ecosystem, package_name, affected_versions, vulnerable_range,
+            patched_versions, cvss_vector, cvss_score, cvss_metrics, markdown_summary,
+            markdown_details, details_html, author_user_id, advisory_href
+        )
+        VALUES (
+            $1, $2, $2, $3, $4, 'draft', $5,
+            $6, $7, $8, $9, $9,
+            $10, $11, $12, $13, $6,
+            $14, $15, $16, $17
+        )
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(&ghsa_id)
+    .bind(cve_id.as_deref())
+    .bind(&severity)
+    .bind(&title)
+    .bind(&summary)
+    .bind(package_ecosystem.as_deref())
+    .bind(package_name.as_deref())
+    .bind(affected_versions.as_deref())
+    .bind(patched_versions.as_deref())
+    .bind(cvss_vector.as_deref())
+    .bind(request.cvss_score)
+    .bind(&cvss_metrics)
+    .bind(&details_markdown)
+    .bind(&rendered.html)
+    .bind(actor_user_id)
+    .bind(&advisory_href)
+    .fetch_one(&mut *tx)
+    .await?;
+    replace_advisory_children(
+        &mut tx,
+        advisory_id,
+        actor_user_id,
+        cwes,
+        credits,
+        collaborators,
+    )
+    .await?;
+    insert_advisory_event(
+        &mut tx,
+        advisory_id,
+        actor_user_id,
+        "created",
+        format!("Created draft advisory {ghsa_id}"),
+        json!({ "status": "draft", "severity": severity }),
+    )
+    .await?;
+    insert_repository_security_audit_event(
+        &mut tx,
+        actor_user_id,
+        "repository.security_advisory.create",
+        advisory_id,
+        json!({ "repositoryId": repository.id, "ghsaId": ghsa_id }),
+    )
+    .await?;
+    tx.commit().await?;
+
+    repository_security_advisory_detail_for_repository(pool, repository, actor_user_id, &ghsa_id)
+        .await
+}
+
+async fn publish_repository_security_advisory(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    ghsa_id: &str,
+) -> Result<Option<RepositorySecurityAdvisoryDetail>, RepositoryError> {
+    let row = sqlx::query(
+        r#"
+        SELECT id, status, title, severity, package_ecosystem, package_name, patched_versions
+        FROM repository_security_advisories
+        WHERE repository_id = $1
+          AND lower(COALESCE(ghsa_id, advisory_identifier)) = lower($2)
+        "#,
+    )
+    .bind(repository.id)
+    .bind(ghsa_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let advisory_id: Uuid = row.get("id");
+    let status: String = row.get("status");
+    if status != "draft" {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "only draft advisories can be published".to_owned(),
+        ));
+    }
+    let title: String = row.get("title");
+    let severity: String = row.get("severity");
+    let package_ecosystem: Option<String> = row.get("package_ecosystem");
+    let package_name: Option<String> = row.get("package_name");
+    let patched_versions: Option<String> = row.get("patched_versions");
+    if title.trim().is_empty() {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "title is required before publishing".to_owned(),
+        ));
+    }
+    if package_name.is_some() && patched_versions.is_none() {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "patched versions are required before publishing package advisories".to_owned(),
+        ));
+    }
+
+    let dependency_advisory_id = ensure_dependency_advisory_for_repository_advisory(
+        pool,
+        ghsa_id,
+        &title,
+        &severity,
+        &package_ecosystem,
+        &package_name,
+    )
+    .await?;
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        r#"
+        UPDATE repository_security_advisories
+        SET status = 'published',
+            published_at = COALESCE(published_at, now()),
+            dependency_advisory_id = COALESCE(dependency_advisory_id, $3),
+            updated_at = now()
+        WHERE repository_id = $1 AND id = $2
+        "#,
+    )
+    .bind(repository.id)
+    .bind(advisory_id)
+    .bind(dependency_advisory_id)
+    .execute(&mut *tx)
+    .await?;
+    insert_advisory_event(
+        &mut tx,
+        advisory_id,
+        actor_user_id,
+        "published",
+        format!("Published advisory {ghsa_id}"),
+        json!({ "status": "published", "dependencyAdvisoryId": dependency_advisory_id }),
+    )
+    .await?;
+    insert_repository_security_audit_event(
+        &mut tx,
+        actor_user_id,
+        "repository.security_advisory.publish",
+        advisory_id,
+        json!({ "repositoryId": repository.id, "ghsaId": ghsa_id }),
+    )
+    .await?;
+    insert_advisory_notifications(
+        &mut tx,
+        repository.id,
+        advisory_id,
+        actor_user_id,
+        &format!("Security advisory published: {title}"),
+    )
+    .await?;
+    tx.commit().await?;
+
+    repository_security_advisory_detail_for_repository(pool, repository, actor_user_id, ghsa_id)
+        .await
+}
+
 async fn repository_security_advisory_rows(
     pool: &PgPool,
     repository: &Repository,
@@ -4172,6 +4490,256 @@ fn validate_advisory_collaborators(
         normalized.push(AdvisoryCollaboratorMutation { login, role });
     }
     Ok(normalized)
+}
+
+async fn actor_login(pool: &PgPool, actor_user_id: Uuid) -> Result<String, RepositoryError> {
+    sqlx::query_scalar::<_, String>("SELECT username FROM users WHERE id = $1")
+        .bind(actor_user_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or(RepositoryError::NotFound)
+}
+
+async fn next_repository_ghsa_id(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<String, RepositoryError> {
+    for _ in 0..8 {
+        let token = Uuid::new_v4()
+            .simple()
+            .to_string()
+            .chars()
+            .take(12)
+            .collect::<String>();
+        let candidate = format!("GHSA-local-{token}");
+        let exists = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM repository_security_advisories
+                WHERE repository_id = $1
+                  AND lower(COALESCE(ghsa_id, advisory_identifier)) = lower($2)
+            )
+            "#,
+        )
+        .bind(repository_id)
+        .bind(&candidate)
+        .fetch_one(pool)
+        .await?;
+        if !exists {
+            return Ok(candidate);
+        }
+    }
+    Err(RepositoryError::InvalidDependencyGraphQuery(
+        "could not allocate a unique advisory identifier".to_owned(),
+    ))
+}
+
+async fn replace_advisory_children(
+    tx: &mut Transaction<'_, Postgres>,
+    advisory_id: Uuid,
+    actor_user_id: Uuid,
+    cwes: Vec<CweReference>,
+    credits: Vec<AdvisoryCreditMutation>,
+    collaborators: Vec<AdvisoryCollaboratorMutation>,
+) -> Result<(), RepositoryError> {
+    sqlx::query("DELETE FROM repository_security_advisory_cwes WHERE advisory_id = $1")
+        .bind(advisory_id)
+        .execute(&mut **tx)
+        .await?;
+    for cwe in cwes {
+        sqlx::query(
+            r#"
+            INSERT INTO repository_security_advisory_cwes (advisory_id, cwe_id, name, href)
+            VALUES ($1, $2, $3, $4)
+            "#,
+        )
+        .bind(advisory_id)
+        .bind(cwe.id)
+        .bind(cwe.name)
+        .bind(cwe.href)
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    sqlx::query("DELETE FROM repository_security_advisory_credits WHERE advisory_id = $1")
+        .bind(advisory_id)
+        .execute(&mut **tx)
+        .await?;
+    for credit in credits {
+        sqlx::query(
+            r#"
+            INSERT INTO repository_security_advisory_credits (advisory_id, login, credit_type)
+            VALUES ($1, $2, $3)
+            "#,
+        )
+        .bind(advisory_id)
+        .bind(credit.login)
+        .bind(credit.credit_type)
+        .execute(&mut **tx)
+        .await?;
+    }
+
+    sqlx::query("DELETE FROM repository_security_advisory_collaborators WHERE advisory_id = $1")
+        .bind(advisory_id)
+        .execute(&mut **tx)
+        .await?;
+    for collaborator in collaborators {
+        sqlx::query(
+            r#"
+            INSERT INTO repository_security_advisory_collaborators (
+                advisory_id, login, role, invited_by_user_id
+            )
+            VALUES ($1, $2, $3, $4)
+            "#,
+        )
+        .bind(advisory_id)
+        .bind(collaborator.login)
+        .bind(collaborator.role)
+        .bind(actor_user_id)
+        .execute(&mut **tx)
+        .await?;
+    }
+    Ok(())
+}
+
+async fn insert_advisory_event(
+    tx: &mut Transaction<'_, Postgres>,
+    advisory_id: Uuid,
+    actor_user_id: Uuid,
+    event_type: &str,
+    message: String,
+    metadata: Value,
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        r#"
+        INSERT INTO repository_security_advisory_events (
+            advisory_id, actor_user_id, event_type, message, metadata
+        )
+        VALUES ($1, $2, $3, $4, $5)
+        "#,
+    )
+    .bind(advisory_id)
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(message)
+    .bind(metadata)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+async fn insert_repository_security_audit_event(
+    tx: &mut Transaction<'_, Postgres>,
+    actor_user_id: Uuid,
+    event_type: &str,
+    target_id: Uuid,
+    metadata: Value,
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        r#"
+        INSERT INTO security_audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, $2, 'repository_security_advisory', $3, $4)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(target_id)
+    .bind(metadata)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+async fn insert_advisory_notifications(
+    tx: &mut Transaction<'_, Postgres>,
+    repository_id: Uuid,
+    advisory_id: Uuid,
+    actor_user_id: Uuid,
+    title: &str,
+) -> Result<(), RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT DISTINCT COALESCE(user_id, users.id) AS user_id
+        FROM repository_security_advisory_collaborators
+        LEFT JOIN users ON lower(users.username) = lower(repository_security_advisory_collaborators.login)
+        WHERE advisory_id = $1
+        "#,
+    )
+    .bind(advisory_id)
+    .fetch_all(&mut **tx)
+    .await?;
+    for row in rows {
+        let user_id: Option<Uuid> = row.get("user_id");
+        let Some(user_id) = user_id else {
+            continue;
+        };
+        if user_id == actor_user_id {
+            continue;
+        }
+        sqlx::query(
+            r#"
+            INSERT INTO notifications (
+                user_id, repository_id, subject_type, subject_id, title, reason
+            )
+            VALUES ($1, $2, 'security_advisory', $3, $4, 'security_advisory')
+            "#,
+        )
+        .bind(user_id)
+        .bind(repository_id)
+        .bind(advisory_id)
+        .bind(title)
+        .execute(&mut **tx)
+        .await?;
+    }
+    Ok(())
+}
+
+async fn ensure_dependency_advisory_for_repository_advisory(
+    pool: &PgPool,
+    ghsa_id: &str,
+    title: &str,
+    severity: &str,
+    package_ecosystem: &Option<String>,
+    package_name: &Option<String>,
+) -> Result<Option<Uuid>, RepositoryError> {
+    let (Some(ecosystem), Some(name)) = (package_ecosystem, package_name) else {
+        return Ok(None);
+    };
+    let package_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO dependency_packages (ecosystem, name)
+        VALUES ($1, $2)
+        ON CONFLICT (ecosystem, lower(name)) DO UPDATE SET name = EXCLUDED.name
+        RETURNING id
+        "#,
+    )
+    .bind(ecosystem)
+    .bind(name)
+    .fetch_one(pool)
+    .await?;
+    let advisory_id = sqlx::query_scalar(
+        r#"
+        INSERT INTO dependency_advisories (
+            package_id, advisory_identifier, severity, title, advisory_href, published_at
+        )
+        VALUES ($1, $2, $3, $4, $5, now())
+        ON CONFLICT (package_id, advisory_identifier)
+        DO UPDATE SET severity = EXCLUDED.severity,
+                      title = EXCLUDED.title,
+                      advisory_href = EXCLUDED.advisory_href,
+                      published_at = COALESCE(dependency_advisories.published_at, now())
+        RETURNING id
+        "#,
+    )
+    .bind(package_id)
+    .bind(ghsa_id)
+    .bind(severity)
+    .bind(title)
+    .bind(format!("/advisories/{ghsa_id}"))
+    .fetch_one(pool)
+    .await?;
+    Ok(Some(advisory_id))
 }
 
 fn advisory_links(repository: &Repository, can_write: bool) -> RepositorySecurityAdvisoryLinks {

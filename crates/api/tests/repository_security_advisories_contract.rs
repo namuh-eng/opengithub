@@ -14,9 +14,11 @@ use opengithub_api::{
             RepositoryVisibility,
         },
         repository_security::{
+            create_repository_security_advisory_for_actor_by_owner_name,
+            publish_repository_security_advisory_for_actor_by_owner_name,
             repository_security_advisories_for_actor_by_owner_name,
             repository_security_advisory_detail_for_actor_by_owner_name,
-            RepositorySecurityAdvisoriesQuery,
+            RepositorySecurityAdvisoriesQuery, RepositorySecurityAdvisoryCreate,
         },
     },
 };
@@ -145,6 +147,37 @@ async fn patch_json(
 ) -> (StatusCode, Value) {
     let mut builder = Request::builder()
         .method("PATCH")
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_string()))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    (
+        status,
+        serde_json::from_slice(&bytes).expect("response should be json"),
+    )
+}
+
+async fn post_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method("POST")
         .uri(uri)
         .header(header::CONTENT_TYPE, "application/json");
     if let Some(cookie) = cookie {
@@ -463,4 +496,131 @@ async fn repository_security_advisories_hide_drafts_and_return_detail_metadata()
     .expect("direct detail should load")
     .expect("advisory should exist");
     assert_eq!(direct_detail.advisory.id, published_id);
+
+    let create_body = json!({
+        "title": "Draft advisory lifecycle",
+        "summary": "Maintainers can prepare draft advisories privately.",
+        "detailsMarkdown": "## Draft\n\nUse patched package versions.",
+        "severity": "high",
+        "packageEcosystem": "cargo",
+        "packageName": "opengithub-api",
+        "affectedVersions": "< 4.0.0",
+        "patchedVersions": ">= 4.0.0",
+        "cvssScore": 8.2,
+        "cwes": [],
+        "credits": [],
+        "collaborators": []
+    });
+    let (invalid_create_status, invalid_create_body) = post_json(
+        app.clone(),
+        &base,
+        Some(&owner_cookie),
+        json!({ "title": "" }),
+    )
+    .await;
+    assert_eq!(invalid_create_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(invalid_create_body["error"]["code"], "validation_failed");
+    let (reader_create_status, _) = post_json(
+        app.clone(),
+        &base,
+        Some(&reader_cookie),
+        create_body.clone(),
+    )
+    .await;
+    assert_eq!(reader_create_status, StatusCode::FORBIDDEN);
+    let (create_status, create_response) =
+        post_json(app.clone(), &base, Some(&owner_cookie), create_body).await;
+    assert_eq!(create_status, StatusCode::CREATED, "{create_response}");
+    let created_ghsa = create_response["advisory"]["ghsaId"]
+        .as_str()
+        .expect("created ghsa");
+    assert!(created_ghsa.starts_with("GHSA-local-"));
+    assert_eq!(create_response["advisory"]["state"], "draft");
+    assert_eq!(create_response["viewer"]["canPublish"], true);
+    assert!(!create_response.to_string().contains("google-client-secret"));
+
+    let created_detail_uri = format!("{base}/{created_ghsa}");
+    let (reader_created_status, reader_created_body) =
+        get_json(app.clone(), &created_detail_uri, Some(&reader_cookie)).await;
+    assert_eq!(reader_created_status, StatusCode::NOT_FOUND);
+    assert!(!reader_created_body
+        .to_string()
+        .contains("Draft advisory lifecycle"));
+    let (publish_status, publish_body) = post_json(
+        app.clone(),
+        &format!("{created_detail_uri}/publish"),
+        Some(&owner_cookie),
+        json!({}),
+    )
+    .await;
+    assert_eq!(publish_status, StatusCode::OK, "{publish_body}");
+    assert_eq!(publish_body["advisory"]["state"], "published");
+    assert!(publish_body["advisory"]["publishedAt"].is_string());
+    assert_eq!(
+        publish_body["timeline"]
+            .as_array()
+            .expect("timeline")
+            .last()
+            .expect("published event")["eventType"],
+        "published"
+    );
+    assert_eq!(publish_body["viewer"]["canPublish"], false);
+    let (reader_published_status, reader_published_body) =
+        get_json(app.clone(), &created_detail_uri, Some(&reader_cookie)).await;
+    assert_eq!(
+        reader_published_status,
+        StatusCode::OK,
+        "{reader_published_body}"
+    );
+    assert_eq!(
+        reader_published_body["advisory"]["title"],
+        "Draft advisory lifecycle"
+    );
+    let (republish_status, republish_body) = post_json(
+        app.clone(),
+        &format!("{created_detail_uri}/publish"),
+        Some(&owner_cookie),
+        json!({}),
+    )
+    .await;
+    assert_eq!(republish_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(republish_body["error"]["code"], "validation_failed");
+
+    let direct_created = create_repository_security_advisory_for_actor_by_owner_name(
+        &pool,
+        owner.id,
+        owner_login,
+        &repository.name,
+        RepositorySecurityAdvisoryCreate {
+            title: "Direct draft advisory".to_owned(),
+            summary: Some("Direct draft summary.".to_owned()),
+            details_markdown: Some("Direct draft details.".to_owned()),
+            cve_id: None,
+            severity: Some("moderate".to_owned()),
+            package_ecosystem: None,
+            package_name: None,
+            affected_versions: None,
+            patched_versions: None,
+            cvss_vector: None,
+            cvss_score: None,
+            cvss_metrics: None,
+            cwes: Vec::new(),
+            credits: Vec::new(),
+            collaborators: Vec::new(),
+        },
+    )
+    .await
+    .expect("direct create should work")
+    .expect("direct create should return detail");
+    let direct_published = publish_repository_security_advisory_for_actor_by_owner_name(
+        &pool,
+        owner.id,
+        owner_login,
+        &repository.name,
+        &direct_created.advisory.ghsa_id,
+    )
+    .await
+    .expect("direct publish should work")
+    .expect("direct publish should return detail");
+    assert_eq!(direct_published.advisory.state, "published");
 }

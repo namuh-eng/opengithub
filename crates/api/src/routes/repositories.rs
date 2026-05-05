@@ -99,6 +99,8 @@ use crate::{
         bulk_update_repository_dependabot_alerts_for_actor_by_owner_name,
         create_or_link_repository_code_scanning_issue_for_actor_by_owner_name,
         create_repository_dependabot_security_update_for_actor_by_owner_name,
+        create_repository_security_advisory_for_actor_by_owner_name,
+        publish_repository_security_advisory_for_actor_by_owner_name,
         repository_code_scanning_alert_detail_for_actor_by_owner_name,
         repository_code_scanning_alerts_for_actor_by_owner_name,
         repository_dependabot_alert_detail_for_actor_by_owner_name,
@@ -117,8 +119,8 @@ use crate::{
         upsert_repository_security_policy_by_owner_name, CodeScanningAlertMutation,
         CodeScanningAlertsQuery, CodeScanningSarifUpload, DependabotAlertMutation,
         DependabotAlertsQuery, DependabotBulkMutation, RepositorySecurityAdvisoriesQuery,
-        RepositorySecurityAdvisoryMutation, SecretScanningAlertMutation, SecretScanningAlertsQuery,
-        SecurityPolicyMutation,
+        RepositorySecurityAdvisoryCreate, RepositorySecurityAdvisoryMutation,
+        SecretScanningAlertMutation, SecretScanningAlertsQuery, SecurityPolicyMutation,
     },
     domain::webhooks::{
         create_repository_webhook_by_owner_name, delete_repository_webhook_by_owner_name,
@@ -164,11 +166,15 @@ pub fn router() -> Router<AppState> {
         .route("/:owner/:repo/security", get(security_overview))
         .route(
             "/:owner/:repo/security/advisories",
-            get(security_advisories),
+            get(security_advisories).post(create_security_advisory),
         )
         .route(
             "/:owner/:repo/security/advisories/:ghsa_id",
             get(security_advisory_detail).patch(update_security_advisory),
+        )
+        .route(
+            "/:owner/:repo/security/advisories/:ghsa_id/publish",
+            post(publish_security_advisory),
         )
         .route(
             "/:owner/:repo/security/code-scanning",
@@ -1363,6 +1369,30 @@ async fn security_advisory_detail(
     Ok(Json(json!(view)))
 }
 
+async fn create_security_advisory(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<RepositorySecurityAdvisoryCreate>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = create_repository_security_advisory_for_actor_by_owner_name(
+        pool, actor.0.id, &owner, &repo, request,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok((StatusCode::CREATED, Json(json!(view))))
+}
+
 async fn update_security_advisory(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1373,6 +1403,29 @@ async fn update_security_advisory(
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let view = update_repository_security_advisory_for_actor_by_owner_name(
         pool, actor.0.id, &owner, &repo, &ghsa_id, request,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "security advisory was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn publish_security_advisory(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, ghsa_id)): Path<(String, String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = publish_repository_security_advisory_for_actor_by_owner_name(
+        pool, actor.0.id, &owner, &repo, &ghsa_id,
     )
     .await
     .map_err(map_repository_error)?

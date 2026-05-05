@@ -60,7 +60,7 @@
 
 ## Phase 4: Draft Creation and Publishing - real advisory lifecycle
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add `/{owner}/{repo}/security/advisories/new` and publish actions. Maintainers can create draft advisories with required title, add optional metadata, keep drafts private to collaborators, and publish to the public list. Publishing records immutable publish metadata, creates notification/audit rows, and optionally links a dependency advisory feed row for package vulnerabilities.
 

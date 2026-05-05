@@ -290,6 +290,97 @@ function AdvisoryEditor({
   );
 }
 
+function PublishPanel({
+  detail,
+  onPublished,
+}: {
+  detail: RepositorySecurityAdvisoryDetail;
+  onPublished: (next: RepositorySecurityAdvisoryDetail) => void;
+}) {
+  const [isPending, startTransition] = useTransition();
+  const [message, setMessage] = useState<string | null>(null);
+  const checks = [
+    {
+      label: "Title is ready",
+      ready: detail.advisory.title.trim().length > 0,
+    },
+    {
+      label: "Package advisories include patched versions",
+      ready:
+        !detail.advisory.package?.name ||
+        Boolean(detail.advisory.package.patchedVersions),
+    },
+    {
+      label: "Markdown details render safely",
+      ready: detail.markdown.detailsHtml.trim().length > 0,
+    },
+  ];
+  const canPublish = checks.every((check) => check.ready);
+  const publish = () => {
+    setMessage(null);
+    startTransition(async () => {
+      const response = await fetch(`${detail.advisory.href}/publish`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        setMessage(
+          body?.error?.message ??
+            "Repository security advisory publish failed.",
+        );
+        return;
+      }
+      const next = (await response.json()) as RepositorySecurityAdvisoryDetail;
+      onPublished(next);
+      setMessage("Advisory published.");
+    });
+  };
+
+  return (
+    <section className="card grid gap-4 p-5" aria-label="Publish advisory">
+      <div className="between flex-wrap gap-3">
+        <div>
+          <p className="t-label" style={{ color: "var(--ink-3)" }}>
+            Publish
+          </p>
+          <h2 className="t-h2 mt-2" style={{ color: "var(--ink-1)" }}>
+            Make this advisory public
+          </h2>
+        </div>
+        <span className={canPublish ? "chip ok" : "chip warn"}>
+          {canPublish ? "Ready" : "Needs review"}
+        </span>
+      </div>
+      <ul className="grid gap-2">
+        {checks.map((check) => (
+          <li className="between gap-3 t-sm" key={check.label}>
+            <span>{check.label}</span>
+            <span className={check.ready ? "chip ok" : "chip warn"}>
+              {check.ready ? "Ready" : "Required"}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="between flex-wrap gap-3">
+        <p className="t-xs" role="status">
+          {message ??
+            "Publishing records audit events, notifies advisory collaborators, and links package advisories when package metadata is present."}
+        </p>
+        <button
+          className="btn primary"
+          disabled={isPending}
+          onClick={publish}
+          type="button"
+        >
+          {isPending ? "Publishing..." : "Publish advisory"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function DetailReadyPage({
   detail,
   repository,
@@ -466,6 +557,9 @@ function DetailReadyPage({
 
         {current.viewer.canEdit ? (
           <AdvisoryEditor detail={current} onSaved={setCurrent} />
+        ) : null}
+        {current.viewer.canPublish ? (
+          <PublishPanel detail={current} onPublished={setCurrent} />
         ) : null}
       </div>
     </RepositorySecurityShell>

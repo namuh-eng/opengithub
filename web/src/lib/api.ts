@@ -2852,6 +2852,24 @@ export type RepositorySecurityAdvisoryMutation = {
   collaborators: { login: string; role: string }[];
 };
 
+export type RepositorySecurityAdvisoryCreate = {
+  title: string;
+  summary: string | null;
+  detailsMarkdown: string | null;
+  cveId: string | null;
+  severity: string | null;
+  packageEcosystem: string | null;
+  packageName: string | null;
+  affectedVersions: string | null;
+  patchedVersions: string | null;
+  cvssVector: string | null;
+  cvssScore: number | null;
+  cvssMetrics: Record<string, unknown> | null;
+  cwes: CweReference[];
+  credits: { login: string; creditType: string }[];
+  collaborators: { login: string; role: string }[];
+};
+
 export type RepositorySecurityAdvisoriesQuery = {
   state?: string | null;
   query?: string | null;
@@ -10735,6 +10753,65 @@ export async function mutateRepositorySecurityAdvisoryFromCookie(
       null) as ApiErrorEnvelope | null;
     throw new Error(
       envelope?.error.message ?? "Repository security advisory update failed.",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as RepositorySecurityAdvisoryDetail;
+}
+
+export async function createRepositorySecurityAdvisoryFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  request: RepositorySecurityAdvisoryCreate,
+): Promise<RepositorySecurityAdvisoryDetail> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/advisories`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const envelope = ((await response.json().catch(() => null)) ??
+      null) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ??
+        "Repository security advisory creation failed.",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as RepositorySecurityAdvisoryDetail;
+}
+
+export async function publishRepositorySecurityAdvisoryFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  ghsaId: string,
+): Promise<RepositorySecurityAdvisoryDetail> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/advisories/${encodeURIComponent(ghsaId)}/publish`,
+    {
+      method: "POST",
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const envelope = ((await response.json().catch(() => null)) ??
+      null) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Repository security advisory publish failed.",
       { cause: envelope },
     );
   }

@@ -324,3 +324,51 @@ test("repository security advisory detail renders and edits metadata", async ({
     path: "../ralph/screenshots/build/code-security-005-phase3-advisory-detail.jpg",
   });
 });
+
+test("repository security advisory draft creation and publish flow work", async ({
+  page,
+}) => {
+  const seeded = seedDashboard();
+  seedSecurityAdvisories(seeded.treeRepositoryHref);
+  await signIn(page, seeded);
+
+  await page.goto(`${seeded.treeRepositoryHref}/security/advisories/new`);
+  await expect(
+    page.getByRole("heading", { name: "New draft security advisory" }),
+  ).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Title" })
+    .fill("Draft publish lifecycle from browser smoke");
+  await page
+    .getByRole("textbox", { name: "Summary" })
+    .fill("Maintainers can stage advisory metadata before publishing.");
+  await page
+    .getByRole("textbox", { name: "Markdown details" })
+    .fill("## Impact\n\nUpgrade the affected package.");
+  await page.getByRole("combobox", { name: "Severity" }).selectOption("high");
+  await page.getByRole("textbox", { name: "Ecosystem" }).fill("cargo");
+  await page.getByRole("textbox", { name: "Package" }).fill("opengithub-api");
+  await page
+    .getByRole("textbox", { name: "Patched versions" })
+    .fill(">= 4.0.0");
+  await page.getByRole("button", { name: "Create draft" }).click();
+  await expect(page.getByText(/Draft GHSA-local-/)).toBeVisible();
+  await page.getByRole("link", { name: "Open draft" }).click();
+
+  await expect(
+    page.getByRole("heading", {
+      name: "Draft publish lifecycle from browser smoke",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Publish advisory" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Publish advisory" }).click();
+  await expect(page.getByText("Advisory published.")).toBeVisible();
+  await expect(page.getByText("published")).toBeVisible();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/code-security-005-phase4-create-publish.jpg",
+  });
+});

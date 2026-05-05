@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { RepositorySecurityAdvisoriesPage } from "@/components/RepositorySecurityAdvisoriesPage";
+import { RepositorySecurityAdvisoryCreatePage } from "@/components/RepositorySecurityAdvisoryCreatePage";
 import { RepositorySecurityAdvisoryDetailPage } from "@/components/RepositorySecurityAdvisoryDetailPage";
 import type {
   RepositoryOverview,
@@ -433,5 +434,68 @@ describe("RepositorySecurityAdvisoriesPage", () => {
     expect(container.innerHTML).not.toMatch(
       /#(0969da|1f883d|1a7f37|cf222e|82071e|f6f8fa|1f2328|d0d7de|59636e|f1aeb5|fff1f3)\b|@primer\/|Octicon/i,
     );
+  });
+
+  it("renders the draft creation form with required title and concrete submit control", () => {
+    const { container } = render(
+      <RepositorySecurityAdvisoryCreatePage
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "New draft security advisory" }),
+    ).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("");
+    expect(screen.getByRole("combobox", { name: "Severity" })).toHaveValue(
+      "moderate",
+    );
+    expect(
+      screen.getByRole("link", { name: "All advisories" }),
+    ).toHaveAttribute("href", "/namuh-eng/opengithub/security/advisories");
+    expect(screen.getByRole("button", { name: "Create draft" })).toBeVisible();
+    expect(container.innerHTML).not.toContain('href="#"');
+    expect(container.innerHTML).not.toMatch(
+      /#(0969da|1f883d|1a7f37|cf222e|82071e|f6f8fa|1f2328|d0d7de|59636e|f1aeb5|fff1f3)\b|@primer\/|Octicon/i,
+    );
+  });
+
+  it("shows publish readiness and action controls only for publishable drafts", () => {
+    const draft = advisoryDetail({
+      viewer: {
+        permission: "write",
+        canRead: true,
+        canWrite: true,
+        canEdit: true,
+        canPublish: true,
+        canInviteCollaborators: true,
+      },
+      advisory: {
+        ...advisoriesView().advisories[0],
+        state: "draft",
+        publishedAt: null,
+        package: {
+          ecosystem: "cargo",
+          name: "opengithub-import",
+          affectedVersions: "< 1.2.3",
+          patchedVersions: ">= 1.2.3",
+        },
+      },
+    });
+    render(
+      <RepositorySecurityAdvisoryDetailPage
+        advisoryResult={{ ok: true, advisory: draft }}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("region", { name: "Publish advisory" }),
+    ).toBeVisible();
+    expect(screen.getByText("Make this advisory public")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Publish advisory" }),
+    ).toBeVisible();
+    expect(screen.getAllByText("Ready").length).toBeGreaterThan(0);
   });
 });

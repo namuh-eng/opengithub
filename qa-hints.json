@@ -6140,5 +6140,25 @@
       "Re-run web/tests/e2e/repository-security-advisories.spec.ts against a clean migrated TEST_DATABASE_URL to verify list/detail/edit flows and save Phase 2/Phase 3 screenshots.",
       "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures."
     ]
+  },
+  {
+    "feature_id": "code-security-005",
+    "tests_written": [
+      "Completed Phase 4 Draft Creation and Publishing without marking code-security-005 build_pass=true.",
+      "Added POST /api/repos/{owner}/{repo}/security/advisories for maintainer-only draft creation with required title validation, GHSA-local identifier generation, optional CVE/CVSS/package metadata, sanitized Markdown rendering, author collaborator seeding, timeline events, and security audit events.",
+      "Added POST /api/repos/{owner}/{repo}/security/advisories/{ghsa_id}/publish for draft-only publishing with patched-version validation for package advisories, published timestamp persistence, dependency advisory feed linkage when package metadata is present, collaborator notification fanout, timeline events, and security audit events.",
+      "Added typed Next.js create/publish helpers, same-origin action proxy routes, /{owner}/{repo}/security/advisories/new, RepositorySecurityAdvisoryCreatePage, and a publish readiness panel on draft advisory details using Editorial primitives/tokens only.",
+      "Extended focused Rust contract coverage for draft creation validation, reader denial, draft privacy, publish transition, republish validation, reader visibility after publish, direct domain create/publish calls, and no secret leakage.",
+      "Extended focused Vitest coverage for the new draft form and publish readiness controls; 7 advisory component tests passed.",
+      "Extended focused Playwright coverage for draft creation and publish flow with screenshot path ralph/screenshots/build/code-security-005-phase4-create-publish.jpg when a usable database URL is available.",
+      "Verification passed: cargo fmt --all --check; cargo check -p opengithub-api --tests; focused repository_security_advisories_contract compiled and executed under the test guard; cd web && npx tsc --noEmit --pretty false; focused Biome checks; focused web/tests/repository-security-advisories-page.test.tsx; full TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check; full same-env make test with Cargo tests plus 486 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Phase 5 still needs API docs, final edge-case sweep, final screenshots, prd.json build_pass=true, and final QA handoff.",
+      "Focused Playwright draft creation/publish smoke failed during database seeding because localhost:55432 rejected the available postgres credentials; .env does not export DATABASE_URL or TEST_DATABASE_URL in this environment.",
+      "Re-run web/tests/e2e/repository-security-advisories.spec.ts --grep \"draft creation and publish\" against a clean migrated TEST_DATABASE_URL to verify the browser flow and save code-security-005-phase4-create-publish.jpg.",
+      "Repeat create/publish QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Review notification delivery in a seeded database with real advisory collaborators; unit coverage asserts rows are written, but browser smoke could not verify inbox delivery because seeding was blocked."
+    ]
   }
 ]
