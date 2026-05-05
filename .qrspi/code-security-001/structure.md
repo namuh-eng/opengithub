@@ -74,7 +74,7 @@
 
 ## Phase 5: Guardrails, API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `code-security-001` only after overview, policy reader, policy write flow, docs, screenshots, and QA handoff are verified. Do not implement full Dependabot alert triage, code scanning findings, secret scanning findings, or advisory authoring here; those belong to later code-security features.
 

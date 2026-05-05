@@ -220,6 +220,9 @@ describe("RepositorySecurityOverviewPage", () => {
     for (const button of container.querySelectorAll("button")) {
       expect(button).toHaveAttribute("type", "button");
     }
+    expect(container.innerHTML).not.toMatch(
+      /#0969da|#1f883d|#1a7f37|#cf222e|#82071e|#f6f8fa|#1f2328|#d0d7de|#59636e|@primer\/|Octicon/i,
+    );
   });
 
   it("shows maintainer setup and alert counts when the viewer can edit the missing policy", () => {
@@ -286,6 +289,80 @@ describe("RepositorySecurityOverviewPage", () => {
         "No published advisories are available for this repository.",
       ),
     ).toBeVisible();
+  });
+
+  it("keeps reader missing-policy state read-only and sidebar links keyboard focusable", () => {
+    const { container } = render(
+      <RepositorySecurityOverviewPage
+        repository={repositoryOverview()}
+        securityResult={{
+          ok: true,
+          security: securityOverview({
+            policy: {
+              exists: false,
+              path: null,
+              ref: null,
+              blobOid: null,
+              contentSha: null,
+              html: null,
+              sourceHref: null,
+              rawHref: null,
+              historyHref: null,
+              editHref: null,
+              updatedAt: null,
+              emptyState:
+                "No SECURITY.md policy has been published. Maintainers can start setup.",
+            },
+            advisories: [
+              {
+                id: "adv-long",
+                identifier: "GHSA-long-policy-word",
+                severity: "critical",
+                status: "published",
+                title:
+                  "Extremely long advisory title wraps without overlapping the sidebar or action controls",
+                summary:
+                  "A very long vulnerability summary remains plain text and wraps cleanly for mobile screens.",
+                packageName: "a-package-with-an-extremely-long-name",
+                vulnerableRange: "< 999.999.999",
+                href: "/namuh-eng/opengithub/security/advisories/GHSA-long-policy-word",
+                publishedAt: "2026-05-03T00:00:00Z",
+                updatedAt: "2026-05-04T00:00:00Z",
+              },
+            ],
+          }),
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "No published policy" }),
+    ).toBeVisible();
+    expect(screen.getByText("Reader view")).toBeVisible();
+    expect(screen.queryByRole("link", { name: "Start setup" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Edit policy" })).toBeNull();
+
+    const securityNav = screen.getByRole("complementary", {
+      name: "Security and quality navigation",
+    });
+    for (const link of within(securityNav).getAllByRole("link")) {
+      expect(link).toHaveAttribute(
+        "href",
+        expect.stringContaining("/security"),
+      );
+      link.focus();
+      expect(link).toHaveFocus();
+    }
+    expect(
+      screen.getByRole("link", {
+        name: "Extremely long advisory title wraps without overlapping the sidebar or action controls",
+      }),
+    ).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/security/advisories/GHSA-long-policy-word",
+    );
+    expect(container.innerHTML).not.toContain("dangerouslySetInnerHTML");
+    expect(container.querySelectorAll('a[href="#"]')).toHaveLength(0);
   });
 
   it("renders unavailable state without leaking private counts", () => {

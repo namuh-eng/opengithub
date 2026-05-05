@@ -879,6 +879,7 @@ pub async fn delete_notification_custom_filter(
     user_id: Uuid,
     filter_id: Uuid,
 ) -> Result<NotificationFilterSettings, NotificationError> {
+    let mut transaction = pool.begin().await?;
     let deleted_position = sqlx::query_scalar::<_, i32>(
         r#"
         DELETE FROM notification_custom_filters
@@ -888,21 +889,33 @@ pub async fn delete_notification_custom_filter(
     )
     .bind(filter_id)
     .bind(user_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *transaction)
     .await?
     .ok_or(NotificationError::NotFound)?;
 
     sqlx::query(
         r#"
         UPDATE notification_custom_filters
-        SET position = position - 1
+        SET position = position + 1000
         WHERE user_id = $1 AND position > $2
         "#,
     )
     .bind(user_id)
     .bind(deleted_position)
-    .execute(pool)
+    .execute(&mut *transaction)
     .await?;
+
+    sqlx::query(
+        r#"
+        UPDATE notification_custom_filters
+        SET position = position - 1001
+        WHERE user_id = $1 AND position > 1000
+        "#,
+    )
+    .bind(user_id)
+    .execute(&mut *transaction)
+    .await?;
+    transaction.commit().await?;
 
     notification_filter_settings(pool, user_id).await
 }

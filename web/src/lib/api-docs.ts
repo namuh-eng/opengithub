@@ -2246,6 +2246,175 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-security-overview",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/security",
+    title: "Repository Security overview",
+    description:
+      "Returns the screen-ready Security and quality overview, including sanitized SECURITY.md preview content, repository security feature cards, published advisory rows, viewer permissions, and private-count redaction metadata.",
+    auth: "Signed opengithub session cookie with repository read permission; private outsiders receive not_found",
+    response: `{
+  "repository": {
+    "ownerLogin": "mona",
+    "name": "octo-app",
+    "visibility": "private",
+    "defaultBranch": "main",
+    "securityHref": "/mona/octo-app/security",
+    "policyHref": "/mona/octo-app/security/policy",
+    "advisoriesHref": "/mona/octo-app/security/advisories"
+  },
+  "viewer": {
+    "permission": "read",
+    "canRead": true,
+    "canWrite": false,
+    "canEditPolicy": false,
+    "canViewPrivateAlertCounts": false
+  },
+  "policy": {
+    "exists": true,
+    "path": "SECURITY.md",
+    "ref": "main",
+    "contentSha": "sha256:policy",
+    "html": "<h1 id=\\"security-policy\\">Security policy</h1>",
+    "sourceHref": "/mona/octo-app/blob/main/SECURITY.md",
+    "rawHref": "/mona/octo-app/raw/main/SECURITY.md",
+    "historyHref": "/mona/octo-app/commits/main/SECURITY.md",
+    "editHref": null
+  },
+  "features": [
+    {
+      "key": "dependabot",
+      "label": "Dependabot",
+      "status": "enabled",
+      "summary": "Dependency alerts are monitored.",
+      "alertCount": null,
+      "privateCount": null,
+      "href": "/mona/octo-app/security/dependabot"
+    }
+  ],
+  "advisories": [
+    {
+      "identifier": "GHSA-demo-2026",
+      "severity": "high",
+      "status": "published",
+      "title": "Demo package vulnerability",
+      "href": "/mona/octo-app/security/advisories/GHSA-demo-2026"
+    }
+  ]
+}`,
+    notes: [
+      "Anonymous callers receive 401; private repository outsiders receive not_found without policy, feature, advisory, alert-count, or cache metadata.",
+      "Published advisories are returned newest first. Draft advisories remain hidden from overview readers until published.",
+      "Read-only viewers receive public policy and published advisory data, but alertCount and privateCount are null. Maintainers receive concrete private counts and policy edit hrefs.",
+      "Policy Markdown is rendered through the Rust sanitizer. Script tags, unsafe URLs, raw session rows, OAuth data, storage keys, environment secrets, and stack traces are never returned.",
+    ],
+  },
+  {
+    id: "repo-security-policy",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/security/policy",
+    title: "Repository Security policy",
+    description:
+      "Returns the dedicated SECURITY.md reader contract with sanitized Markdown HTML, heading outline anchors, source/raw/history/edit destinations, latest commit metadata, and reader or maintainer empty states.",
+    auth: "Signed opengithub session cookie with repository read permission; private outsiders receive not_found",
+    response: `{
+  "policy": {
+    "exists": true,
+    "path": "SECURITY.md",
+    "ref": "main",
+    "blobOid": "blob_01",
+    "contentSha": "sha256:policy",
+    "markdown": "# Security policy",
+    "html": "<h1 id=\\"security-policy\\">Security policy</h1>",
+    "outline": [
+      { "id": "security-policy", "level": 1, "text": "Security policy", "href": "#security-policy" }
+    ],
+    "sourceHref": "/mona/octo-app/blob/main/SECURITY.md",
+    "rawHref": "/mona/octo-app/raw/main/SECURITY.md",
+    "historyHref": "/mona/octo-app/commits/main/SECURITY.md",
+    "editHref": null,
+    "latestCommit": {
+      "shortOid": "abcdef1",
+      "message": "Publish security policy",
+      "href": "/mona/octo-app/commit/abcdef1234567890"
+    }
+  }
+}`,
+    notes: [
+      "The API discovers SECURITY.md from the default branch and preserves supported policy path precedence: SECURITY.md, .github/SECURITY.md, then docs/SECURITY.md.",
+      "Relative Markdown links are rewritten to repository blob destinations on the same ref; mailto links remain mailto; unsafe HTML is stripped before the browser receives it.",
+      "Maintainers see editHref for setup or editing. Readers see a read-only missing-policy message when no policy exists.",
+      "Responses never include private alert counts, raw Git object storage locations, session cookies, OAuth tokens, environment secrets, or stack traces.",
+    ],
+  },
+  {
+    id: "repo-security-policy-create",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/security/policy",
+    title: "Create repository Security policy",
+    description:
+      "Creates SECURITY.md through the repository file materialization path, writes a commit, advances the target branch ref, refreshes repository_security_policies, and records a redacted security audit event.",
+    auth: "Signed opengithub session cookie with repository write, admin, or owner access",
+    request: `{
+  "markdown": "# Security policy\\n\\nReport issues privately.",
+  "commitMessage": "Create security policy",
+  "path": "SECURITY.md",
+  "ref": "main"
+}`,
+    response: `{
+  "policy": {
+    "exists": true,
+    "path": "SECURITY.md",
+    "ref": "main",
+    "contentSha": "sha256:new-policy",
+    "sourceHref": "/mona/octo-app/blob/main/SECURITY.md",
+    "rawHref": "/mona/octo-app/raw/main/SECURITY.md",
+    "latestCommit": {
+      "message": "Create security policy",
+      "href": "/mona/octo-app/commit/abcdef1234567890"
+    }
+  }
+}`,
+    notes: [
+      "Allowed policy paths are SECURITY.md, .github/SECURITY.md, and docs/SECURITY.md. Blank Markdown, blank commit messages, invalid refs, and archived repositories return validation_failed.",
+      "The write updates repository_files, git_objects, commits, repository_git_refs, repository_security_policies, and security_audit_events atomically so Code, blob, raw, history, and policy pages reflect the same file.",
+      "Users without write access receive 403. The MVP does not create propose-change branches for read-only users.",
+      "Validation and error envelopes never echo submitted secrets or include session rows, OAuth data, storage keys, environment secrets, or stack traces.",
+    ],
+  },
+  {
+    id: "repo-security-policy-update",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/security/policy",
+    title: "Update repository Security policy",
+    description:
+      "Updates an existing SECURITY.md file through the same repository write path, enforcing content-SHA freshness before writing the commit and branch ref.",
+    auth: "Signed opengithub session cookie with repository write, admin, or owner access",
+    request: `{
+  "markdown": "# Security policy\\n\\nEmail security@example.com.",
+  "commitMessage": "Update security policy",
+  "expectedContentSha": "sha256:previous-policy"
+}`,
+    response: `{
+  "policy": {
+    "exists": true,
+    "contentSha": "sha256:updated-policy",
+    "markdown": "# Security policy\\n\\nEmail security@example.com.",
+    "html": "<h1 id=\\"security-policy\\">Security policy</h1>",
+    "latestCommit": {
+      "message": "Update security policy",
+      "href": "/mona/octo-app/commit/fedcba9876543210"
+    }
+  }
+}`,
+    notes: [
+      "expectedContentSha protects concurrent edits. Stale updates return conflict without writing a commit or moving the branch ref.",
+      "Archived repositories reject updates with validation_failed; invalid path/ref/Markdown/commit-message inputs use stable validation_failed envelopes.",
+      "Successful updates write repository.security_policy.upsert audit events with redacted metadata only.",
+      "The response is the same sanitized policy view used by GET /api/repos/{owner}/{repo}/security/policy and never leaks secrets, raw storage details, private alert counts, or stack traces.",
+    ],
+  },
+  {
     id: "repo-network",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/network",

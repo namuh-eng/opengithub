@@ -5786,5 +5786,25 @@
       "The requested propose-change fallback for users without direct push permission is not implemented in Phase 4; unauthorized readers receive 403. Decide in Phase 5 or a later PRD whether to add a branch/propose-change flow.",
       "make test-e2e wrapper again produced no output for about 90 seconds and was terminated with its child processes cleaned up; focused direct Playwright Security smoke passed end to end against the real test database."
     ]
+  },
+  {
+    "feature_id": "code-security-001",
+    "tests_written": [
+      "Completed Phase 5 Guardrails, API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping; code-security-001 is now build_pass=true.",
+      "Added /docs/api coverage for GET /api/repos/{owner}/{repo}/security, GET /api/repos/{owner}/{repo}/security/policy, POST /api/repos/{owner}/{repo}/security/policy, and PATCH /api/repos/{owner}/{repo}/security/policy.",
+      "Documented auth/privacy behavior, Markdown sanitization, policy path precedence, create/update commit/ref behavior, stale expectedContentSha conflicts, archived repository validation, redacted audit events, and no-secret error envelopes.",
+      "Extended final Vitest coverage for API docs, reader missing-policy states, keyboard-focusable Security sidebar links, long advisory wrapping, Editorial banned-value guardrails, editor validation errors, stale-content conflict feedback, and no optimistic file links after failed saves.",
+      "Extended focused Playwright smoke for final overview screenshot, maintainer edit/save reflection, mobile policy layout, active Security policy sidebar state, no dead controls, and maintainer missing-policy Start setup behavior.",
+      "Saved final screenshots ralph/screenshots/build/code-security-001-final-overview.jpg and ralph/screenshots/build/code-security-001-final-mobile.jpg.",
+      "Fixed a pre-existing notifications custom-filter delete compaction bug that blocked full make test by violating the position uniqueness constraint.",
+      "Verification passed: focused Rust repository_security_policy_contract, focused notifications custom-filter contract, focused ApiDocs/Security Vitest tests, TypeScript check, targeted Biome checks, focused direct Playwright repository-security smoke, full make check, full make test with Cargo tests plus 457 web tests, JSON validation, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Run screen-reader traversal across the Security and quality sidebar, policy reader headings, editor tabs, validation errors, save feedback, and mobile layout.",
+      "Exercise concurrent edits from two real browser sessions against a clean database; final UI coverage asserts stale conflict messaging through the action route and Rust coverage asserts the API conflict.",
+      "The MVP intentionally returns 403 for users without write access instead of creating a propose-change branch; later code-security work should decide whether to add that fallback.",
+      "Repeat full make test-e2e after the wrapper stall and shared local 202605030041 migration drift are resolved; focused repository-security Playwright passed against the current pre-applied schema."
+    ]
   }
 ]

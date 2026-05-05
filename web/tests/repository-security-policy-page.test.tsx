@@ -197,6 +197,9 @@ describe("RepositorySecurityPolicyPage", () => {
     for (const button of container.querySelectorAll("button")) {
       expect(button).toHaveAttribute("type", "button");
     }
+    expect(container.innerHTML).not.toMatch(
+      /#0969da|#1f883d|#1a7f37|#cf222e|#82071e|#f6f8fa|#1f2328|#d0d7de|#59636e|@primer\/|Octicon/i,
+    );
   });
 
   it("shows maintainer setup when no policy exists", () => {
@@ -266,6 +269,44 @@ describe("RepositorySecurityPolicyPage", () => {
     );
     expect(screen.queryByText("Publish security policy")).toBeNull();
     expect(screen.getByText("404 · not_found")).toBeVisible();
+  });
+
+  it("keeps reader missing-policy state read-only on the dedicated page", () => {
+    render(
+      <RepositorySecurityPolicyPage
+        policyResult={{
+          ok: true,
+          securityPolicy: securityPolicy({
+            policy: {
+              exists: false,
+              path: null,
+              ref: null,
+              blobOid: null,
+              contentSha: null,
+              markdown: null,
+              html: null,
+              outline: [],
+              sourceHref: null,
+              rawHref: null,
+              historyHref: null,
+              editHref: null,
+              latestCommit: null,
+              updatedAt: null,
+              emptyState:
+                "No SECURITY.md policy has been published. Maintainers can start setup.",
+            },
+          }),
+        }}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "No published policy" }),
+    ).toBeVisible();
+    expect(screen.getByText("Reader view")).toBeVisible();
+    expect(screen.queryByRole("link", { name: "Start setup" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Edit policy" })).toBeNull();
   });
 
   it("renders maintainer editor with preview and saves through the policy action route", async () => {
@@ -355,5 +396,65 @@ describe("RepositorySecurityPolicyPage", () => {
       "href",
       "/namuh-eng/opengithub/raw/main/SECURITY.md",
     );
+  });
+
+  it("shows inline validation and stale-content errors without optimistic file links", async () => {
+    const maintainerPolicy = securityPolicy({
+      viewer: {
+        permission: "admin",
+        canRead: true,
+        canWrite: true,
+        canEditPolicy: true,
+        canViewPrivateAlertCounts: true,
+      },
+      policy: {
+        ...securityPolicy().policy,
+        editHref: "/namuh-eng/opengithub/security/policy/edit?path=SECURITY.md",
+      },
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input) === "/namuh-eng/opengithub/security/policy/actions") {
+        return new Response(
+          JSON.stringify({
+            error: {
+              code: "conflict",
+              message:
+                "SECURITY.md changed since this editor loaded. Reload and try again.",
+            },
+            status: 409,
+          }),
+          { status: 409 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositorySecurityPolicyEditorPage
+        policyResult={{ ok: true, securityPolicy: maintainerPolicy }}
+        repository={repositoryOverview({ viewerPermission: "admin" })}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Markdown"), {
+      target: { value: "   " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Security policy content is required.",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Markdown"), {
+      target: { value: "# Security policy\n\nUpdated after stale conflict." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "SECURITY.md changed since this editor loaded. Reload and try again.",
+    );
+    expect(screen.queryByRole("link", { name: "View file" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Open raw" })).toBeNull();
   });
 });

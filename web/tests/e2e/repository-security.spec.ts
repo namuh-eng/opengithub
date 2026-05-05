@@ -142,6 +142,57 @@ function seedSecurityOverview(repositoryHref: string) {
   );
 }
 
+function deleteSecurityPolicy(repositoryHref: string) {
+  if (!databaseUrl) {
+    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
+  }
+  const [, owner, repo] = repositoryHref.split("/");
+  const decodedOwner = decodeURIComponent(owner);
+  const decodedRepo = decodeURIComponent(repo);
+  execFileSync(
+    "psql",
+    [
+      databaseUrl,
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-c",
+      `
+      WITH target_repo AS (
+        SELECT repositories.id
+        FROM repositories
+        LEFT JOIN users ON users.id = repositories.owner_user_id
+        LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
+        WHERE COALESCE(users.username, organizations.slug) = ${sqlLiteral(decodedOwner)}
+          AND repositories.name = ${sqlLiteral(decodedRepo)}
+        LIMIT 1
+      )
+      DELETE FROM repository_security_policies
+      USING target_repo
+      WHERE repository_security_policies.repository_id = target_repo.id;
+
+      WITH target_repo AS (
+        SELECT repositories.id
+        FROM repositories
+        LEFT JOIN users ON users.id = repositories.owner_user_id
+        LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
+        WHERE COALESCE(users.username, organizations.slug) = ${sqlLiteral(decodedOwner)}
+          AND repositories.name = ${sqlLiteral(decodedRepo)}
+        LIMIT 1
+      )
+      DELETE FROM repository_files
+      USING target_repo
+      WHERE repository_files.repository_id = target_repo.id
+        AND lower(repository_files.path) IN (
+          'security.md',
+          '.github/security.md',
+          'docs/security.md'
+        );
+      `,
+    ],
+    { stdio: "ignore" },
+  );
+}
+
 async function signIn(page: Page, seeded: SeededDashboard) {
   await page.context().addCookies([
     {
@@ -319,4 +370,67 @@ test("repository Security policy editor commits changes to file and raw views", 
     fullPage: true,
     path: "../ralph/screenshots/build/code-security-001-phase4-policy-edit.jpg",
   });
+});
+
+test("repository Security final smoke covers missing policy and mobile layout", async ({
+  page,
+}) => {
+  const seeded = seedDashboard();
+  seedSecurityOverview(seeded.treeRepositoryHref);
+  await signIn(page, seeded);
+
+  await page.goto(`${seeded.treeRepositoryHref}/security`);
+  await expect(
+    page.getByRole("heading", { name: "Security overview" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { exact: true, name: "Security policy" }),
+  ).toHaveAttribute("href", `${seeded.treeRepositoryHref}/security/policy`);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/code-security-001-final-overview.jpg",
+  });
+
+  await page.goto(`${seeded.treeRepositoryHref}/security/policy/edit`);
+  await page
+    .getByLabel("Markdown")
+    .fill(
+      "# Security policy\n\nEmail [mobile triage](mailto:mobile@example.com).\n\n## Very long disclosure section\n\nThe security policy body wraps on constrained screens without overlapping the sidebar, editor actions, or repository header.",
+    );
+  await page.getByLabel("Commit message").fill("Finalize security policy");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(
+    page.getByText("Security policy saved to the default branch."),
+  ).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${seeded.treeRepositoryHref}/security/policy`);
+  await expect(
+    page.getByRole("link", { exact: true, name: "mobile triage" }),
+  ).toHaveAttribute("href", "mailto:mobile@example.com");
+  await expect(
+    page
+      .getByRole("complementary", { name: "Security and quality navigation" })
+      .getByRole("link", {
+        name: "Security policy Responsible disclosure guidance",
+      }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(page.locator("body")).toHaveJSProperty("scrollLeft", 0);
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/code-security-001-final-mobile.jpg",
+  });
+
+  deleteSecurityPolicy(seeded.treeRepositoryHref);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${seeded.treeRepositoryHref}/security/policy`);
+  await expect(
+    page.getByRole("heading", { name: "No published policy" }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Start setup" })).toHaveAttribute(
+    "href",
+    `${seeded.treeRepositoryHref}/security/policy/edit`,
+  );
+  await expectNoDeadControls(page);
 });

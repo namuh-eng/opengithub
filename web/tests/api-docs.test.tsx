@@ -433,7 +433,7 @@ describe("ApiDocsPage", () => {
       screen.getByText(/14-day UTC clone and visitor series/),
     ).toBeVisible();
     expect(
-      screen.getByText(/repository write, admin, or owner access/),
+      screen.getAllByText(/repository write, admin, or owner access/)[0],
     ).toBeVisible();
     expect(
       screen.getByText(
@@ -451,6 +451,69 @@ describe("ApiDocsPage", () => {
       ),
     ).toBeVisible();
     expect(screen.getAllByText(/environment secrets/)[0]).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/security"),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Repository Security overview",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /screen-ready Security and quality overview, including sanitized SECURITY.md/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Draft advisories remain hidden from overview readers/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Maintainers receive concrete private counts/),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(/Script tags, unsafe URLs, raw session rows/)[0],
+    ).toBeVisible();
+    expect(
+      screen.getAllByText("/api/repos/{owner}/{repo}/security/policy")[0],
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Repository Security policy",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/heading outline anchors, source\/raw\/history\/edit/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /SECURITY.md, .github\/SECURITY.md, then docs\/SECURITY.md/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Relative Markdown links are rewritten/),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Create repository Security policy",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/repository file materialization path/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/MVP does not create propose-change branches/),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Update repository Security policy",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/expectedContentSha protects concurrent edits/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/repository.security_policy.upsert audit events/),
+    ).toBeVisible();
     expect(screen.getByText("/api/repos/{owner}/{repo}/network")).toBeVisible();
     expect(
       screen.getByRole("heading", {
