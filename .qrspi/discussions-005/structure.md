@@ -10,7 +10,7 @@
 
 ## Phase 1: Moderation Contract - pin, lock, close, and recategorize foundations
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the authenticated moderation API surface and persistence needed for maintainer controls without shipping the full UI yet. Triage/write/admin users should be able to pin/unpin globally or within a category, customize pinned copy, lock/unlock with optional reactions, close/reopen with stable reasons, and recategorize eligible non-poll discussions.
 

@@ -50,6 +50,18 @@ async fn database_pool() -> Option<PgPool> {
                AND to_regclass('public.discussion_polls') IS NOT NULL
                AND to_regclass('public.discussion_reactions') IS NOT NULL
                AND to_regclass('public.discussion_answers') IS NOT NULL
+               AND EXISTS(
+                   SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = 'public'
+                     AND table_name = 'discussions'
+                     AND column_name = 'lock_allows_reactions'
+               )
+               AND EXISTS(
+                   SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = 'public'
+                     AND table_name = 'discussion_pins'
+                     AND column_name = 'pin_scope'
+               )
             "#,
         )
         .fetch_one(&pool)
@@ -332,6 +344,264 @@ async fn repository_discussion_detail_returns_timeline_sidebar_and_answer_metada
     assert_eq!(invalid_status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(invalid_body["error"]["code"], "validation_failed");
     assert_ne!(first_comment_id, answer_comment_id);
+}
+
+#[tokio::test]
+async fn repository_discussion_moderation_supports_pin_lock_state_and_category_contracts() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping repository discussion moderation scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "discussion-moderation-owner").await;
+    let moderator = create_user(&pool, "discussion-moderation-moderator").await;
+    let reader = create_user(&pool, "discussion-moderation-reader").await;
+    let moderator_cookie = cookie_header(&pool, &config, &moderator).await;
+    let reader_cookie = cookie_header(&pool, &config, &reader).await;
+
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("discussion-moderation-{}", Uuid::new_v4().simple()),
+            description: Some("Discussion moderation contract".to_owned()),
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    grant_repository_permission(
+        &pool,
+        repository.id,
+        moderator.id,
+        RepositoryRole::Triage,
+        "direct",
+    )
+    .await
+    .expect("moderator permission should grant");
+    grant_repository_permission(
+        &pool,
+        repository.id,
+        reader.id,
+        RepositoryRole::Read,
+        "direct",
+    )
+    .await
+    .expect("reader permission should grant");
+    let general_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO discussion_categories (repository_id, slug, name, emoji, position, format)
+        VALUES ($1, 'general', 'General', '💬', 1, 'open_ended')
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("general category should insert");
+    let ideas_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO discussion_categories (repository_id, slug, name, emoji, position, format)
+        VALUES ($1, 'ideas', 'Ideas', '💡', 2, 'question_and_answer')
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("ideas category should insert");
+    let discussion_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO discussions (repository_id, category_id, number, title, body, author_user_id)
+        VALUES ($1, $2, 1, 'Moderate me', 'Needs careful handling.', $3)
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(general_id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("discussion should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let owner_login = owner.username.as_deref().expect("owner username");
+    let base = format!("/api/repos/{owner_login}/{}/discussions/1", repository.name);
+
+    let (reader_pin_status, reader_pin_body) = put_json(
+        app.clone(),
+        &format!("{base}/pin"),
+        Some(&reader_cookie),
+        json!({ "target": "global" }),
+    )
+    .await;
+    assert_eq!(
+        reader_pin_status,
+        StatusCode::FORBIDDEN,
+        "{reader_pin_body}"
+    );
+    assert!(!reader_pin_body.to_string().contains("test-session-secret"));
+
+    let (pin_status, pin_body) = put_json(
+        app.clone(),
+        &format!("{base}/pin"),
+        Some(&moderator_cookie),
+        json!({
+            "target": "global",
+            "title": "Read this first",
+            "body": "Pinned for maintainers and contributors."
+        }),
+    )
+    .await;
+    assert_eq!(pin_status, StatusCode::OK, "{pin_body}");
+    assert_eq!(pin_body["discussion"]["number"], 1);
+    let global_pin_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM discussion_pins WHERE discussion_id = $1 AND pin_scope = 'global' AND custom_title = 'Read this first'",
+    )
+    .bind(discussion_id)
+    .fetch_one(&pool)
+    .await
+    .expect("global pin should count");
+    assert_eq!(global_pin_count, 1);
+
+    let (category_mismatch_status, category_mismatch_body) = put_json(
+        app.clone(),
+        &format!("{base}/pin"),
+        Some(&moderator_cookie),
+        json!({ "target": "category", "categorySlug": "ideas" }),
+    )
+    .await;
+    assert_eq!(category_mismatch_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(category_mismatch_body["error"]["code"], "validation_failed");
+
+    let (lock_status, lock_body) = put_json(
+        app.clone(),
+        &format!("{base}/lock"),
+        Some(&moderator_cookie),
+        json!({ "allowReactions": false }),
+    )
+    .await;
+    assert_eq!(lock_status, StatusCode::OK, "{lock_body}");
+    assert_eq!(lock_body["discussion"]["locked"], true);
+    let (reaction_status, reaction_body) = put_json(
+        app.clone(),
+        &format!("{base}/reactions"),
+        Some(&reader_cookie),
+        json!({ "content": "heart" }),
+    )
+    .await;
+    assert_eq!(reaction_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(reaction_body["error"]["message"]
+        .as_str()
+        .expect("reaction error")
+        .contains("locked discussions"));
+
+    let (unlock_status, unlock_body) = delete_json(
+        app.clone(),
+        &format!("{base}/lock"),
+        Some(&moderator_cookie),
+        json!({}),
+    )
+    .await;
+    assert_eq!(unlock_status, StatusCode::OK, "{unlock_body}");
+    assert_eq!(unlock_body["discussion"]["locked"], false);
+
+    let (close_status, close_body) = put_json(
+        app.clone(),
+        &format!("{base}/state"),
+        Some(&moderator_cookie),
+        json!({ "state": "closed", "reason": "duplicate" }),
+    )
+    .await;
+    assert_eq!(close_status, StatusCode::OK, "{close_body}");
+    assert_eq!(close_body["discussion"]["state"], "closed");
+    let closed_reason: Option<String> =
+        sqlx::query_scalar("SELECT closed_reason FROM discussions WHERE id = $1")
+            .bind(discussion_id)
+            .fetch_one(&pool)
+            .await
+            .expect("closed reason should load");
+    assert_eq!(closed_reason.as_deref(), Some("duplicate"));
+
+    let (category_status, category_body) = patch_json(
+        app.clone(),
+        &format!("{base}/category"),
+        Some(&moderator_cookie),
+        json!({ "categorySlug": "ideas" }),
+    )
+    .await;
+    assert_eq!(category_status, StatusCode::OK, "{category_body}");
+    assert_eq!(category_body["category"]["slug"], "ideas");
+    let moved_category_id: Uuid = sqlx::query_scalar(
+        "SELECT category_id FROM discussions WHERE repository_id = $1 AND number = 1",
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("discussion category should load");
+    assert_eq!(moved_category_id, ideas_id);
+
+    let (unpin_status, unpin_body) = delete_json(
+        app.clone(),
+        &format!("{base}/pin"),
+        Some(&moderator_cookie),
+        json!({}),
+    )
+    .await;
+    assert_eq!(unpin_status, StatusCode::OK, "{unpin_body}");
+    let pin_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*)::bigint FROM discussion_pins WHERE discussion_id = $1")
+            .bind(discussion_id)
+            .fetch_one(&pool)
+            .await
+            .expect("pins should count");
+    assert_eq!(pin_count, 0);
+
+    let audit_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint
+        FROM audit_events
+        WHERE actor_user_id = $1
+          AND target_type = 'repository_discussion'
+          AND event_type IN (
+              'repository.discussion.pin',
+              'repository.discussion.lock',
+              'repository.discussion.unlock',
+              'repository.discussion.close',
+              'repository.discussion.unpin'
+          )
+        "#,
+    )
+    .bind(moderator.id)
+    .fetch_one(&pool)
+    .await
+    .expect("audit rows should count");
+    assert_eq!(audit_count, 5);
+    let event_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint
+        FROM discussion_activity_events
+        WHERE discussion_id = $1
+          AND event_type IN ('pinned', 'locked', 'unlocked', 'closed', 'category_changed', 'unpinned')
+        "#,
+    )
+    .bind(discussion_id)
+    .fetch_one(&pool)
+    .await
+    .expect("activity rows should count");
+    assert_eq!(event_count, 6);
+    let notification_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM notifications WHERE subject_type = 'discussion' AND subject_id = $1",
+    )
+    .bind(discussion_id)
+    .fetch_one(&pool)
+    .await
+    .expect("notifications should count");
+    assert!(notification_count >= 2);
+    assert!(!category_body.to_string().contains("test-session-secret"));
 }
 
 #[tokio::test]

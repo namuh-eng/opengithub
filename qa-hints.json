@@ -6525,5 +6525,21 @@
       "Rerun focused Rust DB-backed assertions against a clean migrated credentialed TEST_DATABASE_URL to prove discussion migration, repository_files/commits/repository_git_refs, discussion_category_forms cache refresh, audit_events, and activity rows with real rows.",
       "Poll category template rejection and malformed YAML fallback should be checked manually in the browser after seeded database credentials are available."
     ]
+  },
+  {
+    "feature_id": "discussions-005",
+    "tests_written": [
+      "Completed Phase 1 Moderation Contract - pin, lock, close, and recategorize foundations without marking discussions-005 build_pass=true.",
+      "Added additive migration 202605060001_repository_discussion_moderation for scoped discussion pins, custom pinned copy, lock metadata, reaction policy, closed_reason, and moderation lookup indexes.",
+      "Added authenticated Rust routes for PUT/PATCH/DELETE /api/repos/{owner}/{repo}/discussions/{discussion_number}/pin, PUT/DELETE /lock, PATCH /category, and richer PUT /state close/reopen persistence.",
+      "Added backend validation for triage-or-greater moderation, private repository privacy through existing read checks, archived/disabled guardrails, four global/category pin limits, category pin target validity, locked reaction policy, close reason validation, recategorization compatibility, activity events, audit rows, notifications, and no-secret error envelopes.",
+      "Added focused repository_discussions_contract coverage for reader denial, global pin customization, category pin mismatch validation, lock/unlock with allowReactions=false, reaction denial while locked, close reason persistence, recategorization, unpin, audit rows, activity rows, notifications, and no secret leakage."
+    ],
+    "needs_deeper_qa": [
+      "Focused Rust moderation contract compiled and ran, but DB-backed assertions self-skipped without TEST_DATABASE_URL in the focused command; full make test used the standard TEST_DATABASE_URL and passed Cargo plus web tests.",
+      "Browser smoke was intentionally skipped because Phase 1 is API-first and .qrspi/discussions-005/structure.md marks browser smoke optional for this phase.",
+      "Phase 2 should verify the Editorial moderator sidebar dialogs/menus against these APIs and save ralph/screenshots/build/discussions-005-phase2-moderator-sidebar.jpg when seeded browser credentials are available.",
+      "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures."
+    ]
   }
 ]

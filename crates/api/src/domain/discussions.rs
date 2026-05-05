@@ -524,6 +524,34 @@ pub struct DiscussionStateRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PinDiscussionRequest {
+    pub target: String,
+    pub category_slug: Option<String>,
+    pub title: Option<String>,
+    pub body: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdatePinnedDiscussionRequest {
+    pub title: Option<String>,
+    pub body: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LockDiscussionRequest {
+    pub allow_reactions: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecategorizeDiscussionRequest {
+    pub category_slug: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DiscussionMetadataRequest {
     pub category_slug: Option<String>,
     pub label_ids: Option<Vec<Uuid>>,
@@ -2321,6 +2349,17 @@ pub async fn toggle_repository_discussion_reaction_by_owner_name(
             "repository discussions are disabled by organization policy".to_owned(),
         ));
     }
+    let reactions_allowed: bool = sqlx::query_scalar(
+        "SELECT NOT locked OR lock_allows_reactions FROM discussions WHERE id = $1",
+    )
+    .bind(discussion_id)
+    .fetch_one(pool)
+    .await?;
+    if !reactions_allowed {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "locked discussions do not accept reactions".to_owned(),
+        ));
+    }
     if let Some(comment_id) = comment_id {
         let exists: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM discussion_comments WHERE discussion_id = $1 AND id = $2)",
@@ -2620,7 +2659,14 @@ pub async fn update_repository_discussion_state_by_owner_name(
     else {
         return Ok(None);
     };
-    ensure_discussion_moderation_allowed(pool, &repository, actor_user_id, discussion_id).await?;
+    ensure_discussion_moderation_allowed_with_locked(
+        pool,
+        &repository,
+        actor_user_id,
+        discussion_id,
+        true,
+    )
+    .await?;
     let next_state = match request.state.trim() {
         "open" => "open",
         "closed" => "closed",
@@ -2637,9 +2683,10 @@ pub async fn update_repository_discussion_state_by_owner_name(
         .await?;
     if current_state != next_state {
         sqlx::query(
-            "UPDATE discussions SET state = $1, updated_at = now(), last_activity_at = now() WHERE id = $2",
+            "UPDATE discussions SET state = $1, closed_reason = $2, updated_at = now(), last_activity_at = now() WHERE id = $3",
         )
         .bind(next_state)
+        .bind(reason.as_deref())
         .bind(discussion_id)
         .execute(pool)
         .await?;
@@ -2656,8 +2703,25 @@ pub async fn update_repository_discussion_state_by_owner_name(
         } else {
             "reopened"
         })
-        .bind(reason)
+        .bind(reason.as_deref())
         .execute(pool)
+        .await?;
+        record_discussion_moderation_audit(
+            pool,
+            actor_user_id,
+            discussion_id,
+            if next_state == "closed" {
+                "repository.discussion.close"
+            } else {
+                "repository.discussion.reopen"
+            },
+            json!({
+                "repositoryId": repository.id,
+                "discussionNumber": discussion_number,
+                "state": next_state,
+                "reason": reason,
+            }),
+        )
         .await?;
         notify_discussion_author(
             pool,
@@ -2684,6 +2748,359 @@ pub async fn update_repository_discussion_state_by_owner_name(
             sort: None,
             page: None,
             page_size: None,
+        },
+    )
+    .await
+}
+
+pub async fn pin_repository_discussion_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    discussion_number: i64,
+    request: PinDiscussionRequest,
+) -> Result<Option<RepositoryDiscussionDetailView>, RepositoryError> {
+    let Some((repository, discussion_id, title, author_user_id)) =
+        load_discussion_mutation_context(pool, actor_user_id, owner, repo, discussion_number)
+            .await?
+    else {
+        return Ok(None);
+    };
+    ensure_discussion_moderation_allowed(pool, &repository, actor_user_id, discussion_id).await?;
+    let (pin_scope, category_id) =
+        normalize_pin_target(pool, repository.id, discussion_id, &request).await?;
+    let title_override = normalize_short_text(request.title.as_deref(), "title", 120)?;
+    let body_override = normalize_short_text(request.body.as_deref(), "body", 500)?;
+
+    let existing_count: i64 = if pin_scope == "global" {
+        sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)::bigint
+            FROM discussion_pins
+            JOIN discussions ON discussions.id = discussion_pins.discussion_id
+            WHERE discussions.repository_id = $1 AND discussion_pins.pin_scope = 'global'
+              AND discussion_pins.discussion_id <> $2
+            "#,
+        )
+        .bind(repository.id)
+        .bind(discussion_id)
+        .fetch_one(pool)
+        .await?
+    } else {
+        sqlx::query_scalar(
+            r#"
+            SELECT COUNT(*)::bigint
+            FROM discussion_pins
+            WHERE pin_scope = 'category' AND category_id = $1 AND discussion_id <> $2
+            "#,
+        )
+        .bind(category_id)
+        .bind(discussion_id)
+        .fetch_one(pool)
+        .await?
+    };
+    if existing_count >= 4 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+            "at most four {pin_scope} discussion pins are allowed"
+        )));
+    }
+    let next_position: i32 = if pin_scope == "global" {
+        sqlx::query_scalar(
+            r#"
+            SELECT COALESCE(MAX(discussion_pins.position), 0) + 1
+            FROM discussion_pins
+            JOIN discussions ON discussions.id = discussion_pins.discussion_id
+            WHERE discussions.repository_id = $1 AND discussion_pins.pin_scope = 'global'
+            "#,
+        )
+        .bind(repository.id)
+        .fetch_one(pool)
+        .await?
+    } else {
+        sqlx::query_scalar(
+            "SELECT COALESCE(MAX(position), 0) + 1 FROM discussion_pins WHERE pin_scope = 'category' AND category_id = $1",
+        )
+        .bind(category_id)
+        .fetch_one(pool)
+        .await?
+    };
+    sqlx::query(
+        r#"
+        DELETE FROM discussion_pins
+        WHERE discussion_id = $1 AND pin_scope = $2 AND ($3::uuid IS NULL OR category_id = $3)
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(pin_scope)
+    .bind(category_id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO discussion_pins (
+            discussion_id, pinned_by_user_id, position, pin_scope, category_id,
+            custom_title, custom_body, updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(actor_user_id)
+    .bind(next_position)
+    .bind(pin_scope)
+    .bind(category_id)
+    .bind(title_override.as_deref())
+    .bind(body_override.as_deref())
+    .execute(pool)
+    .await?;
+    record_discussion_activity_and_audit(
+        pool,
+        actor_user_id,
+        repository.id,
+        discussion_id,
+        "pinned",
+        "repository.discussion.pin",
+        json!({
+            "scope": pin_scope,
+            "categoryId": category_id,
+            "customTitle": title_override,
+            "customBody": body_override,
+            "position": next_position,
+        }),
+    )
+    .await?;
+    notify_discussion_author(
+        pool,
+        repository.id,
+        discussion_id,
+        author_user_id,
+        actor_user_id,
+        format!("Discussion #{} was pinned: {}", discussion_number, title),
+        "discussion_pin",
+    )
+    .await?;
+    repository_discussion_detail_for_actor_by_owner_name(
+        pool,
+        actor_user_id,
+        owner,
+        repo,
+        discussion_number,
+        RepositoryDiscussionDetailQuery {
+            sort: None,
+            page: None,
+            page_size: None,
+        },
+    )
+    .await
+}
+
+pub async fn update_repository_discussion_pin_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    discussion_number: i64,
+    request: UpdatePinnedDiscussionRequest,
+) -> Result<Option<RepositoryDiscussionDetailView>, RepositoryError> {
+    let Some((repository, discussion_id, _title, _author_user_id)) =
+        load_discussion_mutation_context(pool, actor_user_id, owner, repo, discussion_number)
+            .await?
+    else {
+        return Ok(None);
+    };
+    ensure_discussion_moderation_allowed(pool, &repository, actor_user_id, discussion_id).await?;
+    let title_override = normalize_short_text(request.title.as_deref(), "title", 120)?;
+    let body_override = normalize_short_text(request.body.as_deref(), "body", 500)?;
+    let updated = sqlx::query(
+        r#"
+        UPDATE discussion_pins
+        SET custom_title = $1, custom_body = $2, updated_at = now()
+        WHERE discussion_id = $3
+        "#,
+    )
+    .bind(title_override.as_deref())
+    .bind(body_override.as_deref())
+    .bind(discussion_id)
+    .execute(pool)
+    .await?;
+    if updated.rows_affected() == 0 {
+        return Err(RepositoryError::NotFound);
+    }
+    record_discussion_activity_and_audit(
+        pool,
+        actor_user_id,
+        repository.id,
+        discussion_id,
+        "pin_updated",
+        "repository.discussion.pin_update",
+        json!({ "customTitle": title_override, "customBody": body_override }),
+    )
+    .await?;
+    repository_discussion_detail_for_actor_by_owner_name(
+        pool,
+        actor_user_id,
+        owner,
+        repo,
+        discussion_number,
+        RepositoryDiscussionDetailQuery {
+            sort: None,
+            page: None,
+            page_size: None,
+        },
+    )
+    .await
+}
+
+pub async fn unpin_repository_discussion_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    discussion_number: i64,
+) -> Result<Option<RepositoryDiscussionDetailView>, RepositoryError> {
+    let Some((repository, discussion_id, _title, _author_user_id)) =
+        load_discussion_mutation_context(pool, actor_user_id, owner, repo, discussion_number)
+            .await?
+    else {
+        return Ok(None);
+    };
+    ensure_discussion_moderation_allowed(pool, &repository, actor_user_id, discussion_id).await?;
+    let removed = sqlx::query("DELETE FROM discussion_pins WHERE discussion_id = $1")
+        .bind(discussion_id)
+        .execute(pool)
+        .await?;
+    if removed.rows_affected() == 0 {
+        return Err(RepositoryError::NotFound);
+    }
+    record_discussion_activity_and_audit(
+        pool,
+        actor_user_id,
+        repository.id,
+        discussion_id,
+        "unpinned",
+        "repository.discussion.unpin",
+        json!({}),
+    )
+    .await?;
+    repository_discussion_detail_for_actor_by_owner_name(
+        pool,
+        actor_user_id,
+        owner,
+        repo,
+        discussion_number,
+        RepositoryDiscussionDetailQuery {
+            sort: None,
+            page: None,
+            page_size: None,
+        },
+    )
+    .await
+}
+
+pub async fn set_repository_discussion_lock_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    discussion_number: i64,
+    locked: bool,
+    request: LockDiscussionRequest,
+) -> Result<Option<RepositoryDiscussionDetailView>, RepositoryError> {
+    let Some((repository, discussion_id, title, author_user_id)) =
+        load_discussion_mutation_context(pool, actor_user_id, owner, repo, discussion_number)
+            .await?
+    else {
+        return Ok(None);
+    };
+    ensure_discussion_moderation_allowed_with_locked(
+        pool,
+        &repository,
+        actor_user_id,
+        discussion_id,
+        true,
+    )
+    .await?;
+    let allow_reactions = request.allow_reactions.unwrap_or(true);
+    sqlx::query(
+        r#"
+        UPDATE discussions
+        SET locked = $1,
+            locked_at = CASE WHEN $1 THEN now() ELSE NULL END,
+            locked_by_user_id = CASE WHEN $1 THEN $2 ELSE NULL END,
+            lock_allows_reactions = CASE WHEN $1 THEN $3 ELSE true END,
+            updated_at = now(),
+            last_activity_at = now()
+        WHERE id = $4
+        "#,
+    )
+    .bind(locked)
+    .bind(actor_user_id)
+    .bind(allow_reactions)
+    .bind(discussion_id)
+    .execute(pool)
+    .await?;
+    record_discussion_activity_and_audit(
+        pool,
+        actor_user_id,
+        repository.id,
+        discussion_id,
+        if locked { "locked" } else { "unlocked" },
+        if locked {
+            "repository.discussion.lock"
+        } else {
+            "repository.discussion.unlock"
+        },
+        json!({ "allowReactions": allow_reactions }),
+    )
+    .await?;
+    notify_discussion_author(
+        pool,
+        repository.id,
+        discussion_id,
+        author_user_id,
+        actor_user_id,
+        format!(
+            "Discussion #{} was {}: {}",
+            discussion_number,
+            if locked { "locked" } else { "unlocked" },
+            title
+        ),
+        "discussion_lock",
+    )
+    .await?;
+    repository_discussion_detail_for_actor_by_owner_name(
+        pool,
+        actor_user_id,
+        owner,
+        repo,
+        discussion_number,
+        RepositoryDiscussionDetailQuery {
+            sort: None,
+            page: None,
+            page_size: None,
+        },
+    )
+    .await
+}
+
+pub async fn recategorize_repository_discussion_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    discussion_number: i64,
+    request: RecategorizeDiscussionRequest,
+) -> Result<Option<RepositoryDiscussionDetailView>, RepositoryError> {
+    update_repository_discussion_metadata_by_owner_name(
+        pool,
+        actor_user_id,
+        owner,
+        repo,
+        discussion_number,
+        DiscussionMetadataRequest {
+            category_slug: Some(request.category_slug),
+            label_ids: None,
         },
     )
     .await
@@ -2921,6 +3338,23 @@ async fn ensure_discussion_moderation_allowed(
     actor_user_id: Uuid,
     discussion_id: Uuid,
 ) -> Result<(), RepositoryError> {
+    ensure_discussion_moderation_allowed_with_locked(
+        pool,
+        repository,
+        actor_user_id,
+        discussion_id,
+        false,
+    )
+    .await
+}
+
+async fn ensure_discussion_moderation_allowed_with_locked(
+    pool: &PgPool,
+    repository: &super::repositories::Repository,
+    actor_user_id: Uuid,
+    discussion_id: Uuid,
+    allow_locked: bool,
+) -> Result<(), RepositoryError> {
     if repository.is_archived {
         return Err(RepositoryError::InvalidDependencyGraphQuery(
             "archived repositories do not accept discussion moderation changes".to_owned(),
@@ -2943,11 +3377,105 @@ async fn ensure_discussion_moderation_allowed(
         .bind(discussion_id)
         .fetch_one(pool)
         .await?;
-    if locked {
+    if locked && !allow_locked {
         return Err(RepositoryError::InvalidDependencyGraphQuery(
             "locked discussions do not accept moderation changes".to_owned(),
         ));
     }
+    Ok(())
+}
+
+async fn normalize_pin_target(
+    pool: &PgPool,
+    repository_id: Uuid,
+    discussion_id: Uuid,
+    request: &PinDiscussionRequest,
+) -> Result<(&'static str, Option<Uuid>), RepositoryError> {
+    match request.target.trim() {
+        "global" => Ok(("global", None)),
+        "category" => {
+            let current_category_id: Uuid =
+                sqlx::query_scalar("SELECT category_id FROM discussions WHERE id = $1")
+                    .bind(discussion_id)
+                    .fetch_one(pool)
+                    .await?;
+            let category_id = match request.category_slug.as_deref() {
+                Some(slug) => {
+                    let slug = normalize_slug(slug)?;
+                    sqlx::query_scalar(
+                        "SELECT id FROM discussion_categories WHERE repository_id = $1 AND slug = $2",
+                    )
+                    .bind(repository_id)
+                    .bind(slug)
+                    .fetch_optional(pool)
+                    .await?
+                    .ok_or(RepositoryError::NotFound)?
+                }
+                None => current_category_id,
+            };
+            if category_id != current_category_id {
+                return Err(RepositoryError::InvalidDependencyGraphQuery(
+                    "category pins must target the discussion's current category".to_owned(),
+                ));
+            }
+            Ok(("category", Some(category_id)))
+        }
+        other => Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+            "unsupported discussion pin target `{other}`"
+        ))),
+    }
+}
+
+async fn record_discussion_activity_and_audit(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    repository_id: Uuid,
+    discussion_id: Uuid,
+    event_type: &str,
+    audit_event_type: &str,
+    payload: Value,
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        r#"
+        INSERT INTO discussion_activity_events (discussion_id, actor_user_id, event_type, payload)
+        VALUES ($1, $2, $3, $4::jsonb)
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(payload.to_string())
+    .execute(pool)
+    .await?;
+    record_discussion_moderation_audit(
+        pool,
+        actor_user_id,
+        discussion_id,
+        audit_event_type,
+        json!({ "repositoryId": repository_id, "payload": payload }),
+    )
+    .await
+}
+
+async fn record_discussion_moderation_audit(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    discussion_id: Uuid,
+    event_type: &str,
+    metadata: Value,
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, $2, 'repository_discussion', $3, $4::jsonb)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(discussion_id.to_string())
+    .bind(metadata.to_string())
+    .execute(pool)
+    .await?;
     Ok(())
 }
 

@@ -36,7 +36,9 @@ use crate::{
         create_repository_discussion_reply_by_owner_name,
         delete_repository_discussion_category_by_owner_name,
         delete_repository_discussion_category_section_by_owner_name,
+        pin_repository_discussion_by_owner_name,
         preview_repository_discussion_category_template_by_owner_name,
+        recategorize_repository_discussion_by_owner_name,
         reorder_repository_discussion_categories_by_owner_name,
         reorder_repository_discussion_category_sections_by_owner_name,
         repository_discussion_category_settings_for_actor_by_owner_name,
@@ -45,21 +47,25 @@ use crate::{
         repository_discussion_detail_for_actor_by_owner_name,
         repository_discussions_for_actor_by_owner_name,
         set_repository_discussion_answer_by_owner_name,
+        set_repository_discussion_lock_by_owner_name,
         set_repository_discussion_subscription_by_owner_name,
         set_repository_discussion_vote_by_owner_name,
         toggle_repository_discussion_reaction_by_owner_name,
+        unpin_repository_discussion_by_owner_name,
         update_repository_discussion_category_by_owner_name,
         update_repository_discussion_category_section_by_owner_name,
         update_repository_discussion_metadata_by_owner_name,
+        update_repository_discussion_pin_by_owner_name,
         update_repository_discussion_state_by_owner_name, CreateDiscussionCategoryRequest,
         CreateDiscussionCategorySectionRequest, CreateDiscussionCommentRequest,
         CreateDiscussionRequest, DeleteDiscussionCategoryRequest, DiscussionAnswerRequest,
         DiscussionCategoryOrderRequest, DiscussionCategoryTemplateCommitRequest,
         DiscussionCategoryTemplatePreviewRequest, DiscussionMetadataRequest,
         DiscussionReactionMutation, DiscussionReactionRequest, DiscussionSectionOrderRequest,
-        DiscussionStateRequest, DiscussionSubscriptionRequest, RepositoryDiscussionDetailQuery,
+        DiscussionStateRequest, DiscussionSubscriptionRequest, LockDiscussionRequest,
+        PinDiscussionRequest, RecategorizeDiscussionRequest, RepositoryDiscussionDetailQuery,
         RepositoryDiscussionsQuery, UpdateDiscussionCategoryRequest,
-        UpdateDiscussionCategorySectionRequest,
+        UpdateDiscussionCategorySectionRequest, UpdatePinnedDiscussionRequest,
     },
     domain::pages::{
         connect_repository_pages_actions_deployment_by_owner_name,
@@ -217,6 +223,20 @@ pub fn router() -> Router<AppState> {
         .route(
             "/:owner/:repo/discussions/:discussion_number/state",
             put(update_discussion_state),
+        )
+        .route(
+            "/:owner/:repo/discussions/:discussion_number/pin",
+            put(pin_discussion)
+                .patch(update_discussion_pin)
+                .delete(unpin_discussion),
+        )
+        .route(
+            "/:owner/:repo/discussions/:discussion_number/lock",
+            put(lock_discussion).delete(unlock_discussion),
+        )
+        .route(
+            "/:owner/:repo/discussions/:discussion_number/category",
+            patch(recategorize_discussion),
         )
         .route(
             "/:owner/:repo/discussions/:discussion_number/metadata",
@@ -2002,6 +2022,175 @@ async fn update_discussion_state(
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let detail = update_repository_discussion_state_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        discussion_number,
+        request,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository discussion was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(detail)))
+}
+
+async fn pin_discussion(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, discussion_number)): Path<(String, String, i64)>,
+    Json(request): Json<PinDiscussionRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let detail = pin_repository_discussion_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        discussion_number,
+        request,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository discussion was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(detail)))
+}
+
+async fn update_discussion_pin(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, discussion_number)): Path<(String, String, i64)>,
+    Json(request): Json<UpdatePinnedDiscussionRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let detail = update_repository_discussion_pin_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        discussion_number,
+        request,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository discussion was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(detail)))
+}
+
+async fn unpin_discussion(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, discussion_number)): Path<(String, String, i64)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let detail = unpin_repository_discussion_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        discussion_number,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository discussion was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(detail)))
+}
+
+async fn lock_discussion(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, discussion_number)): Path<(String, String, i64)>,
+    Json(request): Json<LockDiscussionRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let detail = set_repository_discussion_lock_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        discussion_number,
+        true,
+        request,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository discussion was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(detail)))
+}
+
+async fn unlock_discussion(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, discussion_number)): Path<(String, String, i64)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let detail = set_repository_discussion_lock_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        discussion_number,
+        false,
+        LockDiscussionRequest {
+            allow_reactions: Some(true),
+        },
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository discussion was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(detail)))
+}
+
+async fn recategorize_discussion(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, discussion_number)): Path<(String, String, i64)>,
+    Json(request): Json<RecategorizeDiscussionRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let detail = recategorize_repository_discussion_by_owner_name(
         pool,
         actor.0.id,
         &owner,
