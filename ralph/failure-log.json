@@ -3015,6 +3015,14 @@
       "exit_code": 0,
       "category": "test_failure",
       "attempt": 308
+    },
+    {
+      "timestamp": "2026-05-05T00:56:30.280233",
+      "phase": "build",
+      "feature": "build_cycle_1",
+      "exit_code": 0,
+      "category": "compilation_failure",
+      "attempt": 309
     }
   ]
 }
