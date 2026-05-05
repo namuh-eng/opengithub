@@ -202,7 +202,10 @@ pub struct ProjectWorkspace {
     pub project: ProjectWorkspaceProject,
     pub selected_view: ProjectWorkspaceView,
     pub views: Vec<ProjectWorkspaceView>,
+    pub layout_choices: Vec<ProjectWorkspaceLayoutChoice>,
     pub fields: Vec<ProjectWorkspaceField>,
+    pub board_config: Option<ProjectWorkspaceBoardConfig>,
+    pub roadmap_config: Option<ProjectWorkspaceRoadmapConfig>,
     #[serde(flatten)]
     pub items: ListEnvelope<ProjectWorkspaceItem>,
     pub groups: Vec<ProjectWorkspaceGroup>,
@@ -240,6 +243,17 @@ pub struct ProjectWorkspaceView {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkspaceLayoutChoice {
+    pub layout: String,
+    pub label: String,
+    pub keyboard_hint: String,
+    pub active: bool,
+    pub enabled: bool,
+    pub unavailable_reason: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectWorkspaceField {
@@ -250,6 +264,51 @@ pub struct ProjectWorkspaceField {
     pub settings: Value,
     pub hidden: bool,
     pub editable: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkspaceBoardConfig {
+    pub column_field: Option<ProjectWorkspaceLayoutField>,
+    pub swimlane_field: Option<ProjectWorkspaceLayoutField>,
+    pub eligible_column_fields: Vec<ProjectWorkspaceLayoutField>,
+    pub eligible_swimlane_fields: Vec<ProjectWorkspaceLayoutField>,
+    pub columns: Vec<ProjectWorkspaceBoardColumn>,
+    pub empty_columns_visible: bool,
+    pub unavailable_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkspaceRoadmapConfig {
+    pub start_date_field: Option<ProjectWorkspaceLayoutField>,
+    pub target_date_field: Option<ProjectWorkspaceLayoutField>,
+    pub marker_fields: Vec<ProjectWorkspaceLayoutField>,
+    pub eligible_date_fields: Vec<ProjectWorkspaceLayoutField>,
+    pub eligible_marker_fields: Vec<ProjectWorkspaceLayoutField>,
+    pub zoom: String,
+    pub zoom_options: Vec<String>,
+    pub unavailable_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkspaceLayoutField {
+    pub id: Uuid,
+    pub name: String,
+    pub field_type: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkspaceBoardColumn {
+    pub key: String,
+    pub label: String,
+    pub field_id: Uuid,
+    pub count: i64,
+    pub item_limit: Option<i64>,
+    pub over_limit: bool,
+    pub visible: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -336,6 +395,7 @@ pub struct ProjectWorkspacePermissions {
     pub viewer_role: Option<String>,
     pub can_edit: bool,
     pub can_manage_views: bool,
+    pub can_change_layout: bool,
     pub can_add_items: bool,
 }
 
@@ -685,11 +745,6 @@ pub async fn project_workspace(
     let viewer_role = project.viewer_role.clone();
     let views = workspace_views(pool, project_id, &project.owner, project.number).await?;
     let selected_view = select_workspace_view(&views, query.view)?;
-    if selected_view.layout != "table" {
-        return Err(ProjectsError::InvalidFilter(
-            "selected view must use the table layout".to_owned(),
-        ));
-    }
     let fields = workspace_fields(pool, project_id, &selected_view).await?;
     let filters = normalize_workspace_filters(query, &selected_view, &fields)?;
     let unsaved_view = workspace_unsaved_state(&filters, &selected_view);
@@ -699,22 +754,28 @@ pub async fn project_workspace(
     let groups = workspace_groups(&items, filters.group.as_deref(), &fields);
     let slices = workspace_slices(&items, filters.slice.as_deref(), &fields);
     let total = items.len() as i64;
+    let can_edit = project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role);
+    let layout_choices = workspace_layout_choices(&selected_view, can_edit, &fields);
+    let board_config = workspace_board_config(pool, &selected_view, &fields, &items).await?;
+    let roadmap_config = workspace_roadmap_config(pool, &selected_view, &fields).await?;
     let offset = ((filters.page - 1) * filters.page_size) as usize;
     let page_items = items
         .into_iter()
         .skip(offset)
         .take(filters.page_size as usize)
         .collect();
-    let can_edit = project
-        .viewer_role
-        .as_deref()
-        .is_some_and(can_write_project_role);
 
     Ok(ProjectWorkspace {
         project,
         selected_view,
         views,
+        layout_choices,
         fields,
+        board_config: Some(board_config),
+        roadmap_config: Some(roadmap_config),
         items: ListEnvelope {
             items: page_items,
             total,
@@ -730,6 +791,7 @@ pub async fn project_workspace(
             viewer_role,
             can_edit,
             can_manage_views: can_edit,
+            can_change_layout: can_edit,
             can_add_items: can_edit,
         },
         unavailable_reason: None,
@@ -1739,6 +1801,356 @@ async fn workspace_field(
         hidden: false,
         editable: !matches!(field_type.as_str(), "repository"),
     })
+}
+
+fn workspace_layout_choices(
+    selected_view: &ProjectWorkspaceView,
+    can_edit: bool,
+    fields: &[ProjectWorkspaceField],
+) -> Vec<ProjectWorkspaceLayoutChoice> {
+    let board_ready = fields
+        .iter()
+        .any(|field| is_board_column_field(&field.field_type));
+    let roadmap_ready = fields
+        .iter()
+        .any(|field| is_roadmap_date_field(&field.field_type));
+    [
+        ("table", "Table", "t", true, None),
+        (
+            "board",
+            "Board",
+            "b",
+            board_ready,
+            (!board_ready).then(|| {
+                "Add a status, single-select, or iteration field before using Board layout."
+                    .to_owned()
+            }),
+        ),
+        (
+            "roadmap",
+            "Roadmap",
+            "r",
+            roadmap_ready,
+            (!roadmap_ready)
+                .then(|| "Add a date or iteration field before using Roadmap layout.".to_owned()),
+        ),
+    ]
+    .into_iter()
+    .map(
+        |(layout, label, keyboard_hint, has_required_fields, unavailable_reason)| {
+            ProjectWorkspaceLayoutChoice {
+                layout: layout.to_owned(),
+                label: label.to_owned(),
+                keyboard_hint: keyboard_hint.to_owned(),
+                active: selected_view.layout == layout,
+                enabled: can_edit && has_required_fields,
+                unavailable_reason: if can_edit {
+                    unavailable_reason
+                } else {
+                    Some("Write access is required to change this view layout.".to_owned())
+                },
+            }
+        },
+    )
+    .collect()
+}
+
+async fn workspace_board_config(
+    pool: &PgPool,
+    selected_view: &ProjectWorkspaceView,
+    fields: &[ProjectWorkspaceField],
+    items: &[ProjectWorkspaceItem],
+) -> Result<ProjectWorkspaceBoardConfig, ProjectsError> {
+    let eligible_column_fields = fields
+        .iter()
+        .filter(|field| is_board_column_field(&field.field_type))
+        .map(layout_field_from_workspace_field)
+        .collect::<Vec<_>>();
+    let eligible_swimlane_fields = fields
+        .iter()
+        .filter(|field| is_board_swimlane_field(&field.field_type))
+        .map(layout_field_from_workspace_field)
+        .collect::<Vec<_>>();
+    let configured_column_id = configuration_uuid(&selected_view.configuration, "columnFieldId");
+    let configured_column_name = configuration_string(&selected_view.configuration, "columnField");
+    let column_field = configured_column_id
+        .and_then(|id| fields.iter().find(|field| field.id == id))
+        .or_else(|| {
+            configured_column_name.as_deref().and_then(|name| {
+                fields
+                    .iter()
+                    .find(|field| field.name.eq_ignore_ascii_case(name))
+            })
+        })
+        .or_else(|| {
+            fields
+                .iter()
+                .find(|field| is_board_column_field(&field.field_type))
+        });
+    let configured_swimlane_id =
+        configuration_uuid(&selected_view.configuration, "swimlaneFieldId");
+    let configured_swimlane_name =
+        configuration_string(&selected_view.configuration, "swimlaneField");
+    let swimlane_field = configured_swimlane_id
+        .and_then(|id| fields.iter().find(|field| field.id == id))
+        .or_else(|| {
+            configured_swimlane_name.as_deref().and_then(|name| {
+                fields
+                    .iter()
+                    .find(|field| field.name.eq_ignore_ascii_case(name))
+            })
+        });
+
+    let mut columns = if let Some(field) = column_field {
+        workspace_board_columns_from_settings(pool, selected_view.id, field, items).await?
+    } else {
+        Vec::new()
+    };
+    if let Some(field) = column_field {
+        let mut dynamic = workspace_board_columns_from_items(field, items);
+        for column in dynamic.drain(..) {
+            if !columns.iter().any(|existing| existing.key == column.key) {
+                columns.push(column);
+            }
+        }
+    }
+    if columns.is_empty() {
+        if let Some(field) = column_field {
+            columns.push(ProjectWorkspaceBoardColumn {
+                key: "no-value".to_owned(),
+                label: "No value".to_owned(),
+                field_id: field.id,
+                count: items.len() as i64,
+                item_limit: None,
+                over_limit: false,
+                visible: true,
+            });
+        }
+    }
+
+    Ok(ProjectWorkspaceBoardConfig {
+        column_field: column_field.map(layout_field_from_workspace_field),
+        swimlane_field: swimlane_field.map(layout_field_from_workspace_field),
+        eligible_column_fields,
+        eligible_swimlane_fields,
+        columns,
+        empty_columns_visible: selected_view
+            .configuration
+            .get("emptyColumnsVisible")
+            .and_then(Value::as_bool)
+            .unwrap_or(true),
+        unavailable_reason: column_field
+            .is_none()
+            .then(|| "Board layout needs a status, single-select, or iteration field.".to_owned()),
+    })
+}
+
+async fn workspace_board_columns_from_settings(
+    pool: &PgPool,
+    view_id: Uuid,
+    field: &ProjectWorkspaceField,
+    items: &[ProjectWorkspaceItem],
+) -> Result<Vec<ProjectWorkspaceBoardColumn>, ProjectsError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT option_key, label, item_limit, visible
+        FROM project_board_column_settings
+        WHERE project_view_id = $1 AND project_field_id = $2
+        ORDER BY position, created_at
+        "#,
+    )
+    .bind(view_id)
+    .bind(field.id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let key: String = row.get("option_key");
+            let item_limit: Option<i32> = row.get("item_limit");
+            let count = count_items_for_field_value(items, field, &key);
+            let limit = item_limit.map(i64::from);
+            ProjectWorkspaceBoardColumn {
+                key,
+                label: row.get("label"),
+                field_id: field.id,
+                count,
+                item_limit: limit,
+                over_limit: limit.is_some_and(|limit| count > limit),
+                visible: row.get("visible"),
+            }
+        })
+        .collect())
+}
+
+fn workspace_board_columns_from_items(
+    field: &ProjectWorkspaceField,
+    items: &[ProjectWorkspaceItem],
+) -> Vec<ProjectWorkspaceBoardColumn> {
+    let mut counts = std::collections::BTreeMap::<String, i64>::new();
+    for item in items {
+        let key = display_field_for_item(item, field);
+        *counts.entry(key).or_default() += 1;
+    }
+    counts
+        .into_iter()
+        .map(|(key, count)| ProjectWorkspaceBoardColumn {
+            label: key.clone(),
+            key,
+            field_id: field.id,
+            count,
+            item_limit: None,
+            over_limit: false,
+            visible: true,
+        })
+        .collect()
+}
+
+async fn workspace_roadmap_config(
+    pool: &PgPool,
+    selected_view: &ProjectWorkspaceView,
+    fields: &[ProjectWorkspaceField],
+) -> Result<ProjectWorkspaceRoadmapConfig, ProjectsError> {
+    let eligible_date_fields = fields
+        .iter()
+        .filter(|field| is_roadmap_date_field(&field.field_type))
+        .map(layout_field_from_workspace_field)
+        .collect::<Vec<_>>();
+    let eligible_marker_fields = fields
+        .iter()
+        .filter(|field| is_roadmap_marker_field(&field.field_type))
+        .map(layout_field_from_workspace_field)
+        .collect::<Vec<_>>();
+
+    let row = sqlx::query(
+        r#"
+        SELECT start_field_id, target_field_id, marker_field_ids, zoom
+        FROM project_roadmap_settings
+        WHERE project_view_id = $1
+        "#,
+    )
+    .bind(selected_view.id)
+    .fetch_optional(pool)
+    .await?;
+    let start_id = row
+        .as_ref()
+        .and_then(|row| row.get::<Option<Uuid>, _>("start_field_id"))
+        .or_else(|| configuration_uuid(&selected_view.configuration, "startFieldId"));
+    let target_id = row
+        .as_ref()
+        .and_then(|row| row.get::<Option<Uuid>, _>("target_field_id"))
+        .or_else(|| configuration_uuid(&selected_view.configuration, "targetFieldId"));
+    let marker_ids = row
+        .as_ref()
+        .map(|row| row.get::<Vec<Uuid>, _>("marker_field_ids"))
+        .filter(|ids| !ids.is_empty())
+        .unwrap_or_else(|| {
+            configuration_uuid_array(&selected_view.configuration, "markerFieldIds")
+        });
+    let zoom = row
+        .as_ref()
+        .map(|row| row.get::<String, _>("zoom"))
+        .or_else(|| configuration_string(&selected_view.configuration, "zoom"))
+        .filter(|value| matches!(value.as_str(), "month" | "quarter" | "year"))
+        .unwrap_or_else(|| "month".to_owned());
+    let first_date_field = fields
+        .iter()
+        .find(|field| is_roadmap_date_field(&field.field_type));
+    let start_date_field = start_id
+        .and_then(|id| fields.iter().find(|field| field.id == id))
+        .or(first_date_field)
+        .map(layout_field_from_workspace_field);
+    let target_date_field = target_id
+        .and_then(|id| fields.iter().find(|field| field.id == id))
+        .or(first_date_field)
+        .map(layout_field_from_workspace_field);
+    let marker_fields = marker_ids
+        .into_iter()
+        .filter_map(|id| fields.iter().find(|field| field.id == id))
+        .filter(|field| is_roadmap_marker_field(&field.field_type))
+        .map(layout_field_from_workspace_field)
+        .collect::<Vec<_>>();
+
+    Ok(ProjectWorkspaceRoadmapConfig {
+        start_date_field,
+        target_date_field,
+        marker_fields,
+        eligible_date_fields,
+        eligible_marker_fields,
+        zoom,
+        zoom_options: vec!["month".to_owned(), "quarter".to_owned(), "year".to_owned()],
+        unavailable_reason: first_date_field
+            .is_none()
+            .then(|| "Roadmap layout needs at least one date or iteration field.".to_owned()),
+    })
+}
+
+fn layout_field_from_workspace_field(field: &ProjectWorkspaceField) -> ProjectWorkspaceLayoutField {
+    ProjectWorkspaceLayoutField {
+        id: field.id,
+        name: field.name.clone(),
+        field_type: field.field_type.clone(),
+    }
+}
+
+fn display_field_for_item(item: &ProjectWorkspaceItem, field: &ProjectWorkspaceField) -> String {
+    item.field_values
+        .iter()
+        .find(|value| value.field_id == field.id)
+        .map(|value| value.display_value.clone())
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "No value".to_owned())
+}
+
+fn count_items_for_field_value(
+    items: &[ProjectWorkspaceItem],
+    field: &ProjectWorkspaceField,
+    key: &str,
+) -> i64 {
+    items
+        .iter()
+        .filter(|item| display_field_for_item(item, field) == key)
+        .count() as i64
+}
+
+fn is_board_column_field(field_type: &str) -> bool {
+    matches!(field_type, "status" | "single_select" | "iteration")
+}
+
+fn is_board_swimlane_field(field_type: &str) -> bool {
+    matches!(
+        field_type,
+        "status" | "single_select" | "iteration" | "repository" | "assignees" | "milestone"
+    )
+}
+
+fn is_roadmap_date_field(field_type: &str) -> bool {
+    matches!(field_type, "date" | "iteration")
+}
+
+fn is_roadmap_marker_field(field_type: &str) -> bool {
+    matches!(field_type, "date" | "iteration" | "milestone")
+}
+
+fn configuration_uuid(configuration: &Value, key: &str) -> Option<Uuid> {
+    configuration
+        .get(key)
+        .and_then(Value::as_str)
+        .and_then(|value| Uuid::parse_str(value).ok())
+}
+
+fn configuration_uuid_array(configuration: &Value, key: &str) -> Vec<Uuid> {
+    configuration
+        .get(key)
+        .and_then(Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(Value::as_str)
+                .filter_map(|value| Uuid::parse_str(value).ok())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn normalize_workspace_filters(

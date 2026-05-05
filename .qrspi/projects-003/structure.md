@@ -6,7 +6,7 @@
 
 ## Phase 1: Layout-Aware Workspace Read Contract - table, board, and roadmap views are distinguishable
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Extend the existing Projects workspace read API so saved views can declare `table`, `board`, or `roadmap` layout and return screen-ready configuration for layout switching without changing item values yet. This phase makes layout metadata, eligible fields, persisted settings, keyboard hints, and permission-gated controls testable through one read contract.
 

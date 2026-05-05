@@ -220,6 +220,15 @@ export type ProjectWorkspaceView = {
   updatedAt: string;
 };
 
+export type ProjectWorkspaceLayoutChoice = {
+  layout: "table" | "board" | "roadmap" | string;
+  label: string;
+  keyboardHint: string;
+  active: boolean;
+  enabled: boolean;
+  unavailableReason: string | null;
+};
+
 export type ProjectWorkspaceField = {
   id: string;
   name: string;
@@ -228,6 +237,43 @@ export type ProjectWorkspaceField = {
   settings: Record<string, unknown>;
   hidden: boolean;
   editable: boolean;
+};
+
+export type ProjectWorkspaceLayoutField = {
+  id: string;
+  name: string;
+  fieldType: string;
+};
+
+export type ProjectWorkspaceBoardColumn = {
+  key: string;
+  label: string;
+  fieldId: string;
+  count: number;
+  itemLimit: number | null;
+  overLimit: boolean;
+  visible: boolean;
+};
+
+export type ProjectWorkspaceBoardConfig = {
+  columnField: ProjectWorkspaceLayoutField | null;
+  swimlaneField: ProjectWorkspaceLayoutField | null;
+  eligibleColumnFields: ProjectWorkspaceLayoutField[];
+  eligibleSwimlaneFields: ProjectWorkspaceLayoutField[];
+  columns: ProjectWorkspaceBoardColumn[];
+  emptyColumnsVisible: boolean;
+  unavailableReason: string | null;
+};
+
+export type ProjectWorkspaceRoadmapConfig = {
+  startDateField: ProjectWorkspaceLayoutField | null;
+  targetDateField: ProjectWorkspaceLayoutField | null;
+  markerFields: ProjectWorkspaceLayoutField[];
+  eligibleDateFields: ProjectWorkspaceLayoutField[];
+  eligibleMarkerFields: ProjectWorkspaceLayoutField[];
+  zoom: "month" | "quarter" | "year" | string;
+  zoomOptions: string[];
+  unavailableReason: string | null;
 };
 
 export type ProjectWorkspaceFieldValue = {
@@ -286,7 +332,10 @@ export type ProjectWorkspace = {
   project: ProjectWorkspaceProject;
   selectedView: ProjectWorkspaceView;
   views: ProjectWorkspaceView[];
+  layoutChoices?: ProjectWorkspaceLayoutChoice[];
   fields: ProjectWorkspaceField[];
+  boardConfig?: ProjectWorkspaceBoardConfig | null;
+  roadmapConfig?: ProjectWorkspaceRoadmapConfig | null;
   items: ProjectWorkspaceItem[];
   total: number;
   page: number;
@@ -303,6 +352,7 @@ export type ProjectWorkspace = {
     viewerRole: string | null;
     canEdit: boolean;
     canManageViews: boolean;
+    canChangeLayout?: boolean;
     canAddItems: boolean;
   };
   unavailableReason: string | null;

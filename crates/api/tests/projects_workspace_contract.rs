@@ -296,6 +296,60 @@ async fn project_workspace_returns_table_fields_items_filters_and_private_guards
     .fetch_one(&pool)
     .await
     .expect("status field should insert");
+    let target_field: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_fields (project_id, name, field_type, position) VALUES ($1, 'Target date', 'date', 3) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("target date field should insert");
+    let board_view_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO project_views (project_id, name, layout, position, configuration)
+        VALUES ($1, 'Board', 'board', 2, jsonb_build_object('columnFieldId', $2::text, 'swimlaneFieldId', $2::text))
+        RETURNING id
+        "#,
+    )
+    .bind(project_id)
+    .bind(status_field)
+    .fetch_one(&pool)
+    .await
+    .expect("board view should insert");
+    let roadmap_view_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO project_views (project_id, name, layout, position, configuration)
+        VALUES ($1, 'Roadmap', 'roadmap', 3, jsonb_build_object('startFieldId', $2::text, 'targetFieldId', $2::text, 'zoom', 'quarter'))
+        RETURNING id
+        "#,
+    )
+    .bind(project_id)
+    .bind(target_field)
+    .fetch_one(&pool)
+    .await
+    .expect("roadmap view should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO project_board_column_settings (project_view_id, project_field_id, option_key, label, position, item_limit)
+        VALUES ($1, $2, 'In progress', 'In progress', 1, 1),
+               ($1, $2, 'Done', 'Done', 2, 3)
+        "#,
+    )
+    .bind(board_view_id)
+    .bind(status_field)
+    .execute(&pool)
+    .await
+    .expect("board columns should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO project_roadmap_settings (project_view_id, start_field_id, target_field_id, marker_field_ids, zoom)
+        VALUES ($1, $2, $2, ARRAY[$2]::uuid[], 'quarter')
+        "#,
+    )
+    .bind(roadmap_view_id)
+    .bind(target_field)
+    .execute(&pool)
+    .await
+    .expect("roadmap settings should insert");
     let draft_item_id: Uuid = sqlx::query_scalar(
         "INSERT INTO project_items (project_id, item_type, title, body, position) VALUES ($1, 'draft_issue', 'Draft launch notes', 'Write the launch copy', 1) RETURNING id",
     )
@@ -361,6 +415,13 @@ async fn project_workspace_returns_table_fields_items_filters_and_private_guards
     assert_eq!(body["groups"][0]["label"], "In progress");
     assert_eq!(body["unsavedView"]["active"], true);
     assert_eq!(body["viewerPermissions"]["canEdit"], true);
+    assert_eq!(body["viewerPermissions"]["canChangeLayout"], true);
+    assert_eq!(body["layoutChoices"].as_array().expect("choices").len(), 3);
+    assert!(body["layoutChoices"]
+        .as_array()
+        .expect("choices")
+        .iter()
+        .any(|choice| choice["layout"] == "board" && choice["keyboardHint"] == "b"));
 
     let (status, _, body) = patch_json(
         app.clone(),
@@ -402,6 +463,53 @@ async fn project_workspace_returns_table_fields_items_filters_and_private_guards
     .await
     .expect("audit count should load");
     assert!(audit_count >= 2);
+
+    let (status, _, body) = get_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/workspace?view={board_view_id}&group=Status"),
+        Some(&member_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["selectedView"]["layout"], "board");
+    assert_eq!(
+        body["boardConfig"]["columnField"]["id"],
+        status_field.to_string()
+    );
+    assert_eq!(
+        body["boardConfig"]["swimlaneField"]["id"],
+        status_field.to_string()
+    );
+    assert_eq!(body["boardConfig"]["columns"][0]["label"], "In progress");
+    assert_eq!(body["boardConfig"]["columns"][0]["itemLimit"], 1);
+    assert_eq!(
+        body["boardConfig"]["eligibleColumnFields"][0]["name"],
+        "Status"
+    );
+    assert!(body["roadmapConfig"]["eligibleDateFields"]
+        .as_array()
+        .expect("date fields")
+        .iter()
+        .any(|field| field["id"] == target_field.to_string()));
+
+    let (status, _, body) = get_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/workspace?view={roadmap_view_id}&sort=manual"),
+        Some(&member_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["selectedView"]["layout"], "roadmap");
+    assert_eq!(
+        body["roadmapConfig"]["startDateField"]["id"],
+        target_field.to_string()
+    );
+    assert_eq!(body["roadmapConfig"]["zoom"], "quarter");
+    assert!(body["roadmapConfig"]["zoomOptions"]
+        .as_array()
+        .expect("zoom options")
+        .iter()
+        .any(|option| option == "year"));
 
     let (status, _, body) = get_json(
         app.clone(),

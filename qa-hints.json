@@ -1,5 +1,21 @@
 [
   {
+    "feature_id": "projects-003",
+    "tests_written": [
+      "Completed Phase 1 Layout-Aware Workspace Read Contract without marking projects-003 build_pass=true.",
+      "Added additive migrations for project_board_column_settings and project_roadmap_settings so board columns, limits, roadmap fields, markers, and zoom have durable read metadata.",
+      "Extended GET /api/projects/{project_id}/workspace so table, board, and roadmap saved views are readable instead of rejecting non-table layouts.",
+      "Added layoutChoices, boardConfig, roadmapConfig, eligible layout fields, board column counts/limits, roadmap date/marker fields, zoom options, and canChangeLayout permission metadata to the Rust and TypeScript workspace DTOs.",
+      "Extended projects_workspace_contract coverage for board/roadmap view reads, layout keyboard hints, board column settings, eligible fields, roadmap settings, and no-secret validation errors."
+    ],
+    "needs_deeper_qa": [
+      "Focused projects_workspace_contract compiled and ran but DB assertions self-skipped because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test failed with password authentication failed for user postgres; rerun against a clean migrated credentialed database.",
+      "Browser smoke was skipped because Phase 1 is API-first and .qrspi/projects-003/structure.md marks browser smoke optional; Phase 2 should verify the View menu with a real seeded browser session.",
+      "Probe projects with no eligible board fields, no eligible roadmap date fields, hidden fields, private linked repository rows, invalid layout configuration values, persisted board column limits, hidden board columns, marker field arrays, read-only users, and owner/member layout permission boundaries.",
+      "Phases 2-5 still need real layout switching, Board rendering and column moves, Roadmap rendering/settings, API docs, screenshots, final QA handoff, and build_pass bookkeeping."
+    ]
+  },
+  {
     "feature_id": "infra-001",
     "tests_written": [
       "QA verified existing core Postgres schema and Rust data-access foundation for users, auth accounts, sessions, repositories, refs, commits, issues, pull requests, organizations, teams, Actions/package/webhook/notification surfaces, request logging, API envelopes, and search-document permission filtering.",
