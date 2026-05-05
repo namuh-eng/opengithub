@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial Security Overview Page - `/security` becomes the Security and quality workspace
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the placeholder with the Editorial Security and quality page backed by Phase 1. The page should show the left security sidebar, rendered policy preview, advisory rows, and feature cards with concrete navigation/actions.
 

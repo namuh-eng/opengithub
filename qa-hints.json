@@ -5729,5 +5729,24 @@
       "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; the focused Rust contract passed after manually applying this additive Phase 1 migration to the shared test DB.",
       "No browser smoke was run for this API-first phase; the structure outline marks browser smoke optional until UI phases."
     ]
+  },
+  {
+    "feature_id": "code-security-001",
+    "tests_written": [
+      "Completed Phase 2 Editorial Security Overview Page without marking code-security-001 build_pass=true.",
+      "Replaced the /{owner}/{repo}/security placeholder with a signed-session server-rendered Security overview backed by GET /api/repos/{owner}/{repo}/security.",
+      "Added RepositorySecurityShell with the Security and quality sidebar, active Security repository tab, Overview/Findings/Reporting groups, and concrete Overview, Dependabot, Code scanning, Secret scanning, Security policy, and Advisories links.",
+      "Added RepositorySecurityOverviewPage with rendered sanitized SECURITY.md preview, source/history/raw policy actions, maintainer Start setup/Edit affordances, feature cards with redacted/visible alert counts, published advisory rows, empty/unavailable states, and Editorial primitives/tokens only.",
+      "Added focused Vitest coverage for policy preview, missing-policy reader/maintainer variants, advisory rows, feature cards, concrete links, no dead anchors, typed buttons, unsafe-markup guardrails, and private-count redaction.",
+      "Added focused Playwright browser smoke that seeds real Postgres SECURITY.md, feature settings, and advisory rows, verifies the signed-in Security overview flow, checks no dead controls, and saves ralph/screenshots/build/code-security-001-phase2-overview.jpg.",
+      "Verification passed: focused Vitest security overview tests, TypeScript check, focused Biome checks, focused direct Playwright repository-security smoke, full make check, full make test with Cargo tests plus 450 web tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 still needs the dedicated /security/policy Markdown reader with heading anchors, file action menu destinations, reader/maintainer empty states, and browser screenshot evidence.",
+      "Phase 4 still needs real SECURITY.md create/edit mutations through repository file materialization, commit/ref updates, propose-change fallback, and audit events.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Run keyboard-only and screen-reader traversal for the Security sidebar, repository header controls, policy preview links, feature cards, advisory rows, empty states, and mobile wrapping.",
+      "make test-e2e wrapper produced no output for more than 90 seconds and was terminated to avoid stale child processes; the focused direct Playwright Security smoke passed with screenshot evidence."
+    ]
   }
 ]
