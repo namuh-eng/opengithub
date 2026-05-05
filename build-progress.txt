@@ -1,3 +1,12 @@
+2026-05-06 - projects-001 structure planning
+
+- Determined `projects-001` is the first `build_pass:false` PRD entry and it requires structure planning before implementation.
+- Read the stack/design sources for this feature lane: `BUILD_GUIDE.md`, `build-spec.md`, `prd.json`, `web/AGENTS.md`, existing organization/repository Projects placeholders, navigation helpers, Projects inspect screenshots, and extracted Projects docs.
+- Added `.qrspi/projects-001/structure.md` with five vertical phases: Projects list API/read model, Editorial user/org/repo list pages, URL-backed search/tabs/sort, permissioned copy-project mutation, and final docs/browser/QA/build-pass bookkeeping.
+- Did not change `prd.json`; `projects-001.build_pass` remains `false` until all implementation phases pass verification.
+- Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches.
+- Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-05 - discussions-004 phase 1 category settings contract
 
 - Completed Phase 1 from `.qrspi/discussions-004/structure.md`: discussion category settings now have an admin-ready Rust API/read model and basic category create/update contract without marking `discussions-004.build_pass=true`; Phases 2-5 remain.
