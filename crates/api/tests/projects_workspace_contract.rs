@@ -605,6 +605,13 @@ async fn project_workspace_adds_reorders_and_removes_items() {
     .execute(&pool)
     .await
     .expect("field should insert");
+    let status_field: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_fields (project_id, name, field_type, position) VALUES ($1, 'Status', 'single_select', 2) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("status field should insert");
     let issue_id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO issues (repository_id, number, title, body, state, author_user_id)
@@ -659,10 +666,30 @@ async fn project_workspace_adds_reorders_and_removes_items() {
         app.clone(),
         &format!("/api/projects/{project_id}/items/{draft_item_id}/position"),
         Some(&member_cookie),
-        json!({ "afterItemId": null, "beforeItemId": null }),
+        json!({ "afterItemId": null, "beforeItemId": null, "groupFieldId": status_field, "groupValue": "Done" }),
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .any(|item| item["id"] == draft_item_id.to_string()
+            && item["fieldValues"]
+                .as_array()
+                .expect("field values")
+                .iter()
+                .any(|field| field["fieldId"] == status_field.to_string()
+                    && field["displayValue"] == "Done")));
+    let status_value: Value = sqlx::query_scalar(
+        "SELECT value FROM project_item_field_values WHERE project_item_id = $1 AND project_field_id = $2",
+    )
+    .bind(draft_item_id)
+    .bind(status_field)
+    .fetch_one(&pool)
+    .await
+    .expect("board move field value should persist");
+    assert_eq!(status_value, json!("Done"));
 
     let (status, _, body) = delete_json(
         app.clone(),

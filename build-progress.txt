@@ -1,3 +1,16 @@
+2026-05-06 - projects-003 phase 3 board layout and column moves
+
+- Completed Phase 3 from `.qrspi/projects-003/structure.md`: Projects v2 Board views now render real Editorial board columns, swimlanes, cards, empty-column toggles, limit warnings, and accessible column moves without marking `projects-003.build_pass=true`; Phases 4-5 remain.
+- Reused the existing `PATCH /api/projects/{project_id}/items/{item_id}/position` route for board moves by sending `groupFieldId` and `groupValue`, so card column changes persist through the same Rust project field validation and item reorder path rather than adding a duplicate endpoint.
+- Updated `ProjectWorkspacePage` to switch Board views away from the table renderer, show horizontally scrollable columns, group by the configured swimlane field, render item cards with repository/label/assignee metadata, expose an empty-column toggle, and reuse the existing Add item panel from board columns and the board footer.
+- Extended `projects_workspace_contract` with a board-style grouped move assertion that persists the backing `project_item_field_values` row and returns refreshed `fieldValues`.
+- Extended focused Vitest coverage for Board rendering, swimlanes, over-limit chips, empty-column toggling, card metadata, board move PATCH payloads, and the existing table/edit/add/reorder flows after the new board fixture field.
+- Verification passed: `cargo fmt --all -- --check`; `cargo check -p opengithub-api --tests`; `cd web && npx tsc --noEmit --pretty false`; focused Biome; focused `project-workspace-page` Vitest with 14 tests; focused `projects_workspace_contract` compile/run under its DB guard; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 544 web tests; mandatory Editorial banned-value scan returned zero matches.
+- Browser smoke passed against a local API-compatible stub with real Next dev server: loaded `/orgs/namuh/projects/12/views/1`, verified board columns/swimlanes/over-limit state, toggled empty columns, moved a card to Done through the same-origin position route, opened Add item, checked no dead links/buttons, confirmed no unexpected page overflow, and saved `ralph/screenshots/build/projects-003-phase3-board-layout.jpg`.
+- Focused DB-backed Projects contract compiled and ran, but local Postgres rejected `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test` with password authentication failed for user `postgres`, so DB assertions self-skipped under the existing guard. Rerun with a credentialed migrated test database for real row/audit/event verification.
+- Mandatory Editorial banned-value scan returned zero matches. `prd.json` remains `build_pass:false` because Roadmap rendering/settings and final docs/browser/QA/build-pass bookkeeping remain.
+- Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-06 - projects-003 phase 2 layout switching and View menu
 
 - Completed Phase 2 from `.qrspi/projects-003/structure.md`: Projects v2 workspaces now have a real View menu for persisted Table, Board, and Roadmap layout switching without marking `projects-003.build_pass=true`; Phases 3-5 remain.

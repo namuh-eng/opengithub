@@ -40,7 +40,7 @@
 
 ## Phase 3: Board Layout and Column Moves - cards render and column changes persist
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Render a horizontally scrollable Editorial board from a single-select/status/iteration column field, including item cards, empty columns, column limits, swimlane grouping, and real card moves that update the backing project item field value.
 

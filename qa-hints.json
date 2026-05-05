@@ -6916,5 +6916,23 @@
       "Keyboard shortcuts t/b/r are exposed as hints only in Phase 2; QA should verify they remain non-misleading until a later keyboard handler phase implements actual shortcuts.",
       "Phase 3 still needs real Board rendering and card column moves; Phase 4 still needs real Roadmap rendering and timeline settings."
     ]
+  },
+  {
+    "feature_id": "projects-003",
+    "tests_written": [
+      "Completed Phase 3 Board Layout and Column Moves without marking projects-003 build_pass=true.",
+      "Rendered Projects v2 Board layout in ProjectWorkspacePage with horizontally scrollable columns, swimlane grouping, count/limit headers, over-limit warning chips, item cards, labels, assignees, repository metadata, empty-column toggle, and Add item affordances that reuse the existing item-add panel.",
+      "Wired accessible Move-to-column selects to the existing same-origin project item position route, sending groupFieldId/groupValue so board moves update the backing project field value through the Rust API.",
+      "Extended the Rust projects_workspace_contract to assert a board-style grouped move persists the field value, records through the existing reorder path, and returns refreshed fieldValues.",
+      "Extended focused Vitest coverage for board rendering, swimlanes, over-limit warnings, empty-column toggling, card metadata, and board move PATCH payloads.",
+      "Browser smoke passed against a local API-compatible stub and real Next dev server: loaded /orgs/namuh/projects/12/views/1, verified Board columns/swimlanes/over-limit state, toggled empty columns, moved a card to Done through the same-origin position route, opened the Add item panel, checked for dead links/buttons, verified no unexpected page overflow, and saved ralph/screenshots/build/projects-003-phase3-board-layout.jpg.",
+      "Verification passed: cargo fmt --all --check, cargo check -p opengithub-api --tests, focused projects_workspace_contract compile/run under DB guard, web TypeScript, focused Biome, focused project-workspace-page Vitest with 14 tests, mandatory Editorial banned-value scan, full make check, and full make test with Cargo tests plus 544 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Rerun the Board layout smoke against a clean migrated credentialed TEST_DATABASE_URL so card moves, over-limit counts, swimlanes, and audit/item-event rows are verified against real Postgres rows and signed-session seed data instead of the local API-compatible stub.",
+      "Probe many columns, hidden empty columns, many swimlanes, private linked repositories, read-only users with disabled move/add controls, stale expectedUpdatedAt conflicts, invalid target column values, iteration-backed columns, no-value columns, concurrent card moves, keyboard-only move select use, and mobile horizontal scrolling limited to the board scroller.",
+      "Pointer drag-and-drop is intentionally not implemented in Phase 3; accessible Move-to-column controls are the real mutation path for this phase.",
+      "Phase 4 still needs real Roadmap rendering and timeline settings; Phase 5 still needs docs, final browser evidence, QA handoff, and build_pass bookkeeping."
+    ]
   }
 ]

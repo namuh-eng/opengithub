@@ -74,10 +74,19 @@ function workspace(
         editable: true,
       },
       {
+        id: "field-priority",
+        name: "Priority",
+        fieldType: "single_select",
+        position: 4,
+        settings: {},
+        hidden: false,
+        editable: true,
+      },
+      {
         id: "field-hidden",
         name: "Secret",
         fieldType: "text",
-        position: 4,
+        position: 5,
         settings: {},
         hidden: true,
         editable: false,
@@ -175,6 +184,11 @@ function workspace(
             value: "In progress",
             displayValue: "In progress",
           },
+          {
+            fieldId: "field-priority",
+            value: "P1",
+            displayValue: "P1",
+          },
         ],
         labels: [{ id: "label-1", name: "frontend", color: "rust" }],
         assignees: [{ id: "user-1", login: "mona", avatarUrl: null }],
@@ -195,6 +209,11 @@ function workspace(
             fieldId: "field-status",
             value: "Backlog",
             displayValue: "Backlog",
+          },
+          {
+            fieldId: "field-priority",
+            value: "P2",
+            displayValue: "P2",
           },
         ],
         labels: [],
@@ -518,9 +537,7 @@ describe("ProjectWorkspacePage", () => {
       .closest("tr");
     expect(firstRow).not.toBeNull();
     fireEvent.click(
-      within(firstRow as HTMLTableRowElement).getByRole("button", {
-        name: "Edit",
-      }),
+      within(firstRow as HTMLTableRowElement).getByTitle("Edit Status"),
     );
     fireEvent.change(screen.getByLabelText("Status value"), {
       target: { value: "Done" },
@@ -577,9 +594,7 @@ describe("ProjectWorkspacePage", () => {
       .closest("tr");
     expect(firstRow).not.toBeNull();
     fireEvent.click(
-      within(firstRow as HTMLTableRowElement).getByRole("button", {
-        name: "Edit",
-      }),
+      within(firstRow as HTMLTableRowElement).getByTitle("Edit Status"),
     );
     fireEvent.change(screen.getByLabelText("Status value"), {
       target: { value: "Blocked" },
@@ -739,6 +754,181 @@ describe("ProjectWorkspacePage", () => {
     expect(fetchMock).toHaveBeenLastCalledWith(
       "/api/projects/project-1/items/item-2",
       { method: "DELETE" },
+    );
+  });
+
+  it("renders board columns, swimlanes, card metadata, and empty-column toggles", () => {
+    render(
+      <ProjectWorkspacePage
+        owner="namuh"
+        scope="organization"
+        viewNumber={1}
+        workspace={workspace({
+          selectedView: {
+            ...workspace().selectedView,
+            layout: "board",
+            name: "Board",
+          },
+          boardConfig: {
+            columnField: {
+              id: "field-status",
+              name: "Status",
+              fieldType: "single_select",
+            },
+            swimlaneField: {
+              id: "field-priority",
+              name: "Priority",
+              fieldType: "single_select",
+            },
+            eligibleColumnFields: [
+              {
+                id: "field-status",
+                name: "Status",
+                fieldType: "single_select",
+              },
+            ],
+            eligibleSwimlaneFields: [
+              {
+                id: "field-priority",
+                name: "Priority",
+                fieldType: "single_select",
+              },
+            ],
+            columns: [
+              {
+                key: "In progress",
+                label: "In progress",
+                fieldId: "field-status",
+                count: 2,
+                itemLimit: 1,
+                overLimit: true,
+                visible: true,
+              },
+              {
+                key: "Backlog",
+                label: "Backlog",
+                fieldId: "field-status",
+                count: 1,
+                itemLimit: null,
+                overLimit: false,
+                visible: true,
+              },
+              {
+                key: "Done",
+                label: "Done",
+                fieldId: "field-status",
+                count: 0,
+                itemLimit: null,
+                overLimit: false,
+                visible: true,
+              },
+            ],
+            emptyColumnsVisible: true,
+            unavailableReason: null,
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Board" })).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(
+      screen.getAllByRole("region", { name: "In progress board column" })[0],
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Over limit")[0]).toHaveClass("chip", "warn");
+    expect(screen.getAllByText("P1")[0]).toHaveClass("t-label");
+    expect(screen.getAllByText("P2")[0]).toHaveClass("t-label");
+    expect(screen.getByText("frontend")).toHaveClass("chip", "soft");
+    expect(screen.getByRole("button", { name: "Hide empty columns" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide empty columns" }));
+    expect(
+      screen.queryByRole("region", { name: "Done board column" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("moves board cards by updating the backing column field value", async () => {
+    const assign = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => workspace(),
+    });
+    vi.stubGlobal("location", { assign });
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <ProjectWorkspacePage
+        owner="namuh"
+        scope="organization"
+        viewNumber={1}
+        workspace={workspace({
+          selectedView: {
+            ...workspace().selectedView,
+            layout: "board",
+            name: "Board",
+          },
+          boardConfig: {
+            columnField: {
+              id: "field-status",
+              name: "Status",
+              fieldType: "single_select",
+            },
+            swimlaneField: null,
+            eligibleColumnFields: [
+              {
+                id: "field-status",
+                name: "Status",
+                fieldType: "single_select",
+              },
+            ],
+            eligibleSwimlaneFields: [],
+            columns: [
+              {
+                key: "In progress",
+                label: "In progress",
+                fieldId: "field-status",
+                count: 1,
+                itemLimit: null,
+                overLimit: false,
+                visible: true,
+              },
+              {
+                key: "Done",
+                label: "Done",
+                fieldId: "field-status",
+                count: 0,
+                itemLimit: null,
+                overLimit: false,
+                visible: true,
+              },
+            ],
+            emptyColumnsVisible: true,
+            unavailableReason: null,
+          },
+        })}
+      />,
+    );
+
+    fireEvent.change(
+      screen.getByLabelText("Move Wire the table shell to column"),
+      { target: { value: "Done" } },
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/projects/project-1/items/item-1/position",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          beforeItemId: null,
+          afterItemId: null,
+          groupFieldId: "field-status",
+          groupValue: "Done",
+          expectedUpdatedAt: "2026-05-06T00:00:00Z",
+        }),
+      }),
+    );
+    expect(assign).toHaveBeenCalledWith(
+      "/orgs/namuh/projects/12/views/1?q=is%3Aopen&sort=manual&group=Status",
     );
   });
 

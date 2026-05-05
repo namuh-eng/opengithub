@@ -4,6 +4,7 @@ import Link from "next/link";
 import { type FormEvent, Fragment, useMemo, useState } from "react";
 import type {
   ProjectWorkspace,
+  ProjectWorkspaceBoardColumn,
   ProjectWorkspaceField,
   ProjectWorkspaceFieldValue,
   ProjectWorkspaceItem,
@@ -93,6 +94,42 @@ function groupItems(workspace: ProjectWorkspace) {
   }));
 }
 
+function boardColumnValue(column: ProjectWorkspaceBoardColumn) {
+  return column.key === "no-value" ? "" : column.key;
+}
+
+function boardColumnItems(
+  items: ProjectWorkspaceItem[],
+  field: ProjectWorkspaceField | undefined,
+  column: ProjectWorkspaceBoardColumn,
+) {
+  if (!field) return [];
+  return items.filter((item) => {
+    const value = fieldValue(item, field);
+    const displayValue = value?.displayValue || "No value";
+    return displayValue === column.label || displayValue === column.key;
+  });
+}
+
+function boardSwimlaneGroups(
+  items: ProjectWorkspaceItem[],
+  field: ProjectWorkspaceField | undefined,
+) {
+  if (!field) {
+    return [{ key: "all", label: "All cards", items }];
+  }
+  const groups = new Map<string, ProjectWorkspaceItem[]>();
+  for (const item of items) {
+    const label = fieldValue(item, field)?.displayValue || "No value";
+    groups.set(label, [...(groups.get(label) ?? []), item]);
+  }
+  return Array.from(groups, ([label, groupItems]) => ({
+    key: label,
+    label,
+    items: groupItems,
+  }));
+}
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", {
     month: "short",
@@ -158,7 +195,24 @@ export function ProjectWorkspacePage({
   const [itemSaving, setItemSaving] = useState(false);
   const [itemMessage, setItemMessage] = useState<string | null>(null);
   const [itemError, setItemError] = useState<string | null>(null);
+  const [emptyColumnsVisible, setEmptyColumnsVisible] = useState(
+    workspace.boardConfig?.emptyColumnsVisible ?? true,
+  );
   const visibleFields = workspace.fields.filter((field) => !field.hidden);
+  const boardColumnField = workspace.boardConfig?.columnField
+    ? workspace.fields.find(
+        (field) => field.id === workspace.boardConfig?.columnField?.id,
+      )
+    : undefined;
+  const boardSwimlaneField = workspace.boardConfig?.swimlaneField
+    ? workspace.fields.find(
+        (field) => field.id === workspace.boardConfig?.swimlaneField?.id,
+      )
+    : undefined;
+  const boardColumns = (workspace.boardConfig?.columns ?? []).filter(
+    (column) => column.visible && (emptyColumnsVisible || column.count > 0),
+  );
+  const boardGroups = boardSwimlaneGroups(workspace.items, boardSwimlaneField);
   const groupedItems = useMemo(() => groupItems(workspace), [workspace]);
   const baseQuery = {
     q: workspace.filters.query,
@@ -465,6 +519,40 @@ export function ProjectWorkspacePage({
       return;
     }
     setItemMessage("Row order saved");
+    window.location.assign(currentHref);
+  }
+
+  async function moveItemToBoardColumn(
+    item: ProjectWorkspaceItem,
+    column: ProjectWorkspaceBoardColumn,
+  ) {
+    if (!boardColumnField) return;
+    setItemSaving(true);
+    setItemError(null);
+    setItemMessage(null);
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(workspace.project.id)}/items/${encodeURIComponent(item.id)}/position`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          beforeItemId: null,
+          afterItemId: null,
+          groupFieldId: column.fieldId,
+          groupValue: boardColumnValue(column),
+          expectedUpdatedAt: item.updatedAt,
+        }),
+      },
+    ).catch(() => null);
+    setItemSaving(false);
+    if (!response?.ok) {
+      const body = await response?.json().catch(() => null);
+      setItemError(
+        body?.error?.message ?? "Project board card could not be moved.",
+      );
+      return;
+    }
+    setItemMessage(`Moved to ${column.label}`);
     window.location.assign(currentHref);
   }
 
@@ -914,140 +1002,432 @@ export function ProjectWorkspacePage({
             ) : null}
           </div>
 
-          <div className="card overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[920px] border-collapse">
-                <thead>
-                  <tr style={{ borderBottom: "1px solid var(--line)" }}>
-                    <th className="t-label w-14 px-4 py-3 text-left">#</th>
-                    <th className="t-label min-w-[300px] px-3 py-3 text-left">
-                      Item
-                    </th>
-                    {visibleFields.map((field) => (
-                      <th
-                        className="t-label min-w-[150px] px-3 py-3 text-left"
-                        key={field.id}
-                      >
-                        {field.name}
-                      </th>
-                    ))}
-                    <th className="t-label min-w-[190px] px-3 py-3 text-left">
-                      Controls
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {groupedItems.map((group) => (
-                    <Fragment key={group.label}>
-                      <tr style={{ background: "var(--surface-2)" }}>
-                        <td
-                          className="px-4 py-2"
-                          colSpan={visibleFields.length + 3}
-                        >
-                          <span className="t-label">{group.label}</span>{" "}
-                          <span className="t-xs t-num">{group.count}</span>
-                        </td>
-                      </tr>
-                      {group.items.map((item, index) => (
-                        <tr className="list-row" key={item.id}>
-                          <td className="t-mono-sm px-4 py-3">{index + 1}</td>
-                          <td className="px-3 py-3">
-                            <div className="flex min-w-0 items-start gap-3">
-                              <span className="chip soft t-mono-sm">
-                                {itemIcon(item)}
-                              </span>
-                              <div className="min-w-0">
-                                <Link
-                                  className="font-medium no-underline"
-                                  href={projectItemHref(item, currentHref)}
+          {workspace.selectedView.layout === "board" ? (
+            <div className="card overflow-hidden">
+              <div
+                className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3"
+                style={{ borderColor: "var(--line)" }}
+              >
+                <div>
+                  <h2 className="t-h3">Board</h2>
+                  <p className="t-xs mt-1">
+                    Cards are grouped by{" "}
+                    {workspace.boardConfig?.columnField?.name ?? "a field"}
+                    {workspace.boardConfig?.swimlaneField
+                      ? ` with swimlanes by ${workspace.boardConfig.swimlaneField.name}`
+                      : ""}
+                    .
+                  </p>
+                </div>
+                <button
+                  className="btn sm"
+                  onClick={() => setEmptyColumnsVisible((visible) => !visible)}
+                  type="button"
+                >
+                  {emptyColumnsVisible
+                    ? "Hide empty columns"
+                    : "Show empty columns"}
+                </button>
+              </div>
+              {workspace.boardConfig?.unavailableReason || !boardColumnField ? (
+                <div className="p-4">
+                  <span className="chip warn">
+                    {workspace.boardConfig?.unavailableReason ??
+                      "Board layout needs a column field."}
+                  </span>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <div className="min-w-[980px] p-4">
+                    {boardGroups.map((swimlane) => (
+                      <section className="mb-5 last:mb-0" key={swimlane.key}>
+                        <div className="mb-3 flex items-center gap-2">
+                          <span className="t-label">{swimlane.label}</span>
+                          <span className="t-xs t-num">
+                            {swimlane.items.length}
+                          </span>
+                        </div>
+                        <div className="grid auto-cols-[minmax(250px,1fr)] grid-flow-col gap-3">
+                          {boardColumns.map((column) => {
+                            const cards = boardColumnItems(
+                              swimlane.items,
+                              boardColumnField,
+                              column,
+                            );
+                            return (
+                              <section
+                                aria-label={`${column.label} board column`}
+                                className="min-h-[220px] rounded-[var(--radius)]"
+                                key={`${swimlane.key}-${column.key}`}
+                                style={{
+                                  background: "var(--surface-2)",
+                                  border: "1px solid var(--line-soft)",
+                                }}
+                              >
+                                <div
+                                  className="flex items-start justify-between gap-2 px-3 py-3"
+                                  style={{
+                                    borderBottom: "1px solid var(--line-soft)",
+                                  }}
                                 >
-                                  {item.title}
-                                </Link>
-                                <div className="t-xs mt-1 flex flex-wrap gap-2">
-                                  <span>{itemTypeLabel(item)}</span>
-                                  {item.repository ? (
-                                    <span>{item.repository.fullName}</span>
-                                  ) : null}
-                                  {item.number ? (
-                                    <span className="t-mono-sm">
-                                      #{item.number}
+                                  <div className="min-w-0">
+                                    <div className="t-sm font-medium">
+                                      {column.label}
+                                    </div>
+                                    <div className="t-xs t-num mt-1">
+                                      {cards.length} cards
+                                      {column.itemLimit != null
+                                        ? ` / limit ${column.itemLimit}`
+                                        : ""}
+                                    </div>
+                                  </div>
+                                  {column.overLimit ? (
+                                    <span className="chip warn">
+                                      Over limit
                                     </span>
                                   ) : null}
-                                  {item.labels.map((label) => (
-                                    <span className="chip soft" key={label.id}>
-                                      {label.name}
-                                    </span>
+                                </div>
+                                <div className="grid gap-2 p-2">
+                                  {cards.length === 0 ? (
+                                    <div className="t-xs p-3">
+                                      No cards in this column.
+                                    </div>
+                                  ) : null}
+                                  {cards.map((item) => (
+                                    <article className="card p-3" key={item.id}>
+                                      <div className="mb-2 flex items-start gap-2">
+                                        <span className="chip soft t-mono-sm">
+                                          {itemIcon(item)}
+                                        </span>
+                                        <Link
+                                          className="min-w-0 flex-1 font-medium no-underline"
+                                          href={projectItemHref(
+                                            item,
+                                            currentHref,
+                                          )}
+                                        >
+                                          {item.title}
+                                        </Link>
+                                      </div>
+                                      <div className="t-xs mb-3 flex flex-wrap gap-2">
+                                        <span>{itemTypeLabel(item)}</span>
+                                        {item.repository ? (
+                                          <span>
+                                            {item.repository.fullName}
+                                          </span>
+                                        ) : null}
+                                        {item.number ? (
+                                          <span className="t-mono-sm">
+                                            #{item.number}
+                                          </span>
+                                        ) : null}
+                                        {item.labels.map((label) => (
+                                          <span
+                                            className="chip soft"
+                                            key={label.id}
+                                          >
+                                            {label.name}
+                                          </span>
+                                        ))}
+                                        {item.assignees.map((assignee) => (
+                                          <span
+                                            className="av sm"
+                                            key={assignee.id}
+                                            title={assignee.login}
+                                          >
+                                            {assignee.login
+                                              .slice(0, 1)
+                                              .toUpperCase()}
+                                          </span>
+                                        ))}
+                                      </div>
+                                      <div className="mb-3 flex flex-wrap gap-2">
+                                        {visibleFields
+                                          .filter(
+                                            (field) =>
+                                              field.id !==
+                                                boardColumnField.id &&
+                                              field.id !==
+                                                boardSwimlaneField?.id,
+                                          )
+                                          .slice(0, 3)
+                                          .map((field) => {
+                                            const value = fieldValue(
+                                              item,
+                                              field,
+                                            );
+                                            return value ? (
+                                              <span
+                                                className="chip soft"
+                                                key={field.id}
+                                              >
+                                                {field.name}:{" "}
+                                                {value.displayValue}
+                                              </span>
+                                            ) : null;
+                                          })}
+                                      </div>
+                                      <label className="t-xs">
+                                        Move to column
+                                        <select
+                                          aria-label={`Move ${item.title} to column`}
+                                          className="input mt-1 w-full"
+                                          disabled={
+                                            itemSaving ||
+                                            !workspace.viewerPermissions.canEdit
+                                          }
+                                          onChange={(event) => {
+                                            const target = boardColumns.find(
+                                              (entry) =>
+                                                entry.key ===
+                                                event.target.value,
+                                            );
+                                            if (target) {
+                                              void moveItemToBoardColumn(
+                                                item,
+                                                target,
+                                              );
+                                            }
+                                          }}
+                                          value={
+                                            fieldValue(item, boardColumnField)
+                                              ?.displayValue ?? "no-value"
+                                          }
+                                        >
+                                          {boardColumns.map((choice) => (
+                                            <option
+                                              key={choice.key}
+                                              value={choice.key}
+                                            >
+                                              {choice.label}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </label>
+                                    </article>
                                   ))}
-                                  {item.assignees.map((assignee) => (
-                                    <span
-                                      className="av sm"
-                                      key={assignee.id}
-                                      title={assignee.login}
-                                    >
-                                      {assignee.login.slice(0, 1).toUpperCase()}
-                                    </span>
-                                  ))}
+                                  <button
+                                    className="btn sm ghost"
+                                    disabled={
+                                      !workspace.viewerPermissions.canAddItems
+                                    }
+                                    onClick={() => setAddOpen(true)}
+                                    type="button"
+                                  >
+                                    Add item
+                                  </button>
+                                </div>
+                              </section>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div
+                className="flex flex-wrap items-center gap-3 border-t px-4 py-3"
+                style={{ borderColor: "var(--line)" }}
+              >
+                {itemError ? (
+                  <span className="chip err">{itemError}</span>
+                ) : null}
+                {itemMessage ? (
+                  <span className="chip ok">{itemMessage}</span>
+                ) : null}
+                <button
+                  className="btn sm"
+                  disabled={!workspace.viewerPermissions.canAddItems}
+                  onClick={() => setAddOpen((open) => !open)}
+                  type="button"
+                >
+                  Add item
+                </button>
+                <span className="t-xs">
+                  Board moves use the same project item field rules as inline
+                  table edits.
+                </span>
+              </div>
+              {addOpen ? (
+                <AddProjectItemPanel
+                  addMode={addMode}
+                  addUrl={addUrl}
+                  bulkUrls={bulkUrls}
+                  draftBody={draftBody}
+                  draftTitle={draftTitle}
+                  itemSaving={itemSaving}
+                  onAddModeChange={setAddMode}
+                  onAddUrlChange={setAddUrl}
+                  onBulkUrlsChange={setBulkUrls}
+                  onDraftBodyChange={setDraftBody}
+                  onDraftTitleChange={setDraftTitle}
+                  onSubmitAddItem={submitAddItem}
+                  onSubmitBulkItems={submitBulkItems}
+                  onSubmitDraftItem={submitDraftItem}
+                />
+              ) : null}
+            </div>
+          ) : (
+            <div className="card overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[920px] border-collapse">
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid var(--line)" }}>
+                      <th className="t-label w-14 px-4 py-3 text-left">#</th>
+                      <th className="t-label min-w-[300px] px-3 py-3 text-left">
+                        Item
+                      </th>
+                      {visibleFields.map((field) => (
+                        <th
+                          className="t-label min-w-[150px] px-3 py-3 text-left"
+                          key={field.id}
+                        >
+                          {field.name}
+                        </th>
+                      ))}
+                      <th className="t-label min-w-[190px] px-3 py-3 text-left">
+                        Controls
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {groupedItems.map((group) => (
+                      <Fragment key={group.label}>
+                        <tr style={{ background: "var(--surface-2)" }}>
+                          <td
+                            className="px-4 py-2"
+                            colSpan={visibleFields.length + 3}
+                          >
+                            <span className="t-label">{group.label}</span>{" "}
+                            <span className="t-xs t-num">{group.count}</span>
+                          </td>
+                        </tr>
+                        {group.items.map((item, index) => (
+                          <tr className="list-row" key={item.id}>
+                            <td className="t-mono-sm px-4 py-3">{index + 1}</td>
+                            <td className="px-3 py-3">
+                              <div className="flex min-w-0 items-start gap-3">
+                                <span className="chip soft t-mono-sm">
+                                  {itemIcon(item)}
+                                </span>
+                                <div className="min-w-0">
+                                  <Link
+                                    className="font-medium no-underline"
+                                    href={projectItemHref(item, currentHref)}
+                                  >
+                                    {item.title}
+                                  </Link>
+                                  <div className="t-xs mt-1 flex flex-wrap gap-2">
+                                    <span>{itemTypeLabel(item)}</span>
+                                    {item.repository ? (
+                                      <span>{item.repository.fullName}</span>
+                                    ) : null}
+                                    {item.number ? (
+                                      <span className="t-mono-sm">
+                                        #{item.number}
+                                      </span>
+                                    ) : null}
+                                    {item.labels.map((label) => (
+                                      <span
+                                        className="chip soft"
+                                        key={label.id}
+                                      >
+                                        {label.name}
+                                      </span>
+                                    ))}
+                                    {item.assignees.map((assignee) => (
+                                      <span
+                                        className="av sm"
+                                        key={assignee.id}
+                                        title={assignee.login}
+                                      >
+                                        {assignee.login
+                                          .slice(0, 1)
+                                          .toUpperCase()}
+                                      </span>
+                                    ))}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          </td>
-                          {visibleFields.map((field) => {
-                            const value = fieldValue(item, field);
-                            const isEditing =
-                              editingCell?.itemId === item.id &&
-                              editingCell.fieldId === field.id;
-                            return (
-                              <td className="t-sm px-3 py-3" key={field.id}>
-                                {isEditing ? (
-                                  <form
-                                    aria-label={`Edit ${field.name} for ${item.title}`}
-                                    className="flex min-w-[180px] flex-wrap gap-2"
-                                    onSubmit={(event) =>
-                                      saveFieldValue(event, item, field)
-                                    }
-                                  >
-                                    <input
-                                      aria-label={`${field.name} value`}
-                                      className="input min-w-[130px] flex-1"
-                                      onChange={(event) =>
-                                        setEditValue(event.target.value)
+                            </td>
+                            {visibleFields.map((field) => {
+                              const value = fieldValue(item, field);
+                              const isEditing =
+                                editingCell?.itemId === item.id &&
+                                editingCell.fieldId === field.id;
+                              return (
+                                <td className="t-sm px-3 py-3" key={field.id}>
+                                  {isEditing ? (
+                                    <form
+                                      aria-label={`Edit ${field.name} for ${item.title}`}
+                                      className="flex min-w-[180px] flex-wrap gap-2"
+                                      onSubmit={(event) =>
+                                        saveFieldValue(event, item, field)
                                       }
-                                      type={inputTypeForField(field)}
-                                      value={editValue}
-                                    />
-                                    <button
-                                      className="btn sm primary"
-                                      disabled={fieldSaving}
-                                      type="submit"
                                     >
-                                      {fieldSaving ? "Saving..." : "Save"}
-                                    </button>
-                                    <button
-                                      className="btn sm"
-                                      onClick={() => setEditingCell(null)}
-                                      type="button"
-                                    >
-                                      Cancel
-                                    </button>
-                                  </form>
-                                ) : value ? (
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <Link
-                                      className="chip soft no-underline"
-                                      href={workspaceHref(
-                                        scope,
-                                        owner,
-                                        workspace.project.number,
-                                        viewNumber,
-                                        {
-                                          ...baseQuery,
-                                          q: `${workspace.filters.query ?? ""} ${field.name}:${value.displayValue}`.trim(),
-                                          page: 1,
-                                        },
-                                      )}
-                                    >
-                                      {value.displayValue}
-                                    </Link>
+                                      <input
+                                        aria-label={`${field.name} value`}
+                                        className="input min-w-[130px] flex-1"
+                                        onChange={(event) =>
+                                          setEditValue(event.target.value)
+                                        }
+                                        type={inputTypeForField(field)}
+                                        value={editValue}
+                                      />
+                                      <button
+                                        className="btn sm primary"
+                                        disabled={fieldSaving}
+                                        type="submit"
+                                      >
+                                        {fieldSaving ? "Saving..." : "Save"}
+                                      </button>
+                                      <button
+                                        className="btn sm"
+                                        onClick={() => setEditingCell(null)}
+                                        type="button"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </form>
+                                  ) : value ? (
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <Link
+                                        className="chip soft no-underline"
+                                        href={workspaceHref(
+                                          scope,
+                                          owner,
+                                          workspace.project.number,
+                                          viewNumber,
+                                          {
+                                            ...baseQuery,
+                                            q: `${workspace.filters.query ?? ""} ${field.name}:${value.displayValue}`.trim(),
+                                            page: 1,
+                                          },
+                                        )}
+                                      >
+                                        {value.displayValue}
+                                      </Link>
+                                      <button
+                                        className="btn sm ghost"
+                                        disabled={
+                                          !workspace.viewerPermissions
+                                            .canEdit || !field.editable
+                                        }
+                                        onClick={() =>
+                                          openFieldEditor(item, field, value)
+                                        }
+                                        title={
+                                          field.editable
+                                            ? `Edit ${field.name}`
+                                            : `${field.name} cannot be edited inline.`
+                                        }
+                                        type="button"
+                                      >
+                                        Edit
+                                      </button>
+                                    </div>
+                                  ) : (
                                     <button
                                       className="btn sm ghost"
                                       disabled={
@@ -1059,219 +1439,255 @@ export function ProjectWorkspacePage({
                                       }
                                       title={
                                         field.editable
-                                          ? `Edit ${field.name}`
+                                          ? `Set ${field.name}`
                                           : `${field.name} cannot be edited inline.`
                                       }
                                       type="button"
                                     >
-                                      Edit
+                                      No value
                                     </button>
-                                  </div>
-                                ) : (
-                                  <button
-                                    className="btn sm ghost"
-                                    disabled={
-                                      !workspace.viewerPermissions.canEdit ||
-                                      !field.editable
-                                    }
-                                    onClick={() =>
-                                      openFieldEditor(item, field, value)
-                                    }
-                                    title={
-                                      field.editable
-                                        ? `Set ${field.name}`
-                                        : `${field.name} cannot be edited inline.`
-                                    }
-                                    type="button"
-                                  >
-                                    No value
-                                  </button>
-                                )}
-                              </td>
-                            );
-                          })}
-                          <td className="t-xs px-3 py-3">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span>{formatDate(item.updatedAt)}</span>
-                              <button
-                                className="btn sm ghost"
-                                disabled={
-                                  itemSaving ||
-                                  !workspace.viewerPermissions.canEdit ||
-                                  workspace.items[0]?.id === item.id
-                                }
-                                onClick={() => moveItem(item, "up")}
-                                title="Move row up"
-                                type="button"
-                              >
-                                Up
-                              </button>
-                              <button
-                                className="btn sm ghost"
-                                disabled={
-                                  itemSaving ||
-                                  !workspace.viewerPermissions.canEdit ||
-                                  workspace.items.at(-1)?.id === item.id
-                                }
-                                onClick={() => moveItem(item, "down")}
-                                title="Move row down"
-                                type="button"
-                              >
-                                Down
-                              </button>
-                              <button
-                                className="btn sm ghost"
-                                disabled={
-                                  itemSaving ||
-                                  !workspace.viewerPermissions.canEdit
-                                }
-                                onClick={() => removeItem(item)}
-                                title="Remove item from project"
-                                type="button"
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </Fragment>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div
-              className="flex flex-wrap items-center gap-3 border-t px-4 py-3"
-              style={{ borderColor: "var(--line)" }}
-            >
-              {fieldError ? (
-                <span className="chip err">{fieldError}</span>
-              ) : null}
-              {fieldMessage ? (
-                <span className="chip ok">{fieldMessage}</span>
-              ) : null}
-              {itemError ? <span className="chip err">{itemError}</span> : null}
-              {itemMessage ? (
-                <span className="chip ok">{itemMessage}</span>
-              ) : null}
-              <button
-                className="btn sm"
-                disabled={!workspace.viewerPermissions.canAddItems}
-                onClick={() => setAddOpen((open) => !open)}
-                title={
-                  workspace.viewerPermissions.canAddItems
-                    ? "Add issue, pull request, or draft item"
-                    : "You need write access to add project items."
-                }
-                type="button"
-              >
-                Add item
-              </button>
-              <span className="t-xs">
-                Paste issue or pull request URLs, create drafts, or bulk add
-                rows.
-              </span>
-            </div>
-            {addOpen ? (
-              <section
-                aria-label="Add project item"
-                className="border-t p-4"
+                                  )}
+                                </td>
+                              );
+                            })}
+                            <td className="t-xs px-3 py-3">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span>{formatDate(item.updatedAt)}</span>
+                                <button
+                                  className="btn sm ghost"
+                                  disabled={
+                                    itemSaving ||
+                                    !workspace.viewerPermissions.canEdit ||
+                                    workspace.items[0]?.id === item.id
+                                  }
+                                  onClick={() => moveItem(item, "up")}
+                                  title="Move row up"
+                                  type="button"
+                                >
+                                  Up
+                                </button>
+                                <button
+                                  className="btn sm ghost"
+                                  disabled={
+                                    itemSaving ||
+                                    !workspace.viewerPermissions.canEdit ||
+                                    workspace.items.at(-1)?.id === item.id
+                                  }
+                                  onClick={() => moveItem(item, "down")}
+                                  title="Move row down"
+                                  type="button"
+                                >
+                                  Down
+                                </button>
+                                <button
+                                  className="btn sm ghost"
+                                  disabled={
+                                    itemSaving ||
+                                    !workspace.viewerPermissions.canEdit
+                                  }
+                                  onClick={() => removeItem(item)}
+                                  title="Remove item from project"
+                                  type="button"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div
+                className="flex flex-wrap items-center gap-3 border-t px-4 py-3"
                 style={{ borderColor: "var(--line)" }}
               >
-                <div className="mb-3 flex flex-wrap gap-2">
-                  {(["url", "draft", "bulk"] as const).map((mode) => (
-                    <button
-                      className={`chip ${addMode === mode ? "active" : "soft"}`}
-                      key={mode}
-                      onClick={() => setAddMode(mode)}
-                      type="button"
-                    >
-                      {mode === "url"
-                        ? "Paste URL"
-                        : mode === "draft"
-                          ? "Draft issue"
-                          : "Bulk add"}
-                    </button>
-                  ))}
-                </div>
-                {addMode === "url" ? (
-                  <form
-                    aria-label="Add linked issue or pull request"
-                    className="flex flex-wrap gap-2"
-                    onSubmit={submitAddItem}
-                  >
-                    <input
-                      aria-label="Issue or pull request URL"
-                      className="input min-w-[280px] flex-1"
-                      onChange={(event) => setAddUrl(event.target.value)}
-                      placeholder="/namuh/opengithub/issues/42"
-                      value={addUrl}
-                    />
-                    <button
-                      className="btn sm primary"
-                      disabled={itemSaving || !addUrl.trim()}
-                      type="submit"
-                    >
-                      {itemSaving ? "Adding..." : "Add linked item"}
-                    </button>
-                  </form>
+                {fieldError ? (
+                  <span className="chip err">{fieldError}</span>
                 ) : null}
-                {addMode === "draft" ? (
-                  <form
-                    aria-label="Create draft project item"
-                    className="grid gap-2"
-                    onSubmit={submitDraftItem}
-                  >
-                    <input
-                      aria-label="Draft title"
-                      className="input"
-                      onChange={(event) => setDraftTitle(event.target.value)}
-                      placeholder="Draft issue title"
-                      value={draftTitle}
-                    />
-                    <textarea
-                      aria-label="Draft body"
-                      className="input min-h-[84px]"
-                      onChange={(event) => setDraftBody(event.target.value)}
-                      placeholder="Optional notes"
-                      value={draftBody}
-                    />
-                    <button
-                      className="btn sm primary w-fit"
-                      disabled={itemSaving || !draftTitle.trim()}
-                      type="submit"
-                    >
-                      {itemSaving ? "Creating..." : "Create draft"}
-                    </button>
-                  </form>
+                {fieldMessage ? (
+                  <span className="chip ok">{fieldMessage}</span>
                 ) : null}
-                {addMode === "bulk" ? (
-                  <form
-                    aria-label="Bulk add project items"
-                    className="grid gap-2"
-                    onSubmit={submitBulkItems}
-                  >
-                    <textarea
-                      aria-label="Bulk issue and pull request URLs"
-                      className="input min-h-[110px]"
-                      onChange={(event) => setBulkUrls(event.target.value)}
-                      placeholder="/namuh/opengithub/issues/42 /namuh/opengithub/pull/43"
-                      value={bulkUrls}
-                    />
-                    <button
-                      className="btn sm primary w-fit"
-                      disabled={itemSaving || !bulkUrls.trim()}
-                      type="submit"
-                    >
-                      {itemSaving ? "Adding..." : "Bulk add"}
-                    </button>
-                  </form>
+                {itemError ? (
+                  <span className="chip err">{itemError}</span>
                 ) : null}
-              </section>
-            ) : null}
-          </div>
+                {itemMessage ? (
+                  <span className="chip ok">{itemMessage}</span>
+                ) : null}
+                <button
+                  className="btn sm"
+                  disabled={!workspace.viewerPermissions.canAddItems}
+                  onClick={() => setAddOpen((open) => !open)}
+                  title={
+                    workspace.viewerPermissions.canAddItems
+                      ? "Add issue, pull request, or draft item"
+                      : "You need write access to add project items."
+                  }
+                  type="button"
+                >
+                  Add item
+                </button>
+                <span className="t-xs">
+                  Paste issue or pull request URLs, create drafts, or bulk add
+                  rows.
+                </span>
+              </div>
+              {addOpen ? (
+                <AddProjectItemPanel
+                  addMode={addMode}
+                  addUrl={addUrl}
+                  bulkUrls={bulkUrls}
+                  draftBody={draftBody}
+                  draftTitle={draftTitle}
+                  itemSaving={itemSaving}
+                  onAddModeChange={setAddMode}
+                  onAddUrlChange={setAddUrl}
+                  onBulkUrlsChange={setBulkUrls}
+                  onDraftBodyChange={setDraftBody}
+                  onDraftTitleChange={setDraftTitle}
+                  onSubmitAddItem={submitAddItem}
+                  onSubmitBulkItems={submitBulkItems}
+                  onSubmitDraftItem={submitDraftItem}
+                />
+              ) : null}
+            </div>
+          )}
         </section>
       </div>
     </main>
+  );
+}
+
+type AddProjectItemPanelProps = {
+  addMode: "url" | "draft" | "bulk";
+  addUrl: string;
+  bulkUrls: string;
+  draftBody: string;
+  draftTitle: string;
+  itemSaving: boolean;
+  onAddModeChange: (mode: "url" | "draft" | "bulk") => void;
+  onAddUrlChange: (value: string) => void;
+  onBulkUrlsChange: (value: string) => void;
+  onDraftBodyChange: (value: string) => void;
+  onDraftTitleChange: (value: string) => void;
+  onSubmitAddItem: (event: FormEvent<HTMLFormElement>) => void;
+  onSubmitBulkItems: (event: FormEvent<HTMLFormElement>) => void;
+  onSubmitDraftItem: (event: FormEvent<HTMLFormElement>) => void;
+};
+
+function AddProjectItemPanel({
+  addMode,
+  addUrl,
+  bulkUrls,
+  draftBody,
+  draftTitle,
+  itemSaving,
+  onAddModeChange,
+  onAddUrlChange,
+  onBulkUrlsChange,
+  onDraftBodyChange,
+  onDraftTitleChange,
+  onSubmitAddItem,
+  onSubmitBulkItems,
+  onSubmitDraftItem,
+}: AddProjectItemPanelProps) {
+  return (
+    <section
+      aria-label="Add project item"
+      className="border-t p-4"
+      style={{ borderColor: "var(--line)" }}
+    >
+      <div className="mb-3 flex flex-wrap gap-2">
+        {(["url", "draft", "bulk"] as const).map((mode) => (
+          <button
+            className={`chip ${addMode === mode ? "active" : "soft"}`}
+            key={mode}
+            onClick={() => onAddModeChange(mode)}
+            type="button"
+          >
+            {mode === "url"
+              ? "Paste URL"
+              : mode === "draft"
+                ? "Draft issue"
+                : "Bulk add"}
+          </button>
+        ))}
+      </div>
+      {addMode === "url" ? (
+        <form
+          aria-label="Add linked issue or pull request"
+          className="flex flex-wrap gap-2"
+          onSubmit={onSubmitAddItem}
+        >
+          <input
+            aria-label="Issue or pull request URL"
+            className="input min-w-[280px] flex-1"
+            onChange={(event) => onAddUrlChange(event.target.value)}
+            placeholder="/namuh/opengithub/issues/42"
+            value={addUrl}
+          />
+          <button
+            className="btn sm primary"
+            disabled={itemSaving || !addUrl.trim()}
+            type="submit"
+          >
+            {itemSaving ? "Adding..." : "Add linked item"}
+          </button>
+        </form>
+      ) : null}
+      {addMode === "draft" ? (
+        <form
+          aria-label="Create draft project item"
+          className="grid gap-2"
+          onSubmit={onSubmitDraftItem}
+        >
+          <input
+            aria-label="Draft title"
+            className="input"
+            onChange={(event) => onDraftTitleChange(event.target.value)}
+            placeholder="Draft issue title"
+            value={draftTitle}
+          />
+          <textarea
+            aria-label="Draft body"
+            className="input min-h-[84px]"
+            onChange={(event) => onDraftBodyChange(event.target.value)}
+            placeholder="Optional notes"
+            value={draftBody}
+          />
+          <button
+            className="btn sm primary w-fit"
+            disabled={itemSaving || !draftTitle.trim()}
+            type="submit"
+          >
+            {itemSaving ? "Creating..." : "Create draft"}
+          </button>
+        </form>
+      ) : null}
+      {addMode === "bulk" ? (
+        <form
+          aria-label="Bulk add project items"
+          className="grid gap-2"
+          onSubmit={onSubmitBulkItems}
+        >
+          <textarea
+            aria-label="Bulk issue and pull request URLs"
+            className="input min-h-[110px]"
+            onChange={(event) => onBulkUrlsChange(event.target.value)}
+            placeholder="/namuh/opengithub/issues/42 /namuh/opengithub/pull/43"
+            value={bulkUrls}
+          />
+          <button
+            className="btn sm primary w-fit"
+            disabled={itemSaving || !bulkUrls.trim()}
+            type="submit"
+          >
+            {itemSaving ? "Adding..." : "Bulk add"}
+          </button>
+        </form>
+      ) : null}
+    </section>
   );
 }
