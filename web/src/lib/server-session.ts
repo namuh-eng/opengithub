@@ -71,6 +71,8 @@ import {
   getRepositoryReleaseManagementContextFromCookie,
   getRepositoryReleasesFromCookie,
   getRepositoryReleaseTagsFromCookie,
+  getRepositorySecretScanningAlertDetailFromCookie,
+  getRepositorySecretScanningAlertsFromCookie,
   getRepositorySecurityOverviewFromCookie,
   getRepositorySecurityPolicyFromCookie,
   getRepositorySettingsFromCookie,
@@ -118,6 +120,9 @@ import {
   type RepositoryPullRequestListQuery,
   type RepositoryPulseFetchResult,
   type RepositoryReleaseListQuery,
+  type RepositorySecretScanningAlertDetailFetchResult,
+  type RepositorySecretScanningAlertsFetchResult,
+  type RepositorySecretScanningAlertsQuery,
   type RepositorySecurityOverviewFetchResult,
   type RepositorySecurityPolicyFetchResult,
   type RepositoryTrafficFetchResult,
@@ -654,6 +659,34 @@ export async function getRepositoryCodeScanningAlertDetail(
 ): Promise<RepositoryCodeScanningAlertDetailFetchResult> {
   const requestHeaders = await headers();
   return getRepositoryCodeScanningAlertDetailFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    alertId,
+  );
+}
+
+export async function getRepositorySecretScanningAlerts(
+  owner: string,
+  repo: string,
+  options: RepositorySecretScanningAlertsQuery = {},
+): Promise<RepositorySecretScanningAlertsFetchResult> {
+  const requestHeaders = await headers();
+  return getRepositorySecretScanningAlertsFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    options,
+  );
+}
+
+export async function getRepositorySecretScanningAlertDetail(
+  owner: string,
+  repo: string,
+  alertId: string | number,
+): Promise<RepositorySecretScanningAlertDetailFetchResult> {
+  const requestHeaders = await headers();
+  return getRepositorySecretScanningAlertDetailFromCookie(
     requestHeaders.get("cookie"),
     owner,
     repo,

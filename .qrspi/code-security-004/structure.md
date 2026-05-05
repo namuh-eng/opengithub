@@ -24,7 +24,7 @@
 
 ## Phase 2: Editorial Secret Scanning Alerts List - filters, tabs, and disabled state
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement `/{owner}/{repo}/security/secret-scanning` inside `RepositorySecurityShell` with Secret scanning selected. The page should render the disabled callout, provider/default and generic results tabs, query input, filter menus, sort menu, selectable rows, push-protection/bypass summary, and concrete alert detail/file/settings links from the Phase 1 API.
 

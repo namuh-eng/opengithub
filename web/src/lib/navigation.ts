@@ -981,6 +981,49 @@ export function repositoryCodeScanningAlertDetailHref(
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/code-scanning/${encodeURIComponent(String(alertId))}`;
 }
 
+export function repositorySecretScanningAlertsHref(
+  owner: string,
+  repo: string,
+  options: {
+    state?: string | null;
+    query?: string | null;
+    provider?: string | null;
+    secretType?: string | null;
+    validity?: string | null;
+    resolution?: string | null;
+    bypassed?: string | null;
+    team?: string | null;
+    topic?: string | null;
+    sort?: string | null;
+  } = {},
+) {
+  const params = new URLSearchParams();
+  if (options.state?.trim()) params.set("state", options.state.trim());
+  if (options.query?.trim()) params.set("q", options.query.trim());
+  if (options.provider?.trim()) params.set("provider", options.provider.trim());
+  if (options.secretType?.trim()) {
+    params.set("secret_type", options.secretType.trim());
+  }
+  if (options.validity?.trim()) params.set("validity", options.validity.trim());
+  if (options.resolution?.trim()) {
+    params.set("resolution", options.resolution.trim());
+  }
+  if (options.bypassed?.trim()) params.set("bypassed", options.bypassed.trim());
+  if (options.team?.trim()) params.set("team", options.team.trim());
+  if (options.topic?.trim()) params.set("topic", options.topic.trim());
+  if (options.sort?.trim()) params.set("sort", options.sort.trim());
+  const query = params.toString();
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/secret-scanning${query ? `?${query}` : ""}`;
+}
+
+export function repositorySecretScanningAlertDetailHref(
+  owner: string,
+  repo: string,
+  alertId: string | number,
+) {
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/secret-scanning/${encodeURIComponent(String(alertId))}`;
+}
+
 export function repositoryDependencyPackageHref({
   fallbackHref,
   ecosystem,
