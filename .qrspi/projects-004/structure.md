@@ -6,7 +6,7 @@
 
 ## Phase 1: Field Settings Read Contract - custom fields are administrable from one screen-ready API
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the authenticated read contract for `/orgs/{org}/projects/{number}/settings/fields` and owner-project equivalents. The API returns project metadata, built-in fields, custom fields, single-select options, iteration settings, field usage counts, limits, and viewer capabilities without changing fields yet.
 

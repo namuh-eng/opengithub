@@ -6969,5 +6969,21 @@
       "Probe large boards with many columns, many swimlanes, hidden empty columns, private linked repositories, read-only users, stale layout saves, stale board moves, invalid target column values, concurrent card moves, invalid date ranges, timezone/date-boundary rendering, marker deduplication, long item titles, keyboard-only layout controls, and mobile timeline/board scrolling.",
       "Pointer drag-and-drop, pane resizing, Projects insights charts, field administration, workflow automation, project access settings, exports, and full keyboard shortcut execution remain out of scope for projects-003 and should not appear as live unsupported controls."
     ]
+  },
+  {
+    "feature_id": "projects-004",
+    "tests_written": [
+      "Completed Phase 1 Field Settings Read Contract without marking projects-004 build_pass=true.",
+      "Added additive migration 202605060009_project_field_settings for project_field_options, project_iterations, project_iteration_breaks, active field metadata, cache_version, and indexes/triggers needed by later field lifecycle phases.",
+      "Added GET /api/projects/{project_id}/settings/fields with project visibility checks, read/admin permission exposure, field limits, built-in/custom field metadata, usage counts, single-select options, iteration cycles, iteration breaks, and no-secret error envelopes.",
+      "Added typed frontend ProjectFieldSettings DTOs plus signed-cookie helpers, including user/org project-number lookup helpers without JS-side auth.",
+      "Added focused Rust contract coverage for built-in field ordering, custom single-select option decoding, iteration/break decoding, usage counts, admin/read-only capabilities, private outsider denial, and JSON content type."
+    ],
+    "needs_deeper_qa": [
+      "Focused DB assertions self-skipped because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test failed with password authentication failed for user postgres; rerun projects_workspace_contract against a clean migrated credentialed database.",
+      "Browser smoke and make test-e2e were skipped because Phase 1 is API-first and .qrspi/projects-004/structure.md marks browser smoke optional for this phase.",
+      "Probe large field lists, field limit edge cases, many single-select options, many iteration cycles and breaks, read-only project members, public project anonymous reads, hidden/deleted fields, option color validation readiness, cache_version increments in later mutation phases, and private linked repository count leakage.",
+      "Phase 2 still needs the Editorial settings page; Phases 3-5 still need real field lifecycle, option administration, and iteration mutation/filter behavior."
+    ]
   }
 ]

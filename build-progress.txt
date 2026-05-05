@@ -199,6 +199,16 @@
 - Verification passed: focused Pulse/API docs Vitest, focused Biome, focused `repository_pulse_contract`, focused Playwright Pulse smoke, full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`, full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 425 web tests, full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false SESSION_SECRET=playwright-session-secret-with-enough-entropy SESSION_COOKIE_NAME=og_session DASHBOARD_E2E_SKIP_MIGRATIONS=1 make test-e2e` with 125 tests, and mandatory Editorial banned-value scan.
 - `qa_pass` remains false for the QA agent. Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
 
+2026-05-06 - projects-004 phase 1 Field Settings read contract
+
+- Completed Phase 1 from `.qrspi/projects-004/structure.md`: Projects v2 custom field settings now have a screen-ready read API without marking `projects-004.build_pass=true`.
+- Added additive migration `202605060009_project_field_settings` for active/deleted field metadata, field cache versions, durable single-select option rows, iteration cycles, iteration breaks, indexes, and update triggers.
+- Added Rust `GET /api/projects/{project_id}/settings/fields` with public/private visibility enforcement, read/admin role exposure, field limits, built-in vs custom field metadata, usage counts, option decoding, iteration and break decoding, and no-secret error envelopes.
+- Added typed `web/src/lib/api.ts` ProjectFieldSettings DTOs plus signed-cookie helpers and user/org project-number lookup helpers while keeping Rust API/session authority.
+- Added focused Rust contract coverage in `projects_workspace_contract` for field ordering, built-in read-only flags, options, iterations, breaks, usage counts, admin/read-only permissions, content type, and outsider denial.
+- Verification passed: `cargo fmt --all`; `cargo check -p opengithub-api --tests`; `cd web && npx biome check src/lib/api.ts`; `cd web && npx tsc --noEmit --pretty false`; mandatory Editorial banned-value scan returned zero matches; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full same-env `make test` with Cargo tests plus 545 web tests.
+- Focused DB assertions compiled and ran under the DB guard but self-skipped because local Postgres on `localhost:55432` rejected the available `postgres` password. Browser smoke and `make test-e2e` were skipped because Phase 1 is API-first and the structure marks browser smoke optional. `prd.json` remains `build_pass:false` because Phases 2-6 remain. Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-06 - projects-003 phase 1 layout-aware workspace read contract
 
 - Completed Phase 1 from `.qrspi/projects-003/structure.md`: Projects v2 workspace reads now expose layout-aware metadata for table, board, and roadmap saved views without marking `projects-003.build_pass=true`.

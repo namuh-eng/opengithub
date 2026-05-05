@@ -220,6 +220,86 @@ pub struct ProjectItemPositionRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct ProjectFieldSettings {
+    pub project: ProjectWorkspaceProject,
+    pub fields: Vec<ProjectFieldSettingsField>,
+    pub limits: ProjectFieldSettingsLimits,
+    pub viewer_permissions: ProjectFieldSettingsPermissions,
+    pub unavailable_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectFieldSettingsField {
+    pub id: Uuid,
+    pub name: String,
+    pub field_type: String,
+    pub position: i64,
+    pub settings: Value,
+    pub built_in: bool,
+    pub editable: bool,
+    pub deletable: bool,
+    pub usage_count: i64,
+    pub options: Vec<ProjectFieldOption>,
+    pub iterations: Vec<ProjectIteration>,
+    pub breaks: Vec<ProjectIterationBreak>,
+    pub cache_version: i64,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectFieldOption {
+    pub id: Uuid,
+    pub name: String,
+    pub color: String,
+    pub position: i64,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectIteration {
+    pub id: Uuid,
+    pub name: String,
+    pub start_date: NaiveDate,
+    pub duration_days: i64,
+    pub position: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectIterationBreak {
+    pub id: Uuid,
+    pub name: String,
+    pub start_date: NaiveDate,
+    pub duration_days: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectFieldSettingsLimits {
+    pub max_fields: i64,
+    pub used_fields: i64,
+    pub remaining_fields: i64,
+    pub max_options_per_field: i64,
+    pub max_iterations_per_field: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectFieldSettingsPermissions {
+    pub authenticated: bool,
+    pub viewer_role: Option<String>,
+    pub can_create_fields: bool,
+    pub can_rename_fields: bool,
+    pub can_delete_fields: bool,
+    pub can_manage_options: bool,
+    pub can_manage_iterations: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectWorkspace {
     pub project: ProjectWorkspaceProject,
     pub selected_view: ProjectWorkspaceView,
@@ -815,6 +895,49 @@ pub async fn project_workspace(
             can_manage_views: can_edit,
             can_change_layout: can_edit,
             can_add_items: can_edit,
+        },
+        unavailable_reason: None,
+    })
+}
+
+pub async fn project_field_settings(
+    pool: &PgPool,
+    project_id: Uuid,
+    viewer_user_id: Option<Uuid>,
+) -> Result<ProjectFieldSettings, ProjectsError> {
+    let project = workspace_project_row(pool, project_id, viewer_user_id).await?;
+    if project.visibility != "public" && project.viewer_role.is_none() {
+        return if viewer_user_id.is_some() {
+            Err(ProjectsError::Forbidden)
+        } else {
+            Err(ProjectsError::NotFound)
+        };
+    }
+
+    let viewer_role = project.viewer_role.clone();
+    let can_manage = viewer_role.as_deref().is_some_and(can_write_project_role);
+    let fields = field_settings_fields(pool, project_id).await?;
+    let used_fields = fields.len() as i64;
+    let max_fields = 50;
+
+    Ok(ProjectFieldSettings {
+        project,
+        fields,
+        limits: ProjectFieldSettingsLimits {
+            max_fields,
+            used_fields,
+            remaining_fields: (max_fields - used_fields).max(0),
+            max_options_per_field: 50,
+            max_iterations_per_field: 100,
+        },
+        viewer_permissions: ProjectFieldSettingsPermissions {
+            authenticated: viewer_user_id.is_some(),
+            viewer_role,
+            can_create_fields: can_manage,
+            can_rename_fields: can_manage,
+            can_delete_fields: can_manage,
+            can_manage_options: can_manage,
+            can_manage_iterations: can_manage,
         },
         unavailable_reason: None,
     })
@@ -1996,6 +2119,7 @@ async fn workspace_fields(
         SELECT id, name, field_type, position, settings
         FROM project_fields
         WHERE project_id = $1
+          AND deleted_at IS NULL
         ORDER BY position, created_at
         "#,
     )
@@ -2029,7 +2153,7 @@ async fn workspace_field(
         r#"
         SELECT id, name, field_type, position, settings
         FROM project_fields
-        WHERE project_id = $1 AND id = $2
+        WHERE project_id = $1 AND id = $2 AND deleted_at IS NULL
         "#,
     )
     .bind(project_id)
@@ -2049,6 +2173,191 @@ async fn workspace_field(
         hidden: false,
         editable: !matches!(field_type.as_str(), "repository"),
     })
+}
+
+async fn field_settings_fields(
+    pool: &PgPool,
+    project_id: Uuid,
+) -> Result<Vec<ProjectFieldSettingsField>, ProjectsError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT
+          project_fields.id,
+          project_fields.name,
+          project_fields.field_type,
+          project_fields.position,
+          project_fields.settings,
+          project_fields.cache_version,
+          project_fields.updated_at,
+          count(project_item_field_values.id)::bigint AS usage_count
+        FROM project_fields
+        LEFT JOIN project_item_field_values
+          ON project_item_field_values.project_field_id = project_fields.id
+        WHERE project_fields.project_id = $1
+          AND project_fields.deleted_at IS NULL
+        GROUP BY project_fields.id
+        ORDER BY project_fields.position, project_fields.created_at
+        "#,
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+
+    let field_ids = rows
+        .iter()
+        .map(|row| row.get::<Uuid, _>("id"))
+        .collect::<Vec<_>>();
+    let options = field_settings_options(pool, &field_ids).await?;
+    let iterations = field_settings_iterations(pool, &field_ids).await?;
+    let breaks = field_settings_breaks(pool, &field_ids).await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let id: Uuid = row.get("id");
+            let field_type: String = row.get("field_type");
+            let built_in = is_builtin_project_field(&field_type);
+            ProjectFieldSettingsField {
+                id,
+                name: row.get("name"),
+                field_type,
+                position: i64::from(row.get::<i32, _>("position")),
+                settings: row.get("settings"),
+                built_in,
+                editable: !built_in,
+                deletable: !built_in,
+                usage_count: row.get("usage_count"),
+                options: options
+                    .iter()
+                    .filter(|(field_id, _)| *field_id == id)
+                    .map(|(_, option)| option.clone())
+                    .collect(),
+                iterations: iterations
+                    .iter()
+                    .filter(|(field_id, _)| *field_id == id)
+                    .map(|(_, iteration)| iteration.clone())
+                    .collect(),
+                breaks: breaks
+                    .iter()
+                    .filter(|(field_id, _)| *field_id == id)
+                    .map(|(_, iteration_break)| iteration_break.clone())
+                    .collect(),
+                cache_version: row.get("cache_version"),
+                updated_at: row.get("updated_at"),
+            }
+        })
+        .collect())
+}
+
+async fn field_settings_options(
+    pool: &PgPool,
+    field_ids: &[Uuid],
+) -> Result<Vec<(Uuid, ProjectFieldOption)>, ProjectsError> {
+    if field_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows = sqlx::query(
+        r#"
+        SELECT project_field_id, id, name, color, position, description
+        FROM project_field_options
+        WHERE project_field_id = ANY($1)
+        ORDER BY project_field_id, position, created_at
+        "#,
+    )
+    .bind(field_ids)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            (
+                row.get("project_field_id"),
+                ProjectFieldOption {
+                    id: row.get("id"),
+                    name: row.get("name"),
+                    color: row.get("color"),
+                    position: i64::from(row.get::<i32, _>("position")),
+                    description: row.get("description"),
+                },
+            )
+        })
+        .collect())
+}
+
+async fn field_settings_iterations(
+    pool: &PgPool,
+    field_ids: &[Uuid],
+) -> Result<Vec<(Uuid, ProjectIteration)>, ProjectsError> {
+    if field_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows = sqlx::query(
+        r#"
+        SELECT project_field_id, id, name, start_date, duration_days, position
+        FROM project_iterations
+        WHERE project_field_id = ANY($1)
+        ORDER BY project_field_id, position, start_date
+        "#,
+    )
+    .bind(field_ids)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            (
+                row.get("project_field_id"),
+                ProjectIteration {
+                    id: row.get("id"),
+                    name: row.get("name"),
+                    start_date: row.get("start_date"),
+                    duration_days: i64::from(row.get::<i32, _>("duration_days")),
+                    position: i64::from(row.get::<i32, _>("position")),
+                },
+            )
+        })
+        .collect())
+}
+
+async fn field_settings_breaks(
+    pool: &PgPool,
+    field_ids: &[Uuid],
+) -> Result<Vec<(Uuid, ProjectIterationBreak)>, ProjectsError> {
+    if field_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows = sqlx::query(
+        r#"
+        SELECT project_field_id, id, name, start_date, duration_days
+        FROM project_iteration_breaks
+        WHERE project_field_id = ANY($1)
+        ORDER BY project_field_id, start_date, created_at
+        "#,
+    )
+    .bind(field_ids)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            (
+                row.get("project_field_id"),
+                ProjectIterationBreak {
+                    id: row.get("id"),
+                    name: row.get("name"),
+                    start_date: row.get("start_date"),
+                    duration_days: i64::from(row.get::<i32, _>("duration_days")),
+                },
+            )
+        })
+        .collect())
+}
+
+fn is_builtin_project_field(field_type: &str) -> bool {
+    matches!(
+        field_type,
+        "title" | "assignees" | "labels" | "milestone" | "repository"
+    )
 }
 
 fn workspace_layout_choices(

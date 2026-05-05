@@ -12,14 +12,14 @@ use crate::{
     auth::extractor::AuthenticatedUser,
     domain::projects::{
         add_project_item_for_actor, bulk_add_project_items_for_actor, copy_project_for_actor,
-        organization_projects, project_workspace, remove_project_item_for_actor,
-        repository_projects, update_project_item_field_for_actor,
+        organization_projects, project_field_settings, project_workspace,
+        remove_project_item_for_actor, repository_projects, update_project_item_field_for_actor,
         update_project_item_position_for_actor, update_project_roadmap_settings_for_actor,
         update_project_view_layout_for_actor, update_project_view_state_for_actor, user_projects,
-        CopiedProject, CopyProjectRequest, ProjectItemAddRequest, ProjectItemFieldValueRequest,
-        ProjectItemPositionRequest, ProjectItemsBulkAddRequest, ProjectList, ProjectListQuery,
-        ProjectRoadmapSettingsRequest, ProjectViewLayoutRequest, ProjectViewStateRequest,
-        ProjectWorkspace, ProjectWorkspaceQuery, ProjectsError,
+        CopiedProject, CopyProjectRequest, ProjectFieldSettings, ProjectItemAddRequest,
+        ProjectItemFieldValueRequest, ProjectItemPositionRequest, ProjectItemsBulkAddRequest,
+        ProjectList, ProjectListQuery, ProjectRoadmapSettingsRequest, ProjectViewLayoutRequest,
+        ProjectViewStateRequest, ProjectWorkspace, ProjectWorkspaceQuery, ProjectsError,
     },
     AppState,
 };
@@ -31,6 +31,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/projects/:project_id/workspace",
             get(project_workspace_route),
+        )
+        .route(
+            "/api/projects/:project_id/settings/fields",
+            get(project_field_settings_route),
         )
         .route(
             "/api/projects/:project_id/views/:view_id/state",
@@ -212,6 +216,19 @@ async fn project_workspace_route(
     .await
     .map_err(map_projects_error)?;
     Ok(Json(workspace))
+}
+
+async fn project_field_settings_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(project_id): Path<Uuid>,
+) -> Result<Json<ProjectFieldSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let settings = project_field_settings(pool, project_id, actor.map(|user| user.id))
+        .await
+        .map_err(map_projects_error)?;
+    Ok(Json(settings))
 }
 
 async fn update_project_view_state_route(

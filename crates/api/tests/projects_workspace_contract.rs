@@ -2,7 +2,7 @@ use axum::{
     body::{to_bytes, Body},
     http::{header, HeaderMap, Method, Request, StatusCode},
 };
-use chrono::{Duration, Utc};
+use chrono::{Duration, NaiveDate, Utc};
 use opengithub_api::{
     auth::session,
     config::{AppConfig, AuthConfig},
@@ -573,6 +573,169 @@ async fn project_workspace_returns_table_fields_items_filters_and_private_guards
     let (status, _, body) = get_json(
         app,
         &format!("/api/projects/{project_id}/workspace"),
+        Some(&outsider_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+}
+
+#[tokio::test]
+async fn project_field_settings_returns_options_iterations_limits_and_guards() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping projects field settings scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("fieldsettings{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let reader = create_user(&pool, &format!("{marker}-reader")).await;
+    let outsider = create_user(&pool, &format!("{marker}-outsider")).await;
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let reader_cookie = cookie_header(&pool, &config, &reader).await;
+    let outsider_cookie = cookie_header(&pool, &config, &outsider).await;
+
+    let project_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO projects (owner_user_id, number, title, short_description, visibility, created_by_user_id)
+        VALUES ($1, 51, 'Field settings project', 'Custom field admin contract', 'private', $1)
+        RETURNING id
+        "#,
+    )
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("project should insert");
+    sqlx::query(
+        "INSERT INTO project_permissions (project_id, user_id, role) VALUES ($1, $2, 'admin'), ($1, $3, 'read')",
+    )
+    .bind(project_id)
+    .bind(owner.id)
+    .bind(reader.id)
+    .execute(&pool)
+    .await
+    .expect("permissions should insert");
+
+    let title_field: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_fields (project_id, name, field_type, position) VALUES ($1, 'Title', 'title', 1) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("title field should insert");
+    let status_field: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_fields (project_id, name, field_type, position) VALUES ($1, 'Status', 'single_select', 2) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("status field should insert");
+    let iteration_field: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_fields (project_id, name, field_type, position, settings) VALUES ($1, 'Sprint', 'iteration', 3, '{\"durationUnit\":\"weeks\"}'::jsonb) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("iteration field should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO project_field_options (project_field_id, name, color, position, description)
+        VALUES ($1, 'Todo', 'gray', 1, 'Not started'),
+               ($1, 'Done', 'green', 2, 'Completed')
+        "#,
+    )
+    .bind(status_field)
+    .execute(&pool)
+    .await
+    .expect("options should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO project_iterations (project_field_id, name, start_date, duration_days, position)
+        VALUES ($1, 'Sprint 1', $2, 14, 1),
+               ($1, 'Sprint 2', $3, 14, 2)
+        "#,
+    )
+    .bind(iteration_field)
+    .bind(NaiveDate::from_ymd_opt(2026, 5, 4).expect("date"))
+    .bind(NaiveDate::from_ymd_opt(2026, 5, 18).expect("date"))
+    .execute(&pool)
+    .await
+    .expect("iterations should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO project_iteration_breaks (project_field_id, name, start_date, duration_days)
+        VALUES ($1, 'Planning break', $2, 7)
+        "#,
+    )
+    .bind(iteration_field)
+    .bind(NaiveDate::from_ymd_opt(2026, 6, 1).expect("date"))
+    .execute(&pool)
+    .await
+    .expect("break should insert");
+    let item_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_items (project_id, item_type, title, position) VALUES ($1, 'draft_issue', 'Backfill docs', 1) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("item should insert");
+    sqlx::query(
+        "INSERT INTO project_item_field_values (project_item_id, project_field_id, value, updated_by_user_id) VALUES ($1, $2, $3, $4)",
+    )
+    .bind(item_id)
+    .bind(status_field)
+    .bind(json!("Todo"))
+    .bind(owner.id)
+    .execute(&pool)
+    .await
+    .expect("field value should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+    let (status, headers, body) = get_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/settings/fields"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("application/json")));
+    assert_eq!(body["project"]["title"], "Field settings project");
+    assert_eq!(body["limits"]["usedFields"], 3);
+    assert_eq!(body["limits"]["remainingFields"], 47);
+    assert_eq!(body["viewerPermissions"]["canCreateFields"], true);
+    assert_eq!(body["fields"][0]["id"], title_field.to_string());
+    assert_eq!(body["fields"][0]["builtIn"], true);
+    assert_eq!(body["fields"][0]["deletable"], false);
+    assert_eq!(body["fields"][1]["id"], status_field.to_string());
+    assert_eq!(
+        body["fields"][1]["options"]
+            .as_array()
+            .expect("options")
+            .len(),
+        2
+    );
+    assert_eq!(body["fields"][1]["options"][1]["name"], "Done");
+    assert_eq!(body["fields"][1]["usageCount"], 1);
+    assert_eq!(body["fields"][2]["id"], iteration_field.to_string());
+    assert_eq!(body["fields"][2]["iterations"][0]["name"], "Sprint 1");
+    assert_eq!(body["fields"][2]["breaks"][0]["name"], "Planning break");
+
+    let (status, _, body) = get_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/settings/fields"),
+        Some(&reader_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["viewerPermissions"]["viewerRole"], "read");
+    assert_eq!(body["viewerPermissions"]["canCreateFields"], false);
+
+    let (status, _, body) = get_json(
+        app,
+        &format!("/api/projects/{project_id}/settings/fields"),
         Some(&outsider_cookie),
     )
     .await;
