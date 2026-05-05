@@ -1,3 +1,13 @@
+2026-05-06 - projects-001 phase 5 final docs, QA handoff, and build pass
+
+- Completed Phase 5 from `.qrspi/projects-001/structure.md`: Projects v2 list pages and copy flow are now locked as a completed vertical slice and `projects-001.build_pass=true`.
+- Added `/docs/api` coverage for `GET /api/users/{username}/projects`, `GET /api/orgs/{org}/projects`, `GET /api/repos/{owner}/{repo}/projects`, and `POST /api/projects/{project_id}/copies`, including optional/signed auth, private visibility, URL-backed q/state/tab/sort/page/pageSize filters, templates, counts, repository links, copy permissions, organization policy-disabled states, transactional copy semantics, audit events, recent visits, and no-secret error envelopes.
+- Extended API docs assertions for Projects endpoint paths, supported sort values, organization policy disabled handling, repository linkage through `project_repositories`, and copy audit side effects.
+- Updated `qa-hints.json` with final Projects QA targets for large lists, private leakage, stale URL filters, copy concurrency, draft inclusion, permission boundaries, disabled policy states, cloned views/fields/workflows, audit rows, and recent visits.
+- Verification passed: focused `cd web && npm test -- --run api-docs.test.tsx`; focused `cd web && npx biome check src/lib/api-docs.ts tests/api-docs.test.tsx`; JSON validation for `prd.json` and `qa-hints.json`; mandatory Editorial banned-value scan with zero matches; full `make check`; full `make test` with Cargo tests plus 530 web tests.
+- `make test-e2e` was attempted with the signed-session/test DB environment, spawned Playwright/dev-server children, produced no actionable output, and was terminated. Final DB-backed Projects browser smoke still needs a clean migrated credentialed `TEST_DATABASE_URL`; previous local runs against `localhost:55432` rejected the available `postgres` credentials. Prior phase browser smokes covered URL-backed list controls and copy flow against local API stubs, with screenshots saved under `ralph/screenshots/build/`.
+- Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-06 - projects-001 phase 4 copy project flow
 
 - Completed Phase 4 from `.qrspi/projects-001/structure.md`: Projects list copy actions now use a real permissioned mutation without marking `projects-001.build_pass=true`; Phase 5 remains.

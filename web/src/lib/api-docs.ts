@@ -323,6 +323,156 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "projects-user-list",
+    method: "GET",
+    path: "/api/users/{username}/projects?q=is%3Aopen&state=open&tab=projects&sort=recently_updated&page=1&pageSize=30",
+    title: "List user Projects",
+    description:
+      "Returns the Editorial Projects v2 list contract for a user-owned profile tab, including visible project rows, templates, counts, URL-backed filters, and viewer copy permissions.",
+    auth: "Optional signed opengithub session cookie; private projects require owner or explicit project access",
+    response: `{
+  "items": [
+    {
+      "id": "project_01",
+      "number": 12,
+      "title": "Roadmap planning",
+      "description": "Tracks repository work across the next milestone.",
+      "state": "open",
+      "visibility": "public",
+      "workspaceHref": "/mona/projects/12/views/1",
+      "status": { "status": "on_track", "label": "On track" },
+      "counts": { "total": 8, "open": 6, "closed": 1, "draft": 1 },
+      "viewerRole": "write",
+      "viewerCanCopy": true
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "pageSize": 30,
+  "scope": { "kind": "user", "login": "mona", "repository": null },
+  "filters": {
+    "query": "is:open",
+    "state": "open",
+    "tab": "projects",
+    "sort": "recently_updated"
+  },
+  "counts": { "open": 1, "closed": 1, "templates": 1, "total": 2 },
+  "templates": { "items": [], "total": 0, "page": 1, "pageSize": 30 },
+  "viewerPermissions": { "authenticated": true, "viewerRole": "write", "canCreate": true, "canCopy": true },
+  "unavailableReason": null
+}`,
+    notes: [
+      "Supported tab values are projects and templates; supported state values are open and closed.",
+      "Supported sort values are recently_updated, name_asc, name_desc, created_desc, and created_asc; invalid filters return validation_failed.",
+      "Search matches title, description, status labels, and the is:open or is:closed qualifier used by the Projects search box.",
+      "Private user-owned projects are omitted for anonymous or unauthorized viewers instead of leaking counts or titles.",
+    ],
+  },
+  {
+    id: "projects-org-list",
+    method: "GET",
+    path: "/api/orgs/{org}/projects?q=roadmap&state=open&tab=projects&sort=name_asc&page=1&pageSize=30",
+    title: "List organization Projects",
+    description:
+      "Returns an organization Projects v2 directory for the org profile shell with search, open/closed counts, templates, status badges, and policy-aware viewer permissions.",
+    auth: "Optional signed opengithub session cookie; private organizations require membership",
+    response: `{
+  "items": [
+    {
+      "id": "project_02",
+      "number": 4,
+      "title": "Platform roadmap",
+      "href": "/orgs/acme-labs/projects/4",
+      "workspaceHref": "/orgs/acme-labs/projects/4/views/1",
+      "owner": "acme-labs",
+      "isTemplate": false,
+      "linkedRepositoriesCount": 3,
+      "status": { "status": "at_risk", "label": "At risk" },
+      "viewerCanCopy": true
+    }
+  ],
+  "scope": { "kind": "organization", "login": "acme-labs", "repository": null },
+  "counts": { "open": 3, "closed": 1, "templates": 2, "total": 6 },
+  "viewerPermissions": { "authenticated": true, "viewerRole": "admin", "canCreate": true, "canCopy": true },
+  "unavailableReason": null
+}`,
+    notes: [
+      "Organization policy-disabled Projects return a readable unavailableReason so the browser can render disabled controls without pretending creation is available.",
+      "Outside viewers see public organization projects only; private organization metadata and project counts are not exposed.",
+      "Templates are returned in a separate templates envelope while retaining the same search, sort, page, and pageSize validation.",
+    ],
+  },
+  {
+    id: "projects-repo-list",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/projects?q=release&state=open&tab=projects&sort=created_desc&page=1&pageSize=30",
+    title: "List repository Projects",
+    description:
+      "Returns Projects linked to a repository by default repository or explicit project_repositories rows for the repository Projects tab.",
+    auth: "Optional signed opengithub session cookie; private repositories require read access",
+    response: `{
+  "items": [
+    {
+      "id": "project_03",
+      "number": 9,
+      "title": "Release train",
+      "workspaceHref": "/orgs/acme-labs/projects/9/views/1",
+      "defaultRepository": {
+        "owner": "acme-labs",
+        "name": "opengithub",
+        "fullName": "acme-labs/opengithub",
+        "href": "/acme-labs/opengithub"
+      },
+      "linkedRepositoriesCount": 1,
+      "viewerRole": "read",
+      "viewerCanCopy": false
+    }
+  ],
+  "scope": {
+    "kind": "repository",
+    "login": "acme-labs",
+    "repository": { "owner": "acme-labs", "name": "opengithub", "fullName": "acme-labs/opengithub" }
+  },
+  "viewerPermissions": { "authenticated": true, "viewerRole": "read", "canCreate": false, "canCopy": false }
+}`,
+    notes: [
+      "Repository project lists include projects where the repository is the default repository or appears in project_repositories.",
+      "Private repositories return not_found to unauthorized viewers, matching repository privacy behavior elsewhere in the API.",
+      "Copy affordances are permission-derived per project row and are false for read-only repository viewers.",
+    ],
+  },
+  {
+    id: "projects-copy",
+    method: "POST",
+    path: "/api/projects/{project_id}/copies",
+    title: "Copy Project",
+    description:
+      "Creates a permissioned copy of a Projects v2 project, cloning metadata, repository links, views, fields, workflows, and optional draft issue items.",
+    auth: "Signed opengithub session cookie with project write/admin access",
+    request: `{
+  "title": "[COPY] Roadmap planning",
+  "includeDraftIssues": true
+}`,
+    response: `{
+  "id": "project_copy_01",
+  "number": 13,
+  "title": "[COPY] Roadmap planning",
+  "href": "/orgs/acme-labs/projects/13",
+  "workspaceHref": "/orgs/acme-labs/projects/13/views/1",
+  "owner": "acme-labs",
+  "copiedViews": 2,
+  "copiedFields": 5,
+  "copiedWorkflows": 3,
+  "copiedDraftItems": 4
+}`,
+    notes: [
+      "Copies are transactional and preserve source visibility, scope, repository links, view layout, field options, and workflow configuration where the actor has access.",
+      "Linked issues and pull requests are not duplicated in this feature; includeDraftIssues copies only draft project items.",
+      "Successful writes append audit_events and project_recent_visits rows; permission, policy, closed-source, and missing-source failures use standard error envelopes.",
+      "Title is required and bounded; validation failures return validation_failed without stack traces or session details.",
+    ],
+  },
+  {
     id: "organization-team-create",
     method: "POST",
     path: "/api/orgs/{org}/teams",

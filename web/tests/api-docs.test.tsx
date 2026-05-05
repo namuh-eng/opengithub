@@ -180,6 +180,32 @@ describe("ApiDocsPage", () => {
     ).toBeVisible();
     expect(
       screen.getByText(
+        "/api/users/{username}/projects?q=is%3Aopen&state=open&tab=projects&sort=recently_updated&page=1&pageSize=30",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/orgs/{org}/projects?q=roadmap&state=open&tab=projects&sort=name_asc&page=1&pageSize=30",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/projects?q=release&state=open&tab=projects&sort=created_desc&page=1&pageSize=30",
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("/api/projects/{project_id}/copies")).toBeVisible();
+    expect(
+      screen.getByText(/Supported sort values are recently_updated/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Organization policy-disabled Projects return/),
+    ).toBeVisible();
+    expect(screen.getAllByText(/project_repositories/)[0]).toBeVisible();
+    expect(
+      screen.getByText(/Successful writes append audit_events/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
         "/api/orgs/{org}/teams?q=platform&visibility=all&page=1&pageSize=30",
       ),
     ).toBeVisible();

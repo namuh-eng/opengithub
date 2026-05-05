@@ -75,7 +75,7 @@
 
 ## Phase 5: API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `projects-001` only after list contracts, UI states, URL-backed controls, copy flow, docs, screenshots, and QA handoff are verified. Do not implement the project table workspace, board/roadmap views, project fields settings, item side panel, workflows, or insights in this feature.
 

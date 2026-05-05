@@ -6763,5 +6763,22 @@
       "Probe permission boundaries for user-owned projects, org owner/admin/member/base permission combinations, direct project permissions, disabled organization Projects policy, private project visibility, closed source projects, concurrent copy numbering, long titles, and copy without draft issues.",
       "Phase 5 still needs API docs, final desktop/mobile/user/repo/org screenshots, final E2E coverage, and build_pass bookkeeping before projects-001 is complete."
     ]
+  },
+  {
+    "feature_id": "projects-001",
+    "tests_written": [
+      "Completed Phase 5 API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping for projects-001.",
+      "Added /docs/api documentation for GET /api/users/{username}/projects, GET /api/orgs/{org}/projects, GET /api/repos/{owner}/{repo}/projects, and POST /api/projects/{project_id}/copies with auth/privacy gates, URL-backed filters, templates, counts, sort enums, repository linkage, copy semantics, permission and policy guardrails, audit_events, project_recent_visits, and no-secret error envelopes.",
+      "Extended api-docs Vitest assertions for Projects list and copy endpoint paths plus sort, organization policy disabled, project_repositories linkage, and audit side-effect notes.",
+      "Final focused verification passed for api-docs Vitest and focused Biome on the edited docs/tests files.",
+      "Verification passed: JSON validation for prd.json and qa-hints.json, mandatory Editorial banned-value scan, full make check, and full make test with Cargo tests plus 530 web tests."
+    ],
+    "needs_deeper_qa": [
+      "make test-e2e was attempted with the signed-session/test DB environment, spawned Playwright/dev-server children, produced no actionable output, and was terminated; rerun once the local DB/dev-server environment is healthy.",
+      "Rerun Projects browser smoke against a clean migrated credentialed TEST_DATABASE_URL for org, repository, and user project list scopes; the local localhost:55432 postgres credentials have rejected previous DB-backed runs.",
+      "Capture final screenshots for org list, repository list, user list, templates tab, copy dialog/success, forbidden or policy-disabled state, and mobile once seeded DB access is healthy.",
+      "Probe large project counts, pagination stability, private organization and private project non-leakage, stale URL filters after reload, and sort consistency under concurrent updates.",
+      "Probe copy concurrency, long titles, copy without draft issues, draft issue inclusion, closed/private source projects, user-owned projects, org owner/admin/member/base permission combinations, direct project permissions, disabled organization Projects policy, cloned views/fields/workflows, audit_events, and project_recent_visits rows with real Postgres assertions."
+    ]
   }
 ]
