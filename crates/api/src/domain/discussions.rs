@@ -202,6 +202,21 @@ pub struct DiscussionVoteResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DiscussionPollVoteRequest {
+    pub option_ids: Vec<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionPollVoteResponse {
+    pub discussion_id: Uuid,
+    pub discussion_number: i64,
+    pub poll: DiscussionPollView,
+    pub changed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RepositoryDiscussionDetailQuery<'a> {
     pub sort: Option<&'a str>,
     pub page: Option<i64>,
@@ -306,6 +321,8 @@ pub struct DiscussionPollView {
     pub id: Uuid,
     pub question: String,
     pub allows_multiple: bool,
+    pub allows_vote_changes: bool,
+    pub total_votes: i64,
     pub options: Vec<DiscussionPollOptionView>,
     pub viewer_can_vote: bool,
     pub results_visible: bool,
@@ -319,6 +336,8 @@ pub struct DiscussionPollOptionView {
     pub id: Uuid,
     pub position: i32,
     pub label: String,
+    pub votes_count: i64,
+    pub percentage: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1910,6 +1929,204 @@ pub async fn set_repository_discussion_vote_by_owner_name(
         discussion_number,
         viewer_voted: voted,
         votes_count,
+    }))
+}
+
+pub async fn vote_repository_discussion_poll_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    discussion_number: i64,
+    request: DiscussionPollVoteRequest,
+) -> Result<Option<DiscussionPollVoteResponse>, RepositoryError> {
+    if discussion_number < 1 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "discussion number must be positive".to_owned(),
+        ));
+    }
+    let Some(repository) = get_repository_by_owner_name(pool, owner, repo).await? else {
+        return Ok(None);
+    };
+    let (permission, can_read, _) =
+        discussion_permissions(pool, &repository, actor_user_id).await?;
+    if !can_read {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if repository.is_archived {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "archived repositories do not accept poll votes".to_owned(),
+        ));
+    }
+    if !repository_discussions_policy_enabled(pool, repository.id).await? {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "repository discussions are disabled by organization policy".to_owned(),
+        ));
+    }
+
+    let Some(row) = sqlx::query(
+        r#"
+        SELECT discussions.id AS discussion_id, discussions.number, discussions.locked,
+               discussions.deleted_at, discussion_polls.id AS poll_id,
+               discussion_polls.allows_multiple, discussion_polls.allows_vote_changes
+        FROM discussions
+        JOIN discussion_polls ON discussion_polls.discussion_id = discussions.id
+        WHERE discussions.repository_id = $1 AND discussions.number = $2
+        "#,
+    )
+    .bind(repository.id)
+    .bind(discussion_number)
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Ok(None);
+    };
+
+    let discussion_id: Uuid = row.try_get("discussion_id")?;
+    let poll_id: Uuid = row.try_get("poll_id")?;
+    let locked: bool = row.try_get("locked")?;
+    let deleted_at: Option<DateTime<Utc>> = row.try_get("deleted_at")?;
+    let allows_multiple: bool = row.try_get("allows_multiple")?;
+    let allows_vote_changes: bool = row.try_get("allows_vote_changes")?;
+    if locked {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "locked discussions do not accept poll votes".to_owned(),
+        ));
+    }
+    if deleted_at.is_some() {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "deleted discussions do not accept poll votes".to_owned(),
+        ));
+    }
+
+    let mut option_ids = request.option_ids;
+    option_ids.sort_unstable();
+    option_ids.dedup();
+    if option_ids.is_empty() {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "at least one poll option is required".to_owned(),
+        ));
+    }
+    if !allows_multiple && option_ids.len() != 1 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "this poll accepts exactly one option".to_owned(),
+        ));
+    }
+
+    let valid_option_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint
+        FROM discussion_poll_options
+        WHERE poll_id = $1 AND id = ANY($2)
+        "#,
+    )
+    .bind(poll_id)
+    .bind(&option_ids)
+    .fetch_one(pool)
+    .await?;
+    if valid_option_count != option_ids.len() as i64 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "poll option ids must belong to this discussion poll".to_owned(),
+        ));
+    }
+
+    let existing_option_ids =
+        load_viewer_poll_vote_option_ids(pool, poll_id, actor_user_id).await?;
+    if existing_option_ids == option_ids {
+        let poll = load_discussion_poll_view(pool, discussion_id, actor_user_id, true, true)
+            .await?
+            .ok_or(RepositoryError::NotFound)?;
+        return Ok(Some(DiscussionPollVoteResponse {
+            discussion_id,
+            discussion_number,
+            poll,
+            changed: false,
+        }));
+    }
+    if !existing_option_ids.is_empty() && !allows_vote_changes {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "this poll does not allow vote changes".to_owned(),
+        ));
+    }
+
+    sqlx::query(
+        r#"
+        UPDATE discussion_poll_votes
+        SET replaced_at = now(), updated_at = now()
+        WHERE poll_id = $1 AND user_id = $2 AND replaced_at IS NULL
+        "#,
+    )
+    .bind(poll_id)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
+
+    for option_id in &option_ids {
+        sqlx::query(
+            r#"
+            INSERT INTO discussion_poll_votes (poll_id, option_id, user_id)
+            VALUES ($1, $2, $3)
+            "#,
+        )
+        .bind(poll_id)
+        .bind(option_id)
+        .bind(actor_user_id)
+        .execute(pool)
+        .await?;
+    }
+
+    sqlx::query(
+        r#"
+        UPDATE discussions
+        SET last_activity_at = now(), updated_at = now()
+        WHERE id = $1
+        "#,
+    )
+    .bind(discussion_id)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO discussion_activity_events (discussion_id, actor_user_id, event_type, payload)
+        VALUES ($1, $2, 'poll_voted', jsonb_build_object(
+            'pollId', $3::text,
+            'optionIds', $4::text[]
+        ))
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(actor_user_id)
+    .bind(poll_id)
+    .bind(option_ids.iter().map(Uuid::to_string).collect::<Vec<_>>())
+    .execute(pool)
+    .await?;
+
+    record_discussion_settings_audit(
+        pool,
+        actor_user_id,
+        repository.id,
+        "repository.discussion_poll.vote",
+        "repository_discussion_poll",
+        poll_id,
+        json!({
+            "discussionId": discussion_id,
+            "discussionNumber": discussion_number,
+            "optionIds": option_ids,
+            "permission": permission,
+        }),
+    )
+    .await?;
+
+    let poll = load_discussion_poll_view(pool, discussion_id, actor_user_id, true, true)
+        .await?
+        .ok_or(RepositoryError::NotFound)?;
+
+    Ok(Some(DiscussionPollVoteResponse {
+        discussion_id,
+        discussion_number,
+        poll,
+        changed: true,
     }))
 }
 
@@ -5976,7 +6193,7 @@ async fn load_discussion_poll_view(
     results_visible: bool,
 ) -> Result<Option<DiscussionPollView>, RepositoryError> {
     let Some(row) = sqlx::query(
-        "SELECT id, question, allows_multiple FROM discussion_polls WHERE discussion_id = $1",
+        "SELECT id, question, allows_multiple, allows_vote_changes FROM discussion_polls WHERE discussion_id = $1",
     )
     .bind(discussion_id)
     .fetch_optional(pool)
@@ -5985,8 +6202,30 @@ async fn load_discussion_poll_view(
         return Ok(None);
     };
     let poll_id: Uuid = row.try_get("id")?;
+    let total_votes: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint
+        FROM discussion_poll_votes
+        WHERE poll_id = $1 AND replaced_at IS NULL
+        "#,
+    )
+    .bind(poll_id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
     let option_rows = sqlx::query(
-        "SELECT id, position, label FROM discussion_poll_options WHERE poll_id = $1 ORDER BY position ASC",
+        r#"
+        SELECT discussion_poll_options.id, discussion_poll_options.position,
+               discussion_poll_options.label,
+               COUNT(discussion_poll_votes.id)::bigint AS votes_count
+        FROM discussion_poll_options
+        LEFT JOIN discussion_poll_votes
+          ON discussion_poll_votes.option_id = discussion_poll_options.id
+         AND discussion_poll_votes.replaced_at IS NULL
+        WHERE discussion_poll_options.poll_id = $1
+        GROUP BY discussion_poll_options.id
+        ORDER BY discussion_poll_options.position ASC
+        "#,
     )
     .bind(poll_id)
     .fetch_all(pool)
@@ -5994,10 +6233,13 @@ async fn load_discussion_poll_view(
     let options = option_rows
         .into_iter()
         .map(|row| {
+            let votes_count: i64 = row.try_get("votes_count")?;
             Ok(DiscussionPollOptionView {
                 id: row.try_get("id")?,
                 position: row.try_get("position")?,
                 label: row.try_get("label")?,
+                votes_count,
+                percentage: poll_percentage(votes_count, total_votes),
             })
         })
         .collect::<Result<Vec<_>, RepositoryError>>()?;
@@ -6005,6 +6247,8 @@ async fn load_discussion_poll_view(
         id: poll_id,
         question: row.try_get("question")?,
         allows_multiple: row.try_get("allows_multiple")?,
+        allows_vote_changes: row.try_get("allows_vote_changes")?,
+        total_votes,
         options,
         viewer_can_vote,
         results_visible,
@@ -6060,6 +6304,14 @@ fn poll_unavailable_reasons(is_poll: bool, viewer_can_vote: bool) -> Vec<String>
         Vec::new()
     } else {
         vec!["Poll voting is not available for this discussion state.".to_owned()]
+    }
+}
+
+fn poll_percentage(votes_count: i64, total_votes: i64) -> i64 {
+    if total_votes <= 0 {
+        0
+    } else {
+        ((votes_count * 100) + (total_votes / 2)) / total_votes
     }
 }
 
@@ -6287,6 +6539,12 @@ const DISCUSSION_ROW_SELECT: &str = r#"
           FROM discussion_poll_options
           WHERE discussion_poll_options.poll_id = discussion_polls.id
         ), 0)::bigint AS poll_option_count,
+        COALESCE((
+          SELECT COUNT(*)::bigint
+          FROM discussion_poll_votes
+          WHERE discussion_poll_votes.poll_id = discussion_polls.id
+            AND discussion_poll_votes.replaced_at IS NULL
+        ), 0)::bigint AS poll_total_votes,
         author.id AS author_id,
         COALESCE(NULLIF(author.username, ''), author.email, 'ghost') AS author_login,
         author.display_name AS author_display_name,
@@ -6325,7 +6583,7 @@ fn discussion_row_from_row(
             question: row.try_get("poll_question")?,
             allows_multiple: row.try_get("poll_allows_multiple")?,
             option_count: row.try_get("poll_option_count")?,
-            total_votes: 0,
+            total_votes: row.try_get("poll_total_votes")?,
         }),
         None => None,
     };

@@ -27,7 +27,7 @@
 
 ## Phase 2: Poll Vote API - one vote, change policy, and result math
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add authenticated poll voting persistence and mutation endpoints. A signed-in viewer should be able to cast one option vote, or multiple option votes only when the poll allows multiple choices; changing a vote should be accepted only when the poll policy allows it.
 

@@ -6628,5 +6628,22 @@
       "Run DB-backed QA for renamed poll categories where slug is not polls but format=poll, private repository result visibility, closed/locked poll unavailable reasons, and deleted poll discussion redaction.",
       "Phase 2 still needs poll vote persistence and mutation APIs before operational voting controls are enabled."
     ]
+  },
+  {
+    "feature_id": "discussions-006",
+    "tests_written": [
+      "Completed Phase 2 Poll Vote API without marking discussions-006 build_pass=true.",
+      "Added migration 202605060005_repository_discussion_poll_votes for discussion_poll_votes plus allows_vote_changes on discussion_polls.",
+      "Added authenticated Rust PUT /api/repos/{owner}/{repo}/discussions/{discussion_number}/poll/vote with private repository read checks, archived/locked/deleted/policy guardrails, option ownership validation, single-choice replacement, multi-choice validation, idempotent same-selection responses, activity events, audit rows, and no-secret error envelopes.",
+      "Extended poll detail/list DTOs with totalVotes, allowsVoteChanges, option votesCount, option percentage, and refreshed viewerVoteOptionIds.",
+      "Added typed frontend API helper voteRepositoryDiscussionPollFromCookie and poll vote request/response types for the upcoming operational UI phase.",
+      "Added focused Rust scenario coverage for anonymous denial, private outsider denial, invalid option ids, first vote, idempotent duplicate vote, vote replacement, aggregate counts/percentages, activity/audit rows, locked denial, and no session secret leakage."
+    ],
+    "needs_deeper_qa": [
+      "The focused Rust poll-vote scenario compiled and ran, but DB assertions self-skipped because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test failed with password authentication failed for user postgres.",
+      "Rerun repository_discussion_poll_vote_api_enforces_options_and_reconciles_results against a clean migrated credentialed TEST_DATABASE_URL to prove the real Postgres vote rows, replacement timestamps, percentages, activity events, and audit rows.",
+      "Browser smoke was skipped because Phase 2 is API-first and .qrspi/discussions-006/structure.md marks browser smoke optional for this phase.",
+      "Phase 3 still needs the Editorial poll detail voting UI, same-origin Next.js proxy route, result bars, anonymous prompt, and Playwright browser smoke."
+    ]
   }
 ]

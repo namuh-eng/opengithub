@@ -48,6 +48,7 @@ async fn database_pool() -> Option<PgPool> {
                AND to_regclass('public.discussion_form_answers') IS NOT NULL
                AND to_regclass('public.discussion_subscriptions') IS NOT NULL
                AND to_regclass('public.discussion_polls') IS NOT NULL
+               AND to_regclass('public.discussion_poll_votes') IS NOT NULL
                AND to_regclass('public.discussion_reactions') IS NOT NULL
                AND to_regclass('public.discussion_answers') IS NOT NULL
                AND EXISTS(
@@ -55,6 +56,12 @@ async fn database_pool() -> Option<PgPool> {
                    WHERE table_schema = 'public'
                      AND table_name = 'discussions'
                      AND column_name = 'lock_allows_reactions'
+               )
+               AND EXISTS(
+                   SELECT 1 FROM information_schema.columns
+                   WHERE table_schema = 'public'
+                     AND table_name = 'discussion_polls'
+                     AND column_name = 'allows_vote_changes'
                )
                AND EXISTS(
                    SELECT 1 FROM information_schema.columns
@@ -344,6 +351,230 @@ async fn repository_discussion_detail_returns_timeline_sidebar_and_answer_metada
     assert_eq!(invalid_status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(invalid_body["error"]["code"], "validation_failed");
     assert_ne!(first_comment_id, answer_comment_id);
+}
+
+#[tokio::test]
+async fn repository_discussion_poll_vote_api_enforces_options_and_reconciles_results() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping repository discussion poll vote scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "discussion-poll-owner").await;
+    let voter = create_user(&pool, "discussion-poll-voter").await;
+    let outsider = create_user(&pool, "discussion-poll-outsider").await;
+    let voter_cookie = cookie_header(&pool, &config, &voter).await;
+    let outsider_cookie = cookie_header(&pool, &config, &outsider).await;
+
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("discussion-poll-vote-{}", Uuid::new_v4().simple()),
+            description: Some("Discussion poll voting contract".to_owned()),
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    grant_repository_permission(
+        &pool,
+        repository.id,
+        voter.id,
+        RepositoryRole::Read,
+        "direct",
+    )
+    .await
+    .expect("voter permission should grant");
+
+    let category_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO discussion_categories (
+            repository_id, slug, name, emoji, description, position, format, accepts_answers
+        )
+        VALUES ($1, 'polls', 'Polls', '📊', 'Vote on repository choices.', 1, 'poll', false)
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("poll category should insert");
+    let discussion_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO discussions (repository_id, category_id, number, title, body, author_user_id)
+        VALUES ($1, $2, 12, 'Pick the release train', 'Choose one path.', $3)
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(category_id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("discussion should insert");
+    let poll_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO discussion_polls (discussion_id, question, allows_multiple)
+        VALUES ($1, 'Which train should ship first?', false)
+        RETURNING id
+        "#,
+    )
+    .bind(discussion_id)
+    .fetch_one(&pool)
+    .await
+    .expect("poll should insert");
+    let first_option_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO discussion_poll_options (poll_id, position, label) VALUES ($1, 0, 'Stable') RETURNING id",
+    )
+    .bind(poll_id)
+    .fetch_one(&pool)
+    .await
+    .expect("first option should insert");
+    let second_option_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO discussion_poll_options (poll_id, position, label) VALUES ($1, 1, 'Preview') RETURNING id",
+    )
+    .bind(poll_id)
+    .fetch_one(&pool)
+    .await
+    .expect("second option should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let owner_login = owner.username.as_deref().expect("owner username");
+    let vote_path = format!(
+        "/api/repos/{owner_login}/{}/discussions/12/poll/vote",
+        repository.name
+    );
+
+    let (anonymous_status, anonymous_body) = put_json(
+        app.clone(),
+        &vote_path,
+        None,
+        json!({ "optionIds": [first_option_id] }),
+    )
+    .await;
+    assert_eq!(anonymous_status, StatusCode::UNAUTHORIZED);
+    assert_eq!(anonymous_body["error"]["code"], "not_authenticated");
+
+    let (outsider_status, outsider_body) = put_json(
+        app.clone(),
+        &vote_path,
+        Some(&outsider_cookie),
+        json!({ "optionIds": [first_option_id] }),
+    )
+    .await;
+    assert_eq!(outsider_status, StatusCode::FORBIDDEN);
+    assert!(!outsider_body.to_string().contains("release train"));
+
+    let (invalid_status, invalid_body) = put_json(
+        app.clone(),
+        &vote_path,
+        Some(&voter_cookie),
+        json!({ "optionIds": [Uuid::new_v4()] }),
+    )
+    .await;
+    assert_eq!(invalid_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(invalid_body["error"]["code"], "validation_failed");
+
+    let (vote_status, vote_body) = put_json(
+        app.clone(),
+        &vote_path,
+        Some(&voter_cookie),
+        json!({ "optionIds": [first_option_id] }),
+    )
+    .await;
+    assert_eq!(vote_status, StatusCode::OK, "{vote_body}");
+    assert_eq!(vote_body["discussionNumber"], 12);
+    assert_eq!(vote_body["changed"], true);
+    assert_eq!(vote_body["poll"]["totalVotes"], 1);
+    assert_eq!(
+        vote_body["poll"]["viewerVoteOptionIds"][0],
+        first_option_id.to_string()
+    );
+    assert_eq!(vote_body["poll"]["options"][0]["votesCount"], 1);
+    assert_eq!(vote_body["poll"]["options"][0]["percentage"], 100);
+
+    let (idempotent_status, idempotent_body) = put_json(
+        app.clone(),
+        &vote_path,
+        Some(&voter_cookie),
+        json!({ "optionIds": [first_option_id] }),
+    )
+    .await;
+    assert_eq!(idempotent_status, StatusCode::OK, "{idempotent_body}");
+    assert_eq!(idempotent_body["changed"], false);
+    assert_eq!(idempotent_body["poll"]["totalVotes"], 1);
+
+    let (replace_status, replace_body) = put_json(
+        app.clone(),
+        &vote_path,
+        Some(&voter_cookie),
+        json!({ "optionIds": [second_option_id] }),
+    )
+    .await;
+    assert_eq!(replace_status, StatusCode::OK, "{replace_body}");
+    assert_eq!(replace_body["poll"]["totalVotes"], 1);
+    assert_eq!(
+        replace_body["poll"]["viewerVoteOptionIds"][0],
+        second_option_id.to_string()
+    );
+    assert_eq!(replace_body["poll"]["options"][0]["votesCount"], 0);
+    assert_eq!(replace_body["poll"]["options"][1]["votesCount"], 1);
+
+    let active_vote_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM discussion_poll_votes WHERE poll_id = $1 AND user_id = $2 AND replaced_at IS NULL",
+    )
+    .bind(poll_id)
+    .bind(voter.id)
+    .fetch_one(&pool)
+    .await
+    .expect("active poll votes should count");
+    assert_eq!(active_vote_count, 1);
+    let replaced_vote_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM discussion_poll_votes WHERE poll_id = $1 AND user_id = $2 AND replaced_at IS NOT NULL",
+    )
+    .bind(poll_id)
+    .bind(voter.id)
+    .fetch_one(&pool)
+    .await
+    .expect("replaced poll votes should count");
+    assert_eq!(replaced_vote_count, 1);
+
+    let event_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM discussion_activity_events WHERE discussion_id = $1 AND event_type = 'poll_voted'",
+    )
+    .bind(discussion_id)
+    .fetch_one(&pool)
+    .await
+    .expect("poll vote events should count");
+    assert_eq!(event_count, 2);
+    let audit_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM audit_events WHERE actor_user_id = $1 AND event_type = 'repository.discussion_poll.vote'",
+    )
+    .bind(voter.id)
+    .fetch_one(&pool)
+    .await
+    .expect("poll vote audit rows should count");
+    assert_eq!(audit_count, 2);
+
+    sqlx::query("UPDATE discussions SET locked = true WHERE id = $1")
+        .bind(discussion_id)
+        .execute(&pool)
+        .await
+        .expect("discussion should lock");
+    let (locked_status, locked_body) = put_json(
+        app,
+        &vote_path,
+        Some(&voter_cookie),
+        json!({ "optionIds": [first_option_id] }),
+    )
+    .await;
+    assert_eq!(locked_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(locked_body["error"]["code"], "validation_failed");
+    assert!(!locked_body.to_string().contains("test-session-secret"));
 }
 
 #[tokio::test]

@@ -58,17 +58,18 @@ use crate::{
         update_repository_discussion_category_section_by_owner_name,
         update_repository_discussion_metadata_by_owner_name,
         update_repository_discussion_pin_by_owner_name,
-        update_repository_discussion_state_by_owner_name, CreateDiscussionCategoryRequest,
+        update_repository_discussion_state_by_owner_name,
+        vote_repository_discussion_poll_by_owner_name, CreateDiscussionCategoryRequest,
         CreateDiscussionCategorySectionRequest, CreateDiscussionCommentRequest,
         CreateDiscussionRequest, DeleteDiscussionCategoryRequest, DeleteDiscussionRequest,
         DiscussionAnswerRequest, DiscussionCategoryOrderRequest,
         DiscussionCategoryTemplateCommitRequest, DiscussionCategoryTemplatePreviewRequest,
-        DiscussionMetadataRequest, DiscussionReactionMutation, DiscussionReactionRequest,
-        DiscussionSectionOrderRequest, DiscussionStateRequest, DiscussionSubscriptionRequest,
-        LockDiscussionRequest, PinDiscussionRequest, RecategorizeDiscussionRequest,
-        RepositoryDiscussionDetailQuery, RepositoryDiscussionsQuery, TransferDiscussionRequest,
-        UpdateDiscussionCategoryRequest, UpdateDiscussionCategorySectionRequest,
-        UpdatePinnedDiscussionRequest,
+        DiscussionMetadataRequest, DiscussionPollVoteRequest, DiscussionReactionMutation,
+        DiscussionReactionRequest, DiscussionSectionOrderRequest, DiscussionStateRequest,
+        DiscussionSubscriptionRequest, LockDiscussionRequest, PinDiscussionRequest,
+        RecategorizeDiscussionRequest, RepositoryDiscussionDetailQuery, RepositoryDiscussionsQuery,
+        TransferDiscussionRequest, UpdateDiscussionCategoryRequest,
+        UpdateDiscussionCategorySectionRequest, UpdatePinnedDiscussionRequest,
     },
     domain::pages::{
         connect_repository_pages_actions_deployment_by_owner_name,
@@ -280,6 +281,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/:owner/:repo/discussions/:discussion_number/vote",
             put(vote_discussion).delete(unvote_discussion),
+        )
+        .route(
+            "/:owner/:repo/discussions/:discussion_number/poll/vote",
+            put(vote_discussion_poll),
         )
         .route(
             "/:owner/:repo/discussions/categories/:category_slug",
@@ -2609,6 +2614,35 @@ async fn set_discussion_vote(
             StatusCode::NOT_FOUND,
             "not_found",
             "repository discussion was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(vote)))
+}
+
+async fn vote_discussion_poll(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, discussion_number)): Path<(String, String, i64)>,
+    Json(request): Json<DiscussionPollVoteRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let vote = vote_repository_discussion_poll_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        discussion_number,
+        request,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository discussion poll was not found".to_owned(),
         )
     })?;
 

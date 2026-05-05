@@ -4613,17 +4613,32 @@ export type DiscussionPollOptionView = {
   id: string;
   position: number;
   label: string;
+  votesCount?: number;
+  percentage?: number;
 };
 
 export type DiscussionPollView = {
   id: string;
   question: string;
   allowsMultiple: boolean;
+  allowsVoteChanges?: boolean;
+  totalVotes?: number;
   options: DiscussionPollOptionView[];
   viewerCanVote?: boolean;
   resultsVisible?: boolean;
   viewerVoteOptionIds?: string[];
   unavailableReasons?: string[];
+};
+
+export type DiscussionPollVoteRequest = {
+  optionIds: string[];
+};
+
+export type DiscussionPollVoteResponse = {
+  discussionId: string;
+  discussionNumber: number;
+  poll: DiscussionPollView;
+  changed: boolean;
 };
 
 export type DiscussionAnswerSummary = {
@@ -14621,6 +14636,38 @@ export async function setRepositoryDiscussionVoteFromCookie(
   }
 
   return payload as DiscussionVoteResponse;
+}
+
+export async function voteRepositoryDiscussionPollFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  discussionNumber: number | string,
+  request: DiscussionPollVoteRequest,
+): Promise<DiscussionPollVoteResponse> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/${encodeURIComponent(String(discussionNumber))}/poll/vote`,
+    {
+      method: "PUT",
+      headers: {
+        ...(cookie ? { cookie } : {}),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Discussion poll vote could not be updated.",
+      { cause: envelope },
+    );
+  }
+
+  return payload as DiscussionPollVoteResponse;
 }
 
 export async function createRepositoryDiscussionCommentFromCookie(
