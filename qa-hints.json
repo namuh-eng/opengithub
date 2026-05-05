@@ -6317,5 +6317,23 @@
       "Phase 4 still needs YAML discussion form rendering, required field validation in the browser, poll creation, poll validation, and form/poll persistence browser evidence.",
       "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures."
     ]
+  },
+  {
+    "feature_id": "discussions-002",
+    "tests_written": [
+      "Completed Phase 4 YAML Category Forms and Poll Creation without marking discussions-002 build_pass=true.",
+      "Added discussion_polls and discussion_poll_options persistence for poll-category discussions, keeping poll voting out of scope.",
+      "Extended POST /api/repos/{owner}/{repo}/discussions to accept poll payloads, reject poll/form conflicts, validate poll question/options, persist poll rows/options, and keep existing form-answer/comment/subscription/notification/activity side effects.",
+      "Extended RepositoryDiscussionCreatePage to render supported YAML fields, required-field validation, dropdown/checkbox/textarea controls, poll question/options controls, add/remove option behavior, multiple-choice toggle, and disabled submit until form/poll requirements are satisfied.",
+      "Extended Vitest coverage for YAML form answer payloads and poll payloads, plus existing generic composer, Markdown preview, attachment validation, redirects, no dead links, and Editorial guardrails.",
+      "Extended Playwright Discussions smoke with Phase 4 YAML form and poll browser paths plus screenshot targets ralph/screenshots/build/discussions-002-phase4-yaml-form.jpg and ralph/screenshots/build/discussions-002-phase4-form-poll.jpg.",
+      "Verification passed: cargo fmt --all --check; cargo check -p opengithub-api --tests; focused web/tests/repository-discussion-create-page.test.tsx with 10 tests; web TypeScript; focused Biome checks; full TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check; full same-env make test with Cargo tests plus 501 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Focused DB-backed Rust contract compiled and executed under its guard, but seeded assertions skipped because localhost:55432 rejected the available postgres credentials. Re-run repository_discussions_contract against a credentialed migrated TEST_DATABASE_URL to verify poll rows and options in Postgres.",
+      "Focused Playwright Discussions smoke reached dev-server/browser execution, but dashboard_e2e_seed failed because localhost:55432 rejected the postgres credentials. Re-run web/tests/e2e/repository-discussions.spec.ts against a clean migrated credentialed TEST_DATABASE_URL to save the Phase 4 YAML and poll screenshots.",
+      "Phase 5 still needs API docs, final browser evidence, QA handoff, prd.json build_pass=true, and final desktop/mobile screenshots.",
+      "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures."
+    ]
   }
 ]

@@ -4616,6 +4616,12 @@ export type DiscussionFormAnswerInput = {
   value: string;
 };
 
+export type DiscussionPollInput = {
+  question: string;
+  options: string[];
+  allowsMultiple?: boolean;
+};
+
 export type DiscussionAttachmentDraft = {
   id?: string | null;
   fileName: string;
@@ -4630,6 +4636,7 @@ export type CreateDiscussionRequest = {
   body?: string | null;
   similarSearchAcknowledged: boolean;
   formAnswers?: DiscussionFormAnswerInput[];
+  poll?: DiscussionPollInput | null;
   attachmentDrafts?: DiscussionAttachmentDraft[];
 };
 

@@ -47,6 +47,7 @@ async fn database_pool() -> Option<PgPool> {
                AND to_regclass('public.discussion_votes') IS NOT NULL
                AND to_regclass('public.discussion_form_answers') IS NOT NULL
                AND to_regclass('public.discussion_subscriptions') IS NOT NULL
+               AND to_regclass('public.discussion_polls') IS NOT NULL
             "#,
         )
         .fetch_one(&pool)
@@ -122,14 +123,15 @@ async fn repository_discussion_creation_returns_forms_and_persists_normal_discus
     .fetch_one(&pool)
     .await
     .expect("ideas category should insert");
-    sqlx::query(
+    let polls_id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO discussion_categories (repository_id, slug, name, emoji, description, position, accepts_answers)
         VALUES ($1, 'polls', 'Polls', '📊', 'Vote on options.', 2, false)
+        RETURNING id
         "#,
     )
     .bind(repository.id)
-    .execute(&pool)
+    .fetch_one(&pool)
     .await
     .expect("poll category should insert");
     sqlx::query(
@@ -361,6 +363,74 @@ body:
     .await
     .expect("notification should count");
     assert_eq!(notification_count, 1);
+
+    let (missing_poll_status, missing_poll_body) = post_json(
+        app.clone(),
+        &base,
+        Some(&owner_cookie),
+        json!({
+            "categorySlug": "polls",
+            "title": "Choose a default branch policy",
+            "body": null,
+            "similarSearchAcknowledged": true
+        }),
+    )
+    .await;
+    assert_eq!(missing_poll_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(missing_poll_body["error"]["message"]
+        .as_str()
+        .expect("poll error")
+        .contains("poll question"));
+
+    let (poll_status, poll_body) = post_json(
+        app.clone(),
+        &base,
+        Some(&owner_cookie),
+        json!({
+            "categorySlug": "polls",
+            "title": "Choose a default branch policy",
+            "body": null,
+            "similarSearchAcknowledged": true,
+            "poll": {
+                "question": "Which branch policy should ship first?",
+                "options": ["Linear history", "Required reviews", "Signed commits"],
+                "allowsMultiple": true
+            }
+        }),
+    )
+    .await;
+    assert_eq!(poll_status, StatusCode::OK, "{poll_body}");
+    let poll_discussion_id = Uuid::parse_str(poll_body["discussionId"].as_str().expect("poll id"))
+        .expect("poll discussion id should parse");
+    let poll_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint
+        FROM discussion_polls
+        JOIN discussions ON discussions.id = discussion_polls.discussion_id
+        WHERE discussion_polls.discussion_id = $1
+          AND discussions.category_id = $2
+          AND discussion_polls.allows_multiple = true
+        "#,
+    )
+    .bind(poll_discussion_id)
+    .bind(polls_id)
+    .fetch_one(&pool)
+    .await
+    .expect("poll should count");
+    assert_eq!(poll_count, 1);
+    let poll_option_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint
+        FROM discussion_poll_options
+        JOIN discussion_polls ON discussion_polls.id = discussion_poll_options.poll_id
+        WHERE discussion_polls.discussion_id = $1
+        "#,
+    )
+    .bind(poll_discussion_id)
+    .fetch_one(&pool)
+    .await
+    .expect("poll options should count");
+    assert_eq!(poll_option_count, 3);
 }
 
 fn app_config() -> AppConfig {

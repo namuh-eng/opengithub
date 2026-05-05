@@ -171,6 +171,60 @@ function creationFormView(
   };
 }
 
+function yamlFormView(): DiscussionCreationView {
+  const view = creationView();
+  return {
+    ...view,
+    selectedCategory: view.categories[1],
+    form: {
+      categorySlug: "q-a",
+      templatePath: ".github/DISCUSSION_TEMPLATE/q-a.yml",
+      title: "",
+      description: "Ask a focused, answerable question.",
+      body: "",
+      fallback: false,
+      valid: true,
+      parseError: null,
+      fields: [
+        {
+          id: "context",
+          fieldType: "textarea",
+          label: "Context",
+          description: "Tell maintainers what you tried.",
+          placeholder: "What should happen?",
+          required: true,
+          options: [],
+        },
+        {
+          id: "area",
+          fieldType: "dropdown",
+          label: "Area",
+          description: null,
+          placeholder: null,
+          required: false,
+          options: ["UI", "API"],
+        },
+      ],
+    },
+  };
+}
+
+function pollFormView(): DiscussionCreationView {
+  const view = creationView();
+  return {
+    ...view,
+    selectedCategory: view.categories[2],
+    form: {
+      ...view.form,
+      categorySlug: "polls",
+      title: "",
+      body: "",
+      fallback: false,
+      valid: true,
+    },
+  };
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
 });
@@ -462,5 +516,140 @@ describe("RepositoryDiscussionCreatePage", () => {
       screen.getByRole("button", { name: "Start discussion" }),
     ).toBeDisabled();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("renders YAML category fields and submits form answers", async () => {
+    const assign = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { assign },
+    });
+    const fetchMock = vi.fn(
+      async (_url: string | URL | Request, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body));
+        expect(body.formAnswers).toEqual([
+          {
+            fieldId: "context",
+            value: "The current docs are missing examples.",
+          },
+          { fieldId: "area", value: "API" },
+        ]);
+        expect(body.poll).toBeNull();
+        return new Response(
+          JSON.stringify({
+            discussionId: "discussion-2",
+            discussionNumber: 43,
+            href: "/namuh-eng/opengithub/discussions/43",
+            title: "How should examples work?",
+            category: yamlFormView().selectedCategory,
+          }),
+          { status: 201 },
+        );
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryDiscussionCreatePage
+        creation={yamlFormView()}
+        owner="namuh-eng"
+        repo="opengithub"
+      />,
+    );
+
+    expect(screen.getAllByText("Category form")[0]).toBeVisible();
+    fireEvent.change(screen.getByLabelText("Title *"), {
+      target: { value: "How should examples work?" },
+    });
+    fireEvent.change(screen.getByLabelText("Context *"), {
+      target: { value: "The current docs are missing examples." },
+    });
+    fireEvent.change(screen.getByLabelText("Area"), {
+      target: { value: "API" },
+    });
+    fireEvent.change(screen.getByLabelText("Discussion body"), {
+      target: { value: "I can help write the first draft." },
+    });
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: /I have done a search for similar discussions/i,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Start discussion" }));
+
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith(
+        "/namuh-eng/opengithub/discussions/43",
+      ),
+    );
+  });
+
+  it("renders poll controls and submits poll payload without form answers", async () => {
+    const assign = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { assign },
+    });
+    const fetchMock = vi.fn(
+      async (_url: string | URL | Request, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body));
+        expect(body.formAnswers).toEqual([]);
+        expect(body.poll).toEqual({
+          question: "Which branch policy should ship first?",
+          options: ["Linear history", "Required reviews"],
+          allowsMultiple: true,
+        });
+        return new Response(
+          JSON.stringify({
+            discussionId: "discussion-3",
+            discussionNumber: 44,
+            href: "/namuh-eng/opengithub/discussions/44",
+            title: "Branch policy poll",
+            category: pollFormView().selectedCategory,
+          }),
+          { status: 201 },
+        );
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryDiscussionCreatePage
+        creation={pollFormView()}
+        owner="namuh-eng"
+        repo="opengithub"
+      />,
+    );
+
+    expect(screen.getAllByText("Poll")[0]).toBeVisible();
+    fireEvent.change(screen.getByLabelText("Title *"), {
+      target: { value: "Branch policy poll" },
+    });
+    fireEvent.change(screen.getByLabelText("Question *"), {
+      target: { value: "Which branch policy should ship first?" },
+    });
+    fireEvent.change(screen.getByLabelText("Poll option 1"), {
+      target: { value: "Linear history" },
+    });
+    fireEvent.change(screen.getByLabelText("Poll option 2"), {
+      target: { value: "Required reviews" },
+    });
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: /Allow voters to choose more than one option/i,
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: /I have done a search for similar discussions/i,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Start discussion" }));
+
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith(
+        "/namuh-eng/opengithub/discussions/44",
+      ),
+    );
   });
 });

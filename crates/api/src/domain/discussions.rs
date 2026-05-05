@@ -255,6 +255,7 @@ pub struct CreateDiscussionRequest {
     pub similar_search_acknowledged: bool,
     #[serde(default)]
     pub form_answers: Vec<DiscussionFormAnswerInput>,
+    pub poll: Option<DiscussionPollInput>,
     #[serde(default)]
     pub attachment_drafts: Vec<DiscussionAttachmentDraft>,
 }
@@ -264,6 +265,23 @@ pub struct CreateDiscussionRequest {
 pub struct DiscussionFormAnswerInput {
     pub field_id: String,
     pub value: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionPollInput {
+    pub question: String,
+    #[serde(default)]
+    pub options: Vec<String>,
+    #[serde(default)]
+    pub allows_multiple: bool,
+}
+
+#[derive(Debug, Clone)]
+struct NormalizedDiscussionPoll {
+    question: String,
+    options: Vec<String>,
+    allows_multiple: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -700,8 +718,23 @@ pub async fn create_repository_discussion_by_owner_name(
         .find(|category| category.slug == category_slug)
         .ok_or_else(|| RepositoryError::NotFound)?;
     let title = normalize_required_text(&request.title, "title", 240)?;
-    let body = normalize_optional_body(request.body.as_deref(), 64 * 1024)?;
     let form = load_discussion_form_definition(pool, repository.id, &category).await?;
+    let poll = normalize_discussion_poll(&category, &form, request.poll.as_ref())?;
+    if poll.is_some() && !request.form_answers.is_empty() {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "poll discussions cannot include category form answers".to_owned(),
+        ));
+    }
+    let body = if poll.is_some() {
+        request
+            .body
+            .as_deref()
+            .map(|value| normalize_required_text(value, "body", 64 * 1024))
+            .transpose()?
+            .unwrap_or_else(|| "Poll discussion".to_owned())
+    } else {
+        normalize_optional_body(request.body.as_deref(), 64 * 1024)?
+    };
     validate_form_answers(&form, &request.form_answers)?;
     validate_attachment_drafts(&request.attachment_drafts)?;
 
@@ -756,6 +789,35 @@ pub async fn create_repository_discussion_by_owner_name(
         .bind(answer.2)
         .execute(pool)
         .await?;
+    }
+
+    if let Some(poll) = poll {
+        let poll_id = Uuid::new_v4();
+        sqlx::query(
+            r#"
+            INSERT INTO discussion_polls (id, discussion_id, question, allows_multiple)
+            VALUES ($1, $2, $3, $4)
+            "#,
+        )
+        .bind(poll_id)
+        .bind(discussion_id)
+        .bind(&poll.question)
+        .bind(poll.allows_multiple)
+        .execute(pool)
+        .await?;
+        for (position, option) in poll.options.iter().enumerate() {
+            sqlx::query(
+                r#"
+                INSERT INTO discussion_poll_options (poll_id, position, label)
+                VALUES ($1, $2, $3)
+                "#,
+            )
+            .bind(poll_id)
+            .bind(position as i32)
+            .bind(option)
+            .execute(pool)
+            .await?;
+        }
     }
 
     for attachment in request.attachment_drafts {
@@ -950,6 +1012,66 @@ fn validate_form_answers(
         }
     }
     Ok(())
+}
+
+fn normalize_discussion_poll(
+    category: &DiscussionCategoryChoice,
+    form: &DiscussionFormDefinition,
+    poll: Option<&DiscussionPollInput>,
+) -> Result<Option<NormalizedDiscussionPoll>, RepositoryError> {
+    let Some(poll) = poll else {
+        if category.is_poll {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(
+                "poll question and options are required for this category".to_owned(),
+            ));
+        }
+        return Ok(None);
+    };
+
+    if !category.is_poll {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "polls can only be created in poll discussion categories".to_owned(),
+        ));
+    }
+    if !form.fields.is_empty() && !form.fallback {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "poll categories cannot be submitted with category form fields".to_owned(),
+        ));
+    }
+
+    let question = normalize_required_text(&poll.question, "poll question", 240)?;
+    let mut options = Vec::new();
+    for option in &poll.options {
+        let option = option.trim();
+        if option.is_empty() {
+            continue;
+        }
+        if option.len() > 160 {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(
+                "poll options must be at most 160 characters".to_owned(),
+            ));
+        }
+        if options
+            .iter()
+            .any(|existing: &String| existing.eq_ignore_ascii_case(option))
+        {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(
+                "poll options must be unique".to_owned(),
+            ));
+        }
+        options.push(option.to_owned());
+    }
+    if !(2..=10).contains(&options.len()) {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "polls require between 2 and 10 options".to_owned(),
+        ));
+    }
+
+    Ok(Some(NormalizedDiscussionPoll {
+        question,
+        options,
+        allows_multiple: poll.allows_multiple,
+    }))
 }
 
 fn normalized_form_answers(

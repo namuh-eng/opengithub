@@ -9,6 +9,7 @@ import type {
   CreateDiscussionResponse,
   DiscussionAttachmentDraft,
   DiscussionCreationView,
+  DiscussionFormField,
   RenderedMarkdown,
 } from "@/lib/api";
 import {
@@ -24,6 +25,11 @@ type RepositoryDiscussionCreatePageProps = {
 
 type LocalDiscussionAttachment = DiscussionAttachmentDraft & {
   clientId: string;
+};
+
+type PollOptionDraft = {
+  id: string;
+  value: string;
 };
 
 type ToolbarAction = {
@@ -131,14 +137,130 @@ function similarHref(owner: string, repo: string, title: string) {
   return repositoryDiscussionsHref(owner, repo, { q: query });
 }
 
+function newPollOptionDraft(): PollOptionDraft {
+  const id =
+    globalThis.crypto?.randomUUID?.() ??
+    `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return { id, value: "" };
+}
+
+function fieldInputId(field: DiscussionFormField) {
+  return `discussion-form-${field.id}`;
+}
+
+function DiscussionFormFieldControl({
+  field,
+  onChange,
+  value,
+}: {
+  field: DiscussionFormField;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  const id = fieldInputId(field);
+  const describedBy = field.description ? `${id}-description` : undefined;
+  const label = (
+    <>
+      {field.label} {field.required ? <span aria-hidden="true">*</span> : null}
+    </>
+  );
+
+  return (
+    <div>
+      <label className="t-label" htmlFor={id}>
+        {label}
+      </label>
+      {field.description ? (
+        <p
+          className="mt-1 t-xs"
+          id={describedBy}
+          style={{ color: "var(--ink-3)" }}
+        >
+          {field.description}
+        </p>
+      ) : null}
+      {field.fieldType === "textarea" ? (
+        <textarea
+          aria-describedby={describedBy}
+          aria-required={field.required ? "true" : undefined}
+          className="input mt-2 min-h-28 w-full resize-y p-3"
+          id={id}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={field.placeholder ?? undefined}
+          value={value}
+        />
+      ) : field.fieldType === "dropdown" ? (
+        <select
+          aria-describedby={describedBy}
+          aria-required={field.required ? "true" : undefined}
+          className="input mt-2 w-full"
+          id={id}
+          onChange={(event) => onChange(event.target.value)}
+          value={value}
+        >
+          <option value="">Choose an option</option>
+          {field.options.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      ) : field.fieldType === "checkboxes" ? (
+        <div className="mt-2 grid gap-2">
+          {field.options.map((option) => {
+            const values = value ? value.split("\n") : [];
+            return (
+              <label className="flex items-start gap-2 t-sm" key={option}>
+                <input
+                  checked={values.includes(option)}
+                  onChange={(event) => {
+                    const next = event.target.checked
+                      ? [...values, option]
+                      : values.filter((item) => item !== option);
+                    onChange(next.join("\n"));
+                  }}
+                  type="checkbox"
+                />
+                <span>{option}</span>
+              </label>
+            );
+          })}
+        </div>
+      ) : (
+        <input
+          aria-describedby={describedBy}
+          aria-required={field.required ? "true" : undefined}
+          className="input mt-2 w-full"
+          id={id}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={field.placeholder ?? undefined}
+          value={value}
+        />
+      )}
+    </div>
+  );
+}
+
 export function RepositoryDiscussionCreatePage({
   creation,
   owner,
   repo,
 }: RepositoryDiscussionCreatePageProps) {
   const selected = creation.selectedCategory;
+  const isPollCategory = Boolean(selected?.isPoll);
+  const hasYamlFields =
+    !isPollCategory &&
+    !creation.form.fallback &&
+    creation.form.fields.length > 0;
   const [title, setTitle] = useState(creation.form.title);
   const [body, setBody] = useState(creation.form.body);
+  const [formAnswers, setFormAnswers] = useState<Record<string, string>>({});
+  const [pollQuestion, setPollQuestion] = useState("");
+  const [pollOptions, setPollOptions] = useState<PollOptionDraft[]>(() => [
+    newPollOptionDraft(),
+    newPollOptionDraft(),
+  ]);
+  const [pollAllowsMultiple, setPollAllowsMultiple] = useState(false);
   const [tab, setTab] = useState<"write" | "preview">("write");
   const [rendered, setRendered] = useState<RenderedMarkdown>(
     defaultRendered(creation.form.body),
@@ -158,6 +280,26 @@ export function RepositoryDiscussionCreatePage({
     () => (title.trim() ? null : "Title is required."),
     [title],
   );
+  const formError = useMemo(() => {
+    if (!hasYamlFields) return null;
+    const missing = creation.form.fields.find(
+      (field) => field.required && !formAnswers[field.id]?.trim(),
+    );
+    return missing ? `${missing.label} is required.` : null;
+  }, [creation.form.fields, formAnswers, hasYamlFields]);
+  const pollError = useMemo(() => {
+    if (!isPollCategory) return null;
+    if (!pollQuestion.trim()) return "Poll question is required.";
+    const normalized = pollOptions
+      .map((option) => option.value.trim())
+      .filter(Boolean);
+    if (normalized.length < 2) return "Polls require at least 2 options.";
+    const unique = new Set(normalized.map((option) => option.toLowerCase()));
+    if (unique.size !== normalized.length) {
+      return "Poll options must be unique.";
+    }
+    return null;
+  }, [isPollCategory, pollOptions, pollQuestion]);
   const attachmentError = useMemo(() => {
     if (attachments.length > 10)
       return "A discussion can attach at most 10 files.";
@@ -171,6 +313,8 @@ export function RepositoryDiscussionCreatePage({
     creation.enabled &&
     creation.viewer.canCreate &&
     !titleError &&
+    !formError &&
+    !pollError &&
     !attachmentError &&
     acknowledged &&
     !isSubmitting;
@@ -228,6 +372,14 @@ export function RepositoryDiscussionCreatePage({
       return;
     }
     if (titleError) return;
+    if (formError) {
+      setError(formError);
+      return;
+    }
+    if (pollError) {
+      setError(pollError);
+      return;
+    }
     if (attachmentError) {
       setError(attachmentError);
       return;
@@ -245,8 +397,31 @@ export function RepositoryDiscussionCreatePage({
         body: JSON.stringify({
           categorySlug: selected.slug,
           title: title.trim(),
-          body: body.trim() ? body : null,
+          body: isPollCategory
+            ? body.trim()
+              ? body
+              : null
+            : body.trim()
+              ? body
+              : null,
           similarSearchAcknowledged: acknowledged,
+          formAnswers: hasYamlFields
+            ? creation.form.fields
+                .map((field) => ({
+                  fieldId: field.id,
+                  value: formAnswers[field.id]?.trim() ?? "",
+                }))
+                .filter((answer) => answer.value)
+            : [],
+          poll: isPollCategory
+            ? {
+                question: pollQuestion.trim(),
+                options: pollOptions
+                  .map((option) => option.value.trim())
+                  .filter(Boolean),
+                allowsMultiple: pollAllowsMultiple,
+              }
+            : null,
           attachmentDrafts: attachments.map(attachmentPayload),
         }),
       });
@@ -313,6 +488,10 @@ export function RepositoryDiscussionCreatePage({
             {creation.form.fallback ? (
               <span className="chip soft">Generic composer</span>
             ) : null}
+            {hasYamlFields ? (
+              <span className="chip info">Category form</span>
+            ) : null}
+            {isPollCategory ? <span className="chip info">Poll</span> : null}
             <Link
               className="chip soft hover:underline"
               href={repositoryDiscussionChooseCategoryHref(owner, repo)}
@@ -369,6 +548,154 @@ export function RepositoryDiscussionCreatePage({
               </p>
             ) : null}
           </div>
+
+          {hasYamlFields ? (
+            <div
+              className="border-b p-4"
+              style={{ borderColor: "var(--line)" }}
+            >
+              <div className="mb-4">
+                <p className="t-label" style={{ color: "var(--ink-3)" }}>
+                  Category form
+                </p>
+                {creation.form.description ? (
+                  <p className="mt-2 t-sm" style={{ color: "var(--ink-3)" }}>
+                    {creation.form.description}
+                  </p>
+                ) : null}
+              </div>
+              <div className="grid gap-4">
+                {creation.form.fields.map((field) => (
+                  <DiscussionFormFieldControl
+                    field={field}
+                    key={field.id}
+                    onChange={(value) =>
+                      setFormAnswers((current) => ({
+                        ...current,
+                        [field.id]: value,
+                      }))
+                    }
+                    value={formAnswers[field.id] ?? ""}
+                  />
+                ))}
+              </div>
+              {formError ? (
+                <p
+                  className="mt-3 t-sm"
+                  role="alert"
+                  style={{ color: "var(--err)" }}
+                >
+                  {formError}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {isPollCategory ? (
+            <div
+              className="border-b p-4"
+              style={{ borderColor: "var(--line)" }}
+            >
+              <p className="t-label" style={{ color: "var(--ink-3)" }}>
+                Poll
+              </p>
+              <div className="mt-4 grid gap-4">
+                <div>
+                  <label className="t-label" htmlFor="discussion-poll-question">
+                    Question <span aria-hidden="true">*</span>
+                  </label>
+                  <input
+                    className="input mt-2 w-full"
+                    id="discussion-poll-question"
+                    onChange={(event) => setPollQuestion(event.target.value)}
+                    placeholder="What should we decide?"
+                    value={pollQuestion}
+                  />
+                </div>
+                <div className="grid gap-3">
+                  <p className="t-label" style={{ color: "var(--ink-3)" }}>
+                    Options
+                  </p>
+                  {pollOptions.map((option, index) => (
+                    <div className="flex gap-2" key={option.id}>
+                      <label
+                        className="sr-only"
+                        htmlFor={`discussion-poll-option-${index}`}
+                      >
+                        Poll option {index + 1}
+                      </label>
+                      <input
+                        className="input min-w-0 flex-1"
+                        id={`discussion-poll-option-${index}`}
+                        onChange={(event) =>
+                          setPollOptions((current) =>
+                            current.map((item, itemIndex) =>
+                              itemIndex === index
+                                ? { ...item, value: event.target.value }
+                                : item,
+                            ),
+                          )
+                        }
+                        placeholder={`Option ${index + 1}`}
+                        value={option.value}
+                      />
+                      {pollOptions.length > 2 ? (
+                        <button
+                          className="btn ghost sm"
+                          onClick={() =>
+                            setPollOptions((current) =>
+                              current.filter(
+                                (_, itemIndex) => itemIndex !== index,
+                              ),
+                            )
+                          }
+                          type="button"
+                        >
+                          Remove
+                        </button>
+                      ) : null}
+                    </div>
+                  ))}
+                  <button
+                    className="btn sm"
+                    disabled={pollOptions.length >= 10}
+                    onClick={() =>
+                      setPollOptions((current) => [
+                        ...current,
+                        newPollOptionDraft(),
+                      ])
+                    }
+                    type="button"
+                  >
+                    Add option
+                  </button>
+                </div>
+                <label
+                  className="flex items-start gap-3 t-sm"
+                  htmlFor="discussion-poll-multiple"
+                >
+                  <input
+                    checked={pollAllowsMultiple}
+                    id="discussion-poll-multiple"
+                    onChange={(event) =>
+                      setPollAllowsMultiple(event.target.checked)
+                    }
+                    type="checkbox"
+                  />
+                  <span>Allow voters to choose more than one option.</span>
+                </label>
+              </div>
+              {pollError ? (
+                <p
+                  className="mt-3 t-sm"
+                  role="alert"
+                  style={{ color: "var(--err)" }}
+                >
+                  {pollError}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
 
           <div>
             <div

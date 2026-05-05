@@ -95,6 +95,33 @@ function seedDiscussions(repositoryHref: string) {
                       description = EXCLUDED.description
         RETURNING id, repository_id
       ),
+      qa AS (
+        INSERT INTO discussion_categories (
+          repository_id, slug, name, emoji, description, position, accepts_answers
+        )
+        SELECT target_repo.id, 'q-a', 'Q&A', '🙏',
+               'Ask an answerable question.', 3, true
+        FROM target_repo
+        ON CONFLICT (repository_id, slug)
+        DO UPDATE SET name = EXCLUDED.name,
+                      emoji = EXCLUDED.emoji,
+                      description = EXCLUDED.description,
+                      accepts_answers = true
+        RETURNING id, repository_id
+      ),
+      polls AS (
+        INSERT INTO discussion_categories (
+          repository_id, slug, name, emoji, description, position
+        )
+        SELECT target_repo.id, 'polls', 'Polls', '📊',
+               'Collect structured feedback.', 4
+        FROM target_repo
+        ON CONFLICT (repository_id, slug)
+        DO UPDATE SET name = EXCLUDED.name,
+                      emoji = EXCLUDED.emoji,
+                      description = EXCLUDED.description
+        RETURNING id, repository_id
+      ),
       label_one AS (
         INSERT INTO labels (repository_id, name, color, description)
         SELECT target_repo.id, 'help-wanted', 'b85f36', 'Needs community input'
@@ -161,6 +188,41 @@ function seedDiscussions(repositoryHref: string) {
       SELECT discussion_one.id, label_one.id
       FROM discussion_one, label_one
       ON CONFLICT DO NOTHING;
+
+      WITH target_repo AS (
+        SELECT repositories.id
+        FROM repositories
+        LEFT JOIN users ON users.id = repositories.owner_user_id
+        LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
+        WHERE COALESCE(users.username, organizations.slug) = ${sqlLiteral(decodedOwner)}
+          AND repositories.name = ${sqlLiteral(decodedRepo)}
+        LIMIT 1
+      ),
+      qa AS (
+        SELECT discussion_categories.id, discussion_categories.repository_id
+        FROM discussion_categories, target_repo
+        WHERE discussion_categories.repository_id = target_repo.id
+          AND discussion_categories.slug = 'q-a'
+        LIMIT 1
+      )
+      INSERT INTO discussion_category_forms (
+        repository_id, category_id, template_path, title, description, body, fields, valid
+      )
+      SELECT qa.repository_id,
+             qa.id,
+             '.github/DISCUSSION_TEMPLATE/q-a.yml',
+             'Ask a question',
+             'Add enough context for a maintainer to answer.',
+             '',
+             '[{"id":"context","fieldType":"textarea","label":"Context","description":"Tell maintainers what you tried.","placeholder":"What should happen?","required":true,"options":[]},{"id":"area","fieldType":"dropdown","label":"Area","description":null,"placeholder":null,"required":false,"options":["UI","API"]}]'::jsonb,
+             true
+      FROM qa
+      ON CONFLICT (repository_id, category_id)
+      DO UPDATE SET title = EXCLUDED.title,
+                    description = EXCLUDED.description,
+                    fields = EXCLUDED.fields,
+                    valid = true,
+                    updated_at = now();
 
       WITH target_repo AS (
         SELECT repositories.id, users.id AS author_user_id
@@ -309,6 +371,61 @@ test("repository discussions list filters, rows, category rail, and mobile layou
   });
   await page.getByRole("button", { name: "Start discussion" }).click();
   await expect(page).toHaveURL(/\/discussions\/903$/);
+
+  await page.goto(`${seeded.treeRepositoryHref}/discussions/new?category=q-a`);
+  await expect(page.getByText("Category form").first()).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Title" })
+    .fill(`Template answer shape ${Date.now()}`);
+  await page
+    .getByLabel("Context")
+    .fill("The form should persist category-specific context.");
+  await page.getByLabel("Area").selectOption("API");
+  await page
+    .getByLabel("Discussion body")
+    .fill("Question body stays separate from the template answers.");
+  await page
+    .getByRole("checkbox", {
+      name: /I have done a search for similar discussions/i,
+    })
+    .check();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/discussions-002-phase4-yaml-form.jpg",
+  });
+  await page.getByRole("button", { name: "Start discussion" }).click();
+  await expect(page).toHaveURL(/\/discussions\/904$/);
+
+  await page.goto(
+    `${seeded.treeRepositoryHref}/discussions/new?category=polls`,
+  );
+  await expect(page.getByText("Poll").first()).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Title" })
+    .fill(`Branch policy poll ${Date.now()}`);
+  await page
+    .getByLabel("Question")
+    .fill("Which branch policy should ship first?");
+  await page.getByLabel("Poll option 1").fill("Linear history");
+  await page.getByLabel("Poll option 2").fill("Required reviews");
+  await page
+    .getByRole("checkbox", {
+      name: /Allow voters to choose more than one option/i,
+    })
+    .check();
+  await page
+    .getByRole("checkbox", {
+      name: /I have done a search for similar discussions/i,
+    })
+    .check();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/discussions-002-phase4-form-poll.jpg",
+  });
+  await page.getByRole("button", { name: "Start discussion" }).click();
+  await expect(page).toHaveURL(/\/discussions\/905$/);
 
   await page.goto(
     `${seeded.treeRepositoryHref}/discussions/categories/ideas?q=no-match`,

@@ -66,7 +66,7 @@
 
 ## Phase 4: YAML Category Forms and Poll Creation - form-specific creation paths
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add category-specific YAML form field rendering and poll-category creation. Required YAML fields should validate before submit and persist `discussion_form_answers`; poll categories should render question/options controls instead of YAML fields and persist poll/options with validation.
 
