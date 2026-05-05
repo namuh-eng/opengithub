@@ -6710,5 +6710,21 @@
       "Browser smoke was skipped because Phase 1 is API-first and .qrspi/projects-001/structure.md marks browser smoke optional for this phase.",
       "Phase 2 still needs the Editorial Projects list UI for user, organization, and repository surfaces before projects-001 can be marked build_pass=true."
     ]
+  },
+  {
+    "feature_id": "projects-001",
+    "tests_written": [
+      "Completed Phase 2 Editorial Projects List Pages without marking projects-001 build_pass=true.",
+      "Added shared ProjectsListPage with Welcome banner, Projects/Templates tabs, read-only search display, open/closed count chips, dense project/template rows, status/visibility/template chips, concrete Open links, permission-disabled New project and Copy controls, and Editorial token/primitives only.",
+      "Wired /orgs/{org}/projects, /{owner}/{repo}/projects, /{user}?tab=projects, and /orgs/{org}?tab=projects to the Phase 1 cookie-backed Projects API helpers.",
+      "Added server-session wrappers for user, organization, and repository project lists.",
+      "Added focused Vitest coverage for row links, template tab rendering, disabled permission states, unavailable states, no placeholder links, and banned GitHub visual guardrails."
+    ],
+    "needs_deeper_qa": [
+      "Full make test-e2e was attempted with the signed-session/test DB environment, but the wrapper produced no output for about 60 seconds and was terminated; no Phase 2 browser screenshots were produced.",
+      "Rerun a focused Projects browser smoke against a clean migrated credentialed TEST_DATABASE_URL to verify org, user, and repository list navigation and save ralph/screenshots/build/projects-001-phase2-list-pages.jpg.",
+      "Phase 3 still needs live URL-backed search, open/closed tabs, templates tab controls, sort menu, pagination, and browser reload preservation.",
+      "Phase 4 still needs the real copy mutation and dialog; current Copy buttons are intentionally disabled or explanatory until that vertical slice is implemented."
+    ]
   }
 ]

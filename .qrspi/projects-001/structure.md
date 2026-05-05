@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial Projects List Pages - render the three list surfaces
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace current Projects placeholders with Editorial list pages for `/{user}?tab=projects`, `/orgs/{org}/projects`, and `/{owner}/{repo}/projects`, backed by the Phase 1 API. Rows must navigate to project workspaces and all empty-state CTAs must be concrete or permission-disabled.
 

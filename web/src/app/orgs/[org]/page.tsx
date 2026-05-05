@@ -11,6 +11,7 @@ import {
   getOrganizationPackages,
   getOrganizationPeople,
   getOrganizationPeopleAdmin,
+  getOrganizationProjects,
   getOrganizationRepositories,
   getOrganizationTeams,
   getPublicOrganizationProfile,
@@ -57,6 +58,7 @@ export default async function OrganizationPage({
     peopleList,
     adminPeople,
     packageList,
+    projectList,
     teamsDirectory,
   ] = await Promise.all([
     getPublicOrganizationProfile(orgLogin),
@@ -88,6 +90,16 @@ export default async function OrganizationPage({
           pageSize: numberParam(queryParams?.pageSize),
         })
       : Promise.resolve(null),
+    activeTab === "projects"
+      ? getOrganizationProjects(orgLogin, {
+          q: firstParam(queryParams?.q),
+          state: firstParam(queryParams?.state),
+          tab: firstParam(queryParams?.tab),
+          sort: firstParam(queryParams?.sort),
+          page: numberParam(queryParams?.page),
+          pageSize: numberParam(queryParams?.pageSize),
+        })
+      : Promise.resolve(null),
     activeTab === "teams"
       ? getOrganizationTeams(orgLogin, {
           q: firstParam(queryParams?.q),
@@ -106,6 +118,7 @@ export default async function OrganizationPage({
         peopleList={peopleList}
         profile={profile}
         packageList={packageList}
+        projectList={projectList?.ok ? projectList.projects : null}
         repositoryList={repositoryList}
         teamsDirectory={teamsDirectory}
         session={session}

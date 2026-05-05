@@ -6,6 +6,7 @@ import { OrganizationPeoplePage } from "@/components/OrganizationPeoplePage";
 import { OrganizationRepositoriesPage } from "@/components/OrganizationRepositoriesPage";
 import { OrganizationTeamsPage } from "@/components/OrganizationTeamsPage";
 import { OwnerPackagesPage } from "@/components/OwnerPackagesPage";
+import { ProjectsListPage } from "@/components/ProjectsListPage";
 import { QueryTabNavigation } from "@/components/QueryTabNavigation";
 import type {
   AppShellContext,
@@ -15,6 +16,7 @@ import type {
   OrganizationRepositoryList,
   OrganizationTeamsDirectory,
   OwnerPackageList,
+  ProjectList,
   PublicOrganizationProfile,
 } from "@/lib/api";
 import {
@@ -33,6 +35,7 @@ type OrganizationProfilePageProps = {
   teamsDirectory?: OrganizationTeamsDirectory | null;
   profile: PublicOrganizationProfile;
   packageList?: OwnerPackageList | null;
+  projectList?: ProjectList | null;
   repositoryList?: OrganizationRepositoryList | null;
   session: AuthSession;
   shellContext?: AppShellContext | null;
@@ -771,6 +774,7 @@ export function OrganizationProfilePage({
   teamsDirectory,
   profile,
   packageList,
+  projectList,
   repositoryList,
   session,
   shellContext,
@@ -819,6 +823,11 @@ export function OrganizationProfilePage({
                 list={packageList}
                 owner={profile.identity.slug}
                 ownerKind="organization"
+              />
+            ) : selectedTab === "projects" && projectList ? (
+              <ProjectsListPage
+                list={projectList}
+                scopeLabel={`${profile.identity.slug} projects`}
               />
             ) : (
               <SecondaryTab activeTab={selectedTab} profile={profile} />

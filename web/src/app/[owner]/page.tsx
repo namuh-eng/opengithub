@@ -11,6 +11,7 @@ import {
   getPublicUserProfile,
   getSessionAndShellContext,
   getUserPackages,
+  getUserProjects,
 } from "@/lib/server-session";
 
 type ProfilePageProps = {
@@ -81,6 +82,17 @@ export default async function ProfilePage({
         })
       : Promise.resolve(null),
   ]);
+  const projectList =
+    activeTab === "projects"
+      ? await getUserProjects(ownerLogin, {
+          q: firstParam(queryParams?.q),
+          state: firstParam(queryParams?.state),
+          tab: firstParam(queryParams?.tab),
+          sort: firstParam(queryParams?.sort),
+          page: numericPositive(queryParams?.page),
+          pageSize: numericPositive(queryParams?.pageSize),
+        })
+      : null;
 
   if (profile) {
     return (
@@ -88,6 +100,7 @@ export default async function ProfilePage({
         activeTab={activeTab}
         profile={profile}
         packageList={packageList}
+        projectList={projectList?.ok ? projectList.projects : null}
         repositoryList={repositoryList}
         session={session}
         shellContext={shellContext}

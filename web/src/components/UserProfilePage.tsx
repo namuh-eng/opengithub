@@ -4,6 +4,7 @@ import { AppShellFrame } from "@/components/AppShellFrame";
 import { OwnerPackagesPage } from "@/components/OwnerPackagesPage";
 import { ProfileContributionGraph } from "@/components/ProfileContributionGraph";
 import { ProfileRepositoryTabs } from "@/components/ProfileRepositoryTabs";
+import { ProjectsListPage } from "@/components/ProjectsListPage";
 import { QueryTabNavigation } from "@/components/QueryTabNavigation";
 import { UserProfileActions } from "@/components/UserProfileActions";
 import type {
@@ -11,6 +12,7 @@ import type {
   AuthSession,
   OwnerPackageList,
   ProfileRepositoryList,
+  ProjectList,
   PublicUserProfile,
 } from "@/lib/api";
 import {
@@ -24,6 +26,7 @@ type UserProfilePageProps = {
   activeTab: string;
   profile: PublicUserProfile;
   packageList?: OwnerPackageList | null;
+  projectList?: ProjectList | null;
   repositoryList?: ProfileRepositoryList | null;
   session: AuthSession;
   shellContext?: AppShellContext | null;
@@ -374,6 +377,7 @@ export function UserProfilePage({
   activeTab,
   profile,
   packageList,
+  projectList,
   repositoryList,
   session,
   shellContext,
@@ -411,6 +415,11 @@ export function UserProfilePage({
                     list={packageList}
                     owner={profile.identity.login}
                     ownerKind="user"
+                  />
+                ) : selectedTab === "projects" && projectList ? (
+                  <ProjectsListPage
+                    list={projectList}
+                    scopeLabel={`${profile.identity.login} projects`}
                   />
                 ) : (
                   <SecondaryTab activeTab={selectedTab} profile={profile} />

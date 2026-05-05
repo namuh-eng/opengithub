@@ -18,6 +18,7 @@ import {
   getOrganizationPeopleAdminFromCookie,
   getOrganizationPeopleFromCookie,
   getOrganizationProfileSettingsFromCookie,
+  getOrganizationProjectsFromCookie,
   getOrganizationRepositoriesFromCookie,
   getOrganizationTeamDetailFromCookie,
   getOrganizationTeamsFromCookie,
@@ -66,6 +67,7 @@ import {
   getRepositoryNetworkFromCookie,
   getRepositoryPagesSettingsFromCookie,
   getRepositoryPathFromCookie,
+  getRepositoryProjectsFromCookie,
   getRepositoryPullRequestFilesFromCookie,
   getRepositoryPullRequestFromCookie,
   getRepositoryPullRequestsFromCookie,
@@ -92,6 +94,7 @@ import {
   getUserPackageDetailFromCookie,
   getUserPackageSettingsFromCookie,
   getUserPackagesFromCookie,
+  getUserProjectsFromCookie,
   type KeySettingsFetchResult,
   type OrganizationMemberPrivilegesFetchResult,
   type OrganizationPeopleAdminQuery,
@@ -105,6 +108,8 @@ import {
   type PersonalAccessTokenListFetchResult,
   type PersonalAccessTokenNewContextFetchResult,
   type ProfileRepositoryListQuery,
+  type ProjectListFetchResult,
+  type ProjectListQuery,
   type RepositoryActionsDashboardQuery,
   type RepositoryBranchActivityFetchResult,
   type RepositoryBranchesFetchResult,
@@ -252,6 +257,44 @@ export async function getOrganizationRepositories(
   return getOrganizationRepositoriesFromCookie(
     requestHeaders.get("cookie"),
     org,
+    query,
+  );
+}
+
+export async function getUserProjects(
+  username: string,
+  query: ProjectListQuery = {},
+): Promise<ProjectListFetchResult> {
+  const requestHeaders = await headers();
+  return getUserProjectsFromCookie(
+    requestHeaders.get("cookie"),
+    username,
+    query,
+  );
+}
+
+export async function getOrganizationProjects(
+  org: string,
+  query: ProjectListQuery = {},
+): Promise<ProjectListFetchResult> {
+  const requestHeaders = await headers();
+  return getOrganizationProjectsFromCookie(
+    requestHeaders.get("cookie"),
+    org,
+    query,
+  );
+}
+
+export async function getRepositoryProjects(
+  owner: string,
+  repo: string,
+  query: ProjectListQuery = {},
+): Promise<ProjectListFetchResult> {
+  const requestHeaders = await headers();
+  return getRepositoryProjectsFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
     query,
   );
 }
