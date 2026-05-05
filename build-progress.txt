@@ -4075,3 +4075,9 @@
 - Focused direct Playwright `repository-secret-scanning.spec.ts` was attempted for Phase 4 screenshot evidence, but the wrapper produced no output for about 90 seconds and was terminated; `web/tests/e2e/repository-secret-scanning.spec.ts` now includes the Phase 4 screenshot capture point for the next successful browser run.
 - While rerunning full `make test`, fixed a web test race in `web/tests/user-profile-actions.test.tsx` by awaiting the async block feedback; focused profile-actions Vitest passes and the full suite now reports Cargo tests plus 479 web tests passing.
 - `prd.json` remains `build_pass:false` because Phase 5 remains. Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
+2026-05-05 - code-security-005 structure outline
+
+- Created `.qrspi/code-security-005/structure.md` for the first incomplete PRD feature, splitting repository security advisories into five vertical phases: advisory API contract and persistence, Editorial advisories list, advisory detail and metadata editing, draft creation plus publishing, and final docs/browser/QA/build-pass bookkeeping.
+- No source implementation was started because `code-security-005.needs_structure=true` and no structure outline existed at invocation start; the build-loop contract requires the outline first, then `<promise>NEXT</promise>`.
+- Verified `code-security-005.build_pass=false`, `qa_pass=false`, and all structure phases remain unchecked for the next invocation. Existing Security shell, overview advisory summary table, package/dependency, notifications, Markdown sanitization, and security audit contracts should be reused; do not introduce a parallel fake advisory store or GitHub visual styling.
