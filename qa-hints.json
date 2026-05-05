@@ -5957,5 +5957,24 @@
       "Exercise concurrent dismiss/reopen/issue-link attempts from two browser sessions to confirm stale-state conflict copy after Phase 5 broadens final edge-case coverage.",
       "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema."
     ]
+  },
+  {
+    "feature_id": "code-security-003",
+    "tests_written": [
+      "Completed Phase 4 SARIF Upload and PR Annotation Integration without marking code-security-003 build_pass=true.",
+      "Added POST /api/repos/{owner}/{repo}/code-scanning/sarifs for writer-only bounded SARIF JSON uploads with validation, redacted artifact metadata, synchronous normalization, stable fingerprint de-duplication, fixed-alert transitions, and workflow annotation writes when a workflow_run_id is provided.",
+      "Extended code scanning list/tool status to reflect uploaded SARIF tool versions and processed alert counts through the existing Editorial Analysis tools section.",
+      "Extended Rust contract coverage for reader upload denial, SARIF processing, fixed-alert transition, tool-version freshness, redacted storage metadata, and no secret leakage.",
+      "Extended Vitest coverage for visible SARIF/Actions status and Playwright coverage for real API upload, list refresh, no dead controls, and screenshot ralph/screenshots/build/code-security-003-phase4-sarif-upload-status.jpg.",
+      "Verification passed: focused repository_code_scanning_alerts_contract; focused repository-code-scanning list/detail Vitest; TypeScript check; focused Biome checks; full make check; full make test with Cargo tests plus 472 web tests; focused direct Playwright repository-code-scanning smoke with 2 passed; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Phase 5 still needs API docs, final edge-case sweep, final desktop/mobile screenshots, prd.json build_pass=true, and final QA handoff.",
+      "Exercise SARIF uploads with multiple runs, malformed rules, missing locations, oversized payloads, and repeated uploads from concurrent clients.",
+      "Exercise workflow_run_id uploads against real Actions check/run pages to confirm annotations appear in every intended PR/check surface.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "The full make test-e2e wrapper was attempted with the signed-session/test DB environment but stayed silent for several minutes and was terminated; the focused direct Playwright browser smoke passed and saved Phase 4 evidence.",
+      "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema."
+    ]
   }
 ]

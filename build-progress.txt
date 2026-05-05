@@ -1,3 +1,12 @@
+2026-05-05 - code-security-003 phase 4 SARIF upload ingestion
+
+- Completed Phase 4 from `.qrspi/code-security-003/structure.md`: code scanning now has a real SARIF upload ingestion path without marking `code-security-003.build_pass=true`.
+- Added writer-only `POST /api/repos/{owner}/{repo}/code-scanning/sarifs` with a 2 MiB JSON limit, malformed payload validation, disabled/archived/permission guardrails, redacted artifact metadata, synchronous SARIF run/result/rule parsing, stable fingerprint de-duplication, fixed-alert transitions for missing latest-run results, and optional workflow annotation writes when a valid `workflow_run_id` is supplied.
+- Extended code scanning contracts and UI tests so uploaded SARIF updates list/tool status, keeps storage/session data redacted, denies reader uploads, and preserves the existing Editorial Analysis tools section without GitHub-style visual values.
+- Extended the focused Playwright Code scanning smoke to upload SARIF through the Rust API, refresh the list, verify the new alert/tool version, check for dead controls, and save `ralph/screenshots/build/code-security-003-phase4-sarif-upload-status.jpg`.
+- Verification passed: focused `repository_code_scanning_alerts_contract`, focused Code scanning list/detail Vitest, web TypeScript, focused Biome checks, full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`, full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 472 web tests, focused direct Playwright `repository-code-scanning.spec.ts` with 2 passed, and mandatory Editorial banned-value scan.
+- Full `make test-e2e` was attempted with the signed-session/test DB environment but stayed silent for several minutes and was terminated; this matches prior wrapper-stall behavior, and the focused direct Playwright browser smoke passed. `prd.json` remains `build_pass:false` because Phase 5 remains. Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json`, `ralph/failure-log.json`, and untracked `.codex/hooks.json` were not staged.
+
 2026-05-05 - code-security-002 phase 3 alert detail triage
 
 - Completed Phase 3 from `.qrspi/code-security-002/structure.md`: Dependabot alert detail now has real single-alert dismiss, reopen, and assignment triage without marking `code-security-002.build_pass=true`.

@@ -60,7 +60,7 @@
 
 ## Phase 4: SARIF Upload and PR Annotation Integration - real ingestion path
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the ingestion path that makes code scanning alerts real. Actions or REST uploads can submit SARIF, the API stores upload metadata/artifacts, normalizes alerts by fingerprint/location/rule, updates check-run/PR annotations where applicable, and exposes upload/tool status to the list/detail pages.
 

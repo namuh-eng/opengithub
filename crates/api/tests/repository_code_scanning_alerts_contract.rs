@@ -496,6 +496,106 @@ async fn code_scanning_alerts_filter_detail_and_protect_private_repositories() {
     assert_eq!(direct_detail.alert.assignees[0].id, reader.id);
     assert_eq!(direct_detail.rule.name, "Log injection");
 
+    let sarif_upload = json!({
+        "ref": "main",
+        "commitSha": "commit-sarif-upload",
+        "sarif": {
+            "version": "2.1.0",
+            "runs": [{
+                "tool": {
+                    "driver": {
+                        "name": "CodeQL",
+                        "version": "2.18.0",
+                        "rules": [{
+                            "id": "rust/sql-injection",
+                            "name": "SQL injection",
+                            "shortDescription": { "text": "Untrusted data reaches a query sink." },
+                            "help": { "markdown": "Use parameterized queries." },
+                            "helpUri": "https://codeql.github.com/codeql-query-help/rust/"
+                        }]
+                    }
+                },
+                "results": [{
+                    "ruleId": "rust/sql-injection",
+                    "level": "error",
+                    "message": { "text": "Untrusted input is used in a database query." },
+                    "locations": [{
+                        "physicalLocation": {
+                            "artifactLocation": { "uri": "src/lib.rs" },
+                            "region": { "startLine": 1, "endLine": 1 }
+                        }
+                    }],
+                    "partialFingerprints": { "primaryLocationLineHash": "sarif-sql-fingerprint" },
+                    "properties": { "security-severity": "9.1" }
+                }]
+            }]
+        }
+    });
+    let upload_endpoint = format!(
+        "/api/repos/{owner_login}/{}/code-scanning/sarifs",
+        repository.name
+    );
+    let (reader_upload_status, reader_upload_body) = request_json(
+        app.clone(),
+        "POST",
+        &upload_endpoint,
+        Some(&reader_cookie),
+        Some(sarif_upload.clone()),
+    )
+    .await;
+    assert_eq!(reader_upload_status, StatusCode::FORBIDDEN);
+    assert_eq!(reader_upload_body["error"]["code"], "forbidden");
+
+    let (upload_status, upload_body) = request_json(
+        app.clone(),
+        "POST",
+        &upload_endpoint,
+        Some(&owner_cookie),
+        Some(sarif_upload),
+    )
+    .await;
+    assert_eq!(upload_status, StatusCode::ACCEPTED, "{upload_body}");
+    assert_eq!(upload_body["status"], "processed");
+    assert_eq!(upload_body["processedAlerts"], 1);
+    assert_eq!(upload_body["fixedAlerts"], 1);
+    assert_eq!(upload_body["toolVersion"], "2.18.0");
+    assert!(!upload_body["artifactStorageKey"]
+        .as_str()
+        .expect("storage key")
+        .contains("test-session-secret"));
+
+    let sarif_list = repository_code_scanning_alerts_for_actor_by_owner_name(
+        &pool,
+        owner.id,
+        owner_login,
+        &repository.name,
+        CodeScanningAlertsQuery {
+            state: Some("all"),
+            query: None,
+            severity: None,
+            security_severity: None,
+            tool: Some("CodeQL"),
+            branch: Some("main"),
+            ref_name: Some("refs/heads/main"),
+            tag: None,
+            application_code: Some("true"),
+            sort: Some("recently_detected"),
+        },
+    )
+    .await
+    .expect("SARIF alert list should load")
+    .expect("repository should exist");
+    assert_eq!(sarif_list.counts.total, 2);
+    assert!(sarif_list
+        .alerts
+        .iter()
+        .any(|alert| alert.rule_id == "rust/sql-injection" && alert.state == "open"));
+    assert!(sarif_list
+        .alerts
+        .iter()
+        .any(|alert| alert.rule_id == "rust/log-injection" && alert.state == "fixed"));
+    assert_eq!(sarif_list.tools[0].version.as_deref(), Some("2.18.0"));
+
     let (invalid_status, invalid_body) = get_json(
         app.clone(),
         &format!("{base}?severity=critical"),

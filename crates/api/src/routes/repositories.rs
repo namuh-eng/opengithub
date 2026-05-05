@@ -1,4 +1,5 @@
 use axum::{
+    body::Bytes,
     extract::{Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
@@ -106,9 +107,10 @@ use crate::{
         repository_security_policy_for_actor_by_owner_name,
         update_repository_code_scanning_alert_for_actor_by_owner_name,
         update_repository_dependabot_alert_for_actor_by_owner_name,
+        upload_repository_code_scanning_sarif_for_actor_by_owner_name,
         upsert_repository_security_policy_by_owner_name, CodeScanningAlertMutation,
-        CodeScanningAlertsQuery, DependabotAlertMutation, DependabotAlertsQuery,
-        DependabotBulkMutation, SecurityPolicyMutation,
+        CodeScanningAlertsQuery, CodeScanningSarifUpload, DependabotAlertMutation,
+        DependabotAlertsQuery, DependabotBulkMutation, SecurityPolicyMutation,
     },
     domain::webhooks::{
         create_repository_webhook_by_owner_name, delete_repository_webhook_by_owner_name,
@@ -155,6 +157,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/:owner/:repo/security/code-scanning",
             get(code_scanning_alerts),
+        )
+        .route(
+            "/:owner/:repo/code-scanning/sarifs",
+            post(upload_code_scanning_sarif),
         )
         .route(
             "/:owner/:repo/security/code-scanning/:alert_id",
@@ -1358,6 +1364,45 @@ async fn create_code_scanning_issue(
     })?;
 
     Ok((StatusCode::CREATED, Json(json!(view))))
+}
+
+async fn upload_code_scanning_sarif(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    body: Bytes,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
+    const MAX_SARIF_UPLOAD_BYTES: usize = 2 * 1024 * 1024;
+    if body.len() > MAX_SARIF_UPLOAD_BYTES {
+        return Err(error_response(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "payload_too_large",
+            "SARIF upload must be 2 MiB or smaller.".to_owned(),
+        ));
+    }
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let upload: CodeScanningSarifUpload = serde_json::from_slice(&body).map_err(|_| {
+        error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            "SARIF upload must be valid JSON with a sarif object.".to_owned(),
+        )
+    })?;
+    let view = upload_repository_code_scanning_sarif_for_actor_by_owner_name(
+        pool, actor.0.id, &owner, &repo, upload, &body,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok((StatusCode::ACCEPTED, Json(json!(view))))
 }
 
 async fn dependabot_alerts(

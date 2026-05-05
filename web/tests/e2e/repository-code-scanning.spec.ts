@@ -350,6 +350,74 @@ test("repository Code scanning alerts support list filters, row navigation, disa
     page.getByRole("link", { name: /Open linked issue #/ }),
   ).toBeVisible();
 
+  const [, owner, repo] = seeded.treeRepositoryHref.split("/");
+  const uploadResponse = await page.request.post(
+    `http://localhost:3016/api/repos/${owner}/${repo}/code-scanning/sarifs`,
+    {
+      data: {
+        ref: "main",
+        commitSha: "commit-playwright-sarif",
+        sarif: {
+          version: "2.1.0",
+          runs: [
+            {
+              tool: {
+                driver: {
+                  name: "CodeQL",
+                  version: "2.18.0",
+                  rules: [
+                    {
+                      id: "rust/sql-injection",
+                      name: "SQL injection",
+                      shortDescription: {
+                        text: "Untrusted data reaches a query sink.",
+                      },
+                      help: { markdown: "Use parameterized queries." },
+                    },
+                  ],
+                },
+              },
+              results: [
+                {
+                  ruleId: "rust/sql-injection",
+                  level: "error",
+                  message: {
+                    text: "Untrusted input is used in a database query.",
+                  },
+                  locations: [
+                    {
+                      physicalLocation: {
+                        artifactLocation: {
+                          uri: "crates/api/src/routes/search.rs",
+                        },
+                        region: { startLine: 42, endLine: 42 },
+                      },
+                    },
+                  ],
+                  partialFingerprints: {
+                    primaryLocationLineHash: "playwright-sarif-sql-fingerprint",
+                  },
+                  properties: { "security-severity": "9.1" },
+                },
+              ],
+            },
+          ],
+        },
+      },
+      headers: {
+        cookie: `${seeded.cookieName}=${seeded.cookieValue}`,
+      },
+    },
+  );
+  expect(uploadResponse.status()).toBe(202);
+  await page.goto(`${seeded.treeRepositoryHref}/security/code-scanning`);
+  await expect(page.getByText("SQL injection").first()).toBeVisible();
+  await expect(page.getByText(/2\.18\.0/).first()).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/code-security-003-phase4-sarif-upload-status.jpg",
+  });
+
   disableCodeScanning(seeded.treeRepositoryHref);
   await page.goto(`${seeded.treeRepositoryHref}/security/code-scanning`);
   await expect(

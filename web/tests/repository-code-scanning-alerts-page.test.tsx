@@ -245,6 +245,13 @@ describe("RepositoryCodeScanningAlertsPage", () => {
       "/api/repos/namuh-eng/opengithub/code-scanning/sarifs",
     );
     expect(
+      screen.getByRole("heading", {
+        name: "Latest SARIF and Actions analysis",
+      }),
+    ).toBeVisible();
+    expect(screen.getAllByText("CodeQL")[0]).toBeVisible();
+    expect(screen.getByText(/2\.17\.0/)).toBeVisible();
+    expect(
       screen.getByRole("link", { name: "Code security settings" }),
     ).toHaveAttribute("href", "/namuh-eng/opengithub/settings/security");
     expect(container.innerHTML).not.toContain('href="#"');

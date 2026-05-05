@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use regex::{Captures, Regex};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -401,6 +401,36 @@ pub struct CodeScanningAlertMutation {
     pub linked_issue_id: Option<Uuid>,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeScanningSarifUpload {
+    pub sarif: Value,
+    #[serde(rename = "ref")]
+    pub ref_name: Option<String>,
+    pub commit_sha: Option<String>,
+    pub workflow_run_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeScanningSarifUploadResult {
+    pub repository: RepositorySecurityRepository,
+    pub upload_id: Uuid,
+    pub run_id: Uuid,
+    pub status: String,
+    pub tool_name: String,
+    pub tool_version: Option<String>,
+    #[serde(rename = "ref")]
+    pub ref_name: String,
+    pub commit_oid: Option<String>,
+    pub processed_alerts: i64,
+    pub fixed_alerts: i64,
+    pub annotation_count: i64,
+    pub artifact_sha256: String,
+    pub artifact_storage_key: String,
+    pub message: String,
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct DependabotBulkMutation {
@@ -755,6 +785,35 @@ pub async fn create_or_link_repository_code_scanning_issue_for_actor_by_owner_na
         alert_number,
     )
     .await
+}
+
+pub async fn upload_repository_code_scanning_sarif_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    upload: CodeScanningSarifUpload,
+    raw_body: &[u8],
+) -> Result<Option<CodeScanningSarifUploadResult>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if !can_write_repository(pool, &repository, actor_user_id).await? {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if repository.is_archived {
+        return Err(RepositoryError::ArchivedRepositoryReadOnly);
+    }
+
+    ingest_code_scanning_sarif(pool, &repository, actor_user_id, upload, raw_body)
+        .await
+        .map(Some)
 }
 
 pub async fn repository_dependabot_alerts_for_actor_by_owner_name(
@@ -1336,6 +1395,516 @@ async fn update_repository_code_scanning_alert(
     }
 
     Ok(())
+}
+
+#[derive(Debug, Clone)]
+struct ParsedSarifAlert {
+    rule_id: String,
+    rule_name: String,
+    rule_description: Option<String>,
+    message: String,
+    severity: String,
+    security_severity: Option<String>,
+    path: String,
+    start_line: i32,
+    end_line: Option<i32>,
+    fingerprint: String,
+    help_markdown: Option<String>,
+    help_uri: Option<String>,
+}
+
+async fn ingest_code_scanning_sarif(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    upload: CodeScanningSarifUpload,
+    raw_body: &[u8],
+) -> Result<CodeScanningSarifUploadResult, RepositoryError> {
+    let setting = code_scanning_setting(pool, repository).await?;
+    let availability = code_scanning_availability(repository, setting.as_ref());
+    if !availability.enabled {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "Code scanning is not enabled for this repository".to_owned(),
+        ));
+    }
+
+    let ref_name = normalize_sarif_ref(upload.ref_name.as_deref(), &repository.default_branch)?;
+    let branch_name = branch_name_from_ref(&ref_name);
+    let sarif_runs = upload
+        .sarif
+        .get("runs")
+        .and_then(Value::as_array)
+        .filter(|runs| !runs.is_empty())
+        .ok_or_else(|| {
+            RepositoryError::InvalidDependencyGraphQuery(
+                "SARIF upload must include at least one run".to_owned(),
+            )
+        })?;
+    let sarif_run = sarif_runs.first().expect("checked non-empty");
+    let tool_name = sarif_run
+        .pointer("/tool/driver/name")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            RepositoryError::InvalidDependencyGraphQuery(
+                "SARIF run tool.driver.name is required".to_owned(),
+            )
+        })?
+        .chars()
+        .take(120)
+        .collect::<String>();
+    let tool_version = sarif_run
+        .pointer("/tool/driver/version")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.chars().take(80).collect::<String>());
+    let rules = sarif_run
+        .pointer("/tool/driver/rules")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let results = sarif_run
+        .get("results")
+        .and_then(Value::as_array)
+        .filter(|results| !results.is_empty())
+        .ok_or_else(|| {
+            RepositoryError::InvalidDependencyGraphQuery(
+                "SARIF run must include at least one result".to_owned(),
+            )
+        })?;
+
+    let parsed_alerts = results
+        .iter()
+        .map(|result| parse_sarif_result(result, &rules))
+        .collect::<Result<Vec<_>, _>>()?;
+    let artifact_sha256 = format!("{:x}", Sha256::digest(raw_body));
+    let artifact_storage_key = format!(
+        "redacted://code-scanning/{}/{artifact_sha256}.sarif",
+        repository.id
+    );
+    let run_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO code_scanning_runs (
+            repository_id, tool_name, tool_version, category, ref_name, commit_oid, status, source, started_at, completed_at
+        )
+        VALUES ($1, $2, $3, 'sarif', $4, $5, 'completed', 'sarif', now(), now())
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(&tool_name)
+    .bind(&tool_version)
+    .bind(&ref_name)
+    .bind(&upload.commit_sha)
+    .fetch_one(pool)
+    .await?;
+    let upload_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO code_scanning_sarif_uploads (
+            repository_id, run_id, actor_user_id, artifact_storage_key, artifact_sha256, status, processed_at
+        )
+        VALUES ($1, $2, $3, $4, $5, 'processed', now())
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(run_id)
+    .bind(actor_user_id)
+    .bind(&artifact_storage_key)
+    .bind(&artifact_sha256)
+    .fetch_one(pool)
+    .await?;
+
+    let mut processed_alerts = 0_i64;
+    let mut alert_ids = Vec::new();
+    let mut annotation_count = 0_i64;
+    for alert in &parsed_alerts {
+        let existing_id: Option<Uuid> = sqlx::query_scalar(
+            r#"
+            SELECT id
+            FROM code_scanning_alerts
+            WHERE repository_id = $1
+              AND rule_id = $2
+              AND path = $3
+              AND start_line = $4
+              AND fingerprint = $5
+              AND ref_name = $6
+            "#,
+        )
+        .bind(repository.id)
+        .bind(&alert.rule_id)
+        .bind(&alert.path)
+        .bind(alert.start_line)
+        .bind(&alert.fingerprint)
+        .bind(&ref_name)
+        .fetch_optional(pool)
+        .await?;
+
+        let alert_id = if let Some(alert_id) = existing_id {
+            sqlx::query(
+                r#"
+                UPDATE code_scanning_alerts
+                SET run_id = $2,
+                    state = CASE WHEN state = 'fixed' THEN 'open' ELSE state END,
+                    rule_name = $3,
+                    rule_description = $4,
+                    message = $5,
+                    severity = $6,
+                    security_severity = $7,
+                    tool_name = $8,
+                    branch_name = $9,
+                    end_line = $10,
+                    help_markdown = $11,
+                    help_uri = $12,
+                    fixed_at = NULL,
+                    updated_at = now()
+                WHERE id = $1
+                "#,
+            )
+            .bind(alert_id)
+            .bind(run_id)
+            .bind(&alert.rule_name)
+            .bind(&alert.rule_description)
+            .bind(&alert.message)
+            .bind(&alert.severity)
+            .bind(&alert.security_severity)
+            .bind(&tool_name)
+            .bind(&branch_name)
+            .bind(alert.end_line)
+            .bind(&alert.help_markdown)
+            .bind(&alert.help_uri)
+            .execute(pool)
+            .await?;
+            alert_id
+        } else {
+            let next_number: i64 = sqlx::query_scalar(
+                "SELECT COALESCE(max(number), 0) + 1 FROM code_scanning_alerts WHERE repository_id = $1",
+            )
+            .bind(repository.id)
+            .fetch_one(pool)
+            .await?;
+            let alert_id: Uuid = sqlx::query_scalar(
+                r#"
+                INSERT INTO code_scanning_alerts (
+                    repository_id, run_id, number, state, rule_id, rule_name, rule_description,
+                    message, severity, security_severity, tool_name, ref_name, branch_name,
+                    path, start_line, end_line, fingerprint, help_markdown, help_uri
+                )
+                VALUES ($1, $2, $3, 'open', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+                RETURNING id
+                "#,
+            )
+            .bind(repository.id)
+            .bind(run_id)
+            .bind(next_number)
+            .bind(&alert.rule_id)
+            .bind(&alert.rule_name)
+            .bind(&alert.rule_description)
+            .bind(&alert.message)
+            .bind(&alert.severity)
+            .bind(&alert.security_severity)
+            .bind(&tool_name)
+            .bind(&ref_name)
+            .bind(&branch_name)
+            .bind(&alert.path)
+            .bind(alert.start_line)
+            .bind(alert.end_line)
+            .bind(&alert.fingerprint)
+            .bind(&alert.help_markdown)
+            .bind(&alert.help_uri)
+            .fetch_one(pool)
+            .await?;
+            record_code_scanning_alert_event(
+                pool,
+                repository,
+                alert_id,
+                actor_user_id,
+                "created",
+                "Opened this alert from a SARIF upload.",
+                json!({ "tool": tool_name, "artifactSha256": artifact_sha256 }),
+            )
+            .await?;
+            alert_id
+        };
+
+        sqlx::query(
+            r#"
+            INSERT INTO code_scanning_alert_instances (
+                alert_id, run_id, ref_name, commit_oid, path, start_line, end_line, message
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            "#,
+        )
+        .bind(alert_id)
+        .bind(run_id)
+        .bind(&ref_name)
+        .bind(&upload.commit_sha)
+        .bind(&alert.path)
+        .bind(alert.start_line)
+        .bind(alert.end_line)
+        .bind(&alert.message)
+        .execute(pool)
+        .await?;
+        if let Some(workflow_run_id) = upload.workflow_run_id {
+            let inserted = sqlx::query(
+                r#"
+                INSERT INTO workflow_annotations (
+                    run_id, annotation_level, path, start_line, end_line, title, message, raw_details
+                )
+                SELECT id, $3, $4, $5, $6, $7, $8, $9
+                FROM workflow_runs
+                WHERE id = $1 AND repository_id = $2
+                "#,
+            )
+            .bind(workflow_run_id)
+            .bind(repository.id)
+            .bind(sarif_annotation_level(&alert.severity))
+            .bind(&alert.path)
+            .bind(alert.start_line)
+            .bind(alert.end_line)
+            .bind(&alert.rule_name)
+            .bind(&alert.message)
+            .bind(format!("Code scanning alert {}", alert.rule_id))
+            .execute(pool)
+            .await?;
+            annotation_count += inserted.rows_affected() as i64;
+        }
+        alert_ids.push(alert_id);
+        processed_alerts += 1;
+    }
+
+    let fixed_alerts = if alert_ids.is_empty() {
+        0
+    } else {
+        sqlx::query(
+            r#"
+            UPDATE code_scanning_alerts
+            SET state = 'fixed', fixed_at = now(), updated_at = now()
+            WHERE repository_id = $1
+              AND tool_name = $2
+              AND ref_name = $3
+              AND state = 'open'
+              AND id <> ALL($4)
+            "#,
+        )
+        .bind(repository.id)
+        .bind(&tool_name)
+        .bind(&ref_name)
+        .bind(&alert_ids)
+        .execute(pool)
+        .await?
+        .rows_affected() as i64
+    };
+
+    Ok(CodeScanningSarifUploadResult {
+        repository: security_repository(repository, &dependabot_links(repository)),
+        upload_id,
+        run_id,
+        status: "processed".to_owned(),
+        tool_name,
+        tool_version,
+        ref_name,
+        commit_oid: upload.commit_sha,
+        processed_alerts,
+        fixed_alerts,
+        annotation_count,
+        artifact_sha256,
+        artifact_storage_key,
+        message: "SARIF upload processed and code scanning alerts updated.".to_owned(),
+    })
+}
+
+fn parse_sarif_result(
+    result: &Value,
+    rules: &[Value],
+) -> Result<ParsedSarifAlert, RepositoryError> {
+    let rule_id = result
+        .get("ruleId")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            RepositoryError::InvalidDependencyGraphQuery(
+                "SARIF result ruleId is required".to_owned(),
+            )
+        })?
+        .chars()
+        .take(180)
+        .collect::<String>();
+    let rule = rules
+        .iter()
+        .find(|rule| rule.get("id").and_then(Value::as_str) == Some(rule_id.as_str()));
+    let location = result
+        .get("locations")
+        .and_then(Value::as_array)
+        .and_then(|locations| locations.first())
+        .and_then(|location| location.get("physicalLocation"))
+        .ok_or_else(|| {
+            RepositoryError::InvalidDependencyGraphQuery(
+                "SARIF result physical location is required".to_owned(),
+            )
+        })?;
+    let path = location
+        .pointer("/artifactLocation/uri")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            RepositoryError::InvalidDependencyGraphQuery(
+                "SARIF result artifactLocation.uri is required".to_owned(),
+            )
+        })?
+        .trim_start_matches("./")
+        .chars()
+        .take(500)
+        .collect::<String>();
+    let start_line = location
+        .pointer("/region/startLine")
+        .and_then(Value::as_i64)
+        .unwrap_or(1)
+        .clamp(1, i32::MAX as i64) as i32;
+    let end_line = location
+        .pointer("/region/endLine")
+        .and_then(Value::as_i64)
+        .map(|line| line.clamp(start_line as i64, i32::MAX as i64) as i32);
+    let message = result
+        .pointer("/message/text")
+        .and_then(Value::as_str)
+        .or_else(|| result.pointer("/message/markdown").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("Code scanning reported an alert.")
+        .chars()
+        .take(1000)
+        .collect::<String>();
+    let severity =
+        normalize_sarif_level(result.get("level").and_then(Value::as_str).or_else(|| {
+            rule.and_then(|rule| {
+                rule.pointer("/defaultConfiguration/level")
+                    .and_then(Value::as_str)
+            })
+        }));
+    let fingerprint = sarif_fingerprint(result, &rule_id, &path, start_line);
+
+    Ok(ParsedSarifAlert {
+        rule_id: rule_id.clone(),
+        rule_name: rule
+            .and_then(|rule| rule.get("name").and_then(Value::as_str))
+            .unwrap_or(&rule_id)
+            .chars()
+            .take(240)
+            .collect(),
+        rule_description: rule
+            .and_then(|rule| {
+                rule.pointer("/shortDescription/text")
+                    .and_then(Value::as_str)
+            })
+            .or_else(|| {
+                rule.and_then(|rule| {
+                    rule.pointer("/fullDescription/text")
+                        .and_then(Value::as_str)
+                })
+            })
+            .map(|value| value.chars().take(1000).collect()),
+        message,
+        severity,
+        security_severity: normalize_sarif_security_severity(result, rule),
+        path,
+        start_line,
+        end_line,
+        fingerprint,
+        help_markdown: rule
+            .and_then(|rule| rule.pointer("/help/markdown").and_then(Value::as_str))
+            .map(|value| value.chars().take(4000).collect()),
+        help_uri: rule
+            .and_then(|rule| rule.get("helpUri").and_then(Value::as_str))
+            .map(|value| value.chars().take(500).collect()),
+    })
+}
+
+fn normalize_sarif_ref(
+    value: Option<&str>,
+    default_branch: &str,
+) -> Result<String, RepositoryError> {
+    let value = value.map(str::trim).filter(|value| !value.is_empty());
+    let value = value.unwrap_or(default_branch);
+    if value.chars().count() > 200 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "SARIF ref must be 200 characters or fewer".to_owned(),
+        ));
+    }
+    if value.starts_with("refs/") {
+        Ok(value.to_owned())
+    } else {
+        Ok(format!("refs/heads/{value}"))
+    }
+}
+
+fn branch_name_from_ref(ref_name: &str) -> Option<String> {
+    ref_name
+        .strip_prefix("refs/heads/")
+        .map(|value| value.to_owned())
+}
+
+fn normalize_sarif_level(value: Option<&str>) -> String {
+    match value.unwrap_or("warning").trim() {
+        "error" => "error",
+        "note" | "none" => "note",
+        _ => "warning",
+    }
+    .to_owned()
+}
+
+fn normalize_sarif_security_severity(result: &Value, rule: Option<&Value>) -> Option<String> {
+    let value = result
+        .pointer("/properties/security-severity")
+        .or_else(|| rule.and_then(|rule| rule.pointer("/properties/security-severity")))
+        .and_then(|value| {
+            value
+                .as_f64()
+                .or_else(|| value.as_str()?.parse::<f64>().ok())
+        })?;
+    Some(
+        match value {
+            value if value >= 9.0 => "critical",
+            value if value >= 7.0 => "high",
+            value if value >= 4.0 => "medium",
+            _ => "low",
+        }
+        .to_owned(),
+    )
+}
+
+fn sarif_fingerprint(result: &Value, rule_id: &str, path: &str, start_line: i32) -> String {
+    if let Some(value) = result
+        .get("partialFingerprints")
+        .and_then(Value::as_object)
+        .and_then(|map| map.values().find_map(Value::as_str))
+        .or_else(|| {
+            result
+                .get("fingerprints")
+                .and_then(Value::as_object)
+                .and_then(|map| map.values().find_map(Value::as_str))
+        })
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return value.chars().take(240).collect();
+    }
+    format!(
+        "{:x}",
+        Sha256::digest(format!("{rule_id}:{path}:{start_line}").as_bytes())
+    )
+}
+
+fn sarif_annotation_level(severity: &str) -> &'static str {
+    match severity {
+        "error" => "failure",
+        "note" => "notice",
+        _ => "warning",
+    }
 }
 
 async fn create_or_link_repository_code_scanning_issue(
