@@ -269,6 +269,63 @@ function seedDiscussions(repositoryHref: string) {
   );
 }
 
+function seedConvertibleIssue(repositoryHref: string): number {
+  if (!databaseUrl) {
+    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
+  }
+  const [, owner, repo] = repositoryHref.split("/");
+  const decodedOwner = decodeURIComponent(owner);
+  const decodedRepo = decodeURIComponent(repo);
+  const issueNumber = 970 + Math.floor(Math.random() * 20);
+
+  execFileSync(
+    "psql",
+    [
+      databaseUrl,
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-c",
+      `
+      WITH target_repo AS (
+        SELECT repositories.id, users.id AS author_user_id
+        FROM repositories
+        LEFT JOIN users ON users.id = repositories.owner_user_id
+        LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
+        WHERE COALESCE(users.username, organizations.slug) = ${sqlLiteral(decodedOwner)}
+          AND repositories.name = ${sqlLiteral(decodedRepo)}
+        LIMIT 1
+      ),
+      issue AS (
+        INSERT INTO issues (repository_id, number, title, body, state, author_user_id)
+        SELECT target_repo.id,
+               ${issueNumber},
+               'Convert this issue into a discussion',
+               'Issue body copied into the converted discussion.',
+               'open',
+               target_repo.author_user_id
+        FROM target_repo
+        ON CONFLICT (repository_id, number)
+        DO UPDATE SET title = EXCLUDED.title,
+                      body = EXCLUDED.body,
+                      state = 'open',
+                      converted_discussion_id = NULL,
+                      converted_to_discussion_at = NULL,
+                      converted_to_discussion_by_user_id = NULL
+        RETURNING id, repository_id, author_user_id
+      )
+      INSERT INTO comments (repository_id, issue_id, author_user_id, body)
+      SELECT issue.repository_id,
+             issue.id,
+             issue.author_user_id,
+             'Issue comment copied during conversion.'
+      FROM issue;
+      `,
+    ],
+    { stdio: "ignore" },
+  );
+  return issueNumber;
+}
+
 async function signIn(page: Page, seeded: SeededDashboard) {
   await page.context().addCookies([
     {
@@ -617,4 +674,33 @@ test("repository discussions list filters, rows, category rail, and mobile layou
     fullPage: true,
     path: "../ralph/screenshots/build/discussions-002-final-mobile.jpg",
   });
+});
+
+test("repository issue converts into a discussion from the issue sidebar", async ({
+  page,
+}) => {
+  const seeded = seedDashboard();
+  seedDiscussions(seeded.treeRepositoryHref);
+  const issueNumber = seedConvertibleIssue(seeded.treeRepositoryHref);
+  await signIn(page, seeded);
+
+  await page.goto(`${seeded.treeRepositoryHref}/issues/${issueNumber}`);
+  await expect(
+    page.getByRole("heading", { name: /Convert this issue into a discussion/ }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Convert to discussion" }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByText(/1 issue comments will be copied/)).toBeVisible();
+  await page.getByLabel("Discussion category").selectOption("general");
+  await page.getByRole("button", { name: "Convert issue" }).click();
+  await expect(page).toHaveURL(/\/discussions\/\d+$/);
+  await expect(
+    page.getByRole("heading", { name: /Convert this issue into a discussion/ }),
+  ).toBeVisible();
+  await expect(page.getByText(/converted from issue/i)).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/discussions-005-phase4-issue-conversion.jpg",
+  });
+  await expectNoDeadControls(page);
 });

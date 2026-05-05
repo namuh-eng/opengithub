@@ -9,7 +9,9 @@ import { RepositoryShell } from "@/components/RepositoryShell";
 import { ThreadNotificationCard } from "@/components/ThreadNotificationCard";
 import type {
   ApiErrorEnvelope,
+  ConvertIssueToDiscussionResponse,
   IssueDetailView,
+  IssueDiscussionConversionView,
   IssueListLabel,
   IssueListMilestone,
   IssueListUser,
@@ -114,6 +116,10 @@ export function RepositoryIssueDetailPage({
   const [subscription, setSubscription] = useState(issue.subscription);
   const [message, setMessage] = useState<string | null>(null);
   const [isMutating, setIsMutating] = useState(false);
+  const [conversion, setConversion] =
+    useState<IssueDiscussionConversionView | null>(null);
+  const [conversionOpen, setConversionOpen] = useState(false);
+  const [selectedCategorySlug, setSelectedCategorySlug] = useState("");
   const [openMetadataMenu, setOpenMetadataMenu] = useState<
     "assignees" | "labels" | "milestone" | null
   >(null);
@@ -262,6 +268,71 @@ export function RepositoryIssueDetailPage({
         error instanceof Error
           ? error.message
           : "Notification subscription could not be updated.",
+      );
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
+  async function openConversionDialog() {
+    setMessage(null);
+    setConversionOpen(true);
+    if (conversion) {
+      return;
+    }
+    setIsMutating(true);
+    try {
+      const response = await fetch(`${issueHref}/convert-to-discussion`);
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const envelope = payload as ApiErrorEnvelope | null;
+        throw new Error(
+          envelope?.error.message ??
+            "Discussion conversion metadata could not be loaded.",
+        );
+      }
+      const view = payload as IssueDiscussionConversionView;
+      setConversion(view);
+      setSelectedCategorySlug(
+        view.categories.find((category) => !category.disabledReason)?.slug ??
+          "",
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Discussion conversion metadata could not be loaded.",
+      );
+    } finally {
+      setIsMutating(false);
+    }
+  }
+
+  async function convertToDiscussion() {
+    setMessage(null);
+    setIsMutating(true);
+    try {
+      const response = await fetch(`${issueHref}/convert-to-discussion`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ categorySlug: selectedCategorySlug }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const envelope = payload as ApiErrorEnvelope | null;
+        throw new Error(
+          envelope?.error.message ??
+            "Issue could not be converted to a discussion.",
+        );
+      }
+      const converted = payload as ConvertIssueToDiscussionResponse;
+      setMessage(`Converted to discussion #${converted.discussionNumber}.`);
+      window.location.assign(converted.href);
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Issue could not be converted to a discussion.",
       );
     } finally {
       setIsMutating(false);
@@ -603,6 +674,104 @@ export function RepositoryIssueDetailPage({
               ) : (
                 <p className="t-xs">No linked pull requests</p>
               )}
+            </SidebarSection>
+
+            <SidebarSection title="Convert">
+              <p className="t-xs mb-3">
+                Move this issue into Discussions while preserving the source
+                issue timeline link.
+              </p>
+              {viewerAuthenticated && canEditMetadata ? (
+                <button
+                  className="btn sm w-full justify-center"
+                  disabled={isMutating}
+                  onClick={() => void openConversionDialog()}
+                  type="button"
+                >
+                  Convert to discussion
+                </button>
+              ) : (
+                <p className="t-xs">
+                  Maintainer access is required to convert issues.
+                </p>
+              )}
+              {conversionOpen ? (
+                <div className="card mt-3 p-3" role="dialog">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="t-h3">Convert issue</h3>
+                      <p className="t-xs mt-1">
+                        The issue will close and link to the new discussion.
+                        {conversion
+                          ? ` ${conversion.commentCount} issue comments will be copied as discussion comments.`
+                          : ""}
+                      </p>
+                    </div>
+                    <button
+                      className="btn ghost sm"
+                      onClick={() => setConversionOpen(false)}
+                      type="button"
+                    >
+                      Close
+                    </button>
+                  </div>
+                  {conversion?.alreadyConverted &&
+                  conversion.convertedDiscussionHref ? (
+                    <Link
+                      className="chip soft"
+                      href={conversion.convertedDiscussionHref}
+                    >
+                      Already converted to discussion #
+                      {conversion.convertedDiscussionNumber}
+                    </Link>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      <label className="t-label" htmlFor="convert-category">
+                        Discussion category
+                      </label>
+                      <select
+                        className="input"
+                        disabled={isMutating || !conversion}
+                        id="convert-category"
+                        onChange={(event) =>
+                          setSelectedCategorySlug(event.currentTarget.value)
+                        }
+                        value={selectedCategorySlug}
+                      >
+                        {conversion?.categories.map((category) => (
+                          <option
+                            disabled={Boolean(category.disabledReason)}
+                            key={category.id}
+                            value={category.slug}
+                          >
+                            {category.emoji} {category.name}
+                            {category.disabledReason
+                              ? ` - ${category.disabledReason}`
+                              : ""}
+                          </option>
+                        ))}
+                      </select>
+                      {conversion?.disabledReason ? (
+                        <p className="t-xs" style={{ color: "var(--err)" }}>
+                          {conversion.disabledReason}
+                        </p>
+                      ) : null}
+                      <button
+                        className="btn primary sm"
+                        disabled={
+                          isMutating ||
+                          !conversion?.canConvert ||
+                          selectedCategorySlug.length === 0
+                        }
+                        onClick={() => void convertToDiscussion()}
+                        type="button"
+                      >
+                        {isMutating ? "Converting..." : "Convert issue"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : null}
             </SidebarSection>
 
             <SidebarSection title="Attachments">

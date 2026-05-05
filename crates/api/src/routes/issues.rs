@@ -17,11 +17,12 @@ use crate::{
     domain::{
         identity::User,
         issues::{
-            add_issue_comment, create_issue, get_issue, issue_comment_timeline_item,
-            issue_timeline_view, list_issue_templates_for_viewer,
-            repository_issue_detail_view_for_viewer, repository_issue_list_view_for_viewer,
-            save_repository_issue_preferences, toggle_issue_reaction, update_issue_metadata,
-            update_issue_state, update_issue_subscription, CollaborationError, CreateComment,
+            add_issue_comment, convert_issue_to_discussion, create_issue, get_issue,
+            issue_comment_timeline_item, issue_discussion_conversion_view, issue_timeline_view,
+            list_issue_templates_for_viewer, repository_issue_detail_view_for_viewer,
+            repository_issue_list_view_for_viewer, save_repository_issue_preferences,
+            toggle_issue_reaction, update_issue_metadata, update_issue_state,
+            update_issue_subscription, CollaborationError, ConvertIssueToDiscussion, CreateComment,
             CreateIssue, CreateIssueAttachment, IssueListQuery, IssueState, ReactionContent,
             UpdateIssueMetadata, UpdateIssueState, UpdateIssueSubscription,
         },
@@ -63,6 +64,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/repos/:owner/:repo/issues/:number/metadata",
             patch(update_metadata),
+        )
+        .route(
+            "/api/repos/:owner/:repo/issues/:number/convert-to-discussion",
+            get(conversion_metadata).post(convert_to_discussion),
         )
 }
 
@@ -159,6 +164,12 @@ struct UpdateIssueMetadataRequest {
 #[serde(rename_all = "camelCase")]
 struct UpdateIssuePreferencesRequest {
     dismissed_contributor_banner: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ConvertIssueToDiscussionRequest {
+    category_slug: String,
 }
 
 async fn list(
@@ -594,6 +605,49 @@ async fn read(
     .map_err(map_collaboration_error)?;
 
     Ok(Json(json!(issue)))
+}
+
+async fn conversion_metadata(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, number)): Path<(String, String, i64)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id =
+        repository_for_actor_by_name(pool, &owner, &repo, actor.0.id, RepositoryRole::Triage)
+            .await
+            .map_err(map_collaboration_error)?;
+    let view = issue_discussion_conversion_view(pool, repository_id, number, actor.0.id)
+        .await
+        .map_err(map_collaboration_error)?;
+    Ok(Json(json!(view)))
+}
+
+async fn convert_to_discussion(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, number)): Path<(String, String, i64)>,
+    RestJson(request): RestJson<ConvertIssueToDiscussionRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id =
+        repository_for_actor_by_name(pool, &owner, &repo, actor.0.id, RepositoryRole::Triage)
+            .await
+            .map_err(map_collaboration_error)?;
+    let response = convert_issue_to_discussion(
+        pool,
+        repository_id,
+        number,
+        ConvertIssueToDiscussion {
+            actor_user_id: actor.0.id,
+            category_slug: request.category_slug,
+        },
+    )
+    .await
+    .map_err(map_collaboration_error)?;
+    Ok(Json(json!(response)))
 }
 
 async fn update_state(

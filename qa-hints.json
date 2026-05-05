@@ -6578,5 +6578,24 @@
       "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
       "Phase 4 still needs issue-to-discussion conversion."
     ]
+  },
+  {
+    "feature_id": "discussions-005",
+    "tests_written": [
+      "Completed Phase 4 Issue Conversion without marking discussions-005 build_pass=true.",
+      "Added migration 202605060004_issue_to_discussion_conversion for durable issue-to-discussion links, conversion actor/timestamp metadata, and converted issue comment references on discussion comments.",
+      "Added authenticated Rust API contracts for GET/POST /api/repos/{owner}/{repo}/issues/{issue_number}/convert-to-discussion with triage-or-greater permission, duplicate conversion denial, category eligibility, poll-category rejection, issue closure, timeline activity, discussion activity, audit rows, and copied comments.",
+      "Added same-origin Next.js cookie-forwarding route and typed API helpers for conversion metadata and submit.",
+      "Updated RepositoryIssueDetailPage with an Editorial Convert sidebar dialog, category picker, copied-comment summary, already-converted state, real POST submit, and success navigation to the new discussion.",
+      "Extended focused Vitest coverage for conversion metadata loading, category selection, POST payload, and discussion navigation.",
+      "Extended repository-discussions Playwright coverage with a focused issue conversion browser flow and screenshot target ralph/screenshots/build/discussions-005-phase4-issue-conversion.jpg when seeded DB credentials are available."
+    ],
+    "needs_deeper_qa": [
+      "Focused Playwright issue conversion smoke was attempted with TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test, but dashboard_e2e_seed failed before navigation because local Postgres rejected the postgres password.",
+      "Rerun web/tests/e2e/repository-discussions.spec.ts -g \"repository issue converts\" against a clean migrated credentialed TEST_DATABASE_URL to verify the browser flow and save ralph/screenshots/build/discussions-005-phase4-issue-conversion.jpg.",
+      "Run DB-backed QA for duplicate conversion denial, copied issue comment metadata, source issue timeline event, destination discussion activity event, audit row redaction, and poll category rejection with real seeded rows.",
+      "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Phase 5 still needs API docs, final browser evidence, QA handoff, prd.json build_pass=true, and final desktop/mobile screenshots."
+    ]
   }
 ]

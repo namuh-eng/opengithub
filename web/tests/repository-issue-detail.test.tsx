@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { RepositoryIssueDetailPage } from "@/components/RepositoryIssueDetailPage";
 import type {
   IssueDetailView,
+  IssueDiscussionConversionView,
   IssueTimelineItem,
   RepositoryOverview,
 } from "@/lib/api";
@@ -567,5 +568,95 @@ describe("RepositoryIssueDetailPage", () => {
       screen.queryByRole("heading", { name: "Customize updates" }),
     ).not.toBeInTheDocument();
     expect(screen.getByText("Custom events: closed, reopened")).toBeVisible();
+  });
+
+  it("loads conversion metadata and submits issue-to-discussion conversion", async () => {
+    const conversionView: IssueDiscussionConversionView = {
+      issueId: "issue-1",
+      issueNumber: 42,
+      alreadyConverted: false,
+      convertedDiscussionNumber: null,
+      convertedDiscussionHref: null,
+      commentCount: 3,
+      canConvert: true,
+      disabledReason: null,
+      categories: [
+        {
+          id: "cat-general",
+          slug: "general",
+          name: "General",
+          emoji: "💬",
+          description: "Open-ended discussion",
+          disabledReason: null,
+        },
+        {
+          id: "cat-polls",
+          slug: "polls",
+          name: "Polls",
+          emoji: "📊",
+          description: "Polls",
+          disabledReason: "Poll categories cannot receive converted issues.",
+        },
+      ],
+    };
+    const assignMock = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { assign: assignMock },
+    });
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/convert-to-discussion")) {
+          if (init?.method === "POST") {
+            return {
+              ok: true,
+              json: async () => ({
+                issueId: "issue-1",
+                issueNumber: 42,
+                discussionId: "discussion-9",
+                discussionNumber: 9,
+                href: "/mona/octo-app/discussions/9",
+                title: "Fix `runner` queue backoff",
+                categorySlug: "general",
+              }),
+            };
+          }
+          return { ok: true, json: async () => conversionView };
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryIssueDetailPage
+        issue={issueDetail()}
+        repository={repositoryOverview()}
+        timeline={issueTimeline()}
+        viewerAuthenticated={true}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Convert to discussion" }),
+    );
+    expect(await screen.findByRole("dialog")).toBeVisible();
+    expect(screen.getByText(/3 issue comments will be copied/)).toBeVisible();
+    expect(
+      screen.getByRole("combobox", { name: "Discussion category" }),
+    ).toHaveValue("general");
+    fireEvent.click(screen.getByRole("button", { name: "Convert issue" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mona/octo-app/issues/42/convert-to-discussion",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ categorySlug: "general" }),
+        }),
+      );
+      expect(assignMock).toHaveBeenCalledWith("/mona/octo-app/discussions/9");
+    });
   });
 });

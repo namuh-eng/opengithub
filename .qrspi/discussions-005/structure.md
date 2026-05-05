@@ -64,7 +64,7 @@
 
 ## Phase 4: Issue Conversion - convert issue detail into discussion
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement issue-to-discussion conversion from `/{owner}/{repo}/issues/{number}`. A maintainer should choose a discussion category, convert the issue title/body/comments metadata into a new discussion, link both timelines, close or mark the source issue as converted, and navigate to the new discussion.
 

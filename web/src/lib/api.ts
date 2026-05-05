@@ -5691,6 +5691,37 @@ export type IssueDetailView = {
   };
 };
 
+export type IssueDiscussionConversionCategory = {
+  id: string;
+  slug: string;
+  name: string;
+  emoji: string;
+  description: string | null;
+  disabledReason: string | null;
+};
+
+export type IssueDiscussionConversionView = {
+  issueId: string;
+  issueNumber: number;
+  alreadyConverted: boolean;
+  convertedDiscussionNumber: number | null;
+  convertedDiscussionHref: string | null;
+  categories: IssueDiscussionConversionCategory[];
+  commentCount: number;
+  canConvert: boolean;
+  disabledReason: string | null;
+};
+
+export type ConvertIssueToDiscussionResponse = {
+  issueId: string;
+  issueNumber: number;
+  discussionId: string;
+  discussionNumber: number;
+  href: string;
+  title: string;
+  categorySlug: string;
+};
+
 export type UpdateIssueMetadataRequest = {
   labelIds: string[];
   assigneeUserIds: string[];
@@ -10036,6 +10067,67 @@ export async function updateRepositoryIssueMetadataFromCookie(
   }
 
   return (await response.json()) as IssueDetailView;
+}
+
+export async function getIssueDiscussionConversionFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  issueNumber: number | string,
+): Promise<IssueDiscussionConversionView> {
+  const response = await fetch(
+    `${apiBaseUrl()}${repositoryIssuePath(owner, repo, issueNumber)}/convert-to-discussion`,
+    {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const envelope = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ??
+        "Discussion conversion metadata failed to load",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as IssueDiscussionConversionView;
+}
+
+export async function convertIssueToDiscussionFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  issueNumber: number | string,
+  categorySlug: string,
+): Promise<ConvertIssueToDiscussionResponse> {
+  const response = await fetch(
+    `${apiBaseUrl()}${repositoryIssuePath(owner, repo, issueNumber)}/convert-to-discussion`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify({ categorySlug }),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const envelope = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Issue could not be converted to a discussion",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as ConvertIssueToDiscussionResponse;
 }
 
 export async function saveRepositoryIssuePreferences(

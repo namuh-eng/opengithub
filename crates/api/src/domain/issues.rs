@@ -476,6 +476,49 @@ pub struct UpdateIssueMetadata {
     pub milestone_id: Option<Uuid>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct IssueDiscussionConversionCategory {
+    pub id: Uuid,
+    pub slug: String,
+    pub name: String,
+    pub emoji: String,
+    pub description: Option<String>,
+    pub disabled_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct IssueDiscussionConversionView {
+    pub issue_id: Uuid,
+    pub issue_number: i64,
+    pub already_converted: bool,
+    pub converted_discussion_number: Option<i64>,
+    pub converted_discussion_href: Option<String>,
+    pub categories: Vec<IssueDiscussionConversionCategory>,
+    pub comment_count: i64,
+    pub can_convert: bool,
+    pub disabled_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConvertIssueToDiscussion {
+    pub actor_user_id: Uuid,
+    pub category_slug: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ConvertIssueToDiscussionResponse {
+    pub issue_id: Uuid,
+    pub issue_number: i64,
+    pub discussion_id: Uuid,
+    pub discussion_number: i64,
+    pub href: String,
+    pub title: String,
+    pub category_slug: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateComment {
     pub actor_user_id: Uuid,
@@ -1604,6 +1647,280 @@ pub async fn add_issue_comment(
     Ok(comment)
 }
 
+pub async fn issue_discussion_conversion_view(
+    pool: &PgPool,
+    repository_id: Uuid,
+    issue_number: i64,
+    actor_user_id: Uuid,
+) -> Result<IssueDiscussionConversionView, CollaborationError> {
+    require_repository_role(pool, repository_id, actor_user_id, RepositoryRole::Triage).await?;
+    let issue = get_issue(pool, repository_id, issue_number, actor_user_id).await?;
+    let converted = issue_converted_discussion(pool, issue.id).await?;
+    let categories = issue_conversion_categories(pool, repository_id).await?;
+    let disabled_reason = if converted.is_some() {
+        Some("This issue has already been converted to a discussion.".to_owned())
+    } else if categories
+        .iter()
+        .all(|category| category.disabled_reason.is_some())
+    {
+        Some("No eligible discussion categories are available.".to_owned())
+    } else {
+        None
+    };
+    Ok(IssueDiscussionConversionView {
+        issue_id: issue.id,
+        issue_number: issue.number,
+        already_converted: converted.is_some(),
+        converted_discussion_number: converted.as_ref().map(|item| item.0),
+        converted_discussion_href: converted.map(|item| item.1),
+        categories,
+        comment_count: issue_comment_count(pool, issue.id).await?,
+        can_convert: disabled_reason.is_none(),
+        disabled_reason,
+    })
+}
+
+pub async fn convert_issue_to_discussion(
+    pool: &PgPool,
+    repository_id: Uuid,
+    issue_number: i64,
+    input: ConvertIssueToDiscussion,
+) -> Result<ConvertIssueToDiscussionResponse, CollaborationError> {
+    require_repository_role(
+        pool,
+        repository_id,
+        input.actor_user_id,
+        RepositoryRole::Triage,
+    )
+    .await?;
+    let issue = get_issue(pool, repository_id, issue_number, input.actor_user_id).await?;
+    if let Some((discussion_number, href)) = issue_converted_discussion(pool, issue.id).await? {
+        return Err(CollaborationError::InvalidIssueField {
+            field_key: "issue".to_owned(),
+            message: format!("issue was already converted to {href} (#{discussion_number})"),
+        });
+    }
+    let category_slug = input
+        .category_slug
+        .trim()
+        .trim_start_matches('/')
+        .to_lowercase();
+    if category_slug.is_empty() {
+        return Err(CollaborationError::InvalidIssueField {
+            field_key: "categorySlug".to_owned(),
+            message: "choose a discussion category".to_owned(),
+        });
+    }
+    let category = sqlx::query(
+        r#"
+        SELECT id, slug, name, emoji, description, format
+        FROM discussion_categories
+        WHERE repository_id = $1 AND lower(slug) = lower($2)
+        "#,
+    )
+    .bind(repository_id)
+    .bind(&category_slug)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| CollaborationError::InvalidIssueField {
+        field_key: "categorySlug".to_owned(),
+        message: "discussion category is not available".to_owned(),
+    })?;
+    let category_id: Uuid = category.get("id");
+    let category_format: String = category
+        .try_get("format")
+        .unwrap_or_else(|_| "discussion".to_owned());
+    if matches!(category_format.as_str(), "poll") {
+        return Err(CollaborationError::InvalidIssueField {
+            field_key: "categorySlug".to_owned(),
+            message: "poll categories cannot receive converted issues".to_owned(),
+        });
+    }
+
+    let repository = get_repository(pool, repository_id)
+        .await
+        .map_err(|error| match error {
+            super::repositories::RepositoryError::Sqlx(error) => CollaborationError::Sqlx(error),
+            _ => CollaborationError::RepositoryNotFound,
+        })?
+        .ok_or(CollaborationError::RepositoryNotFound)?;
+    if repository.is_archived {
+        return Err(CollaborationError::InvalidIssueField {
+            field_key: "repository".to_owned(),
+            message: "archived repositories cannot convert issues".to_owned(),
+        });
+    }
+
+    let next_number: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(MAX(number), 0) + 1 FROM discussions WHERE repository_id = $1",
+    )
+    .bind(repository_id)
+    .fetch_one(pool)
+    .await?;
+    let discussion_id = Uuid::new_v4();
+    let body = issue.body.clone().unwrap_or_default();
+    sqlx::query(
+        r#"
+        INSERT INTO discussions (
+            id, repository_id, category_id, number, title, body, author_user_id,
+            comments_count, last_activity_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 1, now())
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(repository_id)
+    .bind(category_id)
+    .bind(next_number)
+    .bind(&issue.title)
+    .bind(&body)
+    .bind(issue.author_user_id)
+    .execute(pool)
+    .await?;
+
+    let root_comment_id = Uuid::new_v4();
+    sqlx::query(
+        r#"
+        INSERT INTO discussion_comments (id, discussion_id, author_user_id, body)
+        VALUES ($1, $2, $3, $4)
+        "#,
+    )
+    .bind(root_comment_id)
+    .bind(discussion_id)
+    .bind(issue.author_user_id)
+    .bind(&body)
+    .execute(pool)
+    .await?;
+
+    let comment_rows = sqlx::query(
+        r#"
+        SELECT id, author_user_id, body
+        FROM comments
+        WHERE issue_id = $1 AND is_minimized = false
+        ORDER BY created_at ASC
+        "#,
+    )
+    .bind(issue.id)
+    .fetch_all(pool)
+    .await?;
+    for row in comment_rows {
+        sqlx::query(
+            r#"
+            INSERT INTO discussion_comments (
+                id, discussion_id, author_user_id, body, converted_issue_comment_id
+            )
+            VALUES ($1, $2, $3, $4, $5)
+            "#,
+        )
+        .bind(Uuid::new_v4())
+        .bind(discussion_id)
+        .bind(row.get::<Uuid, _>("author_user_id"))
+        .bind(row.get::<String, _>("body"))
+        .bind(row.get::<Uuid, _>("id"))
+        .execute(pool)
+        .await?;
+    }
+    let copied_comments = issue_comment_count(pool, issue.id).await?;
+    sqlx::query(
+        r#"
+        UPDATE discussions
+        SET comments_count = $2, updated_at = now(), last_activity_at = now()
+        WHERE id = $1
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(copied_comments + 1)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        UPDATE issues
+        SET state = 'closed',
+            closed_by_user_id = $3,
+            closed_at = COALESCE(closed_at, now()),
+            converted_discussion_id = $2,
+            converted_to_discussion_at = now(),
+            converted_to_discussion_by_user_id = $3,
+            updated_at = now()
+        WHERE id = $1
+        "#,
+    )
+    .bind(issue.id)
+    .bind(discussion_id)
+    .bind(input.actor_user_id)
+    .execute(pool)
+    .await?;
+
+    let href = format!(
+        "/{}/{}/discussions/{}",
+        repository.owner_login, repository.name, next_number
+    );
+    append_timeline_event(
+        pool,
+        repository_id,
+        Some(issue.id),
+        None,
+        Some(input.actor_user_id),
+        "converted_to_discussion",
+        json!({
+            "discussionId": discussion_id,
+            "discussionNumber": next_number,
+            "discussionHref": href,
+            "categorySlug": category_slug,
+            "copiedComments": copied_comments,
+        }),
+    )
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO discussion_activity_events (discussion_id, actor_user_id, event_type, payload)
+        VALUES ($1, $2, 'converted_from_issue', $3::jsonb)
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(input.actor_user_id)
+    .bind(
+        json!({
+            "issueId": issue.id,
+            "issueNumber": issue.number,
+            "copiedComments": copied_comments,
+        })
+        .to_string(),
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, 'repository.issue.convert_to_discussion', 'issue', $2, $3::jsonb)
+        "#,
+    )
+    .bind(input.actor_user_id)
+    .bind(issue.id.to_string())
+    .bind(
+        json!({
+            "repositoryId": repository_id,
+            "discussionId": discussion_id,
+            "discussionNumber": next_number,
+            "categorySlug": category_slug,
+        })
+        .to_string(),
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(ConvertIssueToDiscussionResponse {
+        issue_id: issue.id,
+        issue_number: issue.number,
+        discussion_id,
+        discussion_number: next_number,
+        href,
+        title: issue.title,
+        category_slug,
+    })
+}
+
 pub async fn issue_comment_timeline_item(
     pool: &PgPool,
     comment_id: Uuid,
@@ -2266,6 +2583,77 @@ async fn issue_repository_id(pool: &PgPool, issue_id: Uuid) -> Result<Uuid, Coll
         .fetch_optional(pool)
         .await?
         .ok_or(CollaborationError::IssueNotFound)
+}
+
+async fn issue_converted_discussion(
+    pool: &PgPool,
+    issue_id: Uuid,
+) -> Result<Option<(i64, String)>, CollaborationError> {
+    let row = sqlx::query(
+        r#"
+        SELECT discussions.number, repositories.owner_login, repositories.name
+        FROM issues
+        JOIN discussions ON discussions.id = issues.converted_discussion_id
+        JOIN repositories ON repositories.id = discussions.repository_id
+        WHERE issues.id = $1
+        "#,
+    )
+    .bind(issue_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|row| {
+        let number: i64 = row.get("number");
+        let owner: String = row.get("owner_login");
+        let name: String = row.get("name");
+        (number, format!("/{owner}/{name}/discussions/{number}"))
+    }))
+}
+
+async fn issue_conversion_categories(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<Vec<IssueDiscussionConversionCategory>, CollaborationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, slug, name, emoji, description, format
+        FROM discussion_categories
+        WHERE repository_id = $1
+        ORDER BY position ASC, lower(name) ASC
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let format: String = row
+                .try_get("format")
+                .unwrap_or_else(|_| "discussion".to_owned());
+            IssueDiscussionConversionCategory {
+                id: row.get("id"),
+                slug: row.get("slug"),
+                name: row.get("name"),
+                emoji: row.get("emoji"),
+                description: row.get("description"),
+                disabled_reason: if format == "poll" {
+                    Some("Poll categories cannot receive converted issues.".to_owned())
+                } else {
+                    None
+                },
+            }
+        })
+        .collect())
+}
+
+async fn issue_comment_count(pool: &PgPool, issue_id: Uuid) -> Result<i64, CollaborationError> {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*)::bigint FROM comments WHERE issue_id = $1 AND is_minimized = false",
+    )
+    .bind(issue_id)
+    .fetch_one(pool)
+    .await
+    .map_err(CollaborationError::Sqlx)
 }
 
 async fn issue_by_id(pool: &PgPool, issue_id: Uuid) -> Result<Issue, CollaborationError> {
