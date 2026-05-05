@@ -79,7 +79,7 @@
 
 ## Phase 5: API Docs, Browser Evidence, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `discussions-006` only after poll category reads, vote APIs, operational poll UI, cross-feature constraints, docs, screenshots, QA handoff, and PRD bookkeeping are complete.
 

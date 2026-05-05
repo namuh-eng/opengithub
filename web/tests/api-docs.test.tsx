@@ -1306,6 +1306,22 @@ describe("ApiDocsPage", () => {
       ),
     ).toBeVisible();
     expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/discussions/{discussion_number}/poll/vote",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Creates or updates the current viewer's poll vote/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Vote changes are accepted only when allowsVoteChanges is true/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/discussion_poll_votes, discussion_activity_events/),
+    ).toBeVisible();
+    expect(
       screen.getByText("/api/repos/{owner}/{repo}/discussions/new"),
     ).toBeVisible();
     expect(
@@ -1325,6 +1341,9 @@ describe("ApiDocsPage", () => {
     ).toBeVisible();
     expect(
       screen.getByText(/Poll payloads require a question plus two to ten/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/optional multiple-choice\/change-vote policy/),
     ).toBeVisible();
     expect(
       screen.getByText(/previewing does not create discussion/),
@@ -1406,6 +1425,11 @@ describe("ApiDocsPage", () => {
     ).toBeGreaterThanOrEqual(2);
     expect(
       screen.getByText(/Supported sort values are oldest, newest, and top/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Poll details include voting controls, result visibility/,
+      ),
     ).toBeVisible();
     expect(
       screen.getByText(/Successful writes update discussion_comments/),

@@ -3618,6 +3618,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
       "Category slugs are normalized through the same validation path as discussion filters. Unknown slugs return not_found rather than an empty global list.",
       "Search, label, state, answered, locked, pinned, sort, and pagination filters compose with category scope and preserve the active rail destination.",
       "Empty category responses provide enough metadata for a category-specific New discussion CTA without implementing creation in this feature.",
+      "Poll category slugs and renamed categories with format=poll return poll row metadata such as categoryQualifier, pollSummary, resultsVisible, viewerCanVote, viewerVoteOptionIds, and pollUnavailableReasons.",
     ],
   },
   {
@@ -3658,6 +3659,53 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
       "DELETE is idempotent when the viewer has not voted; it still returns the authoritative count and viewerVoted=false.",
       "Vote removal records a discussion activity event but does not create duplicate author notification rows.",
       "The response never includes raw notification payloads, session cookies, OAuth profile data, token hashes, environment variables, or stack traces.",
+    ],
+  },
+  {
+    id: "repo-discussion-poll-vote",
+    method: "PUT",
+    path: "/api/repos/{owner}/{repo}/discussions/{discussion_number}/poll/vote",
+    title: "Vote in repository Discussion poll",
+    description:
+      "Creates or updates the current viewer's poll vote, enforces single-choice or multiple-choice policy, reconciles result percentages, and returns the refreshed poll contract for the detail page.",
+    auth: "Signed opengithub session cookie with repository read permission and poll voting enabled",
+    request: `{
+  "optionIds": ["option_01", "option_02"]
+}`,
+    response: `{
+  "discussionId": "discussion_03",
+  "discussionNumber": 44,
+  "poll": {
+    "id": "poll_01",
+    "question": "Which branch policy should ship first?",
+    "multipleChoice": true,
+    "allowsVoteChanges": true,
+    "viewerCanVote": true,
+    "resultsVisible": true,
+    "viewerVoteOptionIds": ["option_01", "option_02"],
+    "totalVotes": 2,
+    "options": [
+      {
+        "id": "option_01",
+        "body": "Linear history",
+        "votesCount": 1,
+        "percentage": 50
+      },
+      {
+        "id": "option_02",
+        "body": "Required reviews",
+        "votesCount": 1,
+        "percentage": 50
+      }
+    ]
+  }
+}`,
+    notes: [
+      "Anonymous callers receive 401 and browser clients render a sign-in prompt instead of dead controls.",
+      "Single-choice polls accept one option id. Multiple-choice polls accept the selected option set. Invalid option ids, cross-poll options, and empty selections return validation envelopes.",
+      "Vote changes are accepted only when allowsVoteChanges is true; otherwise a second different selection returns a policy validation error while preserving the existing vote.",
+      "Locked, archived, deleted, disabled, and private-inaccessible discussions reject votes without leaking result counts, session rows, OAuth payloads, environment variables, storage keys, or stack traces.",
+      "Successful writes update discussion_poll_votes, discussion_activity_events, and audit rows with bounded metadata; comments, replies, reactions, subscriptions, and notification state remain intact.",
     ],
   },
   {
@@ -3801,7 +3849,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
 }`,
     notes: [
       "The similar-search acknowledgement is required before creation. Missing title, body, required YAML answers, invalid category slugs, archived repositories, disabled Discussions, and read-only viewers return stable validation or permission envelopes.",
-      "Poll payloads require a question plus two to ten unique non-empty options and cannot be combined with category form answers. Poll voting is intentionally handled by a later Discussions feature.",
+      "Poll payloads require a question plus two to ten unique non-empty options, optional multiple-choice/change-vote policy, and cannot be combined with category form answers.",
       "Creation writes discussions, discussion_comments, discussion_form_answers, discussion_polls/options when present, discussion_attachments metadata, subscriptions, notifications, and repository_activity_events in one transaction.",
       "Markdown preview is browser-side and sanitized before display; previewing does not create discussion, comment, attachment, subscription, notification, or activity rows.",
       "Responses and errors never include raw session cookies, OAuth profile payloads, token hashes, environment variables, plaintext storage credentials, raw attachment object bytes, or stack traces.",
@@ -3832,6 +3880,20 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     "markedBy": { "login": "maintainer" },
     "href": "/mona/octo-app/discussions/42#discussioncomment-comment_02"
   },
+  "poll": {
+    "id": "poll_01",
+    "question": "Which branch policy should ship first?",
+    "multipleChoice": false,
+    "allowsVoteChanges": true,
+    "viewerCanVote": true,
+    "resultsVisible": true,
+    "viewerVoteOptionIds": ["option_01"],
+    "totalVotes": 12,
+    "options": [
+      { "id": "option_01", "body": "Linear history", "votesCount": 8, "percentage": 67 },
+      { "id": "option_02", "body": "Required reviews", "votesCount": 4, "percentage": 33 }
+    ]
+  },
   "timeline": [
     {
       "kind": "comment",
@@ -3853,6 +3915,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     notes: [
       "Supported sort values are oldest, newest, and top; malformed discussion numbers, sort keys, or pagination values return validation_failed envelopes.",
       "Comment and reply Markdown is sanitized server-side. Unsafe HTML, raw attachment objects, session rows, OAuth data, environment variables, storage credentials, and stack traces are never serialized.",
+      "Poll details include voting controls, result visibility, current viewer selections, result bars, and policy reasons while suppressing counts from unauthorized private viewers.",
       "The sidebar includes category, labels, participants, notification state, and bounded event history so the browser can render answer, close/reopen, category, and label controls without dead placeholders.",
       "Archived repositories, disabled Discussions, private repository outsiders, deleted comments, and moderated rows preserve privacy-safe unavailable or collapsed states.",
     ],

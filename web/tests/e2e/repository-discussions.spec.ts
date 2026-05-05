@@ -575,6 +575,10 @@ test("repository discussions list filters, rows, category rail, and mobile layou
     fullPage: true,
     path: "../ralph/screenshots/build/discussions-006-phase3-poll-vote.jpg",
   });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/discussions-006-final-desktop.jpg",
+  });
 
   await page.goto(
     `${seeded.treeRepositoryHref}/discussions/categories/ideas?q=no-match`,
@@ -689,6 +693,10 @@ test("repository discussions list filters, rows, category rail, and mobile layou
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/discussions-002-final-mobile.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/discussions-006-final-mobile.jpg",
   });
 });
 

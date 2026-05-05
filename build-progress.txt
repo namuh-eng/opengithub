@@ -4411,6 +4411,16 @@
 - No source implementation was started because `discussions-006.needs_structure=true` and no structure outline existed at invocation start; the build-loop contract requires the outline first, then `<promise>NEXT</promise>`.
 - Verified `discussions-006.build_pass=false`, `qa_pass=false`, and all structure phases remain unchecked for the next invocation. Existing poll creation/detail rendering from `discussions-002`/`discussions-003`, category format administration from `discussions-004`, moderation guardrails from `discussions-005`, repository permission helpers, comments/reactions/subscriptions, and Editorial design references should be reused; do not introduce GitHub visual styling or implement organization-wide poll policy, poll search indexing, or unrelated survey tooling in this feature.
 
+2026-05-06 - discussions-006 phase 5 API docs and build pass
+
+- Completed Phase 5 from `.qrspi/discussions-006/structure.md`: repository Discussion polls are now locked as a completed vertical slice and `discussions-006.build_pass=true`.
+- Added `/docs/api` coverage for poll category metadata, poll creation constraints, `PUT /api/repos/{owner}/{repo}/discussions/{discussion_number}/poll/vote`, result visibility, auth/privacy gates, single-choice and multiple-choice validation, vote-change policy, poll/non-poll category move and transfer incompatibility, comments/reactions continuity, activity/audit side effects, and no-secret guarantees.
+- Extended API docs tests for the poll vote endpoint, change-vote policy, poll side effects, creation policy wording, and poll detail voting/result metadata.
+- Extended the repository Discussions Playwright sweep with final `discussions-006` desktop and mobile screenshot targets for runs against a healthy seeded browser environment.
+- Verification passed: focused `cd web && npm test -- --run api-docs.test.tsx`; focused Biome for touched docs/test/E2E files; `cd web && npx tsc --noEmit --pretty false`; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 522 web tests; mandatory Editorial banned-value scan returned zero matches; JSON validation passed for `prd.json` and `qa-hints.json`.
+- Full `make test-e2e` was attempted with the signed-session/test DB environment, but the wrapper stayed silent for about 150 seconds and was terminated. No final screenshots were produced in this run; rerun against a clean migrated credentialed `TEST_DATABASE_URL` to save `ralph/screenshots/build/discussions-006-final-desktop.jpg` and `discussions-006-final-mobile.jpg`.
+- `qa_pass` remains false for the QA agent. Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-06 - discussions-006 phase 1 poll category read contract
 
 - Completed Phase 1 from `.qrspi/discussions-006/structure.md`: Poll category list/detail reads now expose first-class poll metadata without marking `discussions-006.build_pass=true`.

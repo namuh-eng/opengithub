@@ -6678,5 +6678,21 @@
       "Run browser QA for locked poll reaction policy, comments/replies/reactions after voting, deleted/tombstoned poll privacy, and long poll/result layout on mobile.",
       "Phase 5 still needs API docs, final browser evidence, QA handoff, prd.json build_pass=true, and final desktop/mobile screenshots."
     ]
+  },
+  {
+    "feature_id": "discussions-006",
+    "tests_written": [
+      "Completed Phase 5 API Docs, Browser Evidence, QA Handoff, and Build-Pass Bookkeeping for discussions-006.",
+      "Added /docs/api documentation for poll category read metadata, poll creation constraints, PUT /api/repos/{owner}/{repo}/discussions/{discussion_number}/poll/vote, result visibility, single-choice and multiple-choice validation, vote-change policy, private/auth gates, category move/transfer incompatibility, comments/reactions continuity, activity/audit side effects, and no-secret guarantees.",
+      "Extended api-docs Vitest assertions for the poll vote endpoint, change-vote policy, poll vote side effects, poll creation policy wording, and poll detail voting/result metadata.",
+      "Extended the repository Discussions Playwright sweep with final discussions-006 desktop and mobile screenshot targets.",
+      "Verification passed: focused api-docs Vitest; focused Biome for api-docs and repository-discussions E2E files; web TypeScript; full make check; full make test with Cargo tests plus 522 web tests; mandatory Editorial banned-value scan returned zero matches; JSON validation passed for prd.json and qa-hints.json."
+    ],
+    "needs_deeper_qa": [
+      "Full make test-e2e was attempted with the signed-session/test DB environment, but the wrapper stayed silent for about 150 seconds and was terminated; no final browser screenshots were produced in this run.",
+      "Rerun web/tests/e2e/repository-discussions.spec.ts or make test-e2e against a clean migrated credentialed TEST_DATABASE_URL to save ralph/screenshots/build/discussions-006-final-desktop.jpg and discussions-006-final-mobile.jpg.",
+      "Run DB-backed QA for poll result privacy in private repositories, anonymous result suppression, invalid option ids, vote replacement policy, multi-choice aggregation, locked/archived/deleted denial, poll/non-poll category compatibility through category and transfer endpoints, activity/audit rows, and absence of session/OAuth/env/storage leaks.",
+      "Run browser QA for keyboard traversal through poll controls, long option wrapping on mobile, comments/replies/reactions after voting, anonymous sign-in prompts, server error recovery, and moderator constraint messaging."
+    ]
   }
 ]
