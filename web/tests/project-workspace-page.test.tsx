@@ -358,6 +358,108 @@ describe("ProjectWorkspacePage", () => {
     expect(assign).toHaveBeenCalledWith("/orgs/namuh/projects/12/views/1");
   });
 
+  it("edits a project field through the same-origin item field route", async () => {
+    const assign = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => workspace(),
+    });
+    vi.stubGlobal("location", { assign });
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <ProjectWorkspacePage
+        owner="namuh"
+        scope="organization"
+        viewNumber={1}
+        workspace={workspace()}
+      />,
+    );
+
+    const firstRow = screen
+      .getByRole("link", {
+        name: "Wire the table shell",
+      })
+      .closest("tr");
+    expect(firstRow).not.toBeNull();
+    fireEvent.click(
+      within(firstRow as HTMLTableRowElement).getByRole("button", {
+        name: "Edit",
+      }),
+    );
+    fireEvent.change(screen.getByLabelText("Status value"), {
+      target: { value: "Done" },
+    });
+    fireEvent.submit(
+      screen.getByRole("form", {
+        name: "Edit Status for Wire the table shell",
+      }),
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/projects/project-1/items/item-1/fields/field-status",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          value: "Done",
+          expectedUpdatedAt: "2026-05-06T00:00:00Z",
+        }),
+      }),
+    );
+    expect(assign).toHaveBeenCalledWith(
+      "/orgs/namuh/projects/12/views/1?q=is%3Aopen&sort=manual&group=Status",
+    );
+  });
+
+  it("shows inline field validation errors without local-only edits", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        json: async () => ({
+          error: {
+            code: "validation_failed",
+            message: "Status must be open or closed",
+          },
+          status: 422,
+        }),
+      }),
+    );
+    render(
+      <ProjectWorkspacePage
+        owner="namuh"
+        scope="organization"
+        viewNumber={1}
+        workspace={workspace()}
+      />,
+    );
+
+    const firstRow = screen
+      .getByRole("link", {
+        name: "Wire the table shell",
+      })
+      .closest("tr");
+    expect(firstRow).not.toBeNull();
+    fireEvent.click(
+      within(firstRow as HTMLTableRowElement).getByRole("button", {
+        name: "Edit",
+      }),
+    );
+    fireEvent.change(screen.getByLabelText("Status value"), {
+      target: { value: "Blocked" },
+    });
+    fireEvent.submit(
+      screen.getByRole("form", {
+        name: "Edit Status for Wire the table shell",
+      }),
+    );
+
+    expect(
+      await screen.findByText("Status must be open or closed"),
+    ).toHaveClass("chip", "err");
+    expect(screen.getByDisplayValue("Blocked")).toBeInTheDocument();
+  });
+
   it("uses Editorial primitives instead of banned GitHub visual values", () => {
     const { container } = render(
       <ProjectWorkspacePage

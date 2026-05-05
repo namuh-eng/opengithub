@@ -6831,5 +6831,22 @@
       "Probe stale expectedUpdatedAt conflicts, read-only users preserving URL-only state, unsupported filter tokens, invalid hidden field IDs, grouping/slicing by incompatible fields, concurrent saves, and audit_events metadata with real Postgres assertions.",
       "Phase 4 still needs real inline field editing and linked issue/PR sync; Phase 5 still needs add-row, bulk add, draft creation, removal, and row ordering."
     ]
+  },
+  {
+    "feature_id": "projects-002",
+    "tests_written": [
+      "Completed Phase 4 Inline Cell Editing without marking projects-002 build_pass=true.",
+      "Added PATCH /api/projects/{project_id}/items/{item_id}/fields/{field_id} with signed-session auth, project write/admin permission checks, linked repository write checks for native issue/PR fields, archived item and stale updatedAt guardrails, field value validation, custom field persistence, linked issue/PR title/status/labels/assignees/milestone sync, project item events, timeline events, audit events, and notification fanout.",
+      "Added same-origin Next proxy at /api/projects/{projectId}/items/{itemId}/fields/{fieldId} and typed updateProjectItemFieldFromCookie helper without JS-side auth.",
+      "Wired ProjectWorkspacePage table cells to accessible inline editors with Save/Cancel controls, typed request value normalization, pending state, server validation errors, success feedback, and canonical refresh after server-confirmed saves.",
+      "Extended Rust workspace contract coverage for draft custom field persistence, linked issue title sync, and audit evidence; extended focused Vitest coverage for inline field PATCH payloads and server validation errors without local-only fake edits.",
+      "Verification passed: cargo fmt --all, cargo check -p opengithub-api --tests, focused projects_workspace_contract compile/run under DB guard, web TypeScript, focused Biome, focused project-workspace-page Vitest with 9 tests, full make check, full make test with Cargo tests plus 539 web tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Full make test-e2e ran 142 Playwright tests: 19 public/setup/docs tests passed and 123 signed-session tests failed because dashboard_e2e_seed and related helpers could not authenticate to local Postgres on localhost:55432 as user postgres.",
+      "Rerun a focused Projects workspace browser smoke against a clean migrated credentialed TEST_DATABASE_URL to save ralph/screenshots/build/projects-002-phase4-inline-edit.jpg.",
+      "Probe every field type with real DB rows: single-select/status option validation, iteration values, date formatting, text length, number coercion, labels/assignees/milestone lookup failures, linked PR title/status sync, draft title updates, stale updatedAt conflicts, archived item denial, project read-only denial, repository read-only denial, timeline/audit/notification side effects, keyboard-only editor save/cancel, and mobile table overflow.",
+      "Phase 5 still needs add-row, bulk linked issue/PR add, draft creation, duplicate handling, item removal, and row ordering."
+    ]
   }
 ]

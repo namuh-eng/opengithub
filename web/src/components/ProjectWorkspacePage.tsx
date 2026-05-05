@@ -21,6 +21,11 @@ type ProjectWorkspacePageProps = {
   viewNumber: number;
 };
 
+type EditingCell = {
+  itemId: string;
+  fieldId: string;
+};
+
 const SORT_OPTIONS = [
   { value: "manual", label: "Manual order" },
   { value: "title_asc", label: "Title A-Z" },
@@ -95,6 +100,31 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function inputTypeForField(field: ProjectWorkspaceField) {
+  if (field.fieldType === "date") return "date";
+  if (field.fieldType === "number") return "number";
+  return "text";
+}
+
+function editableFieldValue(value: ProjectWorkspaceFieldValue | null) {
+  if (Array.isArray(value?.value)) return value.value.join(", ");
+  if (typeof value?.value === "string" || typeof value?.value === "number") {
+    return String(value.value);
+  }
+  return value?.displayValue ?? "";
+}
+
+function requestValueForField(field: ProjectWorkspaceField, raw: string) {
+  if (field.fieldType === "number") return raw.trim() ? Number(raw) : 0;
+  if (field.fieldType === "labels" || field.fieldType === "assignees") {
+    return raw
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+  }
+  return raw;
+}
+
 export function ProjectWorkspacePage({
   workspace,
   scope,
@@ -113,6 +143,11 @@ export function ProjectWorkspacePage({
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [fieldSaving, setFieldSaving] = useState(false);
+  const [fieldMessage, setFieldMessage] = useState<string | null>(null);
+  const [fieldError, setFieldError] = useState<string | null>(null);
   const visibleFields = workspace.fields.filter((field) => !field.hidden);
   const groupedItems = useMemo(() => groupItems(workspace), [workspace]);
   const baseQuery = {
@@ -195,6 +230,50 @@ export function ProjectWorkspacePage({
     window.location.assign(
       workspaceHref(scope, owner, workspace.project.number, viewNumber, {}),
     );
+  }
+
+  function openFieldEditor(
+    item: ProjectWorkspaceItem,
+    field: ProjectWorkspaceField,
+    value: ProjectWorkspaceFieldValue | null,
+  ) {
+    setEditingCell({ itemId: item.id, fieldId: field.id });
+    setEditValue(editableFieldValue(value));
+    setFieldMessage(null);
+    setFieldError(null);
+  }
+
+  async function saveFieldValue(
+    event: FormEvent<HTMLFormElement>,
+    item: ProjectWorkspaceItem,
+    field: ProjectWorkspaceField,
+  ) {
+    event.preventDefault();
+    setFieldSaving(true);
+    setFieldError(null);
+    setFieldMessage(null);
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(workspace.project.id)}/items/${encodeURIComponent(item.id)}/fields/${encodeURIComponent(field.id)}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          value: requestValueForField(field, editValue),
+          expectedUpdatedAt: item.updatedAt,
+        }),
+      },
+    ).catch(() => null);
+    setFieldSaving(false);
+    if (!response?.ok) {
+      const body = await response?.json().catch(() => null);
+      setFieldError(
+        body?.error?.message ?? "Project field could not be saved.",
+      );
+      return;
+    }
+    setFieldMessage(`${field.name} saved`);
+    setEditingCell(null);
+    window.location.assign(currentHref);
   }
 
   return (
@@ -621,29 +700,99 @@ export function ProjectWorkspacePage({
                           </td>
                           {visibleFields.map((field) => {
                             const value = fieldValue(item, field);
+                            const isEditing =
+                              editingCell?.itemId === item.id &&
+                              editingCell.fieldId === field.id;
                             return (
                               <td className="t-sm px-3 py-3" key={field.id}>
-                                {value ? (
-                                  <Link
-                                    className="chip soft no-underline"
-                                    href={workspaceHref(
-                                      scope,
-                                      owner,
-                                      workspace.project.number,
-                                      viewNumber,
-                                      {
-                                        ...baseQuery,
-                                        q: `${workspace.filters.query ?? ""} ${field.name}:${value.displayValue}`.trim(),
-                                        page: 1,
-                                      },
-                                    )}
+                                {isEditing ? (
+                                  <form
+                                    aria-label={`Edit ${field.name} for ${item.title}`}
+                                    className="flex min-w-[180px] flex-wrap gap-2"
+                                    onSubmit={(event) =>
+                                      saveFieldValue(event, item, field)
+                                    }
                                   >
-                                    {value.displayValue}
-                                  </Link>
+                                    <input
+                                      aria-label={`${field.name} value`}
+                                      className="input min-w-[130px] flex-1"
+                                      onChange={(event) =>
+                                        setEditValue(event.target.value)
+                                      }
+                                      type={inputTypeForField(field)}
+                                      value={editValue}
+                                    />
+                                    <button
+                                      className="btn sm primary"
+                                      disabled={fieldSaving}
+                                      type="submit"
+                                    >
+                                      {fieldSaving ? "Saving..." : "Save"}
+                                    </button>
+                                    <button
+                                      className="btn sm"
+                                      onClick={() => setEditingCell(null)}
+                                      type="button"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </form>
+                                ) : value ? (
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Link
+                                      className="chip soft no-underline"
+                                      href={workspaceHref(
+                                        scope,
+                                        owner,
+                                        workspace.project.number,
+                                        viewNumber,
+                                        {
+                                          ...baseQuery,
+                                          q: `${workspace.filters.query ?? ""} ${field.name}:${value.displayValue}`.trim(),
+                                          page: 1,
+                                        },
+                                      )}
+                                    >
+                                      {value.displayValue}
+                                    </Link>
+                                    <button
+                                      className="btn sm ghost"
+                                      disabled={
+                                        !workspace.viewerPermissions.canEdit ||
+                                        !field.editable
+                                      }
+                                      onClick={() =>
+                                        openFieldEditor(item, field, value)
+                                      }
+                                      title={
+                                        field.editable
+                                          ? `Edit ${field.name}`
+                                          : `${field.name} cannot be edited inline.`
+                                      }
+                                      type="button"
+                                    >
+                                      Edit
+                                    </button>
+                                  </div>
                                 ) : (
-                                  <span style={{ color: "var(--ink-4)" }}>
+                                  <button
+                                    className="btn sm ghost"
+                                    disabled={
+                                      !workspace.viewerPermissions.canEdit ||
+                                      !field.editable
+                                    }
+                                    onClick={() =>
+                                      openFieldEditor(item, field, value)
+                                    }
+                                    title={
+                                      field.editable
+                                        ? `Set ${field.name}`
+                                        : `${field.name} cannot be edited inline.`
+                                    }
+                                    type="button"
+                                  >
                                     No value
-                                  </span>
+                                  </button>
                                 )}
                               </td>
                             );
@@ -662,6 +811,12 @@ export function ProjectWorkspacePage({
               className="flex flex-wrap items-center gap-3 border-t px-4 py-3"
               style={{ borderColor: "var(--line)" }}
             >
+              {fieldError ? (
+                <span className="chip err">{fieldError}</span>
+              ) : null}
+              {fieldMessage ? (
+                <span className="chip ok">{fieldMessage}</span>
+              ) : null}
               <button
                 className="btn sm"
                 disabled={!workspace.viewerPermissions.canAddItems}

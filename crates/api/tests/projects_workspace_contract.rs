@@ -118,6 +118,36 @@ async fn get_json(
     (status, headers, value)
 }
 
+async fn patch_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, HeaderMap, Value) {
+    let mut builder = Request::builder()
+        .method(Method::PATCH)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_string()))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let headers = response.headers().clone();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = serde_json::from_slice(&bytes).expect("response should be JSON");
+    (status, headers, value)
+}
+
 #[tokio::test]
 async fn project_workspace_returns_table_fields_items_filters_and_private_guards() {
     let Some(pool) = database_pool().await else {
@@ -165,7 +195,7 @@ async fn project_workspace_returns_table_fields_items_filters_and_private_guards
     )
     .await
     .expect("repository should create");
-    grant_repository_permission(&pool, repo.id, member.id, RepositoryRole::Read, "direct")
+    grant_repository_permission(&pool, repo.id, member.id, RepositoryRole::Write, "direct")
         .await
         .expect("repository permission should grant");
 
@@ -244,12 +274,12 @@ async fn project_workspace_returns_table_fields_items_filters_and_private_guards
     .fetch_one(&pool)
     .await
     .expect("issue should insert");
-    sqlx::query(
-        "INSERT INTO project_items (project_id, item_type, issue_id, position) VALUES ($1, 'issue', $2, 2)",
+    let linked_item_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_items (project_id, item_type, issue_id, position) VALUES ($1, 'issue', $2, 2) RETURNING id",
     )
     .bind(project_id)
     .bind(issue_id)
-    .execute(&pool)
+    .fetch_one(&pool)
     .await
     .expect("issue project item should insert");
 
@@ -279,6 +309,47 @@ async fn project_workspace_returns_table_fields_items_filters_and_private_guards
     assert_eq!(body["groups"][0]["label"], "In progress");
     assert_eq!(body["unsavedView"]["active"], true);
     assert_eq!(body["viewerPermissions"]["canEdit"], true);
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/items/{draft_item_id}/fields/{status_field}"),
+        Some(&member_cookie),
+        json!({ "value": "Done" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["items"][0]["fieldValues"][1]["displayValue"], "Done");
+    let stored_value: Value = sqlx::query_scalar(
+        "SELECT value FROM project_item_field_values WHERE project_item_id = $1 AND project_field_id = $2",
+    )
+    .bind(draft_item_id)
+    .bind(status_field)
+    .fetch_one(&pool)
+    .await
+    .expect("field value should persist");
+    assert_eq!(stored_value, json!("Done"));
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/items/{linked_item_id}/fields/{title_field}"),
+        Some(&member_cookie),
+        json!({ "value": "Renamed linked issue" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let issue_title: String = sqlx::query_scalar("SELECT title FROM issues WHERE id = $1")
+        .bind(issue_id)
+        .fetch_one(&pool)
+        .await
+        .expect("issue title should load");
+    assert_eq!(issue_title, "Renamed linked issue");
+    let audit_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_events WHERE event_type = 'project.item_field.update'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("audit count should load");
+    assert!(audit_count >= 2);
 
     let (status, _, body) = get_json(
         app.clone(),

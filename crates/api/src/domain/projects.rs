@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{PgPool, Row};
@@ -157,6 +157,13 @@ pub struct ProjectViewStateRequest {
     pub slice: Option<String>,
     #[serde(default)]
     pub hidden_field_ids: Vec<Uuid>,
+    pub expected_updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectItemFieldValueRequest {
+    pub value: Value,
     pub expected_updated_at: Option<DateTime<Utc>>,
 }
 
@@ -807,6 +814,145 @@ pub async fn update_project_view_state_for_actor(
     .await
 }
 
+pub async fn update_project_item_field_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    item_id: Uuid,
+    field_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectItemFieldValueRequest,
+) -> Result<ProjectWorkspace, ProjectsError> {
+    let project = workspace_project_row(pool, project_id, Some(actor_user_id)).await?;
+    let project_can_write = project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role);
+    if !project_can_write {
+        return Err(ProjectsError::Forbidden);
+    }
+
+    let field = workspace_field(pool, project_id, field_id).await?;
+    if !field.editable {
+        return Err(ProjectsError::Validation(
+            "Project field is not editable from the table workspace".to_owned(),
+        ));
+    }
+
+    let item = workspace_item_edit_target(pool, project_id, item_id).await?;
+    if item.archived_at.is_some() {
+        return Err(ProjectsError::Validation(
+            "Archived project items cannot be edited".to_owned(),
+        ));
+    }
+    if let Some(expected) = request.expected_updated_at {
+        if item.updated_at != expected {
+            return Err(ProjectsError::Validation(
+                "Project item changed since it was loaded. Refresh before editing.".to_owned(),
+            ));
+        }
+    }
+
+    if let (true, Some(repository_id)) = (is_linked_native_field(&field), item.repository_id) {
+        let permission = repository_permission_for_user(pool, repository_id, actor_user_id).await?;
+        if !permission.is_some_and(|permission| permission.role.can_write()) {
+            return Err(ProjectsError::Forbidden);
+        }
+    }
+
+    let normalized = normalize_project_field_value(&field, &request.value)?;
+    apply_project_field_value(pool, &item, &field, &normalized, actor_user_id).await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO project_item_events (project_id, project_item_id, actor_user_id, event_type, metadata)
+        VALUES ($1, $2, $3, 'project.item_field.update', $4)
+        "#,
+    )
+    .bind(project_id)
+    .bind(item_id)
+    .bind(actor_user_id)
+    .bind(json!({
+        "fieldId": field_id,
+        "fieldName": field.name,
+        "fieldType": field.field_type,
+        "value": normalized,
+    }))
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, 'project.item_field.update', 'project_item', $2, $3)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(item_id.to_string())
+    .bind(json!({
+        "projectId": project_id,
+        "fieldId": field_id,
+        "fieldName": field.name,
+        "itemType": item.item_type,
+    }))
+    .execute(pool)
+    .await?;
+
+    if let Some(repository_id) = item.repository_id {
+        sqlx::query(
+            r#"
+            INSERT INTO timeline_events (repository_id, issue_id, pull_request_id, actor_user_id, event_type, metadata)
+            VALUES ($1, $2, $3, $4, 'project_field_updated', $5)
+            "#,
+        )
+        .bind(repository_id)
+        .bind(item.issue_id)
+        .bind(item.pull_request_id)
+        .bind(actor_user_id)
+        .bind(json!({
+            "projectId": project_id,
+            "projectItemId": item_id,
+            "fieldId": field_id,
+            "fieldName": field.name,
+            "value": normalized,
+        }))
+        .execute(pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO notifications (user_id, repository_id, subject_type, subject_id, title, reason)
+            SELECT issues.author_user_id, $2, 'project_item', $3, $4, 'project_field_update'
+            FROM issues
+            WHERE issues.id = $1 AND issues.author_user_id <> $5
+            ON CONFLICT DO NOTHING
+            "#,
+        )
+        .bind(item.issue_id.or(item.pull_request_issue_id))
+        .bind(repository_id)
+        .bind(item_id)
+        .bind(format!("Project field {} was updated", field.name))
+        .bind(actor_user_id)
+        .execute(pool)
+        .await?;
+    }
+
+    project_workspace(
+        pool,
+        project_id,
+        Some(actor_user_id),
+        ProjectWorkspaceQuery {
+            view: None,
+            query: None,
+            sort: None,
+            group: None,
+            slice: None,
+            page: Some(1),
+            page_size: None,
+        },
+    )
+    .await
+}
+
 pub async fn organization_projects(
     pool: &PgPool,
     org: &str,
@@ -1353,6 +1499,37 @@ async fn workspace_fields(
         .collect())
 }
 
+async fn workspace_field(
+    pool: &PgPool,
+    project_id: Uuid,
+    field_id: Uuid,
+) -> Result<ProjectWorkspaceField, ProjectsError> {
+    let row = sqlx::query(
+        r#"
+        SELECT id, name, field_type, position, settings
+        FROM project_fields
+        WHERE project_id = $1 AND id = $2
+        "#,
+    )
+    .bind(project_id)
+    .bind(field_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| {
+        ProjectsError::InvalidFilter("field must reference a project field".to_owned())
+    })?;
+    let field_type: String = row.get("field_type");
+    Ok(ProjectWorkspaceField {
+        id: row.get("id"),
+        name: row.get("name"),
+        field_type: field_type.clone(),
+        position: i64::from(row.get::<i32, _>("position")),
+        settings: row.get("settings"),
+        hidden: false,
+        editable: !matches!(field_type.as_str(), "repository"),
+    })
+}
+
 fn normalize_workspace_filters(
     query: ProjectWorkspaceQuery<'_>,
     selected_view: &ProjectWorkspaceView,
@@ -1867,6 +2044,407 @@ fn display_field_value(value: &Value) -> String {
             .join(", "),
         Value::Object(_) => value.to_string(),
     }
+}
+
+#[derive(Debug, Clone)]
+struct ProjectWorkspaceEditItem {
+    id: Uuid,
+    item_type: String,
+    issue_id: Option<Uuid>,
+    pull_request_id: Option<Uuid>,
+    pull_request_issue_id: Option<Uuid>,
+    repository_id: Option<Uuid>,
+    archived_at: Option<DateTime<Utc>>,
+    updated_at: DateTime<Utc>,
+}
+
+async fn workspace_item_edit_target(
+    pool: &PgPool,
+    project_id: Uuid,
+    item_id: Uuid,
+) -> Result<ProjectWorkspaceEditItem, ProjectsError> {
+    let row = sqlx::query(
+        r#"
+        SELECT
+          project_items.id,
+          project_items.item_type,
+          project_items.issue_id,
+          project_items.pull_request_id,
+          pull_requests.issue_id AS pull_request_issue_id,
+          COALESCE(issues.repository_id, pull_issues.repository_id, pull_requests.base_repository_id) AS repository_id,
+          project_items.archived_at,
+          project_items.updated_at
+        FROM project_items
+        LEFT JOIN issues ON issues.id = project_items.issue_id
+        LEFT JOIN pull_requests ON pull_requests.id = project_items.pull_request_id
+        LEFT JOIN issues pull_issues ON pull_issues.id = pull_requests.issue_id
+        WHERE project_items.project_id = $1 AND project_items.id = $2
+        "#,
+    )
+    .bind(project_id)
+    .bind(item_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ProjectsError::NotFound)?;
+
+    Ok(ProjectWorkspaceEditItem {
+        id: row.get("id"),
+        item_type: row.get("item_type"),
+        issue_id: row.get("issue_id"),
+        pull_request_id: row.get("pull_request_id"),
+        pull_request_issue_id: row.get("pull_request_issue_id"),
+        repository_id: row.get("repository_id"),
+        archived_at: row.get("archived_at"),
+        updated_at: row.get("updated_at"),
+    })
+}
+
+fn is_linked_native_field(field: &ProjectWorkspaceField) -> bool {
+    matches!(
+        field.field_type.as_str(),
+        "title" | "status" | "assignees" | "labels" | "milestone"
+    )
+}
+
+fn normalize_project_field_value(
+    field: &ProjectWorkspaceField,
+    value: &Value,
+) -> Result<Value, ProjectsError> {
+    match field.field_type.as_str() {
+        "title" | "text" => {
+            let text = value
+                .as_str()
+                .ok_or_else(|| ProjectsError::Validation(format!("{} must be text", field.name)))?
+                .trim()
+                .to_owned();
+            if field.field_type == "title" && text.is_empty() {
+                return Err(ProjectsError::Validation(
+                    "Title cannot be blank".to_owned(),
+                ));
+            }
+            if text.len() > 1024 {
+                return Err(ProjectsError::Validation(format!(
+                    "{} must be 1024 characters or fewer",
+                    field.name
+                )));
+            }
+            Ok(json!(text))
+        }
+        "number" => {
+            let number = value.as_f64().ok_or_else(|| {
+                ProjectsError::Validation(format!("{} must be a number", field.name))
+            })?;
+            if !number.is_finite() {
+                return Err(ProjectsError::Validation(format!(
+                    "{} must be a finite number",
+                    field.name
+                )));
+            }
+            Ok(json!(number))
+        }
+        "date" => {
+            let date = value
+                .as_str()
+                .ok_or_else(|| ProjectsError::Validation(format!("{} must be a date", field.name)))?
+                .trim();
+            NaiveDate::parse_from_str(date, "%Y-%m-%d").map_err(|_| {
+                ProjectsError::Validation(format!("{} must use YYYY-MM-DD", field.name))
+            })?;
+            Ok(json!(date))
+        }
+        "status" | "single_select" | "iteration" | "milestone" => {
+            let text = value
+                .as_str()
+                .ok_or_else(|| ProjectsError::Validation(format!("{} must be text", field.name)))?
+                .trim()
+                .to_owned();
+            if text.is_empty() {
+                Ok(Value::Null)
+            } else {
+                validate_option_value(field, &text)?;
+                Ok(json!(text))
+            }
+        }
+        "assignees" | "labels" => {
+            let values = value.as_array().ok_or_else(|| {
+                ProjectsError::Validation(format!("{} must be a list", field.name))
+            })?;
+            let mut normalized = Vec::new();
+            for entry in values {
+                let text = entry
+                    .as_str()
+                    .ok_or_else(|| {
+                        ProjectsError::Validation(format!("{} values must be text", field.name))
+                    })?
+                    .trim()
+                    .trim_start_matches('@')
+                    .to_owned();
+                if !text.is_empty() && !normalized.contains(&text) {
+                    normalized.push(text);
+                }
+            }
+            Ok(json!(normalized))
+        }
+        "repository" => Err(ProjectsError::Validation(
+            "Repository fields cannot be edited inline".to_owned(),
+        )),
+        other => Err(ProjectsError::Validation(format!(
+            "{other} fields are not editable from the table workspace"
+        ))),
+    }
+}
+
+fn validate_option_value(field: &ProjectWorkspaceField, value: &str) -> Result<(), ProjectsError> {
+    let Some(options) = field.settings.get("options").and_then(Value::as_array) else {
+        return Ok(());
+    };
+    if options.iter().any(|option| {
+        option.as_str() == Some(value)
+            || option.get("name").and_then(Value::as_str) == Some(value)
+            || option.get("title").and_then(Value::as_str) == Some(value)
+    }) {
+        Ok(())
+    } else {
+        Err(ProjectsError::Validation(format!(
+            "{} must match a configured option",
+            field.name
+        )))
+    }
+}
+
+async fn apply_project_field_value(
+    pool: &PgPool,
+    item: &ProjectWorkspaceEditItem,
+    field: &ProjectWorkspaceField,
+    value: &Value,
+    actor_user_id: Uuid,
+) -> Result<(), ProjectsError> {
+    match field.field_type.as_str() {
+        "title" if item.item_type == "draft_issue" => {
+            sqlx::query("UPDATE project_items SET title = $2 WHERE id = $1")
+                .bind(item.id)
+                .bind(value.as_str().unwrap_or_default())
+                .execute(pool)
+                .await?;
+        }
+        "title" => {
+            update_linked_issue_title(pool, item, value.as_str().unwrap_or_default()).await?
+        }
+        "status" if item.issue_id.is_some() || item.pull_request_issue_id.is_some() => {
+            let state = value.as_str().unwrap_or("open");
+            if !matches!(state, "open" | "closed") {
+                return Err(ProjectsError::Validation(
+                    "Status must be open or closed for linked issues and pull requests".to_owned(),
+                ));
+            }
+            update_linked_issue_state(pool, item, state, actor_user_id).await?;
+        }
+        "labels" if item.issue_id.is_some() || item.pull_request_issue_id.is_some() => {
+            sync_linked_issue_labels(pool, item, value).await?;
+        }
+        "assignees" if item.issue_id.is_some() || item.pull_request_issue_id.is_some() => {
+            sync_linked_issue_assignees(pool, item, value, actor_user_id).await?;
+        }
+        "milestone" if item.issue_id.is_some() || item.pull_request_issue_id.is_some() => {
+            sync_linked_issue_milestone(pool, item, value).await?;
+        }
+        _ => {}
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO project_item_field_values (project_item_id, project_field_id, value, updated_by_user_id)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (project_item_id, project_field_id)
+        DO UPDATE SET value = EXCLUDED.value, updated_by_user_id = EXCLUDED.updated_by_user_id, updated_at = now()
+        "#,
+    )
+    .bind(item.id)
+    .bind(field.id)
+    .bind(value)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn update_linked_issue_title(
+    pool: &PgPool,
+    item: &ProjectWorkspaceEditItem,
+    title: &str,
+) -> Result<(), ProjectsError> {
+    let issue_id = item
+        .issue_id
+        .or(item.pull_request_issue_id)
+        .ok_or_else(|| {
+            ProjectsError::Validation("Linked issue metadata was not found".to_owned())
+        })?;
+    sqlx::query("UPDATE issues SET title = $2 WHERE id = $1")
+        .bind(issue_id)
+        .bind(title)
+        .execute(pool)
+        .await?;
+    if let Some(pull_request_id) = item.pull_request_id {
+        sqlx::query("UPDATE pull_requests SET title = $2 WHERE id = $1")
+            .bind(pull_request_id)
+            .bind(title)
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
+}
+
+async fn update_linked_issue_state(
+    pool: &PgPool,
+    item: &ProjectWorkspaceEditItem,
+    state: &str,
+    actor_user_id: Uuid,
+) -> Result<(), ProjectsError> {
+    let issue_id = item
+        .issue_id
+        .or(item.pull_request_issue_id)
+        .ok_or_else(|| {
+            ProjectsError::Validation("Linked issue metadata was not found".to_owned())
+        })?;
+    sqlx::query(
+        "UPDATE issues SET state = $2, closed_by_user_id = CASE WHEN $2 = 'closed' THEN $3 ELSE NULL END, closed_at = CASE WHEN $2 = 'closed' THEN now() ELSE NULL END WHERE id = $1",
+    )
+    .bind(issue_id)
+    .bind(state)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
+    if let Some(pull_request_id) = item.pull_request_id {
+        sqlx::query(
+            "UPDATE pull_requests SET state = $2, closed_at = CASE WHEN $2 = 'closed' THEN now() ELSE NULL END WHERE id = $1 AND state <> 'merged'",
+        )
+        .bind(pull_request_id)
+        .bind(state)
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
+async fn sync_linked_issue_labels(
+    pool: &PgPool,
+    item: &ProjectWorkspaceEditItem,
+    value: &Value,
+) -> Result<(), ProjectsError> {
+    let issue_id = item
+        .issue_id
+        .or(item.pull_request_issue_id)
+        .ok_or_else(|| {
+            ProjectsError::Validation("Linked issue metadata was not found".to_owned())
+        })?;
+    let repository_id = item.repository_id.ok_or_else(|| {
+        ProjectsError::Validation("Linked repository metadata was not found".to_owned())
+    })?;
+    sqlx::query("DELETE FROM issue_labels WHERE issue_id = $1")
+        .bind(issue_id)
+        .execute(pool)
+        .await?;
+    for name in value
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+    {
+        let label_id: Uuid = sqlx::query_scalar(
+            "SELECT id FROM labels WHERE repository_id = $1 AND lower(name) = lower($2)",
+        )
+        .bind(repository_id)
+        .bind(name)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| ProjectsError::Validation(format!("Label `{name}` was not found")))?;
+        sqlx::query(
+            "INSERT INTO issue_labels (issue_id, label_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        )
+        .bind(issue_id)
+        .bind(label_id)
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
+async fn sync_linked_issue_assignees(
+    pool: &PgPool,
+    item: &ProjectWorkspaceEditItem,
+    value: &Value,
+    actor_user_id: Uuid,
+) -> Result<(), ProjectsError> {
+    let issue_id = item
+        .issue_id
+        .or(item.pull_request_issue_id)
+        .ok_or_else(|| {
+            ProjectsError::Validation("Linked issue metadata was not found".to_owned())
+        })?;
+    sqlx::query("DELETE FROM issue_assignees WHERE issue_id = $1")
+        .bind(issue_id)
+        .execute(pool)
+        .await?;
+    for login in value
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+    {
+        let user_id: Uuid = sqlx::query_scalar(
+            "SELECT id FROM users WHERE lower(username) = lower($1) OR lower(email) = lower($1)",
+        )
+        .bind(login)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| ProjectsError::Validation(format!("User `{login}` was not found")))?;
+        sqlx::query("INSERT INTO issue_assignees (issue_id, user_id, assigned_by_user_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING")
+            .bind(issue_id)
+            .bind(user_id)
+            .bind(actor_user_id)
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
+}
+
+async fn sync_linked_issue_milestone(
+    pool: &PgPool,
+    item: &ProjectWorkspaceEditItem,
+    value: &Value,
+) -> Result<(), ProjectsError> {
+    let issue_id = item
+        .issue_id
+        .or(item.pull_request_issue_id)
+        .ok_or_else(|| {
+            ProjectsError::Validation("Linked issue metadata was not found".to_owned())
+        })?;
+    let repository_id = item.repository_id.ok_or_else(|| {
+        ProjectsError::Validation("Linked repository metadata was not found".to_owned())
+    })?;
+    let title = value.as_str().unwrap_or_default();
+    let milestone_id: Option<Uuid> = if title.is_empty() {
+        None
+    } else {
+        Some(
+            sqlx::query_scalar(
+                "SELECT id FROM milestones WHERE repository_id = $1 AND lower(title) = lower($2)",
+            )
+            .bind(repository_id)
+            .bind(title)
+            .fetch_optional(pool)
+            .await?
+            .ok_or_else(|| {
+                ProjectsError::Validation(format!("Milestone `{title}` was not found"))
+            })?,
+        )
+    };
+    sqlx::query("UPDATE issues SET milestone_id = $2 WHERE id = $1")
+        .bind(issue_id)
+        .bind(milestone_id)
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
 fn apply_workspace_filters(

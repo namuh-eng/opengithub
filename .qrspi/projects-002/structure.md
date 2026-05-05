@@ -59,7 +59,7 @@
 
 ## Phase 4: Inline Cell Editing - field edits sync to project items and linked resources
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire table cells to real permissioned edits. Authorized viewers can edit supported project field values inline; mapped fields update linked issue/PR metadata when applicable, draft issue fields update the draft item, and all successful edits create timeline/audit/notification records.
 

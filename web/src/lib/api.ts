@@ -331,6 +331,11 @@ export type ProjectViewStateRequest = {
   expectedUpdatedAt: string;
 };
 
+export type ProjectItemFieldValueRequest = {
+  value: unknown;
+  expectedUpdatedAt?: string | null;
+};
+
 export type CopyProjectRequest = {
   title: string;
   includeDraftIssues: boolean;
@@ -7404,6 +7409,44 @@ export async function updateProjectViewStateFromCookie(
           error: envelope?.error ?? {
             code: "project_view_state_failed",
             message: "Project view state could not be saved.",
+          },
+          status: envelope?.status ?? response.status,
+        } satisfies ApiErrorEnvelope,
+      },
+    );
+  }
+  return payload as ProjectWorkspace;
+}
+
+export async function updateProjectItemFieldFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  itemId: string,
+  fieldId: string,
+  request: ProjectItemFieldValueRequest,
+): Promise<ProjectWorkspace> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/projects/${encodeURIComponent(projectId)}/items/${encodeURIComponent(itemId)}/fields/${encodeURIComponent(fieldId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Project item field could not be saved.",
+      {
+        cause: {
+          error: envelope?.error ?? {
+            code: "project_item_field_failed",
+            message: "Project item field could not be saved.",
           },
           status: envelope?.status ?? response.status,
         } satisfies ApiErrorEnvelope,
