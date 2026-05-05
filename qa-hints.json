@@ -6541,5 +6541,23 @@
       "Phase 2 should verify the Editorial moderator sidebar dialogs/menus against these APIs and save ralph/screenshots/build/discussions-005-phase2-moderator-sidebar.jpg when seeded browser credentials are available.",
       "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures."
     ]
+  },
+  {
+    "feature_id": "discussions-005",
+    "tests_written": [
+      "Completed Phase 2 Editorial Moderator Sidebar without marking discussions-005 build_pass=true.",
+      "Extended the discussion detail read contract with moderation state: global/category pins, custom pinned copy, lock reaction policy, and closed reason.",
+      "Added same-origin cookie-forwarding routes and typed API helpers for pin/update/unpin, lock/unlock, and recategorize moderation mutations.",
+      "Updated RepositoryDiscussionDetailPage with an Editorial moderator controls sidebar card for pin/edit/unpin, lock/unlock with Allow reactions, close/reopen reasons, and category changes; reader state is visibly unavailable instead of inert.",
+      "Extended focused Vitest coverage for moderator rendering, pin/lock/close/category payloads, server error display, reader unavailable state, no dead hrefs, no inert handlers, and banned GitHub visual values.",
+      "Extended the repository-discussions Playwright smoke with moderator sidebar interactions and screenshot target ralph/screenshots/build/discussions-005-phase2-moderator-sidebar.jpg when seeded browser credentials are available."
+    ],
+    "needs_deeper_qa": [
+      "make test-e2e produced no output for over 180 seconds while Playwright/dev-server children were active, so it was terminated and child processes were cleaned up.",
+      "A direct Playwright retry reached the browser runner; anonymous setup passed, then dashboard_e2e_seed failed because localhost:55432 rejected the Postgres password for user postgres before reaching the moderation flow.",
+      "Rerun web/tests/e2e/repository-discussions.spec.ts against a clean migrated credentialed TEST_DATABASE_URL to verify pin/edit/unpin, category pin, lock/unlock, close/reopen, recategorize, and save ralph/screenshots/build/discussions-005-phase2-moderator-sidebar.jpg.",
+      "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Phase 3 still needs transfer and delete destructive discussion management with tombstones."
+    ]
   }
 ]

@@ -1,5 +1,11 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RepositoryDiscussionDetailPage } from "@/components/RepositoryDiscussionDetailPage";
 import type {
   RepositoryDiscussionDetailView,
@@ -205,6 +211,12 @@ function discussionDetail(
       subscribed: true,
       canChange: false,
     },
+    moderation: {
+      globalPin: null,
+      categoryPin: null,
+      lockAllowsReactions: true,
+      closedReason: null,
+    },
     sidebar: {
       category,
       labels,
@@ -253,6 +265,10 @@ function discussionDetail(
 }
 
 describe("RepositoryDiscussionDetailPage", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("renders detail metadata, answer summary, timeline, replies, and sidebar", () => {
     render(
       <RepositoryDiscussionDetailPage
@@ -330,12 +346,158 @@ describe("RepositoryDiscussionDetailPage", () => {
     );
 
     expect(screen.getByRole("button", { name: "Unmark answer" })).toBeVisible();
-    expect(
-      screen.getByRole("button", { name: "Close as resolved" }),
-    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "resolved" })).toBeVisible();
     expect(
       screen.getByRole("combobox", { name: "Change discussion category" }),
     ).toBeVisible();
+    expect(
+      screen.getByRole("combobox", { name: "Moderation category" }),
+    ).toBeVisible();
     expect(screen.getByLabelText("imports")).toBeVisible();
+  });
+
+  it("submits pin, lock, close, and category moderation payloads", async () => {
+    const nextDetail = discussionDetail({
+      moderation: {
+        globalPin: {
+          target: "global",
+          categorySlug: null,
+          customTitle: "Pinned import guidance",
+          customBody: "Read this before changing import previews.",
+          position: 1,
+        },
+        categoryPin: null,
+        lockAllowsReactions: false,
+        closedReason: "resolved",
+      },
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue(nextDetail),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryDiscussionDetailPage
+        detail={discussionDetail()}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Pin discussion" }));
+    fireEvent.change(screen.getByLabelText("Custom title"), {
+      target: { value: "Pinned import guidance" },
+    });
+    fireEvent.change(screen.getByLabelText("Pinned note"), {
+      target: { value: "Read this before changing import previews." },
+    });
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Pin discussion" })).getByRole(
+        "button",
+        { name: "Pin discussion" },
+      ),
+    );
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/namuh-eng/opengithub/discussions/42/pin",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({
+            target: "global",
+            title: "Pinned import guidance",
+            body: "Read this before changing import previews.",
+          }),
+        }),
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Lock conversation" }));
+    fireEvent.click(screen.getByLabelText("Allow reactions while locked"));
+    fireEvent.click(screen.getByRole("button", { name: "Lock" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/namuh-eng/opengithub/discussions/42/lock",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ allowReactions: false }),
+        }),
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "resolved" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/namuh-eng/opengithub/discussions/42/state",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ state: "closed", reason: "resolved" }),
+        }),
+      ),
+    );
+
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Moderation category" }),
+      {
+        target: { value: "ideas" },
+      },
+    );
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/namuh-eng/opengithub/discussions/42/category",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ categorySlug: "ideas" }),
+        }),
+      ),
+    );
+  });
+
+  it("shows server moderation errors and reader unavailable state", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      json: vi.fn().mockResolvedValue({
+        error: { message: "at most four global discussion pins are allowed" },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryDiscussionDetailPage
+        detail={discussionDetail()}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Pin discussion" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Pin discussion" })).getByRole(
+        "button",
+        { name: "Pin discussion" },
+      ),
+    );
+    expect(
+      await screen.findByText(
+        "at most four global discussion pins are allowed",
+      ),
+    ).toBeVisible();
+
+    render(
+      <RepositoryDiscussionDetailPage
+        detail={discussionDetail({
+          viewer: {
+            ...discussionDetail().viewer,
+            permission: "read",
+            canMarkAnswer: false,
+            canModerate: false,
+          },
+        })}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(
+      screen.getByText(/Triage, write, and admin members can moderate/),
+    ).toBeVisible();
   });
 });

@@ -421,21 +421,327 @@ function ReplyComposer({
   );
 }
 
+function RepositoryDiscussionModerationPanel({
+  detail,
+  onCategory,
+  onLock,
+  onPin,
+  onState,
+}: {
+  detail: RepositoryDiscussionDetailView;
+  onCategory: (categorySlug: string) => void;
+  onLock: (locked: boolean, allowReactions?: boolean) => void;
+  onPin: (
+    method: "PUT" | "PATCH" | "DELETE",
+    request?: Record<string, unknown>,
+  ) => void;
+  onState: (state: "open" | "closed", reason?: string) => void;
+}) {
+  const [pinOpen, setPinOpen] = useState(false);
+  const [pinTarget, setPinTarget] = useState<"global" | "category">("global");
+  const [pinTitle, setPinTitle] = useState(
+    detail.moderation.globalPin?.customTitle ?? "",
+  );
+  const [pinBody, setPinBody] = useState(
+    detail.moderation.globalPin?.customBody ?? "",
+  );
+  const [lockOpen, setLockOpen] = useState(false);
+  const [allowReactions, setAllowReactions] = useState(
+    detail.moderation.lockAllowsReactions,
+  );
+  const pinned = detail.moderation.globalPin ?? detail.moderation.categoryPin;
+  const canCategoryPin = !detail.poll;
+
+  return (
+    <section aria-labelledby="discussion-moderation-title" className="card p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="t-label" id="discussion-moderation-title">
+            Moderator controls
+          </h2>
+          <p className="t-xs mt-2" style={{ color: "var(--ink-3)" }}>
+            Changes are recorded in the discussion timeline and audit log.
+          </p>
+        </div>
+        {detail.discussion.locked ? (
+          <span className="chip warn">Locked</span>
+        ) : (
+          <span className="chip soft">Unlocked</span>
+        )}
+      </div>
+
+      <div className="mt-4 grid gap-2">
+        <button
+          className="btn sm"
+          onClick={() => setPinOpen(true)}
+          type="button"
+        >
+          {pinned ? "Edit pinned discussion" : "Pin discussion"}
+        </button>
+        {pinned ? (
+          <button
+            className="btn ghost sm"
+            onClick={() => onPin("DELETE")}
+            type="button"
+          >
+            Unpin
+          </button>
+        ) : null}
+        <button
+          className="btn sm"
+          onClick={() => setLockOpen(true)}
+          type="button"
+        >
+          {detail.discussion.locked
+            ? "Unlock conversation"
+            : "Lock conversation"}
+        </button>
+        {detail.discussion.state === "closed" ? (
+          <button
+            className="btn accent sm"
+            onClick={() => onState("open")}
+            type="button"
+          >
+            Reopen discussion
+          </button>
+        ) : (
+          <div className="grid gap-2">
+            <span className="t-label">Close discussion</span>
+            <div className="flex flex-wrap gap-2">
+              {["resolved", "duplicate", "outdated", "off-topic"].map(
+                (reason) => (
+                  <button
+                    className="btn sm"
+                    key={reason}
+                    onClick={() => onState("closed", reason)}
+                    type="button"
+                  >
+                    {reason}
+                  </button>
+                ),
+              )}
+            </div>
+          </div>
+        )}
+        <label className="grid gap-2 t-sm">
+          <span className="t-label">Category</span>
+          <select
+            aria-label="Moderation category"
+            className="input"
+            onChange={(event) => onCategory(event.target.value)}
+            value={detail.category.slug}
+          >
+            {detail.sidebar.categoryOptions.map((category) => (
+              <option key={category.id} value={category.slug}>
+                {category.emoji} {category.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {pinOpen ? (
+        <div
+          aria-labelledby="discussion-pin-dialog-title"
+          aria-modal="true"
+          className="fixed inset-0 z-50 grid place-items-center p-4"
+          role="dialog"
+          style={{
+            background: "color-mix(in oklab, var(--ink-1) 28%, transparent)",
+          }}
+        >
+          <form
+            className="card grid w-full max-w-lg gap-4 p-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onPin(pinned ? "PATCH" : "PUT", {
+                target: pinTarget,
+                categorySlug:
+                  pinTarget === "category" ? detail.category.slug : undefined,
+                title: pinTitle,
+                body: pinBody,
+              });
+              setPinOpen(false);
+            }}
+          >
+            <div>
+              <p className="t-label">Pinned discussion</p>
+              <h3 className="t-h2 mt-1" id="discussion-pin-dialog-title">
+                {pinned ? "Edit pinned discussion" : "Pin discussion"}
+              </h3>
+            </div>
+            <fieldset className="grid gap-2 border-0 p-0">
+              <legend className="t-label">Target</legend>
+              <label className="flex items-center gap-2 t-sm">
+                <input
+                  checked={pinTarget === "global"}
+                  name="pin-target"
+                  onChange={() => setPinTarget("global")}
+                  type="radio"
+                />
+                Repository discussions
+              </label>
+              <label className="flex items-center gap-2 t-sm">
+                <input
+                  checked={pinTarget === "category"}
+                  disabled={!canCategoryPin}
+                  name="pin-target"
+                  onChange={() => setPinTarget("category")}
+                  type="radio"
+                />
+                Current category
+              </label>
+              {!canCategoryPin ? (
+                <p className="t-xs" style={{ color: "var(--ink-3)" }}>
+                  Poll discussions cannot be category-pinned in this phase.
+                </p>
+              ) : null}
+            </fieldset>
+            <label className="grid gap-2 t-sm">
+              <span className="t-label">Custom title</span>
+              <input
+                className="input"
+                maxLength={120}
+                onChange={(event) => setPinTitle(event.target.value)}
+                placeholder={detail.discussion.title}
+                value={pinTitle}
+              />
+            </label>
+            <label className="grid gap-2 t-sm">
+              <span className="t-label">Pinned note</span>
+              <textarea
+                className="input min-h-24"
+                maxLength={500}
+                onChange={(event) => setPinBody(event.target.value)}
+                placeholder="Explain why this discussion is pinned."
+                value={pinBody}
+              />
+            </label>
+            <div className="card p-3">
+              <p className="t-label">Preview</p>
+              <p className="t-sm mt-2 break-words">
+                {pinTitle.trim() || detail.discussion.title}
+              </p>
+              <p
+                className="t-xs mt-1 break-words"
+                style={{ color: "var(--ink-3)" }}
+              >
+                {pinBody.trim() || "No pinned note."}
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                className="btn sm"
+                onClick={() => setPinOpen(false)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button className="btn accent sm" type="submit">
+                {pinned ? "Save pinned copy" : "Pin discussion"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {lockOpen ? (
+        <div
+          aria-labelledby="discussion-lock-dialog-title"
+          aria-modal="true"
+          className="fixed inset-0 z-50 grid place-items-center p-4"
+          role="dialog"
+          style={{
+            background: "color-mix(in oklab, var(--ink-1) 28%, transparent)",
+          }}
+        >
+          <form
+            className="card grid w-full max-w-md gap-4 p-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onLock(!detail.discussion.locked, allowReactions);
+              setLockOpen(false);
+            }}
+          >
+            <div>
+              <p className="t-label">Conversation lock</p>
+              <h3 className="t-h2 mt-1" id="discussion-lock-dialog-title">
+                {detail.discussion.locked
+                  ? "Unlock conversation"
+                  : "Lock conversation"}
+              </h3>
+            </div>
+            {!detail.discussion.locked ? (
+              <label className="flex items-center gap-2 t-sm">
+                <input
+                  checked={allowReactions}
+                  onChange={(event) => setAllowReactions(event.target.checked)}
+                  type="checkbox"
+                />
+                Allow reactions while locked
+              </label>
+            ) : null}
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                className="btn sm"
+                onClick={() => setLockOpen(false)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button className="btn accent sm" type="submit">
+                {detail.discussion.locked ? "Unlock" : "Lock"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function Sidebar({
   detail,
   subscription,
   onSubscription,
   onMetadata,
+  onModerationCategory,
+  onModerationLock,
+  onModerationPin,
+  onModerationState,
 }: {
   detail: RepositoryDiscussionDetailView;
   subscription: DiscussionSubscriptionState;
   onSubscription: (subscribed: boolean) => void;
   onMetadata: (request: { categorySlug?: string; labelIds?: string[] }) => void;
+  onModerationCategory: (categorySlug: string) => void;
+  onModerationLock: (locked: boolean, allowReactions?: boolean) => void;
+  onModerationPin: (
+    method: "PUT" | "PATCH" | "DELETE",
+    request?: Record<string, unknown>,
+  ) => void;
+  onModerationState: (state: "open" | "closed", reason?: string) => void;
 }) {
   const canModerate = detail.viewer.authenticated && detail.viewer.canModerate;
   const selectedLabelIds = new Set(detail.labels.map((label) => label.id));
   return (
     <aside className="space-y-5">
+      {canModerate ? (
+        <RepositoryDiscussionModerationPanel
+          detail={detail}
+          onCategory={onModerationCategory}
+          onLock={onModerationLock}
+          onPin={onModerationPin}
+          onState={onModerationState}
+        />
+      ) : (
+        <section className="card p-4">
+          <h2 className="t-label">Moderator controls</h2>
+          <p className="t-sm mt-2" style={{ color: "var(--ink-3)" }}>
+            Triage, write, and admin members can moderate this discussion.
+          </p>
+        </section>
+      )}
       <section className="card p-4">
         <h2 className="t-label">Notifications</h2>
         <p className="t-sm mt-2">
@@ -553,8 +859,6 @@ export function RepositoryDiscussionDetailPage({
     currentDetail.viewer.authenticated && currentDetail.viewer.canReact;
   const canComment =
     currentDetail.viewer.authenticated && currentDetail.viewer.canComment;
-  const canModerate =
-    currentDetail.viewer.authenticated && currentDetail.viewer.canModerate;
 
   async function mutateDetail(path: string, body: string) {
     setMessage(null);
@@ -668,6 +972,40 @@ export function RepositoryDiscussionDetailPage({
     );
   }
 
+  function updatePin(
+    method: "PUT" | "PATCH" | "DELETE",
+    request: Record<string, unknown> = {},
+  ) {
+    void mutateModeration(
+      `${detailHref}/pin`,
+      method,
+      request,
+      method === "DELETE"
+        ? "Discussion unpinned."
+        : method === "PATCH"
+          ? "Pinned discussion updated."
+          : "Discussion pinned.",
+    );
+  }
+
+  function updateLock(locked: boolean, allowReactions = true) {
+    void mutateModeration(
+      `${detailHref}/lock`,
+      locked ? "PUT" : "DELETE",
+      { allowReactions },
+      locked ? "Discussion locked." : "Discussion unlocked.",
+    );
+  }
+
+  function updateCategory(categorySlug: string) {
+    void mutateModeration(
+      `${detailHref}/category`,
+      "PATCH",
+      { categorySlug },
+      "Discussion category changed.",
+    );
+  }
+
   function updateMetadata(request: {
     categorySlug?: string;
     labelIds?: string[];
@@ -731,35 +1069,6 @@ export function RepositoryDiscussionDetailPage({
                 <a href={currentDetail.answer.href}>View full answer</a>
               </p>
             </div>
-          ) : null}
-          {canModerate ? (
-            <section className="card p-4" aria-label="Discussion moderation">
-              <h2 className="t-label">Moderation</h2>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {currentDetail.discussion.state === "closed" ? (
-                  <button
-                    className="btn accent sm"
-                    onClick={() => updateState("open")}
-                    type="button"
-                  >
-                    Reopen discussion
-                  </button>
-                ) : (
-                  ["resolved", "duplicate", "outdated", "off-topic"].map(
-                    (reason) => (
-                      <button
-                        className="btn sm"
-                        key={reason}
-                        onClick={() => updateState("closed", reason)}
-                        type="button"
-                      >
-                        Close as {reason}
-                      </button>
-                    ),
-                  )
-                )}
-              </div>
-            </section>
           ) : null}
         </section>
 
@@ -882,6 +1191,10 @@ export function RepositoryDiscussionDetailPage({
       <Sidebar
         detail={currentDetail}
         onMetadata={updateMetadata}
+        onModerationCategory={updateCategory}
+        onModerationLock={updateLock}
+        onModerationPin={updatePin}
+        onModerationState={updateState}
         onSubscription={toggleSubscription}
         subscription={subscription}
       />

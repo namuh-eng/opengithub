@@ -28,7 +28,7 @@
 
 ## Phase 2: Editorial Moderator Sidebar - pinning, locking, close, and category controls
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Render the maintainer-facing discussion sidebar and action menus on `/{owner}/{repo}/discussions/{number}` using the Phase 1 APIs. Every button in the sidebar/action menu should either perform the real mutation or be visibly unavailable with a concrete reason.
 

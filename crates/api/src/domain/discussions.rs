@@ -209,6 +209,7 @@ pub struct RepositoryDiscussionDetailView {
     pub answer: Option<DiscussionAnswerSummary>,
     pub reactions: Vec<DiscussionReactionSummary>,
     pub subscription: DiscussionSubscriptionState,
+    pub moderation: DiscussionModerationView,
     pub sidebar: DiscussionSidebarView,
     pub timeline: Vec<DiscussionTimelineItem>,
     pub sort: String,
@@ -216,6 +217,25 @@ pub struct RepositoryDiscussionDetailView {
     pub page_size: i64,
     pub total_comments: i64,
     pub has_next_page: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionModerationView {
+    pub global_pin: Option<DiscussionPinView>,
+    pub category_pin: Option<DiscussionPinView>,
+    pub lock_allows_reactions: bool,
+    pub closed_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionPinView {
+    pub target: String,
+    pub category_slug: Option<String>,
+    pub custom_title: Option<String>,
+    pub custom_body: Option<String>,
+    pub position: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1841,6 +1861,7 @@ pub async fn repository_discussion_detail_for_actor_by_owner_name(
         r#"
         SELECT discussions.id, discussions.number, discussions.title, discussions.body,
                discussions.state, discussions.answered, discussions.locked,
+               discussions.lock_allows_reactions, discussions.closed_reason,
                discussions.comments_count, discussions.votes_count, discussions.created_at,
                discussions.updated_at, discussions.last_activity_at, discussions.answer_comment_id,
                discussion_categories.id AS category_id, discussion_categories.slug AS category_slug,
@@ -1930,6 +1951,7 @@ pub async fn repository_discussion_detail_for_actor_by_owner_name(
     let locked: bool = row.try_get("locked")?;
     let can_comment = policy_enabled && !repository.is_archived && !locked;
     let body_markdown: String = row.try_get("body")?;
+    let moderation = load_discussion_moderation_view(pool, discussion_id).await?;
 
     Ok(Some(RepositoryDiscussionDetailView {
         repository: discussion_repository_summary(&repository),
@@ -1976,6 +1998,11 @@ pub async fn repository_discussion_detail_for_actor_by_owner_name(
         answer,
         reactions,
         subscription,
+        moderation: DiscussionModerationView {
+            lock_allows_reactions: row.try_get("lock_allows_reactions")?,
+            closed_reason: row.try_get("closed_reason")?,
+            ..moderation
+        },
         sidebar: DiscussionSidebarView {
             category,
             labels,
@@ -5570,6 +5597,51 @@ async fn load_discussion_answer_summary(
         })
     })
     .transpose()
+}
+
+async fn load_discussion_moderation_view(
+    pool: &PgPool,
+    discussion_id: Uuid,
+) -> Result<DiscussionModerationView, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT discussion_pins.pin_scope, discussion_pins.custom_title,
+               discussion_pins.custom_body, discussion_pins.position,
+               discussion_categories.slug AS category_slug
+        FROM discussion_pins
+        LEFT JOIN discussion_categories ON discussion_categories.id = discussion_pins.category_id
+        WHERE discussion_pins.discussion_id = $1
+        ORDER BY discussion_pins.pin_scope ASC
+        "#,
+    )
+    .bind(discussion_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut global_pin = None;
+    let mut category_pin = None;
+    for row in rows {
+        let target: String = row.try_get("pin_scope")?;
+        let pin = DiscussionPinView {
+            target: target.clone(),
+            category_slug: row.try_get("category_slug")?,
+            custom_title: row.try_get("custom_title")?,
+            custom_body: row.try_get("custom_body")?,
+            position: row.try_get("position")?,
+        };
+        if target == "category" {
+            category_pin = Some(pin);
+        } else {
+            global_pin = Some(pin);
+        }
+    }
+
+    Ok(DiscussionModerationView {
+        global_pin,
+        category_pin,
+        lock_allows_reactions: true,
+        closed_reason: None,
+    })
 }
 
 fn merge_discussion_timeline(

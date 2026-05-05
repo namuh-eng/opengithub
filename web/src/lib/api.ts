@@ -4692,6 +4692,21 @@ export type DiscussionSidebarView = {
   events: DiscussionEventView[];
 };
 
+export type DiscussionPinView = {
+  target: "global" | "category" | string;
+  categorySlug: string | null;
+  customTitle: string | null;
+  customBody: string | null;
+  position: number;
+};
+
+export type DiscussionModerationView = {
+  globalPin: DiscussionPinView | null;
+  categoryPin: DiscussionPinView | null;
+  lockAllowsReactions: boolean;
+  closedReason: string | null;
+};
+
 export type RepositoryDiscussionDetailView = {
   repository: DiscussionRepositorySummary;
   viewer: DiscussionDetailViewer;
@@ -4707,6 +4722,7 @@ export type RepositoryDiscussionDetailView = {
   answer: DiscussionAnswerSummary | null;
   reactions: DiscussionReactionSummary[];
   subscription: DiscussionSubscriptionState;
+  moderation: DiscussionModerationView;
   sidebar: DiscussionSidebarView;
   timeline: DiscussionTimelineItem[];
   sort: "oldest" | "newest" | "top" | string;
@@ -14656,6 +14672,166 @@ export async function updateRepositoryDiscussionStateFromCookie(
     const envelope = payload as ApiErrorEnvelope | null;
     throw new Error(
       envelope?.error.message ?? "Discussion state could not be updated.",
+      { cause: envelope },
+    );
+  }
+
+  return payload as RepositoryDiscussionDetailView;
+}
+
+export async function pinRepositoryDiscussionFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  discussionNumber: number | string,
+  request: {
+    target: "global" | "category";
+    categorySlug?: string;
+    title?: string;
+    body?: string;
+  },
+): Promise<RepositoryDiscussionDetailView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/${encodeURIComponent(String(discussionNumber))}/pin`,
+    {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(envelope?.error.message ?? "Discussion pin failed.", {
+      cause: envelope,
+    });
+  }
+
+  return payload as RepositoryDiscussionDetailView;
+}
+
+export async function updateRepositoryDiscussionPinFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  discussionNumber: number | string,
+  request: { title?: string; body?: string },
+): Promise<RepositoryDiscussionDetailView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/${encodeURIComponent(String(discussionNumber))}/pin`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Discussion pin update failed.",
+      {
+        cause: envelope,
+      },
+    );
+  }
+
+  return payload as RepositoryDiscussionDetailView;
+}
+
+export async function unpinRepositoryDiscussionFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  discussionNumber: number | string,
+): Promise<RepositoryDiscussionDetailView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/${encodeURIComponent(String(discussionNumber))}/pin`,
+    {
+      method: "DELETE",
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(envelope?.error.message ?? "Discussion unpin failed.", {
+      cause: envelope,
+    });
+  }
+
+  return payload as RepositoryDiscussionDetailView;
+}
+
+export async function setRepositoryDiscussionLockFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  discussionNumber: number | string,
+  locked: boolean,
+  request: { allowReactions?: boolean } = {},
+): Promise<RepositoryDiscussionDetailView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/${encodeURIComponent(String(discussionNumber))}/lock`,
+    {
+      method: locked ? "PUT" : "DELETE",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(envelope?.error.message ?? "Discussion lock failed.", {
+      cause: envelope,
+    });
+  }
+
+  return payload as RepositoryDiscussionDetailView;
+}
+
+export async function recategorizeRepositoryDiscussionFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  discussionNumber: number | string,
+  request: { categorySlug: string },
+): Promise<RepositoryDiscussionDetailView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/${encodeURIComponent(String(discussionNumber))}/category`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Discussion category could not be changed.",
       { cause: envelope },
     );
   }

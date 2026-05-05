@@ -339,6 +339,42 @@ test("repository discussions list filters, rows, category rail, and mobile layou
   ).toBeVisible();
   await page.getByRole("button", { name: /\+1/ }).first().click();
   await page.getByRole("button", { name: /Subscribe|Unsubscribe/ }).click();
+  await expect(
+    page.getByRole("heading", { name: "Moderator controls" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Edit pinned discussion" }).click();
+  await page.getByLabel("Custom title").fill(`Pinned import note ${suffix}`);
+  await page
+    .getByLabel("Pinned note")
+    .fill(
+      "Maintainers want contributors to read this before filing duplicates.",
+    );
+  await page.getByRole("button", { name: "Save pinned copy" }).click();
+  await expect(page.getByText("Pinned discussion updated.")).toBeVisible();
+  await page.getByRole("button", { name: "Unpin" }).click();
+  await expect(page.getByText("Discussion unpinned.")).toBeVisible();
+  await page.getByRole("button", { name: "Pin discussion" }).click();
+  await page.getByLabel("Current category").check();
+  await page.getByLabel("Custom title").fill(`Category pin ${suffix}`);
+  await page.getByRole("button", { name: "Pin discussion" }).last().click();
+  await expect(page.getByText("Discussion pinned.")).toBeVisible();
+  await page.getByRole("button", { name: "Lock conversation" }).click();
+  await page.getByLabel("Allow reactions while locked").uncheck();
+  await page.getByRole("button", { name: "Lock" }).click();
+  await expect(page.getByText("Discussion locked.")).toBeVisible();
+  await page.getByRole("button", { name: "Unlock conversation" }).click();
+  await page.getByRole("button", { name: "Unlock" }).click();
+  await expect(page.getByText("Discussion unlocked.")).toBeVisible();
+  await page.getByRole("button", { name: "resolved" }).click();
+  await expect(page.getByText("Discussion closed.")).toBeVisible();
+  await page.getByRole("button", { name: "Reopen discussion" }).click();
+  await expect(page.getByText("Discussion reopened.")).toBeVisible();
+  await page.getByLabel("Moderation category").selectOption("ideas");
+  await expect(page.getByText("Discussion category changed.")).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/discussions-005-phase2-moderator-sidebar.jpg",
+  });
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
