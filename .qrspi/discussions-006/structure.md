@@ -62,7 +62,7 @@
 
 ## Phase 4: Poll Constraints, Comments, Reactions, and Moderation Compatibility
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish the poll-specific rules that cross existing discussion systems. Poll discussions should keep comments/replies/reactions/subscriptions working, reject moves between poll and non-poll categories, and expose clear moderator/reader states without corrupting poll votes.
 

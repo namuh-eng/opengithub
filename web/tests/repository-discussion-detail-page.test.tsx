@@ -507,7 +507,9 @@ describe("RepositoryDiscussionDetailPage", () => {
   });
 
   it("submits pin, lock, close, and category moderation payloads", async () => {
+    const normalDetail = discussionDetail({ poll: null });
     const nextDetail = discussionDetail({
+      poll: null,
       moderation: {
         globalPin: {
           target: "global",
@@ -529,7 +531,7 @@ describe("RepositoryDiscussionDetailPage", () => {
 
     render(
       <RepositoryDiscussionDetailPage
-        detail={discussionDetail()}
+        detail={normalDetail}
         repository={repositoryOverview()}
       />,
     );
@@ -652,6 +654,7 @@ describe("RepositoryDiscussionDetailPage", () => {
   });
 
   it("loads transfer targets and submits transfer and delete confirmations", async () => {
+    const normalDetail = discussionDetail({ poll: null });
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({
@@ -703,7 +706,7 @@ describe("RepositoryDiscussionDetailPage", () => {
 
     render(
       <RepositoryDiscussionDetailPage
-        detail={discussionDetail()}
+        detail={normalDetail}
         repository={repositoryOverview()}
       />,
     );
@@ -762,5 +765,88 @@ describe("RepositoryDiscussionDetailPage", () => {
       ),
     );
     expect(pushMock).toHaveBeenCalledWith("/namuh-eng/opengithub/discussions");
+  });
+
+  it("keeps poll discussions in poll-compatible categories", async () => {
+    const pollCategory = {
+      id: "cat-polls",
+      slug: "polls",
+      name: "Polls",
+      emoji: "%",
+      description: "Team polls.",
+      count: 2,
+      openCount: 2,
+      href: "/namuh-eng/opengithub/discussions/categories/polls",
+      active: true,
+      acceptsAnswers: false,
+      isPoll: true,
+      formHref: "/namuh-eng/opengithub/discussions/new?category=polls",
+    };
+    const normalCategory = {
+      ...discussionDetail().sidebar.categoryOptions[0],
+      id: "cat-general",
+      slug: "general",
+      name: "General",
+      isPoll: false,
+      formHref: "/namuh-eng/opengithub/discussions/new?category=general",
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        currentRepository: discussionDetail().repository,
+        discussionNumber: 42,
+        targets: [
+          {
+            repositoryId: "repo-2",
+            owner: "namuh-eng",
+            name: "runtime",
+            visibility: "private",
+            href: "/namuh-eng/runtime",
+            discussionsHref: "/namuh-eng/runtime/discussions",
+            categoryOptions: [normalCategory, pollCategory],
+          },
+        ],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryDiscussionDetailPage
+        detail={discussionDetail({
+          category: pollCategory,
+          sidebar: {
+            ...discussionDetail().sidebar,
+            category: pollCategory,
+            categoryOptions: [normalCategory, pollCategory],
+          },
+        })}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    const changeCategory = screen.getByRole("combobox", {
+      name: "Change discussion category",
+    });
+    expect(within(changeCategory).getByText("% Polls")).toBeVisible();
+    expect(within(changeCategory).queryByText("General")).toBeNull();
+    expect(
+      screen.getAllByText("Poll discussions must stay in poll categories.")
+        .length,
+    ).toBeGreaterThan(0);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Transfer discussion" }),
+    );
+    fireEvent.change(
+      await screen.findByRole("combobox", {
+        name: "Transfer destination repository",
+      }),
+      { target: { value: "repo-2" } },
+    );
+    const transferCategory = screen.getByRole("combobox", {
+      name: "Transfer destination category",
+    });
+    expect(within(transferCategory).getByText("% Polls")).toBeVisible();
+    expect(within(transferCategory).queryByText("General")).toBeNull();
   });
 });

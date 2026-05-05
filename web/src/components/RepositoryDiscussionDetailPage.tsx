@@ -7,6 +7,7 @@ import { MarkdownBody } from "@/components/MarkdownBody";
 import { RepositoryShell } from "@/components/RepositoryShell";
 import type {
   DiscussionAuthorSummary,
+  DiscussionCategoryChoice,
   DiscussionCommentView,
   DiscussionEventView,
   DiscussionPollView,
@@ -60,6 +61,20 @@ function relativeTime(value: string) {
   const months = Math.floor(days / 30);
   if (months < 12) return `${months}mo ago`;
   return `${Math.floor(months / 12)}y ago`;
+}
+
+function pollCompatibleCategories(
+  detail: RepositoryDiscussionDetailView,
+  categories: DiscussionCategoryChoice[],
+) {
+  const isPollDiscussion = Boolean(detail.poll);
+  return categories.filter((category) => category.isPoll === isPollDiscussion);
+}
+
+function pollCategoryConstraintText(detail: RepositoryDiscussionDetailView) {
+  return detail.poll
+    ? "Poll discussions must stay in poll categories."
+    : "Normal discussions cannot move into poll categories.";
 }
 
 function Avatar({
@@ -639,6 +654,12 @@ function RepositoryDiscussionModerationPanel({
   );
   const pinned = detail.moderation.globalPin ?? detail.moderation.categoryPin;
   const canCategoryPin = !detail.poll;
+  const compatibleCategories = pollCompatibleCategories(
+    detail,
+    detail.sidebar.categoryOptions,
+  );
+  const hiddenCategoryCount =
+    detail.sidebar.categoryOptions.length - compatibleCategories.length;
 
   return (
     <section aria-labelledby="discussion-moderation-title" className="card p-4">
@@ -719,12 +740,17 @@ function RepositoryDiscussionModerationPanel({
             onChange={(event) => onCategory(event.target.value)}
             value={detail.category.slug}
           >
-            {detail.sidebar.categoryOptions.map((category) => (
+            {compatibleCategories.map((category) => (
               <option key={category.id} value={category.slug}>
                 {category.emoji} {category.name}
               </option>
             ))}
           </select>
+          {hiddenCategoryCount > 0 ? (
+            <span className="chip warn w-fit">
+              {pollCategoryConstraintText(detail)}
+            </span>
+          ) : null}
         </label>
       </div>
 
@@ -910,6 +936,12 @@ function RepositoryDiscussionManagementPanel({
   const selectedTarget = targets?.targets.find(
     (target) => target.repositoryId === repositoryId,
   );
+  const selectedTargetCategories = selectedTarget
+    ? pollCompatibleCategories(detail, selectedTarget.categoryOptions)
+    : [];
+  const hiddenTargetCategoryCount = selectedTarget
+    ? selectedTarget.categoryOptions.length - selectedTargetCategories.length
+    : 0;
   const requiredConfirmation = `delete discussion ${detail.discussion.number}`;
 
   return (
@@ -976,7 +1008,14 @@ function RepositoryDiscussionManagementPanel({
                   const target = targets?.targets.find(
                     (candidate) => candidate.repositoryId === next,
                   );
-                  setCategorySlug(target?.categoryOptions[0]?.slug ?? "");
+                  setCategorySlug(
+                    target
+                      ? (pollCompatibleCategories(
+                          detail,
+                          target.categoryOptions,
+                        )[0]?.slug ?? "")
+                      : "",
+                  );
                 }}
                 value={repositoryId}
               >
@@ -998,12 +1037,17 @@ function RepositoryDiscussionManagementPanel({
                 value={categorySlug}
               >
                 <option value="">Choose a category</option>
-                {(selectedTarget?.categoryOptions ?? []).map((category) => (
+                {selectedTargetCategories.map((category) => (
                   <option key={category.id} value={category.slug}>
                     {category.emoji} {category.name}
                   </option>
                 ))}
               </select>
+              {hiddenTargetCategoryCount > 0 ? (
+                <span className="chip warn w-fit">
+                  {pollCategoryConstraintText(detail)}
+                </span>
+              ) : null}
             </label>
             <div className="flex flex-wrap justify-end gap-2">
               <button
@@ -1125,6 +1169,12 @@ function Sidebar({
 }) {
   const canModerate = detail.viewer.authenticated && detail.viewer.canModerate;
   const selectedLabelIds = new Set(detail.labels.map((label) => label.id));
+  const compatibleCategories = pollCompatibleCategories(
+    detail,
+    detail.sidebar.categoryOptions,
+  );
+  const hiddenCategoryCount =
+    detail.sidebar.categoryOptions.length - compatibleCategories.length;
   return (
     <aside className="space-y-5">
       {canModerate ? (
@@ -1183,12 +1233,17 @@ function Sidebar({
               }
               value={detail.category.slug}
             >
-              {detail.sidebar.categoryOptions.map((category) => (
+              {compatibleCategories.map((category) => (
                 <option key={category.id} value={category.slug}>
                   {category.emoji} {category.name}
                 </option>
               ))}
             </select>
+            {hiddenCategoryCount > 0 ? (
+              <span className="chip warn w-fit">
+                {pollCategoryConstraintText(detail)}
+              </span>
+            ) : null}
           </label>
         ) : null}
       </section>

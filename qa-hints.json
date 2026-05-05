@@ -6661,5 +6661,22 @@
       "Run browser QA for keyboard traversal through radio/checkbox options, long poll option wrapping on mobile, anonymous results-hidden prompts, result visibility for private repositories, and vote-change-denied server errors.",
       "Phase 4 still needs poll-specific comments/reactions/moderation compatibility and category move/transfer constraints before discussions-006 can be marked build_pass=true."
     ]
+  },
+  {
+    "feature_id": "discussions-006",
+    "tests_written": [
+      "Completed Phase 4 Poll Constraints, Comments, Reactions, and Moderation Compatibility without marking discussions-006 build_pass=true.",
+      "Hardened Rust discussion metadata updates so normal discussions cannot move into poll categories and poll discussions must remain in poll categories.",
+      "Hardened Rust discussion transfer so normal discussions cannot transfer into poll categories and poll discussions must transfer into poll categories.",
+      "Updated RepositoryDiscussionDetailPage moderator and transfer category controls to filter incompatible poll/non-poll categories and show Editorial warning chips instead of offering doomed category actions.",
+      "Extended focused Vitest coverage for poll category compatibility in the sidebar and transfer dialog, preserving existing comment/reply/reaction/subscription coverage."
+    ],
+    "needs_deeper_qa": [
+      "Full make test-e2e reached Playwright: 19 public/docs/anonymous tests passed, then 123 signed-session tests failed because dashboard_e2e_seed could not authenticate to localhost:55432 as postgres.",
+      "Rerun web/tests/e2e/repository-discussions.spec.ts against a clean migrated credentialed TEST_DATABASE_URL to verify poll constraints in the browser and save ralph/screenshots/build/discussions-006-phase4-poll-constraints.jpg.",
+      "Run DB-backed QA for poll-to-normal and normal-to-poll category rejection through both PATCH /category and POST /transfer, including audit/activity rows and no-secret error envelopes.",
+      "Run browser QA for locked poll reaction policy, comments/replies/reactions after voting, deleted/tombstoned poll privacy, and long poll/result layout on mobile.",
+      "Phase 5 still needs API docs, final browser evidence, QA handoff, prd.json build_pass=true, and final desktop/mobile screenshots."
+    ]
   }
 ]

@@ -3475,6 +3475,11 @@ pub async fn update_repository_discussion_metadata_by_owner_name(
                 "poll discussions must stay in a poll category".to_owned(),
             ));
         }
+        if !has_poll && category.is_poll {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(
+                "normal discussions cannot move into a poll category".to_owned(),
+            ));
+        }
         if has_form_answers && category.is_poll {
             return Err(RepositoryError::InvalidDependencyGraphQuery(
                 "form discussions cannot move into a poll category".to_owned(),
@@ -3683,6 +3688,11 @@ pub async fn transfer_repository_discussion_by_owner_name(
     if has_poll && !category.is_poll {
         return Err(RepositoryError::InvalidDependencyGraphQuery(
             "poll discussions must transfer into a poll category".to_owned(),
+        ));
+    }
+    if !has_poll && category.is_poll {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "normal discussions cannot transfer into a poll category".to_owned(),
         ));
     }
     if has_form_answers && category.is_poll {
