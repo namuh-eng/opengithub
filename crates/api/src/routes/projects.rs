@@ -11,8 +11,9 @@ use crate::{
     api_types::{database_unavailable, error_response, ErrorEnvelope},
     auth::extractor::AuthenticatedUser,
     domain::projects::{
-        copy_project_for_actor, organization_projects, repository_projects, user_projects,
-        CopiedProject, CopyProjectRequest, ProjectList, ProjectListQuery, ProjectsError,
+        copy_project_for_actor, organization_projects, project_workspace, repository_projects,
+        user_projects, CopiedProject, CopyProjectRequest, ProjectList, ProjectListQuery,
+        ProjectWorkspace, ProjectWorkspaceQuery, ProjectsError,
     },
     AppState,
 };
@@ -21,6 +22,10 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/users/:username/projects", get(user_projects_route))
         .route("/api/orgs/:org/projects", get(organization_projects_route))
+        .route(
+            "/api/projects/:project_id/workspace",
+            get(project_workspace_route),
+        )
         .route("/api/projects/:project_id/copies", post(copy_project_route))
         .route(
             "/api/repos/:owner/:repo/projects",
@@ -38,6 +43,33 @@ struct ProjectsQuery {
     page: Option<i64>,
     #[serde(rename = "pageSize")]
     page_size: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectWorkspaceRouteQuery {
+    view: Option<String>,
+    q: Option<String>,
+    sort: Option<String>,
+    group: Option<String>,
+    slice: Option<String>,
+    page: Option<i64>,
+    #[serde(rename = "pageSize")]
+    page_size: Option<i64>,
+}
+
+impl ProjectWorkspaceRouteQuery {
+    fn as_domain_query(&self) -> ProjectWorkspaceQuery<'_> {
+        ProjectWorkspaceQuery {
+            view: self.view.as_deref(),
+            query: self.q.as_deref(),
+            sort: self.sort.as_deref(),
+            group: self.group.as_deref(),
+            slice: self.slice.as_deref(),
+            page: self.page,
+            page_size: self.page_size,
+        }
+    }
 }
 
 impl ProjectsQuery {
@@ -123,6 +155,25 @@ async fn copy_project_route(
         .await
         .map_err(map_projects_error)?;
     Ok((StatusCode::CREATED, Json(copied)))
+}
+
+async fn project_workspace_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(project_id): Path<Uuid>,
+    Query(query): Query<ProjectWorkspaceRouteQuery>,
+) -> Result<Json<ProjectWorkspace>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let workspace = project_workspace(
+        pool,
+        project_id,
+        actor.map(|user| user.id),
+        query.as_domain_query(),
+    )
+    .await
+    .map_err(map_projects_error)?;
+    Ok(Json(workspace))
 }
 
 fn map_projects_error(error: ProjectsError) -> (StatusCode, Json<ErrorEnvelope>) {

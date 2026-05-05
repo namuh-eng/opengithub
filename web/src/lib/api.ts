@@ -197,6 +197,131 @@ export type ProjectListFetchResult =
   | { ok: true; projects: ProjectList }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type ProjectWorkspaceProject = {
+  id: string;
+  number: number;
+  title: string;
+  description: string | null;
+  state: "open" | "closed" | string;
+  visibility: "public" | "private" | string;
+  owner: string;
+  href: string;
+  workspaceHref: string;
+  viewerRole: string | null;
+};
+
+export type ProjectWorkspaceView = {
+  id: string;
+  number: number;
+  name: string;
+  layout: "table" | "board" | "roadmap" | string;
+  href: string;
+  configuration: Record<string, unknown>;
+  updatedAt: string;
+};
+
+export type ProjectWorkspaceField = {
+  id: string;
+  name: string;
+  fieldType: string;
+  position: number;
+  settings: Record<string, unknown>;
+  hidden: boolean;
+  editable: boolean;
+};
+
+export type ProjectWorkspaceFieldValue = {
+  fieldId: string;
+  value: unknown;
+  displayValue: string;
+};
+
+export type ProjectWorkspaceLabel = {
+  id: string;
+  name: string;
+  color: string;
+};
+
+export type ProjectWorkspaceUser = {
+  id: string;
+  login: string;
+  avatarUrl: string | null;
+};
+
+export type ProjectWorkspaceItem = {
+  id: string;
+  itemType: "draft_issue" | "issue" | "pull_request" | string;
+  position: string;
+  title: string;
+  body: string | null;
+  state: string | null;
+  number: number | null;
+  href: string | null;
+  repository: ProjectRepositoryScopeSummary | null;
+  fieldValues: ProjectWorkspaceFieldValue[];
+  labels: ProjectWorkspaceLabel[];
+  assignees: ProjectWorkspaceUser[];
+  updatedAt: string;
+};
+
+export type ProjectWorkspaceGroup = {
+  key: string;
+  label: string;
+  count: number;
+};
+
+export type ProjectWorkspaceSlice = ProjectWorkspaceGroup;
+
+export type ProjectWorkspaceFilters = {
+  query: string | null;
+  sort: string;
+  group: string | null;
+  slice: string | null;
+  tokens: string[];
+  page: number;
+  pageSize: number;
+};
+
+export type ProjectWorkspace = {
+  project: ProjectWorkspaceProject;
+  selectedView: ProjectWorkspaceView;
+  views: ProjectWorkspaceView[];
+  fields: ProjectWorkspaceField[];
+  items: ProjectWorkspaceItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  groups: ProjectWorkspaceGroup[];
+  slices: ProjectWorkspaceSlice[];
+  filters: ProjectWorkspaceFilters;
+  unsavedView: {
+    active: boolean;
+    reasons: string[];
+  };
+  viewerPermissions: {
+    authenticated: boolean;
+    viewerRole: string | null;
+    canEdit: boolean;
+    canManageViews: boolean;
+    canAddItems: boolean;
+  };
+  unavailableReason: string | null;
+};
+
+export type ProjectWorkspaceQuery = {
+  view?: string | number | null;
+  q?: string | null;
+  sort?: string | null;
+  group?: string | null;
+  slice?: string | null;
+  page?: number | null;
+  pageSize?: number | null;
+};
+
+export type ProjectWorkspaceFetchResult =
+  | { ok: true; workspace: ProjectWorkspace }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type CopyProjectRequest = {
   title: string;
   includeDraftIssues: boolean;
@@ -6959,6 +7084,36 @@ function projectListPath(path: string, query: ProjectListQuery = {}): string {
   return `${path}${suffix}`;
 }
 
+function projectWorkspacePath(
+  projectId: string,
+  query: ProjectWorkspaceQuery = {},
+): string {
+  const params = new URLSearchParams();
+  if (query.view != null && `${query.view}`.trim() !== "") {
+    params.set("view", `${query.view}`);
+  }
+  if (query.q?.trim()) {
+    params.set("q", query.q.trim());
+  }
+  if (query.sort?.trim()) {
+    params.set("sort", query.sort.trim());
+  }
+  if (query.group?.trim()) {
+    params.set("group", query.group.trim());
+  }
+  if (query.slice?.trim()) {
+    params.set("slice", query.slice.trim());
+  }
+  if (query.page != null) {
+    params.set("page", String(query.page));
+  }
+  if (query.pageSize != null) {
+    params.set("pageSize", String(query.pageSize));
+  }
+  const suffix = params.toString();
+  return `/api/projects/${encodeURIComponent(projectId)}/workspace${suffix ? `?${suffix}` : ""}`;
+}
+
 async function getProjectListFromCookie(
   cookie: string | null | undefined,
   path: string,
@@ -7063,6 +7218,50 @@ export function getRepositoryProjectsFromCookie(
     `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/projects`,
     query,
   );
+}
+
+export async function getProjectWorkspaceFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  query: ProjectWorkspaceQuery = {},
+): Promise<ProjectWorkspaceFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}${projectWorkspacePath(projectId, query)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Project workspace is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let body: ApiErrorEnvelope | null = null;
+    try {
+      body = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      body = null;
+    }
+    return {
+      ok: false,
+      status: body?.status ?? response.status,
+      code: body?.error.code ?? null,
+      message: body?.error.message ?? "Project workspace could not be loaded.",
+    };
+  }
+
+  return {
+    ok: true,
+    workspace: (await response.json()) as ProjectWorkspace,
+  };
 }
 
 export async function copyProjectFromCookie(

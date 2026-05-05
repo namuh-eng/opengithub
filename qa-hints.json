@@ -6780,5 +6780,21 @@
       "Probe large project counts, pagination stability, private organization and private project non-leakage, stale URL filters after reload, and sort consistency under concurrent updates.",
       "Probe copy concurrency, long titles, copy without draft issues, draft issue inclusion, closed/private source projects, user-owned projects, org owner/admin/member/base permission combinations, direct project permissions, disabled organization Projects policy, cloned views/fields/workflows, audit_events, and project_recent_visits rows with real Postgres assertions."
     ]
+  },
+  {
+    "feature_id": "projects-002",
+    "tests_written": [
+      "Completed Phase 1 Workspace Read Contract without marking projects-002 build_pass=true.",
+      "Added additive project_item_field_values and project_item_events storage for workspace field values and future table mutations.",
+      "Added GET /api/projects/{project_id}/workspace with project metadata, selected/saved views, fields, items, field values, groups, slices, filters, unsaved-view state, viewer capabilities, privacy checks, and validation errors.",
+      "Added typed web ProjectWorkspace DTOs and getProjectWorkspaceFromCookie helper without adding JS-side auth.",
+      "Added focused Rust projects_workspace_contract coverage for table shape, field ordering, draft and linked issue rows, field value decoding, private denial, invalid grouping validation, and no-secret error envelopes."
+    ],
+    "needs_deeper_qa": [
+      "Focused projects_workspace_contract compiled and ran, but DB assertions self-skipped because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test failed with password authentication failed for user postgres.",
+      "Rerun projects_workspace_contract against a clean migrated credentialed TEST_DATABASE_URL to prove real Postgres rows for fields, field values, draft/issue/PR item rows, grouping, slicing, repository visibility filtering, and invalid query envelopes.",
+      "Browser smoke and make test-e2e were skipped because Phase 1 is API-first and .qrspi/projects-002/structure.md marks browser smoke optional for this phase.",
+      "Phase 2 still needs the Editorial Projects table workspace UI before users can exercise this read contract in the browser."
+    ]
   }
 ]

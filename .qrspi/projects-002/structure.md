@@ -6,7 +6,7 @@
 
 ## Phase 1: Workspace Read Contract - project table data is screen-ready
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the Rust/Postgres read contract for `/{owner}/projects/{number}/views/{view}` and `/orgs/{org}/projects/{number}/views/{view}` table workspaces. This phase makes project metadata, saved views, visible fields, item rows, field values, grouping/slicing/sorting/filter state, and viewer capabilities testable before adding the UI.
 

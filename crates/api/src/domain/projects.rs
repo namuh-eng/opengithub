@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -135,6 +135,160 @@ pub struct ProjectListQuery<'a> {
     pub sort: Option<&'a str>,
     pub page: Option<i64>,
     pub page_size: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ProjectWorkspaceQuery<'a> {
+    pub view: Option<&'a str>,
+    pub query: Option<&'a str>,
+    pub sort: Option<&'a str>,
+    pub group: Option<&'a str>,
+    pub slice: Option<&'a str>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkspace {
+    pub project: ProjectWorkspaceProject,
+    pub selected_view: ProjectWorkspaceView,
+    pub views: Vec<ProjectWorkspaceView>,
+    pub fields: Vec<ProjectWorkspaceField>,
+    #[serde(flatten)]
+    pub items: ListEnvelope<ProjectWorkspaceItem>,
+    pub groups: Vec<ProjectWorkspaceGroup>,
+    pub slices: Vec<ProjectWorkspaceSlice>,
+    pub filters: ProjectWorkspaceFilters,
+    pub unsaved_view: ProjectWorkspaceUnsavedState,
+    pub viewer_permissions: ProjectWorkspacePermissions,
+    pub unavailable_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkspaceProject {
+    pub id: Uuid,
+    pub number: i64,
+    pub title: String,
+    pub description: Option<String>,
+    pub state: String,
+    pub visibility: String,
+    pub owner: String,
+    pub href: String,
+    pub workspace_href: String,
+    pub viewer_role: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkspaceView {
+    pub id: Uuid,
+    pub number: i64,
+    pub name: String,
+    pub layout: String,
+    pub href: String,
+    pub configuration: Value,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkspaceField {
+    pub id: Uuid,
+    pub name: String,
+    pub field_type: String,
+    pub position: i64,
+    pub settings: Value,
+    pub hidden: bool,
+    pub editable: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkspaceItem {
+    pub id: Uuid,
+    pub item_type: String,
+    pub position: String,
+    pub title: String,
+    pub body: Option<String>,
+    pub state: Option<String>,
+    pub number: Option<i64>,
+    pub href: Option<String>,
+    pub repository: Option<ProjectRepositoryScopeSummary>,
+    pub field_values: Vec<ProjectWorkspaceFieldValue>,
+    pub labels: Vec<ProjectWorkspaceLabel>,
+    pub assignees: Vec<ProjectWorkspaceUser>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkspaceFieldValue {
+    pub field_id: Uuid,
+    pub value: Value,
+    pub display_value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkspaceLabel {
+    pub id: Uuid,
+    pub name: String,
+    pub color: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkspaceUser {
+    pub id: Uuid,
+    pub login: String,
+    pub avatar_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkspaceGroup {
+    pub key: String,
+    pub label: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkspaceSlice {
+    pub key: String,
+    pub label: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkspaceFilters {
+    pub query: Option<String>,
+    pub sort: String,
+    pub group: Option<String>,
+    pub slice: Option<String>,
+    pub tokens: Vec<String>,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkspaceUnsavedState {
+    pub active: bool,
+    pub reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkspacePermissions {
+    pub authenticated: bool,
+    pub viewer_role: Option<String>,
+    pub can_edit: bool,
+    pub can_manage_views: bool,
+    pub can_add_items: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -463,6 +617,75 @@ pub async fn user_projects(
         login: row.try_get("login")?,
     };
     projects_for_scope(pool, scope, viewer_user_id, query).await
+}
+
+pub async fn project_workspace(
+    pool: &PgPool,
+    project_id: Uuid,
+    viewer_user_id: Option<Uuid>,
+    query: ProjectWorkspaceQuery<'_>,
+) -> Result<ProjectWorkspace, ProjectsError> {
+    let project = workspace_project_row(pool, project_id, viewer_user_id).await?;
+    if project.visibility != "public" && project.viewer_role.is_none() {
+        return if viewer_user_id.is_some() {
+            Err(ProjectsError::Forbidden)
+        } else {
+            Err(ProjectsError::NotFound)
+        };
+    }
+
+    let viewer_role = project.viewer_role.clone();
+    let views = workspace_views(pool, project_id, &project.owner, project.number).await?;
+    let selected_view = select_workspace_view(&views, query.view)?;
+    if selected_view.layout != "table" {
+        return Err(ProjectsError::InvalidFilter(
+            "selected view must use the table layout".to_owned(),
+        ));
+    }
+    let fields = workspace_fields(pool, project_id, &selected_view).await?;
+    let filters = normalize_workspace_filters(query, &selected_view, &fields)?;
+    let unsaved_view = workspace_unsaved_state(&filters, &selected_view);
+    let mut items = workspace_items(pool, project_id, viewer_user_id, &fields).await?;
+    apply_workspace_filters(&mut items, &filters);
+    sort_workspace_items(&mut items, &filters.sort);
+    let groups = workspace_groups(&items, filters.group.as_deref(), &fields);
+    let slices = workspace_slices(&items, filters.slice.as_deref(), &fields);
+    let total = items.len() as i64;
+    let offset = ((filters.page - 1) * filters.page_size) as usize;
+    let page_items = items
+        .into_iter()
+        .skip(offset)
+        .take(filters.page_size as usize)
+        .collect();
+    let can_edit = project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role);
+
+    Ok(ProjectWorkspace {
+        project,
+        selected_view,
+        views,
+        fields,
+        items: ListEnvelope {
+            items: page_items,
+            total,
+            page: filters.page,
+            page_size: filters.page_size,
+        },
+        groups,
+        slices,
+        filters,
+        unsaved_view,
+        viewer_permissions: ProjectWorkspacePermissions {
+            authenticated: viewer_user_id.is_some(),
+            viewer_role,
+            can_edit,
+            can_manage_views: can_edit,
+            can_add_items: can_edit,
+        },
+        unavailable_reason: None,
+    })
 }
 
 pub async fn organization_projects(
@@ -848,6 +1071,666 @@ fn project_from_row(row: sqlx::postgres::PgRow) -> Result<ProjectRow, ProjectsEr
         updated_at: row.try_get("updated_at")?,
         closed_at: row.try_get("closed_at")?,
     })
+}
+
+async fn workspace_project_row(
+    pool: &PgPool,
+    project_id: Uuid,
+    viewer_user_id: Option<Uuid>,
+) -> Result<ProjectWorkspaceProject, ProjectsError> {
+    let row = sqlx::query(
+        r#"
+        SELECT
+          projects.id, projects.number, projects.title, projects.short_description,
+          projects.state, projects.visibility,
+          COALESCE(NULLIF(owner_user.username, ''), owner_user.email, owner_org.slug) AS owner_login,
+          project_permissions.role AS project_role,
+          organization_memberships.role AS organization_role,
+          organization_policy_settings.projects_base_permission AS organization_base_role
+        FROM projects
+        LEFT JOIN users owner_user ON owner_user.id = projects.owner_user_id
+        LEFT JOIN organizations owner_org ON owner_org.id = projects.owner_organization_id
+        LEFT JOIN project_permissions
+          ON project_permissions.project_id = projects.id
+         AND project_permissions.user_id = $2
+        LEFT JOIN organization_memberships
+          ON organization_memberships.organization_id = projects.owner_organization_id
+         AND organization_memberships.user_id = $2
+        LEFT JOIN organization_policy_settings
+          ON organization_policy_settings.organization_id = projects.owner_organization_id
+        WHERE projects.id = $1
+        "#,
+    )
+    .bind(project_id)
+    .bind(viewer_user_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ProjectsError::NotFound)?;
+    let owner = row
+        .try_get::<Option<String>, _>("owner_login")?
+        .unwrap_or_else(|| "unknown".to_owned());
+    let number: i64 = row.try_get("number")?;
+    let viewer_role = workspace_role_from_row(&row)?;
+    Ok(ProjectWorkspaceProject {
+        id: project_id,
+        number,
+        title: row.try_get("title")?,
+        description: row.try_get("short_description")?,
+        state: row.try_get("state")?,
+        visibility: row.try_get("visibility")?,
+        href: format!("/{owner}/projects/{number}"),
+        workspace_href: format!("/{owner}/projects/{number}/views/1"),
+        owner,
+        viewer_role,
+    })
+}
+
+fn workspace_role_from_row(row: &sqlx::postgres::PgRow) -> Result<Option<String>, ProjectsError> {
+    let project_role: Option<String> = row.try_get("project_role")?;
+    let org_role: Option<String> = row.try_get("organization_role")?;
+    let org_base_role: Option<String> = row.try_get("organization_base_role")?;
+    Ok(project_role
+        .or(org_role)
+        .or(org_base_role.filter(|role| role != "none")))
+}
+
+async fn workspace_views(
+    pool: &PgPool,
+    project_id: Uuid,
+    owner: &str,
+    project_number: i64,
+) -> Result<Vec<ProjectWorkspaceView>, ProjectsError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, name, layout, position, configuration, updated_at
+        FROM project_views
+        WHERE project_id = $1
+        ORDER BY position, created_at
+        "#,
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let position: i32 = row.get("position");
+            ProjectWorkspaceView {
+                id: row.get("id"),
+                number: i64::from(position),
+                name: row.get("name"),
+                layout: row.get("layout"),
+                href: format!("/{owner}/projects/{project_number}/views/{position}"),
+                configuration: row.get("configuration"),
+                updated_at: row.get("updated_at"),
+            }
+        })
+        .collect())
+}
+
+fn select_workspace_view(
+    views: &[ProjectWorkspaceView],
+    requested: Option<&str>,
+) -> Result<ProjectWorkspaceView, ProjectsError> {
+    if views.is_empty() {
+        return Err(ProjectsError::NotFound);
+    }
+    let requested = requested.unwrap_or("1").trim();
+    let view = if let Ok(position) = requested.parse::<i64>() {
+        views.iter().find(|view| view.number == position)
+    } else if let Ok(id) = Uuid::parse_str(requested) {
+        views.iter().find(|view| view.id == id)
+    } else {
+        None
+    };
+    view.cloned().ok_or_else(|| {
+        ProjectsError::InvalidFilter("view must reference an existing project view".to_owned())
+    })
+}
+
+async fn workspace_fields(
+    pool: &PgPool,
+    project_id: Uuid,
+    selected_view: &ProjectWorkspaceView,
+) -> Result<Vec<ProjectWorkspaceField>, ProjectsError> {
+    let hidden = selected_view
+        .configuration
+        .get("hiddenFieldIds")
+        .and_then(Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(Value::as_str)
+                .filter_map(|value| Uuid::parse_str(value).ok())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let rows = sqlx::query(
+        r#"
+        SELECT id, name, field_type, position, settings
+        FROM project_fields
+        WHERE project_id = $1
+        ORDER BY position, created_at
+        "#,
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let id: Uuid = row.get("id");
+            let field_type: String = row.get("field_type");
+            ProjectWorkspaceField {
+                id,
+                name: row.get("name"),
+                field_type: field_type.clone(),
+                position: i64::from(row.get::<i32, _>("position")),
+                settings: row.get("settings"),
+                hidden: hidden.contains(&id),
+                editable: !matches!(field_type.as_str(), "repository"),
+            }
+        })
+        .collect())
+}
+
+fn normalize_workspace_filters(
+    query: ProjectWorkspaceQuery<'_>,
+    selected_view: &ProjectWorkspaceView,
+    fields: &[ProjectWorkspaceField],
+) -> Result<ProjectWorkspaceFilters, ProjectsError> {
+    let pagination = normalize_pagination(query.page, query.page_size);
+    let configured_sort = selected_view
+        .configuration
+        .get("sort")
+        .and_then(Value::as_str)
+        .unwrap_or("manual");
+    let sort = query
+        .sort
+        .unwrap_or(configured_sort)
+        .trim()
+        .to_ascii_lowercase();
+    if !matches!(
+        sort.as_str(),
+        "manual" | "updated_desc" | "updated_asc" | "title_asc" | "title_desc"
+    ) {
+        return Err(ProjectsError::InvalidFilter(
+            "sort must be manual, updated_desc, updated_asc, title_asc, or title_desc".to_owned(),
+        ));
+    }
+    let query_text = query
+        .query
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.chars().take(300).collect::<String>());
+    let tokens = query_text
+        .as_deref()
+        .map(|value| {
+            value
+                .split_whitespace()
+                .map(ToOwned::to_owned)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let group = normalize_field_selector(query.group, fields, "group")?;
+    let slice = normalize_field_selector(query.slice, fields, "slice")?;
+    Ok(ProjectWorkspaceFilters {
+        query: query_text,
+        sort,
+        group,
+        slice,
+        tokens,
+        page: pagination.page,
+        page_size: pagination.page_size,
+    })
+}
+
+fn normalize_field_selector(
+    value: Option<&str>,
+    fields: &[ProjectWorkspaceField],
+    name: &str,
+) -> Result<Option<String>, ProjectsError> {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    let normalized = value.to_ascii_lowercase();
+    let found = fields.iter().any(|field| {
+        field.id.to_string() == value || field.name.to_ascii_lowercase() == normalized
+    });
+    if !found {
+        return Err(ProjectsError::InvalidFilter(format!(
+            "{name} must reference a visible project field"
+        )));
+    }
+    Ok(Some(value.to_owned()))
+}
+
+fn workspace_unsaved_state(
+    filters: &ProjectWorkspaceFilters,
+    selected_view: &ProjectWorkspaceView,
+) -> ProjectWorkspaceUnsavedState {
+    let configured_sort = selected_view
+        .configuration
+        .get("sort")
+        .and_then(Value::as_str)
+        .unwrap_or("manual");
+    let mut reasons = Vec::new();
+    if filters.query.is_some() {
+        reasons.push("filter".to_owned());
+    }
+    if filters.sort != configured_sort {
+        reasons.push("sort".to_owned());
+    }
+    if filters.group.is_some() {
+        reasons.push("group".to_owned());
+    }
+    if filters.slice.is_some() {
+        reasons.push("slice".to_owned());
+    }
+    ProjectWorkspaceUnsavedState {
+        active: !reasons.is_empty(),
+        reasons,
+    }
+}
+
+async fn workspace_items(
+    pool: &PgPool,
+    project_id: Uuid,
+    viewer_user_id: Option<Uuid>,
+    fields: &[ProjectWorkspaceField],
+) -> Result<Vec<ProjectWorkspaceItem>, ProjectsError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT
+          project_items.id, project_items.item_type, project_items.title AS draft_title,
+          project_items.body AS draft_body, project_items.position::text AS position_text,
+          project_items.updated_at, project_items.issue_id, project_items.pull_request_id,
+          issues.title AS issue_title, issues.body AS issue_body, issues.state AS issue_state,
+          issues.number AS issue_number, issue_repositories.id AS issue_repository_id,
+          COALESCE(NULLIF(issue_owner_user.username, ''), issue_owner_user.email, issue_owner_org.slug) AS issue_owner,
+          issue_repositories.name AS issue_repository_name,
+          pull_requests.title AS pull_title, pull_requests.state AS pull_state,
+          pull_requests.number AS pull_number
+        FROM project_items
+        LEFT JOIN issues ON issues.id = project_items.issue_id
+        LEFT JOIN repositories issue_repositories ON issue_repositories.id = issues.repository_id
+        LEFT JOIN users issue_owner_user ON issue_owner_user.id = issue_repositories.owner_user_id
+        LEFT JOIN organizations issue_owner_org ON issue_owner_org.id = issue_repositories.owner_organization_id
+        LEFT JOIN pull_requests ON pull_requests.id = project_items.pull_request_id
+        WHERE project_items.project_id = $1
+          AND project_items.archived_at IS NULL
+          AND (
+            issue_repositories.id IS NULL
+            OR issue_repositories.visibility = 'public'
+            OR issue_repositories.owner_user_id = $2
+            OR EXISTS (
+              SELECT 1 FROM repository_permissions
+              WHERE repository_permissions.repository_id = issue_repositories.id
+                AND repository_permissions.user_id = $2
+            )
+            OR EXISTS (
+              SELECT 1 FROM organization_memberships
+              WHERE organization_memberships.organization_id = issue_repositories.owner_organization_id
+                AND organization_memberships.user_id = $2
+            )
+          )
+        ORDER BY project_items.position, project_items.created_at
+        "#,
+    )
+    .bind(project_id)
+    .bind(viewer_user_id)
+    .fetch_all(pool)
+    .await?;
+    let item_ids = rows.iter().map(|row| row.get("id")).collect::<Vec<Uuid>>();
+    let values = workspace_field_values(pool, &item_ids).await?;
+    let labels = workspace_labels(pool, &item_ids).await?;
+    let assignees = workspace_assignees(pool, &item_ids).await?;
+
+    rows.into_iter()
+        .map(|row| workspace_item_from_row(row, fields, &values, &labels, &assignees))
+        .collect::<Result<Vec<_>, _>>()
+}
+
+async fn workspace_field_values(
+    pool: &PgPool,
+    item_ids: &[Uuid],
+) -> Result<std::collections::HashMap<Uuid, Vec<(Uuid, Value)>>, ProjectsError> {
+    if item_ids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let rows = sqlx::query(
+        "SELECT project_item_id, project_field_id, value FROM project_item_field_values WHERE project_item_id = ANY($1)",
+    )
+    .bind(item_ids)
+    .fetch_all(pool)
+    .await?;
+    let mut values = std::collections::HashMap::<Uuid, Vec<(Uuid, Value)>>::new();
+    for row in rows {
+        values
+            .entry(row.get("project_item_id"))
+            .or_default()
+            .push((row.get("project_field_id"), row.get("value")));
+    }
+    Ok(values)
+}
+
+async fn workspace_labels(
+    pool: &PgPool,
+    item_ids: &[Uuid],
+) -> Result<std::collections::HashMap<Uuid, Vec<ProjectWorkspaceLabel>>, ProjectsError> {
+    if item_ids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let rows = sqlx::query(
+        r#"
+        SELECT project_items.id AS item_id, labels.id, labels.name, labels.color
+        FROM project_items
+        JOIN issues ON issues.id = project_items.issue_id
+        JOIN issue_labels ON issue_labels.issue_id = issues.id
+        JOIN labels ON labels.id = issue_labels.label_id
+        WHERE project_items.id = ANY($1)
+        ORDER BY labels.name
+        "#,
+    )
+    .bind(item_ids)
+    .fetch_all(pool)
+    .await?;
+    let mut labels = std::collections::HashMap::<Uuid, Vec<ProjectWorkspaceLabel>>::new();
+    for row in rows {
+        labels
+            .entry(row.get("item_id"))
+            .or_default()
+            .push(ProjectWorkspaceLabel {
+                id: row.get("id"),
+                name: row.get("name"),
+                color: row.get("color"),
+            });
+    }
+    Ok(labels)
+}
+
+async fn workspace_assignees(
+    pool: &PgPool,
+    item_ids: &[Uuid],
+) -> Result<std::collections::HashMap<Uuid, Vec<ProjectWorkspaceUser>>, ProjectsError> {
+    if item_ids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+    let rows = sqlx::query(
+        r#"
+        SELECT project_items.id AS item_id, users.id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS login,
+               users.avatar_url
+        FROM project_items
+        JOIN issues ON issues.id = project_items.issue_id
+        JOIN issue_assignees ON issue_assignees.issue_id = issues.id
+        JOIN users ON users.id = issue_assignees.user_id
+        WHERE project_items.id = ANY($1)
+        ORDER BY login
+        "#,
+    )
+    .bind(item_ids)
+    .fetch_all(pool)
+    .await?;
+    let mut assignees = std::collections::HashMap::<Uuid, Vec<ProjectWorkspaceUser>>::new();
+    for row in rows {
+        assignees
+            .entry(row.get("item_id"))
+            .or_default()
+            .push(ProjectWorkspaceUser {
+                id: row.get("id"),
+                login: row.get("login"),
+                avatar_url: row.get("avatar_url"),
+            });
+    }
+    Ok(assignees)
+}
+
+fn workspace_item_from_row(
+    row: sqlx::postgres::PgRow,
+    fields: &[ProjectWorkspaceField],
+    values: &std::collections::HashMap<Uuid, Vec<(Uuid, Value)>>,
+    labels: &std::collections::HashMap<Uuid, Vec<ProjectWorkspaceLabel>>,
+    assignees: &std::collections::HashMap<Uuid, Vec<ProjectWorkspaceUser>>,
+) -> Result<ProjectWorkspaceItem, ProjectsError> {
+    let id: Uuid = row.get("id");
+    let item_type: String = row.get("item_type");
+    let issue_number: Option<i64> = row.get("issue_number");
+    let pull_number: Option<i64> = row.get("pull_number");
+    let repo_owner: Option<String> = row.get("issue_owner");
+    let repo_name: Option<String> = row.get("issue_repository_name");
+    let repository = row
+        .get::<Option<Uuid>, _>("issue_repository_id")
+        .zip(repo_owner.clone())
+        .zip(repo_name.clone())
+        .map(|((repo_id, owner), name)| ProjectRepositoryScopeSummary {
+            id: repo_id,
+            owner: owner.clone(),
+            name: name.clone(),
+            full_name: format!("{owner}/{name}"),
+            href: format!("/{owner}/{name}"),
+        });
+    let title = match item_type.as_str() {
+        "issue" => row.get::<Option<String>, _>("issue_title"),
+        "pull_request" => row
+            .get::<Option<String>, _>("pull_title")
+            .or_else(|| row.get::<Option<String>, _>("issue_title")),
+        _ => row.get::<Option<String>, _>("draft_title"),
+    }
+    .unwrap_or_else(|| "Untitled item".to_owned());
+    let state = match item_type.as_str() {
+        "issue" => row.get("issue_state"),
+        "pull_request" => row
+            .get::<Option<String>, _>("pull_state")
+            .or_else(|| row.get("issue_state")),
+        _ => Some("draft".to_owned()),
+    };
+    let number = pull_number.or(issue_number);
+    let href = repository.as_ref().and_then(|repository| {
+        number.map(|number| {
+            let segment = if item_type == "pull_request" {
+                "pull"
+            } else {
+                "issues"
+            };
+            format!("{}/{segment}/{number}", repository.href)
+        })
+    });
+    let explicit_values = values.get(&id).cloned().unwrap_or_default();
+    let mut field_values = Vec::new();
+    for field in fields {
+        if let Some((_, value)) = explicit_values
+            .iter()
+            .find(|(field_id, _)| *field_id == field.id)
+        {
+            field_values.push(ProjectWorkspaceFieldValue {
+                field_id: field.id,
+                value: value.clone(),
+                display_value: display_field_value(value),
+            });
+        } else if let Some(value) =
+            intrinsic_field_value(field, &title, &state, repository.as_ref())
+        {
+            field_values.push(ProjectWorkspaceFieldValue {
+                field_id: field.id,
+                display_value: display_field_value(&value),
+                value,
+            });
+        }
+    }
+    Ok(ProjectWorkspaceItem {
+        id,
+        item_type,
+        position: row.get("position_text"),
+        title,
+        body: row
+            .get::<Option<String>, _>("draft_body")
+            .or_else(|| row.get("issue_body")),
+        state,
+        number,
+        href,
+        repository,
+        field_values,
+        labels: labels.get(&id).cloned().unwrap_or_default(),
+        assignees: assignees.get(&id).cloned().unwrap_or_default(),
+        updated_at: row.get("updated_at"),
+    })
+}
+
+fn intrinsic_field_value(
+    field: &ProjectWorkspaceField,
+    title: &str,
+    state: &Option<String>,
+    repository: Option<&ProjectRepositoryScopeSummary>,
+) -> Option<Value> {
+    match field.field_type.as_str() {
+        "title" => Some(json!(title)),
+        "status" => Some(json!(state.as_deref().unwrap_or("draft"))),
+        "repository" => repository.map(|repository| json!(repository.full_name)),
+        _ => None,
+    }
+}
+
+fn display_field_value(value: &Value) -> String {
+    match value {
+        Value::Null => String::new(),
+        Value::String(value) => value.clone(),
+        Value::Number(value) => value.to_string(),
+        Value::Bool(value) => value.to_string(),
+        Value::Array(values) => values
+            .iter()
+            .map(display_field_value)
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>()
+            .join(", "),
+        Value::Object(_) => value.to_string(),
+    }
+}
+
+fn apply_workspace_filters(
+    items: &mut Vec<ProjectWorkspaceItem>,
+    filters: &ProjectWorkspaceFilters,
+) {
+    if let Some(query) = &filters.query {
+        let terms = query
+            .to_ascii_lowercase()
+            .split_whitespace()
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>();
+        items.retain(|item| {
+            terms.iter().all(|term| match term.as_str() {
+                "is:open" => item.state.as_deref() == Some("open"),
+                "is:closed" => item.state.as_deref() == Some("closed"),
+                "is:draft" => item.item_type == "draft_issue",
+                "is:issue" => item.item_type == "issue",
+                "is:pr" => item.item_type == "pull_request",
+                other => {
+                    item.title.to_ascii_lowercase().contains(other)
+                        || item
+                            .repository
+                            .as_ref()
+                            .is_some_and(|repo| repo.full_name.to_ascii_lowercase().contains(other))
+                        || item.labels.iter().any(|label| {
+                            label.name.to_ascii_lowercase().contains(other)
+                                || format!("label:{}", label.name).to_ascii_lowercase() == other
+                        })
+                }
+            })
+        });
+    }
+}
+
+fn sort_workspace_items(items: &mut [ProjectWorkspaceItem], sort: &str) {
+    match sort {
+        "updated_desc" => items.sort_by_key(|item| std::cmp::Reverse(item.updated_at)),
+        "updated_asc" => items.sort_by_key(|item| item.updated_at),
+        "title_asc" => items.sort_by_key(|item| item.title.to_ascii_lowercase()),
+        "title_desc" => {
+            items.sort_by_key(|item| std::cmp::Reverse(item.title.to_ascii_lowercase()))
+        }
+        _ => {}
+    }
+}
+
+fn workspace_groups(
+    items: &[ProjectWorkspaceItem],
+    group: Option<&str>,
+    fields: &[ProjectWorkspaceField],
+) -> Vec<ProjectWorkspaceGroup> {
+    let Some(group) = group else {
+        return vec![ProjectWorkspaceGroup {
+            key: "all".to_owned(),
+            label: "All items".to_owned(),
+            count: items.len() as i64,
+        }];
+    };
+    let Some(field) = find_workspace_field(fields, group) else {
+        return Vec::new();
+    };
+    counted_field_values(items, field)
+        .into_iter()
+        .map(|(key, count)| ProjectWorkspaceGroup {
+            label: if key.is_empty() {
+                "No value".to_owned()
+            } else {
+                key.clone()
+            },
+            key,
+            count,
+        })
+        .collect()
+}
+
+fn workspace_slices(
+    items: &[ProjectWorkspaceItem],
+    slice: Option<&str>,
+    fields: &[ProjectWorkspaceField],
+) -> Vec<ProjectWorkspaceSlice> {
+    let Some(slice) = slice else {
+        return Vec::new();
+    };
+    let Some(field) = find_workspace_field(fields, slice) else {
+        return Vec::new();
+    };
+    counted_field_values(items, field)
+        .into_iter()
+        .map(|(key, count)| ProjectWorkspaceSlice {
+            label: if key.is_empty() {
+                "No value".to_owned()
+            } else {
+                key.clone()
+            },
+            key,
+            count,
+        })
+        .collect()
+}
+
+fn find_workspace_field<'a>(
+    fields: &'a [ProjectWorkspaceField],
+    selector: &str,
+) -> Option<&'a ProjectWorkspaceField> {
+    let normalized = selector.to_ascii_lowercase();
+    fields.iter().find(|field| {
+        field.id.to_string() == selector || field.name.to_ascii_lowercase() == normalized
+    })
+}
+
+fn counted_field_values(
+    items: &[ProjectWorkspaceItem],
+    field: &ProjectWorkspaceField,
+) -> Vec<(String, i64)> {
+    let mut counts = std::collections::BTreeMap::<String, i64>::new();
+    for item in items {
+        let value = item
+            .field_values
+            .iter()
+            .find(|value| value.field_id == field.id)
+            .map(|value| value.display_value.clone())
+            .unwrap_or_default();
+        *counts.entry(value).or_default() += 1;
+    }
+    counts.into_iter().collect()
 }
 
 fn apply_project_filters(projects: &mut Vec<ProjectRow>, filters: &ProjectListFilters) {
