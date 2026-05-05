@@ -82,7 +82,7 @@ Repository tabs already include a Discussions destination, organization policy e
 
 ## Phase 5: API Docs, Browser Evidence, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `discussions-001` only after the list, category route, filters, pinned cards, category rail, upvote writes, docs, screenshots, QA handoff, and PRD bookkeeping are complete. Do not expand into discussion creation, detail timelines, comments, answer marking, polls, moderation, or category management.
 

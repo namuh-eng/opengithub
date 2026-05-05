@@ -272,11 +272,15 @@ test("repository discussions list filters, rows, category rail, and mobile layou
   await expect(
     page.getByRole("link", { name: "New discussion" }).first(),
   ).toHaveAttribute("href", /\/discussions\/new\?category=ideas$/);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/discussions-001-final-desktop.jpg",
+  });
 
-  const upvote = page.getByRole("button", { name: "Upvote discussion 901" });
   await page.goto(
     `${seeded.treeRepositoryHref}/discussions/categories/general`,
   );
+  const upvote = page.getByRole("button", { name: "Upvote discussion 901" });
   await upvote.click();
   await expect(upvote).toHaveAttribute("aria-pressed", "true");
   await upvote.click();
@@ -287,6 +291,6 @@ test("repository discussions list filters, rows, category rail, and mobile layou
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/discussions-001-phase4-category.jpg",
+    path: "../ralph/screenshots/build/discussions-001-final-mobile.jpg",
   });
 });

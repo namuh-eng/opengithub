@@ -1209,6 +1209,36 @@ describe("ApiDocsPage", () => {
       screen.getByText(/Repeated uploads de-duplicate by stable fingerprint/),
     ).toBeVisible();
     expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/discussions?q=is%3Aopen&label=help-wanted&sort=latest&page=1&page_size=30",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/discussions/categories/{slug}?q=is%3Aopen&sort=top",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(
+        "/api/repos/{owner}/{repo}/discussions/{discussion_number}/vote",
+      )[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Supported filters are q, label, state, answered, locked, pinned, sort, page, and page_size/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Successful first votes write discussion_votes, discussion_activity_events/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Vote removal records a discussion activity event but does not create duplicate author notification rows/,
+      ),
+    ).toBeVisible();
+    expect(
       screen.getByText("/api/search?q=router&type=code&page=1&pageSize=30"),
     ).toBeVisible();
     expect(

@@ -6247,5 +6247,22 @@
       "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
       "Manually verify unknown category slugs against a clean migrated database return the repository-safe unavailable state without leaking private repository metadata."
     ]
+  },
+  {
+    "feature_id": "discussions-001",
+    "tests_written": [
+      "Completed Phase 5 API docs, final verification, QA handoff, and build-pass bookkeeping for repository Discussions list.",
+      "Added /docs/api coverage for GET /api/repos/{owner}/{repo}/discussions, GET /api/repos/{owner}/{repo}/discussions/categories/{slug}, PUT /api/repos/{owner}/{repo}/discussions/{discussion_number}/vote, and DELETE /api/repos/{owner}/{repo}/discussions/{discussion_number}/vote.",
+      "Documented auth and private repository privacy gates, q/label/state/answered/locked/pinned/sort/page filters, pagination, disabled organization policy behavior, pinned-card/category rail data, helpful contributors, community links, idempotent vote semantics, activity/notification side effects, and no-secret error envelopes.",
+      "Added focused API docs assertions and final Playwright screenshot targets ralph/screenshots/build/discussions-001-final-desktop.jpg and ralph/screenshots/build/discussions-001-final-mobile.jpg for the next DB-backed browser run.",
+      "Verification passed: focused api-docs and repository-discussions Vitest; web TypeScript; focused Biome; cargo fmt --all --check; focused repository_discussions_contract under its database guard; full make check; full make test with Cargo tests plus 491 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "DB-backed Playwright Discussions smoke could not complete in this workspace because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test rejects the available postgres credentials during dashboard_e2e_seed.",
+      "Re-run web/tests/e2e/repository-discussions.spec.ts against a clean migrated credentialed TEST_DATABASE_URL to verify list filters, pinned cards, category route, row destinations, vote/unvote, empty states, and save discussions-001-final-desktop.jpg plus discussions-001-final-mobile.jpg.",
+      "Repeat the browser sweep with a real Google OAuth session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Manually verify unknown category slugs and disabled organization-policy states in a clean seeded database to confirm repository-safe unavailable/disabled states do not leak private metadata.",
+      "Verify notification delivery fanout in the Notifications UI after real upvotes; contract coverage asserts notification rows, but local browser seeding was blocked."
+    ]
   }
 ]

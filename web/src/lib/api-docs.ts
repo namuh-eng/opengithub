@@ -3501,6 +3501,166 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-discussions-list",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/discussions?q=is%3Aopen&label=help-wanted&sort=latest&page=1&page_size=30",
+    title: "List repository Discussions",
+    description:
+      "Returns the screen-ready repository Discussions list with URL-backed search filters, pinned cards, category rail data, labels, helpful contributors, community links, pagination, and viewer vote/create affordances.",
+    auth: "Signed opengithub session cookie with repository read permission; private outsiders receive not_found",
+    response: `{
+  "repository": {
+    "owner": "mona",
+    "name": "octo-app",
+    "visibility": "public",
+    "discussionsHref": "/mona/octo-app/discussions"
+  },
+  "viewer": {
+    "authenticated": true,
+    "permission": "write",
+    "canRead": true,
+    "canVote": true,
+    "canCreate": true
+  },
+  "enabled": true,
+  "filters": {
+    "query": "is:open",
+    "label": "help-wanted",
+    "state": "open",
+    "answered": null,
+    "locked": null,
+    "pinned": null,
+    "sort": "latest",
+    "category": null,
+    "page": 1,
+    "pageSize": 30
+  },
+  "pinned": [
+    {
+      "position": 1,
+      "discussion": {
+        "number": 12,
+        "title": "How should import previews handle large manifests?",
+        "answered": true,
+        "pinned": true,
+        "votesCount": 14,
+        "viewerVoted": false,
+        "href": "/mona/octo-app/discussions/12"
+      }
+    }
+  ],
+  "categories": [
+    {
+      "slug": "general",
+      "name": "General",
+      "emoji": "💬",
+      "count": 12,
+      "openCount": 10,
+      "href": "/mona/octo-app/discussions/categories/general",
+      "active": false
+    }
+  ],
+  "items": [
+    {
+      "number": 12,
+      "title": "How should import previews handle large manifests?",
+      "state": "open",
+      "category": { "slug": "general", "name": "General" },
+      "labels": [{ "name": "help-wanted", "color": "var(--accent)" }],
+      "commentsCount": 8,
+      "votesCount": 14,
+      "viewerVoted": false,
+      "href": "/mona/octo-app/discussions/12"
+    }
+  ],
+  "openCount": 10,
+  "closedCount": 2,
+  "total": 12,
+  "hasNextPage": false
+}`,
+    notes: [
+      "Supported filters are q, label, state, answered, locked, pinned, sort, page, and page_size. Invalid booleans, states, sort keys, or pagination values return validation_failed envelopes.",
+      "When organization policy disables Discussions, enabled=false returns with empty rows and a disabledReason so historical private discussion volume is not leaked.",
+      "Pinned cards are capped and ordered by pin position; list rows include concrete detail, category, label, author, comment, and vote metadata for the Editorial repository workspace.",
+      "Responses never include raw session rows, OAuth provider payloads, notification internals, environment variables, storage keys, private repository metadata for outsiders, or stack traces.",
+    ],
+  },
+  {
+    id: "repo-discussions-category-list",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/discussions/categories/{slug}?q=is%3Aopen&sort=top",
+    title: "List repository Discussions by category",
+    description:
+      "Returns the same Discussions list contract scoped to one category slug, with active category rail state and category-specific empty-state data.",
+    auth: "Signed opengithub session cookie with repository read permission; unknown private categories return not_found without repository metadata leaks",
+    response: `{
+  "filters": {
+    "query": "is:open",
+    "sort": "top",
+    "category": "general",
+    "page": 1,
+    "pageSize": 30
+  },
+  "categories": [
+    {
+      "slug": "general",
+      "name": "General",
+      "emoji": "💬",
+      "description": "General project conversation.",
+      "active": true
+    }
+  ],
+  "items": [],
+  "total": 0,
+  "hasNextPage": false
+}`,
+    notes: [
+      "Category slugs are normalized through the same validation path as discussion filters. Unknown slugs return not_found rather than an empty global list.",
+      "Search, label, state, answered, locked, pinned, sort, and pagination filters compose with category scope and preserve the active rail destination.",
+      "Empty category responses provide enough metadata for a category-specific New discussion CTA without implementing creation in this feature.",
+    ],
+  },
+  {
+    id: "repo-discussion-vote-create",
+    method: "PUT",
+    path: "/api/repos/{owner}/{repo}/discussions/{discussion_number}/vote",
+    title: "Upvote repository Discussion",
+    description:
+      "Creates the current viewer's upvote for a Discussion, reconciles the aggregate vote count, records a discussion activity event, and notifies the discussion author when appropriate.",
+    auth: "Signed opengithub session cookie with repository read permission",
+    response: `{
+  "discussionId": "discussion_01",
+  "discussionNumber": 12,
+  "viewerVoted": true,
+  "votesCount": 15
+}`,
+    notes: [
+      "Repeated PUT requests are idempotent and return the current server vote count without creating duplicate vote rows.",
+      "Anonymous callers receive 401. Archived repositories, disabled Discussions, missing discussions, and private access failures return stable no-secret error envelopes.",
+      "Successful first votes write discussion_votes, discussion_activity_events, and notification rows with bounded metadata only.",
+    ],
+  },
+  {
+    id: "repo-discussion-vote-delete",
+    method: "DELETE",
+    path: "/api/repos/{owner}/{repo}/discussions/{discussion_number}/vote",
+    title: "Remove repository Discussion upvote",
+    description:
+      "Removes the current viewer's upvote from a Discussion and returns the reconciled count for optimistic browser rollback or confirmation.",
+    auth: "Signed opengithub session cookie with repository read permission",
+    response: `{
+  "discussionId": "discussion_01",
+  "discussionNumber": 12,
+  "viewerVoted": false,
+  "votesCount": 14
+}`,
+    notes: [
+      "DELETE is idempotent when the viewer has not voted; it still returns the authoritative count and viewerVoted=false.",
+      "Vote removal records a discussion activity event but does not create duplicate author notification rows.",
+      "The response never includes raw notification payloads, session cookies, OAuth profile data, token hashes, environment variables, or stack traces.",
+    ],
+  },
+  {
     id: "repo-releases-list",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/releases?page=1&pageSize=30",
