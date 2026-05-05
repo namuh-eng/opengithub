@@ -73,6 +73,8 @@ import {
   getRepositoryReleaseTagsFromCookie,
   getRepositorySecretScanningAlertDetailFromCookie,
   getRepositorySecretScanningAlertsFromCookie,
+  getRepositorySecurityAdvisoriesFromCookie,
+  getRepositorySecurityAdvisoryDetailFromCookie,
   getRepositorySecurityOverviewFromCookie,
   getRepositorySecurityPolicyFromCookie,
   getRepositorySettingsFromCookie,
@@ -123,6 +125,9 @@ import {
   type RepositorySecretScanningAlertDetailFetchResult,
   type RepositorySecretScanningAlertsFetchResult,
   type RepositorySecretScanningAlertsQuery,
+  type RepositorySecurityAdvisoriesFetchResult,
+  type RepositorySecurityAdvisoriesQuery,
+  type RepositorySecurityAdvisoryDetailFetchResult,
   type RepositorySecurityOverviewFetchResult,
   type RepositorySecurityPolicyFetchResult,
   type RepositoryTrafficFetchResult,
@@ -691,6 +696,34 @@ export async function getRepositorySecretScanningAlertDetail(
     owner,
     repo,
     alertId,
+  );
+}
+
+export async function getRepositorySecurityAdvisories(
+  owner: string,
+  repo: string,
+  options: RepositorySecurityAdvisoriesQuery = {},
+): Promise<RepositorySecurityAdvisoriesFetchResult> {
+  const requestHeaders = await headers();
+  return getRepositorySecurityAdvisoriesFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    options,
+  );
+}
+
+export async function getRepositorySecurityAdvisoryDetail(
+  owner: string,
+  repo: string,
+  ghsaId: string,
+): Promise<RepositorySecurityAdvisoryDetailFetchResult> {
+  const requestHeaders = await headers();
+  return getRepositorySecurityAdvisoryDetailFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    ghsaId,
   );
 }
 

@@ -24,7 +24,7 @@
 
 ## Phase 2: Editorial Advisories List - filters, pagination, and maintainer entry points
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement `/{owner}/{repo}/security/advisories` inside `RepositorySecurityShell` with Advisories selected. Readers see published advisories only. Maintainers see draft and published tabs, New draft security advisory, filter controls, and pagination backed by Phase 1.
 

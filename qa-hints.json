@@ -6101,5 +6101,25 @@
       "Repeat the focused DB-backed contract against a credentialed TEST_DATABASE_URL; this local run compiled and executed the focused test, but the configured Postgres URL refused password authentication so DB assertions skipped under the test guard.",
       "Browser smoke and make test-e2e were skipped because Phase 1 is API-first and .qrspi/code-security-005/structure.md marks browser smoke optional for this phase."
     ]
+  },
+  {
+    "feature_id": "code-security-005",
+    "tests_written": [
+      "Completed Phase 2 Editorial Advisories List without marking code-security-005 build_pass=true.",
+      "Added /{owner}/{repo}/security/advisories App Router page backed by the Phase 1 Rust advisory list API through signed-cookie server fetch helpers.",
+      "Added RepositorySecurityAdvisoriesPage and RepositorySecurityAdvisoryFilters with active Security sidebar state, Published/Draft/Withdrawn tabs, URL-backed search/severity/sort/page controls, concrete row/new/detail links, empty/unavailable states, and Editorial primitives/tokens only.",
+      "Added navigation helpers for advisory list/detail/new routes with encoded owner, repo, GHSA id, and query parameters.",
+      "Added focused Vitest coverage for reader vs maintainer visibility, draft privacy controls, filters, pagination, concrete links, no unsafe HTML/dead hrefs, and banned GitHub visual guardrails.",
+      "Added focused Playwright smoke coverage for the advisory list, filters, draft tab, no dead controls, mobile no-overflow, and screenshot path ralph/screenshots/build/code-security-005-phase2-advisories-list.jpg when a usable database URL is available.",
+      "Verification passed: cd web && npx tsc --noEmit --pretty false; focused Biome checks; focused web/tests/repository-security-advisories-page.test.tsx; full TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check; full same-env make test with Cargo tests plus 483 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 still needs advisory detail UI and metadata edit mutations for CVSS/CWE/package/credits/collaborators.",
+      "Phase 4 still needs draft creation and publish lifecycle mutations with notification/audit fanout.",
+      "Phase 5 still needs API docs, final edge-case sweep, final screenshots, prd.json build_pass=true, and final QA handoff.",
+      "Focused Playwright first failed with password authentication for the standard localhost TEST_DATABASE_URL; the .env retry skipped because no usable database URL was exported, so browser screenshot generation remains a QA gap for this phase.",
+      "Re-run web/tests/e2e/repository-security-advisories.spec.ts against a credentialed TEST_DATABASE_URL to verify list filters, draft tab privacy, mobile no-overflow, and save the Phase 2 screenshot.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures."
+    ]
   }
 ]

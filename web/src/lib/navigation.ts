@@ -1024,6 +1024,44 @@ export function repositorySecretScanningAlertDetailHref(
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/secret-scanning/${encodeURIComponent(String(alertId))}`;
 }
 
+export function repositorySecurityAdvisoriesHref(
+  owner: string,
+  repo: string,
+  options: {
+    state?: string | null;
+    query?: string | null;
+    severity?: string | null;
+    sort?: string | null;
+    page?: string | number | null;
+    pageSize?: string | number | null;
+  } = {},
+) {
+  const params = new URLSearchParams();
+  if (options.state?.toString().trim())
+    params.set("state", options.state.toString().trim());
+  if (options.query?.trim()) params.set("q", options.query.trim());
+  if (options.severity?.trim()) params.set("severity", options.severity.trim());
+  if (options.sort?.trim()) params.set("sort", options.sort.trim());
+  if (options.page?.toString().trim())
+    params.set("page", options.page.toString().trim());
+  if (options.pageSize?.toString().trim())
+    params.set("page_size", options.pageSize.toString().trim());
+  const query = params.toString();
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/advisories${query ? `?${query}` : ""}`;
+}
+
+export function repositorySecurityAdvisoryDetailHref(
+  owner: string,
+  repo: string,
+  ghsaId: string,
+) {
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/advisories/${encodeURIComponent(ghsaId)}`;
+}
+
+export function repositorySecurityAdvisoryNewHref(owner: string, repo: string) {
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/advisories/new`;
+}
+
 export function repositoryDependencyPackageHref({
   fallbackHref,
   ecosystem,
