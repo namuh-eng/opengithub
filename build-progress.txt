@@ -1,3 +1,11 @@
+2026-05-05 - code-security-004 structure planning
+
+- Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `prd.json`, `web/AGENTS.md`, `design/project/og-screens-4.jsx`, `design/project/og-shell.jsx`, existing code-security structure outlines, current security alert references, and target secret scanning/push protection docs.
+- Determined `code-security-004` is the first `build_pass:false` feature, requires structure planning, and did not have `.qrspi/code-security-004/structure.md`.
+- Added `.qrspi/code-security-004/structure.md` with five independently verifiable vertical phases: secret scanning API/persistence, Editorial alerts list, alert detail triage, real scanning plus push protection, and final docs/browser/QA/build-pass bookkeeping.
+- Did not change `prd.json`; `code-security-004.build_pass` remains `false` until all implementation phases pass verification.
+- Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches.
+
 2026-05-05 - code-security-003 phase 4 SARIF upload ingestion
 
 - Completed Phase 4 from `.qrspi/code-security-003/structure.md`: code scanning now has a real SARIF upload ingestion path without marking `code-security-003.build_pass=true`.
