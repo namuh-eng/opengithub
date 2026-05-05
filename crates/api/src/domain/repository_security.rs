@@ -3086,6 +3086,10 @@ async fn repository_secret_scanning_alerts_for_repository(
     let setting = secret_scanning_setting(pool, repository).await?;
     let availability = secret_scanning_availability(repository, setting.as_ref());
 
+    if availability.enabled {
+        materialize_secret_scanning_alerts(pool, repository, Some(actor_user_id), None).await?;
+    }
+
     let mut alerts = if availability.enabled {
         secret_scanning_alert_rows(pool, repository).await?
     } else {
@@ -3123,6 +3127,9 @@ async fn repository_secret_scanning_alert_detail_for_repository(
     let can_write = can_write_repository(pool, repository, actor_user_id).await?;
     let setting = secret_scanning_setting(pool, repository).await?;
     let availability = secret_scanning_availability(repository, setting.as_ref());
+    if availability.enabled {
+        materialize_secret_scanning_alerts(pool, repository, Some(actor_user_id), None).await?;
+    }
 
     let Some(alert) = secret_scanning_alert_rows(pool, repository)
         .await?
@@ -6374,6 +6381,597 @@ fn secret_scanning_links(repository: &Repository) -> SecretScanningLinks {
             repository.owner_login, repository.name
         ),
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct SecretScanningPushContext {
+    pub actor_user_id: Uuid,
+    pub ref_name: String,
+    pub commit_oid: String,
+}
+
+#[derive(Debug, Clone)]
+struct SecretScanningDetectedSecret {
+    pattern_id: Uuid,
+    provider: String,
+    secret_type: String,
+    display_name: String,
+    result_kind: String,
+    push_protection_enabled: bool,
+    secret: String,
+    redacted_secret: String,
+    redacted_snippet: String,
+    line_number: i32,
+}
+
+#[derive(Debug, Clone)]
+struct SecretScanningRepositoryFile {
+    id: Uuid,
+    commit_id: Uuid,
+    ref_name: String,
+    branch_name: Option<String>,
+    path: String,
+    content: String,
+    oid: String,
+    byte_size: i64,
+}
+
+struct SecretScanningAlertMaterialization<'a> {
+    repository: &'a Repository,
+    file: &'a SecretScanningRepositoryFile,
+    detection: &'a SecretScanningDetectedSecret,
+    fingerprint: &'a str,
+    secret_hash: &'a str,
+    actor_user_id: Option<Uuid>,
+    push_context: Option<&'a SecretScanningPushContext>,
+}
+
+pub async fn materialize_secret_scanning_alerts(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Option<Uuid>,
+    push_context: Option<&SecretScanningPushContext>,
+) -> Result<i64, RepositoryError> {
+    if !secret_scanning_enabled(pool, repository.id).await? || repository.is_archived {
+        return Ok(0);
+    }
+    ensure_default_secret_scanning_patterns(pool).await?;
+
+    let files = secret_scanning_repository_files(pool, repository.id).await?;
+    let mut materialized = 0;
+    for file in files {
+        if should_skip_secret_scanning_file(&file) {
+            continue;
+        }
+        for detection in detect_secrets_in_content(pool, &file.content).await? {
+            let fingerprint = secret_scanning_fingerprint(
+                repository.id,
+                detection.pattern_id,
+                &file.oid,
+                &file.path,
+                detection.line_number,
+                &detection.secret,
+            );
+            let secret_hash = format!("sha256:{}", sha256_hex(&detection.secret));
+            let alert_id = upsert_secret_scanning_alert(
+                pool,
+                SecretScanningAlertMaterialization {
+                    repository,
+                    file: &file,
+                    detection: &detection,
+                    fingerprint: &fingerprint,
+                    secret_hash: &secret_hash,
+                    actor_user_id,
+                    push_context,
+                },
+            )
+            .await?;
+            if detection.push_protection_enabled {
+                if let Some(context) = push_context {
+                    record_push_protection_bypass(
+                        pool, repository, alert_id, &file, &detection, context,
+                    )
+                    .await?;
+                }
+            }
+            materialized += 1;
+        }
+    }
+    refresh_secret_scanning_feature_counts(pool, repository).await?;
+    Ok(materialized)
+}
+
+async fn secret_scanning_enabled(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<bool, RepositoryError> {
+    Ok(sqlx::query_scalar::<_, Option<String>>(
+        r#"
+        SELECT status
+        FROM repository_security_feature_settings
+        WHERE repository_id = $1 AND feature_key = 'secret_scanning'
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_optional(pool)
+    .await?
+    .flatten()
+    .is_some_and(|status| status == "enabled"))
+}
+
+async fn ensure_default_secret_scanning_patterns(pool: &PgPool) -> Result<(), RepositoryError> {
+    for (slug, provider, secret_type, display_name, result_kind, push_protection_enabled) in [
+        (
+            "github-personal-access-token",
+            "GitHub",
+            "github_personal_access_token",
+            "GitHub personal access token",
+            "provider",
+            true,
+        ),
+        (
+            "generic-api-key-assignment",
+            "Generic",
+            "generic_api_key",
+            "Generic API key",
+            "generic",
+            false,
+        ),
+    ] {
+        sqlx::query(
+            r#"
+            INSERT INTO secret_scanning_patterns (
+                slug, provider, secret_type, display_name, result_kind, push_protection_enabled
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (lower(slug))
+            DO UPDATE SET provider = EXCLUDED.provider,
+                          secret_type = EXCLUDED.secret_type,
+                          display_name = EXCLUDED.display_name,
+                          result_kind = EXCLUDED.result_kind,
+                          push_protection_enabled = EXCLUDED.push_protection_enabled,
+                          updated_at = now()
+            "#,
+        )
+        .bind(slug)
+        .bind(provider)
+        .bind(secret_type)
+        .bind(display_name)
+        .bind(result_kind)
+        .bind(push_protection_enabled)
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
+async fn secret_scanning_repository_files(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<Vec<SecretScanningRepositoryFile>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT repository_files.id,
+               repository_files.commit_id,
+               commits.oid AS commit_oid,
+               repository_git_refs.name AS ref_name,
+               regexp_replace(repository_git_refs.name, '^refs/heads/', '') AS branch_name,
+               repository_files.path,
+               repository_files.content,
+               repository_files.oid,
+               repository_files.byte_size
+        FROM repository_files
+        JOIN commits ON commits.id = repository_files.commit_id
+        JOIN repository_git_refs
+          ON repository_git_refs.repository_id = repository_files.repository_id
+         AND repository_git_refs.target_commit_id = repository_files.commit_id
+         AND repository_git_refs.kind = 'branch'
+        WHERE repository_files.repository_id = $1
+        ORDER BY lower(repository_files.path) ASC
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| SecretScanningRepositoryFile {
+            id: row.get("id"),
+            commit_id: row.get("commit_id"),
+            ref_name: row.get("ref_name"),
+            branch_name: row.get("branch_name"),
+            path: row.get("path"),
+            content: row.get("content"),
+            oid: row.get("oid"),
+            byte_size: row.get("byte_size"),
+        })
+        .collect())
+}
+
+fn should_skip_secret_scanning_file(file: &SecretScanningRepositoryFile) -> bool {
+    if file.byte_size > 512 * 1024 {
+        return true;
+    }
+    if file.content.contains('\0') {
+        return true;
+    }
+    let lower = file.path.to_ascii_lowercase();
+    lower.ends_with(".png")
+        || lower.ends_with(".jpg")
+        || lower.ends_with(".jpeg")
+        || lower.ends_with(".gif")
+        || lower.ends_with(".zip")
+        || lower.ends_with(".gz")
+        || lower.ends_with(".pdf")
+}
+
+async fn detect_secrets_in_content(
+    pool: &PgPool,
+    content: &str,
+) -> Result<Vec<SecretScanningDetectedSecret>, RepositoryError> {
+    let patterns = sqlx::query(
+        r#"
+        SELECT id, provider, secret_type, display_name, result_kind, push_protection_enabled
+        FROM secret_scanning_patterns
+        ORDER BY lower(provider), lower(secret_type)
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+    let github_pat = Regex::new(r"gh[pousr]_[A-Za-z0-9_]{20,}").expect("valid github token regex");
+    let generic_key =
+        Regex::new(r"(?i)(api[_-]?key|token|secret)\s*[:=]\s*([A-Za-z0-9][A-Za-z0-9_\-]{19,})")
+            .expect("valid generic key regex");
+    let mut detections = Vec::new();
+    let github_pattern = patterns
+        .iter()
+        .find(|row| row.get::<String, _>("secret_type").contains("github"));
+    let generic_pattern = patterns
+        .iter()
+        .find(|row| row.get::<String, _>("secret_type").contains("generic"));
+
+    for (line_index, line) in content.lines().enumerate() {
+        let github_matches = github_pat
+            .find_iter(line)
+            .map(|matched| matched.as_str().to_owned())
+            .collect::<Vec<_>>();
+        if let Some(row) = github_pattern {
+            for secret in &github_matches {
+                detections.push(detected_secret_from_pattern(
+                    row,
+                    line,
+                    secret,
+                    (line_index + 1) as i32,
+                ));
+            }
+        }
+        if let Some(row) = generic_pattern {
+            for secret in generic_key
+                .captures_iter(line)
+                .filter_map(|captures| captures.get(2).map(|matched| matched.as_str().to_owned()))
+                .filter(|secret| !github_matches.iter().any(|github| github == secret))
+            {
+                detections.push(detected_secret_from_pattern(
+                    row,
+                    line,
+                    &secret,
+                    (line_index + 1) as i32,
+                ));
+            }
+        }
+    }
+    Ok(detections)
+}
+
+fn detected_secret_from_pattern(
+    row: &sqlx::postgres::PgRow,
+    line: &str,
+    secret: &str,
+    line_number: i32,
+) -> SecretScanningDetectedSecret {
+    SecretScanningDetectedSecret {
+        pattern_id: row.get("id"),
+        provider: row.get("provider"),
+        secret_type: row.get("secret_type"),
+        display_name: row.get("display_name"),
+        result_kind: row.get("result_kind"),
+        push_protection_enabled: row.get("push_protection_enabled"),
+        secret: secret.to_owned(),
+        redacted_secret: redact_secret(secret),
+        redacted_snippet: redact_secret_line(line, secret),
+        line_number,
+    }
+}
+
+async fn upsert_secret_scanning_alert(
+    pool: &PgPool,
+    input: SecretScanningAlertMaterialization<'_>,
+) -> Result<Uuid, RepositoryError> {
+    let repository = input.repository;
+    let file = input.file;
+    let detection = input.detection;
+    let alert_id: Uuid = sqlx::query_scalar(
+        r#"
+        WITH next_number AS (
+            SELECT COALESCE(MAX(number), 0) + 1 AS value
+            FROM secret_scanning_alerts
+            WHERE repository_id = $1
+        )
+        INSERT INTO secret_scanning_alerts (
+            repository_id, pattern_id, number, state, fingerprint, secret_hash,
+            redacted_secret, redacted_context, result_kind, validity_state, last_seen_at, updated_at
+        )
+        SELECT $1, $2, next_number.value, 'open', $3, $4, $5, $6, $7, 'unknown', now(), now()
+        FROM next_number
+        ON CONFLICT (repository_id, fingerprint)
+        DO UPDATE SET last_seen_at = now(),
+                      updated_at = now(),
+                      redacted_secret = EXCLUDED.redacted_secret,
+                      redacted_context = EXCLUDED.redacted_context,
+                      state = CASE
+                        WHEN secret_scanning_alerts.resolution = 'revoked' THEN secret_scanning_alerts.state
+                        ELSE 'open'
+                      END
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(detection.pattern_id)
+    .bind(input.fingerprint)
+    .bind(input.secret_hash)
+    .bind(&detection.redacted_secret)
+    .bind(&detection.redacted_snippet)
+    .bind(&detection.result_kind)
+    .fetch_one(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO secret_scanning_alert_locations (
+            alert_id, repository_file_id, commit_id, ref_name, branch_name, path, start_line, redacted_snippet
+        )
+        SELECT $1, $2, $3, $4, $5, $6, $7, $8
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM secret_scanning_alert_locations
+            WHERE alert_id = $1
+              AND commit_id = $3
+              AND path = $6
+              AND start_line = $7
+        )
+        "#,
+    )
+    .bind(alert_id)
+    .bind(file.id)
+    .bind(file.commit_id)
+    .bind(&file.ref_name)
+    .bind(&file.branch_name)
+    .bind(&file.path)
+    .bind(detection.line_number)
+    .bind(&detection.redacted_snippet)
+    .execute(pool)
+    .await?;
+
+    let event_actor = input
+        .push_context
+        .map(|context| context.actor_user_id)
+        .or(input.actor_user_id);
+    if let Some(actor_user_id) = event_actor {
+        record_secret_scanning_created_event(pool, repository, alert_id, actor_user_id, detection)
+            .await?;
+    }
+    Ok(alert_id)
+}
+
+async fn record_secret_scanning_created_event(
+    pool: &PgPool,
+    repository: &Repository,
+    alert_id: Uuid,
+    actor_user_id: Uuid,
+    detection: &SecretScanningDetectedSecret,
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        r#"
+        INSERT INTO secret_scanning_alert_events (
+            repository_id, alert_id, actor_user_id, event_type, message, metadata
+        )
+        SELECT $1, $2, $3, 'created', $4, $5
+        WHERE NOT EXISTS (
+            SELECT 1 FROM secret_scanning_alert_events
+            WHERE alert_id = $2 AND event_type = 'created'
+        )
+        "#,
+    )
+    .bind(repository.id)
+    .bind(alert_id)
+    .bind(actor_user_id)
+    .bind(format!(
+        "Secret scanning detected {} with redacted evidence.",
+        detection.display_name
+    ))
+    .bind(json!({
+        "provider": detection.provider,
+        "secretType": detection.secret_type,
+        "redacted": true,
+        "source": "secret_scanning_detection",
+    }))
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn record_push_protection_bypass(
+    pool: &PgPool,
+    repository: &Repository,
+    alert_id: Uuid,
+    file: &SecretScanningRepositoryFile,
+    detection: &SecretScanningDetectedSecret,
+    context: &SecretScanningPushContext,
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        r#"
+        INSERT INTO push_protection_bypasses (
+            repository_id, alert_id, actor_user_id, ref_name, commit_oid, path, reason, status, redacted_snippet
+        )
+        SELECT $1, $2, $3, $4, $5, $6, 'push_protection_bypass', 'accepted', $7
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM push_protection_bypasses
+            WHERE repository_id = $1
+              AND alert_id = $2
+              AND actor_user_id = $3
+              AND ref_name = $4
+              AND commit_oid = $5
+              AND path = $6
+        )
+        "#,
+    )
+    .bind(repository.id)
+    .bind(alert_id)
+    .bind(context.actor_user_id)
+    .bind(&context.ref_name)
+    .bind(&context.commit_oid)
+    .bind(&file.path)
+    .bind(&detection.redacted_snippet)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO secret_scanning_alert_events (
+            repository_id, alert_id, actor_user_id, event_type, message, metadata
+        )
+        VALUES ($1, $2, $3, 'push_protection_bypassed',
+                'Push protection recorded an accepted bypass with redacted evidence.', $4)
+        "#,
+    )
+    .bind(repository.id)
+    .bind(alert_id)
+    .bind(context.actor_user_id)
+    .bind(json!({
+        "ref": context.ref_name,
+        "commitOid": context.commit_oid,
+        "path": file.path,
+        "redacted": true,
+    }))
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO security_audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, 'repository.secret_scanning.push_protection_bypass', 'repository', $2, $3)
+        "#,
+    )
+    .bind(context.actor_user_id)
+    .bind(repository.id)
+    .bind(json!({
+        "repositoryId": repository.id,
+        "alertId": alert_id,
+        "ref": context.ref_name,
+        "commitOid": context.commit_oid,
+        "path": file.path,
+        "redacted": true,
+    }))
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO notifications (
+            user_id, repository_id, subject_type, subject_id, title, reason
+        )
+        SELECT repository_permissions.user_id,
+               $1,
+               'secret_scanning_alert',
+               $2,
+               $3,
+               'security_alert'
+        FROM repository_permissions
+        WHERE repository_permissions.repository_id = $1
+          AND repository_permissions.role IN ('owner', 'admin', 'maintain', 'write')
+        "#,
+    )
+    .bind(repository.id)
+    .bind(alert_id)
+    .bind(format!(
+        "{} detected by push protection",
+        detection.display_name
+    ))
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn refresh_secret_scanning_feature_counts(
+    pool: &PgPool,
+    repository: &Repository,
+) -> Result<(), RepositoryError> {
+    let open_count = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM secret_scanning_alerts WHERE repository_id = $1 AND state = 'open'",
+    )
+    .bind(repository.id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+    sqlx::query(
+        r#"
+        UPDATE repository_security_feature_settings
+        SET alert_count = $2,
+            private_count = $2,
+            summary = CASE
+                WHEN $2 > 0 THEN 'Secret scanning found redacted credential exposure.'
+                ELSE 'Secret scanning is monitoring committed content.'
+            END,
+            updated_at = now()
+        WHERE repository_id = $1 AND feature_key = 'secret_scanning'
+        "#,
+    )
+    .bind(repository.id)
+    .bind(open_count)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+fn secret_scanning_fingerprint(
+    repository_id: Uuid,
+    pattern_id: Uuid,
+    blob_oid: &str,
+    path: &str,
+    line_number: i32,
+    secret: &str,
+) -> String {
+    sha256_hex(&format!(
+        "{repository_id}:{pattern_id}:{blob_oid}:{path}:{line_number}:{}",
+        sha256_hex(secret)
+    ))
+}
+
+fn sha256_hex(value: &str) -> String {
+    format!("{:x}", Sha256::digest(value.as_bytes()))
+}
+
+fn redact_secret(secret: &str) -> String {
+    let prefix_len = secret
+        .char_indices()
+        .nth(4)
+        .map(|(idx, _)| idx)
+        .unwrap_or(secret.len());
+    let suffix_start = secret
+        .char_indices()
+        .rev()
+        .nth(3)
+        .map(|(idx, _)| idx)
+        .unwrap_or(secret.len());
+    let prefix = &secret[..prefix_len];
+    let suffix = &secret[suffix_start..];
+    format!("{prefix}****{suffix}")
+}
+
+fn redact_secret_line(line: &str, secret: &str) -> String {
+    line.replace(secret, &redact_secret(secret))
 }
 
 fn branch_name_matches_default(

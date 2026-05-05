@@ -36,7 +36,21 @@ async fn database_pool() -> Option<PgPool> {
         .connect(&database_url)
         .await
         .ok()?;
-    MIGRATOR.run(&pool).await.ok()?;
+    if MIGRATOR.run(&pool).await.is_err() {
+        let has_git_tables = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT to_regclass('public.repository_git_storage') IS NOT NULL
+               AND to_regclass('public.repository_files') IS NOT NULL
+               AND to_regclass('public.secret_scanning_alerts') IS NOT NULL
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap_or(false);
+        if !has_git_tables {
+            return None;
+        }
+    }
     Some(pool)
 }
 
@@ -106,8 +120,10 @@ async fn create_pat(
         .to_owned();
     sqlx::query(
         r#"
-        INSERT INTO personal_access_tokens (user_id, name, prefix, token_hash, scopes, expires_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO personal_access_tokens (
+            user_id, name, prefix, token_hash, scopes, expires_at, resource_owner_user_id
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $1)
         "#,
     )
     .bind(user_id)
@@ -632,6 +648,18 @@ async fn authorized_token_push_updates_repository_snapshot_and_activity() {
     )
     .await
     .expect("empty repository should create");
+    sqlx::query(
+        r#"
+        INSERT INTO repository_security_feature_settings (
+            repository_id, feature_key, status, summary, alert_count, private_count, config_href
+        )
+        VALUES ($1, 'secret_scanning', 'enabled', 'Secret scanning is monitoring pushed content.', 0, 0, '/settings/security_analysis')
+        "#,
+    )
+    .bind(repository.id)
+    .execute(&pool)
+    .await
+    .expect("secret scanning setting should insert");
 
     let token = create_pat(&pool, owner.id, &["repo:write"], None).await;
     let app = opengithub_api::build_app_with_config(Some(pool.clone()), test_config());
@@ -675,6 +703,9 @@ async fn authorized_token_push_updates_repository_snapshot_and_activity() {
         "pub fn pushed() -> bool { true }\n",
     )
     .expect("source should write");
+    let pushed_secret = format!("ghp_{}{}", "C".repeat(20), Uuid::new_v4().simple());
+    std::fs::write(worktree.join(".env"), format!("TOKEN={pushed_secret}\n"))
+        .expect("secret fixture should write");
     git_in(&worktree, ["add", "."]).await;
     git_in(&worktree, ["commit", "-m", "Push repository contents"]).await;
     let remote = format!(
@@ -764,6 +795,33 @@ async fn authorized_token_push_updates_repository_snapshot_and_activity() {
     .await
     .expect("audit count should read");
     assert!(audit_count >= 1);
+    let secret_scan_payload: String = sqlx::query_scalar::<_, Option<String>>(
+        r#"
+        SELECT jsonb_agg(payload)::text
+        FROM (
+            SELECT jsonb_build_object(
+                'redactedSecret', secret_scanning_alerts.redacted_secret,
+                'redactedContext', secret_scanning_alerts.redacted_context,
+                'path', secret_scanning_alert_locations.path,
+                'bypassReason', push_protection_bypasses.reason
+            ) AS payload
+            FROM secret_scanning_alerts
+            JOIN secret_scanning_alert_locations
+              ON secret_scanning_alert_locations.alert_id = secret_scanning_alerts.id
+            LEFT JOIN push_protection_bypasses
+              ON push_protection_bypasses.alert_id = secret_scanning_alerts.id
+            WHERE secret_scanning_alerts.repository_id = $1
+        ) rows
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("secret scanning payload should read")
+    .unwrap_or_default();
+    assert!(secret_scan_payload.contains(".env"));
+    assert!(secret_scan_payload.contains("push_protection_bypass"));
+    assert!(!secret_scan_payload.contains(&pushed_secret));
 
     let _ = std::fs::remove_dir_all(worktree);
     let _ = std::fs::remove_dir_all(storage_dir);

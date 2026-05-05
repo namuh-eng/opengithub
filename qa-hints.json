@@ -6049,5 +6049,22 @@
       "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
       "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema."
     ]
+  },
+  {
+    "feature_id": "code-security-004",
+    "tests_written": [
+      "Completed Phase 4 Secret Detection and Push Protection Integration without marking code-security-004 build_pass=true.",
+      "Added committed-blob secret materialization for enabled repositories, with default provider and generic patterns, bounded text scanning, large/binary file skips, stable fingerprints, redacted snippets, and hashed secret storage only.",
+      "Wired secret scanning materialization into Secret scanning list/detail reads and the Rust smart-HTTP push sync path so pushed snapshots create redacted alerts and accepted push-protection bypass rows.",
+      "Extended Git push and Secret scanning Rust contract coverage for committed secret detection, push-protection bypass metadata, feature alert counts, redaction, notification/audit/event writes, and no plaintext secret leakage.",
+      "Focused Vitest coverage for Secret scanning list/detail still passes with push-protection bypass markers and no dead-control guardrails."
+    ],
+    "needs_deeper_qa": [
+      "Phase 5 still needs API docs, final edge-case sweep, final screenshots, prd.json build_pass=true, and final QA handoff.",
+      "Run a clean database-backed Rust pass once the local TEST_DATABASE_URL authentication issue is fixed; this iteration compiled the focused Rust tests but the local Postgres URL refused authentication, so database scenarios skipped.",
+      "Exercise a real Git push with an explicit user-facing bypass reason flow if/when the receive-pack protocol grows pre-accept block/warn negotiation; the current implementation records accepted bypass outcomes after authenticated push sync.",
+      "Repeat focused browser smoke and full make test-e2e after the dev-server wrapper stall pattern is resolved.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures."
+    ]
   }
 ]

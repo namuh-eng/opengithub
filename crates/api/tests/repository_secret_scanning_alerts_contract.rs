@@ -15,6 +15,7 @@ use opengithub_api::{
             RepositorySnapshotFile, RepositoryVisibility,
         },
         repository_security::{
+            materialize_secret_scanning_alerts,
             repository_secret_scanning_alert_detail_for_actor_by_owner_name,
             repository_secret_scanning_alerts_for_actor_by_owner_name,
             update_repository_secret_scanning_alert_for_actor_by_owner_name,
@@ -23,7 +24,7 @@ use opengithub_api::{
     },
 };
 use serde_json::{json, Value};
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use tower::ServiceExt;
 use url::Url;
 use uuid::Uuid;
@@ -398,14 +399,19 @@ async fn secret_scanning_alerts_redact_filter_and_protect_private_repositories()
     assert_eq!(reader_status, StatusCode::OK, "{reader_body}");
     assert_eq!(reader_body["availability"]["enabled"], true);
     assert_eq!(reader_body["viewer"]["canWrite"], false);
-    assert_eq!(reader_body["counts"]["open"], 1);
-    assert_eq!(reader_body["counts"]["provider"], 1);
+    assert_eq!(reader_body["counts"]["open"], 2);
+    assert_eq!(reader_body["counts"]["provider"], 2);
     assert_eq!(reader_body["counts"]["bypassed"], 1);
-    assert_eq!(reader_body["alerts"][0]["redactedSecret"], "ghp_****1234");
-    assert_eq!(reader_body["alerts"][0]["validity"]["status"], "active");
-    assert_eq!(reader_body["alerts"][0]["bypassed"], true);
+    let seeded_alert = reader_body["alerts"]
+        .as_array()
+        .expect("alerts")
+        .iter()
+        .find(|alert| alert["redactedSecret"] == "ghp_****1234")
+        .expect("seeded alert should remain visible");
+    assert_eq!(seeded_alert["validity"]["status"], "active");
+    assert_eq!(seeded_alert["bypassed"], true);
     assert_eq!(
-        reader_body["alerts"][0]["primaryLocation"]["pathHref"],
+        seeded_alert["primaryLocation"]["pathHref"],
         format!(
             "/{owner_login}/{}/blob/refs%2Fheads%2Fmain/src/config.rs#L1",
             repository.name
@@ -619,4 +625,134 @@ async fn secret_scanning_alerts_redact_filter_and_protect_private_repositories()
         direct_resolved.alert.resolution.as_deref(),
         Some("false_positive")
     );
+}
+
+#[tokio::test]
+async fn secret_scanning_materializes_committed_blobs_without_plaintext_leakage() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping secret scanning materialization scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let owner = create_user(&pool, "secret-materialize-owner").await;
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("secret-materialize-{}", Uuid::new_v4().simple()),
+            description: Some("Secret scanning materialization repository".to_owned()),
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    sqlx::query(
+        r#"
+        INSERT INTO repository_security_feature_settings (
+            repository_id, feature_key, status, summary, alert_count, private_count, config_href
+        )
+        VALUES ($1, 'secret_scanning', 'enabled', 'Secret scanning is monitoring committed content.', 0, 0, '/settings/security_analysis')
+        "#,
+    )
+    .bind(repository.id)
+    .execute(&pool)
+    .await
+    .expect("secret scanning setting should insert");
+
+    let github_secret = format!("ghp_{}{}", "A".repeat(20), Uuid::new_v4().simple());
+    let generic_secret = format!("{}{}", "B".repeat(20), Uuid::new_v4().simple());
+    replace_repository_snapshot(
+        &pool,
+        repository.id,
+        RepositorySnapshot {
+            commit: CreateCommit {
+                oid: format!("commit-{}", Uuid::new_v4().simple()),
+                author_user_id: Some(owner.id),
+                committer_user_id: Some(owner.id),
+                message: "Seed materialized secrets".to_owned(),
+                tree_oid: Some(format!("tree-{}", Uuid::new_v4().simple())),
+                parent_oids: Vec::new(),
+                committed_at: Utc::now(),
+            },
+            branch_name: "main".to_owned(),
+            files: vec![
+                RepositorySnapshotFile {
+                    path: ".env".to_owned(),
+                    content: format!("TOKEN={github_secret}\n"),
+                    oid: format!("blob-{}", Uuid::new_v4().simple()),
+                    byte_size: github_secret.len() as i64 + 7,
+                },
+                RepositorySnapshotFile {
+                    path: "docs/example.env".to_owned(),
+                    content: format!("API_KEY={generic_secret}\n"),
+                    oid: format!("blob-{}", Uuid::new_v4().simple()),
+                    byte_size: generic_secret.len() as i64 + 8,
+                },
+                RepositorySnapshotFile {
+                    path: "target/blob.png".to_owned(),
+                    content: format!("ignored-{github_secret}"),
+                    oid: format!("blob-{}", Uuid::new_v4().simple()),
+                    byte_size: 600 * 1024,
+                },
+            ],
+        },
+    )
+    .await
+    .expect("repository snapshot should seed");
+
+    let created = materialize_secret_scanning_alerts(&pool, &repository, Some(owner.id), None)
+        .await
+        .expect("secret scanning should materialize");
+    assert_eq!(created, 2);
+
+    let rows = sqlx::query(
+        r#"
+        SELECT secret_scanning_alerts.redacted_secret,
+               secret_scanning_alerts.redacted_context,
+               secret_scanning_alerts.secret_hash,
+               secret_scanning_patterns.result_kind,
+               secret_scanning_alert_locations.path
+        FROM secret_scanning_alerts
+        JOIN secret_scanning_patterns ON secret_scanning_patterns.id = secret_scanning_alerts.pattern_id
+        JOIN secret_scanning_alert_locations ON secret_scanning_alert_locations.alert_id = secret_scanning_alerts.id
+        WHERE secret_scanning_alerts.repository_id = $1
+        ORDER BY secret_scanning_alert_locations.path
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_all(&pool)
+    .await
+    .expect("alerts should load");
+    assert_eq!(rows.len(), 2);
+    let rendered = rows
+        .iter()
+        .map(|row| {
+            format!(
+                "{} {} {} {} {}",
+                row.get::<String, _>("redacted_secret"),
+                row.get::<Option<String>, _>("redacted_context")
+                    .unwrap_or_default(),
+                row.get::<String, _>("secret_hash"),
+                row.get::<String, _>("result_kind"),
+                row.get::<String, _>("path")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(rendered.contains("provider"));
+    assert!(rendered.contains("generic"));
+    assert!(rendered.contains("sha256:"));
+    assert!(!rendered.contains(&github_secret));
+    assert!(!rendered.contains(&generic_secret));
+
+    let feature_count: i64 = sqlx::query_scalar(
+        "SELECT alert_count FROM repository_security_feature_settings WHERE repository_id = $1 AND feature_key = 'secret_scanning'",
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("feature count should read");
+    assert_eq!(feature_count, 2);
 }

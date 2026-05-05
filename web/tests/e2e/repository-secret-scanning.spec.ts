@@ -410,11 +410,17 @@ test("repository Secret scanning alerts support list filters, row links, disable
   await page.getByRole("button", { name: "Reopen alert" }).click();
   await expect(page.getByText("Reopen saved.")).toBeVisible();
   await page
-    .locator('section[aria-label="Alert triage actions"] input[type="checkbox"]')
+    .locator(
+      'section[aria-label="Alert triage actions"] input[type="checkbox"]',
+    )
     .first()
     .uncheck();
   await page.getByRole("button", { name: "Save assignments" }).click();
   await expect(page.getByText("Assignments saved.")).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/code-security-004-phase4-push-protection.jpg",
+  });
   await page.getByLabel("Token validity").selectOption("inactive");
   await page.getByRole("button", { name: "Save validity" }).click();
   await expect(page.getByText("Validity saved.")).toBeVisible();

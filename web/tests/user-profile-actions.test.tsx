@@ -161,7 +161,7 @@ describe("UserProfileActions", () => {
         method: "PUT",
       }),
     );
-    expect(screen.getByText("Profile blocked.")).toBeVisible();
+    expect(await screen.findByText("Profile blocked.")).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: "More" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Report profile" }));

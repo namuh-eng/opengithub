@@ -16,6 +16,7 @@ use super::repositories::{
     can_read_repository, can_write_repository, get_repository_by_owner_name, Repository,
     RepositorySnapshot, RepositorySnapshotFile, RepositoryVisibility,
 };
+use super::repository_security::{materialize_secret_scanning_alerts, SecretScanningPushContext};
 
 const MAX_UPLOAD_PACK_REQUEST_BYTES: usize = 32 * 1024 * 1024;
 const MAX_RECEIVE_PACK_REQUEST_BYTES: usize = 64 * 1024 * 1024;
@@ -317,6 +318,18 @@ pub async fn sync_pushed_refs_to_database(
             snapshot_from_commit(bare_path, &pushed_ref.commit_oid, &pushed_ref.short_name).await?;
         let commit = upsert_pushed_snapshot(pool, repository.id, snapshot).await?;
         synced_ref_names.push(pushed_ref.name.clone());
+        materialize_secret_scanning_alerts(
+            pool,
+            repository,
+            Some(actor_user_id),
+            Some(&SecretScanningPushContext {
+                actor_user_id,
+                ref_name: pushed_ref.name.clone(),
+                commit_oid: commit.oid.clone(),
+            }),
+        )
+        .await
+        .map_err(repository_error)?;
         insert_push_events(
             pool,
             repository,

@@ -59,7 +59,7 @@
 
 ## Phase 4: Secret Detection and Push Protection Integration - real indexing and bypass outcomes
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make secret scanning real by indexing committed blobs and enforcing push protection during Rust Git pushes. When secret scanning is enabled, existing blobs and new pushed commits are scanned against provider/default plus generic patterns; matching secrets create redacted alerts. Push protection blocks or warns on protected matches; allowed bypasses require a reason, create bypass rows, alert events, audit events, and notifications.
 
