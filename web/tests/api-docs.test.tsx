@@ -1263,6 +1263,63 @@ describe("ApiDocsPage", () => {
       screen.getByText(/previewing does not create discussion/),
     ).toBeVisible();
     expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/discussions/{discussion_number}?sort=oldest&page=1&page_size=30",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/discussions/{discussion_number}/comments",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/discussions/{discussion_number}/comments/{comment_id}/replies",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/discussions/{discussion_number}/comments/{comment_id}/reactions",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/discussions/{discussion_number}/subscription",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/discussions/{discussion_number}/answer",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/discussions/{discussion_number}/state",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/discussions/{discussion_number}/metadata",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Supported sort values are oldest, newest, and top/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Successful writes update discussion_comments/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/PUT is idempotent for the same viewer/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/DELETE on the same endpoint unmarks the answer/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Successful metadata edits write discussion_activity_events/,
+      ),
+    ).toBeVisible();
+    expect(
       screen.getByText("/api/search?q=router&type=code&page=1&pageSize=30"),
     ).toBeVisible();
     expect(

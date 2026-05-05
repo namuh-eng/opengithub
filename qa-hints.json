@@ -6422,5 +6422,22 @@
       "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
       "Phase 5 still needs API docs, final browser evidence, QA handoff, prd.json build_pass=true, and final desktop/mobile screenshots."
     ]
+  },
+  {
+    "feature_id": "discussions-003",
+    "tests_written": [
+      "Completed Phase 5 API Docs, Browser Evidence, QA Handoff, and Build-Pass Bookkeeping and marked discussions-003 build_pass=true.",
+      "Added /docs/api coverage for GET /api/repos/{owner}/{repo}/discussions/{discussion_number}, POST comments, POST replies, PUT/DELETE reactions, PUT/DELETE subscription, PUT/DELETE answer, PUT state, and PATCH metadata.",
+      "Documented auth/privacy gates, sort and pagination validation, Markdown sanitization, attachment draft bounds, reaction idempotency, subscription semantics, answer-enabled validation, close/reopen events, category/label validation, notification/activity side effects, and no-secret error guarantees.",
+      "Extended focused API docs assertions for discussion detail, comment/reply creation, reactions, subscriptions, answer mark/unmark, close/reopen, metadata editing, and related side-effect notes.",
+      "Verification passed: cd web && npm test -- --run api-docs.test.tsx; cd web && npx tsc --noEmit --pretty false; cd web && npx biome check src/lib/api-docs.ts tests/api-docs.test.tsx; cargo fmt --all --check; full TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check; full same-env make test with Cargo tests plus 505 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "make test-e2e was attempted with TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test. The wrapper ran 141 Playwright tests, 19 public/docs tests passed, and 122 signed-session seeded tests failed because dashboard_e2e_seed could not authenticate to Postgres: password authentication failed for user postgres.",
+      "Run the full signed-session Playwright repository-discussions smoke against a clean migrated credentialed TEST_DATABASE_URL to capture ralph/screenshots/build/discussions-003-final-desktop.jpg and ralph/screenshots/build/discussions-003-final-mobile.jpg.",
+      "Repeat detail write flows with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Stress Phase 4 row side effects with production-like data: discussion_answers replacement/removal, close/reopen event ordering, category/label replacement, author notification fanout, and private repository privacy.",
+      "Attachment object upload remains out of scope for this feature; the API validates bounded draft metadata but real S3 draft creation needs separate QA when connected."
+    ]
   }
 ]

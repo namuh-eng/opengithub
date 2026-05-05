@@ -82,7 +82,7 @@
 
 ## Phase 5: API Docs, Browser Evidence, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `discussions-003` only after detail reads, comments, replies, reactions, subscriptions, answer marking, close/reopen, sidebar metadata, docs, screenshots, QA handoff, and PRD bookkeeping are complete. Do not implement category administration, poll voting, repository-wide discussion search indexing, or organization discussion policy settings here.
 

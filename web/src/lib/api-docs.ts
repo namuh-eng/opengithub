@@ -3808,6 +3808,217 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-discussion-detail",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/discussions/{discussion_number}?sort=oldest&page=1&page_size=30",
+    title: "Read repository Discussion detail",
+    description:
+      "Returns the screen-ready Discussion detail contract with sanitized Markdown body, form and poll summaries, sorted timeline comments, nested replies, reactions, answer summary, subscription state, sidebar metadata, participants, events, and viewer moderation affordances.",
+    auth: "Signed opengithub session cookie with repository read permission; private outsiders receive not_found",
+    response: `{
+  "discussion": {
+    "number": 42,
+    "title": "How should import previews handle large manifests?",
+    "state": "open",
+    "answered": true,
+    "category": { "slug": "q-a", "name": "Q&A", "acceptsAnswers": true },
+    "bodyHtml": "<p>The preview should stay responsive.</p>",
+    "commentsCount": 8,
+    "votesCount": 14,
+    "href": "/mona/octo-app/discussions/42"
+  },
+  "answer": {
+    "commentId": "comment_02",
+    "markedBy": { "login": "maintainer" },
+    "href": "/mona/octo-app/discussions/42#discussioncomment-comment_02"
+  },
+  "timeline": [
+    {
+      "kind": "comment",
+      "comment": {
+        "id": "comment_02",
+        "bodyHtml": "<p>Use streamed parsing.</p>",
+        "answer": true,
+        "reactions": [{ "content": "thumbs_up", "count": 2 }],
+        "replies": [{ "id": "reply_01", "bodyHtml": "<p>Confirmed.</p>" }]
+      }
+    }
+  ],
+  "viewer": {
+    "canComment": true,
+    "canModerate": true,
+    "subscriptionState": "subscribed"
+  }
+}`,
+    notes: [
+      "Supported sort values are oldest, newest, and top; malformed discussion numbers, sort keys, or pagination values return validation_failed envelopes.",
+      "Comment and reply Markdown is sanitized server-side. Unsafe HTML, raw attachment objects, session rows, OAuth data, environment variables, storage credentials, and stack traces are never serialized.",
+      "The sidebar includes category, labels, participants, notification state, and bounded event history so the browser can render answer, close/reopen, category, and label controls without dead placeholders.",
+      "Archived repositories, disabled Discussions, private repository outsiders, deleted comments, and moderated rows preserve privacy-safe unavailable or collapsed states.",
+    ],
+  },
+  {
+    id: "repo-discussion-comment-create",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/discussions/{discussion_number}/comments",
+    title: "Create repository Discussion comment",
+    description:
+      "Adds a top-level comment to a Discussion, sanitizes Markdown, validates bounded attachment metadata, subscribes the participant, records activity, notifies participants, and returns the refreshed detail contract.",
+    auth: "Signed opengithub session cookie with repository read permission and unlocked discussion access",
+    request: `{
+  "body": "Use streamed parsing and summarize large lockfiles.",
+  "attachmentDrafts": []
+}`,
+    response: `{
+  "discussion": { "number": 42, "commentsCount": 9 },
+  "createdAnchor": "#discussioncomment-comment_09",
+  "timeline": []
+}`,
+    notes: [
+      "Blank bodies, oversized bodies, invalid attachment draft metadata, locked discussions, archived repositories, disabled Discussions, and private access failures return stable no-secret envelopes.",
+      "Successful writes update discussion_comments, comment counts, participant subscription state, discussion_activity_events, and notification rows in one transaction.",
+      "Attachment object upload remains a separate storage workflow; this endpoint accepts only bounded draft metadata and never returns raw object bytes or storage credentials.",
+    ],
+  },
+  {
+    id: "repo-discussion-reply-create",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/discussions/{discussion_number}/comments/{comment_id}/replies",
+    title: "Create repository Discussion reply",
+    description:
+      "Adds a nested reply under a top-level Discussion comment with the same sanitization, attachment metadata validation, activity, subscription, notification, and refreshed-detail behavior as top-level comments.",
+    auth: "Signed opengithub session cookie with repository read permission and unlocked discussion access",
+    request: `{
+  "body": "That shape works for the importer path.",
+  "attachmentDrafts": []
+}`,
+    response: `{
+  "createdAnchor": "#discussionreply-reply_01",
+  "timeline": []
+}`,
+    notes: [
+      "Replies can target only comments in the same Discussion; nested reply-to-reply ids, deleted parents, locked discussions, and malformed comment ids return validation or not_found envelopes.",
+      "Successful replies update discussion_comment_replies, aggregate counts, discussion_activity_events, participant subscriptions, and bounded notification fanout.",
+      "Responses never include raw notification payloads, private repository metadata for outsiders, session cookies, OAuth provider data, environment variables, storage keys, or stack traces.",
+    ],
+  },
+  {
+    id: "repo-discussion-reaction-toggle",
+    method: "PUT",
+    path: "/api/repos/{owner}/{repo}/discussions/{discussion_number}/comments/{comment_id}/reactions",
+    title: "React to repository Discussion content",
+    description:
+      "Adds the current viewer's reaction to a Discussion, top-level comment, or nested reply target and returns the refreshed reaction aggregate for optimistic browser reconciliation.",
+    auth: "Signed opengithub session cookie with repository read permission",
+    request: `{
+  "content": "thumbs_up",
+  "replyId": null
+}`,
+    response: `{
+  "targetType": "comment",
+  "targetId": "comment_02",
+  "reactions": [
+    { "content": "thumbs_up", "count": 3, "viewerReacted": true }
+  ]
+}`,
+    notes: [
+      "PUT is idempotent for the same viewer/content/target tuple; DELETE on the same path removes the reaction and returns the authoritative aggregate.",
+      "Supported targets are the discussion itself, top-level comments, and replies. Invalid reaction content, cross-discussion targets, deleted targets, or private access failures use stable envelopes.",
+      "Reaction writes update discussion_reactions and discussion_activity_events without exposing raw actor session data, OAuth payloads, notification internals, or stack traces.",
+    ],
+  },
+  {
+    id: "repo-discussion-subscription",
+    method: "PUT",
+    path: "/api/repos/{owner}/{repo}/discussions/{discussion_number}/subscription",
+    title: "Subscribe to repository Discussion",
+    description:
+      "Sets the current viewer's Discussion notification state to subscribed or unsubscribed and returns the refreshed sidebar notification state.",
+    auth: "Signed opengithub session cookie with repository read permission",
+    response: `{
+  "discussionId": "discussion_01",
+  "discussionNumber": 42,
+  "subscriptionState": "subscribed",
+  "reason": "manual"
+}`,
+    notes: [
+      "PUT subscribes and DELETE unsubscribes idempotently; both preserve read permission and private repository privacy checks.",
+      "Successful writes update discussion_subscriptions and record bounded discussion_activity_events metadata only.",
+      "The response never includes notification delivery internals, session rows, OAuth data, token hashes, environment variables, storage credentials, or stack traces.",
+    ],
+  },
+  {
+    id: "repo-discussion-answer",
+    method: "PUT",
+    path: "/api/repos/{owner}/{repo}/discussions/{discussion_number}/answer",
+    title: "Mark repository Discussion answer",
+    description:
+      "Marks or unmarks a top-level comment as the accepted answer for answer-enabled Discussion categories, updates the Discussion answered state, records events, notifies the author, and returns the refreshed detail contract.",
+    auth: "Signed opengithub session cookie with triage, write, admin, or owner repository permission",
+    request: `{
+  "commentId": "comment_02"
+}`,
+    response: `{
+  "discussion": { "number": 42, "answered": true },
+  "answer": { "commentId": "comment_02", "href": "/mona/octo-app/discussions/42#discussioncomment-comment_02" }
+}`,
+    notes: [
+      "DELETE on the same endpoint unmarks the answer and clears the accepted-answer pointer. Both operations reject normal categories that do not accept answers.",
+      "Validation enforces triage-or-greater permission, same-discussion top-level comments, unlocked/unarchived repositories, enabled Discussions, and stable no-secret error envelopes.",
+      "Successful writes update discussion_answers, discussions.answer_comment_id, discussion_activity_events, and notification rows with redacted metadata.",
+    ],
+  },
+  {
+    id: "repo-discussion-state-update",
+    method: "PUT",
+    path: "/api/repos/{owner}/{repo}/discussions/{discussion_number}/state",
+    title: "Close or reopen repository Discussion",
+    description:
+      "Transitions a Discussion between open and closed states with a bounded reason, records timeline events, sends notification fanout, and returns the refreshed detail contract.",
+    auth: "Signed opengithub session cookie with triage, write, admin, or owner repository permission",
+    request: `{
+  "state": "closed",
+  "reason": "resolved"
+}`,
+    response: `{
+  "discussion": { "number": 42, "state": "closed", "closedReason": "resolved" },
+  "sidebar": { "events": [{ "eventType": "closed" }] }
+}`,
+    notes: [
+      "Supported reasons are bounded server enums for resolved, duplicate, outdated, and not_planned close flows; reopening clears the close reason.",
+      "Archived repositories, disabled Discussions, malformed state or reason values, and insufficient permissions return stable validation or permission envelopes.",
+      "Close and reopen writes update discussions, discussion_activity_events, and notification rows without leaking session cookies, OAuth profiles, private repository metadata, or stack traces.",
+    ],
+  },
+  {
+    id: "repo-discussion-metadata-update",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/discussions/{discussion_number}/metadata",
+    title: "Update repository Discussion metadata",
+    description:
+      "Updates maintainer-controlled Discussion sidebar metadata such as category and labels, validates category compatibility, replaces label assignments, records events, and returns the refreshed detail contract.",
+    auth: "Signed opengithub session cookie with triage, write, admin, or owner repository permission",
+    request: `{
+  "categorySlug": "ideas",
+  "labelIds": ["label_help_wanted", "label_api"]
+}`,
+    response: `{
+  "discussion": {
+    "number": 42,
+    "category": { "slug": "ideas", "name": "Ideas" }
+  },
+  "sidebar": {
+    "labels": [{ "name": "help wanted" }],
+    "events": [{ "eventType": "labels_changed" }]
+  }
+}`,
+    notes: [
+      "Category changes reject missing categories, poll/form incompatibilities, archived repositories, disabled Discussions, and insufficient permissions.",
+      "Label updates validate repository-owned label ids and replace discussion_labels atomically so the sidebar and list row stay consistent.",
+      "Successful metadata edits write discussion_activity_events and notification rows with bounded old/new metadata; responses never expose raw audit payloads, session rows, OAuth data, storage keys, environment variables, or stack traces.",
+    ],
+  },
+  {
     id: "repo-releases-list",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/releases?page=1&pageSize=30",
