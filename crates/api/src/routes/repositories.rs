@@ -97,13 +97,16 @@ use crate::{
     domain::repository_security::{
         bulk_update_repository_dependabot_alerts_for_actor_by_owner_name,
         create_repository_dependabot_security_update_for_actor_by_owner_name,
+        repository_code_scanning_alert_detail_for_actor_by_owner_name,
+        repository_code_scanning_alerts_for_actor_by_owner_name,
         repository_dependabot_alert_detail_for_actor_by_owner_name,
         repository_dependabot_alerts_for_actor_by_owner_name,
         repository_security_overview_for_actor_by_owner_name,
         repository_security_policy_for_actor_by_owner_name,
         update_repository_dependabot_alert_for_actor_by_owner_name,
-        upsert_repository_security_policy_by_owner_name, DependabotAlertMutation,
-        DependabotAlertsQuery, DependabotBulkMutation, SecurityPolicyMutation,
+        upsert_repository_security_policy_by_owner_name, CodeScanningAlertsQuery,
+        DependabotAlertMutation, DependabotAlertsQuery, DependabotBulkMutation,
+        SecurityPolicyMutation,
     },
     domain::webhooks::{
         create_repository_webhook_by_owner_name, delete_repository_webhook_by_owner_name,
@@ -147,6 +150,14 @@ pub fn router() -> Router<AppState> {
         )
         .route("/:owner/:repo/network", get(network))
         .route("/:owner/:repo/security", get(security_overview))
+        .route(
+            "/:owner/:repo/security/code-scanning",
+            get(code_scanning_alerts),
+        )
+        .route(
+            "/:owner/:repo/security/code-scanning/:alert_id",
+            get(code_scanning_alert_detail),
+        )
         .route("/:owner/:repo/security/dependabot", get(dependabot_alerts))
         .route(
             "/:owner/:repo/security/dependabot/bulk",
@@ -1216,6 +1227,84 @@ struct DependabotAlertsQueryParams {
     scope: Option<String>,
     severity: Option<String>,
     sort: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CodeScanningAlertsQueryParams {
+    state: Option<String>,
+    q: Option<String>,
+    severity: Option<String>,
+    #[serde(rename = "security_severity")]
+    security_severity: Option<String>,
+    tool: Option<String>,
+    branch: Option<String>,
+    #[serde(rename = "ref")]
+    ref_name: Option<String>,
+    tag: Option<String>,
+    application_code: Option<String>,
+    sort: Option<String>,
+}
+
+async fn code_scanning_alerts(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<CodeScanningAlertsQueryParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = repository_code_scanning_alerts_for_actor_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        CodeScanningAlertsQuery {
+            state: query.state.as_deref(),
+            query: query.q.as_deref(),
+            severity: query.severity.as_deref(),
+            security_severity: query.security_severity.as_deref(),
+            tool: query.tool.as_deref(),
+            branch: query.branch.as_deref(),
+            ref_name: query.ref_name.as_deref(),
+            tag: query.tag.as_deref(),
+            application_code: query.application_code.as_deref(),
+            sort: query.sort.as_deref(),
+        },
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn code_scanning_alert_detail(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, alert_id)): Path<(String, String, i64)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = repository_code_scanning_alert_detail_for_actor_by_owner_name(
+        pool, actor.0.id, &owner, &repo, alert_id,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "code scanning alert was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(view)))
 }
 
 async fn dependabot_alerts(

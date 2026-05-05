@@ -6,7 +6,7 @@
 
 ## Phase 1: Code Scanning API Contract and Persistence - screen-ready list/detail data
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add repository-owned code scanning persistence and read APIs without rendering the page yet. `GET /api/repos/{owner}/{repo}/security/code-scanning` should return enabled/disabled state, open/closed counts, filter metadata, SARIF tool/status summaries, and selectable alert rows. `GET /api/repos/{owner}/{repo}/security/code-scanning/{alert_id}` should return detail data, code location/snippet metadata, rule/help/remediation content, timeline rows, assignment options, linked issue state, and reader/maintainer affordances.
 

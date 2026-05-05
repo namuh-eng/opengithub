@@ -40,6 +40,8 @@ import {
   getRepositoryBranchActivityFromCookie,
   getRepositoryBranchesFromCookie,
   getRepositoryBranchSettingsFromCookie,
+  getRepositoryCodeScanningAlertDetailFromCookie,
+  getRepositoryCodeScanningAlertsFromCookie,
   getRepositoryCommitDetailFromCookie,
   getRepositoryCommitHistoryFromCookie,
   getRepositoryContributorsFromCookie,
@@ -97,6 +99,9 @@ import {
   type RepositoryActionsDashboardQuery,
   type RepositoryBranchActivityFetchResult,
   type RepositoryBranchesFetchResult,
+  type RepositoryCodeScanningAlertDetailFetchResult,
+  type RepositoryCodeScanningAlertsFetchResult,
+  type RepositoryCodeScanningAlertsQuery,
   type RepositoryContributorsFetchResult,
   type RepositoryDependabotAlertDetailFetchResult,
   type RepositoryDependabotAlertsFetchResult,
@@ -621,6 +626,34 @@ export async function getRepositoryDependabotAlertDetail(
 ): Promise<RepositoryDependabotAlertDetailFetchResult> {
   const requestHeaders = await headers();
   return getRepositoryDependabotAlertDetailFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    alertId,
+  );
+}
+
+export async function getRepositoryCodeScanningAlerts(
+  owner: string,
+  repo: string,
+  options: RepositoryCodeScanningAlertsQuery = {},
+): Promise<RepositoryCodeScanningAlertsFetchResult> {
+  const requestHeaders = await headers();
+  return getRepositoryCodeScanningAlertsFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    options,
+  );
+}
+
+export async function getRepositoryCodeScanningAlertDetail(
+  owner: string,
+  repo: string,
+  alertId: string | number,
+): Promise<RepositoryCodeScanningAlertDetailFetchResult> {
+  const requestHeaders = await headers();
+  return getRepositoryCodeScanningAlertDetailFromCookie(
     requestHeaders.get("cookie"),
     owner,
     repo,

@@ -5900,5 +5900,23 @@
       "Stress long package names, deeply nested manifest paths, many ecosystems, and high alert counts beyond the focused two-alert fixture to confirm wrapping, sorting, and browser performance.",
       "Repeat full make test-e2e after the wrapper stall and shared local 202605030041 migration drift are resolved; the focused repository-dependabot Playwright smoke passed against the current pre-applied schema."
     ]
+  },
+  {
+    "feature_id": "code-security-003",
+    "tests_written": [
+      "Completed Phase 1 Code Scanning API Contract and Persistence without marking code-security-003 build_pass=true.",
+      "Added additive code scanning persistence for runs, alerts, alert instances, assignees, SARIF upload metadata, and code scanning alert events.",
+      "Added authenticated GET /api/repos/{owner}/{repo}/security/code-scanning and GET /api/repos/{owner}/{repo}/security/code-scanning/{alert_id} with repository read checks, private outsider 404 privacy, disabled state redaction, filter validation, tool/branch metadata, list rows, and detail DTOs.",
+      "Added typed frontend API DTOs and signed-cookie server fetch helpers for code scanning list/detail contracts without adding client-side auth.",
+      "Added focused Rust contract coverage for enabled/disabled settings, SARIF-like run/alert seeding, list/detail DTO shape, filters, private repository privacy, invalid filters, assignments, timeline, linked issue affordance, and no session-secret leakage.",
+      "Verification passed: focused repository_code_scanning_alerts_contract against TEST_DATABASE_URL after manually applying the additive Phase 1 migration around the known 202605030041 dirty migration warning; full make check; full make test with Cargo tests plus 465 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 still needs the Editorial /{owner}/{repo}/security/code-scanning list UI, filters, row navigation, disabled state, and browser screenshots.",
+      "Phase 3 still needs detail-page triage mutations for dismiss/reopen/assignment and issue linking; Phase 1 exposes read-only affordance metadata only.",
+      "Phase 4 still needs real SARIF upload ingestion and PR/check annotation integration; Phase 1 seeds normalized rows directly in the contract test.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL once UI phases are built.",
+      "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema after applying the additive code scanning migration manually."
+    ]
   }
 ]

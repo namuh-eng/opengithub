@@ -432,6 +432,242 @@ pub struct DependabotSecurityUpdateResult {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct CodeScanningAlertsQuery<'a> {
+    pub state: Option<&'a str>,
+    pub query: Option<&'a str>,
+    pub severity: Option<&'a str>,
+    pub security_severity: Option<&'a str>,
+    pub tool: Option<&'a str>,
+    pub branch: Option<&'a str>,
+    pub ref_name: Option<&'a str>,
+    pub tag: Option<&'a str>,
+    pub application_code: Option<&'a str>,
+    pub sort: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeScanningAlertsView {
+    pub repository: RepositorySecurityRepository,
+    pub viewer: SecurityViewer,
+    pub availability: CodeScanningAvailability,
+    pub filters: CodeScanningFilters,
+    pub counts: CodeScanningAlertCounts,
+    pub alerts: Vec<CodeScanningAlertRow>,
+    pub tools: Vec<CodeScanningToolStatus>,
+    pub branches: Vec<CodeScanningBranchFilter>,
+    pub links: CodeScanningLinks,
+    pub freshness: DependabotAlertFreshness,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeScanningAlertDetail {
+    pub repository: RepositorySecurityRepository,
+    pub viewer: SecurityViewer,
+    pub availability: CodeScanningAvailability,
+    pub alert: CodeScanningAlertRow,
+    pub location: CodeScanningLocation,
+    pub rule: CodeScanningRuleDetail,
+    pub timeline: Vec<CodeScanningTimelineEvent>,
+    pub assignee_options: Vec<DependabotAlertAssignmentOption>,
+    pub linked_issue: CodeScanningLinkedIssueState,
+    pub links: CodeScanningLinks,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeScanningAvailability {
+    pub enabled: bool,
+    pub indexed: bool,
+    pub message: String,
+    pub disabled_reason: Option<String>,
+    pub settings_href: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeScanningFilters {
+    pub state: String,
+    pub query: Option<String>,
+    pub severity: Option<String>,
+    pub security_severity: Option<String>,
+    pub tool: Option<String>,
+    pub branch: Option<String>,
+    #[serde(rename = "ref")]
+    pub ref_name: Option<String>,
+    pub tag: Option<String>,
+    pub application_code: Option<String>,
+    pub sort: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeScanningAlertCounts {
+    pub open: i64,
+    pub closed: i64,
+    pub total: i64,
+    pub visible: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeScanningAlertRow {
+    pub id: Uuid,
+    pub number: i64,
+    pub state: String,
+    pub rule_id: String,
+    pub rule_name: String,
+    pub message: String,
+    pub severity: String,
+    pub security_severity: Option<String>,
+    pub tool_name: String,
+    pub path: String,
+    pub path_href: String,
+    pub start_line: i32,
+    pub end_line: Option<i32>,
+    pub ref_name: String,
+    pub branch_name: Option<String>,
+    pub is_default_branch: bool,
+    pub linked_issue: Option<CodeScanningIssueLink>,
+    pub assignees: Vec<DependabotAlertAssignee>,
+    pub href: String,
+    pub detected_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeScanningIssueLink {
+    pub id: Uuid,
+    pub number: i64,
+    pub title: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeScanningLocation {
+    pub path: String,
+    pub path_href: String,
+    pub raw_href: String,
+    pub start_line: i32,
+    pub end_line: Option<i32>,
+    pub code_snippet: Option<String>,
+    pub ref_name: String,
+    pub commit_oid: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeScanningRuleDetail {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub help_markdown: Option<String>,
+    pub help_uri: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeScanningTimelineEvent {
+    pub id: Uuid,
+    pub event_type: String,
+    pub message: String,
+    pub actor: Option<DependabotAlertAssignee>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeScanningLinkedIssueState {
+    pub issue: Option<CodeScanningIssueLink>,
+    pub can_link: bool,
+    pub create_href: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeScanningToolStatus {
+    pub name: String,
+    pub version: Option<String>,
+    pub status: String,
+    pub alert_count: i64,
+    pub latest_run_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeScanningBranchFilter {
+    pub name: String,
+    pub open_count: i64,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeScanningLinks {
+    pub list_href: String,
+    pub open_href: String,
+    pub closed_href: String,
+    pub upload_href: String,
+    pub settings_href: String,
+}
+
+pub async fn repository_code_scanning_alerts_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    query: CodeScanningAlertsQuery<'_>,
+) -> Result<Option<CodeScanningAlertsView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+
+    repository_code_scanning_alerts_for_repository(pool, &repository, actor_user_id, query)
+        .await
+        .map(Some)
+}
+
+pub async fn repository_code_scanning_alert_detail_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    alert_number: i64,
+) -> Result<Option<CodeScanningAlertDetail>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if alert_number <= 0 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "code scanning alert id must be a positive number".to_owned(),
+        ));
+    }
+
+    repository_code_scanning_alert_detail_for_repository(
+        pool,
+        &repository,
+        actor_user_id,
+        alert_number,
+    )
+    .await
+}
+
 pub async fn repository_dependabot_alerts_for_actor_by_owner_name(
     pool: &PgPool,
     actor_user_id: Uuid,
@@ -688,6 +924,118 @@ async fn repository_security_overview_for_repository(
         advisories: published_advisories(pool, repository).await?,
         links,
     })
+}
+
+async fn repository_code_scanning_alerts_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    query: CodeScanningAlertsQuery<'_>,
+) -> Result<CodeScanningAlertsView, RepositoryError> {
+    let can_write = can_write_repository(pool, repository, actor_user_id).await?;
+    let links = code_scanning_links(repository);
+    let filters = normalize_code_scanning_filters(query)?;
+    let setting = code_scanning_setting(pool, repository).await?;
+    let availability = code_scanning_availability(repository, setting.as_ref());
+    let mut alerts = if availability.enabled {
+        code_scanning_alert_rows(pool, repository).await?
+    } else {
+        Vec::new()
+    };
+    let counts_source = alerts.clone();
+    apply_code_scanning_filters(&mut alerts, &filters);
+    sort_code_scanning_alerts(&mut alerts, &filters.sort);
+    let visible = alerts.len() as i64;
+
+    Ok(CodeScanningAlertsView {
+        repository: security_repository(repository, &dependabot_links(repository)),
+        viewer: security_viewer(pool, repository, actor_user_id, can_write).await?,
+        availability,
+        filters,
+        counts: code_scanning_counts(&counts_source, visible),
+        alerts,
+        tools: code_scanning_tool_statuses(pool, repository).await?,
+        branches: code_scanning_branch_filters(&counts_source, query.branch).await?,
+        links,
+        freshness: DependabotAlertFreshness {
+            computed_at: Utc::now(),
+            cadence: "updated when SARIF analysis is uploaded".to_owned(),
+        },
+    })
+}
+
+async fn repository_code_scanning_alert_detail_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    alert_number: i64,
+) -> Result<Option<CodeScanningAlertDetail>, RepositoryError> {
+    let can_write = can_write_repository(pool, repository, actor_user_id).await?;
+    let links = code_scanning_links(repository);
+    let setting = code_scanning_setting(pool, repository).await?;
+    let availability = code_scanning_availability(repository, setting.as_ref());
+    if !availability.enabled {
+        return Ok(None);
+    }
+    let Some(alert) = code_scanning_alert_rows(pool, repository)
+        .await?
+        .into_iter()
+        .find(|alert| alert.number == alert_number)
+    else {
+        return Ok(None);
+    };
+    let row = sqlx::query(
+        r#"
+        SELECT code_scanning_alerts.code_snippet,
+               code_scanning_alerts.help_markdown,
+               code_scanning_alerts.help_uri,
+               code_scanning_alerts.rule_description,
+               code_scanning_runs.commit_oid
+        FROM code_scanning_alerts
+        LEFT JOIN code_scanning_runs ON code_scanning_runs.id = code_scanning_alerts.run_id
+        WHERE code_scanning_alerts.id = $1
+        "#,
+    )
+    .bind(alert.id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(Some(CodeScanningAlertDetail {
+        repository: security_repository(repository, &dependabot_links(repository)),
+        viewer: security_viewer(pool, repository, actor_user_id, can_write).await?,
+        availability,
+        location: CodeScanningLocation {
+            path: alert.path.clone(),
+            path_href: alert.path_href.clone(),
+            raw_href: repository_raw_href(repository, &alert.ref_name, &alert.path),
+            start_line: alert.start_line,
+            end_line: alert.end_line,
+            code_snippet: row.get("code_snippet"),
+            ref_name: alert.ref_name.clone(),
+            commit_oid: row.get("commit_oid"),
+        },
+        rule: CodeScanningRuleDetail {
+            id: alert.rule_id.clone(),
+            name: alert.rule_name.clone(),
+            description: row.get("rule_description"),
+            help_markdown: row.get("help_markdown"),
+            help_uri: row.get("help_uri"),
+        },
+        timeline: code_scanning_alert_timeline(pool, alert.id).await?,
+        assignee_options: code_scanning_assignment_options(pool, repository, alert.id).await?,
+        linked_issue: CodeScanningLinkedIssueState {
+            issue: alert.linked_issue.clone(),
+            can_link: can_write && !repository.is_archived,
+            create_href: (can_write && !repository.is_archived).then(|| {
+                format!(
+                    "/api/repos/{}/{}/security/code-scanning/{}/issue",
+                    repository.owner_login, repository.name, alert.number
+                )
+            }),
+        },
+        alert,
+        links,
+    }))
 }
 
 async fn repository_security_policy_for_repository(
@@ -1979,6 +2327,54 @@ async fn dependabot_setting(
     .map_err(RepositoryError::from)
 }
 
+async fn code_scanning_setting(
+    pool: &PgPool,
+    repository: &Repository,
+) -> Result<Option<sqlx::postgres::PgRow>, RepositoryError> {
+    sqlx::query(
+        r#"
+        SELECT status, summary, config_href
+        FROM repository_security_feature_settings
+        WHERE repository_id = $1 AND feature_key = 'code_scanning'
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_optional(pool)
+    .await
+    .map_err(RepositoryError::from)
+}
+
+fn code_scanning_availability(
+    repository: &Repository,
+    setting: Option<&sqlx::postgres::PgRow>,
+) -> CodeScanningAvailability {
+    let status = setting
+        .map(|row| row.get::<String, _>("status"))
+        .unwrap_or_else(|| "disabled".to_owned());
+    let enabled = status == "enabled";
+    CodeScanningAvailability {
+        enabled,
+        indexed: enabled,
+        message: if enabled {
+            "Code scanning alerts are normalized from SARIF analysis and Actions runs.".to_owned()
+        } else {
+            setting
+                .map(|row| row.get::<String, _>("summary"))
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "Code scanning is not enabled for this repository.".to_owned())
+        },
+        disabled_reason: (!enabled).then_some(status),
+        settings_href: setting
+            .and_then(|row| row.get::<Option<String>, _>("config_href"))
+            .or_else(|| {
+                Some(format!(
+                    "/{}/{}/security/code-scanning/setup",
+                    repository.owner_login, repository.name
+                ))
+            }),
+    }
+}
+
 fn dependabot_availability(
     repository: &Repository,
     setting: Option<&sqlx::postgres::PgRow>,
@@ -2154,6 +2550,80 @@ fn normalize_optional_filter(
     Ok(None)
 }
 
+fn normalize_code_scanning_filters(
+    query: CodeScanningAlertsQuery<'_>,
+) -> Result<CodeScanningFilters, RepositoryError> {
+    let state = match query.state.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(state @ ("open" | "closed" | "dismissed" | "fixed" | "all")) => state.to_owned(),
+        Some(other) => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported code scanning alert state `{other}`"
+            )))
+        }
+        None => "open".to_owned(),
+    };
+    let severity = match query
+        .severity
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(severity @ ("note" | "warning" | "error")) => Some(severity.to_owned()),
+        Some(other) => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported code scanning severity `{other}`"
+            )))
+        }
+        None => None,
+    };
+    let security_severity = match query
+        .security_severity
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(severity @ ("low" | "medium" | "high" | "critical")) => Some(severity.to_owned()),
+        Some(other) => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported code scanning security severity `{other}`"
+            )))
+        }
+        None => None,
+    };
+    let application_code = match query
+        .application_code
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(value @ ("true" | "false")) => Some(value.to_owned()),
+        Some(other) => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported application_code filter `{other}`"
+            )))
+        }
+        None => None,
+    };
+    let sort = match query.sort.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(sort @ ("most_important" | "recently_detected" | "tool" | "path")) => sort.to_owned(),
+        Some(other) => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported code scanning sort `{other}`"
+            )))
+        }
+        None => "most_important".to_owned(),
+    };
+    Ok(CodeScanningFilters {
+        state,
+        query: normalize_optional_filter(query.query, "q", 120)?,
+        severity,
+        security_severity,
+        tool: normalize_optional_filter(query.tool, "tool", 120)?,
+        branch: normalize_optional_filter(query.branch, "branch", 160)?,
+        ref_name: normalize_optional_filter(query.ref_name, "ref", 200)?,
+        tag: normalize_optional_filter(query.tag, "tag", 160)?,
+        application_code,
+        sort,
+    })
+}
+
 fn normalize_dependabot_dismissal_reason(value: Option<&str>) -> Result<String, RepositoryError> {
     let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
         return Err(RepositoryError::InvalidDependencyGraphQuery(
@@ -2284,6 +2754,106 @@ async fn dependabot_alert_rows(
     Ok(alerts)
 }
 
+async fn code_scanning_alert_rows(
+    pool: &PgPool,
+    repository: &Repository,
+) -> Result<Vec<CodeScanningAlertRow>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT code_scanning_alerts.id,
+               code_scanning_alerts.number,
+               code_scanning_alerts.state,
+               code_scanning_alerts.rule_id,
+               code_scanning_alerts.rule_name,
+               code_scanning_alerts.message,
+               code_scanning_alerts.severity,
+               code_scanning_alerts.security_severity,
+               code_scanning_alerts.tool_name,
+               code_scanning_alerts.path,
+               code_scanning_alerts.start_line,
+               code_scanning_alerts.end_line,
+               code_scanning_alerts.ref_name,
+               code_scanning_alerts.branch_name,
+               code_scanning_alerts.linked_issue_id,
+               code_scanning_alerts.created_at,
+               code_scanning_alerts.updated_at,
+               issues.number AS issue_number,
+               issues.title AS issue_title
+        FROM code_scanning_alerts
+        LEFT JOIN issues ON issues.id = code_scanning_alerts.linked_issue_id
+        WHERE code_scanning_alerts.repository_id = $1
+        ORDER BY code_scanning_alerts.number ASC
+        LIMIT 250
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut alerts = Vec::new();
+    for row in rows {
+        let id: Uuid = row.get("id");
+        let path: String = row.get("path");
+        let ref_name: String = row.get("ref_name");
+        let number: i64 = row.get("number");
+        let linked_issue = match (
+            row.try_get::<Option<Uuid>, _>("linked_issue_id")
+                .ok()
+                .flatten(),
+            row.try_get::<Option<i64>, _>("issue_number").ok().flatten(),
+            row.try_get::<Option<String>, _>("issue_title")
+                .ok()
+                .flatten(),
+        ) {
+            (Some(id), Some(number), Some(title)) => Some(CodeScanningIssueLink {
+                id,
+                number,
+                title,
+                href: format!(
+                    "/{}/{}/issues/{}",
+                    repository.owner_login, repository.name, number
+                ),
+            }),
+            _ => None,
+        };
+        alerts.push(CodeScanningAlertRow {
+            id,
+            number,
+            state: row.get("state"),
+            rule_id: row.get("rule_id"),
+            rule_name: row.get("rule_name"),
+            message: row.get("message"),
+            severity: row.get("severity"),
+            security_severity: row.get("security_severity"),
+            tool_name: row.get("tool_name"),
+            path: path.clone(),
+            path_href: format!(
+                "{}#L{}",
+                repository_blob_href(repository, &ref_name, &path),
+                row.get::<i32, _>("start_line")
+            ),
+            start_line: row.get("start_line"),
+            end_line: row.get("end_line"),
+            is_default_branch: branch_name_matches_default(
+                row.get::<Option<String>, _>("branch_name").as_deref(),
+                &ref_name,
+                &repository.default_branch,
+            ),
+            ref_name,
+            branch_name: row.get("branch_name"),
+            linked_issue,
+            assignees: code_scanning_alert_assignees(pool, id).await?,
+            href: format!(
+                "/{}/{}/security/code-scanning/{}",
+                repository.owner_login, repository.name, number
+            ),
+            detected_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+        });
+    }
+    Ok(alerts)
+}
+
 async fn dependabot_alert_assignees(
     pool: &PgPool,
     alert_id: Uuid,
@@ -2296,6 +2866,39 @@ async fn dependabot_alert_assignees(
         FROM dependabot_alert_assignees
         JOIN users ON users.id = dependabot_alert_assignees.user_id
         WHERE dependabot_alert_assignees.alert_id = $1
+        ORDER BY lower(COALESCE(NULLIF(users.username, ''), users.email)) ASC
+        "#,
+    )
+    .bind(alert_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let login: String = row.get("login");
+            DependabotAlertAssignee {
+                id: row.get("id"),
+                href: format!("/{login}"),
+                login,
+                avatar_url: row.get("avatar_url"),
+            }
+        })
+        .collect())
+}
+
+async fn code_scanning_alert_assignees(
+    pool: &PgPool,
+    alert_id: Uuid,
+) -> Result<Vec<DependabotAlertAssignee>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT users.id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS login,
+               users.avatar_url
+        FROM code_scanning_alert_assignees
+        JOIN users ON users.id = code_scanning_alert_assignees.user_id
+        WHERE code_scanning_alert_assignees.alert_id = $1
         ORDER BY lower(COALESCE(NULLIF(users.username, ''), users.email)) ASC
         "#,
     )
@@ -2359,6 +2962,67 @@ fn apply_dependabot_alert_filters(
     }
 }
 
+fn apply_code_scanning_filters(
+    alerts: &mut Vec<CodeScanningAlertRow>,
+    filters: &CodeScanningFilters,
+) {
+    alerts.retain(|alert| match filters.state.as_str() {
+        "open" => alert.state == "open",
+        "closed" => alert.state == "dismissed" || alert.state == "fixed",
+        "dismissed" => alert.state == "dismissed",
+        "fixed" => alert.state == "fixed",
+        "all" => true,
+        _ => true,
+    });
+    if let Some(query) = filters.query.as_deref() {
+        let needle = query.to_lowercase();
+        alerts.retain(|alert| {
+            alert.rule_name.to_lowercase().contains(&needle)
+                || alert.rule_id.to_lowercase().contains(&needle)
+                || alert.message.to_lowercase().contains(&needle)
+                || alert.path.to_lowercase().contains(&needle)
+                || alert.tool_name.to_lowercase().contains(&needle)
+        });
+    }
+    if let Some(severity) = filters.severity.as_deref() {
+        alerts.retain(|alert| alert.severity == severity);
+    }
+    if let Some(security_severity) = filters.security_severity.as_deref() {
+        alerts.retain(|alert| {
+            alert
+                .security_severity
+                .as_deref()
+                .is_some_and(|value| value == security_severity)
+        });
+    }
+    if let Some(tool) = filters.tool.as_deref() {
+        alerts.retain(|alert| alert.tool_name.eq_ignore_ascii_case(tool));
+    }
+    if let Some(branch) = filters.branch.as_deref() {
+        alerts.retain(|alert| {
+            alert
+                .branch_name
+                .as_deref()
+                .is_some_and(|value| value.eq_ignore_ascii_case(branch))
+        });
+    }
+    if let Some(ref_name) = filters.ref_name.as_deref() {
+        alerts.retain(|alert| alert.ref_name.eq_ignore_ascii_case(ref_name));
+    }
+    if let Some(tag) = filters.tag.as_deref() {
+        alerts.retain(|alert| {
+            alert
+                .ref_name
+                .eq_ignore_ascii_case(&format!("refs/tags/{tag}"))
+        });
+    }
+    if filters.application_code.as_deref() == Some("true") {
+        alerts.retain(|alert| {
+            !alert.path.contains("vendor/") && !alert.path.contains("node_modules/")
+        });
+    }
+}
+
 fn sort_dependabot_alerts(alerts: &mut [DependabotAlertRow], sort: &str) {
     alerts.sort_by(|left, right| match sort {
         "recently_detected" => right
@@ -2380,6 +3044,41 @@ fn sort_dependabot_alerts(alerts: &mut [DependabotAlertRow], sort: &str) {
     });
 }
 
+fn sort_code_scanning_alerts(alerts: &mut [CodeScanningAlertRow], sort: &str) {
+    alerts.sort_by(|left, right| match sort {
+        "recently_detected" => right
+            .detected_at
+            .cmp(&left.detected_at)
+            .then(left.number.cmp(&right.number)),
+        "tool" => left
+            .tool_name
+            .to_lowercase()
+            .cmp(&right.tool_name.to_lowercase())
+            .then(left.number.cmp(&right.number)),
+        "path" => left
+            .path
+            .to_lowercase()
+            .cmp(&right.path.to_lowercase())
+            .then(left.start_line.cmp(&right.start_line)),
+        _ => code_scanning_severity_rank(left.security_severity.as_deref(), &left.severity)
+            .cmp(&code_scanning_severity_rank(
+                right.security_severity.as_deref(),
+                &right.severity,
+            ))
+            .then(left.number.cmp(&right.number)),
+    });
+}
+
+fn code_scanning_severity_rank(security_severity: Option<&str>, severity: &str) -> i32 {
+    match security_severity.or(Some(severity)).unwrap_or_default() {
+        "critical" | "error" => 0,
+        "high" => 1,
+        "medium" | "warning" => 2,
+        "low" | "note" => 3,
+        _ => 4,
+    }
+}
+
 fn severity_rank(severity: &str) -> i32 {
     match severity {
         "critical" => 0,
@@ -2397,6 +3096,20 @@ fn dependabot_counts(alerts: &[DependabotAlertRow], visible: i64) -> DependabotA
         .filter(|alert| alert.state == "dismissed" || alert.state == "fixed")
         .count() as i64;
     DependabotAlertCounts {
+        open,
+        closed,
+        total: alerts.len() as i64,
+        visible,
+    }
+}
+
+fn code_scanning_counts(alerts: &[CodeScanningAlertRow], visible: i64) -> CodeScanningAlertCounts {
+    let open = alerts.iter().filter(|alert| alert.state == "open").count() as i64;
+    let closed = alerts
+        .iter()
+        .filter(|alert| alert.state == "dismissed" || alert.state == "fixed")
+        .count() as i64;
+    CodeScanningAlertCounts {
         open,
         closed,
         total: alerts.len() as i64,
@@ -2473,6 +3186,70 @@ async fn dependabot_manifest_filters(
     Ok(manifests)
 }
 
+async fn code_scanning_branch_filters(
+    alerts: &[CodeScanningAlertRow],
+    selected: Option<&str>,
+) -> Result<Vec<CodeScanningBranchFilter>, RepositoryError> {
+    let mut branches = Vec::<CodeScanningBranchFilter>::new();
+    for alert in alerts.iter().filter(|alert| alert.state == "open") {
+        let Some(branch) = alert.branch_name.as_deref() else {
+            continue;
+        };
+        if let Some(existing) = branches.iter_mut().find(|entry| entry.name == branch) {
+            existing.open_count += 1;
+        } else {
+            branches.push(CodeScanningBranchFilter {
+                name: branch.to_owned(),
+                open_count: 1,
+                selected: selected
+                    .map(|value| value.eq_ignore_ascii_case(branch))
+                    .unwrap_or(false),
+            });
+        }
+    }
+    branches.sort_by(|left, right| {
+        right
+            .open_count
+            .cmp(&left.open_count)
+            .then(left.name.to_lowercase().cmp(&right.name.to_lowercase()))
+    });
+    Ok(branches)
+}
+
+async fn code_scanning_tool_statuses(
+    pool: &PgPool,
+    repository: &Repository,
+) -> Result<Vec<CodeScanningToolStatus>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT runs.tool_name,
+               max(runs.tool_version) AS tool_version,
+               COALESCE(max(runs.status), 'completed') AS status,
+               count(DISTINCT alerts.id) FILTER (WHERE alerts.state = 'open') AS alert_count,
+               max(runs.completed_at) AS latest_run_at
+        FROM code_scanning_runs runs
+        LEFT JOIN code_scanning_alerts alerts ON alerts.run_id = runs.id
+        WHERE runs.repository_id = $1
+        GROUP BY runs.tool_name
+        ORDER BY lower(runs.tool_name) ASC
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| CodeScanningToolStatus {
+            name: row.get("tool_name"),
+            version: row.get("tool_version"),
+            status: row.get("status"),
+            alert_count: row.get("alert_count"),
+            latest_run_at: row.get("latest_run_at"),
+        })
+        .collect())
+}
+
 async fn dependabot_alert_timeline(
     pool: &PgPool,
     alert_id: Uuid,
@@ -2525,6 +3302,65 @@ async fn dependabot_alert_timeline(
             id: alert_id,
             event_type: "created".to_owned(),
             message: "Dependabot opened this alert from the dependency graph.".to_owned(),
+            actor: None,
+            created_at: Utc::now(),
+        });
+    }
+    Ok(events)
+}
+
+async fn code_scanning_alert_timeline(
+    pool: &PgPool,
+    alert_id: Uuid,
+) -> Result<Vec<CodeScanningTimelineEvent>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT code_scanning_alert_events.id,
+               code_scanning_alert_events.event_type,
+               code_scanning_alert_events.message,
+               code_scanning_alert_events.created_at,
+               users.id AS actor_id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS actor_login,
+               users.avatar_url AS actor_avatar_url
+        FROM code_scanning_alert_events
+        LEFT JOIN users ON users.id = code_scanning_alert_events.actor_user_id
+        WHERE code_scanning_alert_events.alert_id = $1
+        ORDER BY code_scanning_alert_events.created_at ASC
+        "#,
+    )
+    .bind(alert_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut events = Vec::new();
+    for row in rows {
+        let actor = match (
+            row.try_get::<Option<Uuid>, _>("actor_id").ok().flatten(),
+            row.try_get::<Option<String>, _>("actor_login")
+                .ok()
+                .flatten(),
+        ) {
+            (Some(id), Some(login)) => Some(DependabotAlertAssignee {
+                id,
+                href: format!("/{login}"),
+                login,
+                avatar_url: row.get("actor_avatar_url"),
+            }),
+            _ => None,
+        };
+        events.push(CodeScanningTimelineEvent {
+            id: row.get("id"),
+            event_type: row.get("event_type"),
+            message: row.get("message"),
+            actor,
+            created_at: row.get("created_at"),
+        });
+    }
+    if events.is_empty() {
+        events.push(CodeScanningTimelineEvent {
+            id: alert_id,
+            event_type: "created".to_owned(),
+            message: "Code scanning opened this alert from analysis results.".to_owned(),
             actor: None,
             created_at: Utc::now(),
         });
@@ -2645,6 +3481,60 @@ async fn dependabot_assignment_options(
         .map(|row| DependabotAlertAssignmentOption {
             id: row.get("id"),
             kind: "user".to_owned(),
+            login: row.get("login"),
+            avatar_url: row.get("avatar_url"),
+            selected: row.get("selected"),
+        })
+        .collect())
+}
+
+async fn code_scanning_assignment_options(
+    pool: &PgPool,
+    repository: &Repository,
+    alert_id: Uuid,
+) -> Result<Vec<DependabotAlertAssignmentOption>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT users.id,
+               'user' AS kind,
+               COALESCE(NULLIF(users.username, ''), users.email) AS login,
+               users.avatar_url,
+               EXISTS (
+                   SELECT 1 FROM code_scanning_alert_assignees
+                   WHERE code_scanning_alert_assignees.alert_id = $2
+                     AND code_scanning_alert_assignees.user_id = users.id
+               ) AS selected
+        FROM repository_permissions
+        JOIN users ON users.id = repository_permissions.user_id
+        WHERE repository_permissions.repository_id = $1
+          AND repository_permissions.role IN ('read', 'triage', 'write', 'maintain', 'admin')
+        UNION
+        SELECT users.id,
+               'user' AS kind,
+               COALESCE(NULLIF(users.username, ''), users.email) AS login,
+               users.avatar_url,
+               EXISTS (
+                   SELECT 1 FROM code_scanning_alert_assignees
+                   WHERE code_scanning_alert_assignees.alert_id = $2
+                     AND code_scanning_alert_assignees.user_id = users.id
+               ) AS selected
+        FROM repositories
+        JOIN users ON users.id = repositories.owner_user_id
+        WHERE repositories.id = $1
+        ORDER BY login ASC
+        LIMIT 50
+        "#,
+    )
+    .bind(repository.id)
+    .bind(alert_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| DependabotAlertAssignmentOption {
+            id: row.get("id"),
+            kind: row.get("kind"),
             login: row.get("login"),
             avatar_url: row.get("avatar_url"),
             selected: row.get("selected"),
@@ -2937,6 +3827,38 @@ fn dependabot_links(repository: &Repository) -> DependabotAlertLinks {
             repository.owner_login, repository.name
         ),
     }
+}
+
+fn code_scanning_links(repository: &Repository) -> CodeScanningLinks {
+    let base = format!(
+        "/{}/{}/security/code-scanning",
+        repository.owner_login, repository.name
+    );
+    CodeScanningLinks {
+        list_href: base.clone(),
+        open_href: format!("{base}?state=open"),
+        closed_href: format!("{base}?state=closed"),
+        upload_href: format!(
+            "/api/repos/{}/{}/code-scanning/sarifs",
+            repository.owner_login, repository.name
+        ),
+        settings_href: format!(
+            "/{}/{}/security/code-scanning/setup",
+            repository.owner_login, repository.name
+        ),
+    }
+}
+
+fn branch_name_matches_default(
+    branch_name: Option<&str>,
+    ref_name: &str,
+    default_branch: &str,
+) -> bool {
+    branch_name
+        .map(|branch| branch == default_branch)
+        .unwrap_or(false)
+        || ref_name == default_branch
+        || ref_name == format!("refs/heads/{default_branch}")
 }
 
 fn package_href(ecosystem: &str, name: &str) -> String {

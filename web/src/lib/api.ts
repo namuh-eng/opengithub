@@ -2960,6 +2960,167 @@ export type RepositoryDependabotSecurityUpdateResult = {
   message: string;
 };
 
+export type RepositoryCodeScanningAlertsView = {
+  repository: RepositorySecurityRepository;
+  viewer: RepositorySecurityViewer;
+  availability: RepositoryCodeScanningAvailability;
+  filters: RepositoryCodeScanningFilters;
+  counts: RepositoryCodeScanningAlertCounts;
+  alerts: RepositoryCodeScanningAlertRow[];
+  tools: RepositoryCodeScanningToolStatus[];
+  branches: RepositoryCodeScanningBranchFilter[];
+  links: RepositoryCodeScanningLinks;
+  freshness: RepositoryDependabotFreshness;
+};
+
+export type RepositoryCodeScanningAlertDetail = {
+  repository: RepositorySecurityRepository;
+  viewer: RepositorySecurityViewer;
+  availability: RepositoryCodeScanningAvailability;
+  alert: RepositoryCodeScanningAlertRow;
+  location: RepositoryCodeScanningLocation;
+  rule: RepositoryCodeScanningRuleDetail;
+  timeline: RepositoryCodeScanningTimelineEvent[];
+  assigneeOptions: RepositoryDependabotAssignmentOption[];
+  linkedIssue: RepositoryCodeScanningLinkedIssueState;
+  links: RepositoryCodeScanningLinks;
+};
+
+export type RepositoryCodeScanningAvailability = {
+  enabled: boolean;
+  indexed: boolean;
+  message: string;
+  disabledReason: string | null;
+  settingsHref: string | null;
+};
+
+export type RepositoryCodeScanningFilters = {
+  state: string;
+  query: string | null;
+  severity: string | null;
+  securitySeverity: string | null;
+  tool: string | null;
+  branch: string | null;
+  ref: string | null;
+  tag: string | null;
+  applicationCode: string | null;
+  sort: string;
+};
+
+export type RepositoryCodeScanningAlertCounts = {
+  open: number;
+  closed: number;
+  total: number;
+  visible: number;
+};
+
+export type RepositoryCodeScanningAlertRow = {
+  id: string;
+  number: number;
+  state: string;
+  ruleId: string;
+  ruleName: string;
+  message: string;
+  severity: string;
+  securitySeverity: string | null;
+  toolName: string;
+  path: string;
+  pathHref: string;
+  startLine: number;
+  endLine: number | null;
+  refName: string;
+  branchName: string | null;
+  isDefaultBranch: boolean;
+  linkedIssue: RepositoryCodeScanningIssueLink | null;
+  assignees: RepositoryDependabotAssignee[];
+  href: string;
+  detectedAt: string;
+  updatedAt: string;
+};
+
+export type RepositoryCodeScanningIssueLink = {
+  id: string;
+  number: number;
+  title: string;
+  href: string;
+};
+
+export type RepositoryCodeScanningLocation = {
+  path: string;
+  pathHref: string;
+  rawHref: string;
+  startLine: number;
+  endLine: number | null;
+  codeSnippet: string | null;
+  refName: string;
+  commitOid: string | null;
+};
+
+export type RepositoryCodeScanningRuleDetail = {
+  id: string;
+  name: string;
+  description: string | null;
+  helpMarkdown: string | null;
+  helpUri: string | null;
+};
+
+export type RepositoryCodeScanningTimelineEvent = {
+  id: string;
+  eventType: string;
+  message: string;
+  actor: RepositoryDependabotAssignee | null;
+  createdAt: string;
+};
+
+export type RepositoryCodeScanningLinkedIssueState = {
+  issue: RepositoryCodeScanningIssueLink | null;
+  canLink: boolean;
+  createHref: string | null;
+};
+
+export type RepositoryCodeScanningToolStatus = {
+  name: string;
+  version: string | null;
+  status: string;
+  alertCount: number;
+  latestRunAt: string | null;
+};
+
+export type RepositoryCodeScanningBranchFilter = {
+  name: string;
+  openCount: number;
+  selected: boolean;
+};
+
+export type RepositoryCodeScanningLinks = {
+  listHref: string;
+  openHref: string;
+  closedHref: string;
+  uploadHref: string;
+  settingsHref: string;
+};
+
+export type RepositoryCodeScanningAlertsQuery = {
+  state?: string | null;
+  query?: string | null;
+  severity?: string | null;
+  securitySeverity?: string | null;
+  tool?: string | null;
+  branch?: string | null;
+  ref?: string | null;
+  tag?: string | null;
+  applicationCode?: string | null;
+  sort?: string | null;
+};
+
+export type RepositoryCodeScanningAlertsFetchResult =
+  | { ok: true; codeScanning: RepositoryCodeScanningAlertsView }
+  | { ok: false; status: number; code: string | null; message: string };
+
+export type RepositoryCodeScanningAlertDetailFetchResult =
+  | { ok: true; codeScanningAlert: RepositoryCodeScanningAlertDetail }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type RepositoryDependabotLinks = {
   listHref: string;
   openHref: string;
@@ -10171,6 +10332,127 @@ export async function getRepositoryDependabotAlertDetailFromCookie(
   return {
     ok: true,
     dependabotAlert: (await response.json()) as RepositoryDependabotAlertDetail,
+  };
+}
+
+function appendRepositoryCodeScanningSearchParams(
+  searchParams: URLSearchParams,
+  query?: RepositoryCodeScanningAlertsQuery,
+) {
+  if (!query) {
+    return;
+  }
+  const entries: [string, string | null | undefined][] = [
+    ["state", query.state],
+    ["q", query.query],
+    ["severity", query.severity],
+    ["security_severity", query.securitySeverity],
+    ["tool", query.tool],
+    ["branch", query.branch],
+    ["ref", query.ref],
+    ["tag", query.tag],
+    ["application_code", query.applicationCode],
+    ["sort", query.sort],
+  ];
+  for (const [key, value] of entries) {
+    if (value?.trim()) {
+      searchParams.set(key, value);
+    }
+  }
+}
+
+export async function getRepositoryCodeScanningAlertsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  query?: RepositoryCodeScanningAlertsQuery,
+): Promise<RepositoryCodeScanningAlertsFetchResult> {
+  const searchParams = new URLSearchParams();
+  appendRepositoryCodeScanningSearchParams(searchParams, query);
+  const suffix = searchParams.size ? `?${searchParams.toString()}` : "";
+
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/code-scanning${suffix}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Code scanning alerts are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Code scanning alerts are unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    codeScanning: (await response.json()) as RepositoryCodeScanningAlertsView,
+  };
+}
+
+export async function getRepositoryCodeScanningAlertDetailFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  alertId: string | number,
+): Promise<RepositoryCodeScanningAlertDetailFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/code-scanning/${encodeURIComponent(String(alertId))}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Code scanning alert detail is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Code scanning alert detail is unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    codeScanningAlert:
+      (await response.json()) as RepositoryCodeScanningAlertDetail,
   };
 }
 
