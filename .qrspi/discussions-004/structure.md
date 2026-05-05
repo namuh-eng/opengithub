@@ -28,7 +28,7 @@
 
 ## Phase 2: Editorial Category Settings Page - rows, sections, and edit dialogs
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement `/{owner}/{repo}/discussions/categories/edit` as an Editorial maintainer settings page backed by Phase 1. Admins should see section headers, category rows, New category/New section affordances, and working create/edit dialogs for category metadata and format.
 

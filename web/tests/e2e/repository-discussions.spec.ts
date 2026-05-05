@@ -293,6 +293,7 @@ test("repository discussions list filters, rows, category rail, and mobile layou
 }) => {
   const seeded = seedDashboard();
   seedDiscussions(seeded.treeRepositoryHref);
+  const suffix = seeded.treeRepositoryHref.split("/").at(-1) ?? "repo";
   await signIn(page, seeded);
 
   await page.goto(`${seeded.treeRepositoryHref}/discussions`);
@@ -489,6 +490,45 @@ test("repository discussions list filters, rows, category rail, and mobile layou
   await expect(upvote).toHaveAttribute("aria-pressed", "true");
   await upvote.click();
   await expect(upvote).toHaveAttribute("aria-pressed", "false");
+
+  await page.goto(`${seeded.treeRepositoryHref}/discussions/categories/edit`);
+  await expect(
+    page.getByRole("heading", { name: "Discussion categories" }),
+  ).toBeVisible();
+  await expect(page.getByText("Can manage")).toBeVisible();
+  await page.getByRole("button", { name: "New category" }).click();
+  await page.getByLabel("Category emoji").fill("📣");
+  await page.getByLabel("Category name").fill(`Announcements ${suffix}`);
+  await page
+    .getByLabel("Category description")
+    .fill("Maintainer updates from the browser smoke.");
+  await page.getByLabel("Category format").selectOption("announcement");
+  await page.getByRole("button", { name: "Create category" }).click();
+  await expect(
+    page.getByRole("link", { name: `Announcements ${suffix}` }),
+  ).toBeVisible();
+  const createdCategoryRow = page
+    .getByRole("link", { name: `Announcements ${suffix}` })
+    .locator("xpath=ancestor::*[contains(@class, 'list-row')][1]");
+  await createdCategoryRow.getByRole("button", { name: "Edit" }).click();
+  await page
+    .getByLabel("Category description")
+    .fill("Edited maintainer updates from the browser smoke.");
+  await page.getByRole("button", { name: "Save category" }).click();
+  await expect(
+    page.getByText("Edited maintainer updates from the browser smoke."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "New section" }).click();
+  await expect(
+    page.getByText(
+      "Section creation is reserved for the next restructuring phase.",
+    ),
+  ).toBeVisible();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/discussions-004-phase2-category-settings.jpg",
+  });
 
   await page.setViewportSize({ width: 390, height: 900 });
   await expect(page.locator("body")).not.toHaveCSS("overflow-x", "scroll");

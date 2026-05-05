@@ -50,6 +50,7 @@ import {
   getRepositoryDependabotAlertsFromCookie,
   getRepositoryDependenciesFromCookie,
   getRepositoryDependentsFromCookie,
+  getRepositoryDiscussionCategorySettingsFromCookie,
   getRepositoryDiscussionCreationFromCookie,
   getRepositoryDiscussionDetailFromCookie,
   getRepositoryDiscussionsFromCookie,
@@ -830,6 +831,18 @@ export async function getRepositoryDiscussionDetail(
     repo,
     discussionNumber,
     options,
+  );
+}
+
+export async function getRepositoryDiscussionCategorySettings(
+  owner: string,
+  repo: string,
+) {
+  const requestHeaders = await headers();
+  return getRepositoryDiscussionCategorySettingsFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
   );
 }
 

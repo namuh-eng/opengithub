@@ -6456,5 +6456,22 @@
       "Phase 3 still needs section CRUD, ordering, delete-with-move migration, and format-change compatibility warnings.",
       "Phase 4 still needs real YAML template editor preview/commit behavior for .github/DISCUSSION_TEMPLATE/*.yml."
     ]
+  },
+  {
+    "feature_id": "discussions-004",
+    "tests_written": [
+      "Completed Phase 2 Editorial Category Settings Page without marking discussions-004 build_pass=true.",
+      "Added /{owner}/{repo}/discussions/categories/edit with active Discussions navigation, repository-safe unavailable state, grouped category rows, status chips, template links, admin summary, and Editorial token/primitives only.",
+      "Added create/edit category dialogs for emoji, name, description, format, and section assignment with same-origin cookie-forwarding POST/PATCH proxies.",
+      "Extended focused Vitest coverage for grouped rendering, create payloads, edit validation errors, section affordance behavior, concrete category/template links, and no GitHub visual values in rendered text.",
+      "Extended the repository-discussions Playwright smoke with the category settings create/edit path and screenshot target ralph/screenshots/build/discussions-004-phase2-category-settings.jpg when a seeded browser database is available.",
+      "Focused verification passed: cd web && npm test -- --run repository-discussion-category-settings-page.test.tsx; cd web && npx tsc --noEmit --pretty false; focused Biome checks for touched web files."
+    ],
+    "needs_deeper_qa": [
+      "Full make check/make test and browser smoke evidence are recorded in build-progress.txt for this phase; rerun web/tests/e2e/repository-discussions.spec.ts against a clean migrated credentialed TEST_DATABASE_URL to capture the Phase 2 screenshot.",
+      "Phase 3 still needs real section create/edit/delete, ordering, category delete-with-move, and format-change compatibility warnings; Phase 2 section controls intentionally show an explicit next-phase notice.",
+      "Phase 4 still needs real YAML template editor preview/commit behavior for .github/DISCUSSION_TEMPLATE/*.yml.",
+      "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures."
+    ]
   }
 ]
