@@ -938,6 +938,49 @@ export function repositoryDependabotAlertDetailHref(
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/dependabot/${encodeURIComponent(String(alertId))}${query ? `?${query}` : ""}`;
 }
 
+export function repositoryCodeScanningAlertsHref(
+  owner: string,
+  repo: string,
+  options: {
+    state?: string | null;
+    query?: string | null;
+    severity?: string | null;
+    securitySeverity?: string | null;
+    tool?: string | null;
+    branch?: string | null;
+    ref?: string | null;
+    tag?: string | null;
+    applicationCode?: string | null;
+    sort?: string | null;
+  } = {},
+) {
+  const params = new URLSearchParams();
+  if (options.state?.trim()) params.set("state", options.state.trim());
+  if (options.query?.trim()) params.set("q", options.query.trim());
+  if (options.severity?.trim()) params.set("severity", options.severity.trim());
+  if (options.securitySeverity?.trim()) {
+    params.set("security_severity", options.securitySeverity.trim());
+  }
+  if (options.tool?.trim()) params.set("tool", options.tool.trim());
+  if (options.branch?.trim()) params.set("branch", options.branch.trim());
+  if (options.ref?.trim()) params.set("ref", options.ref.trim());
+  if (options.tag?.trim()) params.set("tag", options.tag.trim());
+  if (options.applicationCode?.trim()) {
+    params.set("application_code", options.applicationCode.trim());
+  }
+  if (options.sort?.trim()) params.set("sort", options.sort.trim());
+  const query = params.toString();
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/code-scanning${query ? `?${query}` : ""}`;
+}
+
+export function repositoryCodeScanningAlertDetailHref(
+  owner: string,
+  repo: string,
+  alertId: string | number,
+) {
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/code-scanning/${encodeURIComponent(String(alertId))}`;
+}
+
 export function repositoryDependencyPackageHref({
   fallbackHref,
   ecosystem,

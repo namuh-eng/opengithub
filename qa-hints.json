@@ -5918,5 +5918,24 @@
       "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL once UI phases are built.",
       "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema after applying the additive code scanning migration manually."
     ]
+  },
+  {
+    "feature_id": "code-security-003",
+    "tests_written": [
+      "Completed Phase 2 Editorial Code Scanning Alerts List without marking code-security-003 build_pass=true.",
+      "Added the server-rendered /{owner}/{repo}/security/code-scanning route backed by the Phase 1 Rust API and signed-cookie fetch helper.",
+      "Added RepositoryCodeScanningAlertsPage and RepositoryCodeScanningAlertFilters with active Security sidebar state, Open/Closed tabs, search, severity/security-severity/tool/branch/application-code/sort menus, selectable rows, linked issue chips, concrete file/detail/settings/SARIF links, disabled state, and Editorial primitives/tokens only.",
+      "Added navigation helpers for Code scanning list and detail URLs.",
+      "Added focused Vitest coverage for active navigation, tabs, filter hrefs, row selection, concrete row/detail/file/issue links, disabled/unavailable states, no dead links, no unsafe HTML, and banned GitHub visual guardrails.",
+      "Added focused Playwright smoke for the list, tool filtering, row navigation, disabled state, no dead controls, mobile no-overflow, and screenshot ralph/screenshots/build/code-security-003-phase2-alerts-list.jpg.",
+      "Verification passed: focused repository-code-scanning-alerts-page Vitest with 4 tests, TypeScript check, focused Biome checks, focused direct Playwright repository-code-scanning smoke with 2 passed, full make check, full make test with Cargo tests plus 469 web tests, and mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 still needs the detail page and single-alert mutations for dismiss, reopen, assignments, and issue linking; this phase intentionally leaves list selection read-only.",
+      "Phase 4 still needs real SARIF upload ingestion and PR/check annotation integration; this phase displays existing tool status from seeded normalized rows.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Run keyboard-only and screen-reader traversal for the filter menus, alert settings details menu, row checkboxes, disabled callout, and mobile Security sidebar.",
+      "Repeat full make test-e2e after the wrapper stall and shared local 202605030041 migration drift are resolved; the focused repository-code-scanning Playwright smoke passed against the current pre-applied schema."
+    ]
   }
 ]

@@ -24,7 +24,7 @@
 
 ## Phase 2: Editorial Code Scanning Alerts List - filters, disabled state, and selection
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement `/{owner}/{repo}/security/code-scanning` inside `RepositorySecurityShell` with Code scanning selected. The page should render disabled/not-enabled state, Open/Closed tabs, search, filter menus, sort menu, selectable alert rows, alert-settings/setup links, and concrete detail/file links from the Phase 1 API.
 
