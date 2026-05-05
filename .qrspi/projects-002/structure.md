@@ -41,7 +41,7 @@
 
 ## Phase 3: View State Editing - filters, sorting, grouping, slicing, and field visibility persist or show unsaved state
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make workspace view controls functional. Changing filters, sort, grouping, slicing, or hidden fields updates the URL and marks the view as unsaved until the viewer saves it; authorized saves persist to the selected project view, while read-only viewers keep local URL state only.
 

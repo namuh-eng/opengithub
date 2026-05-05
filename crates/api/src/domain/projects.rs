@@ -148,6 +148,18 @@ pub struct ProjectWorkspaceQuery<'a> {
     pub page_size: Option<i64>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectViewStateRequest {
+    pub query: Option<String>,
+    pub sort: Option<String>,
+    pub group: Option<String>,
+    pub slice: Option<String>,
+    #[serde(default)]
+    pub hidden_field_ids: Vec<Uuid>,
+    pub expected_updated_at: Option<DateTime<Utc>>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectWorkspace {
@@ -686,6 +698,113 @@ pub async fn project_workspace(
         },
         unavailable_reason: None,
     })
+}
+
+pub async fn update_project_view_state_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    view_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectViewStateRequest,
+) -> Result<ProjectWorkspace, ProjectsError> {
+    let project = workspace_project_row(pool, project_id, Some(actor_user_id)).await?;
+    let can_manage = project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role);
+    if !can_manage {
+        return Err(ProjectsError::Forbidden);
+    }
+
+    let views = workspace_views(pool, project_id, &project.owner, project.number).await?;
+    let selected_view = views
+        .iter()
+        .find(|view| view.id == view_id)
+        .cloned()
+        .ok_or_else(|| {
+            ProjectsError::InvalidFilter("view must reference an existing project view".to_owned())
+        })?;
+    if selected_view.layout != "table" {
+        return Err(ProjectsError::InvalidFilter(
+            "selected view must use the table layout".to_owned(),
+        ));
+    }
+    if let Some(expected) = request.expected_updated_at {
+        if selected_view.updated_at != expected {
+            return Err(ProjectsError::Validation(
+                "Project view changed since it was loaded. Refresh before saving.".to_owned(),
+            ));
+        }
+    }
+
+    let fields = workspace_fields(pool, project_id, &selected_view).await?;
+    let state = validate_project_view_state_request(&request, &fields)?;
+    let mut configuration = selected_view.configuration.clone();
+    if !configuration.is_object() {
+        configuration = json!({});
+    }
+    configuration["query"] = state
+        .query
+        .as_ref()
+        .map_or(Value::Null, |value| json!(value));
+    configuration["sort"] = json!(state.sort);
+    configuration["group"] = state
+        .group
+        .as_ref()
+        .map_or(Value::Null, |value| json!(value));
+    configuration["slice"] = state
+        .slice
+        .as_ref()
+        .map_or(Value::Null, |value| json!(value));
+    configuration["hiddenFieldIds"] = json!(state.hidden_field_ids);
+
+    sqlx::query(
+        r#"
+        UPDATE project_views
+        SET configuration = $3, updated_at = now()
+        WHERE project_id = $1 AND id = $2
+        "#,
+    )
+    .bind(project_id)
+    .bind(view_id)
+    .bind(&configuration)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, 'project.view_state.update', 'project_view', $2, $3)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(view_id.to_string())
+    .bind(json!({
+        "projectId": project_id,
+        "query": state.query,
+        "sort": state.sort,
+        "group": state.group,
+        "slice": state.slice,
+        "hiddenFieldIds": state.hidden_field_ids,
+    }))
+    .execute(pool)
+    .await?;
+
+    project_workspace(
+        pool,
+        project_id,
+        Some(actor_user_id),
+        ProjectWorkspaceQuery {
+            view: Some(&view_id.to_string()),
+            query: None,
+            sort: None,
+            group: None,
+            slice: None,
+            page: Some(1),
+            page_size: None,
+        },
+    )
+    .await
 }
 
 pub async fn organization_projects(
@@ -1262,7 +1381,8 @@ fn normalize_workspace_filters(
         .query
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(|value| value.chars().take(300).collect::<String>());
+        .map(|value| value.chars().take(300).collect::<String>())
+        .or_else(|| configuration_string(&selected_view.configuration, "query"));
     let tokens = query_text
         .as_deref()
         .map(|value| {
@@ -1272,8 +1392,20 @@ fn normalize_workspace_filters(
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    let group = normalize_field_selector(query.group, fields, "group")?;
-    let slice = normalize_field_selector(query.slice, fields, "slice")?;
+    let group = query
+        .group
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| configuration_string(&selected_view.configuration, "group"));
+    let slice = query
+        .slice
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| configuration_string(&selected_view.configuration, "slice"));
+    let group = normalize_field_selector(group.as_deref(), fields, "group")?;
+    let slice = normalize_field_selector(slice.as_deref(), fields, "slice")?;
     Ok(ProjectWorkspaceFilters {
         query: query_text,
         sort,
@@ -1283,6 +1415,124 @@ fn normalize_workspace_filters(
         page: pagination.page,
         page_size: pagination.page_size,
     })
+}
+
+#[derive(Debug)]
+struct ValidProjectViewState {
+    query: Option<String>,
+    sort: String,
+    group: Option<String>,
+    slice: Option<String>,
+    hidden_field_ids: Vec<String>,
+}
+
+fn validate_project_view_state_request(
+    request: &ProjectViewStateRequest,
+    fields: &[ProjectWorkspaceField],
+) -> Result<ValidProjectViewState, ProjectsError> {
+    let query = request
+        .query
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(validate_workspace_query)
+        .transpose()?;
+    let sort = request
+        .sort
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("manual")
+        .to_ascii_lowercase();
+    if !matches!(
+        sort.as_str(),
+        "manual" | "updated_desc" | "updated_asc" | "title_asc" | "title_desc"
+    ) {
+        return Err(ProjectsError::InvalidFilter(
+            "sort must be manual, updated_desc, updated_asc, title_asc, or title_desc".to_owned(),
+        ));
+    }
+
+    let group = normalize_state_field_selector(request.group.as_deref(), fields, "group")?;
+    let slice = normalize_state_field_selector(request.slice.as_deref(), fields, "slice")?;
+    let mut hidden_field_ids = Vec::new();
+    for id in &request.hidden_field_ids {
+        if !fields.iter().any(|field| field.id == *id) {
+            return Err(ProjectsError::InvalidFilter(
+                "hiddenFieldIds must reference project fields".to_owned(),
+            ));
+        }
+        if !hidden_field_ids.contains(&id.to_string()) {
+            hidden_field_ids.push(id.to_string());
+        }
+    }
+
+    Ok(ValidProjectViewState {
+        query,
+        sort,
+        group,
+        slice,
+        hidden_field_ids,
+    })
+}
+
+fn validate_workspace_query(value: &str) -> Result<String, ProjectsError> {
+    let query = value.chars().take(300).collect::<String>();
+    for token in query.split_whitespace() {
+        let valid = matches!(
+            token,
+            "is:open"
+                | "is:closed"
+                | "is:issue"
+                | "is:pr"
+                | "is:draft"
+                | "assignee:@me"
+                | "no:assignee"
+                | "no:label"
+        ) || token.starts_with("repo:")
+            || token.starts_with("assignee:")
+            || token.starts_with("label:")
+            || token.contains(':')
+                && token.split_once(':').is_some_and(|(field, value)| {
+                    !field.trim().is_empty()
+                        && !value.trim().is_empty()
+                        && field
+                            .chars()
+                            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+                })
+            || !token.contains(':');
+        if !valid {
+            return Err(ProjectsError::InvalidFilter(format!(
+                "unsupported project filter token: {token}"
+            )));
+        }
+    }
+    Ok(query)
+}
+
+fn normalize_state_field_selector(
+    value: Option<&str>,
+    fields: &[ProjectWorkspaceField],
+    name: &str,
+) -> Result<Option<String>, ProjectsError> {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    let normalized = value.to_ascii_lowercase();
+    let field = fields
+        .iter()
+        .find(|field| {
+            field.id.to_string() == value || field.name.to_ascii_lowercase() == normalized
+        })
+        .ok_or_else(|| {
+            ProjectsError::InvalidFilter(format!("{name} must reference a project field"))
+        })?;
+    if matches!(field.field_type.as_str(), "text" | "number") && name != "slice" {
+        return Err(ProjectsError::InvalidFilter(format!(
+            "{name} field must be status, single_select, iteration, date, repository, or assignee"
+        )));
+    }
+    Ok(Some(field.name.clone()))
 }
 
 fn normalize_field_selector(
@@ -1309,28 +1559,40 @@ fn workspace_unsaved_state(
     filters: &ProjectWorkspaceFilters,
     selected_view: &ProjectWorkspaceView,
 ) -> ProjectWorkspaceUnsavedState {
+    let configured_query = configuration_string(&selected_view.configuration, "query");
     let configured_sort = selected_view
         .configuration
         .get("sort")
         .and_then(Value::as_str)
         .unwrap_or("manual");
+    let configured_group = configuration_string(&selected_view.configuration, "group");
+    let configured_slice = configuration_string(&selected_view.configuration, "slice");
     let mut reasons = Vec::new();
-    if filters.query.is_some() {
+    if filters.query != configured_query {
         reasons.push("filter".to_owned());
     }
     if filters.sort != configured_sort {
         reasons.push("sort".to_owned());
     }
-    if filters.group.is_some() {
+    if filters.group != configured_group {
         reasons.push("group".to_owned());
     }
-    if filters.slice.is_some() {
+    if filters.slice != configured_slice {
         reasons.push("slice".to_owned());
     }
     ProjectWorkspaceUnsavedState {
         active: !reasons.is_empty(),
         reasons,
     }
+}
+
+fn configuration_string(configuration: &Value, key: &str) -> Option<String> {
+    configuration
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 async fn workspace_items(

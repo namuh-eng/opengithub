@@ -322,6 +322,15 @@ export type ProjectWorkspaceFetchResult =
   | { ok: true; workspace: ProjectWorkspace }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type ProjectViewStateRequest = {
+  query: string | null;
+  sort: string;
+  group: string | null;
+  slice: string | null;
+  hiddenFieldIds: string[];
+  expectedUpdatedAt: string;
+};
+
 export type CopyProjectRequest = {
   title: string;
   includeDraftIssues: boolean;
@@ -7365,6 +7374,43 @@ export async function copyProjectFromCookie(
     });
   }
   return payload as CopiedProject;
+}
+
+export async function updateProjectViewStateFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  viewId: string,
+  request: ProjectViewStateRequest,
+): Promise<ProjectWorkspace> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/projects/${encodeURIComponent(projectId)}/views/${encodeURIComponent(viewId)}/state`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Project view state could not be saved.",
+      {
+        cause: {
+          error: envelope?.error ?? {
+            code: "project_view_state_failed",
+            message: "Project view state could not be saved.",
+          },
+          status: envelope?.status ?? response.status,
+        } satisfies ApiErrorEnvelope,
+      },
+    );
+  }
+  return payload as ProjectWorkspace;
 }
 
 export async function getPersonalAccessTokenListFromCookie(

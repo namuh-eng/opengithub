@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectWorkspacePage } from "@/components/ProjectWorkspacePage";
 import type { ProjectWorkspace } from "@/lib/api";
@@ -267,6 +273,89 @@ describe("ProjectWorkspacePage", () => {
       screen.getByRole("button", { name: "View configuration" }),
     ).toBeDisabled();
     expect(screen.getByRole("button", { name: "Add item" })).toBeDisabled();
+  });
+
+  it("saves view-state changes through the same-origin project view route", async () => {
+    const assign = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => workspace(),
+    });
+    vi.stubGlobal("location", { assign });
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <ProjectWorkspacePage
+        owner="namuh"
+        scope="organization"
+        viewNumber={1}
+        workspace={workspace()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "View configuration" }));
+    fireEvent.change(screen.getByLabelText("Filter query"), {
+      target: { value: "is:open label:frontend" },
+    });
+    fireEvent.change(screen.getByLabelText("Sort"), {
+      target: { value: "updated_desc" },
+    });
+    fireEvent.change(screen.getByLabelText("Group by"), {
+      target: { value: "Status" },
+    });
+    fireEvent.click(screen.getByLabelText("Secret"));
+    fireEvent.submit(screen.getByRole("form", { name: "View configuration" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/projects/project-1/views/view-1/state",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          query: "is:open label:frontend",
+          sort: "updated_desc",
+          group: "Status",
+          slice: null,
+          hiddenFieldIds: [],
+          expectedUpdatedAt: "2026-05-05T00:00:00Z",
+        }),
+      }),
+    );
+    expect(assign).toHaveBeenCalledWith("/orgs/namuh/projects/12/views/1");
+  });
+
+  it("shows server validation errors and can revert URL-backed view state", async () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { assign });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        json: async () => ({
+          error: {
+            code: "validation_failed",
+            message: "sort must be supported",
+          },
+          status: 422,
+        }),
+      }),
+    );
+    render(
+      <ProjectWorkspacePage
+        owner="namuh"
+        scope="organization"
+        viewNumber={1}
+        workspace={workspace()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "View configuration" }));
+    fireEvent.submit(screen.getByRole("form", { name: "View configuration" }));
+    expect(await screen.findByText("sort must be supported")).toHaveClass(
+      "chip",
+      "err",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Revert" }));
+    expect(assign).toHaveBeenCalledWith("/orgs/namuh/projects/12/views/1");
   });
 
   it("uses Editorial primitives instead of banned GitHub visual values", () => {

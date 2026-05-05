@@ -6813,5 +6813,23 @@
       "Phase 3 still needs persisted view-state editing for filters, sorting, grouping, slicing, hidden fields, save/revert, and read-only URL-only behavior.",
       "Phase 4 and Phase 5 still need real inline field edits, linked issue/PR sync, add-row flows, draft creation, bulk linked item add, removal, and row ordering."
     ]
+  },
+  {
+    "feature_id": "projects-002",
+    "tests_written": [
+      "Completed Phase 3 View State Editing without marking projects-002 build_pass=true.",
+      "Added PATCH /api/projects/{project_id}/views/{view_id}/state with signed-session auth, project write/admin permission checks, stale updatedAt guardrails, supported sort/group/slice/filter validation, hiddenFieldIds validation, project_views.configuration persistence, audit_events writes, and refreshed workspace response.",
+      "Added same-origin Next proxy at /api/projects/{projectId}/views/{viewId}/state and typed updateProjectViewStateFromCookie helper without JS-side auth.",
+      "Wired ProjectWorkspacePage View configuration to open a real Editorial form for filter query, sort, group, slice, visible fields, Save view, Revert, pending state, success state, and no-secret server validation errors.",
+      "Extended focused Vitest coverage for view-state PATCH payloads, canonical redirect after save, server validation errors, revert behavior, disabled read-only controls, URL-backed filters/slices, and Editorial banned-value guardrails.",
+      "Verification passed: cargo fmt --all --check, cargo check -p opengithub-api --tests, web TypeScript, focused Biome, focused project-workspace-page Vitest with 7 tests, mandatory Editorial banned-value scan, full make check, and full make test with Cargo tests plus 537 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Full make test-e2e ran 142 Playwright tests: 18 public/setup tests passed and 124 signed-session tests failed because dashboard_e2e_seed and related helpers could not authenticate to local Postgres on localhost:55432 as user postgres.",
+      "The E2E run also reported an API address-in-use warning; a leftover target/debug/api listener on port 3016 was terminated after the run.",
+      "Rerun a focused Projects workspace browser smoke against a clean migrated credentialed TEST_DATABASE_URL to save ralph/screenshots/build/projects-002-phase3-view-state.jpg.",
+      "Probe stale expectedUpdatedAt conflicts, read-only users preserving URL-only state, unsupported filter tokens, invalid hidden field IDs, grouping/slicing by incompatible fields, concurrent saves, and audit_events metadata with real Postgres assertions.",
+      "Phase 4 still needs real inline field editing and linked issue/PR sync; Phase 5 still needs add-row, bulk add, draft creation, removal, and row ordering."
+    ]
   }
 ]
