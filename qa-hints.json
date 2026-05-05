@@ -5806,5 +5806,23 @@
       "The MVP intentionally returns 403 for users without write access instead of creating a propose-change branch; later code-security work should decide whether to add that fallback.",
       "Repeat full make test-e2e after the wrapper stall and shared local 202605030041 migration drift are resolved; focused repository-security Playwright passed against the current pre-applied schema."
     ]
+  },
+  {
+    "feature_id": "code-security-002",
+    "tests_written": [
+      "Completed Phase 1 Alert API Contract and Persistence without marking code-security-002 build_pass=true.",
+      "Added dependabot_alerts, dependabot_alert_assignees, and security_alert_events persistence with stable repository alert numbers derived from repository_dependencies joined to dependency_advisories.",
+      "Added authenticated GET /api/repos/{owner}/{repo}/security/dependabot and GET /api/repos/{owner}/{repo}/security/dependabot/{alert_id} with repository read permission, private repository 404 privacy, disabled-state metadata, list filters, detail data, timeline rows, assignee options, and security-update affordance metadata.",
+      "Added typed frontend DTOs and signed-cookie fetch helpers for Dependabot list/detail contracts without adding client-side auth.",
+      "Added focused Rust contract coverage for vulnerable dependency seeding, list/detail DTO shape, search/package/ecosystem/manifest/scope/severity filters, disabled state, assignment/timeline rows, private outsider privacy, invalid filter 422, and no session-secret leakage.",
+      "Verification passed: focused repository_dependabot_alerts_contract against the local test database after manually applying the additive Phase 1 migration around the known 202605030041 dirty migration warning; cargo check -p opengithub-api --tests; cd web && npx tsc --noEmit --pretty false; focused Biome check; cargo fmt --all --check; full make check; full make test with Cargo tests plus 457 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 still needs the Editorial /security/dependabot list page, filter controls, row selection, concrete row/detail links, disabled callout, browser smoke, and screenshot evidence.",
+      "Phase 3 still needs real single-alert dismiss/reopen/assignment mutations, audit-backed timeline updates, notification writes, and the detail page UI.",
+      "Phase 4 still needs bulk triage and security-update PR creation/reuse through existing pull request infrastructure.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema after the additive Dependabot migration was applied manually."
+    ]
   }
 ]

@@ -6,7 +6,7 @@
 
 ## Phase 1: Alert API Contract and Persistence - screen-ready list/detail data
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the repository-owned Dependabot alert read model and API contracts without rendering the page yet. `GET /api/repos/{owner}/{repo}/security/dependabot` should return enabled/disabled state, open/closed counts, filter metadata, selectable alert rows, and privacy-safe empty states. `GET /api/repos/{owner}/{repo}/security/dependabot/{alert_id}` should return detail data, advisory metadata, timeline rows, assignee options, and security-update affordances.
 

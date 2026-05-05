@@ -168,6 +168,272 @@ pub struct SecurityPolicyMutation {
     pub expected_content_sha: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct DependabotAlertsQuery<'a> {
+    pub state: Option<&'a str>,
+    pub query: Option<&'a str>,
+    pub package: Option<&'a str>,
+    pub ecosystem: Option<&'a str>,
+    pub manifest: Option<&'a str>,
+    pub scope: Option<&'a str>,
+    pub severity: Option<&'a str>,
+    pub sort: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotAlertsView {
+    pub repository: RepositorySecurityRepository,
+    pub viewer: SecurityViewer,
+    pub availability: DependabotAlertsAvailability,
+    pub filters: DependabotAlertFilters,
+    pub counts: DependabotAlertCounts,
+    pub alerts: Vec<DependabotAlertRow>,
+    pub packages: Vec<DependabotAlertPackageFilter>,
+    pub manifests: Vec<DependabotAlertManifestFilter>,
+    pub links: DependabotAlertLinks,
+    pub freshness: DependabotAlertFreshness,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotAlertDetail {
+    pub repository: RepositorySecurityRepository,
+    pub viewer: SecurityViewer,
+    pub availability: DependabotAlertsAvailability,
+    pub alert: DependabotAlertRow,
+    pub advisory: DependabotAdvisoryDetail,
+    pub dependency: DependabotDependencyDetail,
+    pub timeline: Vec<DependabotAlertTimelineEvent>,
+    pub assignee_options: Vec<DependabotAlertAssignmentOption>,
+    pub security_update: DependabotSecurityUpdateState,
+    pub links: DependabotAlertLinks,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotAlertsAvailability {
+    pub enabled: bool,
+    pub indexed: bool,
+    pub message: String,
+    pub disabled_reason: Option<String>,
+    pub settings_href: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotAlertFilters {
+    pub state: String,
+    pub query: Option<String>,
+    pub package: Option<String>,
+    pub ecosystem: Option<String>,
+    pub manifest: Option<String>,
+    pub scope: Option<String>,
+    pub severity: Option<String>,
+    pub sort: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotAlertCounts {
+    pub open: i64,
+    pub closed: i64,
+    pub total: i64,
+    pub visible: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotAlertPackage {
+    pub id: Uuid,
+    pub ecosystem: String,
+    pub name: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotAlertAdvisorySummary {
+    pub id: Uuid,
+    pub identifier: String,
+    pub severity: String,
+    pub title: String,
+    pub href: String,
+    pub published_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotAlertRow {
+    pub id: Uuid,
+    pub number: i64,
+    pub state: String,
+    pub scope: String,
+    pub package: DependabotAlertPackage,
+    pub advisory: DependabotAlertAdvisorySummary,
+    pub manifest_path: String,
+    pub manifest_href: String,
+    pub lockfile_path: Option<String>,
+    pub lockfile_href: Option<String>,
+    pub vulnerable_requirements: Option<String>,
+    pub current_version: Option<String>,
+    pub fixed_version: Option<String>,
+    pub relationship: String,
+    pub assignees: Vec<DependabotAlertAssignee>,
+    pub href: String,
+    pub detected_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotAlertAssignee {
+    pub id: Uuid,
+    pub login: String,
+    pub avatar_url: Option<String>,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotAlertPackageFilter {
+    pub package: DependabotAlertPackage,
+    pub open_count: i64,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotAlertManifestFilter {
+    pub path: String,
+    pub ecosystem: String,
+    pub href: String,
+    pub open_count: i64,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotAdvisoryDetail {
+    pub identifier: String,
+    pub severity: String,
+    pub title: String,
+    pub href: String,
+    pub vulnerable_range: String,
+    pub published_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotDependencyDetail {
+    pub package: DependabotAlertPackage,
+    pub manifest_path: String,
+    pub manifest_href: String,
+    pub lockfile_path: Option<String>,
+    pub lockfile_href: Option<String>,
+    pub current_version: Option<String>,
+    pub relationship: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotAlertTimelineEvent {
+    pub id: Uuid,
+    pub event_type: String,
+    pub message: String,
+    pub actor: Option<DependabotAlertAssignee>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotAlertAssignmentOption {
+    pub id: Uuid,
+    pub kind: String,
+    pub login: String,
+    pub avatar_url: Option<String>,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotSecurityUpdateState {
+    pub supported: bool,
+    pub status: String,
+    pub href: Option<String>,
+    pub pull_request_href: Option<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotAlertLinks {
+    pub list_href: String,
+    pub open_href: String,
+    pub closed_href: String,
+    pub settings_href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotAlertFreshness {
+    pub computed_at: DateTime<Utc>,
+    pub cadence: String,
+}
+
+pub async fn repository_dependabot_alerts_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    query: DependabotAlertsQuery<'_>,
+) -> Result<Option<DependabotAlertsView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+
+    repository_dependabot_alerts_for_repository(pool, &repository, actor_user_id, query)
+        .await
+        .map(Some)
+}
+
+pub async fn repository_dependabot_alert_detail_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    alert_number: i64,
+) -> Result<Option<DependabotAlertDetail>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if alert_number <= 0 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "alert id must be a positive number".to_owned(),
+        ));
+    }
+
+    repository_dependabot_alert_detail_for_repository(
+        pool,
+        &repository,
+        actor_user_id,
+        alert_number,
+    )
+    .await
+}
+
 pub async fn repository_security_overview_for_actor_by_owner_name(
     pool: &PgPool,
     actor_user_id: Uuid,
@@ -830,6 +1096,790 @@ fn security_links(repository: &Repository) -> SecurityOverviewLinks {
         dependabot_href: format!("{base}/security/dependabot"),
         code_scanning_href: format!("{base}/security/code-scanning"),
         secret_scanning_href: format!("{base}/security/secret-scanning"),
+    }
+}
+
+async fn repository_dependabot_alerts_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    query: DependabotAlertsQuery<'_>,
+) -> Result<DependabotAlertsView, RepositoryError> {
+    let filters = normalize_dependabot_alert_filters(query)?;
+    let can_write = can_write_repository(pool, repository, actor_user_id).await?;
+    let setting = dependabot_setting(pool, repository).await?;
+    let availability = dependabot_availability(repository, setting.as_ref());
+
+    if availability.enabled {
+        materialize_dependabot_alerts(pool, repository).await?;
+    }
+
+    let mut alerts = if availability.enabled {
+        dependabot_alert_rows(pool, repository).await?
+    } else {
+        Vec::new()
+    };
+    let all_alerts = alerts.clone();
+    apply_dependabot_alert_filters(&mut alerts, &filters);
+    sort_dependabot_alerts(&mut alerts, &filters.sort);
+
+    let links = dependabot_links(repository);
+    Ok(DependabotAlertsView {
+        repository: security_repository(repository, &links),
+        viewer: security_viewer(pool, repository, actor_user_id, can_write).await?,
+        availability,
+        filters,
+        counts: dependabot_counts(&all_alerts, alerts.len() as i64),
+        alerts,
+        packages: dependabot_package_filters(repository, &all_alerts, query.package).await?,
+        manifests: dependabot_manifest_filters(repository, &all_alerts, query.manifest).await?,
+        links,
+        freshness: DependabotAlertFreshness {
+            computed_at: Utc::now(),
+            cadence: "on repository dependency graph refresh".to_owned(),
+        },
+    })
+}
+
+async fn repository_dependabot_alert_detail_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    alert_number: i64,
+) -> Result<Option<DependabotAlertDetail>, RepositoryError> {
+    let can_write = can_write_repository(pool, repository, actor_user_id).await?;
+    let setting = dependabot_setting(pool, repository).await?;
+    let availability = dependabot_availability(repository, setting.as_ref());
+    if availability.enabled {
+        materialize_dependabot_alerts(pool, repository).await?;
+    }
+
+    let Some(alert) = dependabot_alert_rows(pool, repository)
+        .await?
+        .into_iter()
+        .find(|alert| alert.number == alert_number)
+    else {
+        return Ok(None);
+    };
+    let links = dependabot_links(repository);
+    let timeline = dependabot_alert_timeline(pool, alert.id).await?;
+    let assignee_options = dependabot_assignment_options(pool, repository, alert.id).await?;
+    let advisory = DependabotAdvisoryDetail {
+        identifier: alert.advisory.identifier.clone(),
+        severity: alert.advisory.severity.clone(),
+        title: alert.advisory.title.clone(),
+        href: alert.advisory.href.clone(),
+        vulnerable_range: alert
+            .vulnerable_requirements
+            .clone()
+            .unwrap_or_else(|| "See advisory".to_owned()),
+        published_at: alert.advisory.published_at,
+    };
+    let dependency = DependabotDependencyDetail {
+        package: alert.package.clone(),
+        manifest_path: alert.manifest_path.clone(),
+        manifest_href: alert.manifest_href.clone(),
+        lockfile_path: alert.lockfile_path.clone(),
+        lockfile_href: alert.lockfile_href.clone(),
+        current_version: alert.current_version.clone(),
+        relationship: alert.relationship.clone(),
+    };
+    let security_update = dependabot_security_update_state(repository, &alert);
+
+    Ok(Some(DependabotAlertDetail {
+        repository: security_repository(repository, &links),
+        viewer: security_viewer(pool, repository, actor_user_id, can_write).await?,
+        availability,
+        alert,
+        advisory,
+        dependency,
+        timeline,
+        assignee_options,
+        security_update,
+        links,
+    }))
+}
+
+async fn security_viewer(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    can_write: bool,
+) -> Result<SecurityViewer, RepositoryError> {
+    Ok(SecurityViewer {
+        permission: viewer_permission(pool, repository, actor_user_id, can_write).await?,
+        can_read: true,
+        can_write,
+        can_edit_policy: can_write && !repository.is_archived,
+        can_view_private_alert_counts: can_write,
+    })
+}
+
+fn security_repository(
+    repository: &Repository,
+    _links: &DependabotAlertLinks,
+) -> RepositorySecurityRepository {
+    RepositorySecurityRepository {
+        id: repository.id,
+        owner_login: repository.owner_login.clone(),
+        name: repository.name.clone(),
+        visibility: repository.visibility.as_str().to_owned(),
+        default_branch: repository.default_branch.clone(),
+        security_href: format!("/{}/{}/security", repository.owner_login, repository.name),
+        policy_href: format!(
+            "/{}/{}/security/policy",
+            repository.owner_login, repository.name
+        ),
+        advisories_href: format!(
+            "/{}/{}/security/advisories",
+            repository.owner_login, repository.name
+        ),
+    }
+}
+
+async fn dependabot_setting(
+    pool: &PgPool,
+    repository: &Repository,
+) -> Result<Option<sqlx::postgres::PgRow>, RepositoryError> {
+    sqlx::query(
+        r#"
+        SELECT status, summary, config_href
+        FROM repository_security_feature_settings
+        WHERE repository_id = $1 AND feature_key = 'dependabot'
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_optional(pool)
+    .await
+    .map_err(RepositoryError::from)
+}
+
+fn dependabot_availability(
+    repository: &Repository,
+    setting: Option<&sqlx::postgres::PgRow>,
+) -> DependabotAlertsAvailability {
+    let status = setting
+        .map(|row| row.get::<String, _>("status"))
+        .unwrap_or_else(|| "enabled".to_owned());
+    let enabled = status == "enabled";
+    DependabotAlertsAvailability {
+        enabled,
+        indexed: enabled,
+        message: if enabled {
+            "Dependabot alerts are derived from indexed dependency manifests and advisories."
+                .to_owned()
+        } else {
+            setting
+                .map(|row| row.get::<String, _>("summary"))
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "Dependabot alerts are disabled for this repository.".to_owned())
+        },
+        disabled_reason: (!enabled).then_some(status),
+        settings_href: setting
+            .and_then(|row| row.get::<Option<String>, _>("config_href"))
+            .or_else(|| {
+                Some(format!(
+                    "/{}/{}/settings/security_analysis",
+                    repository.owner_login, repository.name
+                ))
+            }),
+    }
+}
+
+async fn materialize_dependabot_alerts(
+    pool: &PgPool,
+    repository: &Repository,
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        r#"
+        WITH candidates AS (
+            SELECT repository_dependencies.id AS repository_dependency_id,
+                   dependency_advisories.id AS dependency_advisory_id,
+                   repository_dependencies.relationship,
+                   repository_dependencies.package_version,
+                   dependency_advisories.advisory_identifier,
+                   row_number() OVER (
+                       ORDER BY dependency_advisories.severity DESC,
+                                lower(dependency_advisories.advisory_identifier),
+                                repository_dependencies.id
+                   ) AS ordinal
+            FROM repository_dependencies
+            JOIN dependency_advisories ON dependency_advisories.package_id = repository_dependencies.package_id
+            WHERE repository_dependencies.repository_id = $1
+        ),
+        numbered AS (
+            SELECT candidates.*,
+                   COALESCE((SELECT max(number) FROM dependabot_alerts WHERE repository_id = $1), 0)
+                   + candidates.ordinal AS generated_number
+            FROM candidates
+        )
+        INSERT INTO dependabot_alerts (
+            repository_id,
+            repository_dependency_id,
+            dependency_advisory_id,
+            number,
+            scope,
+            vulnerable_requirements,
+            fixed_version
+        )
+        SELECT $1,
+               repository_dependency_id,
+               dependency_advisory_id,
+               generated_number,
+               CASE WHEN relationship = 'direct' THEN 'production' ELSE 'development' END,
+               COALESCE(package_version, 'installed version'),
+               NULL
+        FROM numbered
+        ON CONFLICT (repository_id, repository_dependency_id, dependency_advisory_id) DO NOTHING
+        "#,
+    )
+    .bind(repository.id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+fn normalize_dependabot_alert_filters(
+    query: DependabotAlertsQuery<'_>,
+) -> Result<DependabotAlertFilters, RepositoryError> {
+    let state = match query.state.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(state @ ("open" | "closed" | "dismissed" | "fixed" | "all")) => state.to_owned(),
+        Some(other) => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported dependabot alert state `{other}`"
+            )))
+        }
+        None => "open".to_owned(),
+    };
+    let query_text = normalize_optional_filter(query.query, "q", 120)?;
+    let package = normalize_optional_filter(query.package, "package", 160)?;
+    let manifest = normalize_optional_filter(query.manifest, "manifest", 240)?;
+    let ecosystem = match query
+        .ecosystem
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(ecosystem @ ("npm" | "cargo" | "pip")) => Some(ecosystem.to_owned()),
+        Some(other) => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported ecosystem `{other}`"
+            )))
+        }
+        None => None,
+    };
+    let scope = match query.scope.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(scope @ ("production" | "development")) => Some(scope.to_owned()),
+        Some(other) => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported scope `{other}`"
+            )))
+        }
+        None => None,
+    };
+    let severity = match query
+        .severity
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(severity @ ("low" | "moderate" | "high" | "critical")) => Some(severity.to_owned()),
+        Some(other) => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported severity `{other}`"
+            )))
+        }
+        None => None,
+    };
+    let sort = match query.sort.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(sort @ ("most_important" | "recently_detected" | "package" | "manifest")) => {
+            sort.to_owned()
+        }
+        Some(other) => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported sort `{other}`"
+            )))
+        }
+        None => "most_important".to_owned(),
+    };
+    Ok(DependabotAlertFilters {
+        state,
+        query: query_text,
+        package,
+        ecosystem,
+        manifest,
+        scope,
+        severity,
+        sort,
+    })
+}
+
+fn normalize_optional_filter(
+    value: Option<&str>,
+    label: &str,
+    max_chars: usize,
+) -> Result<Option<String>, RepositoryError> {
+    let value = value.map(str::trim).filter(|value| !value.is_empty());
+    if let Some(value) = value {
+        if value.chars().count() > max_chars {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "{label} must be {max_chars} characters or fewer"
+            )));
+        }
+        return Ok(Some(value.to_owned()));
+    }
+    Ok(None)
+}
+
+async fn dependabot_alert_rows(
+    pool: &PgPool,
+    repository: &Repository,
+) -> Result<Vec<DependabotAlertRow>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT dependabot_alerts.id,
+               dependabot_alerts.number,
+               dependabot_alerts.state,
+               dependabot_alerts.scope,
+               dependabot_alerts.vulnerable_requirements,
+               dependabot_alerts.fixed_version,
+               dependabot_alerts.created_at,
+               dependabot_alerts.updated_at,
+               repository_dependencies.package_version,
+               repository_dependencies.relationship,
+               repository_dependencies.lockfile_path,
+               dependency_manifests.path AS manifest_path,
+               dependency_packages.id AS package_id,
+               dependency_packages.ecosystem,
+               dependency_packages.name,
+               dependency_packages.package_href,
+               dependency_advisories.id AS advisory_id,
+               dependency_advisories.advisory_identifier,
+               dependency_advisories.severity,
+               dependency_advisories.title,
+               dependency_advisories.advisory_href,
+               dependency_advisories.published_at
+        FROM dependabot_alerts
+        JOIN repository_dependencies ON repository_dependencies.id = dependabot_alerts.repository_dependency_id
+        JOIN dependency_manifests ON dependency_manifests.id = repository_dependencies.manifest_id
+        JOIN dependency_packages ON dependency_packages.id = repository_dependencies.package_id
+        JOIN dependency_advisories ON dependency_advisories.id = dependabot_alerts.dependency_advisory_id
+        WHERE dependabot_alerts.repository_id = $1
+        ORDER BY dependabot_alerts.number ASC
+        LIMIT 250
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut alerts = Vec::new();
+    for row in rows {
+        let id: Uuid = row.get("id");
+        let ecosystem: String = row.get("ecosystem");
+        let package_name: String = row.get("name");
+        let manifest_path: String = row.get("manifest_path");
+        let lockfile_path: Option<String> = row.get("lockfile_path");
+        let package_href = row
+            .get::<Option<String>, _>("package_href")
+            .unwrap_or_else(|| package_href(&ecosystem, &package_name));
+        alerts.push(DependabotAlertRow {
+            id,
+            number: row.get("number"),
+            state: row.get("state"),
+            scope: row.get("scope"),
+            package: DependabotAlertPackage {
+                id: row.get("package_id"),
+                ecosystem: ecosystem.clone(),
+                name: package_name.clone(),
+                href: package_href,
+            },
+            advisory: DependabotAlertAdvisorySummary {
+                id: row.get("advisory_id"),
+                identifier: row.get("advisory_identifier"),
+                severity: row.get("severity"),
+                title: row.get("title"),
+                href: row.get("advisory_href"),
+                published_at: row.get("published_at"),
+            },
+            manifest_path: manifest_path.clone(),
+            manifest_href: repository_blob_href(
+                repository,
+                &repository.default_branch,
+                &manifest_path,
+            ),
+            lockfile_path: lockfile_path.clone(),
+            lockfile_href: lockfile_path
+                .as_deref()
+                .map(|path| repository_blob_href(repository, &repository.default_branch, path)),
+            vulnerable_requirements: row.get("vulnerable_requirements"),
+            current_version: row.get("package_version"),
+            fixed_version: row.get("fixed_version"),
+            relationship: row.get("relationship"),
+            assignees: dependabot_alert_assignees(pool, id).await?,
+            href: format!(
+                "/{}/{}/security/dependabot/{}",
+                repository.owner_login,
+                repository.name,
+                row.get::<i64, _>("number")
+            ),
+            detected_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+        });
+    }
+    Ok(alerts)
+}
+
+async fn dependabot_alert_assignees(
+    pool: &PgPool,
+    alert_id: Uuid,
+) -> Result<Vec<DependabotAlertAssignee>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT users.id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS login,
+               users.avatar_url
+        FROM dependabot_alert_assignees
+        JOIN users ON users.id = dependabot_alert_assignees.user_id
+        WHERE dependabot_alert_assignees.alert_id = $1
+        ORDER BY lower(COALESCE(NULLIF(users.username, ''), users.email)) ASC
+        "#,
+    )
+    .bind(alert_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let login: String = row.get("login");
+            DependabotAlertAssignee {
+                id: row.get("id"),
+                href: format!("/{login}"),
+                login,
+                avatar_url: row.get("avatar_url"),
+            }
+        })
+        .collect())
+}
+
+fn apply_dependabot_alert_filters(
+    alerts: &mut Vec<DependabotAlertRow>,
+    filters: &DependabotAlertFilters,
+) {
+    alerts.retain(|alert| match filters.state.as_str() {
+        "open" => alert.state == "open",
+        "closed" => alert.state == "dismissed" || alert.state == "fixed",
+        "dismissed" => alert.state == "dismissed",
+        "fixed" => alert.state == "fixed",
+        "all" => true,
+        _ => true,
+    });
+    if let Some(query) = filters.query.as_deref() {
+        let needle = query.to_lowercase();
+        alerts.retain(|alert| {
+            alert.package.name.to_lowercase().contains(&needle)
+                || alert.advisory.title.to_lowercase().contains(&needle)
+                || alert.advisory.identifier.to_lowercase().contains(&needle)
+                || alert.manifest_path.to_lowercase().contains(&needle)
+        });
+    }
+    if let Some(package) = filters.package.as_deref() {
+        alerts.retain(|alert| {
+            alert.package.name.eq_ignore_ascii_case(package)
+                || format!("{}:{}", alert.package.ecosystem, alert.package.name)
+                    .eq_ignore_ascii_case(package)
+        });
+    }
+    if let Some(ecosystem) = filters.ecosystem.as_deref() {
+        alerts.retain(|alert| alert.package.ecosystem == ecosystem);
+    }
+    if let Some(manifest) = filters.manifest.as_deref() {
+        alerts.retain(|alert| alert.manifest_path.eq_ignore_ascii_case(manifest));
+    }
+    if let Some(scope) = filters.scope.as_deref() {
+        alerts.retain(|alert| alert.scope == scope);
+    }
+    if let Some(severity) = filters.severity.as_deref() {
+        alerts.retain(|alert| alert.advisory.severity == severity);
+    }
+}
+
+fn sort_dependabot_alerts(alerts: &mut [DependabotAlertRow], sort: &str) {
+    alerts.sort_by(|left, right| match sort {
+        "recently_detected" => right
+            .detected_at
+            .cmp(&left.detected_at)
+            .then(left.number.cmp(&right.number)),
+        "package" => left
+            .package
+            .name
+            .to_lowercase()
+            .cmp(&right.package.name.to_lowercase()),
+        "manifest" => left
+            .manifest_path
+            .to_lowercase()
+            .cmp(&right.manifest_path.to_lowercase()),
+        _ => severity_rank(&left.advisory.severity)
+            .cmp(&severity_rank(&right.advisory.severity))
+            .then(left.number.cmp(&right.number)),
+    });
+}
+
+fn severity_rank(severity: &str) -> i32 {
+    match severity {
+        "critical" => 0,
+        "high" => 1,
+        "moderate" => 2,
+        "low" => 3,
+        _ => 4,
+    }
+}
+
+fn dependabot_counts(alerts: &[DependabotAlertRow], visible: i64) -> DependabotAlertCounts {
+    let open = alerts.iter().filter(|alert| alert.state == "open").count() as i64;
+    let closed = alerts
+        .iter()
+        .filter(|alert| alert.state == "dismissed" || alert.state == "fixed")
+        .count() as i64;
+    DependabotAlertCounts {
+        open,
+        closed,
+        total: alerts.len() as i64,
+        visible,
+    }
+}
+
+async fn dependabot_package_filters(
+    _repository: &Repository,
+    alerts: &[DependabotAlertRow],
+    selected: Option<&str>,
+) -> Result<Vec<DependabotAlertPackageFilter>, RepositoryError> {
+    let mut packages = Vec::<DependabotAlertPackageFilter>::new();
+    for alert in alerts.iter().filter(|alert| alert.state == "open") {
+        if let Some(existing) = packages
+            .iter_mut()
+            .find(|entry| entry.package.id == alert.package.id)
+        {
+            existing.open_count += 1;
+        } else {
+            packages.push(DependabotAlertPackageFilter {
+                package: alert.package.clone(),
+                open_count: 1,
+                selected: selected
+                    .map(|value| {
+                        value.eq_ignore_ascii_case(&alert.package.name)
+                            || value.eq_ignore_ascii_case(&format!(
+                                "{}:{}",
+                                alert.package.ecosystem, alert.package.name
+                            ))
+                    })
+                    .unwrap_or(false),
+            });
+        }
+    }
+    packages.sort_by(|left, right| {
+        right
+            .open_count
+            .cmp(&left.open_count)
+            .then(left.package.name.cmp(&right.package.name))
+    });
+    Ok(packages)
+}
+
+async fn dependabot_manifest_filters(
+    repository: &Repository,
+    alerts: &[DependabotAlertRow],
+    selected: Option<&str>,
+) -> Result<Vec<DependabotAlertManifestFilter>, RepositoryError> {
+    let mut manifests = Vec::<DependabotAlertManifestFilter>::new();
+    for alert in alerts.iter().filter(|alert| alert.state == "open") {
+        if let Some(existing) = manifests
+            .iter_mut()
+            .find(|entry| entry.path == alert.manifest_path)
+        {
+            existing.open_count += 1;
+        } else {
+            manifests.push(DependabotAlertManifestFilter {
+                path: alert.manifest_path.clone(),
+                ecosystem: alert.package.ecosystem.clone(),
+                href: repository_blob_href(
+                    repository,
+                    &repository.default_branch,
+                    &alert.manifest_path,
+                ),
+                open_count: 1,
+                selected: selected
+                    .map(|value| value.eq_ignore_ascii_case(&alert.manifest_path))
+                    .unwrap_or(false),
+            });
+        }
+    }
+    manifests.sort_by(|left, right| left.path.to_lowercase().cmp(&right.path.to_lowercase()));
+    Ok(manifests)
+}
+
+async fn dependabot_alert_timeline(
+    pool: &PgPool,
+    alert_id: Uuid,
+) -> Result<Vec<DependabotAlertTimelineEvent>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT security_alert_events.id,
+               security_alert_events.event_type,
+               security_alert_events.message,
+               security_alert_events.created_at,
+               users.id AS actor_id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS actor_login,
+               users.avatar_url AS actor_avatar_url
+        FROM security_alert_events
+        LEFT JOIN users ON users.id = security_alert_events.actor_user_id
+        WHERE security_alert_events.alert_id = $1
+        ORDER BY security_alert_events.created_at ASC
+        "#,
+    )
+    .bind(alert_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut events = Vec::new();
+    for row in rows {
+        let actor = match (
+            row.try_get::<Option<Uuid>, _>("actor_id").ok().flatten(),
+            row.try_get::<Option<String>, _>("actor_login")
+                .ok()
+                .flatten(),
+        ) {
+            (Some(id), Some(login)) => Some(DependabotAlertAssignee {
+                id,
+                href: format!("/{login}"),
+                login,
+                avatar_url: row.get("actor_avatar_url"),
+            }),
+            _ => None,
+        };
+        events.push(DependabotAlertTimelineEvent {
+            id: row.get("id"),
+            event_type: row.get("event_type"),
+            message: row.get("message"),
+            actor,
+            created_at: row.get("created_at"),
+        });
+    }
+    if events.is_empty() {
+        events.push(DependabotAlertTimelineEvent {
+            id: alert_id,
+            event_type: "created".to_owned(),
+            message: "Dependabot opened this alert from the dependency graph.".to_owned(),
+            actor: None,
+            created_at: Utc::now(),
+        });
+    }
+    Ok(events)
+}
+
+async fn dependabot_assignment_options(
+    pool: &PgPool,
+    repository: &Repository,
+    alert_id: Uuid,
+) -> Result<Vec<DependabotAlertAssignmentOption>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT users.id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS login,
+               users.avatar_url,
+               EXISTS (
+                   SELECT 1 FROM dependabot_alert_assignees
+                   WHERE alert_id = $2 AND user_id = users.id
+               ) AS selected
+        FROM users
+        WHERE users.id = $3
+           OR EXISTS (
+               SELECT 1 FROM repository_permissions
+               WHERE repository_permissions.repository_id = $1
+                 AND repository_permissions.user_id = users.id
+           )
+        ORDER BY lower(COALESCE(NULLIF(users.username, ''), users.email)) ASC
+        LIMIT 25
+        "#,
+    )
+    .bind(repository.id)
+    .bind(alert_id)
+    .bind(repository.created_by_user_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| DependabotAlertAssignmentOption {
+            id: row.get("id"),
+            kind: "user".to_owned(),
+            login: row.get("login"),
+            avatar_url: row.get("avatar_url"),
+            selected: row.get("selected"),
+        })
+        .collect())
+}
+
+fn dependabot_security_update_state(
+    repository: &Repository,
+    alert: &DependabotAlertRow,
+) -> DependabotSecurityUpdateState {
+    let supported = alert.state == "open"
+        && matches!(alert.package.ecosystem.as_str(), "npm" | "cargo" | "pip");
+    DependabotSecurityUpdateState {
+        supported,
+        status: if supported {
+            "available"
+        } else {
+            "unsupported"
+        }
+        .to_owned(),
+        href: supported.then(|| {
+            format!(
+                "/api/repos/{}/{}/security/dependabot/{}/security-update",
+                percent_encode_segment(&repository.owner_login),
+                percent_encode_segment(&repository.name),
+                alert.number
+            )
+        }),
+        pull_request_href: None,
+        message: if supported {
+            "A security update pull request can be prepared for this manifest.".to_owned()
+        } else {
+            "Security update pull requests are unavailable for this alert state or ecosystem."
+                .to_owned()
+        },
+    }
+}
+
+fn dependabot_links(repository: &Repository) -> DependabotAlertLinks {
+    let base = format!(
+        "/{}/{}/security/dependabot",
+        repository.owner_login, repository.name
+    );
+    DependabotAlertLinks {
+        list_href: base.clone(),
+        open_href: format!("{base}?state=open"),
+        closed_href: format!("{base}?state=closed"),
+        settings_href: format!(
+            "/{}/{}/settings/security_analysis",
+            repository.owner_login, repository.name
+        ),
+    }
+}
+
+fn package_href(ecosystem: &str, name: &str) -> String {
+    match ecosystem {
+        "npm" => format!(
+            "https://www.npmjs.com/package/{}",
+            percent_encode_segment(name)
+        ),
+        "cargo" => format!("https://crates.io/crates/{}", percent_encode_segment(name)),
+        "pip" => format!("https://pypi.org/project/{}", percent_encode_segment(name)),
+        _ => format!(
+            "/packages/{}/{}",
+            percent_encode_segment(ecosystem),
+            percent_encode_segment(name)
+        ),
     }
 }
 

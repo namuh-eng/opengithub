@@ -2774,6 +2774,190 @@ export type RepositorySecurityPolicyMutation = {
   expectedContentSha?: string | null;
 };
 
+export type RepositoryDependabotAlertsView = {
+  repository: RepositorySecurityRepository;
+  viewer: RepositorySecurityViewer;
+  availability: RepositoryDependabotAvailability;
+  filters: RepositoryDependabotAlertFilters;
+  counts: RepositoryDependabotAlertCounts;
+  alerts: RepositoryDependabotAlertRow[];
+  packages: RepositoryDependabotPackageFilter[];
+  manifests: RepositoryDependabotManifestFilter[];
+  links: RepositoryDependabotLinks;
+  freshness: RepositoryDependabotFreshness;
+};
+
+export type RepositoryDependabotAlertDetail = {
+  repository: RepositorySecurityRepository;
+  viewer: RepositorySecurityViewer;
+  availability: RepositoryDependabotAvailability;
+  alert: RepositoryDependabotAlertRow;
+  advisory: RepositoryDependabotAdvisoryDetail;
+  dependency: RepositoryDependabotDependencyDetail;
+  timeline: RepositoryDependabotTimelineEvent[];
+  assigneeOptions: RepositoryDependabotAssignmentOption[];
+  securityUpdate: RepositoryDependabotSecurityUpdateState;
+  links: RepositoryDependabotLinks;
+};
+
+export type RepositoryDependabotAvailability = {
+  enabled: boolean;
+  indexed: boolean;
+  message: string;
+  disabledReason: string | null;
+  settingsHref: string | null;
+};
+
+export type RepositoryDependabotAlertFilters = {
+  state: string;
+  query: string | null;
+  package: string | null;
+  ecosystem: string | null;
+  manifest: string | null;
+  scope: string | null;
+  severity: string | null;
+  sort: string;
+};
+
+export type RepositoryDependabotAlertCounts = {
+  open: number;
+  closed: number;
+  total: number;
+  visible: number;
+};
+
+export type RepositoryDependabotPackage = {
+  id: string;
+  ecosystem: string;
+  name: string;
+  href: string;
+};
+
+export type RepositoryDependabotAdvisorySummary = {
+  id: string;
+  identifier: string;
+  severity: string;
+  title: string;
+  href: string;
+  publishedAt: string | null;
+};
+
+export type RepositoryDependabotAlertRow = {
+  id: string;
+  number: number;
+  state: string;
+  scope: string;
+  package: RepositoryDependabotPackage;
+  advisory: RepositoryDependabotAdvisorySummary;
+  manifestPath: string;
+  manifestHref: string;
+  lockfilePath: string | null;
+  lockfileHref: string | null;
+  vulnerableRequirements: string | null;
+  currentVersion: string | null;
+  fixedVersion: string | null;
+  relationship: string;
+  assignees: RepositoryDependabotAssignee[];
+  href: string;
+  detectedAt: string;
+  updatedAt: string;
+};
+
+export type RepositoryDependabotAssignee = {
+  id: string;
+  login: string;
+  avatarUrl: string | null;
+  href: string;
+};
+
+export type RepositoryDependabotPackageFilter = {
+  package: RepositoryDependabotPackage;
+  openCount: number;
+  selected: boolean;
+};
+
+export type RepositoryDependabotManifestFilter = {
+  path: string;
+  ecosystem: string;
+  href: string;
+  openCount: number;
+  selected: boolean;
+};
+
+export type RepositoryDependabotAdvisoryDetail = {
+  identifier: string;
+  severity: string;
+  title: string;
+  href: string;
+  vulnerableRange: string;
+  publishedAt: string | null;
+};
+
+export type RepositoryDependabotDependencyDetail = {
+  package: RepositoryDependabotPackage;
+  manifestPath: string;
+  manifestHref: string;
+  lockfilePath: string | null;
+  lockfileHref: string | null;
+  currentVersion: string | null;
+  relationship: string;
+};
+
+export type RepositoryDependabotTimelineEvent = {
+  id: string;
+  eventType: string;
+  message: string;
+  actor: RepositoryDependabotAssignee | null;
+  createdAt: string;
+};
+
+export type RepositoryDependabotAssignmentOption = {
+  id: string;
+  kind: string;
+  login: string;
+  avatarUrl: string | null;
+  selected: boolean;
+};
+
+export type RepositoryDependabotSecurityUpdateState = {
+  supported: boolean;
+  status: string;
+  href: string | null;
+  pullRequestHref: string | null;
+  message: string;
+};
+
+export type RepositoryDependabotLinks = {
+  listHref: string;
+  openHref: string;
+  closedHref: string;
+  settingsHref: string;
+};
+
+export type RepositoryDependabotFreshness = {
+  computedAt: string;
+  cadence: string;
+};
+
+export type RepositoryDependabotAlertsFetchResult =
+  | { ok: true; dependabot: RepositoryDependabotAlertsView }
+  | { ok: false; status: number; code: string | null; message: string };
+
+export type RepositoryDependabotAlertDetailFetchResult =
+  | { ok: true; dependabotAlert: RepositoryDependabotAlertDetail }
+  | { ok: false; status: number; code: string | null; message: string };
+
+export type RepositoryDependabotAlertsQuery = {
+  state?: string | null;
+  query?: string | null;
+  package?: string | null;
+  ecosystem?: string | null;
+  manifest?: string | null;
+  scope?: string | null;
+  severity?: string | null;
+  sort?: string | null;
+};
+
 export type RepositoryTrafficView = {
   repository: RepositoryTrafficRepository;
   window: RepositoryTrafficWindow;
@@ -9823,6 +10007,124 @@ export async function mutateRepositorySecurityPolicyFromCookie(
   }
 
   return (await response.json()) as RepositorySecurityPolicyView;
+}
+
+function appendRepositoryDependabotSearchParams(
+  searchParams: URLSearchParams,
+  query?: RepositoryDependabotAlertsQuery,
+) {
+  if (!query) {
+    return;
+  }
+  const entries: [string, string | null | undefined][] = [
+    ["state", query.state],
+    ["q", query.query],
+    ["package", query.package],
+    ["ecosystem", query.ecosystem],
+    ["manifest", query.manifest],
+    ["scope", query.scope],
+    ["severity", query.severity],
+    ["sort", query.sort],
+  ];
+  for (const [key, value] of entries) {
+    if (value?.trim()) {
+      searchParams.set(key, value);
+    }
+  }
+}
+
+export async function getRepositoryDependabotAlertsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  query?: RepositoryDependabotAlertsQuery,
+): Promise<RepositoryDependabotAlertsFetchResult> {
+  const searchParams = new URLSearchParams();
+  appendRepositoryDependabotSearchParams(searchParams, query);
+  const suffix = searchParams.size ? `?${searchParams.toString()}` : "";
+
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/dependabot${suffix}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Dependabot alerts are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Dependabot alerts are unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    dependabot: (await response.json()) as RepositoryDependabotAlertsView,
+  };
+}
+
+export async function getRepositoryDependabotAlertDetailFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  alertId: string | number,
+): Promise<RepositoryDependabotAlertDetailFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/dependabot/${encodeURIComponent(String(alertId))}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Dependabot alert detail is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Dependabot alert detail is unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    dependabotAlert: (await response.json()) as RepositoryDependabotAlertDetail,
+  };
 }
 
 export async function getRepositoryNetworkFromCookie(
