@@ -2757,6 +2757,188 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-dependabot-alerts",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/security/dependabot?state=open&package=npm%3A%40playwright%2Ftest&sort=most_important",
+    title: "List repository Dependabot alerts",
+    description:
+      "Returns the screen-ready Dependabot alerts list derived from indexed dependency graph rows and security advisories, including filter metadata, open/closed counts, selectable alert rows, disabled states, and viewer write permissions.",
+    auth: "Signed opengithub session cookie with repository read permission; private outsiders receive not_found",
+    response: `{
+  "availability": {
+    "enabled": true,
+    "indexed": true,
+    "message": "Dependabot alerts are monitored.",
+    "settingsHref": "/mona/octo-app/settings/security"
+  },
+  "filters": {
+    "state": "open",
+    "query": null,
+    "package": "npm:@playwright/test",
+    "ecosystem": null,
+    "manifest": null,
+    "scope": null,
+    "severity": null,
+    "sort": "most_important"
+  },
+  "counts": { "open": 2, "closed": 1, "total": 3, "visible": 1 },
+  "alerts": [
+    {
+      "id": "alert_01",
+      "number": 1,
+      "state": "open",
+      "scope": "production",
+      "package": {
+        "ecosystem": "npm",
+        "name": "@playwright/test",
+        "href": "/packages/npm/%40playwright%2Ftest"
+      },
+      "advisory": {
+        "identifier": "GHSA-demo-0001",
+        "severity": "high",
+        "title": "Playwright test runner demo advisory",
+        "href": "/advisories/GHSA-demo-0001"
+      },
+      "manifestPath": "package.json",
+      "manifestHref": "/mona/octo-app/blob/main/package.json",
+      "fixedVersion": "1.56.0",
+      "href": "/mona/octo-app/security/dependabot/1"
+    }
+  ]
+}`,
+    notes: [
+      "Alerts are materialized from repository_dependencies joined to dependency_advisories; the endpoint does not use fake data or call the upstream GitHub API.",
+      "Supported filters are state, q, package, ecosystem, manifest, scope, severity, and sort. Invalid filter values return validation_failed with a 422 status.",
+      "Disabled repository settings return an enabled=false availability payload with no rows and a concrete settingsHref for maintainers.",
+      "Rows include concrete package, manifest, and alert detail destinations; private repository access failures are redacted as not_found.",
+    ],
+  },
+  {
+    id: "repo-dependabot-alert-detail",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/security/dependabot/{alert_id}",
+    title: "Read repository Dependabot alert detail",
+    description:
+      "Returns one Dependabot alert detail view with vulnerable dependency metadata, advisory data, affected and fixed versions, assignee options, timeline rows, and security-update PR affordances.",
+    auth: "Signed opengithub session cookie with repository read permission",
+    response: `{
+  "alert": {
+    "id": "alert_01",
+    "number": 1,
+    "state": "open",
+    "scope": "production",
+    "vulnerableRequirements": "< 1.56.0",
+    "currentVersion": "1.55.0",
+    "fixedVersion": "1.56.0"
+  },
+  "advisory": {
+    "identifier": "GHSA-demo-0001",
+    "severity": "high",
+    "title": "Playwright test runner demo advisory",
+    "vulnerableRange": "< 1.56.0"
+  },
+  "dependency": {
+    "package": { "ecosystem": "npm", "name": "@playwright/test" },
+    "manifestPath": "package.json",
+    "manifestHref": "/mona/octo-app/blob/main/package.json",
+    "currentVersion": "1.55.0",
+    "relationship": "direct"
+  },
+  "timeline": [
+    { "eventType": "created", "message": "Dependabot opened this alert from the dependency graph." }
+  ],
+  "securityUpdate": {
+    "supported": true,
+    "status": "available",
+    "href": "/api/repos/mona/octo-app/security/dependabot/1/security-update"
+  }
+}`,
+    notes: [
+      "Readers can view detail data but receive forbidden on mutation routes.",
+      "Timeline rows come from security_alert_events and redacted audit metadata; no private payloads, session values, token hashes, or provider secrets are serialized.",
+      "securityUpdate reports unsupported truthfully when the ecosystem or manifest cannot be edited deterministically.",
+    ],
+  },
+  {
+    id: "repo-dependabot-alert-update",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/security/dependabot/{alert_id}",
+    title: "Update repository Dependabot alert",
+    description:
+      "Lets maintainers dismiss, reopen, or assign one Dependabot alert while recording security alert timeline events, security audit events, and notification updates.",
+    auth: "Signed opengithub session cookie with repository maintainer permission",
+    request: `{
+  "action": "dismiss",
+  "dismissalReason": "not_used",
+  "dismissalComment": "Only a browser smoke fixture uses this dependency."
+}`,
+    response: `{
+  "alert": {
+    "id": "alert_01",
+    "number": 1,
+    "state": "dismissed",
+    "dismissalReason": "not_used"
+  },
+  "timeline": [
+    { "eventType": "dismissed", "message": "Dismissed this alert as not_used." }
+  ]
+}`,
+    notes: [
+      "Supported actions are dismiss, reopen, and assign. Dismiss requires a bounded dismissalReason and optional bounded comment.",
+      "Archived repositories, disabled Dependabot settings, invalid assignees, fixed-alert reopen attempts, and malformed state transitions return structured validation or conflict errors.",
+      "Successful writes update dependabot_alerts, security_alert_events, security_audit_events, and assignee notification rows atomically.",
+    ],
+  },
+  {
+    id: "repo-dependabot-alerts-bulk",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/security/dependabot/bulk",
+    title: "Bulk update repository Dependabot alerts",
+    description:
+      "Dismisses or reopens selected Dependabot alerts from the list page and returns per-alert results for the browser bulk triage controls.",
+    auth: "Signed opengithub session cookie with repository maintainer permission",
+    request: `{
+  "action": "dismiss",
+  "alertIds": ["alert_01", "alert_02"],
+  "dismissalReason": "fix_started",
+  "dismissalComment": "Tracked in the security update queue."
+}`,
+    response: `{
+  "requestedCount": 2,
+  "updatedCount": 2,
+  "results": [
+    { "alertId": "alert_01", "state": "dismissed", "href": "/mona/octo-app/security/dependabot/1" }
+  ],
+  "message": "2 Dependabot alerts updated."
+}`,
+    notes: [
+      "alertIds must be non-empty, deduplicated, and scoped to the requested repository.",
+      "Mixed results keep failed rows addressable without revealing hidden private repositories or alerts.",
+      "Each successful row writes timeline, audit, and notification updates with redacted metadata.",
+    ],
+  },
+  {
+    id: "repo-dependabot-security-update",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/security/dependabot/{alert_id}/security-update",
+    title: "Create Dependabot security update pull request",
+    description:
+      "Creates or reuses a deterministic security update branch and pull request for a supported open Dependabot alert using the repository snapshot and existing pull request contracts.",
+    auth: "Signed opengithub session cookie with repository maintainer permission",
+    response: `{
+  "status": "created",
+  "branch": "dependabot/npm/playwright-test-1",
+  "commitOid": "abc123",
+  "pullRequestHref": "/mona/octo-app/pull/12",
+  "message": "Security update pull request created."
+}`,
+    notes: [
+      "Supported npm manifest updates edit the default-branch snapshot, create a commit/ref, open a pull request, and link dependabot_alerts.security_update_pull_request_id.",
+      "Repeated requests return the existing linked pull request instead of creating duplicates.",
+      "Unsupported ecosystems, missing fixed versions, archived repositories, closed alerts, and disabled settings return truthful error or unsupported states.",
+    ],
+  },
+  {
     id: "repo-releases-list",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/releases?page=1&pageSize=30",
@@ -4480,8 +4662,10 @@ docker-content-digest: sha256:manifest...`,
     {
       "key": "dependabot",
       "label": "Dependabot",
-      "disabled": true,
-      "disabledReason": "Dependabot alerts are not built yet."
+      "section": "system",
+      "channels": ["web"],
+      "supportedChannels": ["web", "email", "cli"],
+      "disabled": false
     }
   ]
 }`,
@@ -4489,7 +4673,7 @@ docker-content-digest: sha256:manifest...`,
       "GET /api/notifications/delivery-preferences returns the same settings payload without changing preferences.",
       "Email channels require a verified user_email_addresses row selected as defaultEmailId.",
       "Successful writes insert notifications.delivery_preferences.update security audit events.",
-      "Dependabot and security advisory categories are returned as disabled placeholders until those products exist.",
+      "Dependabot alert triage writes notification rows for assignees and repository watchers when alert state or assignments change.",
       "notification_email_deliveries stores future SES delivery attempts without exposing provider secrets to the browser.",
     ],
   },

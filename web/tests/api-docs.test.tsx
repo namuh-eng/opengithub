@@ -1041,6 +1041,42 @@ describe("ApiDocsPage", () => {
       screen.getByText(/Fanout de-dupes recipients after repository watch/),
     ).toBeVisible();
     expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/security/dependabot?state=open&package=npm%3A%40playwright%2Ftest&sort=most_important",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(
+        "/api/repos/{owner}/{repo}/security/dependabot/{alert_id}",
+      )[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/security/dependabot/bulk"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/security/dependabot/{alert_id}/security-update",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Alerts are materialized from repository_dependencies joined to dependency_advisories/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Successful writes update dependabot_alerts, security_alert_events/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Repeated requests return the existing linked pull request/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Dependabot alert triage writes notification rows/),
+    ).toBeVisible();
+    expect(
       screen.getByText("/api/search?q=router&type=code&page=1&pageSize=30"),
     ).toBeVisible();
     expect(

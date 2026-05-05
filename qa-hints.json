@@ -5881,5 +5881,24 @@
       "Exercise concurrent bulk dismiss/reopen and security-update PR creation attempts from two browser sessions to confirm stale-state and reuse behavior.",
       "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema and adding the Phase 4 column when the dirty migration prevented normal migration replay."
     ]
+  },
+  {
+    "feature_id": "code-security-002",
+    "tests_written": [
+      "Completed Phase 5 API Docs, Edge Cases, Browser Evidence, QA Handoff, and Build Pass; code-security-002 is now build_pass=true.",
+      "Added /docs/api coverage for GET /api/repos/{owner}/{repo}/security/dependabot, GET/PATCH /api/repos/{owner}/{repo}/security/dependabot/{alert_id}, POST /api/repos/{owner}/{repo}/security/dependabot/bulk, and POST /api/repos/{owner}/{repo}/security/dependabot/{alert_id}/security-update.",
+      "Updated notification delivery docs so Dependabot is no longer described as an unbuilt disabled placeholder and documented alert triage notification fanout.",
+      "Extended API docs tests for Dependabot endpoint paths, materialized advisory-backed alerts, mutation/audit/timeline behavior, security-update PR reuse, and notification rows.",
+      "Extended focused Playwright smoke with final list and mobile screenshots, list filters, row selection, single-alert dismiss/reopen, assignment save, security-update PR creation, disabled state, no dead controls, and mobile no-overflow.",
+      "Saved final screenshots ralph/screenshots/build/code-security-002-final-list.jpg and ralph/screenshots/build/code-security-002-final-mobile.jpg.",
+      "Verification passed: focused Rust repository_dependabot_alerts_contract against TEST_DATABASE_URL with the known 202605030041 pre-applied migration warning; focused ApiDocs/list/detail Vitest tests; TypeScript check; focused Biome checks; focused direct Playwright repository-dependabot smoke with 2 passed; and mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Run keyboard-only and screen-reader traversal for Dependabot filters, alert row checkboxes, bulk dismiss/reopen controls, detail dismiss reason/comment fields, assignment checkboxes, security-update CTA feedback, linked PR destination, disabled callout, and mobile Security sidebar.",
+      "Exercise concurrent bulk dismiss/reopen and security-update PR creation attempts from two browser sessions to confirm stale-state conflict handling and existing PR reuse behavior.",
+      "Stress long package names, deeply nested manifest paths, many ecosystems, and high alert counts beyond the focused two-alert fixture to confirm wrapping, sorting, and browser performance.",
+      "Repeat full make test-e2e after the wrapper stall and shared local 202605030041 migration drift are resolved; the focused repository-dependabot Playwright smoke passed against the current pre-applied schema."
+    ]
   }
 ]

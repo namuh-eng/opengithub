@@ -291,7 +291,7 @@ async function expectNoDeadControls(page: Page) {
 test.skip(!databaseUrl, "repository Dependabot smoke needs a database URL");
 test.setTimeout(90_000);
 
-test("repository Dependabot alerts list supports filters, selection, disabled state, and screenshots", async ({
+test("repository Dependabot alerts support list filters, triage writes, security updates, disabled state, and final screenshots", async ({
   page,
 }) => {
   const seeded = seedDashboard();
@@ -319,6 +319,11 @@ test("repository Dependabot alerts list supports filters, selection, disabled st
     "href",
     `${seeded.treeRepositoryHref}/blob/main/package.json`,
   );
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/code-security-002-final-list.jpg",
+  });
 
   await page.getByRole("button", { name: "Package: All packages" }).click();
   await page.getByRole("menuitem", { name: /npm:@playwright\/test/ }).click();
@@ -399,10 +404,16 @@ test("repository Dependabot alerts list supports filters, selection, disabled st
     page.getByRole("link", { name: "Open vulnerability settings" }),
   ).toHaveAttribute("href", `${seeded.treeRepositoryHref}/settings/security`);
 
+  seedDependabotAlerts(seeded.treeRepositoryHref);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${seeded.treeRepositoryHref}/security/dependabot`);
   await expect(
     page.getByRole("heading", { name: "Dependabot alerts" }),
   ).toBeVisible();
   await expect(page.locator("body")).toHaveJSProperty("scrollLeft", 0);
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/code-security-002-final-mobile.jpg",
+  });
 });

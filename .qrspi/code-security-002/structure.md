@@ -76,7 +76,7 @@
 
 ## Phase 5: API Docs, Edge Cases, Browser Evidence, QA Handoff, and Build Pass
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `code-security-002` only after list, detail, single triage, bulk triage, security-update PR flow, docs, screenshots, and QA handoff are verified. Mark `build_pass=true` only in this phase and leave `qa_pass=false`.
 
