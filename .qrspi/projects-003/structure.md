@@ -74,7 +74,7 @@
 
 ## Phase 5: API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `projects-003` only after layout read/write contracts, layout switching, board moves, roadmap settings, docs, screenshots, and QA handoff are verified. Do not implement Projects insights charts, field administration, workflow automation, project access settings, exports, or full pointer-based drag-and-drop beyond accessible move controls.
 

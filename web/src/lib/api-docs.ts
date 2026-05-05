@@ -478,7 +478,7 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     path: "/api/projects/{project_id}/workspace?view=1&q=is%3Aopen&sort=manual&group=Status&slice=Priority&page=1&pageSize=50",
     title: "Read Project workspace",
     description:
-      "Returns the screen-ready Projects v2 table workspace contract used by user and organization project routes, including saved views, visible fields, grouped rows, slice rail options, URL filters, unsaved-view metadata, and viewer capabilities.",
+      "Returns the screen-ready Projects v2 workspace contract used by user and organization project routes, including table, board, and roadmap saved views, visible fields, grouped rows, slice rail options, URL filters, unsaved-view metadata, layout choices, and viewer capabilities.",
     auth: "Optional signed opengithub session cookie; private projects and hidden linked repositories require project or repository read access",
     response: `{
   "project": {
@@ -498,10 +498,27 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     "configuration": { "hiddenFieldIds": ["field_cost"] }
   },
   "views": [{ "id": "view_table", "number": 1, "name": "Table", "layout": "table" }],
+  "layoutChoices": [
+    { "layout": "table", "label": "Table", "keyboardHint": "t", "active": true, "canSelect": true },
+    { "layout": "board", "label": "Board", "keyboardHint": "b", "active": false, "canSelect": true },
+    { "layout": "roadmap", "label": "Roadmap", "keyboardHint": "r", "active": false, "canSelect": true }
+  ],
   "fields": [
     { "id": "field_title", "name": "Title", "type": "title", "hidden": false },
     { "id": "field_status", "name": "Status", "type": "single_select", "hidden": false }
   ],
+  "boardConfig": {
+    "columnField": { "id": "field_status", "name": "Status", "type": "single_select" },
+    "swimlaneField": { "id": "field_priority", "name": "Priority", "type": "single_select" },
+    "columns": [{ "id": "todo", "label": "Todo", "value": "todo", "count": 4, "limit": 5, "overLimit": false }]
+  },
+  "roadmapConfig": {
+    "startDateField": { "id": "field_start", "name": "Start date", "type": "date" },
+    "targetDateField": { "id": "field_target", "name": "Target date", "type": "date" },
+    "markerFields": [{ "id": "field_milestone", "name": "Milestone", "type": "milestone" }],
+    "zoom": "month",
+    "zoomOptions": ["month", "quarter", "year"]
+  },
   "items": [
     {
       "id": "item_issue_01",
@@ -521,9 +538,46 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
 }`,
     notes: [
       "Supported filter qualifiers include text terms, is:open, is:closed, is:issue, is:pr, is:draft, repo:owner/name, assignee, label, no:assignee, no:label, and supported field equality filters.",
+      "layoutChoices exposes Table, Board, and Roadmap with keyboard hints t, b, and r; unsupported layouts include unavailableReason copy instead of dead controls.",
+      "boardConfig computes eligible column and swimlane fields, column counts, limits, over-limit warnings, and empty columns from project_board_column_settings plus visible item values.",
+      "roadmapConfig returns compatible start, target, marker fields, Month/Quarter/Year zoom choices, and missing-date warning metadata while preserving filter, sort, group, and slice state.",
       "Linked issue and pull request rows are omitted when the viewer can read the project but cannot read the backing private repository.",
       "Invalid view numbers, unsupported grouping or slicing fields, malformed pagination, and unknown sort values return standard validation_failed envelopes.",
       "The response intentionally carries viewer capability flags so the browser can disable write controls instead of rendering dead actions.",
+    ],
+  },
+  {
+    id: "projects-view-layout-update",
+    method: "PATCH",
+    path: "/api/projects/{project_id}/views/{view_id}/layout",
+    title: "Update Project view layout",
+    description:
+      "Persists the active Projects view layout as table, board, or roadmap while preserving the saved view's existing filter, sort, group, and slice state.",
+    auth: "Signed opengithub session cookie with project write/admin access",
+    request: `{
+  "expectedUpdatedAt": "2026-05-06T09:00:00Z",
+  "layout": "board",
+  "columnFieldId": "field_status",
+  "swimlaneFieldId": "field_priority"
+}`,
+    response: `{
+  "selectedView": {
+    "id": "view_board",
+    "layout": "board",
+    "configuration": {
+      "columnFieldId": "field_status",
+      "swimlaneFieldId": "field_priority"
+    }
+  },
+  "layoutChoices": [
+    { "layout": "board", "label": "Board", "keyboardHint": "b", "active": true, "canSelect": true }
+  ]
+}`,
+    notes: [
+      "layout must be table, board, or roadmap; board layouts require a status, single-select, or iteration column field.",
+      "Roadmap layouts require compatible start and target date or iteration fields; incompatible field ids return validation_failed without changing the saved view.",
+      "expectedUpdatedAt protects against stale layout saves; conflicts return conflict and keep the newer view configuration.",
+      "Successful saves append audit_events, refresh the workspace response, and keep URL filter, sort, group, and slice state intact.",
     ],
   },
   {
@@ -649,12 +703,14 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     path: "/api/projects/{project_id}/items/{item_id}/position",
     title: "Reorder Project item",
     description:
-      "Persists manual Projects table ordering after row move controls or drag-equivalent interactions.",
+      "Persists manual Projects ordering after table row move controls or board column move interactions.",
     auth: "Signed opengithub session cookie with project write/admin access",
     request: `{
   "positionBeforeItemId": "item_next",
   "positionAfterItemId": "item_previous",
-  "expectedUpdatedAt": "2026-05-06T09:20:00Z"
+  "expectedUpdatedAt": "2026-05-06T09:20:00Z",
+  "groupFieldId": "field_status",
+  "groupValue": "done"
 }`,
     response: `{
   "items": [
@@ -664,9 +720,45 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
   ]
 }`,
     notes: [
-      "The endpoint only changes manual order; grouped-row moves that would require changing the grouped field must use the field update endpoint first.",
-      "Unknown neighbor ids, archived items, stale rows, and read-only viewers return standard errors without changing the workspace order.",
+      "Board moves can include groupFieldId and groupValue so the backing status, single-select, or iteration field changes in the same mutation as the manual position.",
+      "Column value validation reuses the item field update rules; invalid target columns, incompatible swimlane values, archived items, stale rows, and read-only viewers return standard errors.",
       "Successful moves write project item events and audit_events.",
+    ],
+  },
+  {
+    id: "projects-roadmap-settings-update",
+    method: "PATCH",
+    path: "/api/projects/{project_id}/views/{view_id}/roadmap-settings",
+    title: "Update Project roadmap settings",
+    description:
+      "Persists Roadmap start and target date fields, marker fields, and timeline zoom for a roadmap view.",
+    auth: "Signed opengithub session cookie with project write/admin access",
+    request: `{
+  "expectedUpdatedAt": "2026-05-06T09:25:00Z",
+  "startFieldId": "field_start",
+  "targetFieldId": "field_target",
+  "markerFieldIds": ["field_milestone", "field_iteration"],
+  "zoom": "quarter"
+}`,
+    response: `{
+  "selectedView": {
+    "id": "view_roadmap",
+    "layout": "roadmap"
+  },
+  "roadmapConfig": {
+    "startDateField": { "id": "field_start", "name": "Start date", "type": "date" },
+    "targetDateField": { "id": "field_target", "name": "Target date", "type": "date" },
+    "markerFields": [
+      { "id": "field_milestone", "name": "Milestone", "type": "milestone" }
+    ],
+    "zoom": "quarter"
+  }
+}`,
+    notes: [
+      "Only roadmap views can be updated; table and board views return validation_failed for roadmap settings writes.",
+      "startFieldId, targetFieldId, and markerFieldIds must reference compatible date, iteration, milestone, or item-date fields from the selected project.",
+      "zoom must be month, quarter, or year; duplicate marker ids are deduplicated before persistence.",
+      "Successful saves upsert project_roadmap_settings, synchronize project_views.configuration, append audit_events, and return the refreshed workspace.",
     ],
   },
   {

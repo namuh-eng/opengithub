@@ -203,6 +203,9 @@ describe("ApiDocsPage", () => {
       screen.getByText("/api/projects/{project_id}/views/{view_id}/state"),
     ).toBeVisible();
     expect(
+      screen.getByText("/api/projects/{project_id}/views/{view_id}/layout"),
+    ).toBeVisible();
+    expect(
       screen.getByText(
         "/api/projects/{project_id}/items/{item_id}/fields/{field_id}",
       ),
@@ -213,6 +216,11 @@ describe("ApiDocsPage", () => {
     ).toBeVisible();
     expect(
       screen.getByText("/api/projects/{project_id}/items/{item_id}/position"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/projects/{project_id}/views/{view_id}/roadmap-settings",
+      ),
     ).toBeVisible();
     expect(
       screen.getByText("/api/projects/{project_id}/items/{item_id}"),
@@ -230,7 +238,26 @@ describe("ApiDocsPage", () => {
     expect(
       screen.getByText(/Linked issue and pull request rows are omitted/),
     ).toBeVisible();
-    expect(screen.getByText(/expectedUpdatedAt protects/)).toBeVisible();
+    expect(
+      screen.getByText(/layoutChoices exposes Table, Board, and Roadmap/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/boardConfig computes eligible column and swimlane/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/roadmapConfig returns compatible start, target/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/layout must be table, board, or roadmap/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Board moves can include groupFieldId and groupValue/),
+    ).toBeVisible();
+    expect(screen.getByText(/Only roadmap views can be updated/)).toBeVisible();
+    expect(
+      screen.getByText(/zoom must be month, quarter, or year/),
+    ).toBeVisible();
+    expect(screen.getAllByText(/expectedUpdatedAt protects/)[0]).toBeVisible();
     expect(
       screen.getByText(
         /Custom project fields update project_item_field_values/,
@@ -243,7 +270,7 @@ describe("ApiDocsPage", () => {
       screen.getByText(/Bulk requests validate every requested item/),
     ).toBeVisible();
     expect(
-      screen.getByText(/The endpoint only changes manual order/),
+      screen.getByText(/Board moves can include groupFieldId/),
     ).toBeVisible();
     expect(
       screen.getByText(/Removal archives the project item relationship/),

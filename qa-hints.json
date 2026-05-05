@@ -6953,5 +6953,21 @@
       "Direct bar dragging and pane resizing are intentionally disabled/explanatory in Phase 4; QA should verify no visible control implies those unsupported pointer mutations are live.",
       "Phase 5 still needs API docs, final browser evidence, QA handoff, and projects-003 build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-003",
+    "tests_written": [
+      "Completed Phase 5 API docs, final Playwright smoke coverage, QA handoff, and build-pass bookkeeping for Projects v2 Board and Roadmap layouts.",
+      "Documented GET /api/projects/{project_id}/workspace layout metadata, PATCH /views/{view_id}/layout, board column moves through PATCH /items/{item_id}/position with groupFieldId/groupValue, and PATCH /views/{view_id}/roadmap-settings in /docs/api.",
+      "Extended API docs Vitest coverage for layoutChoices, boardConfig, roadmapConfig, layout validation, board move group-field writes, roadmap-only settings validation, and Month/Quarter/Year zoom validation.",
+      "Added web/tests/e2e/projects-board-roadmap.spec.ts for a final signed-in browser smoke covering View menu layout switching, Board columns, board move controls, add item panel, Roadmap field/marker/zoom controls, final screenshots, mobile, no dead controls, and bounded page overflow.",
+      "Verification passed for focused api-docs Vitest, web TypeScript, focused Biome on touched docs/test files, full make check, full make test, JSON validation, and the mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Run the final Projects board/roadmap Playwright smoke against a clean migrated credentialed TEST_DATABASE_URL; the current local Postgres on localhost:55432 has repeatedly rejected the available postgres password in signed-session E2E seed helpers.",
+      "Capture final screenshots for View menu, Board default, Board over-limit and swimlane states, Board move/add item flow, Roadmap month/quarter/year zoom, permission-disabled state, and mobile under ralph/screenshots/build/.",
+      "Probe large boards with many columns, many swimlanes, hidden empty columns, private linked repositories, read-only users, stale layout saves, stale board moves, invalid target column values, concurrent card moves, invalid date ranges, timezone/date-boundary rendering, marker deduplication, long item titles, keyboard-only layout controls, and mobile timeline/board scrolling.",
+      "Pointer drag-and-drop, pane resizing, Projects insights charts, field administration, workflow automation, project access settings, exports, and full keyboard shortcut execution remain out of scope for projects-003 and should not appear as live unsupported controls."
+    ]
   }
 ]
