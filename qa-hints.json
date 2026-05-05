@@ -6597,5 +6597,20 @@
       "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
       "Phase 5 still needs API docs, final browser evidence, QA handoff, prd.json build_pass=true, and final desktop/mobile screenshots."
     ]
+  },
+  {
+    "feature_id": "discussions-005",
+    "tests_written": [
+      "Completed Phase 5 API Docs, Browser Evidence, QA Handoff, and Build-Pass Bookkeeping for discussions-005.",
+      "Added /docs/api documentation for discussion pin/update/unpin, lock/unlock, recategorize, transfer-targets/transfer, delete/tombstone, and issue convert-to-discussion endpoints with auth/privacy gates, validation envelopes, side effects, destructive confirmation, limits, idempotency, and no-secret guarantees.",
+      "Extended api-docs Vitest assertions for every discussion management endpoint plus pin limit, lock reaction policy, same-owner transfer, tombstone, and issue-conversion idempotency notes.",
+      "Focused docs verification passed: cd web && npm test -- --run api-docs.test.tsx; focused Biome passed for web/src/lib/api-docs.ts and web/tests/api-docs.test.tsx."
+    ],
+    "needs_deeper_qa": [
+      "Final browser evidence still depends on a clean migrated credentialed TEST_DATABASE_URL; previous Phase 2-4 Playwright attempts failed before navigation because localhost:55432 rejected postgres credentials.",
+      "Rerun web/tests/e2e/repository-discussions.spec.ts against a clean migrated credentialed TEST_DATABASE_URL to capture discussions-005-final desktop/mobile screenshots and reverify pin/edit/unpin, category pin, lock/unlock, close/reopen, recategorize, transfer, delete, issue conversion, reader denial, and mobile layout.",
+      "Repeat destructive transfer/delete and issue conversion with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Run DB-backed QA for notification fanout, audit row redaction, deleted-content redaction, transfer numbering collisions, copied issue comment metadata, and duplicate conversion idempotency with real seeded rows."
+    ]
   }
 ]

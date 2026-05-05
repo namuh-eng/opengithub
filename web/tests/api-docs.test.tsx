@@ -1370,6 +1370,41 @@ describe("ApiDocsPage", () => {
       ),
     ).toBeVisible();
     expect(
+      screen.getAllByText(
+        "/api/repos/{owner}/{repo}/discussions/{discussion_number}/pin",
+      ).length,
+    ).toBeGreaterThanOrEqual(3);
+    expect(
+      screen.getAllByText(
+        "/api/repos/{owner}/{repo}/discussions/{discussion_number}/lock",
+      ).length,
+    ).toBeGreaterThanOrEqual(2);
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/discussions/{discussion_number}/category",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/discussions/{discussion_number}/transfer-targets",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/discussions/{discussion_number}/transfer",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/discussions/{discussion_number}/delete",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(
+        "/api/repos/{owner}/{repo}/issues/{issue_number}/convert-to-discussion",
+      ).length,
+    ).toBeGreaterThanOrEqual(2);
+    expect(
       screen.getByText(/Supported sort values are oldest, newest, and top/),
     ).toBeVisible();
     expect(
@@ -1385,6 +1420,21 @@ describe("ApiDocsPage", () => {
       screen.getByText(
         /Successful metadata edits write discussion_activity_events/,
       ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/at most four global pins and four pins per category/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/allowReactions policy is stored with the lock state/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Transfers are constrained to allowed same-owner/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Deletion creates a tombstone and audit\/event rows/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Conversion is idempotent for already-converted issues/),
     ).toBeVisible();
     expect(
       screen.getByText("/api/search?q=router&type=code&page=1&pageSize=30"),

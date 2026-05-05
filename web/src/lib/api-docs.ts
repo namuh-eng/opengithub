@@ -4019,6 +4019,278 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-discussion-pin",
+    method: "PUT",
+    path: "/api/repos/{owner}/{repo}/discussions/{discussion_number}/pin",
+    title: "Pin repository Discussion",
+    description:
+      "Pins a Discussion globally or within its category, stores optional custom pinned copy, writes moderation events, and returns the refreshed detail contract.",
+    auth: "Signed opengithub session cookie with triage, write, admin, or owner repository permission",
+    request: `{
+  "target": "category",
+  "categorySlug": "general",
+  "title": "Read before filing importer questions",
+  "body": "Collect known workarounds here."
+}`,
+    response: `{
+  "discussion": { "number": 42, "pinned": true },
+  "moderation": {
+    "globalPin": null,
+    "categoryPin": {
+      "target": "category",
+      "categorySlug": "general",
+      "customTitle": "Read before filing importer questions",
+      "position": 2
+    }
+  }
+}`,
+    notes: [
+      "Targets are global or category. Category pins require a valid non-poll category and reject incompatible Discussion/category formats.",
+      "The server enforces at most four global pins and four pins per category, unique pin targets, private repository privacy, enabled Discussions, and archived repository guardrails.",
+      "Successful pins write discussion_pins, discussion_activity_events, audit_events, and bounded notification rows without exposing raw session, OAuth, environment, storage, or audit payload data.",
+    ],
+  },
+  {
+    id: "repo-discussion-pin-update",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/discussions/{discussion_number}/pin",
+    title: "Update pinned Discussion copy",
+    description:
+      "Updates the custom title/body shown by pinned Discussion cards while preserving the existing pin target and position.",
+    auth: "Signed opengithub session cookie with triage, write, admin, or owner repository permission",
+    request: `{
+  "title": "Importer troubleshooting index",
+  "body": "Start with the supported manifest list."
+}`,
+    response: `{
+  "discussion": { "number": 42, "pinned": true },
+  "moderation": {
+    "globalPin": {
+      "target": "global",
+      "customTitle": "Importer troubleshooting index",
+      "customBody": "Start with the supported manifest list."
+    }
+  }
+}`,
+    notes: [
+      "Blank custom fields clear the override and the list/detail pages fall back to the Discussion title/body excerpt.",
+      "Updates reject missing pins, disabled Discussions, archived repositories, and insufficient permissions with stable no-secret envelopes.",
+      "Successful updates write repository.discussion.pin_update activity/audit rows and return the same screen-ready detail shape as the pin endpoint.",
+    ],
+  },
+  {
+    id: "repo-discussion-unpin",
+    method: "DELETE",
+    path: "/api/repos/{owner}/{repo}/discussions/{discussion_number}/pin",
+    title: "Unpin repository Discussion",
+    description:
+      "Removes all active pin records for a Discussion, reorders remaining pins, records moderation history, and returns the refreshed detail contract.",
+    auth: "Signed opengithub session cookie with triage, write, admin, or owner repository permission",
+    response: `{
+  "discussion": { "number": 42, "pinned": false },
+  "moderation": { "globalPin": null, "categoryPin": null }
+}`,
+    notes: [
+      "DELETE is idempotent for an already-unpinned Discussion and still returns the detail payload needed by the sidebar.",
+      "Unpin writes discussion_activity_events and audit_events with bounded metadata only; remaining pin positions are normalized for list rendering.",
+      "Private access failures, archived repositories, disabled Discussions, and malformed discussion numbers never leak private repository or session internals.",
+    ],
+  },
+  {
+    id: "repo-discussion-lock",
+    method: "PUT",
+    path: "/api/repos/{owner}/{repo}/discussions/{discussion_number}/lock",
+    title: "Lock repository Discussion",
+    description:
+      "Locks a Discussion conversation with an explicit reaction policy so comments/replies are blocked while optional reactions can remain available.",
+    auth: "Signed opengithub session cookie with triage, write, admin, or owner repository permission",
+    request: `{
+  "allowReactions": false
+}`,
+    response: `{
+  "discussion": {
+    "number": 42,
+    "locked": true,
+    "lockAllowsReactions": false
+  },
+  "sidebar": { "events": [{ "eventType": "locked" }] }
+}`,
+    notes: [
+      "Locked Discussions reject new comments, replies, answer changes, and metadata writes that require an unlocked conversation unless the specific moderator endpoint explicitly allows locked updates.",
+      "The allowReactions policy is stored with the lock state so the browser can render reaction controls truthfully.",
+      "Successful locks write discussion_activity_events, audit_events, and notification rows without serializing raw session rows, OAuth profiles, storage keys, environment variables, or stack traces.",
+    ],
+  },
+  {
+    id: "repo-discussion-unlock",
+    method: "DELETE",
+    path: "/api/repos/{owner}/{repo}/discussions/{discussion_number}/lock",
+    title: "Unlock repository Discussion",
+    description:
+      "Clears a Discussion lock, restores normal conversation affordances, records an unlock event, and returns the refreshed detail contract.",
+    auth: "Signed opengithub session cookie with triage, write, admin, or owner repository permission",
+    response: `{
+  "discussion": {
+    "number": 42,
+    "locked": false,
+    "lockAllowsReactions": true
+  },
+  "sidebar": { "events": [{ "eventType": "unlocked" }] }
+}`,
+    notes: [
+      "DELETE is safe for an already-unlocked Discussion and keeps the browser state synchronized through the returned detail contract.",
+      "Archived repositories, disabled Discussions, missing Discussions, and insufficient permissions return standard no-secret error envelopes.",
+      "Unlock history is retained in discussion_activity_events and audit_events; response bodies never expose raw audit payloads.",
+    ],
+  },
+  {
+    id: "repo-discussion-recategorize",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/discussions/{discussion_number}/category",
+    title: "Recategorize repository Discussion",
+    description:
+      "Moves a non-poll Discussion into another compatible category, updates sidebar/list metadata, records the category-change event, and returns the refreshed detail contract.",
+    auth: "Signed opengithub session cookie with triage, write, admin, or owner repository permission",
+    request: `{
+  "categorySlug": "ideas"
+}`,
+    response: `{
+  "discussion": {
+    "number": 42,
+    "category": { "slug": "ideas", "name": "Ideas" }
+  },
+  "sidebar": { "events": [{ "eventType": "category_changed" }] }
+}`,
+    notes: [
+      "Poll Discussions cannot be moved to non-poll categories and normal Discussions cannot be moved into poll-only categories.",
+      "Unknown category slugs, archived repositories, disabled Discussions, locked-incompatible operations, and private access failures return stable validation or permission envelopes.",
+      "Successful recategorization writes discussion_activity_events, audit_events, and notification rows while preserving discussion numbers, comments, answers, labels, subscriptions, and reactions.",
+    ],
+  },
+  {
+    id: "repo-discussion-transfer-targets",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/discussions/{discussion_number}/transfer-targets",
+    title: "List Discussion transfer targets",
+    description:
+      "Returns repositories under the allowed same-owner transfer constraints plus destination category choices for the transfer dialog.",
+    auth: "Signed opengithub session cookie with write, admin, or owner repository permission",
+    response: `{
+  "currentRepository": { "owner": "mona", "name": "octo-app" },
+  "discussionNumber": 42,
+  "targets": [
+    {
+      "repositoryId": "repo_docs",
+      "owner": "mona",
+      "name": "docs",
+      "visibility": "private",
+      "href": "/mona/docs",
+      "discussionsHref": "/mona/docs/discussions",
+      "categoryOptions": [{ "slug": "general", "name": "General" }]
+    }
+  ]
+}`,
+    notes: [
+      "The list excludes the current repository, archived repositories, repositories with Discussions disabled, and repositories the actor cannot write.",
+      "Target categories are pre-filtered for compatibility so the browser never renders a dead transfer option.",
+      "Private destination metadata is returned only when the signed-in actor has access; no unavailable repository names or counts are leaked.",
+    ],
+  },
+  {
+    id: "repo-discussion-transfer",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/discussions/{discussion_number}/transfer",
+    title: "Transfer repository Discussion",
+    description:
+      "Moves a Discussion to an allowed destination repository/category, assigns the destination Discussion number, links source and destination timeline events, and returns the navigation target.",
+    auth: "Signed opengithub session cookie with write, admin, or owner repository permission",
+    request: `{
+  "repositoryId": "repo_docs",
+  "categorySlug": "general"
+}`,
+    response: `{
+  "discussionId": "discussion_01",
+  "sourceHref": "/mona/octo-app/discussions/42",
+  "destinationHref": "/mona/docs/discussions/17",
+  "destinationOwner": "mona",
+  "destinationRepo": "docs",
+  "destinationNumber": 17
+}`,
+    notes: [
+      "Transfers are constrained to allowed same-owner repositories and reject disabled Discussions, archived destinations, incompatible categories, and stale repository ids.",
+      "The transaction preserves body, comments, answers, reactions, labels where compatible, subscriptions, notifications, and audit history while writing source and destination events.",
+      "Responses include only the concrete destination href and never expose storage keys, session cookies, OAuth profiles, private repository internals, or raw audit payloads.",
+    ],
+  },
+  {
+    id: "repo-discussion-delete",
+    method: "DELETE",
+    path: "/api/repos/{owner}/{repo}/discussions/{discussion_number}/delete",
+    title: "Delete repository Discussion",
+    description:
+      "Deletes a Discussion only after explicit confirmation, stores a tombstone/audit trail, redacts deleted content, and returns the Discussions list destination.",
+    auth: "Signed opengithub session cookie with write, admin, or owner repository permission",
+    request: `{
+  "confirmation": "delete discussion 42",
+  "reason": "Spam cleanup"
+}`,
+    response: `{
+  "discussionId": "discussion_01",
+  "deleted": true,
+  "tombstoneId": "tombstone_01",
+  "discussionsHref": "/mona/octo-app/discussions"
+}`,
+    notes: [
+      "Confirmation text must match the server contract before destructive deletion is accepted.",
+      "Deletion creates a tombstone and audit/event rows but response bodies and list/detail reads do not leak deleted body/comment contents.",
+      "Repeated deletes, malformed ids, disabled Discussions, archived repositories, and private access failures return stable envelopes with no stack traces or secret values.",
+    ],
+  },
+  {
+    id: "repo-issue-discussion-conversion-read",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/issues/{issue_number}/convert-to-discussion",
+    title: "Read issue-to-Discussion conversion options",
+    description:
+      "Returns maintainer conversion eligibility, available Discussion categories, comment-copy summary, and already-converted destination metadata for the issue sidebar dialog.",
+    auth: "Signed opengithub session cookie with triage, write, admin, or owner repository permission",
+    response: `{
+  "issue": { "number": 42, "title": "Import fails for workspaces" },
+  "eligible": true,
+  "alreadyConverted": false,
+  "categories": [{ "slug": "q-a", "name": "Q&A", "acceptsAnswers": true }],
+  "commentCount": 3
+}`,
+    notes: [
+      "The metadata read is permission-gated and hides conversion affordances from readers and signed-out viewers.",
+      "Already-converted issues return the concrete destination Discussion href so duplicate submissions can navigate instead of creating another Discussion.",
+      "Disabled Discussions, archived repositories, missing issues, and poll-only category constraints are represented as bounded unavailable reasons for the browser dialog.",
+    ],
+  },
+  {
+    id: "repo-issue-discussion-conversion-create",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/issues/{issue_number}/convert-to-discussion",
+    title: "Convert issue to Discussion",
+    description:
+      "Creates a Discussion from an issue title/body/comment metadata, links both timelines, marks the issue as converted, notifies subscribers, and returns the new Discussion href.",
+    auth: "Signed opengithub session cookie with triage, write, admin, or owner repository permission",
+    request: `{
+  "categorySlug": "q-a"
+}`,
+    response: `{
+  "discussionId": "discussion_02",
+  "discussionNumber": 91,
+  "discussionHref": "/mona/octo-app/discussions/91",
+  "issueHref": "/mona/octo-app/issues/42"
+}`,
+    notes: [
+      "Conversion is idempotent for already-converted issues and rejects poll categories, missing categories, disabled Discussions, archived repositories, and insufficient permissions.",
+      "The transaction copies bounded issue title/body/comment metadata into Discussion rows, writes issue_timeline_events and discussion_activity_events, and records audit/notification fanout.",
+      "Responses and events redact session rows, OAuth data, raw storage keys, private repository metadata unavailable to the actor, environment variables, and stack traces.",
+    ],
+  },
+  {
     id: "repo-discussion-category-settings-read",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/settings/discussions/categories",

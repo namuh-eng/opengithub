@@ -82,7 +82,7 @@
 
 ## Phase 5: API Docs, Browser Evidence, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `discussions-005` only after moderation/management contracts, discussion sidebar controls, destructive transfer/delete, issue conversion, docs, screenshots, QA handoff, and PRD bookkeeping are complete. Do not implement poll voting, organization-wide discussion policy, repository-wide discussion search indexing, or unrelated issue migration features here.
 
