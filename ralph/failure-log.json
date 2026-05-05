@@ -3567,6 +3567,14 @@
       "exit_code": 0,
       "category": "unknown",
       "attempt": 377
+    },
+    {
+      "timestamp": "2026-05-05T19:03:06.034113",
+      "phase": "build",
+      "feature": "build_cycle_1",
+      "exit_code": 0,
+      "category": "compilation_failure",
+      "attempt": 378
     }
   ]
 }
