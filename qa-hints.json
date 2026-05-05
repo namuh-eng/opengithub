@@ -6439,5 +6439,22 @@
       "Stress Phase 4 row side effects with production-like data: discussion_answers replacement/removal, close/reopen event ordering, category/label replacement, author notification fanout, and private repository privacy.",
       "Attachment object upload remains out of scope for this feature; the API validates bounded draft metadata but real S3 draft creation needs separate QA when connected."
     ]
+  },
+  {
+    "feature_id": "discussions-004",
+    "tests_written": [
+      "Completed Phase 1 Category Settings Contract without marking discussions-004 build_pass=true.",
+      "Added additive migration 202605050018_repository_discussion_category_admin for category sections, category format/isDefault/template metadata, section indexes, and existing poll/Q&A format backfill.",
+      "Added Rust API contracts for GET/POST/PATCH /api/repos/{owner}/{repo}/settings/discussions/categories with admin-only reads, create, update, category limit, unique name/slug validation, section validation, archived/disabled guardrails, poll/template compatibility, audit rows, and no-secret error envelopes.",
+      "Added typed frontend DTOs and signed-cookie helpers for discussion category settings, create, and update.",
+      "Focused repository_discussions_contract compiled and ran; DB assertions self-skipped because local Postgres rejected the available postgres password.",
+      "Verification passed: cargo fmt --all; cd web && npx biome check src/lib/api.ts; cargo check -p opengithub-api --tests; cd web && npx tsc --noEmit --pretty false; full TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check; full DB_SSL=false CARGO_INCREMENTAL=0 make test with Cargo tests plus 505 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Re-run the focused category settings contract against a clean migrated credentialed TEST_DATABASE_URL so create/update/audit assertions execute instead of self-skipping.",
+      "Browser smoke is intentionally deferred because Phase 1 is API-first; Phase 2 should validate the Editorial settings page, dialogs, and screenshot evidence.",
+      "Phase 3 still needs section CRUD, ordering, delete-with-move migration, and format-change compatibility warnings.",
+      "Phase 4 still needs real YAML template editor preview/commit behavior for .github/DISCUSSION_TEMPLATE/*.yml."
+    ]
   }
 ]

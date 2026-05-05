@@ -10,7 +10,7 @@
 
 ## Phase 1: Category Settings Contract - admin-ready reads and basic category writes
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the authenticated settings API and persistence needed to render/manage discussion categories and sections without shipping the full UI yet. Maintainers should be able to read sections/categories, create one category, edit metadata/format/section, and receive stable validation errors for limits and uniqueness.
 

@@ -815,6 +815,221 @@ async fn post_json(
     )
 }
 
+async fn patch_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method("PATCH")
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_string()))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    (
+        status,
+        serde_json::from_slice(&bytes).expect("response should be json"),
+    )
+}
+
+#[tokio::test]
+async fn repository_discussion_category_settings_support_admin_create_and_edit() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping repository discussion category admin scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "discussion-category-owner").await;
+    let reader = create_user(&pool, "discussion-category-reader").await;
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let reader_cookie = cookie_header(&pool, &config, &reader).await;
+
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("discussion-category-admin-{}", Uuid::new_v4().simple()),
+            description: Some("Discussion category admin contract".to_owned()),
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    grant_repository_permission(
+        &pool,
+        repository.id,
+        reader.id,
+        RepositoryRole::Read,
+        "direct",
+    )
+    .await
+    .expect("reader permission should grant");
+    let section_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO discussion_category_sections (repository_id, name, position)
+        VALUES ($1, 'Community', 1)
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("section should insert");
+    let general_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO discussion_categories (
+            repository_id, section_id, slug, name, emoji, description, position,
+            format, accepts_answers, is_default
+        )
+        VALUES ($1, $2, 'general', 'General', '💬', 'Open-ended discussion.', 1, 'open_ended', false, true)
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(section_id)
+    .fetch_one(&pool)
+    .await
+    .expect("category should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO discussions (repository_id, category_id, number, title, body, author_user_id)
+        VALUES ($1, $2, 1, 'Welcome', 'Introduce yourself.', $3)
+        "#,
+    )
+    .bind(repository.id)
+    .bind(general_id)
+    .bind(owner.id)
+    .execute(&pool)
+    .await
+    .expect("discussion should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let owner_login = owner.username.as_deref().expect("owner username");
+    let path = format!(
+        "/api/repos/{owner_login}/{}/settings/discussions/categories",
+        repository.name
+    );
+
+    let (reader_status, reader_body) = get_json(app.clone(), &path, Some(&reader_cookie)).await;
+    assert_eq!(reader_status, StatusCode::FORBIDDEN, "{reader_body}");
+    assert!(!reader_body.to_string().contains("test-session-secret"));
+
+    let (get_status, get_body) = get_json(app.clone(), &path, Some(&owner_cookie)).await;
+    assert_eq!(get_status, StatusCode::OK, "{get_body}");
+    assert_eq!(get_body["viewer"]["canManage"], true);
+    assert_eq!(get_body["categoryLimit"], 25);
+    assert_eq!(get_body["remainingCategories"], 24);
+    assert_eq!(get_body["sections"][0]["name"], "Community");
+    assert_eq!(get_body["categories"][0]["slug"], "general");
+    assert_eq!(get_body["categories"][0]["format"], "open_ended");
+    assert_eq!(get_body["categories"][0]["count"], 1);
+
+    let (create_status, create_body) = post_json(
+        app.clone(),
+        &path,
+        Some(&owner_cookie),
+        json!({
+            "name": "Q&A",
+            "emoji": "❓",
+            "description": "Questions with accepted answers.",
+            "format": "question_and_answer",
+            "sectionId": section_id,
+        }),
+    )
+    .await;
+    assert_eq!(create_status, StatusCode::OK, "{create_body}");
+    let created = create_body["categories"]
+        .as_array()
+        .expect("categories")
+        .iter()
+        .find(|category| category["slug"] == "q-a")
+        .expect("created category should be returned");
+    assert_eq!(created["acceptsAnswers"], true);
+    assert_eq!(created["sectionName"], "Community");
+    let category_id = created["id"].as_str().expect("category id");
+
+    let (duplicate_status, duplicate_body) = post_json(
+        app.clone(),
+        &path,
+        Some(&owner_cookie),
+        json!({
+            "name": "q&a",
+            "emoji": "❓",
+            "format": "question_and_answer",
+        }),
+    )
+    .await;
+    assert_eq!(duplicate_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(duplicate_body["error"]["code"], "validation_failed");
+
+    let (update_status, update_body) = patch_json(
+        app.clone(),
+        &format!("{path}/{category_id}"),
+        Some(&owner_cookie),
+        json!({
+            "name": "Announcements",
+            "emoji": "📣",
+            "description": "Maintainer updates.",
+            "format": "announcement",
+            "sectionId": null,
+        }),
+    )
+    .await;
+    assert_eq!(update_status, StatusCode::OK, "{update_body}");
+    let updated = update_body["categories"]
+        .as_array()
+        .expect("categories")
+        .iter()
+        .find(|category| category["id"] == category_id)
+        .expect("updated category should be returned");
+    assert_eq!(updated["name"], "Announcements");
+    assert_eq!(updated["format"], "announcement");
+    assert_eq!(updated["acceptsAnswers"], false);
+    assert_eq!(updated["sectionId"], Value::Null);
+
+    let audit_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint
+        FROM audit_events
+        WHERE actor_user_id = $1
+          AND target_type = 'repository_discussion_category'
+          AND event_type IN ('repository.discussion_category.create', 'repository.discussion_category.update')
+        "#,
+    )
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("audit events should count");
+    assert_eq!(audit_count, 2);
+
+    let (missing_status, missing_body) = patch_json(
+        app,
+        &format!("{path}/{}", Uuid::new_v4()),
+        Some(&owner_cookie),
+        json!({ "name": "Missing" }),
+    )
+    .await;
+    assert_eq!(missing_status, StatusCode::NOT_FOUND);
+    assert_eq!(missing_body["error"]["code"], "not_found");
+}
+
 #[tokio::test]
 async fn repository_discussions_return_screen_ready_list_and_category_filters() {
     let Some(pool) = database_pool().await else {

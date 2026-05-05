@@ -4730,6 +4730,77 @@ export type DiscussionCategoryChoice = {
   formHref: string;
 };
 
+export type DiscussionCategoryFormat =
+  | "announcement"
+  | "open_ended"
+  | "poll"
+  | "question_and_answer"
+  | string;
+
+export type DiscussionCategoryAdminViewer = {
+  authenticated: boolean;
+  permission: string | null;
+  canRead: boolean;
+  canManage: boolean;
+};
+
+export type DiscussionCategorySectionItem = {
+  id: string;
+  name: string;
+  position: number;
+  categoryCount: number;
+};
+
+export type DiscussionCategoryAdminItem = {
+  id: string;
+  slug: string;
+  name: string;
+  emoji: string;
+  description: string | null;
+  format: DiscussionCategoryFormat;
+  acceptsAnswers: boolean;
+  isPoll: boolean;
+  isDefault: boolean;
+  sectionId: string | null;
+  sectionName: string | null;
+  templatePath: string | null;
+  count: number;
+  openCount: number;
+  position: number;
+  href: string;
+  editHref: string;
+  templateHref: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DiscussionCategorySettingsView = {
+  repository: DiscussionRepositorySummary;
+  viewer: DiscussionCategoryAdminViewer;
+  enabled: boolean;
+  disabledReason: string | null;
+  categoryLimit: number;
+  remainingCategories: number;
+  sections: DiscussionCategorySectionItem[];
+  categories: DiscussionCategoryAdminItem[];
+};
+
+export type CreateDiscussionCategoryRequest = {
+  name: string;
+  emoji?: string | null;
+  description?: string | null;
+  format?: DiscussionCategoryFormat;
+  sectionId?: string | null;
+};
+
+export type UpdateDiscussionCategoryRequest = {
+  name?: string;
+  emoji?: string | null;
+  description?: string | null;
+  format?: DiscussionCategoryFormat;
+  sectionId?: string | null;
+};
+
 export type DiscussionFormField = {
   id: string;
   fieldType: "input" | "textarea" | "dropdown" | "checkboxes" | string;
@@ -13904,6 +13975,105 @@ export async function getRepositoryDiscussionDetailFromCookie(
   }
 
   return body as RepositoryDiscussionDetailView;
+}
+
+export async function getRepositoryDiscussionCategorySettingsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+): Promise<DiscussionCategorySettingsView | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/discussions/categories`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Discussion category settings are temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "repository_discussion_category_settings_failed",
+          message: "Discussion category settings could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as DiscussionCategorySettingsView;
+}
+
+export async function createRepositoryDiscussionCategoryFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  request: CreateDiscussionCategoryRequest,
+): Promise<DiscussionCategorySettingsView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/discussions/categories`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Discussion category could not be created.",
+      { cause: envelope },
+    );
+  }
+  return payload as DiscussionCategorySettingsView;
+}
+
+export async function updateRepositoryDiscussionCategoryFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  categoryId: string,
+  request: UpdateDiscussionCategoryRequest,
+): Promise<DiscussionCategorySettingsView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/discussions/categories/${encodeURIComponent(categoryId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Discussion category could not be updated.",
+      { cause: envelope },
+    );
+  }
+  return payload as DiscussionCategorySettingsView;
 }
 
 export async function createRepositoryDiscussionFromCookie(

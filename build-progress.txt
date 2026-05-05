@@ -1,3 +1,14 @@
+2026-05-05 - discussions-004 phase 1 category settings contract
+
+- Completed Phase 1 from `.qrspi/discussions-004/structure.md`: discussion category settings now have an admin-ready Rust API/read model and basic category create/update contract without marking `discussions-004.build_pass=true`; Phases 2-5 remain.
+- Added additive migration `202605050018_repository_discussion_category_admin` for `discussion_category_sections`, category section/format/default/template metadata, indexes, and existing poll/Q&A format backfill while preserving existing discussion category IDs.
+- Added `GET /api/repos/{owner}/{repo}/settings/discussions/categories`, `POST /api/repos/{owner}/{repo}/settings/discussions/categories`, and `PATCH /api/repos/{owner}/{repo}/settings/discussions/categories/{category_id}` with admin-only access, private privacy, archived/disabled guardrails, 25-category limit, unique normalized names/slugs, section validation, format validation, poll/template compatibility, and audit events.
+- Added typed frontend category-settings DTOs and signed-cookie helpers so Phase 2 can render the Editorial settings page without JS-side auth.
+- Extended the focused Rust discussion contract for admin read denial/read, category create/edit, uniqueness validation, audit rows, and no-secret envelopes.
+- Verification passed: `cargo fmt --all`; focused `cd web && npx biome check src/lib/api.ts`; `cargo check -p opengithub-api --tests`; `cd web && npx tsc --noEmit --pretty false`; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 505 web tests; mandatory Editorial banned-value scan returned zero matches.
+- Focused DB-backed category admin contract was attempted with `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test`, but local Postgres rejected the available `postgres` credentials, so assertions self-skipped under the existing guard. Browser smoke is optional for this API-first phase and remains a Phase 2 handoff.
+- Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-05 - discussions-003 phase 2 Editorial detail page
 
 - Completed Phase 2 from `.qrspi/discussions-003/structure.md`: repository discussion detail now has a read-oriented Editorial page without marking `discussions-003.build_pass=true`; Phases 3-5 remain.

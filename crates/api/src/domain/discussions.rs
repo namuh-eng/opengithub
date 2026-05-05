@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -527,6 +527,122 @@ pub struct DiscussionMetadataRequest {
     pub label_ids: Option<Vec<Uuid>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiscussionCategoryFormat {
+    Announcement,
+    OpenEnded,
+    Poll,
+    QuestionAndAnswer,
+}
+
+impl DiscussionCategoryFormat {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Announcement => "announcement",
+            Self::OpenEnded => "open_ended",
+            Self::Poll => "poll",
+            Self::QuestionAndAnswer => "question_and_answer",
+        }
+    }
+
+    fn accepts_answers(self) -> bool {
+        matches!(self, Self::QuestionAndAnswer)
+    }
+}
+
+impl TryFrom<&str> for DiscussionCategoryFormat {
+    type Error = RepositoryError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value.trim() {
+            "announcement" => Ok(Self::Announcement),
+            "open_ended" => Ok(Self::OpenEnded),
+            "poll" => Ok(Self::Poll),
+            "question_and_answer" | "q_and_a" | "q-a" => Ok(Self::QuestionAndAnswer),
+            other => Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported discussion category format `{other}`"
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionCategoryAdminViewer {
+    pub authenticated: bool,
+    pub permission: Option<String>,
+    pub can_read: bool,
+    pub can_manage: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionCategorySectionItem {
+    pub id: Uuid,
+    pub name: String,
+    pub position: i32,
+    pub category_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionCategoryAdminItem {
+    pub id: Uuid,
+    pub slug: String,
+    pub name: String,
+    pub emoji: String,
+    pub description: Option<String>,
+    pub format: DiscussionCategoryFormat,
+    pub accepts_answers: bool,
+    pub is_poll: bool,
+    pub is_default: bool,
+    pub section_id: Option<Uuid>,
+    pub section_name: Option<String>,
+    pub template_path: Option<String>,
+    pub count: i64,
+    pub open_count: i64,
+    pub position: i32,
+    pub href: String,
+    pub edit_href: String,
+    pub template_href: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionCategorySettingsView {
+    pub repository: DiscussionRepositorySummary,
+    pub viewer: DiscussionCategoryAdminViewer,
+    pub enabled: bool,
+    pub disabled_reason: Option<String>,
+    pub category_limit: i64,
+    pub remaining_categories: i64,
+    pub sections: Vec<DiscussionCategorySectionItem>,
+    pub categories: Vec<DiscussionCategoryAdminItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateDiscussionCategoryRequest {
+    pub name: String,
+    pub emoji: Option<String>,
+    pub description: Option<String>,
+    pub format: Option<DiscussionCategoryFormat>,
+    pub section_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateDiscussionCategoryRequest {
+    pub name: Option<String>,
+    pub emoji: Option<String>,
+    pub description: Option<String>,
+    pub format: Option<DiscussionCategoryFormat>,
+    pub section_id: Option<Option<Uuid>>,
+}
+
 pub struct DiscussionReactionMutation<'a> {
     pub content: &'a str,
     pub reacted: bool,
@@ -688,6 +804,240 @@ pub async fn repository_discussions_for_actor_by_owner_name(
         page_size: filters.page_size,
         has_next_page: filters.page * filters.page_size < total,
     }))
+}
+
+pub async fn repository_discussion_category_settings_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+) -> Result<Option<DiscussionCategorySettingsView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner, repo).await? else {
+        return Ok(None);
+    };
+    let (permission, can_read, can_write) =
+        discussion_permissions(pool, &repository, actor_user_id).await?;
+    if !can_read {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    let can_manage = can_write || repository.owner_user_id == Some(actor_user_id);
+    if !can_manage {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    let enabled = repository_discussions_policy_enabled(pool, repository.id).await?;
+    let sections = load_discussion_category_sections(pool, repository.id).await?;
+    let categories = load_discussion_category_admin_items(pool, &repository).await?;
+    let category_limit = 25;
+    let remaining_categories = (category_limit - categories.len() as i64).max(0);
+
+    Ok(Some(DiscussionCategorySettingsView {
+        repository: discussion_repository_summary(&repository),
+        viewer: DiscussionCategoryAdminViewer {
+            authenticated: true,
+            permission,
+            can_read,
+            can_manage,
+        },
+        enabled,
+        disabled_reason: (!enabled)
+            .then(|| "Repository discussions are disabled by organization policy.".to_owned()),
+        category_limit,
+        remaining_categories,
+        sections,
+        categories,
+    }))
+}
+
+pub async fn create_repository_discussion_category_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    request: CreateDiscussionCategoryRequest,
+) -> Result<Option<DiscussionCategorySettingsView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner, repo).await? else {
+        return Ok(None);
+    };
+    ensure_category_admin_allowed(pool, &repository, actor_user_id).await?;
+    if !repository_discussions_policy_enabled(pool, repository.id).await? {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "repository discussions are disabled by organization policy".to_owned(),
+        ));
+    }
+    if repository.is_archived {
+        return Err(RepositoryError::ArchivedRepositoryReadOnly);
+    }
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM discussion_categories WHERE repository_id = $1",
+    )
+    .bind(repository.id)
+    .fetch_one(pool)
+    .await?;
+    if count >= 25 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "repositories can have at most 25 discussion categories".to_owned(),
+        ));
+    }
+
+    let name = normalize_category_name(&request.name)?;
+    let emoji = normalize_category_emoji(request.emoji.as_deref())?;
+    let description = normalize_category_description(request.description.as_deref())?;
+    let format = request
+        .format
+        .unwrap_or(DiscussionCategoryFormat::QuestionAndAnswer);
+    ensure_category_section_exists(pool, repository.id, request.section_id).await?;
+    ensure_category_uniqueness(pool, repository.id, None, &name, &emoji).await?;
+    let slug = unique_category_slug(pool, repository.id, &name).await?;
+    let position: i32 = sqlx::query_scalar(
+        "SELECT COALESCE(MAX(position), 0) + 1 FROM discussion_categories WHERE repository_id = $1",
+    )
+    .bind(repository.id)
+    .fetch_one(pool)
+    .await?;
+
+    let category_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO discussion_categories (
+            repository_id, section_id, slug, name, emoji, description, position,
+            format, accepts_answers
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(request.section_id)
+    .bind(&slug)
+    .bind(&name)
+    .bind(&emoji)
+    .bind(&description)
+    .bind(position)
+    .bind(format.as_str())
+    .bind(format.accepts_answers())
+    .fetch_one(pool)
+    .await?;
+    record_category_admin_audit(
+        pool,
+        actor_user_id,
+        repository.id,
+        "repository.discussion_category.create",
+        category_id,
+        json!({
+            "slug": slug,
+            "name": name,
+            "format": format.as_str(),
+            "sectionId": request.section_id,
+        }),
+    )
+    .await?;
+    repository_discussion_category_settings_for_actor_by_owner_name(
+        pool,
+        actor_user_id,
+        owner,
+        repo,
+    )
+    .await
+}
+
+pub async fn update_repository_discussion_category_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    category_id: Uuid,
+    request: UpdateDiscussionCategoryRequest,
+) -> Result<Option<DiscussionCategorySettingsView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner, repo).await? else {
+        return Ok(None);
+    };
+    ensure_category_admin_allowed(pool, &repository, actor_user_id).await?;
+    if repository.is_archived {
+        return Err(RepositoryError::ArchivedRepositoryReadOnly);
+    }
+    let Some(current) = load_category_admin_row(pool, repository.id, category_id).await? else {
+        return Err(RepositoryError::NotFound);
+    };
+    let current_name: String = current.try_get("name")?;
+    let current_emoji: String = current.try_get("emoji")?;
+    let current_description: Option<String> = current.try_get("description")?;
+    let current_format =
+        DiscussionCategoryFormat::try_from(current.try_get::<String, _>("format")?.as_str())?;
+    let current_section_id: Option<Uuid> = current.try_get("section_id")?;
+    let template_path: Option<String> = current.try_get("template_path")?;
+
+    let next_name = match request.name.as_deref() {
+        Some(value) => normalize_category_name(value)?,
+        None => current_name,
+    };
+    let next_emoji = match request.emoji.as_deref() {
+        Some(value) => normalize_category_emoji(Some(value))?,
+        None => current_emoji,
+    };
+    let next_description = match request.description.as_deref() {
+        Some(value) => normalize_category_description(Some(value))?,
+        None => current_description,
+    };
+    let next_format = request.format.unwrap_or(current_format);
+    let next_section_id = request.section_id.unwrap_or(current_section_id);
+    ensure_category_section_exists(pool, repository.id, next_section_id).await?;
+    ensure_category_uniqueness(
+        pool,
+        repository.id,
+        Some(category_id),
+        &next_name,
+        &next_emoji,
+    )
+    .await?;
+    if next_format == DiscussionCategoryFormat::Poll && template_path.is_some() {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "poll categories cannot use discussion category forms".to_owned(),
+        ));
+    }
+
+    sqlx::query(
+        r#"
+        UPDATE discussion_categories
+        SET name = $1,
+            emoji = $2,
+            description = $3,
+            format = $4,
+            accepts_answers = $5,
+            section_id = $6,
+            updated_at = now()
+        WHERE id = $7 AND repository_id = $8
+        "#,
+    )
+    .bind(&next_name)
+    .bind(&next_emoji)
+    .bind(&next_description)
+    .bind(next_format.as_str())
+    .bind(next_format.accepts_answers())
+    .bind(next_section_id)
+    .bind(category_id)
+    .bind(repository.id)
+    .execute(pool)
+    .await?;
+    record_category_admin_audit(
+        pool,
+        actor_user_id,
+        repository.id,
+        "repository.discussion_category.update",
+        category_id,
+        json!({
+            "name": next_name,
+            "emoji": next_emoji,
+            "format": next_format.as_str(),
+            "sectionId": next_section_id,
+        }),
+    )
+    .await?;
+    repository_discussion_category_settings_for_actor_by_owner_name(
+        pool,
+        actor_user_id,
+        owner,
+        repo,
+    )
+    .await
 }
 
 pub async fn set_repository_discussion_vote_by_owner_name(
@@ -2633,6 +2983,296 @@ async fn load_discussion_category_choices(
             })
         })
         .collect()
+}
+
+async fn load_discussion_category_sections(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<Vec<DiscussionCategorySectionItem>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT discussion_category_sections.id,
+               discussion_category_sections.name,
+               discussion_category_sections.position,
+               COUNT(discussion_categories.id)::bigint AS category_count
+        FROM discussion_category_sections
+        LEFT JOIN discussion_categories
+          ON discussion_categories.section_id = discussion_category_sections.id
+        WHERE discussion_category_sections.repository_id = $1
+        GROUP BY discussion_category_sections.id
+        ORDER BY discussion_category_sections.position ASC, discussion_category_sections.name ASC
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(DiscussionCategorySectionItem {
+                id: row.try_get("id")?,
+                name: row.try_get("name")?,
+                position: row.try_get("position")?,
+                category_count: row.try_get("category_count")?,
+            })
+        })
+        .collect()
+}
+
+async fn load_discussion_category_admin_items(
+    pool: &PgPool,
+    repository: &super::repositories::Repository,
+) -> Result<Vec<DiscussionCategoryAdminItem>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT discussion_categories.id,
+               discussion_categories.slug,
+               discussion_categories.name,
+               discussion_categories.emoji,
+               discussion_categories.description,
+               discussion_categories.format,
+               discussion_categories.accepts_answers,
+               discussion_categories.is_default,
+               discussion_categories.section_id,
+               discussion_category_sections.name AS section_name,
+               discussion_categories.template_path,
+               discussion_categories.position,
+               discussion_categories.created_at,
+               discussion_categories.updated_at,
+               COUNT(discussions.id)::bigint AS count,
+               COUNT(discussions.id) FILTER (WHERE discussions.state = 'open')::bigint AS open_count
+        FROM discussion_categories
+        LEFT JOIN discussion_category_sections
+          ON discussion_category_sections.id = discussion_categories.section_id
+        LEFT JOIN discussions ON discussions.category_id = discussion_categories.id
+        WHERE discussion_categories.repository_id = $1
+        GROUP BY discussion_categories.id, discussion_category_sections.name
+        ORDER BY COALESCE(discussion_category_sections.position, -1) ASC,
+                 discussion_categories.position ASC,
+                 discussion_categories.name ASC
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            let slug: String = row.try_get("slug")?;
+            let id: Uuid = row.try_get("id")?;
+            let format =
+                DiscussionCategoryFormat::try_from(row.try_get::<String, _>("format")?.as_str())?;
+            Ok(DiscussionCategoryAdminItem {
+                id,
+                href: format!(
+                    "/{}/{}/discussions/categories/{}",
+                    repository.owner_login, repository.name, slug
+                ),
+                edit_href: format!(
+                    "/{}/{}/discussions/categories/edit",
+                    repository.owner_login, repository.name
+                ),
+                template_href: format!(
+                    "/{}/{}/discussions/categories/{}/template",
+                    repository.owner_login, repository.name, id
+                ),
+                is_poll: format == DiscussionCategoryFormat::Poll,
+                slug,
+                name: row.try_get("name")?,
+                emoji: row.try_get("emoji")?,
+                description: row.try_get("description")?,
+                accepts_answers: row.try_get("accepts_answers")?,
+                format,
+                is_default: row.try_get("is_default")?,
+                section_id: row.try_get("section_id")?,
+                section_name: row.try_get("section_name")?,
+                template_path: row.try_get("template_path")?,
+                count: row.try_get("count")?,
+                open_count: row.try_get("open_count")?,
+                position: row.try_get("position")?,
+                created_at: row.try_get("created_at")?,
+                updated_at: row.try_get("updated_at")?,
+            })
+        })
+        .collect()
+}
+
+async fn ensure_category_admin_allowed(
+    pool: &PgPool,
+    repository: &super::repositories::Repository,
+    actor_user_id: Uuid,
+) -> Result<(), RepositoryError> {
+    let (_permission, can_read, can_write) =
+        discussion_permissions(pool, repository, actor_user_id).await?;
+    if !can_read || !(can_write || repository.owner_user_id == Some(actor_user_id)) {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    Ok(())
+}
+
+async fn load_category_admin_row(
+    pool: &PgPool,
+    repository_id: Uuid,
+    category_id: Uuid,
+) -> Result<Option<sqlx::postgres::PgRow>, RepositoryError> {
+    Ok(sqlx::query(
+        r#"
+        SELECT id, name, emoji, description, format, section_id, template_path
+        FROM discussion_categories
+        WHERE repository_id = $1 AND id = $2
+        "#,
+    )
+    .bind(repository_id)
+    .bind(category_id)
+    .fetch_optional(pool)
+    .await?)
+}
+
+async fn ensure_category_section_exists(
+    pool: &PgPool,
+    repository_id: Uuid,
+    section_id: Option<Uuid>,
+) -> Result<(), RepositoryError> {
+    if let Some(section_id) = section_id {
+        let exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM discussion_category_sections WHERE repository_id = $1 AND id = $2)",
+        )
+        .bind(repository_id)
+        .bind(section_id)
+        .fetch_one(pool)
+        .await?;
+        if !exists {
+            return Err(RepositoryError::NotFound);
+        }
+    }
+    Ok(())
+}
+
+async fn ensure_category_uniqueness(
+    pool: &PgPool,
+    repository_id: Uuid,
+    except_category_id: Option<Uuid>,
+    name: &str,
+    emoji: &str,
+) -> Result<(), RepositoryError> {
+    let normalized = name.to_ascii_lowercase();
+    let conflict: bool = sqlx::query_scalar(
+        r#"
+        SELECT EXISTS(
+            SELECT 1
+            FROM discussion_categories
+            WHERE repository_id = $1
+              AND ($2::uuid IS NULL OR id <> $2)
+              AND (lower(name) = $3 OR (lower(name) = $3 AND emoji = $4))
+        )
+        "#,
+    )
+    .bind(repository_id)
+    .bind(except_category_id)
+    .bind(normalized)
+    .bind(emoji)
+    .fetch_one(pool)
+    .await?;
+    if conflict {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "discussion category names must be unique within the repository".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+async fn unique_category_slug(
+    pool: &PgPool,
+    repository_id: Uuid,
+    name: &str,
+) -> Result<String, RepositoryError> {
+    let base = slugify(name);
+    if base.is_empty() {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "discussion category name must produce a URL slug".to_owned(),
+        ));
+    }
+    for suffix in 0..25 {
+        let candidate = if suffix == 0 {
+            base.clone()
+        } else {
+            format!("{base}-{suffix}")
+        };
+        let exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM discussion_categories WHERE repository_id = $1 AND slug = $2)",
+        )
+        .bind(repository_id)
+        .bind(&candidate)
+        .fetch_one(pool)
+        .await?;
+        if !exists {
+            return Ok(candidate);
+        }
+    }
+    Err(RepositoryError::InvalidDependencyGraphQuery(
+        "discussion category slug could not be made unique".to_owned(),
+    ))
+}
+
+fn normalize_category_name(value: &str) -> Result<String, RepositoryError> {
+    normalize_short_text(Some(value), "name", 80)?
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            RepositoryError::InvalidDependencyGraphQuery(
+                "discussion category name is required".to_owned(),
+            )
+        })
+}
+
+fn normalize_category_emoji(value: Option<&str>) -> Result<String, RepositoryError> {
+    let emoji = normalize_short_text(value, "emoji", 16)?.unwrap_or_else(|| "💬".to_owned());
+    if emoji.trim().is_empty() {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "discussion category emoji is required".to_owned(),
+        ));
+    }
+    Ok(emoji)
+}
+
+fn normalize_category_description(value: Option<&str>) -> Result<Option<String>, RepositoryError> {
+    normalize_short_text(value, "description", 280)
+}
+
+async fn record_category_admin_audit(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    repository_id: Uuid,
+    event_type: &str,
+    category_id: Uuid,
+    metadata: Value,
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, $2, 'repository_discussion_category', $3, $4::jsonb)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(category_id.to_string())
+    .bind(metadata.to_string())
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO discussion_activity_events (discussion_id, actor_user_id, event_type, payload)
+        SELECT id, $2, $3, jsonb_build_object('categoryId', $4::text)
+        FROM discussions
+        WHERE repository_id = $1
+        ORDER BY updated_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(repository_id)
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(category_id)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 async fn load_discussion_form_definition(
