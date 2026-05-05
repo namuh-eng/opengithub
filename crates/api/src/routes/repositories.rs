@@ -105,6 +105,8 @@ use crate::{
         repository_dependabot_alerts_for_actor_by_owner_name,
         repository_secret_scanning_alert_detail_for_actor_by_owner_name,
         repository_secret_scanning_alerts_for_actor_by_owner_name,
+        repository_security_advisories_for_actor_by_owner_name,
+        repository_security_advisory_detail_for_actor_by_owner_name,
         repository_security_overview_for_actor_by_owner_name,
         repository_security_policy_for_actor_by_owner_name,
         update_repository_code_scanning_alert_for_actor_by_owner_name,
@@ -113,8 +115,8 @@ use crate::{
         upload_repository_code_scanning_sarif_for_actor_by_owner_name,
         upsert_repository_security_policy_by_owner_name, CodeScanningAlertMutation,
         CodeScanningAlertsQuery, CodeScanningSarifUpload, DependabotAlertMutation,
-        DependabotAlertsQuery, DependabotBulkMutation, SecretScanningAlertMutation,
-        SecretScanningAlertsQuery, SecurityPolicyMutation,
+        DependabotAlertsQuery, DependabotBulkMutation, RepositorySecurityAdvisoriesQuery,
+        SecretScanningAlertMutation, SecretScanningAlertsQuery, SecurityPolicyMutation,
     },
     domain::webhooks::{
         create_repository_webhook_by_owner_name, delete_repository_webhook_by_owner_name,
@@ -158,6 +160,14 @@ pub fn router() -> Router<AppState> {
         )
         .route("/:owner/:repo/network", get(network))
         .route("/:owner/:repo/security", get(security_overview))
+        .route(
+            "/:owner/:repo/security/advisories",
+            get(security_advisories),
+        )
+        .route(
+            "/:owner/:repo/security/advisories/:ghsa_id",
+            get(security_advisory_detail),
+        )
         .route(
             "/:owner/:repo/security/code-scanning",
             get(code_scanning_alerts),
@@ -1281,6 +1291,74 @@ struct SecretScanningAlertsQueryParams {
     team: Option<String>,
     topic: Option<String>,
     sort: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SecurityAdvisoriesQueryParams {
+    state: Option<String>,
+    q: Option<String>,
+    severity: Option<String>,
+    sort: Option<String>,
+    page: Option<i64>,
+    page_size: Option<i64>,
+}
+
+async fn security_advisories(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<SecurityAdvisoriesQueryParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = repository_security_advisories_for_actor_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        RepositorySecurityAdvisoriesQuery {
+            state: query.state.as_deref(),
+            severity: query.severity.as_deref(),
+            query: query.q.as_deref(),
+            sort: query.sort.as_deref(),
+            page: query.page,
+            page_size: query.page_size,
+        },
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn security_advisory_detail(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, ghsa_id)): Path<(String, String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = repository_security_advisory_detail_for_actor_by_owner_name(
+        pool, actor.0.id, &owner, &repo, &ghsa_id,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "security advisory was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(view)))
 }
 
 async fn code_scanning_alerts(

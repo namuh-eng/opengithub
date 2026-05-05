@@ -6,7 +6,7 @@
 
 ## Phase 1: Advisory API Contract and Persistence - list/detail data with privacy gates
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Expand the existing `repository_security_advisories` summary store into a repository-owned advisory read model and API contract without rendering the pages yet. `GET /api/repos/{owner}/{repo}/security/advisories` should return published advisories for readers and draft plus published rows for authorized maintainers. `GET /api/repos/{owner}/{repo}/security/advisories/{ghsa_id}` should return full metadata, sanitized Markdown, CVSS/CVE/CWE/package details, credits, collaborators, timeline, and viewer affordances.
 

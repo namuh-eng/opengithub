@@ -98,6 +98,171 @@ pub struct RepositorySecurityAdvisorySummary {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct RepositorySecurityAdvisoriesQuery<'a> {
+    pub state: Option<&'a str>,
+    pub severity: Option<&'a str>,
+    pub query: Option<&'a str>,
+    pub sort: Option<&'a str>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySecurityAdvisoriesView {
+    pub repository: RepositorySecurityRepository,
+    pub viewer: SecurityViewer,
+    pub filters: RepositorySecurityAdvisoryFilters,
+    pub counts: RepositorySecurityAdvisoryCounts,
+    pub advisories: Vec<RepositorySecurityAdvisoryRow>,
+    pub links: RepositorySecurityAdvisoryLinks,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySecurityAdvisoryFilters {
+    pub state: String,
+    pub severity: Option<String>,
+    pub query: Option<String>,
+    pub sort: String,
+    pub page: i64,
+    pub page_size: i64,
+    pub total: i64,
+    pub has_next_page: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySecurityAdvisoryCounts {
+    pub published: i64,
+    pub draft: Option<i64>,
+    pub withdrawn: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySecurityAdvisoryRow {
+    pub id: Uuid,
+    pub ghsa_id: String,
+    pub cve_id: Option<String>,
+    pub severity: String,
+    pub state: String,
+    pub title: String,
+    pub summary: String,
+    pub package: Option<RepositorySecurityAdvisoryPackage>,
+    pub cvss: Option<CvssSummary>,
+    pub cwes: Vec<CweReference>,
+    pub author: Option<RepositorySecurityAdvisoryActor>,
+    pub href: String,
+    pub published_at: Option<DateTime<Utc>>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySecurityAdvisoryDetail {
+    pub repository: RepositorySecurityRepository,
+    pub viewer: AdvisoryViewer,
+    pub advisory: RepositorySecurityAdvisoryRow,
+    pub markdown: RepositorySecurityAdvisoryMarkdown,
+    pub credits: Vec<RepositorySecurityAdvisoryCredit>,
+    pub collaborators: Vec<RepositorySecurityAdvisoryCollaborator>,
+    pub timeline: Vec<RepositorySecurityAdvisoryTimelineEvent>,
+    pub links: RepositorySecurityAdvisoryLinks,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySecurityAdvisoryPackage {
+    pub ecosystem: Option<String>,
+    pub name: Option<String>,
+    pub affected_versions: Option<String>,
+    pub patched_versions: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CvssSummary {
+    pub vector: Option<String>,
+    pub score: Option<f64>,
+    pub metrics: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CweReference {
+    pub id: String,
+    pub name: String,
+    pub href: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySecurityAdvisoryActor {
+    pub id: Option<Uuid>,
+    pub login: String,
+    pub avatar_url: Option<String>,
+    pub profile_href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySecurityAdvisoryCredit {
+    pub id: Uuid,
+    pub actor: RepositorySecurityAdvisoryActor,
+    pub credit_type: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySecurityAdvisoryCollaborator {
+    pub id: Uuid,
+    pub actor: RepositorySecurityAdvisoryActor,
+    pub role: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySecurityAdvisoryTimelineEvent {
+    pub id: Uuid,
+    pub event_type: String,
+    pub message: String,
+    pub actor: Option<RepositorySecurityAdvisoryActor>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySecurityAdvisoryMarkdown {
+    pub summary_markdown: String,
+    pub details_markdown: String,
+    pub details_html: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AdvisoryViewer {
+    pub permission: String,
+    pub can_read: bool,
+    pub can_write: bool,
+    pub can_edit: bool,
+    pub can_publish: bool,
+    pub can_invite_collaborators: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySecurityAdvisoryLinks {
+    pub list_href: String,
+    pub new_href: Option<String>,
+    pub published_href: String,
+    pub draft_href: Option<String>,
+    pub withdrawn_href: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SecurityOverviewLinks {
@@ -1102,6 +1267,49 @@ pub async fn repository_dependabot_alerts_for_actor_by_owner_name(
     repository_dependabot_alerts_for_repository(pool, &repository, actor_user_id, query)
         .await
         .map(Some)
+}
+
+pub async fn repository_security_advisories_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    query: RepositorySecurityAdvisoriesQuery<'_>,
+) -> Result<Option<RepositorySecurityAdvisoriesView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+
+    repository_security_advisories_for_repository(pool, &repository, actor_user_id, query)
+        .await
+        .map(Some)
+}
+
+pub async fn repository_security_advisory_detail_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    ghsa_id: &str,
+) -> Result<Option<RepositorySecurityAdvisoryDetail>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    let ghsa_id = normalize_ghsa_id(ghsa_id)?;
+    repository_security_advisory_detail_for_repository(pool, &repository, actor_user_id, &ghsa_id)
+        .await
 }
 
 pub async fn repository_dependabot_alert_detail_for_actor_by_owner_name(
@@ -3061,6 +3269,547 @@ async fn published_advisories(
             })
         })
         .collect()
+}
+
+#[derive(Debug, Clone)]
+struct NormalizedAdvisoryFilters {
+    state: String,
+    severity: Option<String>,
+    query: Option<String>,
+    sort: String,
+    page: i64,
+    page_size: i64,
+}
+
+async fn repository_security_advisories_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    query: RepositorySecurityAdvisoriesQuery<'_>,
+) -> Result<RepositorySecurityAdvisoriesView, RepositoryError> {
+    let can_write = can_write_repository(pool, repository, actor_user_id).await?;
+    let filters = normalize_advisory_filters(query, can_write)?;
+    let mut advisories = repository_security_advisory_rows(pool, repository, can_write).await?;
+    let counts = advisory_counts(&advisories, can_write);
+    apply_advisory_filters(&mut advisories, &filters);
+    sort_advisory_rows(&mut advisories, &filters.sort);
+    let total = advisories.len() as i64;
+    let offset = ((filters.page - 1) * filters.page_size) as usize;
+    let page_rows = advisories
+        .into_iter()
+        .skip(offset)
+        .take(filters.page_size as usize)
+        .collect();
+
+    Ok(RepositorySecurityAdvisoriesView {
+        repository: security_repository(repository, &dependabot_links(repository)),
+        viewer: security_viewer(pool, repository, actor_user_id, can_write).await?,
+        filters: RepositorySecurityAdvisoryFilters {
+            state: filters.state,
+            severity: filters.severity,
+            query: filters.query,
+            sort: filters.sort,
+            page: filters.page,
+            page_size: filters.page_size,
+            total,
+            has_next_page: offset as i64 + filters.page_size < total,
+        },
+        counts,
+        advisories: page_rows,
+        links: advisory_links(repository, can_write),
+    })
+}
+
+async fn repository_security_advisory_detail_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    ghsa_id: &str,
+) -> Result<Option<RepositorySecurityAdvisoryDetail>, RepositoryError> {
+    let can_write = can_write_repository(pool, repository, actor_user_id).await?;
+    let row = sqlx::query(
+        r#"
+        SELECT rsa.id,
+               COALESCE(rsa.ghsa_id, rsa.advisory_identifier) AS ghsa_id,
+               rsa.cve_id,
+               rsa.severity,
+               rsa.status,
+               rsa.title,
+               rsa.summary,
+               rsa.package_ecosystem,
+               rsa.package_name,
+               COALESCE(rsa.affected_versions, rsa.vulnerable_range) AS affected_versions,
+               rsa.patched_versions,
+               rsa.cvss_vector,
+               rsa.cvss_score::float8 AS cvss_score,
+               rsa.cvss_metrics,
+               rsa.markdown_summary,
+               rsa.markdown_details,
+               rsa.details_html,
+               rsa.author_user_id,
+               users.username AS author_login,
+               users.avatar_url AS author_avatar_url,
+               rsa.advisory_href,
+               rsa.published_at,
+               rsa.updated_at
+        FROM repository_security_advisories rsa
+        LEFT JOIN users ON users.id = rsa.author_user_id
+        WHERE rsa.repository_id = $1
+          AND lower(COALESCE(rsa.ghsa_id, rsa.advisory_identifier)) = lower($2)
+          AND ($3::boolean OR rsa.status = 'published')
+        "#,
+    )
+    .bind(repository.id)
+    .bind(ghsa_id)
+    .bind(can_write)
+    .fetch_optional(pool)
+    .await?;
+
+    let Some(row) = row else {
+        return Ok(None);
+    };
+
+    let advisory = advisory_row_from_row(repository, &row, pool).await?;
+    let markdown_summary = row
+        .get::<Option<String>, _>("markdown_summary")
+        .unwrap_or_else(|| advisory.summary.clone());
+    let markdown_details = row
+        .get::<Option<String>, _>("markdown_details")
+        .unwrap_or_else(|| advisory.summary.clone());
+    let details_html = match row.get::<Option<String>, _>("details_html") {
+        Some(html) => html,
+        None => {
+            render_markdown(
+                Some(pool),
+                RenderMarkdownInput {
+                    markdown: markdown_details.clone(),
+                    repository_id: Some(repository.id),
+                    owner: Some(repository.owner_login.clone()),
+                    repo: Some(repository.name.clone()),
+                    ref_name: Some(repository.default_branch.clone()),
+                    enable_task_toggles: Some(false),
+                },
+            )
+            .await
+            .map_err(markdown_error)?
+            .html
+        }
+    };
+    let advisory_id = advisory.id;
+
+    Ok(Some(RepositorySecurityAdvisoryDetail {
+        repository: security_repository(repository, &dependabot_links(repository)),
+        viewer: AdvisoryViewer {
+            permission: viewer_permission(pool, repository, actor_user_id, can_write).await?,
+            can_read: true,
+            can_write,
+            can_edit: can_write && !repository.is_archived,
+            can_publish: can_write && !repository.is_archived && advisory.state == "draft",
+            can_invite_collaborators: can_write && !repository.is_archived,
+        },
+        advisory,
+        markdown: RepositorySecurityAdvisoryMarkdown {
+            summary_markdown: markdown_summary,
+            details_markdown: markdown_details,
+            details_html,
+        },
+        credits: advisory_credits(pool, advisory_id).await?,
+        collaborators: advisory_collaborators(pool, advisory_id).await?,
+        timeline: advisory_timeline(pool, advisory_id).await?,
+        links: advisory_links(repository, can_write),
+    }))
+}
+
+async fn repository_security_advisory_rows(
+    pool: &PgPool,
+    repository: &Repository,
+    can_write: bool,
+) -> Result<Vec<RepositorySecurityAdvisoryRow>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT rsa.id,
+               COALESCE(rsa.ghsa_id, rsa.advisory_identifier) AS ghsa_id,
+               rsa.cve_id,
+               rsa.severity,
+               rsa.status,
+               rsa.title,
+               rsa.summary,
+               rsa.package_ecosystem,
+               rsa.package_name,
+               COALESCE(rsa.affected_versions, rsa.vulnerable_range) AS affected_versions,
+               rsa.patched_versions,
+               rsa.cvss_vector,
+               rsa.cvss_score::float8 AS cvss_score,
+               rsa.cvss_metrics,
+               rsa.author_user_id,
+               users.username AS author_login,
+               users.avatar_url AS author_avatar_url,
+               rsa.advisory_href,
+               rsa.published_at,
+               rsa.updated_at
+        FROM repository_security_advisories rsa
+        LEFT JOIN users ON users.id = rsa.author_user_id
+        WHERE rsa.repository_id = $1
+          AND ($2::boolean OR rsa.status = 'published')
+        "#,
+    )
+    .bind(repository.id)
+    .bind(can_write)
+    .fetch_all(pool)
+    .await?;
+
+    let mut advisories = Vec::with_capacity(rows.len());
+    for row in rows {
+        advisories.push(advisory_row_from_row(repository, &row, pool).await?);
+    }
+    Ok(advisories)
+}
+
+async fn advisory_row_from_row(
+    repository: &Repository,
+    row: &sqlx::postgres::PgRow,
+    pool: &PgPool,
+) -> Result<RepositorySecurityAdvisoryRow, RepositoryError> {
+    let id: Uuid = row.get("id");
+    let ghsa_id: String = row.get("ghsa_id");
+    let summary: String = row.get("summary");
+    let package_name: Option<String> = row.get("package_name");
+    let package_ecosystem: Option<String> = row.get("package_ecosystem");
+    let affected_versions: Option<String> = row.get("affected_versions");
+    let patched_versions: Option<String> = row.get("patched_versions");
+    let cvss_vector: Option<String> = row.get("cvss_vector");
+    let cvss_score: Option<f64> = row.get("cvss_score");
+    let cvss_metrics: Value = row.get("cvss_metrics");
+    let author_login: Option<String> = row.get("author_login");
+    let author_id: Option<Uuid> = row.get("author_user_id");
+    let author_avatar_url: Option<String> = row.get("author_avatar_url");
+
+    Ok(RepositorySecurityAdvisoryRow {
+        id,
+        ghsa_id: ghsa_id.clone(),
+        cve_id: row.get("cve_id"),
+        severity: row.get("severity"),
+        state: row.get("status"),
+        title: row.get("title"),
+        summary,
+        package: (package_name.is_some()
+            || package_ecosystem.is_some()
+            || affected_versions.is_some()
+            || patched_versions.is_some())
+        .then_some(RepositorySecurityAdvisoryPackage {
+            ecosystem: package_ecosystem,
+            name: package_name,
+            affected_versions,
+            patched_versions,
+        }),
+        cvss: (cvss_vector.is_some() || cvss_score.is_some() || cvss_metrics != json!({}))
+            .then_some(CvssSummary {
+                vector: cvss_vector,
+                score: cvss_score,
+                metrics: cvss_metrics,
+            }),
+        cwes: advisory_cwes(pool, id).await?,
+        author: author_login.map(|login| RepositorySecurityAdvisoryActor {
+            id: author_id,
+            profile_href: format!("/{login}"),
+            login,
+            avatar_url: author_avatar_url,
+        }),
+        href: format!(
+            "/{}/{}/security/advisories/{}",
+            repository.owner_login, repository.name, ghsa_id
+        ),
+        published_at: row.get("published_at"),
+        updated_at: row.get("updated_at"),
+    })
+}
+
+async fn advisory_cwes(
+    pool: &PgPool,
+    advisory_id: Uuid,
+) -> Result<Vec<CweReference>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT cwe_id, name, href
+        FROM repository_security_advisory_cwes
+        WHERE advisory_id = $1
+        ORDER BY upper(cwe_id)
+        "#,
+    )
+    .bind(advisory_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| CweReference {
+            id: row.get("cwe_id"),
+            name: row.get("name"),
+            href: row.get("href"),
+        })
+        .collect())
+}
+
+async fn advisory_credits(
+    pool: &PgPool,
+    advisory_id: Uuid,
+) -> Result<Vec<RepositorySecurityAdvisoryCredit>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, user_id, login, avatar_url, credit_type, created_at
+        FROM repository_security_advisory_credits
+        WHERE advisory_id = $1
+        ORDER BY lower(login), credit_type
+        "#,
+    )
+    .bind(advisory_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let login: String = row.get("login");
+            RepositorySecurityAdvisoryCredit {
+                id: row.get("id"),
+                actor: RepositorySecurityAdvisoryActor {
+                    id: row.get("user_id"),
+                    profile_href: format!("/{login}"),
+                    login,
+                    avatar_url: row.get("avatar_url"),
+                },
+                credit_type: row.get("credit_type"),
+                created_at: row.get("created_at"),
+            }
+        })
+        .collect())
+}
+
+async fn advisory_collaborators(
+    pool: &PgPool,
+    advisory_id: Uuid,
+) -> Result<Vec<RepositorySecurityAdvisoryCollaborator>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, user_id, login, avatar_url, role, created_at
+        FROM repository_security_advisory_collaborators
+        WHERE advisory_id = $1
+        ORDER BY CASE role WHEN 'author' THEN 0 WHEN 'collaborator' THEN 1 ELSE 2 END, lower(login)
+        "#,
+    )
+    .bind(advisory_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let login: String = row.get("login");
+            RepositorySecurityAdvisoryCollaborator {
+                id: row.get("id"),
+                actor: RepositorySecurityAdvisoryActor {
+                    id: row.get("user_id"),
+                    profile_href: format!("/{login}"),
+                    login,
+                    avatar_url: row.get("avatar_url"),
+                },
+                role: row.get("role"),
+                created_at: row.get("created_at"),
+            }
+        })
+        .collect())
+}
+
+async fn advisory_timeline(
+    pool: &PgPool,
+    advisory_id: Uuid,
+) -> Result<Vec<RepositorySecurityAdvisoryTimelineEvent>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT events.id, events.event_type, events.message, events.created_at,
+               users.id AS actor_id, users.username AS actor_login, users.avatar_url AS actor_avatar_url
+        FROM repository_security_advisory_events events
+        LEFT JOIN users ON users.id = events.actor_user_id
+        WHERE events.advisory_id = $1
+        ORDER BY events.created_at ASC, events.id ASC
+        "#,
+    )
+    .bind(advisory_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let actor_login: Option<String> = row.get("actor_login");
+            RepositorySecurityAdvisoryTimelineEvent {
+                id: row.get("id"),
+                event_type: row.get("event_type"),
+                message: row.get("message"),
+                actor: actor_login.map(|login| RepositorySecurityAdvisoryActor {
+                    id: row.get("actor_id"),
+                    profile_href: format!("/{login}"),
+                    login,
+                    avatar_url: row.get("actor_avatar_url"),
+                }),
+                created_at: row.get("created_at"),
+            }
+        })
+        .collect())
+}
+
+fn advisory_counts(
+    advisories: &[RepositorySecurityAdvisoryRow],
+    can_write: bool,
+) -> RepositorySecurityAdvisoryCounts {
+    let count = |state: &str| {
+        advisories
+            .iter()
+            .filter(|advisory| advisory.state == state)
+            .count() as i64
+    };
+    RepositorySecurityAdvisoryCounts {
+        published: count("published"),
+        draft: can_write.then(|| count("draft")),
+        withdrawn: can_write.then(|| count("withdrawn")),
+    }
+}
+
+fn apply_advisory_filters(
+    advisories: &mut Vec<RepositorySecurityAdvisoryRow>,
+    filters: &NormalizedAdvisoryFilters,
+) {
+    if filters.state != "all" {
+        advisories.retain(|advisory| advisory.state == filters.state);
+    }
+    if let Some(severity) = &filters.severity {
+        advisories.retain(|advisory| advisory.severity == *severity);
+    }
+    if let Some(query) = &filters.query {
+        let needle = query.to_lowercase();
+        advisories.retain(|advisory| {
+            advisory.title.to_lowercase().contains(&needle)
+                || advisory.summary.to_lowercase().contains(&needle)
+                || advisory.ghsa_id.to_lowercase().contains(&needle)
+                || advisory
+                    .cve_id
+                    .as_ref()
+                    .is_some_and(|cve| cve.to_lowercase().contains(&needle))
+                || advisory.package.as_ref().is_some_and(|package| {
+                    package
+                        .name
+                        .as_ref()
+                        .is_some_and(|name| name.to_lowercase().contains(&needle))
+                })
+        });
+    }
+}
+
+fn sort_advisory_rows(advisories: &mut [RepositorySecurityAdvisoryRow], sort: &str) {
+    match sort {
+        "severity" => advisories.sort_by(|left, right| {
+            severity_rank(&left.severity)
+                .cmp(&severity_rank(&right.severity))
+                .then_with(|| right.updated_at.cmp(&left.updated_at))
+        }),
+        "identifier" => advisories.sort_by(|left, right| left.ghsa_id.cmp(&right.ghsa_id)),
+        _ => advisories.sort_by(|left, right| {
+            right
+                .published_at
+                .unwrap_or(right.updated_at)
+                .cmp(&left.published_at.unwrap_or(left.updated_at))
+                .then_with(|| right.updated_at.cmp(&left.updated_at))
+        }),
+    }
+}
+
+fn normalize_advisory_filters(
+    query: RepositorySecurityAdvisoriesQuery<'_>,
+    can_write: bool,
+) -> Result<NormalizedAdvisoryFilters, RepositoryError> {
+    let state = match query.state.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(state @ ("published" | "all")) => state.to_owned(),
+        Some(state @ ("draft" | "withdrawn")) if can_write => state.to_owned(),
+        Some("draft" | "withdrawn") => "published".to_owned(),
+        Some(other) => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported advisory state `{other}`"
+            )))
+        }
+        None => "published".to_owned(),
+    };
+    let severity = match query
+        .severity
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(severity @ ("low" | "moderate" | "high" | "critical")) => Some(severity.to_owned()),
+        Some(other) => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported advisory severity `{other}`"
+            )))
+        }
+        None => None,
+    };
+    let sort = match query.sort.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(sort @ ("recently_published" | "severity" | "identifier")) => sort.to_owned(),
+        Some(other) => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported advisory sort `{other}`"
+            )))
+        }
+        None => "recently_published".to_owned(),
+    };
+    let page = query.page.unwrap_or(1);
+    let page_size = query.page_size.unwrap_or(30);
+    if page < 1 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "page must be greater than or equal to 1".to_owned(),
+        ));
+    }
+    if !(1..=100).contains(&page_size) {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "page_size must be between 1 and 100".to_owned(),
+        ));
+    }
+
+    Ok(NormalizedAdvisoryFilters {
+        state,
+        severity,
+        query: normalize_optional_filter(query.query, "q", 120)?,
+        sort,
+        page,
+        page_size,
+    })
+}
+
+fn normalize_ghsa_id(value: &str) -> Result<String, RepositoryError> {
+    let value = value.trim();
+    if value.is_empty() || value.len() > 80 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "advisory identifier must be 1 to 80 characters".to_owned(),
+        ));
+    }
+    if !value.starts_with("GHSA-") {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "advisory identifier must start with GHSA-".to_owned(),
+        ));
+    }
+    Ok(value.to_owned())
+}
+
+fn advisory_links(repository: &Repository, can_write: bool) -> RepositorySecurityAdvisoryLinks {
+    let base = format!(
+        "/{}/{}/security/advisories",
+        repository.owner_login, repository.name
+    );
+    RepositorySecurityAdvisoryLinks {
+        list_href: base.clone(),
+        new_href: can_write.then(|| format!("{base}/new")),
+        published_href: format!("{base}?state=published"),
+        draft_href: can_write.then(|| format!("{base}?state=draft")),
+        withdrawn_href: can_write.then(|| format!("{base}?state=withdrawn")),
+    }
 }
 
 fn security_links(repository: &Repository) -> SecurityOverviewLinks {

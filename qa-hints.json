@@ -6084,4 +6084,22 @@
       "Provider validity checks remain placeholder/local state only; no external provider verifier is configured."
     ]
   }
+  ,
+  {
+    "feature_id": "code-security-005",
+    "tests_written": [
+      "Completed Phase 1 Advisory API Contract and Persistence without marking code-security-005 build_pass=true.",
+      "Added additive repository security advisory authoring migration for GHSA/CVE/CVSS/CWE/package metadata, Markdown detail fields, credits, collaborators, timeline events, author links, and repository/status/severity identifier indexes.",
+      "Added authenticated Rust API contracts for GET /api/repos/{owner}/{repo}/security/advisories and GET /api/repos/{owner}/{repo}/security/advisories/{ghsa_id}, with repository read permission, private repository 404 privacy, reader draft redaction, maintainer draft visibility, filter normalization, pagination, sanitized Markdown details, CVSS/CWE/package/credit/collaborator/timeline DTOs, and no-secret error behavior.",
+      "Added typed Next.js API DTOs and signed-cookie fetch helpers for advisory list/detail contracts without adding client-side auth.",
+      "Added focused Rust contract coverage for published vs draft visibility, private outsider privacy, invalid filters, detail metadata shape, Markdown sanitization, credits, collaborators, timeline rows, and no session/OAuth secret leakage."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 still needs the Editorial advisories list UI, URL-backed filters, pagination, concrete row/new links, screenshots, and browser smoke.",
+      "Phase 3 still needs advisory detail UI and metadata edit mutations for CVSS/CWE/package/credits/collaborators.",
+      "Phase 4 still needs draft creation and publish lifecycle mutations with notification/audit fanout.",
+      "Repeat the focused DB-backed contract against a credentialed TEST_DATABASE_URL; this local run compiled and executed the focused test, but the configured Postgres URL refused password authentication so DB assertions skipped under the test guard.",
+      "Browser smoke and make test-e2e were skipped because Phase 1 is API-first and .qrspi/code-security-005/structure.md marks browser smoke optional for this phase."
+    ]
+  }
 ]

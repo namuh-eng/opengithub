@@ -2709,6 +2709,140 @@ export type RepositorySecurityAdvisorySummary = {
   updatedAt: string;
 };
 
+export type RepositorySecurityAdvisoriesView = {
+  repository: RepositorySecurityRepository;
+  viewer: RepositorySecurityViewer;
+  filters: RepositorySecurityAdvisoryFilters;
+  counts: RepositorySecurityAdvisoryCounts;
+  advisories: RepositorySecurityAdvisoryRow[];
+  links: RepositorySecurityAdvisoryLinks;
+};
+
+export type RepositorySecurityAdvisoryFilters = {
+  state: string;
+  severity: string | null;
+  query: string | null;
+  sort: string;
+  page: number;
+  pageSize: number;
+  total: number;
+  hasNextPage: boolean;
+};
+
+export type RepositorySecurityAdvisoryCounts = {
+  published: number;
+  draft: number | null;
+  withdrawn: number | null;
+};
+
+export type RepositorySecurityAdvisoryRow = {
+  id: string;
+  ghsaId: string;
+  cveId: string | null;
+  severity: string;
+  state: string;
+  title: string;
+  summary: string;
+  package: RepositorySecurityAdvisoryPackage | null;
+  cvss: CvssSummary | null;
+  cwes: CweReference[];
+  author: RepositorySecurityAdvisoryActor | null;
+  href: string;
+  publishedAt: string | null;
+  updatedAt: string;
+};
+
+export type RepositorySecurityAdvisoryDetail = {
+  repository: RepositorySecurityRepository;
+  viewer: RepositorySecurityAdvisoryViewer;
+  advisory: RepositorySecurityAdvisoryRow;
+  markdown: RepositorySecurityAdvisoryMarkdown;
+  credits: RepositorySecurityAdvisoryCredit[];
+  collaborators: RepositorySecurityAdvisoryCollaborator[];
+  timeline: RepositorySecurityAdvisoryTimelineEvent[];
+  links: RepositorySecurityAdvisoryLinks;
+};
+
+export type RepositorySecurityAdvisoryPackage = {
+  ecosystem: string | null;
+  name: string | null;
+  affectedVersions: string | null;
+  patchedVersions: string | null;
+};
+
+export type CvssSummary = {
+  vector: string | null;
+  score: number | null;
+  metrics: Record<string, unknown>;
+};
+
+export type CweReference = {
+  id: string;
+  name: string;
+  href: string | null;
+};
+
+export type RepositorySecurityAdvisoryActor = {
+  id: string | null;
+  login: string;
+  avatarUrl: string | null;
+  profileHref: string;
+};
+
+export type RepositorySecurityAdvisoryCredit = {
+  id: string;
+  actor: RepositorySecurityAdvisoryActor;
+  creditType: string;
+  createdAt: string;
+};
+
+export type RepositorySecurityAdvisoryCollaborator = {
+  id: string;
+  actor: RepositorySecurityAdvisoryActor;
+  role: string;
+  createdAt: string;
+};
+
+export type RepositorySecurityAdvisoryTimelineEvent = {
+  id: string;
+  eventType: string;
+  message: string;
+  actor: RepositorySecurityAdvisoryActor | null;
+  createdAt: string;
+};
+
+export type RepositorySecurityAdvisoryMarkdown = {
+  summaryMarkdown: string;
+  detailsMarkdown: string;
+  detailsHtml: string;
+};
+
+export type RepositorySecurityAdvisoryViewer = {
+  permission: string;
+  canRead: boolean;
+  canWrite: boolean;
+  canEdit: boolean;
+  canPublish: boolean;
+  canInviteCollaborators: boolean;
+};
+
+export type RepositorySecurityAdvisoryLinks = {
+  listHref: string;
+  newHref: string | null;
+  publishedHref: string;
+  draftHref: string | null;
+  withdrawnHref: string | null;
+};
+
+export type RepositorySecurityAdvisoriesQuery = {
+  state?: string | null;
+  query?: string | null;
+  severity?: string | null;
+  sort?: string | null;
+  page?: string | number | null;
+  pageSize?: string | number | null;
+};
+
 export type RepositorySecurityLinks = {
   overviewHref: string;
   policyHref: string;
@@ -2764,6 +2898,14 @@ export type RepositorySecurityPolicyCommit = {
 
 export type RepositorySecurityPolicyFetchResult =
   | { ok: true; securityPolicy: RepositorySecurityPolicyView }
+  | { ok: false; status: number; code: string | null; message: string };
+
+export type RepositorySecurityAdvisoriesFetchResult =
+  | { ok: true; advisories: RepositorySecurityAdvisoriesView }
+  | { ok: false; status: number; code: string | null; message: string };
+
+export type RepositorySecurityAdvisoryDetailFetchResult =
+  | { ok: true; advisory: RepositorySecurityAdvisoryDetail }
   | { ok: false; status: number; code: string | null; message: string };
 
 export type RepositorySecurityPolicyMutation = {
@@ -10431,6 +10573,123 @@ export async function mutateRepositorySecurityPolicyFromCookie(
   }
 
   return (await response.json()) as RepositorySecurityPolicyView;
+}
+
+function appendRepositorySecurityAdvisorySearchParams(
+  searchParams: URLSearchParams,
+  query?: RepositorySecurityAdvisoriesQuery,
+) {
+  if (!query) {
+    return;
+  }
+  const entries: [string, string | number | null | undefined][] = [
+    ["state", query.state],
+    ["q", query.query],
+    ["severity", query.severity],
+    ["sort", query.sort],
+    ["page", query.page],
+    ["page_size", query.pageSize],
+  ];
+  for (const [key, value] of entries) {
+    if (value !== null && value !== undefined && String(value).trim()) {
+      searchParams.set(key, String(value));
+    }
+  }
+}
+
+export async function getRepositorySecurityAdvisoriesFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  query?: RepositorySecurityAdvisoriesQuery,
+): Promise<RepositorySecurityAdvisoriesFetchResult> {
+  const searchParams = new URLSearchParams();
+  appendRepositorySecurityAdvisorySearchParams(searchParams, query);
+  const suffix = searchParams.size ? `?${searchParams.toString()}` : "";
+
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/advisories${suffix}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository security advisories are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Repository security advisories are unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    advisories: (await response.json()) as RepositorySecurityAdvisoriesView,
+  };
+}
+
+export async function getRepositorySecurityAdvisoryDetailFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  ghsaId: string,
+): Promise<RepositorySecurityAdvisoryDetailFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/advisories/${encodeURIComponent(ghsaId)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository security advisory detail is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message =
+      "Repository security advisory detail is unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    advisory: (await response.json()) as RepositorySecurityAdvisoryDetail,
+  };
 }
 
 function appendRepositoryDependabotSearchParams(
