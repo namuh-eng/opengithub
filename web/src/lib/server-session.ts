@@ -44,6 +44,7 @@ import {
   getRepositoryCommitHistoryFromCookie,
   getRepositoryContributorsFromCookie,
   getRepositoryCreationOptionsFromCookie,
+  getRepositoryDependabotAlertsFromCookie,
   getRepositoryDependenciesFromCookie,
   getRepositoryDependentsFromCookie,
   getRepositoryFileFinderFromCookie,
@@ -96,6 +97,8 @@ import {
   type RepositoryBranchActivityFetchResult,
   type RepositoryBranchesFetchResult,
   type RepositoryContributorsFetchResult,
+  type RepositoryDependabotAlertsFetchResult,
+  type RepositoryDependabotAlertsQuery,
   type RepositoryDependenciesFetchResult,
   type RepositoryDependenciesQuery,
   type RepositoryDependentsFetchResult,
@@ -592,6 +595,20 @@ export async function getRepositorySecurityPolicy(
     requestHeaders.get("cookie"),
     owner,
     repo,
+  );
+}
+
+export async function getRepositoryDependabotAlerts(
+  owner: string,
+  repo: string,
+  options: RepositoryDependabotAlertsQuery = {},
+): Promise<RepositoryDependabotAlertsFetchResult> {
+  const requestHeaders = await headers();
+  return getRepositoryDependabotAlertsFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    options,
   );
 }
 

@@ -894,6 +894,50 @@ export function repositoryDependentsHref(
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/network/dependents${query ? `?${query}` : ""}`;
 }
 
+export function repositoryDependabotAlertsHref(
+  owner: string,
+  repo: string,
+  options: {
+    state?: string | null;
+    query?: string | null;
+    package?: string | null;
+    ecosystem?: string | null;
+    manifest?: string | null;
+    scope?: string | null;
+    severity?: string | null;
+    sort?: string | null;
+  } = {},
+) {
+  const params = new URLSearchParams();
+  if (options.state?.trim()) params.set("state", options.state.trim());
+  if (options.query?.trim()) params.set("q", options.query.trim());
+  if (options.package?.trim()) params.set("package", options.package.trim());
+  if (options.ecosystem?.trim())
+    params.set("ecosystem", options.ecosystem.trim());
+  if (options.manifest?.trim()) params.set("manifest", options.manifest.trim());
+  if (options.scope?.trim()) params.set("scope", options.scope.trim());
+  if (options.severity?.trim()) params.set("severity", options.severity.trim());
+  if (options.sort?.trim()) params.set("sort", options.sort.trim());
+  const query = params.toString();
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/dependabot${query ? `?${query}` : ""}`;
+}
+
+export function repositoryDependabotAlertDetailHref(
+  owner: string,
+  repo: string,
+  alertId: string | number,
+  options: {
+    package?: string | null;
+    state?: string | null;
+  } = {},
+) {
+  const params = new URLSearchParams();
+  if (options.package?.trim()) params.set("package", options.package.trim());
+  if (options.state?.trim()) params.set("state", options.state.trim());
+  const query = params.toString();
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/dependabot/${encodeURIComponent(String(alertId))}${query ? `?${query}` : ""}`;
+}
+
 export function repositoryDependencyPackageHref({
   fallbackHref,
   ecosystem,

@@ -24,7 +24,7 @@
 
 ## Phase 2: Editorial Dependabot Alerts List - filters, selection, and disabled state
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement `/{owner}/{repo}/security/dependabot` inside `RepositorySecurityShell` with Dependabot selected. The page should render Open/Closed tabs, search, filter menus, sort menu, selectable alert rows, disabled callout, settings link, and concrete alert detail links from the Phase 1 API.
 
