@@ -511,6 +511,55 @@ async fn project_workspace_returns_table_fields_items_filters_and_private_guards
         .iter()
         .any(|option| option == "year"));
 
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/views/{roadmap_view_id}/roadmap-settings"),
+        Some(&member_cookie),
+        json!({
+            "startFieldId": target_field,
+            "targetFieldId": target_field,
+            "markerFieldIds": [target_field, target_field],
+            "zoom": "year"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["selectedView"]["layout"], "roadmap");
+    assert_eq!(body["roadmapConfig"]["zoom"], "year");
+    assert_eq!(
+        body["roadmapConfig"]["markerFields"][0]["id"],
+        target_field.to_string()
+    );
+    let roadmap_zoom: String =
+        sqlx::query_scalar("SELECT zoom FROM project_roadmap_settings WHERE project_view_id = $1")
+            .bind(roadmap_view_id)
+            .fetch_one(&pool)
+            .await
+            .expect("roadmap settings should persist");
+    assert_eq!(roadmap_zoom, "year");
+    let roadmap_audits: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_events WHERE event_type = 'project.roadmap_settings.update'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("roadmap audit count should load");
+    assert!(roadmap_audits >= 1);
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/views/{roadmap_view_id}/roadmap-settings"),
+        Some(&member_cookie),
+        json!({
+            "startFieldId": target_field,
+            "targetFieldId": target_field,
+            "markerFieldIds": [],
+            "zoom": "week"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["error"]["code"], "validation_failed");
+
     let (status, _, body) = get_json(
         app.clone(),
         &format!("/api/projects/{project_id}/workspace?group=Missing"),

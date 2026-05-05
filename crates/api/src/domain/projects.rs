@@ -173,6 +173,17 @@ pub struct ProjectViewLayoutRequest {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ProjectRoadmapSettingsRequest {
+    pub start_field_id: Uuid,
+    pub target_field_id: Uuid,
+    #[serde(default)]
+    pub marker_field_ids: Vec<Uuid>,
+    pub zoom: String,
+    pub expected_updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectItemFieldValueRequest {
     pub value: Value,
     pub expected_updated_at: Option<DateTime<Utc>>,
@@ -999,6 +1010,128 @@ pub async fn update_project_view_layout_for_actor(
         "swimlaneFieldId": layout.swimlane_field_id,
         "startFieldId": layout.start_field_id,
         "targetFieldId": layout.target_field_id,
+    }))
+    .execute(pool)
+    .await?;
+
+    project_workspace(
+        pool,
+        project_id,
+        Some(actor_user_id),
+        ProjectWorkspaceQuery {
+            view: Some(&view_id.to_string()),
+            query: None,
+            sort: None,
+            group: None,
+            slice: None,
+            page: Some(1),
+            page_size: None,
+        },
+    )
+    .await
+}
+
+pub async fn update_project_roadmap_settings_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    view_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectRoadmapSettingsRequest,
+) -> Result<ProjectWorkspace, ProjectsError> {
+    let project = workspace_project_row(pool, project_id, Some(actor_user_id)).await?;
+    let can_manage = project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role);
+    if !can_manage {
+        return Err(ProjectsError::Forbidden);
+    }
+
+    let views = workspace_views(pool, project_id, &project.owner, project.number).await?;
+    let selected_view = views
+        .iter()
+        .find(|view| view.id == view_id)
+        .cloned()
+        .ok_or_else(|| {
+            ProjectsError::InvalidFilter("view must reference an existing project view".to_owned())
+        })?;
+    if selected_view.layout != "roadmap" {
+        return Err(ProjectsError::InvalidFilter(
+            "selected view must use the roadmap layout".to_owned(),
+        ));
+    }
+    if let Some(expected) = request.expected_updated_at {
+        if selected_view.updated_at != expected {
+            return Err(ProjectsError::Validation(
+                "Project view changed since it was loaded. Refresh before saving roadmap settings."
+                    .to_owned(),
+            ));
+        }
+    }
+
+    let fields = workspace_fields(pool, project_id, &selected_view).await?;
+    let settings = validate_project_roadmap_settings_request(&request, &fields)?;
+    let mut configuration = selected_view.configuration.clone();
+    if !configuration.is_object() {
+        configuration = json!({});
+    }
+    configuration["startFieldId"] = json!(settings.start_field_id.to_string());
+    configuration["targetFieldId"] = json!(settings.target_field_id.to_string());
+    configuration["markerFieldIds"] = json!(settings
+        .marker_field_ids
+        .iter()
+        .map(Uuid::to_string)
+        .collect::<Vec<_>>());
+    configuration["zoom"] = json!(settings.zoom);
+
+    sqlx::query(
+        r#"
+        INSERT INTO project_roadmap_settings
+          (project_view_id, start_field_id, target_field_id, marker_field_ids, zoom)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (project_view_id) DO UPDATE
+        SET start_field_id = EXCLUDED.start_field_id,
+            target_field_id = EXCLUDED.target_field_id,
+            marker_field_ids = EXCLUDED.marker_field_ids,
+            zoom = EXCLUDED.zoom,
+            updated_at = now()
+        "#,
+    )
+    .bind(view_id)
+    .bind(settings.start_field_id)
+    .bind(settings.target_field_id)
+    .bind(&settings.marker_field_ids)
+    .bind(&settings.zoom)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        UPDATE project_views
+        SET configuration = $3, updated_at = now()
+        WHERE project_id = $1 AND id = $2
+        "#,
+    )
+    .bind(project_id)
+    .bind(view_id)
+    .bind(&configuration)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, 'project.roadmap_settings.update', 'project_view', $2, $3)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(view_id.to_string())
+    .bind(json!({
+        "projectId": project_id,
+        "startFieldId": settings.start_field_id,
+        "targetFieldId": settings.target_field_id,
+        "markerFieldIds": settings.marker_field_ids,
+        "zoom": settings.zoom,
     }))
     .execute(pool)
     .await?;
@@ -2350,6 +2483,14 @@ struct ValidProjectViewLayout {
     target_field_id: Option<Uuid>,
 }
 
+#[derive(Debug)]
+struct ValidProjectRoadmapSettings {
+    start_field_id: Uuid,
+    target_field_id: Uuid,
+    marker_field_ids: Vec<Uuid>,
+    zoom: String,
+}
+
 fn validate_project_view_layout_request(
     request: &ProjectViewLayoutRequest,
     fields: &[ProjectWorkspaceField],
@@ -2413,6 +2554,45 @@ fn validate_project_view_layout_request(
         swimlane_field_id,
         start_field_id,
         target_field_id,
+    })
+}
+
+fn validate_project_roadmap_settings_request(
+    request: &ProjectRoadmapSettingsRequest,
+    fields: &[ProjectWorkspaceField],
+) -> Result<ValidProjectRoadmapSettings, ProjectsError> {
+    let start_field_id = validate_layout_field_id(
+        Some(request.start_field_id),
+        fields,
+        "startFieldId",
+        is_roadmap_date_field,
+    )?;
+    let target_field_id = validate_layout_field_id(
+        Some(request.target_field_id),
+        fields,
+        "targetFieldId",
+        is_roadmap_date_field,
+    )?;
+    let mut marker_field_ids = Vec::new();
+    for id in &request.marker_field_ids {
+        let marker_id =
+            validate_layout_field_id(Some(*id), fields, "markerFieldIds", is_roadmap_marker_field)?;
+        if !marker_field_ids.contains(&marker_id) {
+            marker_field_ids.push(marker_id);
+        }
+    }
+    let zoom = request.zoom.trim().to_ascii_lowercase();
+    if !matches!(zoom.as_str(), "month" | "quarter" | "year") {
+        return Err(ProjectsError::InvalidFilter(
+            "zoom must be month, quarter, or year".to_owned(),
+        ));
+    }
+
+    Ok(ValidProjectRoadmapSettings {
+        start_field_id,
+        target_field_id,
+        marker_field_ids,
+        zoom,
     })
 }
 

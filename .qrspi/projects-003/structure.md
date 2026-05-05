@@ -57,7 +57,7 @@
 
 ## Phase 4: Roadmap Layout and Timeline Controls - date and iteration timelines render with saved zoom/markers
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Render the Roadmap layout from selected start/target date or iteration fields and make roadmap settings real. Users can choose date fields, marker sets, and Month/Quarter/Year zoom, with grouped rows aligned to a timeline while existing filters/sort/slice remain active.
 

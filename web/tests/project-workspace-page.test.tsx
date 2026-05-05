@@ -65,6 +65,15 @@ function workspace(
         editable: true,
       },
       {
+        id: "field-start",
+        name: "Start date",
+        fieldType: "date",
+        position: 2,
+        settings: {},
+        hidden: false,
+        editable: true,
+      },
+      {
         id: "field-target",
         name: "Target date",
         fieldType: "date",
@@ -139,8 +148,8 @@ function workspace(
     },
     roadmapConfig: {
       startDateField: {
-        id: "field-target",
-        name: "Target date",
+        id: "field-start",
+        name: "Start date",
         fieldType: "date",
       },
       targetDateField: {
@@ -151,12 +160,23 @@ function workspace(
       markerFields: [],
       eligibleDateFields: [
         {
+          id: "field-start",
+          name: "Start date",
+          fieldType: "date",
+        },
+        {
           id: "field-target",
           name: "Target date",
           fieldType: "date",
         },
       ],
-      eligibleMarkerFields: [],
+      eligibleMarkerFields: [
+        {
+          id: "field-target",
+          name: "Target date",
+          fieldType: "date",
+        },
+      ],
       zoom: "month",
       zoomOptions: ["month", "quarter", "year"],
       unavailableReason: null,
@@ -185,6 +205,16 @@ function workspace(
             displayValue: "In progress",
           },
           {
+            fieldId: "field-start",
+            value: "2026-05-01",
+            displayValue: "2026-05-01",
+          },
+          {
+            fieldId: "field-target",
+            value: "2026-05-20",
+            displayValue: "2026-05-20",
+          },
+          {
             fieldId: "field-priority",
             value: "P1",
             displayValue: "P1",
@@ -209,6 +239,11 @@ function workspace(
             fieldId: "field-status",
             value: "Backlog",
             displayValue: "Backlog",
+          },
+          {
+            fieldId: "field-start",
+            value: "2026-06-01",
+            displayValue: "2026-06-01",
           },
           {
             fieldId: "field-priority",
@@ -929,6 +964,81 @@ describe("ProjectWorkspacePage", () => {
     );
     expect(assign).toHaveBeenCalledWith(
       "/orgs/namuh/projects/12/views/1?q=is%3Aopen&sort=manual&group=Status",
+    );
+  });
+
+  it("renders roadmap rows and persists date, marker, and zoom controls", async () => {
+    const assign = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => workspace(),
+    });
+    vi.stubGlobal("location", { assign });
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <ProjectWorkspacePage
+        owner="namuh"
+        scope="organization"
+        viewNumber={1}
+        workspace={workspace({
+          selectedView: {
+            ...workspace().selectedView,
+            layout: "roadmap",
+            name: "Roadmap",
+          },
+          roadmapConfig: {
+            ...(workspace().roadmapConfig ?? {
+              startDateField: null,
+              targetDateField: null,
+              markerFields: [],
+              eligibleDateFields: [],
+              eligibleMarkerFields: [],
+              zoom: "month",
+              zoomOptions: ["month", "quarter", "year"],
+              unavailableReason: null,
+            }),
+            zoom: "month",
+          },
+          filters: {
+            ...workspace().filters,
+            query: null,
+            tokens: [],
+          },
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Roadmap" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.getByText("May 1 - May 20")).toBeInTheDocument();
+    expect(screen.getAllByText("Missing dates")[0]).toHaveClass("chip", "warn");
+    expect(screen.getByText("Jan")).toHaveClass("t-label");
+
+    fireEvent.change(screen.getByLabelText("Roadmap target date field"), {
+      target: { value: "field-start" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "quarter" }));
+    fireEvent.click(screen.getAllByLabelText("Target date")[1]);
+    fireEvent.submit(screen.getByRole("form", { name: "Roadmap settings" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/projects/project-1/views/view-1/roadmap-settings",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          startFieldId: "field-start",
+          targetFieldId: "field-start",
+          markerFieldIds: ["field-target"],
+          zoom: "quarter",
+          expectedUpdatedAt: "2026-05-05T00:00:00Z",
+        }),
+      }),
+    );
+    expect(assign).toHaveBeenCalledWith(
+      "/orgs/namuh/projects/12/views/1?sort=manual&group=Status",
     );
   });
 

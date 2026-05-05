@@ -6934,5 +6934,24 @@
       "Pointer drag-and-drop is intentionally not implemented in Phase 3; accessible Move-to-column controls are the real mutation path for this phase.",
       "Phase 4 still needs real Roadmap rendering and timeline settings; Phase 5 still needs docs, final browser evidence, QA handoff, and build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-003",
+    "tests_written": [
+      "Completed Phase 4 Roadmap Layout and Timeline Controls without marking projects-003 build_pass=true.",
+      "Added PATCH /api/projects/{project_id}/views/{view_id}/roadmap-settings with signed-session auth, project write/admin permission checks, roadmap-view validation, stale expectedUpdatedAt protection, compatible start/target/marker field validation, Month/Quarter/Year zoom validation, project_roadmap_settings upsert, project_views configuration sync, audit_events writes, and refreshed workspace responses.",
+      "Added same-origin Next proxy at /api/projects/{projectId}/views/{viewId}/roadmap-settings plus typed updateProjectRoadmapSettingsFromCookie helper without JS-side auth.",
+      "Rendered Projects v2 Roadmap layout in ProjectWorkspacePage with grouped item rows, timeline buckets, item bars, missing-date warnings, marker selectors, start/target field selectors, Month/Quarter/Year controls, read-only disabled states, and Editorial primitives/tokens only.",
+      "Extended focused Rust projects_workspace_contract coverage for roadmap settings persistence, marker deduping, zoom validation, and audit evidence under the DB guard.",
+      "Extended focused Vitest coverage for roadmap rendering, missing-date warnings, timeline bucket labels, settings PATCH payloads, marker toggles, zoom changes, and URL state preservation.",
+      "Verification passed: cargo fmt --all --check, cargo check -p opengithub-api --tests, focused projects_workspace_contract compile/run under DB guard, web TypeScript, focused Biome, focused project-workspace-page Vitest with 15 tests, mandatory Editorial banned-value scan, full make check, and full make test with Cargo tests plus 545 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Focused Rust DB assertions self-skipped because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test failed with password authentication failed for user postgres; rerun projects_workspace_contract against a clean migrated credentialed database.",
+      "Full make test-e2e was attempted for the UI smoke but stayed silent for about two minutes while Playwright/API/Next children were active, so it was terminated and processes were cleaned up. Rerun against a healthy seeded TEST_DATABASE_URL to save ralph/screenshots/build/projects-003-phase4-roadmap-layout.jpg.",
+      "Probe invalid start/target/marker field ids, non-roadmap view denial, stale expectedUpdatedAt conflicts, read-only users with disabled roadmap settings, marker deduplication, Month/Quarter/Year bucket density, missing start or target dates, timezone/date-boundary rendering, iteration and milestone marker rendering, grouped row alignment, long item titles, keyboard-only settings form use, and mobile timeline scrolling bounded to the roadmap scroller.",
+      "Direct bar dragging and pane resizing are intentionally disabled/explanatory in Phase 4; QA should verify no visible control implies those unsupported pointer mutations are live.",
+      "Phase 5 still needs API docs, final browser evidence, QA handoff, and projects-003 build_pass bookkeeping."
+    ]
   }
 ]

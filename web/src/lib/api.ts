@@ -390,6 +390,14 @@ export type ProjectViewLayoutRequest = {
   expectedUpdatedAt: string;
 };
 
+export type ProjectRoadmapSettingsRequest = {
+  startFieldId: string;
+  targetFieldId: string;
+  markerFieldIds: string[];
+  zoom: "month" | "quarter" | "year" | string;
+  expectedUpdatedAt: string;
+};
+
 export type ProjectItemFieldValueRequest = {
   value: unknown;
   expectedUpdatedAt?: string | null;
@@ -7511,6 +7519,22 @@ export async function updateProjectViewLayoutFromCookie(
     "PATCH",
     "project_view_layout_failed",
     "Project view layout could not be saved.",
+    request,
+  );
+}
+
+export function updateProjectRoadmapSettingsFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  viewId: string,
+  request: ProjectRoadmapSettingsRequest,
+): Promise<ProjectWorkspace> {
+  return mutateProjectWorkspaceFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/views/${encodeURIComponent(viewId)}/roadmap-settings`,
+    "PATCH",
+    "project_roadmap_settings_failed",
+    "Project roadmap settings could not be saved.",
     request,
   );
 }

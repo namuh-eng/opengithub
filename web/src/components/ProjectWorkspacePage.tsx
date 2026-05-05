@@ -8,6 +8,7 @@ import type {
   ProjectWorkspaceField,
   ProjectWorkspaceFieldValue,
   ProjectWorkspaceItem,
+  ProjectWorkspaceLayoutField,
 } from "@/lib/api";
 import {
   organizationProjectWorkspaceHref,
@@ -137,6 +138,43 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function parseDateValue(value: ProjectWorkspaceFieldValue | null) {
+  const raw =
+    typeof value?.value === "string" ? value.value : value?.displayValue;
+  if (!raw || typeof raw !== "string") return null;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function roadmapItemDates(
+  item: ProjectWorkspaceItem,
+  startField: ProjectWorkspaceLayoutField | null | undefined,
+  targetField: ProjectWorkspaceLayoutField | null | undefined,
+) {
+  const start = startField
+    ? parseDateValue(
+        item.fieldValues.find((value) => value.fieldId === startField.id) ??
+          null,
+      )
+    : null;
+  const target = targetField
+    ? parseDateValue(
+        item.fieldValues.find((value) => value.fieldId === targetField.id) ??
+          null,
+      )
+    : null;
+  return {
+    start,
+    target,
+  };
+}
+
+function roadmapBuckets(zoom: string) {
+  if (zoom === "year") return ["2026", "2027", "2028"];
+  if (zoom === "quarter") return ["Q1", "Q2", "Q3", "Q4"];
+  return ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
+}
+
 function inputTypeForField(field: ProjectWorkspaceField) {
   if (field.fieldType === "date") return "date";
   if (field.fieldType === "number") return "number";
@@ -179,6 +217,22 @@ export function ProjectWorkspacePage({
   );
   const [saving, setSaving] = useState(false);
   const [layoutSaving, setLayoutSaving] = useState<string | null>(null);
+  const [roadmapStartFieldId, setRoadmapStartFieldId] = useState(
+    workspace.roadmapConfig?.startDateField?.id ??
+      workspace.roadmapConfig?.eligibleDateFields[0]?.id ??
+      "",
+  );
+  const [roadmapTargetFieldId, setRoadmapTargetFieldId] = useState(
+    workspace.roadmapConfig?.targetDateField?.id ??
+      workspace.roadmapConfig?.eligibleDateFields[0]?.id ??
+      "",
+  );
+  const [roadmapMarkerFieldIds, setRoadmapMarkerFieldIds] = useState(
+    workspace.roadmapConfig?.markerFields.map((field) => field.id) ?? [],
+  );
+  const [roadmapZoom, setRoadmapZoom] = useState(
+    workspace.roadmapConfig?.zoom ?? "month",
+  );
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
@@ -214,6 +268,25 @@ export function ProjectWorkspacePage({
   );
   const boardGroups = boardSwimlaneGroups(workspace.items, boardSwimlaneField);
   const groupedItems = useMemo(() => groupItems(workspace), [workspace]);
+  const roadmapStartField =
+    workspace.roadmapConfig?.eligibleDateFields.find(
+      (field) => field.id === roadmapStartFieldId,
+    ) ??
+    workspace.roadmapConfig?.startDateField ??
+    null;
+  const roadmapTargetField =
+    workspace.roadmapConfig?.eligibleDateFields.find(
+      (field) => field.id === roadmapTargetFieldId,
+    ) ??
+    workspace.roadmapConfig?.targetDateField ??
+    roadmapStartField;
+  const roadmapRows = groupItems(workspace).map((group) => ({
+    ...group,
+    items: group.items.map((item) => ({
+      item,
+      ...roadmapItemDates(item, roadmapStartField, roadmapTargetField),
+    })),
+  }));
   const baseQuery = {
     q: workspace.filters.query,
     sort: workspace.filters.sort,
@@ -349,6 +422,37 @@ export function ProjectWorkspacePage({
       return;
     }
     setSaveMessage(`${choice.label} layout saved`);
+    window.location.assign(currentHref);
+  }
+
+  async function saveRoadmapSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLayoutSaving("roadmap-settings");
+    setSaveError(null);
+    setSaveMessage(null);
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(workspace.project.id)}/views/${encodeURIComponent(workspace.selectedView.id)}/roadmap-settings`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          startFieldId: roadmapStartFieldId,
+          targetFieldId: roadmapTargetFieldId,
+          markerFieldIds: roadmapMarkerFieldIds,
+          zoom: roadmapZoom,
+          expectedUpdatedAt: workspace.selectedView.updatedAt,
+        }),
+      },
+    ).catch(() => null);
+    setLayoutSaving(null);
+    if (!response?.ok) {
+      const body = await response?.json().catch(() => null);
+      setSaveError(
+        body?.error?.message ?? "Project roadmap settings could not be saved.",
+      );
+      return;
+    }
+    setSaveMessage("Roadmap settings saved");
     window.location.assign(currentHref);
   }
 
@@ -1002,7 +1106,282 @@ export function ProjectWorkspacePage({
             ) : null}
           </div>
 
-          {workspace.selectedView.layout === "board" ? (
+          {workspace.selectedView.layout === "roadmap" ? (
+            <div className="card overflow-hidden">
+              <div
+                className="flex flex-wrap items-start justify-between gap-3 border-b px-4 py-3"
+                style={{ borderColor: "var(--line)" }}
+              >
+                <div>
+                  <h2 className="t-h3">Roadmap</h2>
+                  <p className="t-xs mt-1">
+                    Timeline rows use {roadmapStartField?.name ?? "start"} and{" "}
+                    {roadmapTargetField?.name ?? "target"} with {roadmapZoom}{" "}
+                    zoom.
+                  </p>
+                </div>
+                <form
+                  aria-label="Roadmap settings"
+                  className="grid w-full gap-2 md:w-auto md:grid-cols-[160px_160px_auto_auto]"
+                  onSubmit={saveRoadmapSettings}
+                >
+                  <label className="t-xs">
+                    Start date
+                    <select
+                      aria-label="Roadmap start date field"
+                      className="input mt-1 w-full"
+                      disabled={
+                        !workspace.viewerPermissions.canChangeLayout ||
+                        layoutSaving != null
+                      }
+                      onChange={(event) =>
+                        setRoadmapStartFieldId(event.target.value)
+                      }
+                      value={roadmapStartFieldId}
+                    >
+                      {(workspace.roadmapConfig?.eligibleDateFields ?? []).map(
+                        (field) => (
+                          <option key={field.id} value={field.id}>
+                            {field.name}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </label>
+                  <label className="t-xs">
+                    Target date
+                    <select
+                      aria-label="Roadmap target date field"
+                      className="input mt-1 w-full"
+                      disabled={
+                        !workspace.viewerPermissions.canChangeLayout ||
+                        layoutSaving != null
+                      }
+                      onChange={(event) =>
+                        setRoadmapTargetFieldId(event.target.value)
+                      }
+                      value={roadmapTargetFieldId}
+                    >
+                      {(workspace.roadmapConfig?.eligibleDateFields ?? []).map(
+                        (field) => (
+                          <option key={field.id} value={field.id}>
+                            {field.name}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </label>
+                  <fieldset className="flex flex-wrap items-end gap-1">
+                    <legend className="t-xs mb-1 w-full">Zoom</legend>
+                    {(
+                      workspace.roadmapConfig?.zoomOptions ?? [
+                        "month",
+                        "quarter",
+                        "year",
+                      ]
+                    ).map((zoom) => (
+                      <button
+                        aria-pressed={roadmapZoom === zoom}
+                        className={`btn sm ${roadmapZoom === zoom ? "primary" : ""}`}
+                        disabled={
+                          !workspace.viewerPermissions.canChangeLayout ||
+                          layoutSaving != null
+                        }
+                        key={zoom}
+                        onClick={() => setRoadmapZoom(zoom)}
+                        type="button"
+                      >
+                        {zoom}
+                      </button>
+                    ))}
+                  </fieldset>
+                  <button
+                    className="btn sm primary self-end"
+                    disabled={
+                      !workspace.viewerPermissions.canChangeLayout ||
+                      layoutSaving != null
+                    }
+                    type="submit"
+                  >
+                    {layoutSaving === "roadmap-settings"
+                      ? "Saving..."
+                      : "Save roadmap"}
+                  </button>
+                </form>
+              </div>
+              {workspace.roadmapConfig?.unavailableReason ||
+              !roadmapStartField ||
+              !roadmapTargetField ? (
+                <div className="p-4">
+                  <span className="chip warn">
+                    {workspace.roadmapConfig?.unavailableReason ??
+                      "Roadmap layout needs start and target date fields."}
+                  </span>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <div className="grid min-w-[980px] grid-cols-[280px_minmax(680px,1fr)]">
+                    <div
+                      className="border-r"
+                      style={{ borderColor: "var(--line)" }}
+                    >
+                      <div className="t-label px-4 py-3">Items</div>
+                      {roadmapRows.map((group) => (
+                        <Fragment key={group.label}>
+                          <div
+                            className="px-4 py-2"
+                            style={{ background: "var(--surface-2)" }}
+                          >
+                            <span className="t-label">{group.label}</span>{" "}
+                            <span className="t-xs t-num">{group.count}</span>
+                          </div>
+                          {group.items.map(({ item, start, target }) => (
+                            <div className="list-row px-4 py-3" key={item.id}>
+                              <Link
+                                className="font-medium no-underline"
+                                href={projectItemHref(item, currentHref)}
+                              >
+                                {item.title}
+                              </Link>
+                              <div className="t-xs mt-1 flex flex-wrap gap-2">
+                                {item.repository ? (
+                                  <span>{item.repository.fullName}</span>
+                                ) : (
+                                  <span>Draft</span>
+                                )}
+                                {start && target ? (
+                                  <span>
+                                    {formatDate(start.toISOString())} -{" "}
+                                    {formatDate(target.toISOString())}
+                                  </span>
+                                ) : (
+                                  <span className="chip warn">
+                                    Missing dates
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </Fragment>
+                      ))}
+                    </div>
+                    <div>
+                      <div className="grid grid-cols-6">
+                        {roadmapBuckets(roadmapZoom).map((bucket) => (
+                          <div
+                            className="t-label border-b px-3 py-3"
+                            key={bucket}
+                            style={{
+                              borderColor: "var(--line)",
+                              borderLeft: "1px solid var(--line-soft)",
+                            }}
+                          >
+                            {bucket}
+                          </div>
+                        ))}
+                      </div>
+                      {roadmapRows.map((group) => (
+                        <Fragment key={`timeline-${group.label}`}>
+                          <div
+                            className="h-9 px-3 py-2"
+                            style={{ background: "var(--surface-2)" }}
+                          >
+                            <span className="t-label">{group.label}</span>
+                          </div>
+                          {group.items.map(({ item, start, target }) => (
+                            <div
+                              className="relative h-[72px] border-b"
+                              key={`bar-${item.id}`}
+                              style={{
+                                borderColor: "var(--line-soft)",
+                                background:
+                                  "repeating-linear-gradient(90deg, transparent 0, transparent calc(16.66% - 1px), var(--line-soft) calc(16.66% - 1px), var(--line-soft) 16.66%)",
+                              }}
+                            >
+                              {start && target ? (
+                                <div
+                                  className="absolute left-[12%] right-[18%] top-5 rounded-[var(--radius)] px-3 py-2"
+                                  style={{
+                                    background: "var(--accent-soft)",
+                                    border: "1px solid var(--accent)",
+                                    color: "var(--ink-1)",
+                                  }}
+                                >
+                                  <div className="t-xs truncate">
+                                    {item.title}
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="chip warn absolute left-3 top-5">
+                                  Missing dates
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </Fragment>
+                      ))}
+                      <div
+                        className="flex flex-wrap gap-2 border-t px-4 py-3"
+                        style={{ borderColor: "var(--line)" }}
+                      >
+                        <span className="t-label">Markers</span>
+                        {(workspace.roadmapConfig?.eligibleMarkerFields ?? [])
+                          .length === 0 ? (
+                          <span className="chip soft">No marker fields</span>
+                        ) : (
+                          workspace.roadmapConfig?.eligibleMarkerFields.map(
+                            (field) => (
+                              <label
+                                className="chip soft cursor-pointer"
+                                key={field.id}
+                              >
+                                <input
+                                  checked={roadmapMarkerFieldIds.includes(
+                                    field.id,
+                                  )}
+                                  className="mr-2"
+                                  disabled={
+                                    !workspace.viewerPermissions
+                                      .canChangeLayout || layoutSaving != null
+                                  }
+                                  onChange={(event) =>
+                                    setRoadmapMarkerFieldIds((current) =>
+                                      event.target.checked
+                                        ? [...current, field.id]
+                                        : current.filter(
+                                            (id) => id !== field.id,
+                                          ),
+                                    )
+                                  }
+                                  type="checkbox"
+                                />
+                                {field.name}
+                              </label>
+                            ),
+                          )
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div
+                className="flex flex-wrap items-center gap-3 border-t px-4 py-3"
+                style={{ borderColor: "var(--line)" }}
+              >
+                {saveError ? (
+                  <span className="chip err">{saveError}</span>
+                ) : null}
+                {saveMessage ? (
+                  <span className="chip ok">{saveMessage}</span>
+                ) : null}
+                <span className="t-xs">
+                  Direct bar dragging is scheduled after this phase; settings
+                  and timeline controls persist now.
+                </span>
+              </div>
+            </div>
+          ) : workspace.selectedView.layout === "board" ? (
             <div className="card overflow-hidden">
               <div
                 className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3"
