@@ -28,6 +28,7 @@ use crate::{
         ActionsSecretsError, ActionsVariableMutation,
     },
     domain::discussions::{
+        commit_repository_discussion_category_template_by_owner_name,
         create_repository_discussion_by_owner_name,
         create_repository_discussion_category_by_owner_name,
         create_repository_discussion_category_section_by_owner_name,
@@ -35,9 +36,11 @@ use crate::{
         create_repository_discussion_reply_by_owner_name,
         delete_repository_discussion_category_by_owner_name,
         delete_repository_discussion_category_section_by_owner_name,
+        preview_repository_discussion_category_template_by_owner_name,
         reorder_repository_discussion_categories_by_owner_name,
         reorder_repository_discussion_category_sections_by_owner_name,
         repository_discussion_category_settings_for_actor_by_owner_name,
+        repository_discussion_category_template_for_actor_by_owner_name,
         repository_discussion_creation_for_actor_by_owner_name,
         repository_discussion_detail_for_actor_by_owner_name,
         repository_discussions_for_actor_by_owner_name,
@@ -51,10 +54,12 @@ use crate::{
         update_repository_discussion_state_by_owner_name, CreateDiscussionCategoryRequest,
         CreateDiscussionCategorySectionRequest, CreateDiscussionCommentRequest,
         CreateDiscussionRequest, DeleteDiscussionCategoryRequest, DiscussionAnswerRequest,
-        DiscussionCategoryOrderRequest, DiscussionMetadataRequest, DiscussionReactionMutation,
-        DiscussionReactionRequest, DiscussionSectionOrderRequest, DiscussionStateRequest,
-        DiscussionSubscriptionRequest, RepositoryDiscussionDetailQuery, RepositoryDiscussionsQuery,
-        UpdateDiscussionCategoryRequest, UpdateDiscussionCategorySectionRequest,
+        DiscussionCategoryOrderRequest, DiscussionCategoryTemplateCommitRequest,
+        DiscussionCategoryTemplatePreviewRequest, DiscussionMetadataRequest,
+        DiscussionReactionMutation, DiscussionReactionRequest, DiscussionSectionOrderRequest,
+        DiscussionStateRequest, DiscussionSubscriptionRequest, RepositoryDiscussionDetailQuery,
+        RepositoryDiscussionsQuery, UpdateDiscussionCategoryRequest,
+        UpdateDiscussionCategorySectionRequest,
     },
     domain::pages::{
         connect_repository_pages_actions_deployment_by_owner_name,
@@ -399,6 +404,14 @@ pub fn router() -> Router<AppState> {
         .route(
             "/:owner/:repo/settings/discussions/categories/:category_id",
             patch(update_discussion_category).delete(delete_discussion_category),
+        )
+        .route(
+            "/:owner/:repo/settings/discussions/categories/:category_id/template",
+            get(discussion_category_template).put(commit_discussion_category_template),
+        )
+        .route(
+            "/:owner/:repo/settings/discussions/categories/:category_id/template/preview",
+            post(preview_discussion_category_template),
         )
         .route(
             "/:owner/:repo/settings/discussions/sections",
@@ -1745,6 +1758,88 @@ async fn delete_discussion_category(
         )
     })?;
     Ok(Json(json!(settings)))
+}
+
+async fn discussion_category_template(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, category_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let template = repository_discussion_category_template_for_actor_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        category_id,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "discussion category was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(template)))
+}
+
+async fn preview_discussion_category_template(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, category_id)): Path<(String, String, Uuid)>,
+    RestJson(request): RestJson<DiscussionCategoryTemplatePreviewRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let form = preview_repository_discussion_category_template_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        category_id,
+        request,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "discussion category was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(form)))
+}
+
+async fn commit_discussion_category_template(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, category_id)): Path<(String, String, Uuid)>,
+    RestJson(request): RestJson<DiscussionCategoryTemplateCommitRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let response = commit_repository_discussion_category_template_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        category_id,
+        request,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "discussion category was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(response)))
 }
 
 async fn discussion_detail(

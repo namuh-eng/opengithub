@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -8,7 +9,8 @@ use super::{
     notifications::{create_notification, CreateNotification},
     permissions::RepositoryRole,
     repositories::{
-        get_repository_by_owner_name, repository_permission_for_user, RepositoryError,
+        get_repository_by_owner_name, replace_repository_snapshot, repository_permission_for_user,
+        CreateCommit, Repository, RepositoryError, RepositorySnapshot, RepositorySnapshotFile,
         RepositoryVisibility,
     },
 };
@@ -688,6 +690,46 @@ pub struct DeleteDiscussionCategoryRequest {
     pub move_to_category_id: Option<Uuid>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionCategoryTemplateView {
+    pub repository: DiscussionRepositorySummary,
+    pub viewer: DiscussionCategoryAdminViewer,
+    pub category: DiscussionCategoryAdminItem,
+    pub path: String,
+    pub content: String,
+    pub content_sha: String,
+    pub branch: String,
+    pub form: DiscussionFormDefinition,
+    pub commit_href: Option<String>,
+    pub blob_href: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionCategoryTemplatePreviewRequest {
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionCategoryTemplateCommitRequest {
+    pub content: String,
+    pub commit_message: String,
+    pub branch: Option<String>,
+    pub propose_change: Option<bool>,
+    pub expected_content_sha: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionCategoryTemplateCommitResponse {
+    pub template: DiscussionCategoryTemplateView,
+    pub proposed: bool,
+    pub commit_oid: String,
+    pub commit_href: String,
+}
+
 pub struct DiscussionReactionMutation<'a> {
     pub content: &'a str,
     pub reacted: bool,
@@ -890,6 +932,182 @@ pub async fn repository_discussion_category_settings_for_actor_by_owner_name(
         remaining_categories,
         sections,
         categories,
+    }))
+}
+
+pub async fn repository_discussion_category_template_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    category_id: Uuid,
+) -> Result<Option<DiscussionCategoryTemplateView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner, repo).await? else {
+        return Ok(None);
+    };
+    ensure_category_admin_allowed(pool, &repository, actor_user_id).await?;
+    let Some(category) =
+        load_discussion_category_admin_item(pool, &repository, category_id).await?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(
+        discussion_category_template_view(pool, &repository, actor_user_id, category, None).await?,
+    ))
+}
+
+pub async fn preview_repository_discussion_category_template_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    category_id: Uuid,
+    request: DiscussionCategoryTemplatePreviewRequest,
+) -> Result<Option<DiscussionFormDefinition>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner, repo).await? else {
+        return Ok(None);
+    };
+    ensure_category_admin_allowed(pool, &repository, actor_user_id).await?;
+    let Some(category) =
+        load_discussion_category_admin_item(pool, &repository, category_id).await?
+    else {
+        return Ok(None);
+    };
+    if category.is_poll {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "poll discussion categories cannot use YAML templates".to_owned(),
+        ));
+    }
+    let content = normalize_discussion_template_content(&request.content)?;
+    let path = discussion_template_path(&category.slug);
+    Ok(Some(parse_discussion_template(
+        &content,
+        &category.slug,
+        &path,
+    )))
+}
+
+pub async fn commit_repository_discussion_category_template_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    category_id: Uuid,
+    request: DiscussionCategoryTemplateCommitRequest,
+) -> Result<Option<DiscussionCategoryTemplateCommitResponse>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner, repo).await? else {
+        return Ok(None);
+    };
+    ensure_category_admin_allowed(pool, &repository, actor_user_id).await?;
+    if repository.is_archived {
+        return Err(RepositoryError::ArchivedRepositoryReadOnly);
+    }
+    let Some(category) =
+        load_discussion_category_admin_item(pool, &repository, category_id).await?
+    else {
+        return Ok(None);
+    };
+    if category.is_poll {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "poll discussion categories cannot use YAML templates".to_owned(),
+        ));
+    }
+
+    let content = normalize_discussion_template_content(&request.content)?;
+    let path = discussion_template_path(&category.slug);
+    let parsed = parse_discussion_template(&content, &category.slug, &path);
+    if !parsed.valid {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            parsed
+                .parse_error
+                .clone()
+                .unwrap_or_else(|| "discussion template YAML is invalid".to_owned()),
+        ));
+    }
+
+    let existing = current_discussion_template_file(pool, repository.id, &path).await?;
+    if let Some(expected) = request
+        .expected_content_sha
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let current_sha = existing
+            .as_ref()
+            .map(|file| content_sha(&file.content))
+            .unwrap_or_default();
+        if expected != current_sha {
+            return Err(RepositoryError::SecurityPolicyConflict);
+        }
+    }
+
+    let target_branch = normalize_template_branch(
+        &repository,
+        request.branch.as_deref(),
+        request.propose_change,
+    )?;
+    let commit_message = normalize_template_commit_message(&request.commit_message)?;
+    let commit = write_discussion_template_snapshot(
+        pool,
+        &repository,
+        actor_user_id,
+        &target_branch,
+        &path,
+        &content,
+        &commit_message,
+    )
+    .await?;
+
+    cache_discussion_template_form(pool, repository.id, category.id, &path, &content, &parsed)
+        .await?;
+    sqlx::query(
+        r#"
+        UPDATE discussion_categories
+        SET template_path = $3, updated_at = now()
+        WHERE repository_id = $1 AND id = $2
+        "#,
+    )
+    .bind(repository.id)
+    .bind(category.id)
+    .bind(&path)
+    .execute(pool)
+    .await?;
+    record_discussion_settings_audit(
+        pool,
+        actor_user_id,
+        repository.id,
+        "repository.discussion_category.template_update",
+        "discussion_category",
+        category.id,
+        json!({
+            "path": path,
+            "branch": target_branch,
+            "commitOid": commit.oid,
+            "proposed": target_branch != repository.default_branch,
+        }),
+    )
+    .await?;
+
+    let category = load_discussion_category_admin_item(pool, &repository, category_id)
+        .await?
+        .ok_or(RepositoryError::NotFound)?;
+    let view = discussion_category_template_view(
+        pool,
+        &repository,
+        actor_user_id,
+        category,
+        Some(content),
+    )
+    .await?;
+    let commit_href = format!(
+        "/{}/{}/commits/{}",
+        repository.owner_login, repository.name, commit.oid
+    );
+    Ok(Some(DiscussionCategoryTemplateCommitResponse {
+        template: view,
+        proposed: target_branch != repository.default_branch,
+        commit_oid: commit.oid,
+        commit_href,
     }))
 }
 
@@ -3265,6 +3483,168 @@ fn normalize_bool(value: Option<&str>, field: &str) -> Result<Option<bool>, Repo
     }
 }
 
+#[derive(Debug, Clone)]
+struct CurrentBranchCommit {
+    id: Uuid,
+    oid: String,
+}
+
+async fn load_discussion_category_admin_item(
+    pool: &PgPool,
+    repository: &Repository,
+    category_id: Uuid,
+) -> Result<Option<DiscussionCategoryAdminItem>, RepositoryError> {
+    Ok(load_discussion_category_admin_items(pool, repository)
+        .await?
+        .into_iter()
+        .find(|category| category.id == category_id))
+}
+
+async fn discussion_category_template_view(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    category: DiscussionCategoryAdminItem,
+    override_content: Option<String>,
+) -> Result<DiscussionCategoryTemplateView, RepositoryError> {
+    let (permission, can_read, can_write) =
+        discussion_permissions(pool, repository, actor_user_id).await?;
+    let path = category
+        .template_path
+        .clone()
+        .unwrap_or_else(|| discussion_template_path(&category.slug));
+    let content = match override_content {
+        Some(content) => content,
+        None => current_discussion_template_file(pool, repository.id, &path)
+            .await?
+            .map(|file| file.content)
+            .unwrap_or_else(|| default_discussion_template_content(&category)),
+    };
+    let form = if category.is_poll {
+        DiscussionFormDefinition {
+            category_slug: Some(category.slug.clone()),
+            template_path: None,
+            title: "Start a poll".to_owned(),
+            description: category.description.clone(),
+            body: String::new(),
+            fields: Vec::new(),
+            valid: false,
+            fallback: true,
+            parse_error: Some("Poll categories cannot use YAML templates.".to_owned()),
+        }
+    } else {
+        parse_discussion_template(&content, &category.slug, &path)
+    };
+    let blob_href = Some(format!(
+        "/{}/{}/blob/{}/{}",
+        repository.owner_login, repository.name, repository.default_branch, path
+    ));
+    Ok(DiscussionCategoryTemplateView {
+        repository: discussion_repository_summary(repository),
+        viewer: DiscussionCategoryAdminViewer {
+            authenticated: true,
+            permission,
+            can_read,
+            can_manage: can_write || repository.owner_user_id == Some(actor_user_id),
+        },
+        category,
+        content_sha: content_sha(&content),
+        content,
+        path,
+        branch: repository.default_branch.clone(),
+        form,
+        commit_href: None,
+        blob_href,
+    })
+}
+
+fn discussion_template_path(category_slug: &str) -> String {
+    format!(".github/DISCUSSION_TEMPLATE/{}.yml", slugify(category_slug))
+}
+
+fn default_discussion_template_content(category: &DiscussionCategoryAdminItem) -> String {
+    format!(
+        "name: \"{}\"\ndescription: \"{}\"\nbody:\n  - type: textarea\n    id: details\n    attributes:\n      label: Details\n      description: Share the context maintainers need.\n      placeholder: What should other contributors know?\n    validations:\n      required: true\n",
+        sanitize_template_text(&category.name),
+        sanitize_template_text(
+            category
+                .description
+                .as_deref()
+                .unwrap_or("Start a focused repository discussion.")
+        )
+    )
+}
+
+fn normalize_discussion_template_content(content: &str) -> Result<String, RepositoryError> {
+    let trimmed = content.trim();
+    if trimmed.is_empty() {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "discussion template YAML cannot be empty".to_owned(),
+        ));
+    }
+    if trimmed.len() > 32_000 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "discussion template YAML must be 32 KB or smaller".to_owned(),
+        ));
+    }
+    Ok(format!("{trimmed}\n"))
+}
+
+fn normalize_template_commit_message(message: &str) -> Result<String, RepositoryError> {
+    let message = sanitize_template_text(message);
+    if message.trim().is_empty() {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "commit message is required".to_owned(),
+        ));
+    }
+    if message.len() > 240 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "commit message must be 240 characters or fewer".to_owned(),
+        ));
+    }
+    Ok(message)
+}
+
+fn normalize_template_branch(
+    repository: &Repository,
+    branch: Option<&str>,
+    propose_change: Option<bool>,
+) -> Result<String, RepositoryError> {
+    let requested = branch.map(str::trim).filter(|value| !value.is_empty());
+    let branch = if propose_change.unwrap_or(false) {
+        requested.unwrap_or("discussion-template-update")
+    } else {
+        requested.unwrap_or(&repository.default_branch)
+    };
+    if branch.len() > 120
+        || branch.contains("..")
+        || branch.starts_with('/')
+        || branch.ends_with('/')
+        || !branch
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '/' | '.'))
+    {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "branch name is invalid".to_owned(),
+        ));
+    }
+    Ok(branch.to_owned())
+}
+
+fn content_sha(content: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(content.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+fn deterministic_content_oid(kind: &str, content: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(kind.as_bytes());
+    hasher.update([0]);
+    hasher.update(content.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
 async fn repository_discussions_policy_enabled(
     pool: &PgPool,
     repository_id: Uuid,
@@ -3844,6 +4224,210 @@ async fn load_discussion_template_from_git(
     .fetch_optional(pool)
     .await?;
     Ok(row.map(|row| (row.get("path"), row.get("content"))))
+}
+
+async fn current_discussion_template_file(
+    pool: &PgPool,
+    repository_id: Uuid,
+    path: &str,
+) -> Result<Option<RepositorySnapshotFile>, RepositoryError> {
+    let row = sqlx::query(
+        r#"
+        SELECT repository_files.path, repository_files.content,
+               repository_files.oid, repository_files.byte_size
+        FROM repository_files
+        JOIN repository_git_refs ON repository_git_refs.target_commit_id = repository_files.commit_id
+        JOIN repositories ON repositories.id = repository_files.repository_id
+        WHERE repository_files.repository_id = $1
+          AND repository_git_refs.name = 'refs/heads/' || repositories.default_branch
+          AND lower(repository_files.path) = lower($2)
+        LIMIT 1
+        "#,
+    )
+    .bind(repository_id)
+    .bind(path)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|row| RepositorySnapshotFile {
+        path: row.get("path"),
+        content: row.get("content"),
+        oid: row.get("oid"),
+        byte_size: row.get("byte_size"),
+    }))
+}
+
+async fn current_branch_commit(
+    pool: &PgPool,
+    repository_id: Uuid,
+    branch: &str,
+) -> Result<Option<CurrentBranchCommit>, RepositoryError> {
+    let row = sqlx::query(
+        r#"
+        SELECT commits.id, commits.oid
+        FROM repository_git_refs
+        JOIN commits ON commits.id = repository_git_refs.target_commit_id
+        WHERE repository_git_refs.repository_id = $1
+          AND repository_git_refs.name = $2
+          AND repository_git_refs.kind = 'branch'
+        "#,
+    )
+    .bind(repository_id)
+    .bind(format!("refs/heads/{branch}"))
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|row| CurrentBranchCommit {
+        id: row.get("id"),
+        oid: row.get("oid"),
+    }))
+}
+
+async fn current_branch_files(
+    pool: &PgPool,
+    repository_id: Uuid,
+    commit_id: Option<Uuid>,
+) -> Result<Vec<RepositorySnapshotFile>, RepositoryError> {
+    let Some(commit_id) = commit_id else {
+        return Ok(Vec::new());
+    };
+    let rows = sqlx::query(
+        r#"
+        SELECT path, content, oid, byte_size
+        FROM repository_files
+        WHERE repository_id = $1 AND commit_id = $2
+        ORDER BY lower(path)
+        "#,
+    )
+    .bind(repository_id)
+    .bind(commit_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| RepositorySnapshotFile {
+            path: row.get("path"),
+            content: row.get("content"),
+            oid: row.get("oid"),
+            byte_size: row.get("byte_size"),
+        })
+        .collect())
+}
+
+async fn write_discussion_template_snapshot(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    branch: &str,
+    path: &str,
+    content: &str,
+    commit_message: &str,
+) -> Result<super::repositories::Commit, RepositoryError> {
+    let current_ref = current_branch_commit(pool, repository.id, branch).await?;
+    let mut files =
+        current_branch_files(pool, repository.id, current_ref.as_ref().map(|r| r.id)).await?;
+    let blob_oid = deterministic_content_oid("blob", content);
+    if let Some(file) = files
+        .iter_mut()
+        .find(|file| file.path.eq_ignore_ascii_case(path))
+    {
+        file.path = path.to_owned();
+        file.content = content.to_owned();
+        file.oid = blob_oid.clone();
+        file.byte_size = content.len() as i64;
+    } else {
+        files.push(RepositorySnapshotFile {
+            path: path.to_owned(),
+            content: content.to_owned(),
+            oid: blob_oid,
+            byte_size: content.len() as i64,
+        });
+    }
+    files.sort_by(|left, right| left.path.to_lowercase().cmp(&right.path.to_lowercase()));
+    let tree_oid = deterministic_content_oid(
+        "tree",
+        &files
+            .iter()
+            .map(|file| format!("{}:{}:{}", file.path, file.oid, file.byte_size))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
+    let parent_oids = current_ref
+        .as_ref()
+        .map(|commit| vec![commit.oid.clone()])
+        .unwrap_or_default();
+    let commit_oid = deterministic_content_oid(
+        "commit",
+        &format!(
+            "{}:{}:{}:{}:{}",
+            repository.id,
+            branch,
+            tree_oid,
+            commit_message,
+            content_sha(content)
+        ),
+    );
+    replace_repository_snapshot(
+        pool,
+        repository.id,
+        RepositorySnapshot {
+            commit: CreateCommit {
+                oid: commit_oid,
+                author_user_id: Some(actor_user_id),
+                committer_user_id: Some(actor_user_id),
+                message: commit_message.to_owned(),
+                tree_oid: Some(tree_oid),
+                parent_oids,
+                committed_at: Utc::now(),
+            },
+            branch_name: branch.to_owned(),
+            files,
+        },
+    )
+    .await
+}
+
+async fn cache_discussion_template_form(
+    pool: &PgPool,
+    repository_id: Uuid,
+    category_id: Uuid,
+    path: &str,
+    content: &str,
+    parsed: &DiscussionFormDefinition,
+) -> Result<(), RepositoryError> {
+    let fields_value = serde_json::to_value(&parsed.fields).unwrap_or(Value::Array(Vec::new()));
+    sqlx::query(
+        r#"
+        INSERT INTO discussion_category_forms (
+            repository_id, category_id, template_path, title, description, body,
+            fields, valid, parse_error, content_sha
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, encode(sha256($10::bytea), 'hex'))
+        ON CONFLICT (repository_id, category_id)
+        DO UPDATE SET
+            template_path = EXCLUDED.template_path,
+            title = EXCLUDED.title,
+            description = EXCLUDED.description,
+            body = EXCLUDED.body,
+            fields = EXCLUDED.fields,
+            valid = EXCLUDED.valid,
+            parse_error = EXCLUDED.parse_error,
+            content_sha = EXCLUDED.content_sha,
+            parsed_at = now(),
+            updated_at = now()
+        "#,
+    )
+    .bind(repository_id)
+    .bind(category_id)
+    .bind(path)
+    .bind(Some(parsed.title.clone()))
+    .bind(parsed.description.clone())
+    .bind(&parsed.body)
+    .bind(fields_value.to_string())
+    .bind(parsed.valid)
+    .bind(parsed.parse_error.clone())
+    .bind(content.as_bytes())
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 fn parse_discussion_template(

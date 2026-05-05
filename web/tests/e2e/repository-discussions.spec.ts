@@ -544,6 +544,32 @@ test("repository discussions list filters, rows, category rail, and mobile layou
     path: "../ralph/screenshots/build/discussions-004-phase3-section-delete.jpg",
   });
 
+  await page
+    .getByRole("link", { name: ".github/DISCUSSION_TEMPLATE/q-a.yml" })
+    .click();
+  await expect(page).toHaveURL(/\/discussions\/categories\/[^/]+\/template$/);
+  await expect(
+    page.getByRole("heading", { name: /Q&A|Questions/i }),
+  ).toBeVisible();
+  await page
+    .getByLabel("Discussion template YAML")
+    .fill(
+      "name: Browser Q&A\ndescription: Browser smoke template\nbody:\n  - type: textarea\n    id: context\n    attributes:\n      label: Context\n      description: Share the browser context.\n    validations:\n      required: true\n",
+    );
+  await page.getByRole("button", { name: "Preview" }).click();
+  await expect(page.getByText("Template preview refreshed.")).toBeVisible();
+  await expect(page.getByText("Context")).toBeVisible();
+  await page
+    .getByLabel("Commit message")
+    .fill(`Update discussion template ${suffix}`);
+  await page.getByRole("button", { name: "Commit template" }).click();
+  await expect(page.getByText(/Template change was committed/)).toBeVisible();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/discussions-004-phase4-template-editor.jpg",
+  });
+
   await page.setViewportSize({ width: 390, height: 900 });
   await expect(page.locator("body")).not.toHaveCSS("overflow-x", "scroll");
   await expectNoDeadControls(page);

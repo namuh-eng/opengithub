@@ -64,7 +64,7 @@
 
 ## Phase 4: Discussion Template File Editor - YAML commit and preview loop
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Let maintainers edit category form templates through the repository file editor path for `.github/DISCUSSION_TEMPLATE/*.yml`. The editor should validate YAML, preview the parsed form schema, and commit/propose changes through existing Git object/commit infrastructure.
 

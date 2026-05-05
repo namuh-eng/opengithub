@@ -4821,6 +4821,38 @@ export type DeleteDiscussionCategoryRequest = {
   moveToCategoryId?: string | null;
 };
 
+export type DiscussionCategoryTemplateView = {
+  repository: DiscussionRepositorySummary;
+  viewer: DiscussionCategoryAdminViewer;
+  category: DiscussionCategoryAdminItem;
+  path: string;
+  content: string;
+  contentSha: string;
+  branch: string;
+  form: DiscussionFormDefinition;
+  commitHref: string | null;
+  blobHref: string | null;
+};
+
+export type DiscussionCategoryTemplatePreviewRequest = {
+  content: string;
+};
+
+export type DiscussionCategoryTemplateCommitRequest = {
+  content: string;
+  commitMessage: string;
+  branch?: string | null;
+  proposeChange?: boolean | null;
+  expectedContentSha?: string | null;
+};
+
+export type DiscussionCategoryTemplateCommitResponse = {
+  template: DiscussionCategoryTemplateView;
+  proposed: boolean;
+  commitOid: string;
+  commitHref: string;
+};
+
 export type DiscussionFormField = {
   id: string;
   fieldType: "input" | "textarea" | "dropdown" | "checkboxes" | string;
@@ -14271,6 +14303,107 @@ export async function deleteRepositoryDiscussionCategoryFromCookie(
     );
   }
   return payload as DiscussionCategorySettingsView;
+}
+
+export async function getRepositoryDiscussionCategoryTemplateFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  categoryId: string,
+): Promise<DiscussionCategoryTemplateView | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/discussions/categories/${encodeURIComponent(categoryId)}/template`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Discussion category template is temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (payload as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "repository_discussion_category_template_failed",
+          message: "Discussion category template could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+  return payload as DiscussionCategoryTemplateView;
+}
+
+export async function previewRepositoryDiscussionCategoryTemplateFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  categoryId: string,
+  request: DiscussionCategoryTemplatePreviewRequest,
+): Promise<DiscussionFormDefinition> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/discussions/categories/${encodeURIComponent(categoryId)}/template/preview`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ??
+        "Discussion category template preview could not be generated.",
+      { cause: envelope },
+    );
+  }
+  return payload as DiscussionFormDefinition;
+}
+
+export async function commitRepositoryDiscussionCategoryTemplateFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  categoryId: string,
+  request: DiscussionCategoryTemplateCommitRequest,
+): Promise<DiscussionCategoryTemplateCommitResponse> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/discussions/categories/${encodeURIComponent(categoryId)}/template`,
+    {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ??
+        "Discussion category template could not be committed.",
+      { cause: envelope },
+    );
+  }
+  return payload as DiscussionCategoryTemplateCommitResponse;
 }
 
 export async function createRepositoryDiscussionFromCookie(

@@ -6491,5 +6491,23 @@
       "Phase 4 still needs the real YAML template editor preview/commit behavior for .github/DISCUSSION_TEMPLATE/*.yml.",
       "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures."
     ]
+  },
+  {
+    "feature_id": "discussions-004",
+    "tests_written": [
+      "Completed Phase 4 Discussion Template File Editor without marking discussions-004 build_pass=true.",
+      "Added authenticated Rust routes for GET /api/repos/{owner}/{repo}/settings/discussions/categories/{category_id}/template, POST /template/preview, and PUT /template with maintainer-only access, archived guardrails, poll-category rejection, YAML size bounds, conflict-safe expectedContentSha checks, repository snapshot commits, category template_path refresh, parsed-form cache refresh, and audit events.",
+      "Added typed frontend DTOs/helpers, server-session helper, same-origin preview/commit proxies, and /{owner}/{repo}/discussions/categories/{id}/template Editorial page with YAML textarea, parsed form preview, branch/propose controls, commit message field, concrete file/settings links, and no GitHub visual values.",
+      "Extended focused Vitest coverage for YAML rendering, preview payloads, conflict-safe commit payloads, sanitized error display, concrete links, and no dead controls.",
+      "Extended the repository-discussions Playwright smoke with the template preview/commit path and screenshot target ralph/screenshots/build/discussions-004-phase4-template-editor.jpg when a seeded browser database is available.",
+      "Verification passed: cargo fmt --all --check; cargo check -p opengithub-api --tests; cd web && npm test -- --run repository-discussion-category-template-page.test.tsx with 3 tests; cd web && npx tsc --noEmit --pretty false; focused Biome checks; full TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check; full same-env make test with Cargo tests plus 513 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "make test-e2e was attempted with TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test. The wrapper ran 141 Playwright tests, 19 public/docs tests passed, and 122 signed-session seeded tests failed because dashboard_e2e_seed could not authenticate to Postgres: password authentication failed for user postgres.",
+      "Rerun web/tests/e2e/repository-discussions.spec.ts against a clean migrated credentialed TEST_DATABASE_URL to verify template preview/commit in the browser and save ralph/screenshots/build/discussions-004-phase4-template-editor.jpg.",
+      "Rerun focused Rust DB-backed assertions against a clean migrated credentialed TEST_DATABASE_URL to prove repository_files/commits/repository_git_refs, discussion_category_forms cache refresh, and audit_events rows for template commits.",
+      "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Phase 5 still needs API docs, final browser evidence, QA handoff, prd.json build_pass=true, and final desktop/mobile screenshots."
+    ]
   }
 ]
