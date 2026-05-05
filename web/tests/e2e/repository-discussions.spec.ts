@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { execFileSync } from "node:child_process";
 import { expect, type Page, test } from "@playwright/test";
 
@@ -281,6 +282,33 @@ test("repository discussions list filters, rows, category rail, and mobile layou
   await expect(
     page.getByRole("link", { name: "Choose a different category" }),
   ).toHaveAttribute("href", /\/discussions\/new\/choose$/);
+  await page
+    .getByRole("textbox", { name: "Title" })
+    .fill(`Search syntax ideas ${Date.now()}`);
+  await page
+    .getByLabel("Discussion body")
+    .fill("Support saved discussion searches with **Markdown** preview.");
+  await page.getByRole("tab", { name: "Preview" }).click();
+  await expect(page.getByText("Markdown")).toBeVisible();
+  await page.getByRole("tab", { name: "Write" }).click();
+  await page.setInputFiles("input#discussion-attachments", {
+    name: "sketch.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("discussion sketch"),
+  });
+  await expect(page.getByText("sketch.txt")).toBeVisible();
+  await page
+    .getByRole("checkbox", {
+      name: /I have done a search for similar discussions/i,
+    })
+    .check();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/discussions-002-phase3-generic-create.jpg",
+  });
+  await page.getByRole("button", { name: "Start discussion" }).click();
+  await expect(page).toHaveURL(/\/discussions\/903$/);
 
   await page.goto(
     `${seeded.treeRepositoryHref}/discussions/categories/ideas?q=no-match`,

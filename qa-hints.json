@@ -6300,5 +6300,22 @@
       "Focused Playwright chooser smoke reached the browser runner and compiled the app, but database seeding failed because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test rejected the available postgres credentials. Re-run web/tests/e2e/repository-discussions.spec.ts with a credentialed migrated TEST_DATABASE_URL to verify chooser navigation and save ralph/screenshots/build/discussions-002-phase2-chooser.jpg.",
       "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures."
     ]
+  },
+  {
+    "feature_id": "discussions-002",
+    "tests_written": [
+      "Completed Phase 3 generic discussion creation without marking discussions-002 build_pass=true.",
+      "Added /{owner}/{repo}/discussions/new/create same-origin route forwarding to the Rust discussion create API with signed cookies and stable validation/error envelopes.",
+      "Added RepositoryDiscussionCreatePage with selected category summary, Choose different category link, Markdown write/preview tabs, toolbar controls, attachment draft metadata selection/removal, required similar-search acknowledgement, server-confirmed create, and redirect to the returned discussion href.",
+      "Extended repository-discussion-create Vitest coverage for generic composer rendering, concrete links, Editorial guardrails, sanitized Markdown preview without create, title/acknowledgement validation, attachment metadata payloads, redirect behavior, and oversized attachment blocking.",
+      "Extended the focused repository-discussions Playwright smoke with the Phase 3 generic composer path, preview, attachment selection, acknowledgement, submit redirect, and screenshot target ralph/screenshots/build/discussions-002-phase3-generic-create.jpg.",
+      "Verification passed: cd web && npm test -- --run repository-discussion-create-page.test.tsx; web TypeScript; focused Biome; full TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check; full DB_SSL=false CARGO_INCREMENTAL=0 make test with Cargo tests plus 499 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Focused Playwright browser smoke is still blocked by local database schema drift: localhost:55432 rejects the available postgres credentials, and localhost:5432 required multiple additive migrations before repository lookup still returned unavailable metadata. Re-run tests/e2e/repository-discussions.spec.ts against a clean migrated TEST_DATABASE_URL to save the Phase 3 screenshot.",
+      "The UI records browser-selected files as bounded draft metadata; real S3/object upload draft creation and verification still need deeper QA when the upload path is connected.",
+      "Phase 4 still needs YAML discussion form rendering, required field validation in the browser, poll creation, poll validation, and form/poll persistence browser evidence.",
+      "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures."
+    ]
   }
 ]

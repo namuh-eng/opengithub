@@ -47,7 +47,7 @@
 
 ## Phase 3: Markdown Composer and Similar-Search Acknowledgement - generic discussion creation
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement the normal new-discussion form for categories that use the generic title/body composer or invalid YAML fallback. Markdown preview must render without creating a discussion, similar-search must derive from the typed title, acknowledgement is required, attachments use real upload metadata, and submit redirects to the new discussion detail URL.
 

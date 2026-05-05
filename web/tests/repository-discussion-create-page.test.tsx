@@ -1,6 +1,13 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RepositoryDiscussionCategoryChooser } from "@/components/RepositoryDiscussionCategoryChooser";
+import { RepositoryDiscussionCreatePage } from "@/components/RepositoryDiscussionCreatePage";
 import type { DiscussionCreationView, RepositoryOverview } from "@/lib/api";
 import {
   repositoryDiscussionChooseCategoryHref,
@@ -147,6 +154,27 @@ function creationView(
   return { ...base, ...overrides };
 }
 
+function creationFormView(
+  overrides: Partial<DiscussionCreationView> = {},
+): DiscussionCreationView {
+  const view = creationView(overrides);
+  return {
+    ...view,
+    selectedCategory: view.categories[0],
+    form: {
+      ...view.form,
+      categorySlug: "general",
+      title: "",
+      body: "",
+      fallback: true,
+    },
+  };
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe("RepositoryDiscussionCategoryChooser", () => {
   it("renders Editorial category cards with working Get started links", () => {
     const { container } = render(
@@ -245,5 +273,194 @@ describe("RepositoryDiscussionCategoryChooser", () => {
         next: "https://example.com/unsafe",
       }),
     ).toBe("/namuh-eng/opengithub/discussions/new?category=general");
+  });
+});
+
+describe("RepositoryDiscussionCreatePage", () => {
+  it("renders the generic Markdown composer, similar-search acknowledgement, and safe links", () => {
+    const { container } = render(
+      <RepositoryDiscussionCreatePage
+        creation={creationFormView()}
+        owner="namuh-eng"
+        repo="opengithub"
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: /General/ })).toBeVisible();
+    expect(screen.getByLabelText("Discussion body")).toBeVisible();
+    expect(
+      screen.getByRole("toolbar", { name: "Markdown formatting toolbar" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("checkbox", {
+        name: /I have done a search for similar discussions/i,
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Choose a different category" }),
+    ).toHaveAttribute("href", "/namuh-eng/opengithub/discussions/new/choose");
+    expect(container.querySelector('[href="#"]')).toBeNull();
+    expect(container.innerHTML).not.toContain("#0969da");
+    expect(container.innerHTML).not.toContain("@primer/");
+  });
+
+  it("renders sanitized Markdown preview without creating a discussion", async () => {
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      expect(String(url)).toBe("/markdown/preview");
+      return new Response(
+        JSON.stringify({
+          contentSha: "preview-sha",
+          html: "<p><strong>Preview</strong></p>",
+          cached: false,
+        }),
+        { status: 200 },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryDiscussionCreatePage
+        creation={creationFormView()}
+        owner="namuh-eng"
+        repo="opengithub"
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Discussion body"), {
+      target: { value: "**Preview**<script>bad()</script>" },
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+
+    expect(await screen.findByText("Preview")).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires title and similar-search acknowledgement before submit", async () => {
+    render(
+      <RepositoryDiscussionCreatePage
+        creation={creationFormView()}
+        owner="namuh-eng"
+        repo="opengithub"
+      />,
+    );
+
+    fireEvent.blur(screen.getByRole("textbox", { name: /Title/i }));
+    fireEvent.blur(
+      screen.getByRole("checkbox", {
+        name: /I have done a search for similar discussions/i,
+      }),
+    );
+
+    expect(screen.getByText("Title is required.")).toBeVisible();
+    expect(
+      screen.getByText("Similar-search acknowledgement is required."),
+    ).toBeVisible();
+  });
+
+  it("submits generic discussions with attachment metadata and redirects", async () => {
+    const assign = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { assign },
+    });
+    const fetchMock = vi.fn(
+      async (url: string | URL | Request, init?: RequestInit) => {
+        expect(String(url)).toBe(
+          "/namuh-eng/opengithub/discussions/new/create",
+        );
+        const body = JSON.parse(String(init?.body));
+        expect(body).toMatchObject({
+          categorySlug: "general",
+          title: "Search syntax ideas",
+          body: "Support saved discussion searches.",
+          similarSearchAcknowledged: true,
+        });
+        expect(body.attachmentDrafts[0]).toMatchObject({
+          fileName: "sketch.png",
+          contentType: "image/png",
+          byteSize: 128,
+        });
+        expect(body.attachmentDrafts[0].storageKey).toContain(
+          "discussion-drafts/",
+        );
+        return new Response(
+          JSON.stringify({
+            discussionId: "discussion-1",
+            discussionNumber: 42,
+            href: "/namuh-eng/opengithub/discussions/42",
+            title: "Search syntax ideas",
+            category: creationFormView().selectedCategory,
+          }),
+          { status: 201 },
+        );
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryDiscussionCreatePage
+        creation={creationFormView()}
+        owner="namuh-eng"
+        repo="opengithub"
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Title *"), {
+      target: { value: "Search syntax ideas" },
+    });
+    fireEvent.change(screen.getByLabelText("Discussion body"), {
+      target: { value: "Support saved discussion searches." },
+    });
+    const file = new File(["x".repeat(128)], "sketch.png", {
+      type: "image/png",
+    });
+    fireEvent.change(screen.getByLabelText("Attachments"), {
+      target: { files: [file] },
+    });
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: /I have done a search for similar discussions/i,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Start discussion" }));
+
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith(
+        "/namuh-eng/opengithub/discussions/42",
+      ),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks oversized attachments before contacting the create route", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryDiscussionCreatePage
+        creation={creationFormView()}
+        owner="namuh-eng"
+        repo="opengithub"
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Title *"), {
+      target: { value: "Large file" },
+    });
+    const file = new File(["x"], "large.bin", {
+      type: "application/octet-stream",
+    });
+    Object.defineProperty(file, "size", { value: 25 * 1024 * 1024 + 1 });
+    fireEvent.change(screen.getByLabelText("Attachments"), {
+      target: { files: [file] },
+    });
+
+    expect(
+      await screen.findByText("large.bin is larger than 25 MiB."),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Start discussion" }),
+    ).toBeDisabled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

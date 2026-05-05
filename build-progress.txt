@@ -1,3 +1,14 @@
+2026-05-05 - discussions-002 phase 3 generic Markdown discussion creation
+
+- Completed Phase 3 from `.qrspi/discussions-002/structure.md` without marking `discussions-002.build_pass=true`; Phases 4-5 remain.
+- Added a same-origin Next route for `/[owner]/[repo]/discussions/new/create` that forwards generic discussion create requests to the Rust API with signed cookies, title/category/acknowledgement validation, normalized body handling, and stable error envelopes.
+- Replaced the selected-category placeholder with `RepositoryDiscussionCreatePage`: selected category summary, Choose a different category link, Editorial Markdown write/preview composer, toolbar controls, attachment draft metadata selection/removal, required similar-search acknowledgement with title-derived search link, server-confirmed create, and redirect to the returned discussion href.
+- Extended focused Vitest coverage for composer rendering, concrete links/no dead controls, Markdown preview without creation, required title and similar-search acknowledgement, attachment payload shape, redirect behavior, oversized attachment blocking, and Editorial banned-value guardrails.
+- Extended the focused Playwright discussion smoke with the Phase 3 generic composer flow and screenshot target `ralph/screenshots/build/discussions-002-phase3-generic-create.jpg`.
+- Verification passed: `cd web && npm test -- --run repository-discussion-create-page.test.tsx`; `cd web && npx tsc --noEmit --pretty false`; focused Biome; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 499 web tests.
+- Browser smoke was attempted against `localhost:55432` and `localhost:5432`. `localhost:55432` rejected the available postgres credentials; `localhost:5432` connected but had stale schema drift requiring additive migrations and still rendered repository metadata unavailable, so the final Phase 3 screenshot remains a QA handoff item.
+- Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-05 - code-security-005 phase 5 final docs, QA handoff, and build pass
 
 - Completed Phase 5 from `.qrspi/code-security-005/structure.md`: repository security advisories are now locked as a completed vertical slice and `code-security-005.build_pass=true`.
