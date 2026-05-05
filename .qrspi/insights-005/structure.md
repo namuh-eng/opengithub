@@ -41,7 +41,7 @@
 
 ## Phase 3: SBOM Export Job and Download Flow - real export artifact
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement the Export SBOM button as a real server action backed by Rust API storage. `POST /api/repos/{owner}/{repo}/network/dependencies/sbom` should create an export job, produce an SPDX-style JSON artifact from indexed dependency rows, audit the export, and return a signed download URL or pending status. The UI should show pending/success/error feedback and expose the download when ready.
 

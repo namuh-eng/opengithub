@@ -178,14 +178,23 @@ test("repository Dependencies renders filters, rows, and concrete actions", asyn
   await expect(
     page.getByRole("list", { name: "Indexed dependency manifests" }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Export SBOM" })).toHaveAttribute(
-    "href",
-    /\/api\/repos\/.*\/network\/dependencies\/sbom$/,
-  );
+  await page.getByRole("button", { name: "Export SBOM" }).click();
+  await expect(page.getByText("Latest SBOM ready")).toBeVisible();
+  const downloadHref = await page
+    .getByRole("link", { name: "Download SBOM" })
+    .getAttribute("href");
+  expect(downloadHref).toMatch(/\/network\/dependencies\/sbom\/.+/);
+  const sbom = await page.request.get(downloadHref ?? "");
+  expect(sbom.status()).toBe(200);
+  expect(sbom.headers()["content-type"]).toContain("json");
+  expect(sbom.headers()["content-disposition"]).toContain("attachment");
+  const sbomBody = await sbom.json();
+  expect(sbomBody.spdxVersion).toBe("SPDX-2.3");
+  expect(JSON.stringify(sbomBody)).toContain("@playwright/test");
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/insights-005-phase2-dependencies.jpg",
+    path: "../ralph/screenshots/build/insights-005-phase3-sbom-export.jpg",
   });
 
   await page.setViewportSize({ width: 390, height: 844 });

@@ -2934,6 +2934,19 @@ export type RepositoryDependencyExportState = {
   latestStatus: string | null;
 };
 
+export type RepositorySbomExport = {
+  id: string;
+  status: string;
+  format: string;
+  artifactSha256: string | null;
+  artifactByteSize: number;
+  downloadHref: string | null;
+  pollHref: string;
+  expiresAt: string | null;
+  createdAt: string;
+  completedAt: string | null;
+};
+
 export type RepositoryDependencyLinks = {
   dependenciesHref: string;
   dependentsHref: string;
@@ -9658,6 +9671,58 @@ export async function getRepositoryDependenciesFromCookie(
     ok: true,
     dependencies: (await response.json()) as RepositoryDependenciesView,
   };
+}
+
+export async function startRepositorySbomExportFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+): Promise<RepositorySbomExport> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/network/dependencies/sbom`,
+    {
+      method: "POST",
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const body = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(body?.error.message ?? "SBOM export failed", {
+      cause: body,
+    });
+  }
+
+  return (await response.json()) as RepositorySbomExport;
+}
+
+export async function downloadRepositorySbomExportFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  exportId: string,
+): Promise<Response> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/network/dependencies/sbom/${encodeURIComponent(exportId)}`,
+    {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok && response.status !== 202) {
+    const body = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(body?.error.message ?? "SBOM download failed", {
+      cause: body,
+    });
+  }
+
+  return response;
 }
 
 export async function saveRepositoryForkDefaultsFromCookie(

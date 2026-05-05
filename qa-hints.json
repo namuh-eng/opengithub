@@ -5660,5 +5660,23 @@
       "Run keyboard-only and screen-reader traversal for the Dependencies tab, filter menu, relationship chips, empty/unavailable states, long package names, and mobile layout.",
       "make test-e2e wrapper produced no output for 90 seconds and was terminated to avoid stale child processes; direct focused Playwright passed with screenshot evidence."
     ]
+  },
+  {
+    "feature_id": "insights-005",
+    "tests_written": [
+      "Completed Phase 3 SBOM Export Job and Download Flow without marking insights-005 build_pass=true.",
+      "Added additive sbom_exports artifact_json storage plus POST /api/repos/{owner}/{repo}/network/dependencies/sbom and GET /api/repos/{owner}/{repo}/network/dependencies/sbom/{export_id}.",
+      "Implemented deterministic SPDX-2.3 JSON generation from real indexed dependency rows, ready export metadata, SHA-256/byte-size tracking, attachment download headers, and repository settings audit metadata.",
+      "Added a signed-cookie Next.js proxy and RepositoryDependencyExportButton with pending, success, error, and signed download states instead of a fake link.",
+      "Extended Rust contract, Vitest, and Playwright coverage for export creation, valid JSON download, audit writes, no secret leakage, no dead controls, mobile no-overflow, and screenshot ralph/screenshots/build/insights-005-phase3-sbom-export.jpg.",
+      "Verification passed: focused Rust dependency graph contract tests, focused dependency graph Vitest tests, TypeScript check, focused Biome check, focused direct Playwright dependency graph smoke, full make check, full make test with Cargo tests plus 445 web tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 still needs Dependents API/page filters, public-only dependent repository visibility, owner/package narrowing, approximate-count warning disclosure, and mobile wrapping coverage.",
+      "Phase 5 still needs final /docs/api coverage for dependency graph, SBOM, and dependents plus final build_pass bookkeeping.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Run keyboard-only and screen-reader traversal for the Export SBOM button, status chip, download link, Dependencies filters, empty/unavailable states, and mobile layout.",
+      "A direct full Playwright run was attempted and stopped after repeated pre-existing failures from the local dirty migration warning `migration 202605030041 was previously applied but has been modified`; the focused dependency graph Playwright smoke passed end to end."
+    ]
   }
 ]

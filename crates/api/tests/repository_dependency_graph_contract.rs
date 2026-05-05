@@ -1,6 +1,6 @@
 use axum::{
     body::{to_bytes, Body},
-    http::{header, Request, StatusCode},
+    http::{header, Method, Request, StatusCode},
 };
 use chrono::{Duration, Utc};
 use opengithub_api::{
@@ -59,6 +59,27 @@ async fn database_pool() -> Option<PgPool> {
             "continuing dependency graph scenario with pre-applied schema after migration warning: {error}"
         );
     }
+    if let Err(error) =
+        sqlx::query("ALTER TABLE sbom_exports ADD COLUMN IF NOT EXISTS artifact_json jsonb")
+            .execute(&pool)
+            .await
+    {
+        eprintln!("skipping dependency graph scenario; sbom schema failed: {error}");
+        return None;
+    }
+    if let Err(error) = sqlx::query(
+        r#"
+        CREATE INDEX IF NOT EXISTS sbom_exports_ready_download_idx
+        ON sbom_exports (repository_id, id, status)
+        WHERE status = 'ready'
+        "#,
+    )
+    .execute(&pool)
+    .await
+    {
+        eprintln!("skipping dependency graph scenario; sbom index failed: {error}");
+        return None;
+    }
     Some(pool)
 }
 
@@ -115,7 +136,17 @@ async fn cookie_header(pool: &PgPool, config: &AppConfig, user: &User) -> String
 }
 
 async fn get_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (StatusCode, Value) {
+    request_json(app, Method::GET, uri, cookie).await
+}
+
+async fn request_json(
+    app: axum::Router,
+    method: Method,
+    uri: &str,
+    cookie: Option<&str>,
+) -> (StatusCode, Value) {
     let mut builder = Request::builder().uri(uri);
+    builder = builder.method(method);
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }
@@ -131,6 +162,27 @@ async fn get_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (Status
         status,
         serde_json::from_slice(&bytes).expect("response should be json"),
     )
+}
+
+async fn get_response(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+) -> (StatusCode, axum::http::HeaderMap, Vec<u8>) {
+    let mut builder = Request::builder().method(Method::GET).uri(uri);
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(builder.body(Body::empty()).expect("request should build"))
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let headers = response.headers().clone();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    (status, headers, bytes.to_vec())
 }
 
 async fn seed_file(pool: &PgPool, repository_id: Uuid, commit_id: Uuid, path: &str, content: &str) {
@@ -347,4 +399,123 @@ version = "0.5.2"
     let (invalid_status, invalid_body) = get_json(app, &invalid_uri, Some(&actor_cookie)).await;
     assert_eq!(invalid_status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(invalid_body["error"]["code"], "validation_failed");
+}
+
+#[tokio::test]
+async fn dependency_graph_exports_downloadable_spdx_sbom_and_audits() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping dependency graph export scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "sbom-owner").await;
+    let actor = create_user(&pool, "sbom-actor").await;
+    let actor_cookie = cookie_header(&pool, &config, &actor).await;
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("sbom-{}", Uuid::new_v4().simple()),
+            description: Some("SBOM source".to_owned()),
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    grant_repository_permission(
+        &pool,
+        repository.id,
+        actor.id,
+        RepositoryRole::Read,
+        "direct",
+    )
+    .await
+    .expect("actor should read source");
+    let commit = insert_commit(
+        &pool,
+        repository.id,
+        CreateCommit {
+            oid: format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple()),
+            author_user_id: Some(owner.id),
+            committer_user_id: Some(owner.id),
+            message: "Add package manifest".to_owned(),
+            tree_oid: Some(format!("tree-{}", Uuid::new_v4().simple())),
+            parent_oids: Vec::new(),
+            committed_at: Utc::now(),
+        },
+    )
+    .await
+    .expect("commit should insert");
+    upsert_git_ref(&pool, repository.id, "main", "branch", Some(commit.id))
+        .await
+        .expect("main ref should upsert");
+    seed_file(
+        &pool,
+        repository.id,
+        commit.id,
+        "package.json",
+        r#"{"dependencies":{"@namuh/flow":"^1.2.3"}}"#,
+    )
+    .await;
+    seed_file(
+        &pool,
+        repository.id,
+        commit.id,
+        "package-lock.json",
+        r#"{"packages":{"node_modules/@namuh/flow":{"version":"1.2.4","license":"MIT"}}}"#,
+    )
+    .await;
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+    let export_uri = format!(
+        "/api/repos/{}/{}/network/dependencies/sbom",
+        repository.owner_login, repository.name
+    );
+    let (export_status, export_body) =
+        request_json(app.clone(), Method::POST, &export_uri, Some(&actor_cookie)).await;
+    assert_eq!(export_status, StatusCode::CREATED);
+    assert_eq!(export_body["status"], "ready");
+    assert_eq!(export_body["format"], "spdx-json");
+    assert!(export_body["downloadHref"]
+        .as_str()
+        .expect("download href")
+        .contains("/network/dependencies/sbom/"));
+    assert!(export_body["artifactByteSize"].as_i64().unwrap_or_default() > 0);
+
+    let download_href = export_body["downloadHref"].as_str().expect("download href");
+    let (download_status, headers, bytes) =
+        get_response(app, download_href, Some(&actor_cookie)).await;
+    assert_eq!(download_status, StatusCode::OK);
+    assert!(headers
+        .get(header::CONTENT_DISPOSITION)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .contains("attachment"));
+    let artifact: Value = serde_json::from_slice(&bytes).expect("download should be json");
+    assert_eq!(artifact["spdxVersion"], "SPDX-2.3");
+    assert!(artifact["packages"]
+        .as_array()
+        .expect("packages should be an array")
+        .iter()
+        .any(|package| package["name"] == "@namuh/flow"));
+    assert!(!artifact.to_string().contains("test-session-secret"));
+
+    let audit_count = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT count(*)
+        FROM repository_settings_audit_events
+        WHERE repository_id = $1
+          AND actor_user_id = $2
+          AND event_type = 'dependency_graph.sbom_export'
+        "#,
+    )
+    .bind(repository.id)
+    .bind(actor.id)
+    .fetch_one(&pool)
+    .await
+    .expect("audit count should load");
+    assert_eq!(audit_count, 1);
 }

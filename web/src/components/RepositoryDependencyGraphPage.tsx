@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RepositoryDependencyExportButton } from "@/components/RepositoryDependencyExportButton";
 import { RepositoryDependencyFilters } from "@/components/RepositoryDependencyFilters";
 import { RepositoryInsightsShell } from "@/components/RepositoryInsightsShell";
 import type {
@@ -280,17 +281,11 @@ function DependenciesReadyPage({
               {dependencies.freshness.stale ? "Stale graph" : "Fresh graph"}
             </span>
             <span className="chip soft">{dependencies.freshness.cadence}</span>
-            <Link
-              aria-disabled={!dependencies.export.supported}
-              className={`btn ${dependencies.export.supported ? "primary" : ""}`}
-              href={
-                dependencies.export.supported
-                  ? dependencies.links.exportSbomHref
-                  : dependencies.links.dependenciesHref
-              }
-            >
-              Export SBOM
-            </Link>
+            <RepositoryDependencyExportButton
+              exportState={dependencies.export}
+              owner={owner}
+              repo={repo}
+            />
           </div>
         </section>
 

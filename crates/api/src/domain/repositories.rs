@@ -1360,6 +1360,28 @@ pub struct RepositoryDependencyExportState {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct RepositorySbomExport {
+    pub id: Uuid,
+    pub status: String,
+    pub format: String,
+    pub artifact_sha256: Option<String>,
+    pub artifact_byte_size: i64,
+    pub download_href: Option<String>,
+    pub poll_href: String,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySbomDownload {
+    pub export: RepositorySbomExport,
+    pub artifact: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct RepositoryDependencyLinks {
     pub dependencies_href: String,
     pub dependents_href: String,
@@ -2788,6 +2810,45 @@ pub async fn extract_repository_dependencies(
         .await?
         .ok_or(RepositoryError::NotFound)?;
     extract_repository_dependencies_for_repository(pool, &repository).await
+}
+
+pub async fn start_repository_sbom_export(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+) -> Result<Option<RepositorySbomExport>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    create_repository_sbom_export_for_repository(pool, &repository, actor_user_id)
+        .await
+        .map(Some)
+}
+
+pub async fn repository_sbom_export_status(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    export_id: Uuid,
+) -> Result<Option<RepositorySbomDownload>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    repository_sbom_download_for_repository(pool, &repository, export_id).await
 }
 
 pub async fn save_repository_fork_defaults_by_owner_name(
@@ -10040,6 +10101,253 @@ async fn repository_latest_sbom_status(
     .fetch_optional(pool)
     .await
     .map_err(RepositoryError::from)
+}
+
+async fn create_repository_sbom_export_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+) -> Result<RepositorySbomExport, RepositoryError> {
+    extract_repository_dependencies_for_repository(pool, repository).await?;
+    let manifests = repository_dependency_manifests(pool, repository).await?;
+    if manifests.is_empty() {
+        return Err(RepositoryError::DependencyGraphUnavailable(
+            "No supported dependency manifest was found on the default branch.".to_owned(),
+        ));
+    }
+    let dependencies = repository_dependency_rows(pool, repository).await?;
+    let artifact = repository_spdx_sbom_artifact(repository, &manifests, &dependencies);
+    let artifact_bytes = serde_json::to_vec_pretty(&artifact).map_err(|error| {
+        RepositoryError::InvalidDependencyGraphQuery(format!(
+            "failed to serialize SBOM artifact: {error}"
+        ))
+    })?;
+    let artifact_sha256 = format!("{:x}", Sha256::digest(&artifact_bytes));
+    let artifact_byte_size = artifact_bytes.len() as i64;
+
+    let mut transaction = pool.begin().await?;
+    let row = sqlx::query(
+        r#"
+        INSERT INTO sbom_exports (
+            repository_id, actor_user_id, status, format, artifact_key, artifact_sha256,
+            artifact_byte_size, artifact_json, download_expires_at, created_at, completed_at
+        )
+        VALUES (
+            $1, $2, 'ready', 'spdx-json', $3, $4, $5, $6, now() + interval '1 day', now(), now()
+        )
+        RETURNING id, status, format, artifact_sha256, artifact_byte_size,
+                  download_expires_at, created_at, completed_at
+        "#,
+    )
+    .bind(repository.id)
+    .bind(actor_user_id)
+    .bind(format!(
+        "sbom/{}/{}/{}.spdx.json",
+        repository.owner_login,
+        repository.name,
+        Uuid::new_v4()
+    ))
+    .bind(&artifact_sha256)
+    .bind(artifact_byte_size)
+    .bind(Json(artifact.clone()))
+    .fetch_one(&mut *transaction)
+    .await?;
+
+    insert_repository_settings_audit_event_tx(
+        &mut transaction,
+        repository.id,
+        actor_user_id,
+        "dependency_graph.sbom_export",
+        vec!["sbom_exports".to_owned()],
+        json!({}),
+        json!({
+            "format": "spdx-json",
+            "packageCount": dependencies.len(),
+            "manifestCount": manifests.len(),
+            "artifactSha256": artifact_sha256,
+        }),
+    )
+    .await?;
+    transaction.commit().await?;
+
+    Ok(repository_sbom_export_from_row(repository, row))
+}
+
+async fn repository_sbom_download_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    export_id: Uuid,
+) -> Result<Option<RepositorySbomDownload>, RepositoryError> {
+    let Some(row) = sqlx::query(
+        r#"
+        SELECT id, status, format, artifact_sha256, artifact_byte_size, artifact_json,
+               download_expires_at, created_at, completed_at
+        FROM sbom_exports
+        WHERE repository_id = $1 AND id = $2
+        "#,
+    )
+    .bind(repository.id)
+    .bind(export_id)
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Ok(None);
+    };
+
+    let export = repository_sbom_export_from_row(repository, row);
+    let artifact = if export.status == "ready" {
+        sqlx::query_scalar::<_, Json<serde_json::Value>>(
+            "SELECT artifact_json FROM sbom_exports WHERE id = $1",
+        )
+        .bind(export_id)
+        .fetch_optional(pool)
+        .await?
+        .map(|Json(value)| value)
+    } else {
+        None
+    };
+    Ok(Some(RepositorySbomDownload { export, artifact }))
+}
+
+fn repository_sbom_export_from_row(
+    repository: &Repository,
+    row: sqlx::postgres::PgRow,
+) -> RepositorySbomExport {
+    let id: Uuid = row.get("id");
+    let status: String = row.get("status");
+    let download_href = (status == "ready").then(|| {
+        format!(
+            "/api/repos/{}/{}/network/dependencies/sbom/{}",
+            percent_encode_segment(&repository.owner_login),
+            percent_encode_segment(&repository.name),
+            id
+        )
+    });
+    RepositorySbomExport {
+        id,
+        status,
+        format: row.get("format"),
+        artifact_sha256: row.get("artifact_sha256"),
+        artifact_byte_size: row.get("artifact_byte_size"),
+        download_href,
+        poll_href: format!(
+            "/api/repos/{}/{}/network/dependencies/sbom/{}",
+            percent_encode_segment(&repository.owner_login),
+            percent_encode_segment(&repository.name),
+            id
+        ),
+        expires_at: row.get("download_expires_at"),
+        created_at: row.get("created_at"),
+        completed_at: row.get("completed_at"),
+    }
+}
+
+fn repository_spdx_sbom_artifact(
+    repository: &Repository,
+    manifests: &[RepositoryDependencyManifest],
+    dependencies: &[RepositoryDependencyRow],
+) -> serde_json::Value {
+    let document_name = format!(
+        "{}/{} dependency graph",
+        repository.owner_login, repository.name
+    );
+    let namespace = format!(
+        "https://opengithub.namuh.co/{}/{}/dependency-graph/{}",
+        percent_encode_segment(&repository.owner_login),
+        percent_encode_segment(&repository.name),
+        repository.id
+    );
+    let packages: Vec<serde_json::Value> = dependencies
+        .iter()
+        .map(|dependency| {
+            let package_spdx_id = repository_dependency_spdx_id(dependency);
+            json!({
+                "SPDXID": package_spdx_id,
+                "name": dependency.package.name,
+                "versionInfo": dependency.version.clone().unwrap_or_else(|| "NOASSERTION".to_owned()),
+                "downloadLocation": "NOASSERTION",
+                "filesAnalyzed": false,
+                "licenseConcluded": dependency.license.clone().unwrap_or_else(|| "NOASSERTION".to_owned()),
+                "licenseDeclared": dependency.license.clone().unwrap_or_else(|| "NOASSERTION".to_owned()),
+                "externalRefs": [{
+                    "referenceCategory": "PACKAGE-MANAGER",
+                    "referenceType": "purl",
+                    "referenceLocator": repository_dependency_purl(dependency),
+                }],
+                "supplier": "NOASSERTION",
+                "homepage": dependency.package.href,
+                "comment": format!(
+                    "{} dependency declared by {}",
+                    dependency.relationship, dependency.manifest_path
+                ),
+            })
+        })
+        .collect();
+    let relationships: Vec<serde_json::Value> = dependencies
+        .iter()
+        .map(|dependency| {
+            json!({
+                "spdxElementId": "SPDXRef-Repository",
+                "relationshipType": if dependency.relationship == "direct" { "DEPENDS_ON" } else { "CONTAINS" },
+                "relatedSpdxElement": repository_dependency_spdx_id(dependency),
+            })
+        })
+        .collect();
+
+    json!({
+        "spdxVersion": "SPDX-2.3",
+        "dataLicense": "CC0-1.0",
+        "SPDXID": "SPDXRef-DOCUMENT",
+        "name": document_name,
+        "documentNamespace": namespace,
+        "creationInfo": {
+            "created": Utc::now().to_rfc3339(),
+            "creators": ["Tool: opengithub dependency graph"],
+        },
+        "documentDescribes": ["SPDXRef-Repository"],
+        "packages": std::iter::once(json!({
+            "SPDXID": "SPDXRef-Repository",
+            "name": format!("{}/{}", repository.owner_login, repository.name),
+            "downloadLocation": format!("/{}/{}", repository.owner_login, repository.name),
+            "filesAnalyzed": false,
+            "licenseConcluded": "NOASSERTION",
+            "licenseDeclared": "NOASSERTION",
+            "supplier": "NOASSERTION",
+            "comment": format!(
+                "Generated from {} indexed dependency manifests on the default branch {}.",
+                manifests.len(), repository.default_branch
+            ),
+        }))
+        .chain(packages)
+        .collect::<Vec<_>>(),
+        "relationships": relationships,
+    })
+}
+
+fn repository_dependency_spdx_id(dependency: &RepositoryDependencyRow) -> String {
+    let safe = dependency
+        .package
+        .name
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_owned();
+    format!("SPDXRef-Package-{}-{}", dependency.package.ecosystem, safe)
+}
+
+fn repository_dependency_purl(dependency: &RepositoryDependencyRow) -> String {
+    let version = dependency
+        .version
+        .as_deref()
+        .map(|value| format!("@{}", percent_encode_segment(value)))
+        .unwrap_or_default();
+    format!(
+        "pkg:{}/{}{}",
+        dependency.package.ecosystem,
+        percent_encode_segment(&dependency.package.name),
+        version
+    )
 }
 
 fn dependency_package_href(ecosystem: &str, name: &str) -> String {

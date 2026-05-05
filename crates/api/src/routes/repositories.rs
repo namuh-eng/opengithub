@@ -75,10 +75,11 @@ use crate::{
         repository_name_availability, repository_network_for_actor_by_owner_name,
         repository_overview_for_viewer_by_owner_name,
         repository_path_overview_for_actor_by_owner_name, repository_pulse_for_actor_by_owner_name,
-        repository_refs_for_actor_by_owner_name, repository_settings_for_actor_by_owner_name,
-        repository_traffic_for_actor_by_owner_name, repository_watch_settings_by_owner_name,
-        save_repository_fork_defaults_by_owner_name, set_repository_star_by_owner_name,
-        set_repository_watch_by_owner_name, update_repository_branch_rule_by_owner_name,
+        repository_refs_for_actor_by_owner_name, repository_sbom_export_status,
+        repository_settings_for_actor_by_owner_name, repository_traffic_for_actor_by_owner_name,
+        repository_watch_settings_by_owner_name, save_repository_fork_defaults_by_owner_name,
+        set_repository_star_by_owner_name, set_repository_watch_by_owner_name,
+        start_repository_sbom_export, update_repository_branch_rule_by_owner_name,
         update_repository_collaborator_access_by_owner_name,
         update_repository_ruleset_by_owner_name, update_repository_settings_by_owner_name,
         update_repository_team_access_by_owner_name,
@@ -123,6 +124,14 @@ pub fn router() -> Router<AppState> {
         .route("/:owner/:repo/graphs/contributors", get(contributors))
         .route("/:owner/:repo/graphs/traffic", get(traffic))
         .route("/:owner/:repo/network/dependencies", get(dependencies))
+        .route(
+            "/:owner/:repo/network/dependencies/sbom",
+            post(create_sbom_export),
+        )
+        .route(
+            "/:owner/:repo/network/dependencies/sbom/:export_id",
+            get(download_sbom_export),
+        )
         .route("/:owner/:repo/network", get(network))
         .route("/:owner/:repo/forks/defaults", put(save_fork_defaults))
         .route("/:owner/:repo/refs", get(refs))
@@ -981,6 +990,85 @@ async fn dependencies(
     })?;
 
     Ok(Json(json!(view)))
+}
+
+async fn create_sbom_export(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let export = start_repository_sbom_export(pool, actor.0.id, &owner, &repo)
+        .await
+        .map_err(map_repository_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "repository was not found".to_owned(),
+            )
+        })?;
+
+    Ok((StatusCode::CREATED, Json(json!(export))))
+}
+
+async fn download_sbom_export(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, export_id)): Path<(String, String, Uuid)>,
+) -> Result<Response, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let download = repository_sbom_export_status(pool, actor.0.id, &owner, &repo, export_id)
+        .await
+        .map_err(map_repository_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "SBOM export was not found".to_owned(),
+            )
+        })?;
+
+    if download.export.status != "ready" {
+        return Ok((StatusCode::ACCEPTED, Json(json!(download.export))).into_response());
+    }
+
+    let Some(artifact) = download.artifact else {
+        return Err(error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "SBOM artifact was not found".to_owned(),
+        ));
+    };
+    let body = serde_json::to_vec_pretty(&artifact).map_err(|_| {
+        error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "sbom_export_failed",
+            "SBOM artifact could not be serialized.".to_owned(),
+        )
+    })?;
+    let filename = format!("{owner}-{repo}-sbom.spdx.json");
+    let disposition = HeaderValue::from_str(&format!("attachment; filename=\"{filename}\""))
+        .map_err(|_| {
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "sbom_export_failed",
+                "SBOM download headers could not be prepared.".to_owned(),
+            )
+        })?;
+
+    let mut response = body.into_response();
+    *response.status_mut() = StatusCode::OK;
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/spdx+json"),
+    );
+    response
+        .headers_mut()
+        .insert(header::CONTENT_DISPOSITION, disposition);
+    Ok(response)
 }
 
 async fn network(

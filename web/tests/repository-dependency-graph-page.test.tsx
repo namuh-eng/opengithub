@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RepositoryDependencyGraphPage } from "@/components/RepositoryDependencyGraphPage";
 import type { RepositoryDependenciesView, RepositoryOverview } from "@/lib/api";
 
@@ -184,6 +184,10 @@ function dependenciesView(
 }
 
 describe("RepositoryDependencyGraphPage", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("renders dependency filters, summaries, rows, manifests, and concrete links", () => {
     const { container } = render(
       <RepositoryDependencyGraphPage
@@ -206,10 +210,8 @@ describe("RepositoryDependencyGraphPage", () => {
       "href",
       "/namuh-eng/opengithub/network/dependents",
     );
-    expect(screen.getByRole("link", { name: "Export SBOM" })).toHaveAttribute(
-      "href",
-      "/api/repos/namuh-eng/opengithub/network/dependencies/sbom",
-    );
+    expect(screen.getByRole("button", { name: "Export SBOM" })).toBeEnabled();
+    expect(screen.getByText("No export yet")).toBeVisible();
 
     expect(screen.getByLabelText("Search")).toHaveValue("");
     fireEvent.change(screen.getByLabelText("Search"), {
@@ -275,6 +277,49 @@ describe("RepositoryDependencyGraphPage", () => {
     for (const button of container.querySelectorAll("button")) {
       expect(button).toHaveAccessibleName();
     }
+  });
+
+  it("starts a real SBOM export and exposes the signed download", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "export-1",
+          status: "ready",
+          format: "spdx-json",
+          artifactSha256: "sha256-demo",
+          artifactByteSize: 512,
+          downloadHref:
+            "/namuh-eng/opengithub/network/dependencies/sbom/export-1",
+          pollHref:
+            "/api/repos/namuh-eng/opengithub/network/dependencies/sbom/export-1",
+          expiresAt: "2026-05-06T00:00:00Z",
+          createdAt: "2026-05-05T00:00:00Z",
+          completedAt: "2026-05-05T00:00:01Z",
+        }),
+        { status: 201, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    render(
+      <RepositoryDependencyGraphPage
+        dependenciesResult={{ ok: true, dependencies: dependenciesView() }}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Export SBOM" }));
+
+    expect(
+      await screen.findByRole("link", { name: "Download SBOM" }),
+    ).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/network/dependencies/sbom/export-1",
+    );
+    expect(screen.getByText("Latest SBOM ready")).toBeVisible();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/namuh-eng/opengithub/network/dependencies/sbom",
+      { method: "POST" },
+    );
   });
 
   it("renders empty and unavailable dependency graph states", () => {
