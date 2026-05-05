@@ -195,6 +195,29 @@ describe("ApiDocsPage", () => {
     ).toBeVisible();
     expect(screen.getByText("/api/projects/{project_id}/copies")).toBeVisible();
     expect(
+      screen.getByText(
+        "/api/projects/{project_id}/workspace?view=1&q=is%3Aopen&sort=manual&group=Status&slice=Priority&page=1&pageSize=50",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/projects/{project_id}/views/{view_id}/state"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/projects/{project_id}/items/{item_id}/fields/{field_id}",
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("/api/projects/{project_id}/items")).toBeVisible();
+    expect(
+      screen.getByText("/api/projects/{project_id}/items/bulk"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/projects/{project_id}/items/{item_id}/position"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/projects/{project_id}/items/{item_id}"),
+    ).toBeVisible();
+    expect(
       screen.getByText(/Supported sort values are recently_updated/),
     ).toBeVisible();
     expect(
@@ -203,6 +226,27 @@ describe("ApiDocsPage", () => {
     expect(screen.getAllByText(/project_repositories/)[0]).toBeVisible();
     expect(
       screen.getByText(/Successful writes append audit_events/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Linked issue and pull request rows are omitted/),
+    ).toBeVisible();
+    expect(screen.getByText(/expectedUpdatedAt protects/)).toBeVisible();
+    expect(
+      screen.getByText(
+        /Custom project fields update project_item_field_values/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Duplicate linked issues or pull requests are rejected/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Bulk requests validate every requested item/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/The endpoint only changes manual order/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Removal archives the project item relationship/),
     ).toBeVisible();
     expect(
       screen.getByText(

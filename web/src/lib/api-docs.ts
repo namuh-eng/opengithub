@@ -473,6 +473,221 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "projects-workspace-read",
+    method: "GET",
+    path: "/api/projects/{project_id}/workspace?view=1&q=is%3Aopen&sort=manual&group=Status&slice=Priority&page=1&pageSize=50",
+    title: "Read Project workspace",
+    description:
+      "Returns the screen-ready Projects v2 table workspace contract used by user and organization project routes, including saved views, visible fields, grouped rows, slice rail options, URL filters, unsaved-view metadata, and viewer capabilities.",
+    auth: "Optional signed opengithub session cookie; private projects and hidden linked repositories require project or repository read access",
+    response: `{
+  "project": {
+    "id": "project_02",
+    "number": 4,
+    "title": "Platform roadmap",
+    "owner": "acme-labs",
+    "scope": "organization",
+    "workspaceHref": "/orgs/acme-labs/projects/4/views/1"
+  },
+  "selectedView": {
+    "id": "view_table",
+    "number": 1,
+    "name": "Table",
+    "layout": "table",
+    "updatedAt": "2026-05-06T09:00:00Z",
+    "configuration": { "hiddenFieldIds": ["field_cost"] }
+  },
+  "views": [{ "id": "view_table", "number": 1, "name": "Table", "layout": "table" }],
+  "fields": [
+    { "id": "field_title", "name": "Title", "type": "title", "hidden": false },
+    { "id": "field_status", "name": "Status", "type": "single_select", "hidden": false }
+  ],
+  "items": [
+    {
+      "id": "item_issue_01",
+      "type": "issue",
+      "title": "Ship table workspace",
+      "href": "/acme-labs/opengithub/issues/42",
+      "repository": { "fullName": "acme-labs/opengithub" },
+      "fieldValues": [{ "fieldId": "field_status", "displayValue": "In progress" }]
+    }
+  ],
+  "groups": [{ "key": "in_progress", "label": "In progress", "count": 1 }],
+  "slices": [{ "key": "p1", "label": "Priority 1", "count": 1 }],
+  "filters": { "query": "is:open", "sort": "manual", "group": "Status", "slice": "Priority", "tokens": ["is:open"] },
+  "unsavedView": { "active": true, "reasons": ["query", "group"] },
+  "viewerPermissions": { "canEdit": true, "canManageViews": true, "canAddItems": true },
+  "total": 1
+}`,
+    notes: [
+      "Supported filter qualifiers include text terms, is:open, is:closed, is:issue, is:pr, is:draft, repo:owner/name, assignee, label, no:assignee, no:label, and supported field equality filters.",
+      "Linked issue and pull request rows are omitted when the viewer can read the project but cannot read the backing private repository.",
+      "Invalid view numbers, unsupported grouping or slicing fields, malformed pagination, and unknown sort values return standard validation_failed envelopes.",
+      "The response intentionally carries viewer capability flags so the browser can disable write controls instead of rendering dead actions.",
+    ],
+  },
+  {
+    id: "projects-view-state-update",
+    method: "PATCH",
+    path: "/api/projects/{project_id}/views/{view_id}/state",
+    title: "Update Project view state",
+    description:
+      "Persists Projects table view filters, sort, grouping, slicing, and visible field configuration after the browser marks a saved view as unsaved.",
+    auth: "Signed opengithub session cookie with project write/admin access",
+    request: `{
+  "expectedUpdatedAt": "2026-05-06T09:00:00Z",
+  "query": "is:open label:api",
+  "sort": "updated_desc",
+  "group": "Status",
+  "slice": "Priority",
+  "hiddenFieldIds": ["field_cost", "field_risk"]
+}`,
+    response: `{
+  "selectedView": {
+    "id": "view_table",
+    "configuration": {
+      "query": "is:open label:api",
+      "sort": "updated_desc",
+      "group": "Status",
+      "slice": "Priority",
+      "hiddenFieldIds": ["field_cost", "field_risk"]
+    }
+  },
+  "unsavedView": { "active": false, "reasons": [] }
+}`,
+    notes: [
+      "expectedUpdatedAt protects against stale view edits; conflicts return conflict without overwriting a newer saved view.",
+      "Only table views can be updated by this endpoint; board, roadmap, insight, automation, and field settings administration are outside projects-002.",
+      "Successful saves append audit_events and return the refreshed workspace response.",
+      "Unsupported filters, incompatible group or slice fields, and hidden field ids outside the project return validation_failed without exposing session or SQL details.",
+    ],
+  },
+  {
+    id: "projects-item-field-update",
+    method: "PATCH",
+    path: "/api/projects/{project_id}/items/{item_id}/fields/{field_id}",
+    title: "Update Project item field",
+    description:
+      "Updates one editable Projects table cell and synchronizes mapped linked issue or pull request metadata when the field represents native repository data.",
+    auth: "Signed opengithub session cookie with project write/admin access; linked issue and pull request metadata edits also require write access to the backing repository",
+    request: `{
+  "expectedUpdatedAt": "2026-05-06T09:15:00Z",
+  "value": { "kind": "single_select", "optionId": "status_in_progress" }
+}`,
+    response: `{
+  "items": [
+    {
+      "id": "item_issue_01",
+      "fieldValues": [{ "fieldId": "field_status", "displayValue": "In progress" }]
+    }
+  ]
+}`,
+    notes: [
+      "Supported values cover title, status and single-select options, iteration, date, text, number, labels, assignees, and milestone where the project field type allows it.",
+      "Custom project fields update project_item_field_values; native title, status, labels, assignees, and milestone fields also sync to linked issues or pull requests when permitted.",
+      "Archived items, stale expectedUpdatedAt values, invalid option ids, unreadable repositories, and read-only viewers return standard error envelopes.",
+      "Successful edits create project item events plus timeline, audit, and notification side effects for linked resources.",
+    ],
+  },
+  {
+    id: "projects-item-add",
+    method: "POST",
+    path: "/api/projects/{project_id}/items",
+    title: "Add Project item",
+    description:
+      "Adds a linked issue, linked pull request, or draft issue from the Projects table omnibar and returns the refreshed workspace.",
+    auth: "Signed opengithub session cookie with project write/admin access and read access to linked repositories",
+    request: `{
+  "kind": "linked",
+  "resourceUrl": "/acme-labs/opengithub/issues/42",
+  "positionAfterItemId": "item_previous"
+}`,
+    response: `{
+  "items": [
+    { "id": "item_issue_01", "type": "issue", "title": "Ship table workspace" }
+  ],
+  "total": 9
+}`,
+    notes: [
+      "For draft issues, submit kind=draft with title, body, and optional field defaults; linked items can be supplied by app-relative URL or known resource id.",
+      "Duplicate linked issues or pull requests are rejected with conflict instead of silently creating two rows for the same resource.",
+      "Filtered metadata defaults are applied only when valid for the target field; invalid defaults return validation_failed.",
+      "Successful adds write project item events, audit_events, timeline events for linked resources, and notification fanout where configured.",
+    ],
+  },
+  {
+    id: "projects-items-bulk-add",
+    method: "POST",
+    path: "/api/projects/{project_id}/items/bulk",
+    title: "Bulk add Project items",
+    description:
+      "Adds multiple readable linked issues or pull requests from the Projects table bulk-add dialog.",
+    auth: "Signed opengithub session cookie with project write/admin access and read access to every linked repository",
+    request: `{
+  "items": [
+    { "kind": "linked", "resourceUrl": "/acme-labs/opengithub/issues/42" },
+    { "kind": "linked", "resourceUrl": "/acme-labs/opengithub/pull/7" }
+  ],
+  "positionAfterItemId": "item_previous"
+}`,
+    response: `{
+  "items": [
+    { "id": "item_issue_01", "type": "issue" },
+    { "id": "item_pr_01", "type": "pull_request" }
+  ],
+  "total": 10
+}`,
+    notes: [
+      "Bulk requests validate every requested item before writing, so private or duplicate resources do not produce partial success.",
+      "Readable repository checks happen before item creation to avoid leaking private issue or pull request titles.",
+      "Successful bulk adds preserve manual order and append project_item_events plus audit evidence for each inserted item.",
+    ],
+  },
+  {
+    id: "projects-item-position",
+    method: "PATCH",
+    path: "/api/projects/{project_id}/items/{item_id}/position",
+    title: "Reorder Project item",
+    description:
+      "Persists manual Projects table ordering after row move controls or drag-equivalent interactions.",
+    auth: "Signed opengithub session cookie with project write/admin access",
+    request: `{
+  "positionBeforeItemId": "item_next",
+  "positionAfterItemId": "item_previous",
+  "expectedUpdatedAt": "2026-05-06T09:20:00Z"
+}`,
+    response: `{
+  "items": [
+    { "id": "item_previous", "position": "a1" },
+    { "id": "item_issue_01", "position": "a2" },
+    { "id": "item_next", "position": "a3" }
+  ]
+}`,
+    notes: [
+      "The endpoint only changes manual order; grouped-row moves that would require changing the grouped field must use the field update endpoint first.",
+      "Unknown neighbor ids, archived items, stale rows, and read-only viewers return standard errors without changing the workspace order.",
+      "Successful moves write project item events and audit_events.",
+    ],
+  },
+  {
+    id: "projects-item-remove",
+    method: "DELETE",
+    path: "/api/projects/{project_id}/items/{item_id}",
+    title: "Remove Project item",
+    description:
+      "Removes an item from a Projects table without deleting the linked issue, pull request, or draft issue body.",
+    auth: "Signed opengithub session cookie with project write/admin access",
+    response: `{
+  "items": [],
+  "total": 0
+}`,
+    notes: [
+      "Removal archives the project item relationship and leaves linked repository content intact.",
+      "Archived or missing items return not_found; private projects return not_found or forbidden according to the caller's visibility.",
+      "Successful removes write project_item_events, audit_events, and linked timeline evidence when the item points at an issue or pull request.",
+    ],
+  },
+  {
     id: "organization-team-create",
     method: "POST",
     path: "/api/orgs/{org}/teams",

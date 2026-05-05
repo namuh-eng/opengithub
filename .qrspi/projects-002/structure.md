@@ -94,7 +94,7 @@
 
 ## Phase 6: API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `projects-002` only after workspace read/write contracts, table UI, view-state persistence, inline edits, add-row flows, row ordering, docs, screenshots, and QA handoff are verified. Do not implement board layout, roadmap layout, insights charts, project field settings administration, workflows automation, project access settings, or exports in this feature.
 

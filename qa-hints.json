@@ -6866,5 +6866,21 @@
       "Probe URL paste parsing for absolute GitHub-style URLs and app-relative URLs, linked pull request adds, duplicate linked issue/PR handling, bulk partial-failure behavior, item limit validation, private repository non-leakage, read-only project denial, archived item denial, stale reorder conflicts, grouped-row move value updates, remove audit/timeline side effects, keyboard-only add dialog use, and mobile table overflow.",
       "Phase 6 still needs API docs, final browser screenshots, final QA handoff, and projects-002 build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-002",
+    "tests_written": [
+      "Completed Phase 6 API docs, final E2E smoke coverage, QA handoff, and build-pass bookkeeping for Projects v2 table workspaces.",
+      "Documented GET /api/projects/{project_id}/workspace, PATCH /views/{view_id}/state, PATCH /items/{item_id}/fields/{field_id}, POST /items, POST /items/bulk, PATCH /items/{item_id}/position, and DELETE /items/{item_id} in /docs/api.",
+      "Extended API docs Vitest coverage for workspace read privacy, stale expectedUpdatedAt protection, custom project field persistence, duplicate linked item rejection, bulk validation, manual reorder semantics, and remove/archive behavior.",
+      "Added web/tests/e2e/projects-workspace.spec.ts for a final signed-in browser smoke that navigates to an organization workspace, checks saved views, filters, table rendering, view configuration, inline editor, add-row dialog, mobile overflow, and saves final screenshots when a healthy seeded database is available.",
+      "Verification passed for focused api-docs Vitest, web TypeScript, and focused Biome on touched docs/test files before final full-suite verification."
+    ],
+    "needs_deeper_qa": [
+      "Run the final Projects workspace Playwright smoke against a clean migrated credentialed TEST_DATABASE_URL; the current local Postgres on localhost:55432 has repeatedly rejected the available postgres password in signed-session E2E seed helpers.",
+      "Capture final screenshots for default table, grouped view, slice rail, view config dialog, inline editor, add-row dialog, unsaved state, permission-disabled state, and mobile under ralph/screenshots/build/.",
+      "Probe large virtualized tables, horizontal overflow on mobile, hidden private linked repositories, stale view-state conflicts, concurrent cell edits, duplicate linked issue/PR adds, grouped-row move semantics, URL paste parsing for app-relative and absolute URLs, filtered metadata defaults, read-only project and repository permission boundaries, and notification/timeline/audit side effects.",
+      "Verify board, roadmap, insights, project field settings, workflow automation, project access settings, and exports remain clearly out of scope for projects-002 rather than exposed as dead controls."
+    ]
   }
 ]
