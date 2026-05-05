@@ -34,6 +34,7 @@ use crate::{
         create_repository_discussion_category_section_by_owner_name,
         create_repository_discussion_comment_by_owner_name,
         create_repository_discussion_reply_by_owner_name,
+        delete_repository_discussion_by_owner_name,
         delete_repository_discussion_category_by_owner_name,
         delete_repository_discussion_category_section_by_owner_name,
         pin_repository_discussion_by_owner_name,
@@ -45,27 +46,29 @@ use crate::{
         repository_discussion_category_template_for_actor_by_owner_name,
         repository_discussion_creation_for_actor_by_owner_name,
         repository_discussion_detail_for_actor_by_owner_name,
+        repository_discussion_transfer_targets_by_owner_name,
         repository_discussions_for_actor_by_owner_name,
         set_repository_discussion_answer_by_owner_name,
         set_repository_discussion_lock_by_owner_name,
         set_repository_discussion_subscription_by_owner_name,
         set_repository_discussion_vote_by_owner_name,
         toggle_repository_discussion_reaction_by_owner_name,
-        unpin_repository_discussion_by_owner_name,
+        transfer_repository_discussion_by_owner_name, unpin_repository_discussion_by_owner_name,
         update_repository_discussion_category_by_owner_name,
         update_repository_discussion_category_section_by_owner_name,
         update_repository_discussion_metadata_by_owner_name,
         update_repository_discussion_pin_by_owner_name,
         update_repository_discussion_state_by_owner_name, CreateDiscussionCategoryRequest,
         CreateDiscussionCategorySectionRequest, CreateDiscussionCommentRequest,
-        CreateDiscussionRequest, DeleteDiscussionCategoryRequest, DiscussionAnswerRequest,
-        DiscussionCategoryOrderRequest, DiscussionCategoryTemplateCommitRequest,
-        DiscussionCategoryTemplatePreviewRequest, DiscussionMetadataRequest,
-        DiscussionReactionMutation, DiscussionReactionRequest, DiscussionSectionOrderRequest,
-        DiscussionStateRequest, DiscussionSubscriptionRequest, LockDiscussionRequest,
-        PinDiscussionRequest, RecategorizeDiscussionRequest, RepositoryDiscussionDetailQuery,
-        RepositoryDiscussionsQuery, UpdateDiscussionCategoryRequest,
-        UpdateDiscussionCategorySectionRequest, UpdatePinnedDiscussionRequest,
+        CreateDiscussionRequest, DeleteDiscussionCategoryRequest, DeleteDiscussionRequest,
+        DiscussionAnswerRequest, DiscussionCategoryOrderRequest,
+        DiscussionCategoryTemplateCommitRequest, DiscussionCategoryTemplatePreviewRequest,
+        DiscussionMetadataRequest, DiscussionReactionMutation, DiscussionReactionRequest,
+        DiscussionSectionOrderRequest, DiscussionStateRequest, DiscussionSubscriptionRequest,
+        LockDiscussionRequest, PinDiscussionRequest, RecategorizeDiscussionRequest,
+        RepositoryDiscussionDetailQuery, RepositoryDiscussionsQuery, TransferDiscussionRequest,
+        UpdateDiscussionCategoryRequest, UpdateDiscussionCategorySectionRequest,
+        UpdatePinnedDiscussionRequest,
     },
     domain::pages::{
         connect_repository_pages_actions_deployment_by_owner_name,
@@ -237,6 +240,18 @@ pub fn router() -> Router<AppState> {
         .route(
             "/:owner/:repo/discussions/:discussion_number/category",
             patch(recategorize_discussion),
+        )
+        .route(
+            "/:owner/:repo/discussions/:discussion_number/transfer-targets",
+            get(discussion_transfer_targets),
+        )
+        .route(
+            "/:owner/:repo/discussions/:discussion_number/transfer",
+            post(transfer_discussion),
+        )
+        .route(
+            "/:owner/:repo/discussions/:discussion_number/delete",
+            delete(delete_discussion),
         )
         .route(
             "/:owner/:repo/discussions/:discussion_number/metadata",
@@ -2208,6 +2223,88 @@ async fn recategorize_discussion(
         )
     })?;
     Ok(Json(json!(detail)))
+}
+
+async fn discussion_transfer_targets(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, discussion_number)): Path<(String, String, i64)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = repository_discussion_transfer_targets_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        discussion_number,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository discussion was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(view)))
+}
+
+async fn transfer_discussion(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, discussion_number)): Path<(String, String, i64)>,
+    Json(request): Json<TransferDiscussionRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let response = transfer_repository_discussion_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        discussion_number,
+        request,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository discussion was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(response)))
+}
+
+async fn delete_discussion(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, discussion_number)): Path<(String, String, i64)>,
+    Json(request): Json<DeleteDiscussionRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let response = delete_repository_discussion_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        discussion_number,
+        request,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository discussion was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(response)))
 }
 
 async fn update_discussion_metadata(

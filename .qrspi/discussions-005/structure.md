@@ -46,7 +46,7 @@
 
 ## Phase 3: Transfer and Delete - destructive discussion management with tombstones
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add safe destructive management for discussions. Maintainers should be able to transfer a discussion only to an allowed repository under the same owner constraints and delete a discussion only after explicit confirmation that records a tombstone/audit trail.
 

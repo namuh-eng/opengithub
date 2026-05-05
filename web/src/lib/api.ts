@@ -4707,6 +4707,38 @@ export type DiscussionModerationView = {
   closedReason: string | null;
 };
 
+export type DiscussionTransferTarget = {
+  repositoryId: string;
+  owner: string;
+  name: string;
+  visibility: string;
+  href: string;
+  discussionsHref: string;
+  categoryOptions: DiscussionCategoryChoice[];
+};
+
+export type DiscussionTransferTargetsView = {
+  currentRepository: DiscussionRepositorySummary;
+  discussionNumber: number;
+  targets: DiscussionTransferTarget[];
+};
+
+export type TransferDiscussionResponse = {
+  discussionId: string;
+  sourceHref: string;
+  destinationHref: string;
+  destinationOwner: string;
+  destinationRepo: string;
+  destinationNumber: number;
+};
+
+export type DeleteDiscussionResponse = {
+  discussionId: string;
+  deleted: boolean;
+  tombstoneId: string;
+  discussionsHref: string;
+};
+
 export type RepositoryDiscussionDetailView = {
   repository: DiscussionRepositorySummary;
   viewer: DiscussionDetailViewer;
@@ -14869,6 +14901,89 @@ export async function updateRepositoryDiscussionMetadataFromCookie(
   }
 
   return payload as RepositoryDiscussionDetailView;
+}
+
+export async function getRepositoryDiscussionTransferTargetsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  discussionNumber: number | string,
+): Promise<DiscussionTransferTargetsView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/${encodeURIComponent(String(discussionNumber))}/transfer-targets`,
+    {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ??
+        "Discussion transfer targets could not be loaded.",
+      { cause: envelope },
+    );
+  }
+  return payload as DiscussionTransferTargetsView;
+}
+
+export async function transferRepositoryDiscussionFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  discussionNumber: number | string,
+  request: { repositoryId: string; categorySlug: string },
+): Promise<TransferDiscussionResponse> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/${encodeURIComponent(String(discussionNumber))}/transfer`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(envelope?.error.message ?? "Discussion transfer failed.", {
+      cause: envelope,
+    });
+  }
+  return payload as TransferDiscussionResponse;
+}
+
+export async function deleteRepositoryDiscussionFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  discussionNumber: number | string,
+  request: { confirmation: string; reason?: string },
+): Promise<DeleteDiscussionResponse> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/${encodeURIComponent(String(discussionNumber))}/delete`,
+    {
+      method: "DELETE",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(envelope?.error.message ?? "Discussion delete failed.", {
+      cause: envelope,
+    });
+  }
+  return payload as DeleteDiscussionResponse;
 }
 
 function repositoryDiscussionsPath(

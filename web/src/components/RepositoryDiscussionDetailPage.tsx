@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { type FormEvent, useState, useTransition } from "react";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { RepositoryShell } from "@/components/RepositoryShell";
@@ -12,6 +13,7 @@ import type {
   DiscussionReactionSummary,
   DiscussionReplyView,
   DiscussionSubscriptionState,
+  DiscussionTransferTargetsView,
   RepositoryDiscussionDetailView,
   RepositoryOverview,
 } from "@/lib/api";
@@ -700,18 +702,228 @@ function RepositoryDiscussionModerationPanel({
   );
 }
 
+function RepositoryDiscussionManagementPanel({
+  detail,
+  targets,
+  onLoadTargets,
+  onTransfer,
+  onDelete,
+}: {
+  detail: RepositoryDiscussionDetailView;
+  targets: DiscussionTransferTargetsView | null;
+  onLoadTargets: () => void;
+  onTransfer: (repositoryId: string, categorySlug: string) => void;
+  onDelete: (confirmation: string, reason?: string) => void;
+}) {
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [repositoryId, setRepositoryId] = useState("");
+  const [categorySlug, setCategorySlug] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [reason, setReason] = useState("");
+  const selectedTarget = targets?.targets.find(
+    (target) => target.repositoryId === repositoryId,
+  );
+  const requiredConfirmation = `delete discussion ${detail.discussion.number}`;
+
+  return (
+    <section aria-labelledby="discussion-management-title" className="card p-4">
+      <h2 className="t-label" id="discussion-management-title">
+        Management
+      </h2>
+      <p className="t-xs mt-2" style={{ color: "var(--ink-3)" }}>
+        Transfers and deletions are restricted to write members and leave audit
+        evidence.
+      </p>
+      <div className="mt-4 grid gap-2">
+        <button
+          className="btn sm"
+          onClick={() => {
+            setTransferOpen(true);
+            onLoadTargets();
+          }}
+          type="button"
+        >
+          Transfer discussion
+        </button>
+        <button
+          className="btn ghost sm"
+          onClick={() => setDeleteOpen(true)}
+          type="button"
+        >
+          Delete discussion
+        </button>
+      </div>
+
+      {transferOpen ? (
+        <div
+          aria-labelledby="discussion-transfer-dialog-title"
+          aria-modal="true"
+          className="fixed inset-0 z-50 grid place-items-center p-4"
+          role="dialog"
+          style={{
+            background: "color-mix(in oklab, var(--ink-1) 28%, transparent)",
+          }}
+        >
+          <form
+            className="card grid w-full max-w-lg gap-4 p-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onTransfer(repositoryId, categorySlug);
+              setTransferOpen(false);
+            }}
+          >
+            <div>
+              <p className="t-label">Transfer</p>
+              <h3 className="t-h2 mt-1" id="discussion-transfer-dialog-title">
+                Move this discussion
+              </h3>
+            </div>
+            <label className="grid gap-2 t-sm">
+              <span className="t-label">Repository</span>
+              <select
+                aria-label="Transfer destination repository"
+                className="input"
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setRepositoryId(next);
+                  const target = targets?.targets.find(
+                    (candidate) => candidate.repositoryId === next,
+                  );
+                  setCategorySlug(target?.categoryOptions[0]?.slug ?? "");
+                }}
+                value={repositoryId}
+              >
+                <option value="">Choose a repository</option>
+                {(targets?.targets ?? []).map((target) => (
+                  <option key={target.repositoryId} value={target.repositoryId}>
+                    {target.owner}/{target.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-2 t-sm">
+              <span className="t-label">Destination category</span>
+              <select
+                aria-label="Transfer destination category"
+                className="input"
+                disabled={!selectedTarget}
+                onChange={(event) => setCategorySlug(event.target.value)}
+                value={categorySlug}
+              >
+                <option value="">Choose a category</option>
+                {(selectedTarget?.categoryOptions ?? []).map((category) => (
+                  <option key={category.id} value={category.slug}>
+                    {category.emoji} {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                className="btn sm"
+                onClick={() => setTransferOpen(false)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="btn accent sm"
+                disabled={!repositoryId || !categorySlug}
+                type="submit"
+              >
+                Transfer
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {deleteOpen ? (
+        <div
+          aria-labelledby="discussion-delete-dialog-title"
+          aria-modal="true"
+          className="fixed inset-0 z-50 grid place-items-center p-4"
+          role="dialog"
+          style={{
+            background: "color-mix(in oklab, var(--ink-1) 28%, transparent)",
+          }}
+        >
+          <form
+            className="card grid w-full max-w-lg gap-4 p-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onDelete(confirmation, reason);
+              setDeleteOpen(false);
+            }}
+          >
+            <div>
+              <p className="t-label">Delete</p>
+              <h3 className="t-h2 mt-1" id="discussion-delete-dialog-title">
+                Delete this discussion
+              </h3>
+              <p className="t-sm mt-2" style={{ color: "var(--ink-3)" }}>
+                Comments and body content are hidden from future reads. A
+                tombstone keeps hashes and audit metadata only.
+              </p>
+            </div>
+            <label className="grid gap-2 t-sm">
+              <span className="t-label">Reason</span>
+              <textarea
+                className="input min-h-20"
+                maxLength={280}
+                onChange={(event) => setReason(event.target.value)}
+                value={reason}
+              />
+            </label>
+            <label className="grid gap-2 t-sm">
+              <span className="t-label">Type {requiredConfirmation}</span>
+              <input
+                className="input"
+                onChange={(event) => setConfirmation(event.target.value)}
+                value={confirmation}
+              />
+            </label>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                className="btn sm"
+                onClick={() => setDeleteOpen(false)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="btn accent sm"
+                disabled={confirmation !== requiredConfirmation}
+                type="submit"
+              >
+                Delete discussion
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function Sidebar({
   detail,
   subscription,
+  transferTargets,
   onSubscription,
   onMetadata,
   onModerationCategory,
   onModerationLock,
   onModerationPin,
   onModerationState,
+  onLoadTransferTargets,
+  onTransfer,
+  onDelete,
 }: {
   detail: RepositoryDiscussionDetailView;
   subscription: DiscussionSubscriptionState;
+  transferTargets: DiscussionTransferTargetsView | null;
   onSubscription: (subscribed: boolean) => void;
   onMetadata: (request: { categorySlug?: string; labelIds?: string[] }) => void;
   onModerationCategory: (categorySlug: string) => void;
@@ -721,19 +933,31 @@ function Sidebar({
     request?: Record<string, unknown>,
   ) => void;
   onModerationState: (state: "open" | "closed", reason?: string) => void;
+  onLoadTransferTargets: () => void;
+  onTransfer: (repositoryId: string, categorySlug: string) => void;
+  onDelete: (confirmation: string, reason?: string) => void;
 }) {
   const canModerate = detail.viewer.authenticated && detail.viewer.canModerate;
   const selectedLabelIds = new Set(detail.labels.map((label) => label.id));
   return (
     <aside className="space-y-5">
       {canModerate ? (
-        <RepositoryDiscussionModerationPanel
-          detail={detail}
-          onCategory={onModerationCategory}
-          onLock={onModerationLock}
-          onPin={onModerationPin}
-          onState={onModerationState}
-        />
+        <>
+          <RepositoryDiscussionModerationPanel
+            detail={detail}
+            onCategory={onModerationCategory}
+            onLock={onModerationLock}
+            onPin={onModerationPin}
+            onState={onModerationState}
+          />
+          <RepositoryDiscussionManagementPanel
+            detail={detail}
+            onDelete={onDelete}
+            onLoadTargets={onLoadTransferTargets}
+            onTransfer={onTransfer}
+            targets={transferTargets}
+          />
+        </>
       ) : (
         <section className="card p-4">
           <h2 className="t-label">Moderator controls</h2>
@@ -846,7 +1070,10 @@ export function RepositoryDiscussionDetailPage({
   const [currentDetail, setCurrentDetail] = useState(detail);
   const [subscription, setSubscription] = useState(detail.subscription);
   const [reactions, setReactions] = useState(detail.reactions);
+  const [transferTargets, setTransferTargets] =
+    useState<DiscussionTransferTargetsView | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const router = useRouter();
   const owner = repository.owner_login;
   const repo = repository.name;
   const bodyLabelId = "discussion-body";
@@ -1016,6 +1243,58 @@ export function RepositoryDiscussionDetailPage({
       request,
       "Discussion metadata updated.",
     );
+  }
+
+  async function loadTransferTargets() {
+    if (transferTargets) return;
+    setMessage(null);
+    const response = await fetch(`${detailHref}/transfer-targets`);
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      setMessage(
+        payload?.error?.message ??
+          "Discussion transfer targets could not be loaded.",
+      );
+      return;
+    }
+    setTransferTargets(payload);
+  }
+
+  async function transferDiscussion(
+    repositoryId: string,
+    categorySlug: string,
+  ) {
+    setMessage(null);
+    const response = await fetch(`${detailHref}/transfer`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ repositoryId, categorySlug }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      setMessage(
+        payload?.error?.message ?? "Discussion could not be transferred.",
+      );
+      return;
+    }
+    setMessage("Discussion transferred.");
+    router.push(payload.destinationHref);
+  }
+
+  async function deleteDiscussion(confirmation: string, reason?: string) {
+    setMessage(null);
+    const response = await fetch(`${detailHref}/delete`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ confirmation, reason }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      setMessage(payload?.error?.message ?? "Discussion could not be deleted.");
+      return;
+    }
+    setMessage("Discussion deleted.");
+    router.push(payload.discussionsHref);
   }
 
   return (
@@ -1191,12 +1470,16 @@ export function RepositoryDiscussionDetailPage({
       <Sidebar
         detail={currentDetail}
         onMetadata={updateMetadata}
+        onDelete={deleteDiscussion}
+        onLoadTransferTargets={loadTransferTargets}
         onModerationCategory={updateCategory}
         onModerationLock={updateLock}
         onModerationPin={updatePin}
         onModerationState={updateState}
         onSubscription={toggleSubscription}
+        onTransfer={transferDiscussion}
         subscription={subscription}
+        transferTargets={transferTargets}
       />
     </RepositoryShell>
   );

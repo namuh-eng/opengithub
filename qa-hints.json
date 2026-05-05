@@ -6559,5 +6559,24 @@
       "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
       "Phase 3 still needs transfer and delete destructive discussion management with tombstones."
     ]
+  },
+  {
+    "feature_id": "discussions-005",
+    "tests_written": [
+      "Completed Phase 3 Transfer and Delete without marking discussions-005 build_pass=true.",
+      "Added migration 202605060002_repository_discussion_management for deleted discussion metadata and discussion_deletion_tombstones with content hashes only.",
+      "Added authenticated Rust API contracts for GET /transfer-targets, POST /transfer, and DELETE /delete under repository discussion detail routes.",
+      "Implemented same-owner transfer validation, destination discussion policy/category compatibility checks, destination renumbering, transfer activity/audit events, author notifications, and soft-delete tombstone/audit behavior without exposing deleted title/body content.",
+      "Added same-origin Next.js routes and typed API helpers for transfer target loading, transfer submit, and delete confirmation.",
+      "Updated RepositoryDiscussionDetailPage with Editorial Management controls for transfer repository/category picker and typed delete confirmation; successful actions navigate to the destination discussion or discussions list.",
+      "Focused Vitest repository-discussion-detail-page.test.tsx covers transfer target loading, transfer payload/navigation, delete confirmation payload/navigation, plus existing moderation coverage."
+    ],
+    "needs_deeper_qa": [
+      "make test-e2e reached Playwright and 19 public/docs tests passed, but 122 signed-session tests failed because dashboard_e2e_seed could not authenticate to localhost:55432 as postgres; no dev servers remained on ports 3015/3016 after the run.",
+      "Rerun web/tests/e2e/repository-discussions.spec.ts against a clean migrated credentialed TEST_DATABASE_URL to verify transfer/delete browser flows and save ralph/screenshots/build/discussions-005-phase3-transfer-delete.jpg.",
+      "Run DB-backed QA for transfer numbering collision, subscriptions/notifications after repository_id move, tombstone hashes, and deleted-content redaction with real seeded rows.",
+      "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Phase 4 still needs issue-to-discussion conversion."
+    ]
   }
 ]

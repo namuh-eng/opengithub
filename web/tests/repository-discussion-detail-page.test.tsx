@@ -12,6 +12,12 @@ import type {
   RepositoryOverview,
 } from "@/lib/api";
 
+const pushMock = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: pushMock }),
+}));
+
 function repositoryOverview(): RepositoryOverview {
   return {
     id: "repo-1",
@@ -267,6 +273,7 @@ function discussionDetail(
 describe("RepositoryDiscussionDetailPage", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    pushMock.mockReset();
   });
 
   it("renders detail metadata, answer summary, timeline, replies, and sidebar", () => {
@@ -499,5 +506,118 @@ describe("RepositoryDiscussionDetailPage", () => {
     expect(
       screen.getByText(/Triage, write, and admin members can moderate/),
     ).toBeVisible();
+  });
+
+  it("loads transfer targets and submits transfer and delete confirmations", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          currentRepository: discussionDetail().repository,
+          discussionNumber: 42,
+          targets: [
+            {
+              repositoryId: "repo-2",
+              owner: "namuh-eng",
+              name: "runtime",
+              visibility: "private",
+              href: "/namuh-eng/runtime",
+              discussionsHref: "/namuh-eng/runtime/discussions",
+              categoryOptions: [
+                {
+                  ...discussionDetail().sidebar.categoryOptions[0],
+                  id: "category-target",
+                  slug: "announcements",
+                  name: "Announcements",
+                },
+              ],
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          discussionId: "discussion-1",
+          sourceHref: "/namuh-eng/opengithub/discussions",
+          destinationHref: "/namuh-eng/runtime/discussions/7",
+          destinationOwner: "namuh-eng",
+          destinationRepo: "runtime",
+          destinationNumber: 7,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          discussionId: "discussion-1",
+          deleted: true,
+          tombstoneId: "tombstone-1",
+          discussionsHref: "/namuh-eng/opengithub/discussions",
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryDiscussionDetailPage
+        detail={discussionDetail()}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Transfer discussion" }),
+    );
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/namuh-eng/opengithub/discussions/42/transfer-targets",
+      ),
+    );
+    fireEvent.change(
+      await screen.findByRole("combobox", {
+        name: "Transfer destination repository",
+      }),
+      { target: { value: "repo-2" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Transfer" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/namuh-eng/opengithub/discussions/42/transfer",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            repositoryId: "repo-2",
+            categorySlug: "announcements",
+          }),
+        }),
+      ),
+    );
+    expect(pushMock).toHaveBeenCalledWith("/namuh-eng/runtime/discussions/7");
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete discussion" }));
+    fireEvent.change(screen.getByLabelText("Reason"), {
+      target: { value: "Spam cleanup" },
+    });
+    fireEvent.change(screen.getByLabelText("Type delete discussion 42"), {
+      target: { value: "delete discussion 42" },
+    });
+    fireEvent.click(
+      within(
+        screen.getByRole("dialog", { name: "Delete this discussion" }),
+      ).getByRole("button", { name: "Delete discussion" }),
+    );
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/namuh-eng/opengithub/discussions/42/delete",
+        expect.objectContaining({
+          method: "DELETE",
+          body: JSON.stringify({
+            confirmation: "delete discussion 42",
+            reason: "Spam cleanup",
+          }),
+        }),
+      ),
+    );
+    expect(pushMock).toHaveBeenCalledWith("/namuh-eng/opengithub/discussions");
   });
 });

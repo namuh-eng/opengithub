@@ -577,6 +577,60 @@ pub struct DiscussionMetadataRequest {
     pub label_ids: Option<Vec<Uuid>>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionTransferTarget {
+    pub repository_id: Uuid,
+    pub owner: String,
+    pub name: String,
+    pub visibility: String,
+    pub href: String,
+    pub discussions_href: String,
+    pub category_options: Vec<DiscussionCategoryChoice>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionTransferTargetsView {
+    pub current_repository: DiscussionRepositorySummary,
+    pub discussion_number: i64,
+    pub targets: Vec<DiscussionTransferTarget>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferDiscussionRequest {
+    pub repository_id: Uuid,
+    pub category_slug: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferDiscussionResponse {
+    pub discussion_id: Uuid,
+    pub source_href: String,
+    pub destination_href: String,
+    pub destination_owner: String,
+    pub destination_repo: String,
+    pub destination_number: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteDiscussionRequest {
+    pub confirmation: String,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteDiscussionResponse {
+    pub discussion_id: Uuid,
+    pub deleted: bool,
+    pub tombstone_id: Uuid,
+    pub discussions_href: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DiscussionCategoryFormat {
@@ -1881,6 +1935,7 @@ pub async fn repository_discussion_detail_for_actor_by_owner_name(
         JOIN discussion_categories ON discussion_categories.id = discussions.category_id
         LEFT JOIN users author ON author.id = discussions.author_user_id
         WHERE discussions.repository_id = $1 AND discussions.number = $2
+          AND discussions.deleted_at IS NULL
         "#,
     )
     .bind(repository.id)
@@ -3253,6 +3308,299 @@ pub async fn update_repository_discussion_metadata_by_owner_name(
     .await
 }
 
+pub async fn repository_discussion_transfer_targets_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    discussion_number: i64,
+) -> Result<Option<DiscussionTransferTargetsView>, RepositoryError> {
+    let Some((repository, discussion_id, _title, _author_user_id)) =
+        load_discussion_mutation_context(pool, actor_user_id, owner, repo, discussion_number)
+            .await?
+    else {
+        return Ok(None);
+    };
+    ensure_discussion_management_allowed(pool, &repository, actor_user_id, discussion_id).await?;
+    let rows = sqlx::query(
+        r#"
+        SELECT repositories.id, repository_owners.login AS owner_login, repositories.name,
+               repositories.visibility, repositories.is_archived
+        FROM repositories
+        JOIN repository_owners ON repository_owners.id = repositories.owner_id
+        WHERE (
+            ($1::uuid IS NOT NULL AND repositories.owner_user_id = $1)
+            OR ($2::uuid IS NOT NULL AND repositories.owner_organization_id = $2)
+        )
+          AND repositories.id <> $3
+          AND repositories.is_archived = false
+        ORDER BY repositories.updated_at DESC, repositories.name ASC
+        LIMIT 20
+        "#,
+    )
+    .bind(repository.owner_user_id)
+    .bind(repository.owner_organization_id)
+    .bind(repository.id)
+    .fetch_all(pool)
+    .await?;
+    let mut targets = Vec::new();
+    for row in rows {
+        let target = super::repositories::Repository {
+            id: row.try_get("id")?,
+            owner_user_id: repository.owner_user_id,
+            owner_organization_id: repository.owner_organization_id,
+            owner_login: row.try_get("owner_login")?,
+            name: row.try_get("name")?,
+            description: None,
+            visibility: RepositoryVisibility::try_from(
+                row.try_get::<String, _>("visibility")?.as_str(),
+            )?,
+            default_branch: "main".to_owned(),
+            is_archived: row.try_get("is_archived")?,
+            created_by_user_id: repository.created_by_user_id,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        if !repository_discussions_policy_enabled(pool, target.id).await? {
+            continue;
+        }
+        let (_, can_read, _) = discussion_permissions(pool, &target, actor_user_id).await?;
+        if !can_read {
+            continue;
+        }
+        targets.push(DiscussionTransferTarget {
+            repository_id: target.id,
+            owner: target.owner_login.clone(),
+            name: target.name.clone(),
+            visibility: target.visibility.as_str().to_owned(),
+            href: format!("/{}/{}", target.owner_login, target.name),
+            discussions_href: format!("/{}/{}/discussions", target.owner_login, target.name),
+            category_options: load_discussion_category_choices(pool, &target).await?,
+        });
+    }
+    Ok(Some(DiscussionTransferTargetsView {
+        current_repository: discussion_repository_summary(&repository),
+        discussion_number,
+        targets,
+    }))
+}
+
+pub async fn transfer_repository_discussion_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    discussion_number: i64,
+    request: TransferDiscussionRequest,
+) -> Result<Option<TransferDiscussionResponse>, RepositoryError> {
+    let Some((repository, discussion_id, title, author_user_id)) =
+        load_discussion_mutation_context(pool, actor_user_id, owner, repo, discussion_number)
+            .await?
+    else {
+        return Ok(None);
+    };
+    ensure_discussion_management_allowed(pool, &repository, actor_user_id, discussion_id).await?;
+    if repository.id == request.repository_id {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "destination repository must be different".to_owned(),
+        ));
+    }
+    let Some(destination) =
+        load_same_owner_transfer_repository(pool, &repository, request.repository_id).await?
+    else {
+        return Err(RepositoryError::NotFound);
+    };
+    if destination.is_archived
+        || !repository_discussions_policy_enabled(pool, destination.id).await?
+    {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "destination repository cannot accept discussions".to_owned(),
+        ));
+    }
+    let category_slug = normalize_slug(&request.category_slug)?;
+    let Some(category) = load_discussion_category_choices(pool, &destination)
+        .await?
+        .into_iter()
+        .find(|category| category.slug == category_slug)
+    else {
+        return Err(RepositoryError::NotFound);
+    };
+    let has_poll = load_discussion_poll_view(pool, discussion_id)
+        .await?
+        .is_some();
+    let has_form_answers: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM discussion_form_answers WHERE discussion_id = $1)",
+    )
+    .bind(discussion_id)
+    .fetch_one(pool)
+    .await?;
+    if has_poll && !category.is_poll {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "poll discussions must transfer into a poll category".to_owned(),
+        ));
+    }
+    if has_form_answers && category.is_poll {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "form discussions cannot transfer into a poll category".to_owned(),
+        ));
+    }
+    let next_number: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(MAX(number), 0) + 1 FROM discussions WHERE repository_id = $1",
+    )
+    .bind(destination.id)
+    .fetch_one(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        UPDATE discussions
+        SET repository_id = $1, category_id = $2, number = $3,
+            transferred_from_repository_id = $4, transferred_from_number = $5,
+            updated_at = now(), last_activity_at = now()
+        WHERE id = $6
+        "#,
+    )
+    .bind(destination.id)
+    .bind(category.id)
+    .bind(next_number)
+    .bind(repository.id)
+    .bind(discussion_number)
+    .bind(discussion_id)
+    .execute(pool)
+    .await?;
+    record_discussion_activity_and_audit(
+        pool,
+        actor_user_id,
+        destination.id,
+        discussion_id,
+        "transferred",
+        "repository.discussion.transfer",
+        json!({
+            "fromRepositoryId": repository.id,
+            "fromRepository": format!("{}/{}", repository.owner_login, repository.name),
+            "fromNumber": discussion_number,
+            "toRepositoryId": destination.id,
+            "toRepository": format!("{}/{}", destination.owner_login, destination.name),
+            "toNumber": next_number,
+            "category": category.slug,
+        }),
+    )
+    .await?;
+    notify_discussion_author(
+        pool,
+        destination.id,
+        discussion_id,
+        author_user_id,
+        actor_user_id,
+        format!(
+            "Discussion #{} was transferred: {}",
+            discussion_number, title
+        ),
+        "discussion_transfer",
+    )
+    .await?;
+    Ok(Some(TransferDiscussionResponse {
+        discussion_id,
+        source_href: format!(
+            "/{}/{}/discussions",
+            repository.owner_login, repository.name
+        ),
+        destination_href: format!(
+            "/{}/{}/discussions/{}",
+            destination.owner_login, destination.name, next_number
+        ),
+        destination_owner: destination.owner_login,
+        destination_repo: destination.name,
+        destination_number: next_number,
+    }))
+}
+
+pub async fn delete_repository_discussion_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    discussion_number: i64,
+    request: DeleteDiscussionRequest,
+) -> Result<Option<DeleteDiscussionResponse>, RepositoryError> {
+    let Some((repository, discussion_id, title, _author_user_id)) =
+        load_discussion_mutation_context(pool, actor_user_id, owner, repo, discussion_number)
+            .await?
+    else {
+        return Ok(None);
+    };
+    ensure_discussion_management_allowed(pool, &repository, actor_user_id, discussion_id).await?;
+    if request.confirmation.trim() != format!("delete discussion {discussion_number}") {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "delete confirmation must match the required phrase".to_owned(),
+        ));
+    }
+    let reason = normalize_short_text(request.reason.as_deref(), "reason", 280)?;
+    let body: String = sqlx::query_scalar("SELECT body FROM discussions WHERE id = $1")
+        .bind(discussion_id)
+        .fetch_one(pool)
+        .await?;
+    let title_hash = hex_sha256(&title);
+    let body_hash = hex_sha256(&body);
+    let tombstone_id = Uuid::new_v4();
+    sqlx::query(
+        r#"
+        INSERT INTO discussion_deletion_tombstones (
+            id, repository_id, discussion_id, discussion_number, deleted_by_user_id,
+            reason, title_sha256, body_sha256
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (discussion_id) DO NOTHING
+        "#,
+    )
+    .bind(tombstone_id)
+    .bind(repository.id)
+    .bind(discussion_id)
+    .bind(discussion_number)
+    .bind(actor_user_id)
+    .bind(reason.as_deref())
+    .bind(title_hash)
+    .bind(body_hash)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        UPDATE discussions
+        SET deleted_at = COALESCE(deleted_at, now()),
+            deleted_by_user_id = COALESCE(deleted_by_user_id, $1),
+            deleted_reason = COALESCE(deleted_reason, $2),
+            updated_at = now()
+        WHERE id = $3
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(reason.as_deref())
+    .bind(discussion_id)
+    .execute(pool)
+    .await?;
+    record_discussion_moderation_audit(
+        pool,
+        actor_user_id,
+        discussion_id,
+        "repository.discussion.delete",
+        json!({
+            "repositoryId": repository.id,
+            "discussionNumber": discussion_number,
+            "reason": reason,
+            "tombstoneId": tombstone_id,
+        }),
+    )
+    .await?;
+    Ok(Some(DeleteDiscussionResponse {
+        discussion_id,
+        deleted: true,
+        tombstone_id,
+        discussions_href: format!(
+            "/{}/{}/discussions",
+            repository.owner_login, repository.name
+        ),
+    }))
+}
+
 fn normalize_discussion_filters(
     query: RepositoryDiscussionsQuery<'_>,
 ) -> Result<NormalizedDiscussionFilters, RepositoryError> {
@@ -3342,7 +3690,7 @@ async fn load_discussion_mutation_context(
         return Err(RepositoryError::PermissionDenied);
     }
     let Some(row) = sqlx::query(
-        "SELECT id, title, author_user_id FROM discussions WHERE repository_id = $1 AND number = $2",
+        "SELECT id, title, author_user_id FROM discussions WHERE repository_id = $1 AND number = $2 AND deleted_at IS NULL",
     )
     .bind(repository.id)
     .bind(discussion_number)
@@ -3410,6 +3758,82 @@ async fn ensure_discussion_moderation_allowed_with_locked(
         ));
     }
     Ok(())
+}
+
+async fn ensure_discussion_management_allowed(
+    pool: &PgPool,
+    repository: &super::repositories::Repository,
+    actor_user_id: Uuid,
+    discussion_id: Uuid,
+) -> Result<(), RepositoryError> {
+    ensure_discussion_moderation_allowed_with_locked(
+        pool,
+        repository,
+        actor_user_id,
+        discussion_id,
+        true,
+    )
+    .await?;
+    let Some(permission) =
+        repository_permission_for_user(pool, repository.id, actor_user_id).await?
+    else {
+        return Err(RepositoryError::PermissionDenied);
+    };
+    if !permission.role.can_write() {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    Ok(())
+}
+
+async fn load_same_owner_transfer_repository(
+    pool: &PgPool,
+    source: &super::repositories::Repository,
+    repository_id: Uuid,
+) -> Result<Option<super::repositories::Repository>, RepositoryError> {
+    let Some(target) = sqlx::query(
+        r#"
+        SELECT repositories.id, repositories.owner_user_id, repositories.owner_organization_id,
+               repository_owners.login AS owner_login, repositories.name, repositories.description,
+               repositories.visibility, repositories.default_branch, repositories.is_archived,
+               repositories.created_by_user_id, repositories.created_at, repositories.updated_at
+        FROM repositories
+        JOIN repository_owners ON repository_owners.id = repositories.owner_id
+        WHERE repositories.id = $1
+          AND (
+            ($2::uuid IS NOT NULL AND repositories.owner_user_id = $2)
+            OR ($3::uuid IS NOT NULL AND repositories.owner_organization_id = $3)
+          )
+        "#,
+    )
+    .bind(repository_id)
+    .bind(source.owner_user_id)
+    .bind(source.owner_organization_id)
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(super::repositories::Repository {
+        id: target.try_get("id")?,
+        owner_user_id: target.try_get("owner_user_id")?,
+        owner_organization_id: target.try_get("owner_organization_id")?,
+        owner_login: target.try_get("owner_login")?,
+        name: target.try_get("name")?,
+        description: target.try_get("description")?,
+        visibility: RepositoryVisibility::try_from(
+            target.try_get::<String, _>("visibility")?.as_str(),
+        )?,
+        default_branch: target.try_get("default_branch")?,
+        is_archived: target.try_get("is_archived")?,
+        created_by_user_id: target.try_get("created_by_user_id")?,
+        created_at: target.try_get("created_at")?,
+        updated_at: target.try_get("updated_at")?,
+    }))
+}
+
+fn hex_sha256(value: &str) -> String {
+    let digest = Sha256::digest(value.as_bytes());
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 async fn normalize_pin_target(
@@ -5732,6 +6156,7 @@ fn filtered_discussion_sql(filters: &NormalizedDiscussionFilters, count_only: bo
         LEFT JOIN discussion_pins ON discussion_pins.discussion_id = discussions.id
         LEFT JOIN users author ON author.id = discussions.author_user_id
         WHERE discussions.repository_id = $1
+          AND discussions.deleted_at IS NULL
           AND ($3::text IS NULL OR discussion_categories.slug = $3)
           AND ($4::text IS NULL OR EXISTS (
               SELECT 1 FROM discussion_labels
@@ -5866,6 +6291,7 @@ async fn discussion_state_counts(
         FROM discussions
         JOIN discussion_categories ON discussion_categories.id = discussions.category_id
         WHERE discussions.repository_id = $1
+          AND discussions.deleted_at IS NULL
           AND ($2::text IS NULL OR discussion_categories.slug = $2)
         "#,
     )
@@ -5890,6 +6316,7 @@ async fn load_pinned_discussions(
         JOIN discussion_categories ON discussion_categories.id = discussions.category_id
         LEFT JOIN users author ON author.id = discussions.author_user_id
         WHERE discussions.repository_id = $1
+          AND discussions.deleted_at IS NULL
           AND ($3::text IS NULL OR discussion_categories.slug = $3)
         ORDER BY discussion_pins.position ASC, discussion_pins.created_at DESC
         LIMIT 6
