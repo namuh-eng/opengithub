@@ -232,7 +232,7 @@ describe("RepositoryDiscussionsPage", () => {
     expect(screen.getByRole("heading", { name: "Discussions" })).toBeVisible();
     expect(
       screen.getByRole("link", { name: "New discussion" }),
-    ).toHaveAttribute("href", "/namuh-eng/opengithub/discussions/new");
+    ).toHaveAttribute("href", "/namuh-eng/opengithub/discussions/new/choose");
     expect(screen.getByLabelText("discussion-query")).toHaveValue("is:open");
 
     const pinned = screen.getByRole("region", { name: "Pinned discussions" });

@@ -1859,13 +1859,38 @@ export function repositoryDiscussionDetailHref(
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/${encodeURIComponent(String(number))}`;
 }
 
+export function repositoryDiscussionChooseCategoryHref(
+  owner: string,
+  repo: string,
+) {
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/new/choose`;
+}
+
+export type RepositoryNewDiscussionHrefQuery = {
+  category?: string | null;
+  q?: string | null;
+  next?: string | null;
+};
+
 export function repositoryNewDiscussionHref(
   owner: string,
   repo: string,
-  categorySlug?: string | null,
+  categorySlugOrQuery?: string | RepositoryNewDiscussionHrefQuery | null,
 ) {
+  if (!categorySlugOrQuery) {
+    return repositoryDiscussionChooseCategoryHref(owner, repo);
+  }
+
+  const query =
+    typeof categorySlugOrQuery === "string"
+      ? { category: categorySlugOrQuery }
+      : categorySlugOrQuery;
   const params = new URLSearchParams();
-  if (categorySlug?.trim()) params.set("category", categorySlug.trim());
+  if (query.category?.trim()) params.set("category", query.category.trim());
+  if (query.q?.trim()) params.set("q", query.q.trim());
+  if (query.next?.trim() && query.next.startsWith("/")) {
+    params.set("next", query.next.trim());
+  }
   const search = params.toString();
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/new${
     search ? `?${search}` : ""

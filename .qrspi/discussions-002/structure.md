@@ -29,7 +29,7 @@
 
 ## Phase 2: Editorial Category Chooser - selectable cards and preselected routing
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement `/{owner}/{repo}/discussions/new/choose` and the preselected-category entry behavior. Users should see category cards with emoji, name, description, answer-enabled badges, counts, and working Get started links. Direct `/{owner}/{repo}/discussions/new?category={slug}` should skip the chooser and load the selected form route data.
 

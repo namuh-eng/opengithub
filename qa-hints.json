@@ -6281,5 +6281,24 @@
       "Attachment metadata is persisted from trusted draft metadata only in this phase; later phases must connect real upload/S3 draft creation and validation from the browser.",
       "Poll creation is intentionally out of scope until Phase 4."
     ]
+  },
+  {
+    "feature_id": "discussions-002",
+    "tests_written": [
+      "Completed Phase 2 Editorial Category Chooser without marking discussions-002 build_pass=true.",
+      "Added /{owner}/{repo}/discussions/new/choose as a signed-cookie App Router page that fetches discussion creation metadata and renders repository-safe unavailable states.",
+      "Added RepositoryDiscussionCategoryChooser with Editorial category cards, emoji/name/description, answer-enabled and poll badges, open/total counts, Get started links, disabled policy handling, empty state, community links, and first-time reminder copy.",
+      "Updated discussion navigation helpers so unscoped New discussion links open the chooser, while selected categories use /{owner}/{repo}/discussions/new?category={slug} with safe q/next query handling.",
+      "Added a minimal selected-category /{owner}/{repo}/discussions/new route shell so chooser navigation loads selected form metadata and shows the selected category summary before Phase 3 adds the composer.",
+      "Extended focused Vitest coverage for chooser cards, badges, disabled/empty states, concrete links, safe preselected-category hrefs, active nav, no dead links, and Editorial banned-value guardrails.",
+      "Verification passed: focused web/tests/repository-discussion-create-page.test.tsx and web/tests/repository-discussions-page.test.tsx; web TypeScript; focused Biome; full TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check; full same-env make test with Cargo tests plus 494 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 still needs the real Markdown composer, preview behavior, similar-search acknowledgement checkbox, attachment UI, create proxy, validation feedback, and submit redirect.",
+      "Phase 4 still needs YAML form field rendering and poll creation/persistence.",
+      "Phase 5 still needs API docs, final browser evidence, QA handoff, prd.json build_pass=true, and final screenshots.",
+      "Focused Playwright chooser smoke reached the browser runner and compiled the app, but database seeding failed because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test rejected the available postgres credentials. Re-run web/tests/e2e/repository-discussions.spec.ts with a credentialed migrated TEST_DATABASE_URL to verify chooser navigation and save ralph/screenshots/build/discussions-002-phase2-chooser.jpg.",
+      "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures."
+    ]
   }
 ]

@@ -262,6 +262,26 @@ test("repository discussions list filters, rows, category rail, and mobile layou
     page.getByRole("link", { name: /General.*active category/ }),
   ).toHaveAttribute("aria-current", "page");
 
+  await page.goto(`${seeded.treeRepositoryHref}/discussions/new/choose`);
+  await expect(
+    page.getByRole("heading", { name: "Choose a category" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "General" })).toBeVisible();
+  await expect(page.getByText("Answers enabled")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Get started" }).first(),
+  ).toHaveAttribute("href", /\/discussions\/new\?category=general$/);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/discussions-002-phase2-chooser.jpg",
+  });
+  await page.getByRole("link", { name: "Get started" }).first().click();
+  await expect(page).toHaveURL(/\/discussions\/new\?category=general$/);
+  await expect(page.getByRole("heading", { name: /General/ })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Choose a different category" }),
+  ).toHaveAttribute("href", /\/discussions\/new\/choose$/);
+
   await page.goto(
     `${seeded.treeRepositoryHref}/discussions/categories/ideas?q=no-match`,
   );
