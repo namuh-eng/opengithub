@@ -1,3 +1,12 @@
+2026-05-06 - projects-004 structure outline
+
+- Determined `projects-004` is the first `build_pass:false` PRD entry and it requires structure planning before implementation.
+- Read the stack/design sources and Projects context needed for this lane: `BUILD_GUIDE.md`, `build-spec.md`, `prd.json`, `web/AGENTS.md`, existing Projects structures for `projects-002`/`projects-003`, current Projects field/value/layout migrations, current Projects domain/routes references, and the Editorial design contract.
+- Added `.qrspi/projects-004/structure.md` with six vertical phases: field settings read contract, Editorial fields settings page, field create/rename/delete lifecycle, single-select option administration, iteration cycles/breaks/filter integration, and final docs/browser/QA/build-pass bookkeeping.
+- Did not change `prd.json`; `projects-004.build_pass` remains `false` until all implementation phases pass verification.
+- Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches.
+- Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-06 - projects-003 phase 3 board layout and column moves
 
 - Completed Phase 3 from `.qrspi/projects-003/structure.md`: Projects v2 Board views now render real Editorial board columns, swimlanes, cards, empty-column toggles, limit warnings, and accessible column moves without marking `projects-003.build_pass=true`; Phases 4-5 remain.
