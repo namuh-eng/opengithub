@@ -424,6 +424,10 @@ test("repository discussions list filters, rows, category rail, and mobile layou
     fullPage: true,
     path: "../ralph/screenshots/build/discussions-002-phase4-form-poll.jpg",
   });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/discussions-002-final-desktop.jpg",
+  });
   await page.getByRole("button", { name: "Start discussion" }).click();
   await expect(page).toHaveURL(/\/discussions\/905$/);
 
@@ -457,5 +461,9 @@ test("repository discussions list filters, rows, category rail, and mobile layou
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/discussions-001-final-mobile.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/discussions-002-final-mobile.jpg",
   });
 });

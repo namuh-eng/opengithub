@@ -6335,5 +6335,22 @@
       "Phase 5 still needs API docs, final browser evidence, QA handoff, prd.json build_pass=true, and final desktop/mobile screenshots.",
       "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures."
     ]
+  },
+  {
+    "feature_id": "discussions-002",
+    "tests_written": [
+      "Completed Phase 5 API docs, final verification, QA handoff, and build-pass bookkeeping for repository discussion creation.",
+      "Added /docs/api coverage for GET /api/repos/{owner}/{repo}/discussions/new, GET /api/repos/{owner}/{repo}/discussions/new/categories/{slug}, and POST /api/repos/{owner}/{repo}/discussions.",
+      "Documented chooser metadata, selected-category YAML form metadata, generic fallback behavior, required similar-search acknowledgement, poll restrictions, attachment metadata bounds, transaction side effects, Markdown preview non-persistence, auth/privacy gates, and no-secret guarantees.",
+      "Extended focused API docs assertions and final Playwright screenshot targets ralph/screenshots/build/discussions-002-final-desktop.jpg and ralph/screenshots/build/discussions-002-final-mobile.jpg for the next clean DB-backed browser run.",
+      "Marked .qrspi/discussions-002/structure.md Phase 5 done and discussions-002.build_pass=true after local verification."
+    ],
+    "needs_deeper_qa": [
+      "make test-e2e was attempted with TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test, stalled inside the seeded Playwright/browser path with dashboard_e2e_seed still running, and was terminated to avoid leaving dev servers open.",
+      "Re-run web/tests/e2e/repository-discussions.spec.ts against a credentialed migrated TEST_DATABASE_URL to verify chooser, generic creation, YAML form creation, poll creation, submit redirects, disabled states, and save the discussions-002 final desktop/mobile screenshots.",
+      "Repeat the create flow with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Verify real S3/object upload draft creation when the upload path is connected; this feature persists bounded browser-selected attachment draft metadata but does not prove object storage writes.",
+      "Run notification UI QA after creating discussions to confirm subscription and maintainer notification rows surface correctly outside contract tests."
+    ]
   }
 ]

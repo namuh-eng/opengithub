@@ -85,7 +85,7 @@
 
 ## Phase 5: API Docs, Browser Evidence, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `discussions-002` only after chooser, generic creation, YAML forms, poll creation, preview, attachments, side effects, docs, screenshots, QA handoff, and PRD bookkeeping are complete. Do not implement discussion detail timelines/comments, answer marking, poll voting, moderation, or category management here.
 

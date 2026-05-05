@@ -3661,6 +3661,153 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-discussion-create-metadata",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/discussions/new",
+    title: "Read repository Discussion creation metadata",
+    description:
+      "Returns the chooser-ready category cards, selected-category form fallback, community links, similar-search requirement, and viewer create affordances for the Editorial new Discussion flow.",
+    auth: "Signed opengithub session cookie with repository read permission; private outsiders receive not_found",
+    response: `{
+  "repository": {
+    "owner": "mona",
+    "name": "octo-app",
+    "visibility": "public",
+    "href": "/mona/octo-app",
+    "discussionsHref": "/mona/octo-app/discussions"
+  },
+  "viewer": {
+    "authenticated": true,
+    "permission": "write",
+    "canRead": true,
+    "canVote": true,
+    "canCreate": true
+  },
+  "enabled": true,
+  "disabledReason": null,
+  "categories": [
+    {
+      "slug": "q-a",
+      "name": "Q&A",
+      "emoji": "🙏",
+      "acceptsAnswers": true,
+      "isPoll": false,
+      "count": 3,
+      "openCount": 2,
+      "formHref": "/mona/octo-app/discussions/new?category=q-a"
+    }
+  ],
+  "selectedCategory": null,
+  "similarSearch": {
+    "required": true,
+    "query": "",
+    "href": "/mona/octo-app/discussions?q="
+  }
+}`,
+    notes: [
+      "Organization policy-disabled repositories return enabled=false with a disabledReason and no create-capable affordance instead of dead browser controls.",
+      "Archived repositories and read-only viewers can still read public chooser metadata, but viewer.canCreate=false tells the browser to render non-submitting states.",
+      "The response is bounded for browser cards and omits raw discussion template source, session rows, OAuth payloads, environment variables, storage keys, and stack traces.",
+    ],
+  },
+  {
+    id: "repo-discussion-create-category-metadata",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/discussions/new/categories/{slug}?q=import%20preview",
+    title: "Read selected Discussion category form",
+    description:
+      "Returns one category's composer contract, including parsed DISCUSSION_TEMPLATE YAML fields when valid, generic fallback metadata when invalid, poll-category flags, and the title-derived similar-search URL.",
+    auth: "Signed opengithub session cookie with repository read permission; private outsiders and unknown private categories receive not_found",
+    response: `{
+  "selectedCategory": {
+    "slug": "q-a",
+    "name": "Q&A",
+    "emoji": "🙏",
+    "acceptsAnswers": true,
+    "isPoll": false
+  },
+  "form": {
+    "categorySlug": "q-a",
+    "templatePath": ".github/DISCUSSION_TEMPLATE/q-a.yml",
+    "description": "Add enough context for a maintainer to answer.",
+    "fallback": false,
+    "valid": true,
+    "fields": [
+      {
+        "id": "context",
+        "fieldType": "textarea",
+        "label": "Context",
+        "required": true,
+        "options": []
+      },
+      {
+        "id": "area",
+        "fieldType": "dropdown",
+        "label": "Area",
+        "required": false,
+        "options": ["UI", "API"]
+      }
+    ]
+  },
+  "similarSearch": {
+    "required": true,
+    "query": "import preview",
+    "href": "/mona/octo-app/discussions?q=import+preview"
+  }
+}`,
+    notes: [
+      "Supported YAML field types are input, textarea, dropdown, and checkboxes. Unsupported or oversized fields are ignored safely; invalid templates fall back to the generic title/body composer.",
+      "Markdown descriptions are sanitized before they reach the browser. Raw template files, parse stack traces, and private Git blob metadata are never returned.",
+      "Poll categories set selectedCategory.isPoll=true and the browser renders poll question/options controls instead of YAML form fields.",
+    ],
+  },
+  {
+    id: "repo-discussion-create",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/discussions",
+    title: "Create repository Discussion",
+    description:
+      "Creates a Discussion from the chooser/composer flow, persists the initial body comment, optional YAML form answers, optional poll options, bounded attachment metadata, viewer subscription, notifications, and repository activity events.",
+    auth: "Signed opengithub session cookie with repository write permission",
+    request: `{
+  "categorySlug": "q-a",
+  "title": "How should import previews handle large manifests?",
+  "body": "The preview should stay responsive for large lockfiles.",
+  "similarSearchAcknowledged": true,
+  "formAnswers": [
+    { "fieldId": "context", "value": "Users repeat search discussions." }
+  ],
+  "poll": null,
+  "attachmentDrafts": [
+    {
+      "fileName": "sketch.txt",
+      "contentType": "text/plain",
+      "byteSize": 128,
+      "storageKey": "discussion-drafts/user/sketch.txt"
+    }
+  ]
+}`,
+    response: `{
+  "discussionId": "discussion_01",
+  "discussionNumber": 42,
+  "href": "/mona/octo-app/discussions/42",
+  "title": "How should import previews handle large manifests?",
+  "category": {
+    "slug": "q-a",
+    "name": "Q&A",
+    "acceptsAnswers": true,
+    "isPoll": false
+  }
+}`,
+    notes: [
+      "The similar-search acknowledgement is required before creation. Missing title, body, required YAML answers, invalid category slugs, archived repositories, disabled Discussions, and read-only viewers return stable validation or permission envelopes.",
+      "Poll payloads require a question plus two to ten unique non-empty options and cannot be combined with category form answers. Poll voting is intentionally handled by a later Discussions feature.",
+      "Creation writes discussions, discussion_comments, discussion_form_answers, discussion_polls/options when present, discussion_attachments metadata, subscriptions, notifications, and repository_activity_events in one transaction.",
+      "Markdown preview is browser-side and sanitized before display; previewing does not create discussion, comment, attachment, subscription, notification, or activity rows.",
+      "Responses and errors never include raw session cookies, OAuth profile payloads, token hashes, environment variables, plaintext storage credentials, raw attachment object bytes, or stack traces.",
+    ],
+  },
+  {
     id: "repo-releases-list",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/releases?page=1&pageSize=30",

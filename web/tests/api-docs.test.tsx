@@ -1239,6 +1239,30 @@ describe("ApiDocsPage", () => {
       ),
     ).toBeVisible();
     expect(
+      screen.getByText("/api/repos/{owner}/{repo}/discussions/new"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/discussions/new/categories/{slug}?q=import%20preview",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/discussions"),
+    ).toBeVisible();
+    expect(screen.getByText(/chooser-ready category cards/)).toBeVisible();
+    expect(
+      screen.getByText(/Supported YAML field types are input, textarea/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/similar-search acknowledgement is required/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Poll payloads require a question plus two to ten/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/previewing does not create discussion/),
+    ).toBeVisible();
+    expect(
       screen.getByText("/api/search?q=router&type=code&page=1&pageSize=30"),
     ).toBeVisible();
     expect(
