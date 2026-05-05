@@ -441,6 +441,106 @@ describe("RepositoryDiscussionsPage", () => {
     expect(container.querySelector("button:not([type])")).toBeNull();
   });
 
+  it("renders the Polls category with poll row metadata and a concrete poll composer CTA", () => {
+    const base = discussionsView();
+    const pollCategory = {
+      id: "cat-polls",
+      slug: "polls",
+      name: "Polls",
+      emoji: "📊",
+      description: "Vote on repository decisions.",
+      count: 1,
+      openCount: 1,
+      href: "/namuh-eng/opengithub/discussions/categories/polls",
+      active: true,
+    };
+    const pollView = discussionsView({
+      categories: [...base.categories, pollCategory],
+      filters: {
+        ...base.filters,
+        category: "polls",
+      },
+      pinned: [],
+      items: [
+        {
+          ...base.items[0],
+          id: "discussion-poll-1",
+          number: 21,
+          title: "Which branch protection policy should ship first?",
+          category: pollCategory,
+          categoryQualifier: "Poll",
+          commentsCount: 4,
+          pollSummary: {
+            id: "poll-1",
+            question: "Which branch protection policy should ship first?",
+            allowsMultiple: false,
+            optionCount: 3,
+            totalVotes: 0,
+          },
+          viewerCanVote: false,
+          resultsVisible: true,
+          viewerVoteOptionIds: [],
+          pollUnavailableReasons: [
+            "Poll voting is not available for this discussion state.",
+          ],
+        },
+      ],
+      openCount: 1,
+      closedCount: 0,
+      total: 1,
+    });
+
+    const { container, rerender } = render(
+      <RepositoryDiscussionsPage
+        discussions={pollView}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "📊 Polls" })).toBeVisible();
+    expect(screen.getByText("category:polls")).toBeVisible();
+    expect(
+      screen.getAllByText("Which branch protection policy should ship first?")
+        .length,
+    ).toBeGreaterThan(0);
+    expect(container.textContent).toContain("3 options");
+    expect(container.textContent).toContain("single choice");
+    expect(container.textContent).toContain(
+      "Poll voting is not available for this discussion state.",
+    );
+    expect(screen.getByText("Poll")).toBeVisible();
+    expect(
+      screen.getAllByRole("link", { name: "Start poll" })[0],
+    ).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/discussions/new?category=polls",
+    );
+    expect(container.innerHTML).not.toContain("#0969da");
+    expect(container.querySelector('[href="#"]')).toBeNull();
+
+    rerender(
+      <RepositoryDiscussionsPage
+        discussions={discussionsView({
+          categories: [...base.categories, pollCategory],
+          filters: { ...base.filters, category: "polls" },
+          items: [],
+          pinned: [],
+          total: 0,
+        })}
+        repository={repositoryOverview()}
+      />,
+    );
+    expect(
+      screen.getByText("No poll discussions match this view."),
+    ).toBeVisible();
+    expect(
+      screen.getAllByRole("link", { name: "Start poll" })[0],
+    ).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/discussions/new?category=polls",
+    );
+  });
+
   it("renders disabled and mobile-safe empty states", () => {
     render(
       <div style={{ width: 360 }}>

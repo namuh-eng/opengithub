@@ -4500,15 +4500,29 @@ export type DiscussionRow = {
   locked: boolean;
   pinned: boolean;
   category: DiscussionCategorySummary;
+  categoryQualifier?: string;
   labels: DiscussionLabelSummary[];
   author: DiscussionAuthorSummary;
   commentsCount: number;
   votesCount: number;
   viewerVoted: boolean;
+  pollSummary?: DiscussionPollSummary | null;
+  viewerCanVote?: boolean;
+  resultsVisible?: boolean;
+  viewerVoteOptionIds?: string[];
+  pollUnavailableReasons?: string[];
   href: string;
   createdAt: string;
   updatedAt: string;
   lastActivityAt: string;
+};
+
+export type DiscussionPollSummary = {
+  id: string;
+  question: string;
+  allowsMultiple: boolean;
+  optionCount: number;
+  totalVotes: number;
 };
 
 export type PinnedDiscussionCard = {
@@ -4606,6 +4620,10 @@ export type DiscussionPollView = {
   question: string;
   allowsMultiple: boolean;
   options: DiscussionPollOptionView[];
+  viewerCanVote?: boolean;
+  resultsVisible?: boolean;
+  viewerVoteOptionIds?: string[];
+  unavailableReasons?: string[];
 };
 
 export type DiscussionAnswerSummary = {

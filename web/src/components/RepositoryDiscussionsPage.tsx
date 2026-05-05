@@ -60,6 +60,23 @@ function CategoryChip({ category }: { category: DiscussionCategorySummary }) {
   );
 }
 
+function PollSummaryChip({ discussion }: { discussion: DiscussionRow }) {
+  if (!discussion.pollSummary) return null;
+  return (
+    <span
+      className="chip accent"
+      title={
+        discussion.pollSummary.allowsMultiple
+          ? "Poll allows multiple choices"
+          : "Poll allows one choice"
+      }
+    >
+      <span aria-hidden="true">📊</span>
+      {discussion.categoryQualifier ?? "Poll"}
+    </span>
+  );
+}
+
 function discussionListHref(
   owner: string,
   repo: string,
@@ -119,6 +136,7 @@ function DiscussionRowItem({
             <span className="chip ok">Answered</span>
           ) : null}
           {discussion.locked ? <span className="chip warn">Locked</span> : null}
+          <PollSummaryChip discussion={discussion} />
           <CategoryChip category={discussion.category} />
           {discussion.labels.map((label) => (
             <span
@@ -142,6 +160,27 @@ function DiscussionRowItem({
           {discussion.author.login} · updated{" "}
           {relativeTime(discussion.lastActivityAt)}
         </p>
+        {discussion.pollSummary ? (
+          <div className="mt-3 rounded-[var(--radius)] border border-[var(--line-soft)] bg-[var(--surface-2)] p-3">
+            <p className="t-sm break-words" style={{ color: "var(--ink-1)" }}>
+              {discussion.pollSummary.question}
+            </p>
+            <p className="t-xs mt-1" style={{ color: "var(--ink-3)" }}>
+              <span className="t-num">
+                {formatNumber(discussion.pollSummary.optionCount)}
+              </span>{" "}
+              options ·{" "}
+              {discussion.pollSummary.allowsMultiple
+                ? "multiple choice"
+                : "single choice"}{" "}
+              ·{" "}
+              {discussion.viewerCanVote
+                ? "voting available"
+                : (discussion.pollUnavailableReasons?.[0] ??
+                  "voting unavailable")}
+            </p>
+          </div>
+        ) : null}
       </div>
       <div className="flex items-center gap-3 md:justify-end">
         <Avatar user={discussion.author} />
@@ -154,6 +193,17 @@ function DiscussionRowItem({
             {formatNumber(discussion.commentsCount)}
           </span>
         </span>
+        {discussion.pollSummary ? (
+          <span
+            className="t-xs flex min-w-12 items-center justify-end gap-1"
+            style={{ color: "var(--ink-3)" }}
+          >
+            <span aria-hidden="true">📊</span>
+            <span className="t-num">
+              {formatNumber(discussion.pollSummary.totalVotes)}
+            </span>
+          </span>
+        ) : null}
       </div>
     </article>
   );
@@ -345,24 +395,37 @@ function EmptyState({
   const activeCategory = discussions.categories.find(
     (category) => category.active,
   );
+  const isPollCategory =
+    activeCategory?.slug === "polls" ||
+    discussions.filters.category === "polls" ||
+    discussions.items.some((item) => item.pollSummary);
   return (
     <div className="grid justify-items-center gap-3 px-6 py-14 text-center">
-      <span className="chip soft">No discussions</span>
+      <span className="chip soft">
+        {isPollCategory ? "No polls" : "No discussions"}
+      </span>
       <h2 className="t-h2">
-        {activeCategory
-          ? `No ${activeCategory.name} discussions match this view.`
-          : "No discussions match this view."}
+        {isPollCategory
+          ? "No poll discussions match this view."
+          : activeCategory
+            ? `No ${activeCategory.name} discussions match this view.`
+            : "No discussions match this view."}
       </h2>
       <p className="t-sm max-w-xl" style={{ color: "var(--ink-3)" }}>
-        Adjust the query, pick a different category, or start the first thread
-        for this part of the repository.
+        {isPollCategory
+          ? "Adjust the query, pick another category, or start a poll for this repository decision."
+          : "Adjust the query, pick a different category, or start the first thread for this part of the repository."}
       </p>
       {discussions.viewer.canCreate ? (
         <Link
           className="btn primary"
-          href={repositoryNewDiscussionHref(owner, repo, activeCategory?.slug)}
+          href={repositoryNewDiscussionHref(
+            owner,
+            repo,
+            isPollCategory ? "polls" : activeCategory?.slug,
+          )}
         >
-          New discussion
+          {isPollCategory ? "Start poll" : "New discussion"}
         </Link>
       ) : null}
     </div>
@@ -435,6 +498,10 @@ export function RepositoryDiscussionsPage({
     (category) => category.active,
   );
   const categorySlug = activeCategory?.slug ?? discussions.filters.category;
+  const isPollCategory =
+    activeCategory?.slug === "polls" ||
+    discussions.filters.category === "polls" ||
+    discussions.items.some((item) => item.pollSummary);
 
   return (
     <RepositoryShell
@@ -450,21 +517,28 @@ export function RepositoryDiscussionsPage({
                 Collaboration
               </p>
               <h1 className="t-h2 mt-1 break-words">
-                {activeCategory
-                  ? `${activeCategory.emoji} ${activeCategory.name}`
-                  : "Discussions"}
+                {isPollCategory
+                  ? "📊 Polls"
+                  : activeCategory
+                    ? `${activeCategory.emoji} ${activeCategory.name}`
+                    : "Discussions"}
               </h1>
               <p
                 className="t-sm mt-2 max-w-2xl"
                 style={{ color: "var(--ink-3)" }}
               >
-                {activeCategory?.description ??
-                  "Ask questions, share ideas, and keep repository conversations separate from issue tracking."}
+                {isPollCategory
+                  ? (activeCategory?.description ??
+                    "Vote on options, compare repository decisions, and keep poll results beside the discussion timeline.")
+                  : (activeCategory?.description ??
+                    "Ask questions, share ideas, and keep repository conversations separate from issue tracking.")}
               </p>
               {activeCategory ? (
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <span className="chip accent">
-                    category:{activeCategory.slug}
+                    {isPollCategory
+                      ? "category:polls"
+                      : `category:${activeCategory.slug}`}
                   </span>
                   <Link
                     className="chip soft hover:underline"
@@ -490,10 +564,10 @@ export function RepositoryDiscussionsPage({
               href={repositoryNewDiscussionHref(
                 owner,
                 repo,
-                activeCategory?.slug,
+                isPollCategory ? "polls" : activeCategory?.slug,
               )}
             >
-              New discussion
+              {isPollCategory ? "Start poll" : "New discussion"}
             </Link>
           </div>
         </section>

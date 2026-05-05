@@ -139,15 +139,31 @@ pub struct DiscussionRow {
     pub locked: bool,
     pub pinned: bool,
     pub category: DiscussionCategorySummary,
+    pub category_qualifier: String,
     pub labels: Vec<DiscussionLabelSummary>,
     pub author: DiscussionAuthorSummary,
     pub comments_count: i64,
     pub votes_count: i64,
     pub viewer_voted: bool,
+    pub poll_summary: Option<DiscussionPollSummary>,
+    pub viewer_can_vote: bool,
+    pub results_visible: bool,
+    pub viewer_vote_option_ids: Vec<Uuid>,
+    pub poll_unavailable_reasons: Vec<String>,
     pub href: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub last_activity_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionPollSummary {
+    pub id: Uuid,
+    pub question: String,
+    pub allows_multiple: bool,
+    pub option_count: i64,
+    pub total_votes: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -291,6 +307,10 @@ pub struct DiscussionPollView {
     pub question: String,
     pub allows_multiple: bool,
     pub options: Vec<DiscussionPollOptionView>,
+    pub viewer_can_vote: bool,
+    pub results_visible: bool,
+    pub viewer_vote_option_ids: Vec<Uuid>,
+    pub unavailable_reasons: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -886,7 +906,13 @@ pub async fn repository_discussions_for_actor_by_owner_name(
     let policy_enabled = repository_discussions_policy_enabled(pool, repository.id).await?;
     let category_exists = if let Some(slug) = selected_category.as_deref() {
         sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS (SELECT 1 FROM discussion_categories WHERE repository_id = $1 AND slug = $2)",
+            r#"
+            SELECT EXISTS (
+              SELECT 1 FROM discussion_categories
+              WHERE repository_id = $1
+                AND (slug = $2 OR ($2 = 'polls' AND format = 'poll'))
+            )
+            "#,
         )
         .bind(repository.id)
         .bind(slug)
@@ -1983,7 +2009,15 @@ pub async fn repository_discussion_detail_for_actor_by_owner_name(
     let total_comments = count_top_level_discussion_comments(pool, discussion_id).await?;
     let subscription = load_discussion_subscription(pool, discussion_id, actor_user_id).await?;
     let form_answers = load_discussion_form_answer_views(pool, discussion_id).await?;
-    let poll = load_discussion_poll_view(pool, discussion_id).await?;
+    let locked: bool = row.try_get("locked")?;
+    let poll = load_discussion_poll_view(
+        pool,
+        discussion_id,
+        actor_user_id,
+        policy_enabled && !repository.is_archived && !locked,
+        policy_enabled && can_read,
+    )
+    .await?;
     let reactions = load_discussion_reactions(pool, discussion_id, None, actor_user_id).await?;
     let answer = load_discussion_answer_summary(
         pool,
@@ -2003,7 +2037,6 @@ pub async fn repository_discussion_detail_for_actor_by_owner_name(
         viewer_permission.as_deref(),
         Some("triage" | "write" | "maintain" | "admin" | "owner")
     );
-    let locked: bool = row.try_get("locked")?;
     let can_comment = policy_enabled && !repository.is_archived && !locked;
     let body_markdown: String = row.try_get("body")?;
     let moderation = load_discussion_moderation_view(pool, discussion_id).await?;
@@ -3213,9 +3246,7 @@ pub async fn update_repository_discussion_metadata_by_owner_name(
         else {
             return Err(RepositoryError::NotFound);
         };
-        let has_poll = load_discussion_poll_view(pool, discussion_id)
-            .await?
-            .is_some();
+        let has_poll = discussion_has_poll(pool, discussion_id).await?;
         let has_form_answers: bool = sqlx::query_scalar(
             "SELECT EXISTS(SELECT 1 FROM discussion_form_answers WHERE discussion_id = $1)",
         )
@@ -3425,9 +3456,7 @@ pub async fn transfer_repository_discussion_by_owner_name(
     else {
         return Err(RepositoryError::NotFound);
     };
-    let has_poll = load_discussion_poll_view(pool, discussion_id)
-        .await?
-        .is_some();
+    let has_poll = discussion_has_poll(pool, discussion_id).await?;
     let has_form_answers: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM discussion_form_answers WHERE discussion_id = $1)",
     )
@@ -5942,6 +5971,9 @@ async fn load_discussion_form_answer_views(
 async fn load_discussion_poll_view(
     pool: &PgPool,
     discussion_id: Uuid,
+    actor_user_id: Uuid,
+    viewer_can_vote: bool,
+    results_visible: bool,
 ) -> Result<Option<DiscussionPollView>, RepositoryError> {
     let Some(row) = sqlx::query(
         "SELECT id, question, allows_multiple FROM discussion_polls WHERE discussion_id = $1",
@@ -5974,7 +6006,61 @@ async fn load_discussion_poll_view(
         question: row.try_get("question")?,
         allows_multiple: row.try_get("allows_multiple")?,
         options,
+        viewer_can_vote,
+        results_visible,
+        viewer_vote_option_ids: load_viewer_poll_vote_option_ids(pool, poll_id, actor_user_id)
+            .await?,
+        unavailable_reasons: poll_unavailable_reasons(true, viewer_can_vote),
     }))
+}
+
+async fn discussion_has_poll(pool: &PgPool, discussion_id: Uuid) -> Result<bool, RepositoryError> {
+    Ok(
+        sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM discussion_polls WHERE discussion_id = $1)",
+        )
+        .bind(discussion_id)
+        .fetch_one(pool)
+        .await?,
+    )
+}
+
+async fn load_viewer_poll_vote_option_ids(
+    pool: &PgPool,
+    poll_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<Vec<Uuid>, RepositoryError> {
+    let vote_table_exists = sqlx::query_scalar::<_, bool>(
+        "SELECT to_regclass('public.discussion_poll_votes') IS NOT NULL",
+    )
+    .fetch_one(pool)
+    .await?;
+    if !vote_table_exists {
+        return Ok(Vec::new());
+    }
+    let rows = sqlx::query(
+        r#"
+        SELECT option_id
+        FROM discussion_poll_votes
+        WHERE poll_id = $1 AND user_id = $2 AND replaced_at IS NULL
+        ORDER BY created_at ASC
+        "#,
+    )
+    .bind(poll_id)
+    .bind(actor_user_id)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|row| Ok(row.try_get("option_id")?))
+        .collect()
+}
+
+fn poll_unavailable_reasons(is_poll: bool, viewer_can_vote: bool) -> Vec<String> {
+    if !is_poll || viewer_can_vote {
+        Vec::new()
+    } else {
+        vec!["Poll voting is not available for this discussion state.".to_owned()]
+    }
 }
 
 async fn load_discussion_answer_summary(
@@ -6154,10 +6240,15 @@ fn filtered_discussion_sql(filters: &NormalizedDiscussionFilters, count_only: bo
         FROM discussions
         JOIN discussion_categories ON discussion_categories.id = discussions.category_id
         LEFT JOIN discussion_pins ON discussion_pins.discussion_id = discussions.id
+        LEFT JOIN discussion_polls ON discussion_polls.discussion_id = discussions.id
         LEFT JOIN users author ON author.id = discussions.author_user_id
         WHERE discussions.repository_id = $1
           AND discussions.deleted_at IS NULL
-          AND ($3::text IS NULL OR discussion_categories.slug = $3)
+          AND (
+              $3::text IS NULL
+              OR discussion_categories.slug = $3
+              OR ($3 = 'polls' AND discussion_categories.format = 'poll')
+          )
           AND ($4::text IS NULL OR EXISTS (
               SELECT 1 FROM discussion_labels
               JOIN labels ON labels.id = discussion_labels.label_id
@@ -6185,8 +6276,17 @@ const DISCUSSION_ROW_SELECT: &str = r#"
         discussion_categories.id AS category_id, discussion_categories.slug AS category_slug,
         discussion_categories.name AS category_name, discussion_categories.emoji AS category_emoji,
         discussion_categories.description AS category_description,
+        discussion_categories.format AS category_format,
         discussion_pins.discussion_id IS NOT NULL AS pinned,
         EXISTS (SELECT 1 FROM discussion_votes WHERE discussion_votes.discussion_id = discussions.id AND discussion_votes.user_id = $2) AS viewer_voted,
+        discussion_polls.id AS poll_id,
+        discussion_polls.question AS poll_question,
+        discussion_polls.allows_multiple AS poll_allows_multiple,
+        COALESCE((
+          SELECT COUNT(*)::bigint
+          FROM discussion_poll_options
+          WHERE discussion_poll_options.poll_id = discussion_polls.id
+        ), 0)::bigint AS poll_option_count,
         author.id AS author_id,
         COALESCE(NULLIF(author.username, ''), author.email, 'ghost') AS author_login,
         author.display_name AS author_display_name,
@@ -6217,13 +6317,31 @@ fn discussion_row_from_row(
                 "discussion labels were malformed: {error}"
             ))
         })?;
+    let category_format: String = row.try_get("category_format")?;
+    let poll_id: Option<Uuid> = row.try_get("poll_id")?;
+    let poll_summary = match poll_id {
+        Some(id) => Some(DiscussionPollSummary {
+            id,
+            question: row.try_get("poll_question")?,
+            allows_multiple: row.try_get("poll_allows_multiple")?,
+            option_count: row.try_get("poll_option_count")?,
+            total_votes: 0,
+        }),
+        None => None,
+    };
+    let locked: bool = row.try_get("locked")?;
+    let state: String = row.try_get("state")?;
+    let poll_unavailable_reasons = poll_unavailable_reasons(
+        poll_summary.is_some(),
+        !repository.is_archived && !locked && state == "open",
+    );
     Ok(DiscussionRow {
         id: row.try_get("id")?,
         number,
         title: row.try_get("title")?,
-        state: row.try_get("state")?,
+        state,
         answered: row.try_get("answered")?,
-        locked: row.try_get("locked")?,
+        locked,
         pinned: row.try_get("pinned")?,
         category: DiscussionCategorySummary {
             id: row.try_get("category_id")?,
@@ -6241,6 +6359,11 @@ fn discussion_row_from_row(
             ),
             active: false,
         },
+        category_qualifier: if category_format == "poll" {
+            "Poll".to_owned()
+        } else {
+            "Discussion".to_owned()
+        },
         labels,
         author: DiscussionAuthorSummary {
             id: row.try_get("author_id")?,
@@ -6251,6 +6374,11 @@ fn discussion_row_from_row(
         comments_count: row.try_get("comments_count")?,
         votes_count: row.try_get("votes_count")?,
         viewer_voted: row.try_get("viewer_voted")?,
+        poll_summary,
+        viewer_can_vote: poll_unavailable_reasons.is_empty(),
+        results_visible: true,
+        viewer_vote_option_ids: Vec::new(),
+        poll_unavailable_reasons,
         href: format!(
             "/{}/{}/discussions/{}",
             repository.owner_login, repository.name, number
@@ -6292,7 +6420,11 @@ async fn discussion_state_counts(
         JOIN discussion_categories ON discussion_categories.id = discussions.category_id
         WHERE discussions.repository_id = $1
           AND discussions.deleted_at IS NULL
-          AND ($2::text IS NULL OR discussion_categories.slug = $2)
+          AND (
+              $2::text IS NULL
+              OR discussion_categories.slug = $2
+              OR ($2 = 'polls' AND discussion_categories.format = 'poll')
+          )
         "#,
     )
     .bind(repository_id)
@@ -6314,10 +6446,15 @@ async fn load_pinned_discussions(
         FROM discussion_pins
         JOIN discussions ON discussions.id = discussion_pins.discussion_id
         JOIN discussion_categories ON discussion_categories.id = discussions.category_id
+        LEFT JOIN discussion_polls ON discussion_polls.discussion_id = discussions.id
         LEFT JOIN users author ON author.id = discussions.author_user_id
         WHERE discussions.repository_id = $1
           AND discussions.deleted_at IS NULL
-          AND ($3::text IS NULL OR discussion_categories.slug = $3)
+          AND (
+              $3::text IS NULL
+              OR discussion_categories.slug = $3
+              OR ($3 = 'polls' AND discussion_categories.format = 'poll')
+          )
         ORDER BY discussion_pins.position ASC, discussion_pins.created_at DESC
         LIMIT 6
         "#

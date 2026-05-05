@@ -10,7 +10,7 @@
 
 ## Phase 1: Poll Category Read Contract - polls list and detail metadata
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make `/{owner}/{repo}/discussions/categories/polls` and poll discussion detail reads first-class. The polls category page should filter to poll discussions, expose poll row metadata, and detail DTOs should include enough poll policy/result state for later voting UI without accepting votes yet.
 

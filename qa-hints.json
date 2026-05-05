@@ -6612,5 +6612,21 @@
       "Repeat destructive transfer/delete and issue conversion with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
       "Run DB-backed QA for notification fanout, audit row redaction, deleted-content redaction, transfer numbering collisions, copied issue comment metadata, and duplicate conversion idempotency with real seeded rows."
     ]
+  },
+  {
+    "feature_id": "discussions-006",
+    "tests_written": [
+      "Completed Phase 1 Poll Category Read Contract without marking discussions-006 build_pass=true.",
+      "Extended Rust discussion list/detail DTOs with poll read metadata: categoryQualifier, pollSummary, viewerCanVote, resultsVisible, viewerVoteOptionIds, and unavailable reasons.",
+      "Updated discussion category filtering so /discussions/categories/polls also selects categories with format=poll rather than relying only on slug matching.",
+      "Updated RepositoryDiscussionsPage to render the Polls header, category qualifier chip, poll row summary, poll option metadata, empty-state Start poll CTA, and concrete row/detail links using Editorial primitives.",
+      "Added focused Vitest coverage for the Polls category header, poll row metadata, empty state CTA, no dead hrefs, and no banned GitHub visual values."
+    ],
+    "needs_deeper_qa": [
+      "make test-e2e was attempted for this UI phase but the wrapper produced no output for over 60 seconds; Playwright/dev-server children were terminated cleanly to avoid leaving local servers open.",
+      "Rerun browser smoke against a clean migrated credentialed TEST_DATABASE_URL and save ralph/screenshots/build/discussions-006-phase1-polls-category.jpg.",
+      "Run DB-backed QA for renamed poll categories where slug is not polls but format=poll, private repository result visibility, closed/locked poll unavailable reasons, and deleted poll discussion redaction.",
+      "Phase 2 still needs poll vote persistence and mutation APIs before operational voting controls are enabled."
+    ]
   }
 ]
