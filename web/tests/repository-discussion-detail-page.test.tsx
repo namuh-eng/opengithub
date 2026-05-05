@@ -148,8 +148,8 @@ function discussionDetail(
       canComment: true,
       canReact: true,
       canSubscribe: true,
-      canMarkAnswer: false,
-      canModerate: false,
+      canMarkAnswer: true,
+      canModerate: true,
       viewerVoted: true,
     },
     enabled: true,
@@ -208,6 +208,37 @@ function discussionDetail(
     sidebar: {
       category,
       labels,
+      categoryOptions: [
+        {
+          ...category,
+          acceptsAnswers: true,
+          isPoll: false,
+          formHref: "/namuh-eng/opengithub/discussions/new?category=q-a",
+        },
+        {
+          id: "cat-2",
+          slug: "ideas",
+          name: "Ideas",
+          emoji: "!",
+          description: "Product ideas.",
+          acceptsAnswers: false,
+          isPoll: false,
+          count: 1,
+          openCount: 1,
+          href: "/namuh-eng/opengithub/discussions/categories/ideas",
+          formHref: "/namuh-eng/opengithub/discussions/new?category=ideas",
+        },
+      ],
+      labelOptions: [
+        ...labels,
+        {
+          id: "label-2",
+          name: "imports",
+          color: "var(--accent)",
+          description: "Import workflows",
+          count: 1,
+        },
+      ],
       participants: [author, maintainer],
       events: [event],
     },
@@ -249,7 +280,7 @@ describe("RepositoryDiscussionDetailPage", () => {
     const sidebar = screen.getByRole("complementary");
     expect(within(sidebar).getByText("Subscribed")).toBeVisible();
     expect(within(sidebar).getByText("Q&A")).toBeVisible();
-    expect(within(sidebar).getByText("api")).toBeVisible();
+    expect(within(sidebar).getAllByText("api").length).toBeGreaterThan(0);
   });
 
   it("keeps sort and permalink anchors concrete and composer controls disabled for Phase 2", () => {
@@ -288,5 +319,23 @@ describe("RepositoryDiscussionDetailPage", () => {
       /#0969da|#1f883d|#1a7f37|#cf222e|#82071e|#f6f8fa|#1f2328|#d0d7de|#59636e|Octicon|@primer\//i,
     );
     expect(container.innerHTML).not.toContain("onClick={() => {}}");
+  });
+
+  it("renders maintainer answer, state, category, and label controls", () => {
+    render(
+      <RepositoryDiscussionDetailPage
+        detail={discussionDetail()}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Unmark answer" })).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Close as resolved" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("combobox", { name: "Change discussion category" }),
+    ).toBeVisible();
+    expect(screen.getByLabelText("imports")).toBeVisible();
   });
 });

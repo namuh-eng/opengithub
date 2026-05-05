@@ -6404,5 +6404,23 @@
       "Phase 4 still needs answer mark/unmark, close/reopen, category/label editing, and maintainer controls.",
       "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures."
     ]
+  },
+  {
+    "feature_id": "discussions-003",
+    "tests_written": [
+      "Completed Phase 4 Answer State, Close/Reopen, and Sidebar Metadata Editing without marking discussions-003 build_pass=true.",
+      "Added Rust API routes PUT/DELETE /api/repos/{owner}/{repo}/discussions/{discussion_number}/answer, PUT /state, and PATCH /metadata for maintainer moderation.",
+      "Added backend validation for triage-or-greater permission, answer-enabled categories, same-discussion top-level answer comments, close/reopen reason bounds, archived/locked/disabled guardrails, poll/form category compatibility, repository label validation, activity events, and author notification fanout.",
+      "Added same-origin Next.js proxy routes plus typed frontend helpers for answer, state, and metadata mutations without adding client-side auth.",
+      "Updated the Editorial discussion detail page with mark/unmark answer buttons, answer summary refresh, close/reopen controls with reasons, category selector, label checkboxes, and reason-aware event labels.",
+      "Verification passed: cargo fmt --all --check; cargo check -p opengithub-api --tests; focused repository_discussions_contract passed against TEST_DATABASE_URL; focused Biome; web TypeScript; focused web/tests/repository-discussion-detail-page.test.tsx; full TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check; full same-env make test with Cargo tests plus 505 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "make test-e2e was attempted with TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test but produced no output and was terminated after the short wait to avoid leaving dev servers open.",
+      "Re-run web/tests/e2e/repository-discussions.spec.ts against a stable clean migrated TEST_DATABASE_URL to verify answer mark/unmark, close/reopen, category/label edits, and save ralph/screenshots/build/discussions-003-phase4-moderation.jpg.",
+      "Add deeper seeded contract assertions in Phase 5 for Phase 4 row side effects: discussion_answers replacement/removal, discussion state events, metadata events, label replacement, and notification rows.",
+      "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Phase 5 still needs API docs, final browser evidence, QA handoff, prd.json build_pass=true, and final desktop/mobile screenshots."
+    ]
   }
 ]

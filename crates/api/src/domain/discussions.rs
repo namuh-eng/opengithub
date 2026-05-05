@@ -310,6 +310,8 @@ pub struct DiscussionSubscriptionState {
 pub struct DiscussionSidebarView {
     pub category: DiscussionCategorySummary,
     pub labels: Vec<DiscussionLabelSummary>,
+    pub category_options: Vec<DiscussionCategoryChoice>,
+    pub label_options: Vec<DiscussionLabelSummary>,
     pub participants: Vec<DiscussionAuthorSummary>,
     pub events: Vec<DiscussionEventView>,
 }
@@ -503,6 +505,26 @@ pub struct DiscussionReactionRequest {
 #[serde(rename_all = "camelCase")]
 pub struct DiscussionSubscriptionRequest {
     pub subscribed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionAnswerRequest {
+    pub comment_id: Uuid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionStateRequest {
+    pub state: String,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionMetadataRequest {
+    pub category_slug: Option<String>,
+    pub label_ids: Option<Vec<Uuid>>,
 }
 
 pub struct DiscussionReactionMutation<'a> {
@@ -902,6 +924,8 @@ pub async fn repository_discussion_detail_for_actor_by_owner_name(
     .await?;
     let events = load_discussion_detail_events(pool, discussion_id).await?;
     let participants = load_discussion_participants(pool, discussion_id).await?;
+    let category_options = load_discussion_category_choices(pool, &repository).await?;
+    let label_options = load_discussion_labels(pool, repository.id).await?;
     let total_comments = count_top_level_discussion_comments(pool, discussion_id).await?;
     let subscription = load_discussion_subscription(pool, discussion_id, actor_user_id).await?;
     let form_answers = load_discussion_form_answer_views(pool, discussion_id).await?;
@@ -977,6 +1001,8 @@ pub async fn repository_discussion_detail_for_actor_by_owner_name(
         sidebar: DiscussionSidebarView {
             category,
             labels,
+            category_options,
+            label_options,
             participants,
             events: events.clone(),
         },
@@ -1500,6 +1526,339 @@ pub async fn set_repository_discussion_subscription_by_owner_name(
         .map(Some)
 }
 
+pub async fn set_repository_discussion_answer_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    discussion_number: i64,
+    request: DiscussionAnswerRequest,
+    marked: bool,
+) -> Result<Option<RepositoryDiscussionDetailView>, RepositoryError> {
+    let Some((repository, discussion_id, title, author_user_id)) =
+        load_discussion_mutation_context(pool, actor_user_id, owner, repo, discussion_number)
+            .await?
+    else {
+        return Ok(None);
+    };
+    ensure_discussion_moderation_allowed(pool, &repository, actor_user_id, discussion_id).await?;
+    let accepts_answers: bool = sqlx::query_scalar(
+        r#"
+        SELECT discussion_categories.accepts_answers
+        FROM discussions
+        JOIN discussion_categories ON discussion_categories.id = discussions.category_id
+        WHERE discussions.id = $1
+        "#,
+    )
+    .bind(discussion_id)
+    .fetch_one(pool)
+    .await?;
+    if !accepts_answers {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "this discussion category does not accept answers".to_owned(),
+        ));
+    }
+    let comment_exists: bool = sqlx::query_scalar(
+        r#"
+        SELECT EXISTS(
+            SELECT 1 FROM discussion_comments
+            WHERE discussion_id = $1 AND id = $2 AND parent_comment_id IS NULL AND deleted_at IS NULL
+        )
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(request.comment_id)
+    .fetch_one(pool)
+    .await?;
+    if !comment_exists {
+        return Err(RepositoryError::NotFound);
+    }
+
+    if marked {
+        sqlx::query(
+            r#"
+            INSERT INTO discussion_answers (discussion_id, comment_id, marked_by_user_id)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (discussion_id)
+            DO UPDATE SET comment_id = EXCLUDED.comment_id,
+                          marked_by_user_id = EXCLUDED.marked_by_user_id,
+                          marked_at = now()
+            "#,
+        )
+        .bind(discussion_id)
+        .bind(request.comment_id)
+        .bind(actor_user_id)
+        .execute(pool)
+        .await?;
+        sqlx::query(
+            "UPDATE discussions SET answer_comment_id = $1, answered = true, updated_at = now(), last_activity_at = now() WHERE id = $2",
+        )
+        .bind(request.comment_id)
+        .bind(discussion_id)
+        .execute(pool)
+        .await?;
+    } else {
+        sqlx::query("DELETE FROM discussion_answers WHERE discussion_id = $1")
+            .bind(discussion_id)
+            .execute(pool)
+            .await?;
+        sqlx::query(
+            "UPDATE discussions SET answer_comment_id = NULL, answered = false, updated_at = now(), last_activity_at = now() WHERE id = $1",
+        )
+        .bind(discussion_id)
+        .execute(pool)
+        .await?;
+    }
+
+    let event_type = if marked {
+        "answer_marked"
+    } else {
+        "answer_unmarked"
+    };
+    sqlx::query(
+        r#"
+        INSERT INTO discussion_activity_events (discussion_id, actor_user_id, event_type, payload)
+        VALUES ($1, $2, $3, jsonb_build_object('commentId', $4::text))
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(request.comment_id)
+    .execute(pool)
+    .await?;
+    notify_discussion_author(
+        pool,
+        repository.id,
+        discussion_id,
+        author_user_id,
+        actor_user_id,
+        format!(
+            "Discussion #{} answer state changed: {}",
+            discussion_number, title
+        ),
+        "discussion_answer",
+    )
+    .await?;
+
+    repository_discussion_detail_for_actor_by_owner_name(
+        pool,
+        actor_user_id,
+        owner,
+        repo,
+        discussion_number,
+        RepositoryDiscussionDetailQuery {
+            sort: None,
+            page: None,
+            page_size: None,
+        },
+    )
+    .await
+}
+
+pub async fn update_repository_discussion_state_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    discussion_number: i64,
+    request: DiscussionStateRequest,
+) -> Result<Option<RepositoryDiscussionDetailView>, RepositoryError> {
+    let Some((repository, discussion_id, title, author_user_id)) =
+        load_discussion_mutation_context(pool, actor_user_id, owner, repo, discussion_number)
+            .await?
+    else {
+        return Ok(None);
+    };
+    ensure_discussion_moderation_allowed(pool, &repository, actor_user_id, discussion_id).await?;
+    let next_state = match request.state.trim() {
+        "open" => "open",
+        "closed" => "closed",
+        other => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported discussion state `{other}`"
+            )))
+        }
+    };
+    let reason = normalize_discussion_state_reason(request.reason.as_deref(), next_state)?;
+    let current_state: String = sqlx::query_scalar("SELECT state FROM discussions WHERE id = $1")
+        .bind(discussion_id)
+        .fetch_one(pool)
+        .await?;
+    if current_state != next_state {
+        sqlx::query(
+            "UPDATE discussions SET state = $1, updated_at = now(), last_activity_at = now() WHERE id = $2",
+        )
+        .bind(next_state)
+        .bind(discussion_id)
+        .execute(pool)
+        .await?;
+        sqlx::query(
+            r#"
+            INSERT INTO discussion_activity_events (discussion_id, actor_user_id, event_type, payload)
+            VALUES ($1, $2, $3, jsonb_build_object('reason', $4))
+            "#,
+        )
+        .bind(discussion_id)
+        .bind(actor_user_id)
+        .bind(if next_state == "closed" {
+            "closed"
+        } else {
+            "reopened"
+        })
+        .bind(reason)
+        .execute(pool)
+        .await?;
+        notify_discussion_author(
+            pool,
+            repository.id,
+            discussion_id,
+            author_user_id,
+            actor_user_id,
+            format!(
+                "Discussion #{} was {}: {}",
+                discussion_number, next_state, title
+            ),
+            "discussion_state",
+        )
+        .await?;
+    }
+
+    repository_discussion_detail_for_actor_by_owner_name(
+        pool,
+        actor_user_id,
+        owner,
+        repo,
+        discussion_number,
+        RepositoryDiscussionDetailQuery {
+            sort: None,
+            page: None,
+            page_size: None,
+        },
+    )
+    .await
+}
+
+pub async fn update_repository_discussion_metadata_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    discussion_number: i64,
+    request: DiscussionMetadataRequest,
+) -> Result<Option<RepositoryDiscussionDetailView>, RepositoryError> {
+    let Some((repository, discussion_id, _title, _author_user_id)) =
+        load_discussion_mutation_context(pool, actor_user_id, owner, repo, discussion_number)
+            .await?
+    else {
+        return Ok(None);
+    };
+    ensure_discussion_moderation_allowed(pool, &repository, actor_user_id, discussion_id).await?;
+
+    if let Some(category_slug) = request.category_slug.as_deref() {
+        let normalized_slug = normalize_slug(category_slug)?;
+        let Some(category) = load_discussion_category_choices(pool, &repository)
+            .await?
+            .into_iter()
+            .find(|category| category.slug == normalized_slug)
+        else {
+            return Err(RepositoryError::NotFound);
+        };
+        let has_poll = load_discussion_poll_view(pool, discussion_id)
+            .await?
+            .is_some();
+        let has_form_answers: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM discussion_form_answers WHERE discussion_id = $1)",
+        )
+        .bind(discussion_id)
+        .fetch_one(pool)
+        .await?;
+        if has_poll && !category.is_poll {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(
+                "poll discussions must stay in a poll category".to_owned(),
+            ));
+        }
+        if has_form_answers && category.is_poll {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(
+                "form discussions cannot move into a poll category".to_owned(),
+            ));
+        }
+        sqlx::query("UPDATE discussions SET category_id = $1, updated_at = now(), last_activity_at = now() WHERE id = $2")
+            .bind(category.id)
+            .bind(discussion_id)
+            .execute(pool)
+            .await?;
+        sqlx::query(
+            r#"
+            INSERT INTO discussion_activity_events (discussion_id, actor_user_id, event_type, payload)
+            VALUES ($1, $2, 'category_changed', jsonb_build_object('category', $3))
+            "#,
+        )
+        .bind(discussion_id)
+        .bind(actor_user_id)
+        .bind(category.slug)
+        .execute(pool)
+        .await?;
+    }
+
+    if let Some(label_ids) = request.label_ids {
+        if label_ids.len() > 25 {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(
+                "at most 25 labels can be assigned to a discussion".to_owned(),
+            ));
+        }
+        for label_id in &label_ids {
+            let exists: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM labels WHERE id = $1 AND repository_id = $2)",
+            )
+            .bind(label_id)
+            .bind(repository.id)
+            .fetch_one(pool)
+            .await?;
+            if !exists {
+                return Err(RepositoryError::NotFound);
+            }
+        }
+        sqlx::query("DELETE FROM discussion_labels WHERE discussion_id = $1")
+            .bind(discussion_id)
+            .execute(pool)
+            .await?;
+        for label_id in label_ids {
+            sqlx::query(
+                "INSERT INTO discussion_labels (discussion_id, label_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+            )
+            .bind(discussion_id)
+            .bind(label_id)
+            .execute(pool)
+            .await?;
+        }
+        sqlx::query(
+            r#"
+            INSERT INTO discussion_activity_events (discussion_id, actor_user_id, event_type, payload)
+            VALUES ($1, $2, 'labels_changed', '{}'::jsonb)
+            "#,
+        )
+        .bind(discussion_id)
+        .bind(actor_user_id)
+        .execute(pool)
+        .await?;
+    }
+
+    repository_discussion_detail_for_actor_by_owner_name(
+        pool,
+        actor_user_id,
+        owner,
+        repo,
+        discussion_number,
+        RepositoryDiscussionDetailQuery {
+            sort: None,
+            page: None,
+            page_size: None,
+        },
+    )
+    .await
+}
+
 fn normalize_discussion_filters(
     query: RepositoryDiscussionsQuery<'_>,
 ) -> Result<NormalizedDiscussionFilters, RepositoryError> {
@@ -1604,6 +1963,90 @@ async fn load_discussion_mutation_context(
         row.try_get("title")?,
         row.try_get("author_user_id")?,
     )))
+}
+
+async fn ensure_discussion_moderation_allowed(
+    pool: &PgPool,
+    repository: &super::repositories::Repository,
+    actor_user_id: Uuid,
+    discussion_id: Uuid,
+) -> Result<(), RepositoryError> {
+    if repository.is_archived {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "archived repositories do not accept discussion moderation changes".to_owned(),
+        ));
+    }
+    if !repository_discussions_policy_enabled(pool, repository.id).await? {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "repository discussions are disabled by organization policy".to_owned(),
+        ));
+    }
+    let (viewer_permission, _can_read, _can_write) =
+        discussion_permissions(pool, repository, actor_user_id).await?;
+    if !matches!(
+        viewer_permission.as_deref(),
+        Some("triage" | "write" | "maintain" | "admin" | "owner")
+    ) {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    let locked: bool = sqlx::query_scalar("SELECT locked FROM discussions WHERE id = $1")
+        .bind(discussion_id)
+        .fetch_one(pool)
+        .await?;
+    if locked {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "locked discussions do not accept moderation changes".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn normalize_discussion_state_reason(
+    reason: Option<&str>,
+    next_state: &str,
+) -> Result<Option<String>, RepositoryError> {
+    if next_state == "open" {
+        return Ok(None);
+    }
+    let reason = reason.map(str::trim).filter(|value| !value.is_empty());
+    match reason.unwrap_or("resolved") {
+        value @ ("resolved" | "duplicate" | "outdated" | "off-topic") => Ok(Some(value.to_owned())),
+        other => Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+            "unsupported discussion close reason `{other}`"
+        ))),
+    }
+}
+
+async fn notify_discussion_author(
+    pool: &PgPool,
+    repository_id: Uuid,
+    discussion_id: Uuid,
+    author_user_id: Option<Uuid>,
+    actor_user_id: Uuid,
+    title: String,
+    reason: &str,
+) -> Result<(), RepositoryError> {
+    let Some(author_user_id) = author_user_id.filter(|id| *id != actor_user_id) else {
+        return Ok(());
+    };
+    create_notification(
+        pool,
+        CreateNotification {
+            user_id: author_user_id,
+            repository_id: Some(repository_id),
+            subject_type: "discussion".to_owned(),
+            subject_id: Some(discussion_id),
+            title,
+            reason: reason.to_owned(),
+        },
+    )
+    .await
+    .map_err(|error| match error {
+        super::notifications::NotificationError::Sqlx(error) => RepositoryError::Sqlx(error),
+        super::notifications::NotificationError::NotFound
+        | super::notifications::NotificationError::Validation(_) => RepositoryError::NotFound,
+    })?;
+    Ok(())
 }
 
 async fn create_discussion_comment_or_reply(
@@ -2486,7 +2929,7 @@ async fn load_discussion_labels(
         SELECT labels.id, labels.name, labels.color, labels.description,
                COUNT(discussion_labels.discussion_id)::bigint AS count
         FROM labels
-        JOIN discussion_labels ON discussion_labels.label_id = labels.id
+        LEFT JOIN discussion_labels ON discussion_labels.label_id = labels.id
         WHERE labels.repository_id = $1
         GROUP BY labels.id
         ORDER BY labels.name ASC

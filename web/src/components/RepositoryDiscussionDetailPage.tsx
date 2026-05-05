@@ -137,6 +137,7 @@ function CommentCard({
   canReact,
   onReply,
   onReaction,
+  onAnswerToggle,
 }: {
   comment: DiscussionCommentView | DiscussionReplyView;
   isAnswer?: boolean;
@@ -148,6 +149,7 @@ function CommentCard({
     content: DiscussionReactionContent,
     reacted: boolean,
   ) => void;
+  onAnswerToggle?: (commentId: string, marked: boolean) => void;
 }) {
   const labelId = `discussion-comment-${comment.id}`;
   const [replyBody, setReplyBody] = useState("");
@@ -188,6 +190,15 @@ function CommentCard({
           </span>
           {comment.edited ? <span className="chip soft">edited</span> : null}
           {isAnswer ? <span className="chip ok ml-auto">answer</span> : null}
+          {onAnswerToggle && hasReplies ? (
+            <button
+              className={isAnswer ? "btn sm" : "btn accent sm"}
+              onClick={() => onAnswerToggle(comment.id, !isAnswer)}
+              type="button"
+            >
+              {isAnswer ? "Unmark answer" : "Mark as answer"}
+            </button>
+          ) : null}
           <a
             className={isAnswer ? "chip ok" : "chip soft ml-auto"}
             href={comment.href}
@@ -281,6 +292,16 @@ function EventRow({ event }: { event: DiscussionEventView }) {
       </p>
     </div>
   );
+}
+
+function eventLabel(event: DiscussionEventView) {
+  const payload =
+    typeof event.payload === "object" && event.payload !== null
+      ? (event.payload as Record<string, unknown>)
+      : null;
+  const reason =
+    payload && typeof payload.reason === "string" ? ` (${payload.reason})` : "";
+  return `${event.eventType.replaceAll("_", " ")}${reason}`;
 }
 
 function SortLinks({
@@ -404,11 +425,15 @@ function Sidebar({
   detail,
   subscription,
   onSubscription,
+  onMetadata,
 }: {
   detail: RepositoryDiscussionDetailView;
   subscription: DiscussionSubscriptionState;
   onSubscription: (subscribed: boolean) => void;
+  onMetadata: (request: { categorySlug?: string; labelIds?: string[] }) => void;
 }) {
+  const canModerate = detail.viewer.authenticated && detail.viewer.canModerate;
+  const selectedLabelIds = new Set(detail.labels.map((label) => label.id));
   return (
     <aside className="space-y-5">
       <section className="card p-4">
@@ -431,6 +456,25 @@ function Sidebar({
           <span aria-hidden="true">{detail.category.emoji}</span>
           {detail.category.name}
         </Link>
+        {canModerate ? (
+          <label className="mt-3 grid gap-2 t-sm">
+            <span className="t-label">Change category</span>
+            <select
+              aria-label="Change discussion category"
+              className="input"
+              onChange={(event) =>
+                onMetadata({ categorySlug: event.target.value })
+              }
+              value={detail.category.slug}
+            >
+              {detail.sidebar.categoryOptions.map((category) => (
+                <option key={category.id} value={category.slug}>
+                  {category.emoji} {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </section>
       <section className="card p-4">
         <h2 className="t-label">Labels</h2>
@@ -447,6 +491,25 @@ function Sidebar({
             </span>
           )}
         </div>
+        {canModerate && detail.sidebar.labelOptions.length ? (
+          <div className="mt-3 grid gap-2">
+            {detail.sidebar.labelOptions.map((label) => (
+              <label className="flex items-center gap-2 t-sm" key={label.id}>
+                <input
+                  checked={selectedLabelIds.has(label.id)}
+                  onChange={() => {
+                    const next = new Set(selectedLabelIds);
+                    if (next.has(label.id)) next.delete(label.id);
+                    else next.add(label.id);
+                    onMetadata({ labelIds: [...next] });
+                  }}
+                  type="checkbox"
+                />
+                {label.name}
+              </label>
+            ))}
+          </div>
+        ) : null}
       </section>
       <section className="card p-4">
         <h2 className="t-label">Participants</h2>
@@ -461,8 +524,7 @@ function Sidebar({
         <ul className="mt-3 space-y-2">
           {detail.sidebar.events.slice(0, 5).map((event) => (
             <li className="t-xs" key={event.id}>
-              {event.actor?.login ?? "opengithub"} ·{" "}
-              {event.eventType.replaceAll("_", " ")}
+              {event.actor?.login ?? "opengithub"} · {eventLabel(event)}
             </li>
           ))}
         </ul>
@@ -491,6 +553,8 @@ export function RepositoryDiscussionDetailPage({
     currentDetail.viewer.authenticated && currentDetail.viewer.canReact;
   const canComment =
     currentDetail.viewer.authenticated && currentDetail.viewer.canComment;
+  const canModerate =
+    currentDetail.viewer.authenticated && currentDetail.viewer.canModerate;
 
   async function mutateDetail(path: string, body: string) {
     setMessage(null);
@@ -563,6 +627,59 @@ export function RepositoryDiscussionDetailPage({
     setMessage(payload.subscribed ? "Subscribed." : "Unsubscribed.");
   }
 
+  async function mutateModeration(
+    path: string,
+    method: "PUT" | "DELETE" | "PATCH",
+    body: Record<string, unknown>,
+    success: string,
+  ) {
+    setMessage(null);
+    const response = await fetch(path, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      setMessage(payload?.error?.message ?? "Discussion could not be updated.");
+      return;
+    }
+    setCurrentDetail(payload);
+    setSubscription(payload.subscription);
+    setReactions(payload.reactions);
+    setMessage(success);
+  }
+
+  function toggleAnswer(commentId: string, marked: boolean) {
+    void mutateModeration(
+      `${detailHref}/answer`,
+      marked ? "PUT" : "DELETE",
+      { commentId },
+      marked ? "Answer marked." : "Answer unmarked.",
+    );
+  }
+
+  function updateState(state: "open" | "closed", reason?: string) {
+    void mutateModeration(
+      `${detailHref}/state`,
+      "PUT",
+      { state, reason },
+      state === "open" ? "Discussion reopened." : "Discussion closed.",
+    );
+  }
+
+  function updateMetadata(request: {
+    categorySlug?: string;
+    labelIds?: string[];
+  }) {
+    void mutateModeration(
+      `${detailHref}/metadata`,
+      "PATCH",
+      request,
+      "Discussion metadata updated.",
+    );
+  }
+
   return (
     <RepositoryShell
       activePath={`/${owner}/${repo}/discussions`}
@@ -585,7 +702,7 @@ export function RepositoryDiscussionDetailPage({
                 </span>
               </h1>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                {statusChip(detail)}
+                {statusChip(currentDetail)}
                 <span className="t-sm" style={{ color: "var(--ink-3)" }}>
                   <Avatar user={detail.author} /> {detail.author.login} opened{" "}
                   {relativeTime(detail.discussion.createdAt)}
@@ -603,16 +720,46 @@ export function RepositoryDiscussionDetailPage({
               Permalink
             </a>
           </div>
-          {detail.answer ? (
+          {currentDetail.answer ? (
             <div className="card p-4" style={{ borderColor: "var(--ok)" }}>
               <p className="t-label" style={{ color: "var(--ok)" }}>
                 Answered
               </p>
               <p className="t-sm mt-2">
-                Marked by {detail.answer.markedBy?.login ?? "a maintainer"} ·{" "}
-                <a href={detail.answer.href}>View full answer</a>
+                Marked by{" "}
+                {currentDetail.answer.markedBy?.login ?? "a maintainer"} ·{" "}
+                <a href={currentDetail.answer.href}>View full answer</a>
               </p>
             </div>
+          ) : null}
+          {canModerate ? (
+            <section className="card p-4" aria-label="Discussion moderation">
+              <h2 className="t-label">Moderation</h2>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {currentDetail.discussion.state === "closed" ? (
+                  <button
+                    className="btn accent sm"
+                    onClick={() => updateState("open")}
+                    type="button"
+                  >
+                    Reopen discussion
+                  </button>
+                ) : (
+                  ["resolved", "duplicate", "outdated", "off-topic"].map(
+                    (reason) => (
+                      <button
+                        className="btn sm"
+                        key={reason}
+                        onClick={() => updateState("closed", reason)}
+                        type="button"
+                      >
+                        Close as {reason}
+                      </button>
+                    ),
+                  )
+                )}
+              </div>
+            </section>
           ) : null}
         </section>
 
@@ -692,6 +839,11 @@ export function RepositoryDiscussionDetailPage({
                   canReact={canReact}
                   comment={item}
                   isAnswer={item.answer}
+                  onAnswerToggle={
+                    currentDetail.viewer.canMarkAnswer
+                      ? toggleAnswer
+                      : undefined
+                  }
                   onReaction={(commentId, content, reacted) =>
                     toggleReaction(content, reacted, commentId)
                   }
@@ -729,6 +881,7 @@ export function RepositoryDiscussionDetailPage({
       </main>
       <Sidebar
         detail={currentDetail}
+        onMetadata={updateMetadata}
         onSubscription={toggleSubscription}
         subscription={subscription}
       />

@@ -65,7 +65,7 @@
 
 ## Phase 4: Answer State, Close/Reopen, and Sidebar Metadata Editing - maintainer controls
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add triage-or-greater controls for answer-enabled categories and discussion moderation metadata. Maintainers should be able to mark/unmark an answer, close/reopen with reasons, edit category/labels, and expose sidebar event history without weakening reader privacy.
 

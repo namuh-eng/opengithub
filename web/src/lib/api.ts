@@ -4686,6 +4686,8 @@ export type DiscussionTimelineItem =
 export type DiscussionSidebarView = {
   category: DiscussionCategorySummary;
   labels: DiscussionLabelSummary[];
+  categoryOptions: DiscussionCategoryChoice[];
+  labelOptions: DiscussionLabelSummary[];
   participants: DiscussionAuthorSummary[];
   events: DiscussionEventView[];
 };
@@ -14092,6 +14094,105 @@ export async function setRepositoryDiscussionSubscriptionFromCookie(
   }
 
   return payload as DiscussionSubscriptionState;
+}
+
+export async function setRepositoryDiscussionAnswerFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  discussionNumber: number | string,
+  commentId: string,
+  marked: boolean,
+): Promise<RepositoryDiscussionDetailView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/${encodeURIComponent(String(discussionNumber))}/answer`,
+    {
+      method: marked ? "PUT" : "DELETE",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify({ commentId }),
+      cache: "no-store",
+    },
+  );
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ??
+        "Discussion answer state could not be updated.",
+      { cause: envelope },
+    );
+  }
+
+  return payload as RepositoryDiscussionDetailView;
+}
+
+export async function updateRepositoryDiscussionStateFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  discussionNumber: number | string,
+  state: "open" | "closed",
+  reason?: string,
+): Promise<RepositoryDiscussionDetailView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/${encodeURIComponent(String(discussionNumber))}/state`,
+    {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify({ state, reason }),
+      cache: "no-store",
+    },
+  );
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Discussion state could not be updated.",
+      { cause: envelope },
+    );
+  }
+
+  return payload as RepositoryDiscussionDetailView;
+}
+
+export async function updateRepositoryDiscussionMetadataFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  discussionNumber: number | string,
+  request: { categorySlug?: string; labelIds?: string[] },
+): Promise<RepositoryDiscussionDetailView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/${encodeURIComponent(String(discussionNumber))}/metadata`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Discussion metadata could not be updated.",
+      { cause: envelope },
+    );
+  }
+
+  return payload as RepositoryDiscussionDetailView;
 }
 
 function repositoryDiscussionsPath(
