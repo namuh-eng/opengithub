@@ -51,6 +51,7 @@ import {
   getRepositoryDependenciesFromCookie,
   getRepositoryDependentsFromCookie,
   getRepositoryDiscussionCreationFromCookie,
+  getRepositoryDiscussionDetailFromCookie,
   getRepositoryDiscussionsFromCookie,
   getRepositoryFileFinderFromCookie,
   getRepositoryForksFromCookie,
@@ -117,6 +118,7 @@ import {
   type RepositoryDependentsFetchResult,
   type RepositoryDependentsQuery,
   type RepositoryDiscussionCreationQuery,
+  type RepositoryDiscussionDetailQuery,
   type RepositoryDiscussionsQuery,
   type RepositoryForksFetchResult,
   type RepositoryForksQuery,
@@ -811,6 +813,22 @@ export async function getRepositoryDiscussionCreation(
     requestHeaders.get("cookie"),
     owner,
     repo,
+    options,
+  );
+}
+
+export async function getRepositoryDiscussionDetail(
+  owner: string,
+  repo: string,
+  discussionNumber: number,
+  options: RepositoryDiscussionDetailQuery = {},
+) {
+  const requestHeaders = await headers();
+  return getRepositoryDiscussionDetailFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    discussionNumber,
     options,
   );
 }

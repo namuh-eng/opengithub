@@ -1,3 +1,14 @@
+2026-05-05 - discussions-003 phase 2 Editorial detail page
+
+- Completed Phase 2 from `.qrspi/discussions-003/structure.md`: repository discussion detail now has a read-oriented Editorial page without marking `discussions-003.build_pass=true`; Phases 3-5 remain.
+- Added the App Router detail route at `/{owner}/{repo}/discussions/{number}` plus a signed-cookie server-session helper for the Phase 1 detail DTO.
+- Added `RepositoryDiscussionDetailPage` with title/status/category breadcrumbs, author metadata, answer summary, sanitized Markdown body, form answer and poll summaries, timeline comments/replies/events, reaction summaries, sidebar metadata, notification state, and a disabled composer shell for Phase 2.
+- Extended focused Vitest coverage for detail metadata, answer/permalink/sort anchors, timeline/replies, sidebar, disabled composer controls, no `href="#"`, no inert handlers, and Editorial banned-value guardrails.
+- Extended the focused Playwright discussions smoke with list-to-detail navigation assertions and screenshot target `ralph/screenshots/build/discussions-003-phase2-detail.jpg`.
+- Verification passed: focused `repository-discussion-detail-page` Vitest; web TypeScript; focused Biome; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 504 web tests.
+- Focused Playwright browser smoke was attempted with the signed-session/test DB environment, but `dashboard_e2e_seed` failed because local Postgres rejected the available `postgres` credentials. Re-run against a credentialed migrated `TEST_DATABASE_URL` to save the Phase 2 screenshot.
+- Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-05 - discussions-003 phase 1 detail API contract
 
 - Completed Phase 1 from `.qrspi/discussions-003/structure.md`: discussion detail now has a screen-ready read-only Rust API contract without marking `discussions-003.build_pass=true`; Phases 2-5 remain.

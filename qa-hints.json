@@ -6369,5 +6369,22 @@
       "Reaction/comment/reply/subscription writes are intentionally out of scope until Phase 3; Phase 1 only exposes read-ready aggregates and viewer capability flags.",
       "Answer mark/unmark, close/reopen, category/label editing, and richer event rendering are intentionally out of scope until Phase 4."
     ]
+  },
+  {
+    "feature_id": "discussions-003",
+    "tests_written": [
+      "Completed Phase 2 Editorial Detail Page without marking discussions-003 build_pass=true.",
+      "Added /{owner}/{repo}/discussions/{number} App Router page that fetches repository metadata plus the Phase 1 discussion-detail DTO with signed cookies and preserves sort/page query params.",
+      "Added RepositoryDiscussionDetailPage with Editorial title/status/category breadcrumbs, sanitized Markdown body rendering, answer summary card, form-answer and poll summaries, timeline comments/replies/events, reaction chips, sidebar category/labels/participants/events/notifications, and a disabled Phase 2 composer shell.",
+      "Extended focused Vitest coverage for metadata, answer anchors, timeline/replies, sidebar, sort links, disabled composer controls, no href=\"#\", no inert handlers, and no banned GitHub visual values.",
+      "Extended the repository-discussions Playwright smoke with list-to-detail navigation, sort-link assertion, disabled composer assertion, no-dead-control check, and screenshot target ralph/screenshots/build/discussions-003-phase2-detail.jpg.",
+      "Verification passed: cd web && npm test -- --run repository-discussion-detail-page.test.tsx; cd web && npx tsc --noEmit --pretty false; focused Biome; full TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check; full DB_SSL=false CARGO_INCREMENTAL=0 make test with Cargo tests plus 504 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Focused Playwright browser smoke was attempted with TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test but dashboard_e2e_seed failed because local Postgres rejected the available postgres credentials. Re-run web/tests/e2e/repository-discussions.spec.ts against a credentialed migrated TEST_DATABASE_URL to verify list-to-detail navigation and save discussions-003-phase2-detail.jpg.",
+      "Phase 3 still needs real comment, reply, reaction, and subscription writes; Phase 2 intentionally keeps composer and subscription controls disabled/read-only.",
+      "Phase 4 still needs answer mark/unmark, close/reopen, category/label editing, and maintainer controls.",
+      "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures."
+    ]
   }
 ]

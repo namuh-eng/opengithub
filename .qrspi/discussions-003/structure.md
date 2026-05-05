@@ -28,7 +28,7 @@
 
 ## Phase 2: Editorial Detail Page - timeline, composer shell, and sidebar
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement `/{owner}/{repo}/discussions/{number}` as a read-oriented Editorial detail page backed by Phase 1 data. Users should be able to navigate from list rows to the detail page, sort timeline comments, inspect Markdown content safely, copy/open permalinks, and see non-dead composer controls with submit disabled until Phase 3 writes land.
 

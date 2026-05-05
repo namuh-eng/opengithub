@@ -309,7 +309,26 @@ test("repository discussions list filters, rows, category rail, and mobile layou
   await expect(
     page.getByRole("link", { name: /repository import previews/i }).first(),
   ).toBeVisible();
+  await page
+    .getByRole("link", { name: /repository import previews/i })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/discussions\/901$/);
+  await expect(
+    page.getByRole("heading", { name: /repository import previews/i }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "Newest" })).toHaveAttribute(
+    "href",
+    /sort=newest/,
+  );
+  await expect(page.getByRole("button", { name: "Comment" })).toBeDisabled();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/discussions-003-phase2-detail.jpg",
+  });
 
+  await page.goto(`${seeded.treeRepositoryHref}/discussions`);
   await page.getByLabel("discussion-query").fill("manifest");
   await page.getByRole("button", { name: "Search" }).click();
   await expect(page).toHaveURL(/\/discussions\?q=manifest/);
