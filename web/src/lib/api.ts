@@ -2640,6 +2640,88 @@ export type RepositoryContributorsFetchResult =
   | { ok: true; contributors: RepositoryContributorsView }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type RepositorySecurityOverviewView = {
+  repository: RepositorySecurityRepository;
+  viewer: RepositorySecurityViewer;
+  policy: RepositorySecurityPolicySummary;
+  features: RepositorySecurityFeatureCard[];
+  advisories: RepositorySecurityAdvisorySummary[];
+  links: RepositorySecurityLinks;
+};
+
+export type RepositorySecurityRepository = {
+  id: string;
+  ownerLogin: string;
+  name: string;
+  visibility: RepositoryVisibility | string;
+  defaultBranch: string;
+  securityHref: string;
+  policyHref: string;
+  advisoriesHref: string;
+};
+
+export type RepositorySecurityViewer = {
+  permission: string;
+  canRead: boolean;
+  canWrite: boolean;
+  canEditPolicy: boolean;
+  canViewPrivateAlertCounts: boolean;
+};
+
+export type RepositorySecurityPolicySummary = {
+  exists: boolean;
+  path: string | null;
+  ref: string | null;
+  blobOid: string | null;
+  contentSha: string | null;
+  html: string | null;
+  sourceHref: string | null;
+  rawHref: string | null;
+  historyHref: string | null;
+  editHref: string | null;
+  updatedAt: string | null;
+  emptyState: string;
+};
+
+export type RepositorySecurityFeatureCard = {
+  key: string;
+  label: string;
+  status: string;
+  summary: string;
+  alertCount: number | null;
+  privateCount: number | null;
+  href: string;
+  configHref: string | null;
+  updatedAt: string | null;
+};
+
+export type RepositorySecurityAdvisorySummary = {
+  id: string;
+  identifier: string;
+  severity: string;
+  status: string;
+  title: string;
+  summary: string;
+  packageName: string | null;
+  vulnerableRange: string | null;
+  href: string;
+  publishedAt: string | null;
+  updatedAt: string;
+};
+
+export type RepositorySecurityLinks = {
+  overviewHref: string;
+  policyHref: string;
+  advisoriesHref: string;
+  dependabotHref: string;
+  codeScanningHref: string;
+  secretScanningHref: string;
+};
+
+export type RepositorySecurityOverviewFetchResult =
+  | { ok: true; security: RepositorySecurityOverviewView }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type RepositoryTrafficView = {
   repository: RepositoryTrafficRepository;
   window: RepositoryTrafficWindow;
@@ -9568,6 +9650,50 @@ export async function getRepositoryTrafficFromCookie(
   return {
     ok: true,
     traffic: (await response.json()) as RepositoryTrafficView,
+  };
+}
+
+export async function getRepositorySecurityOverviewFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+): Promise<RepositorySecurityOverviewFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository Security is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Repository Security is unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    security: (await response.json()) as RepositorySecurityOverviewView,
   };
 }
 

@@ -67,6 +67,7 @@ import {
   getRepositoryReleaseManagementContextFromCookie,
   getRepositoryReleasesFromCookie,
   getRepositoryReleaseTagsFromCookie,
+  getRepositorySecurityOverviewFromCookie,
   getRepositorySettingsFromCookie,
   getRepositoryTrafficFromCookie,
   getRepositoryWebhookDeliveryDetailFromCookie,
@@ -106,6 +107,7 @@ import {
   type RepositoryPullRequestListQuery,
   type RepositoryPulseFetchResult,
   type RepositoryReleaseListQuery,
+  type RepositorySecurityOverviewFetchResult,
   type RepositoryTrafficFetchResult,
   type SearchSuggestionsQuery,
   searchCodeFromCookie,
@@ -561,6 +563,18 @@ export async function getRepositoryTraffic(
 ): Promise<RepositoryTrafficFetchResult> {
   const requestHeaders = await headers();
   return getRepositoryTrafficFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+  );
+}
+
+export async function getRepositorySecurityOverview(
+  owner: string,
+  repo: string,
+): Promise<RepositorySecurityOverviewFetchResult> {
+  const requestHeaders = await headers();
+  return getRepositorySecurityOverviewFromCookie(
     requestHeaders.get("cookie"),
     owner,
     repo,

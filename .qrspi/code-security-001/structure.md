@@ -6,7 +6,7 @@
 
 ## Phase 1: Security Overview API Contract - policy, advisories, feature cards, and privacy gates
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the screen-ready Rust/Postgres read contract for `/api/repos/{owner}/{repo}/security`. Readers can see published policy content and public advisory summaries, while alert counts and private repository metadata remain permission-gated.
 

@@ -5712,5 +5712,22 @@
       "Exercise additional malformed manifest variants and unsupported package manager files from real repositories; final Rust coverage verifies representative malformed package.json and unsupported yarn.lock behavior.",
       "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema."
     ]
+  },
+  {
+    "feature_id": "code-security-001",
+    "tests_written": [
+      "Completed Phase 1 Security Overview API Contract without marking code-security-001 build_pass=true.",
+      "Added additive repository security tables for feature settings, policy summaries, repository advisories, and security audit compatibility.",
+      "Added GET /api/repos/{owner}/{repo}/security with signed-session auth, private repository 404 privacy, reader-safe policy/advisory data, maintainer edit affordance metadata, and redacted private alert counts for read-only users.",
+      "Added typed frontend fetch/session helpers for the Security overview contract without adding client-side auth.",
+      "Added a focused Rust contract that seeds real repository_files SECURITY.md content, feature settings, published and draft advisories, verifies Markdown sanitization/mailto links, anonymous 401, private outsider 404, draft advisory hiding, maintainer-only alert counts, and no session-secret leakage."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 still needs the Editorial /{owner}/{repo}/security page, Security and quality sidebar, policy preview, advisory rows, feature cards, browser smoke, and screenshot evidence.",
+      "Phase 3 still needs the dedicated /security/policy Markdown reader with anchors, file action destinations, and maintainer/reader empty states.",
+      "Phase 4 still needs real SECURITY.md create/edit mutations through repository file materialization, commit/ref updates, and audit events.",
+      "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; the focused Rust contract passed after manually applying this additive Phase 1 migration to the shared test DB.",
+      "No browser smoke was run for this API-first phase; the structure outline marks browser smoke optional until UI phases."
+    ]
   }
 ]

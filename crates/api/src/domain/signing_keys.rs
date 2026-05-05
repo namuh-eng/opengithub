@@ -404,6 +404,7 @@ pub async fn lookup_active_ssh_key_by_fingerprint(
         FROM ssh_keys
         WHERE lower(fingerprint_sha256) = lower($1)
           AND revoked_at IS NULL
+        ORDER BY created_at DESC, id DESC
         LIMIT 1
         "#,
     )

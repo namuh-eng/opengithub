@@ -23,6 +23,7 @@ pub mod pulls;
 pub mod releases;
 pub mod repositories;
 pub mod repository_imports;
+pub mod repository_security;
 pub mod search;
 pub mod signing_keys;
 pub mod tokens;
