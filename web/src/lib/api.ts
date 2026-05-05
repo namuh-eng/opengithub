@@ -381,6 +381,15 @@ export type ProjectViewStateRequest = {
   expectedUpdatedAt: string;
 };
 
+export type ProjectViewLayoutRequest = {
+  layout: "table" | "board" | "roadmap";
+  columnFieldId?: string | null;
+  swimlaneFieldId?: string | null;
+  startFieldId?: string | null;
+  targetFieldId?: string | null;
+  expectedUpdatedAt: string;
+};
+
 export type ProjectItemFieldValueRequest = {
   value: unknown;
   expectedUpdatedAt?: string | null;
@@ -7488,6 +7497,22 @@ export async function updateProjectViewStateFromCookie(
     );
   }
   return payload as ProjectWorkspace;
+}
+
+export async function updateProjectViewLayoutFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  viewId: string,
+  request: ProjectViewLayoutRequest,
+): Promise<ProjectWorkspace> {
+  return mutateProjectWorkspaceFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/views/${encodeURIComponent(viewId)}/layout`,
+    "PATCH",
+    "project_view_layout_failed",
+    "Project view layout could not be saved.",
+    request,
+  );
 }
 
 export async function updateProjectItemFieldFromCookie(

@@ -23,7 +23,7 @@
 
 ## Phase 2: Layout Switching and View Menu - authorized users can persist active layout settings
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make the Project workspace View menu operational for layout selection. Authorized users can switch between Table, Board, and Roadmap, save layout settings to the selected view, and keep existing filter/slice/sort state; read-only viewers can inspect choices but cannot persist changes.
 

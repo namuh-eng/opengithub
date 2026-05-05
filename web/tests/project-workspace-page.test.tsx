@@ -65,15 +65,93 @@ function workspace(
         editable: true,
       },
       {
+        id: "field-target",
+        name: "Target date",
+        fieldType: "date",
+        position: 3,
+        settings: {},
+        hidden: false,
+        editable: true,
+      },
+      {
         id: "field-hidden",
         name: "Secret",
         fieldType: "text",
-        position: 2,
+        position: 4,
         settings: {},
         hidden: true,
         editable: false,
       },
     ],
+    layoutChoices: [
+      {
+        layout: "table",
+        label: "Table",
+        keyboardHint: "t",
+        active: true,
+        enabled: true,
+        unavailableReason: null,
+      },
+      {
+        layout: "board",
+        label: "Board",
+        keyboardHint: "b",
+        active: false,
+        enabled: true,
+        unavailableReason: null,
+      },
+      {
+        layout: "roadmap",
+        label: "Roadmap",
+        keyboardHint: "r",
+        active: false,
+        enabled: true,
+        unavailableReason: null,
+      },
+    ],
+    boardConfig: {
+      columnField: {
+        id: "field-status",
+        name: "Status",
+        fieldType: "single_select",
+      },
+      swimlaneField: null,
+      eligibleColumnFields: [
+        {
+          id: "field-status",
+          name: "Status",
+          fieldType: "single_select",
+        },
+      ],
+      eligibleSwimlaneFields: [],
+      columns: [],
+      emptyColumnsVisible: true,
+      unavailableReason: null,
+    },
+    roadmapConfig: {
+      startDateField: {
+        id: "field-target",
+        name: "Target date",
+        fieldType: "date",
+      },
+      targetDateField: {
+        id: "field-target",
+        name: "Target date",
+        fieldType: "date",
+      },
+      markerFields: [],
+      eligibleDateFields: [
+        {
+          id: "field-target",
+          name: "Target date",
+          fieldType: "date",
+        },
+      ],
+      eligibleMarkerFields: [],
+      zoom: "month",
+      zoomOptions: ["month", "quarter", "year"],
+      unavailableReason: null,
+    },
     items: [
       {
         id: "item-1",
@@ -150,6 +228,7 @@ function workspace(
       viewerRole: "write",
       canEdit: true,
       canManageViews: true,
+      canChangeLayout: true,
       canAddItems: true,
     },
     unavailableReason: null,
@@ -260,6 +339,7 @@ describe("ProjectWorkspacePage", () => {
             viewerRole: "read",
             canEdit: false,
             canManageViews: false,
+            canChangeLayout: false,
             canAddItems: false,
           },
         })}
@@ -269,9 +349,10 @@ describe("ProjectWorkspacePage", () => {
     expect(screen.getByRole("button", { name: "Insights" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Settings" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "+ View" })).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "View configuration" }),
-    ).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "View menu" }));
+    expect(screen.getByRole("button", { name: /Table/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Board/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Roadmap/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Add item" })).toBeDisabled();
   });
 
@@ -292,7 +373,7 @@ describe("ProjectWorkspacePage", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "View configuration" }));
+    fireEvent.click(screen.getByRole("button", { name: "View menu" }));
     fireEvent.change(screen.getByLabelText("Filter query"), {
       target: { value: "is:open label:frontend" },
     });
@@ -323,6 +404,61 @@ describe("ProjectWorkspacePage", () => {
     expect(assign).toHaveBeenCalledWith("/orgs/namuh/projects/12/views/1");
   });
 
+  it("persists layout choices through the same-origin project layout route", async () => {
+    const assign = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => workspace(),
+    });
+    vi.stubGlobal("location", { assign });
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <ProjectWorkspacePage
+        owner="namuh"
+        scope="organization"
+        viewNumber={1}
+        workspace={workspace()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "View menu" }));
+    expect(screen.getByRole("button", { name: /Table/ })).toHaveTextContent(
+      "t",
+    );
+    expect(screen.getByRole("button", { name: /Board/ })).toHaveTextContent(
+      "b",
+    );
+    expect(screen.getByRole("button", { name: /Roadmap/ })).toHaveTextContent(
+      "r",
+    );
+    expect(screen.getByText("Column by")).toHaveClass("t-label");
+    expect(screen.getByText("Swimlanes")).toHaveClass("t-label");
+    expect(screen.getByText("Sort by")).toHaveClass("t-label");
+    expect(screen.getByText("Field sum")).toHaveClass("t-label");
+    expect(screen.getAllByText("Slice by")[0]).toHaveClass("t-label");
+
+    fireEvent.click(screen.getByRole("button", { name: /Board/ }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/projects/project-1/views/view-1/layout",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          layout: "board",
+          columnFieldId: "field-status",
+          swimlaneFieldId: null,
+          startFieldId: null,
+          targetFieldId: null,
+          expectedUpdatedAt: "2026-05-05T00:00:00Z",
+        }),
+      }),
+    );
+    expect(assign).toHaveBeenCalledWith(
+      "/orgs/namuh/projects/12/views/1?q=is%3Aopen&sort=manual&group=Status",
+    );
+  });
+
   it("shows server validation errors and can revert URL-backed view state", async () => {
     const assign = vi.fn();
     vi.stubGlobal("location", { assign });
@@ -348,7 +484,7 @@ describe("ProjectWorkspacePage", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "View configuration" }));
+    fireEvent.click(screen.getByRole("button", { name: "View menu" }));
     fireEvent.submit(screen.getByRole("form", { name: "View configuration" }));
     expect(await screen.findByText("sort must be supported")).toHaveClass(
       "chip",

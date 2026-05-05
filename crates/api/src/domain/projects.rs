@@ -162,6 +162,17 @@ pub struct ProjectViewStateRequest {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ProjectViewLayoutRequest {
+    pub layout: String,
+    pub column_field_id: Option<Uuid>,
+    pub swimlane_field_id: Option<Uuid>,
+    pub start_field_id: Option<Uuid>,
+    pub target_field_id: Option<Uuid>,
+    pub expected_updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectItemFieldValueRequest {
     pub value: Value,
     pub expected_updated_at: Option<DateTime<Utc>>,
@@ -884,6 +895,110 @@ pub async fn update_project_view_state_for_actor(
         "group": state.group,
         "slice": state.slice,
         "hiddenFieldIds": state.hidden_field_ids,
+    }))
+    .execute(pool)
+    .await?;
+
+    project_workspace(
+        pool,
+        project_id,
+        Some(actor_user_id),
+        ProjectWorkspaceQuery {
+            view: Some(&view_id.to_string()),
+            query: None,
+            sort: None,
+            group: None,
+            slice: None,
+            page: Some(1),
+            page_size: None,
+        },
+    )
+    .await
+}
+
+pub async fn update_project_view_layout_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    view_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectViewLayoutRequest,
+) -> Result<ProjectWorkspace, ProjectsError> {
+    let project = workspace_project_row(pool, project_id, Some(actor_user_id)).await?;
+    let can_manage = project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role);
+    if !can_manage {
+        return Err(ProjectsError::Forbidden);
+    }
+
+    let views = workspace_views(pool, project_id, &project.owner, project.number).await?;
+    let selected_view = views
+        .iter()
+        .find(|view| view.id == view_id)
+        .cloned()
+        .ok_or_else(|| {
+            ProjectsError::InvalidFilter("view must reference an existing project view".to_owned())
+        })?;
+    if let Some(expected) = request.expected_updated_at {
+        if selected_view.updated_at != expected {
+            return Err(ProjectsError::Validation(
+                "Project view changed since it was loaded. Refresh before changing layout."
+                    .to_owned(),
+            ));
+        }
+    }
+
+    let fields = workspace_fields(pool, project_id, &selected_view).await?;
+    let layout = validate_project_view_layout_request(&request, &fields)?;
+    let mut configuration = selected_view.configuration.clone();
+    if !configuration.is_object() {
+        configuration = json!({});
+    }
+    if let Some(column_field_id) = layout.column_field_id {
+        configuration["columnFieldId"] = json!(column_field_id.to_string());
+    }
+    if let Some(swimlane_field_id) = layout.swimlane_field_id {
+        configuration["swimlaneFieldId"] = json!(swimlane_field_id.to_string());
+    } else if layout.layout != "board" {
+        configuration["swimlaneFieldId"] = Value::Null;
+    }
+    if let Some(start_field_id) = layout.start_field_id {
+        configuration["startFieldId"] = json!(start_field_id.to_string());
+    }
+    if let Some(target_field_id) = layout.target_field_id {
+        configuration["targetFieldId"] = json!(target_field_id.to_string());
+    }
+
+    sqlx::query(
+        r#"
+        UPDATE project_views
+        SET layout = $3, configuration = $4, updated_at = now()
+        WHERE project_id = $1 AND id = $2
+        "#,
+    )
+    .bind(project_id)
+    .bind(view_id)
+    .bind(&layout.layout)
+    .bind(&configuration)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, 'project.view_layout.update', 'project_view', $2, $3)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(view_id.to_string())
+    .bind(json!({
+        "projectId": project_id,
+        "layout": layout.layout,
+        "columnFieldId": layout.column_field_id,
+        "swimlaneFieldId": layout.swimlane_field_id,
+        "startFieldId": layout.start_field_id,
+        "targetFieldId": layout.target_field_id,
     }))
     .execute(pool)
     .await?;
@@ -2224,6 +2339,103 @@ struct ValidProjectViewState {
     group: Option<String>,
     slice: Option<String>,
     hidden_field_ids: Vec<String>,
+}
+
+#[derive(Debug)]
+struct ValidProjectViewLayout {
+    layout: String,
+    column_field_id: Option<Uuid>,
+    swimlane_field_id: Option<Uuid>,
+    start_field_id: Option<Uuid>,
+    target_field_id: Option<Uuid>,
+}
+
+fn validate_project_view_layout_request(
+    request: &ProjectViewLayoutRequest,
+    fields: &[ProjectWorkspaceField],
+) -> Result<ValidProjectViewLayout, ProjectsError> {
+    let layout = request.layout.trim().to_ascii_lowercase();
+    if !matches!(layout.as_str(), "table" | "board" | "roadmap") {
+        return Err(ProjectsError::InvalidFilter(
+            "layout must be table, board, or roadmap".to_owned(),
+        ));
+    }
+
+    let column_field_id = if layout == "board" {
+        Some(validate_layout_field_id(
+            request.column_field_id,
+            fields,
+            "columnFieldId",
+            is_board_column_field,
+        )?)
+    } else {
+        None
+    };
+    let swimlane_field_id = if layout == "board" {
+        request
+            .swimlane_field_id
+            .map(|id| {
+                validate_layout_field_id(
+                    Some(id),
+                    fields,
+                    "swimlaneFieldId",
+                    is_board_swimlane_field,
+                )
+            })
+            .transpose()?
+    } else {
+        None
+    };
+    let start_field_id = if layout == "roadmap" {
+        Some(validate_layout_field_id(
+            request.start_field_id,
+            fields,
+            "startFieldId",
+            is_roadmap_date_field,
+        )?)
+    } else {
+        None
+    };
+    let target_field_id = if layout == "roadmap" {
+        Some(validate_layout_field_id(
+            request.target_field_id.or(start_field_id),
+            fields,
+            "targetFieldId",
+            is_roadmap_date_field,
+        )?)
+    } else {
+        None
+    };
+
+    Ok(ValidProjectViewLayout {
+        layout,
+        column_field_id,
+        swimlane_field_id,
+        start_field_id,
+        target_field_id,
+    })
+}
+
+fn validate_layout_field_id(
+    requested: Option<Uuid>,
+    fields: &[ProjectWorkspaceField],
+    name: &str,
+    compatible: fn(&str) -> bool,
+) -> Result<Uuid, ProjectsError> {
+    let field = if let Some(requested) = requested {
+        fields.iter().find(|field| field.id == requested)
+    } else {
+        fields.iter().find(|field| compatible(&field.field_type))
+    }
+    .ok_or_else(|| {
+        ProjectsError::InvalidFilter(format!("{name} must reference a compatible project field"))
+    })?;
+    if !compatible(&field.field_type) {
+        return Err(ProjectsError::InvalidFilter(format!(
+            "{name} must reference a compatible project field"
+        )));
+    }
+    Ok(field.id)
 }
 
 fn validate_project_view_state_request(

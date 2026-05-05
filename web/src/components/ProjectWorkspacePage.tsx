@@ -141,6 +141,7 @@ export function ProjectWorkspacePage({
     workspace.fields.filter((field) => field.hidden).map((field) => field.id),
   );
   const [saving, setSaving] = useState(false);
+  const [layoutSaving, setLayoutSaving] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
@@ -171,6 +172,9 @@ export function ProjectWorkspacePage({
     workspace.project.number,
     viewNumber,
     baseQuery,
+  );
+  const activeLayoutChoice = workspace.layoutChoices?.find(
+    (choice) => choice.active,
   );
 
   function submitFilter(event: FormEvent<HTMLFormElement>) {
@@ -239,6 +243,59 @@ export function ProjectWorkspacePage({
     window.location.assign(
       workspaceHref(scope, owner, workspace.project.number, viewNumber, {}),
     );
+  }
+
+  async function saveProjectLayout(layout: "table" | "board" | "roadmap") {
+    const choice = workspace.layoutChoices?.find(
+      (entry) => entry.layout === layout,
+    );
+    if (!choice?.enabled || layoutSaving) return;
+    setLayoutSaving(layout);
+    setSaveError(null);
+    setSaveMessage(null);
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(workspace.project.id)}/views/${encodeURIComponent(workspace.selectedView.id)}/layout`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          layout,
+          columnFieldId:
+            layout === "board"
+              ? (workspace.boardConfig?.columnField?.id ??
+                workspace.boardConfig?.eligibleColumnFields[0]?.id ??
+                null)
+              : null,
+          swimlaneFieldId:
+            layout === "board"
+              ? (workspace.boardConfig?.swimlaneField?.id ?? null)
+              : null,
+          startFieldId:
+            layout === "roadmap"
+              ? (workspace.roadmapConfig?.startDateField?.id ??
+                workspace.roadmapConfig?.eligibleDateFields[0]?.id ??
+                null)
+              : null,
+          targetFieldId:
+            layout === "roadmap"
+              ? (workspace.roadmapConfig?.targetDateField?.id ??
+                workspace.roadmapConfig?.eligibleDateFields[0]?.id ??
+                null)
+              : null,
+          expectedUpdatedAt: workspace.selectedView.updatedAt,
+        }),
+      },
+    ).catch(() => null);
+    setLayoutSaving(null);
+    if (!response?.ok) {
+      const body = await response?.json().catch(() => null);
+      setSaveError(
+        body?.error?.message ?? "Project view layout could not be saved.",
+      );
+      return;
+    }
+    setSaveMessage(`${choice.label} layout saved`);
+    window.location.assign(currentHref);
   }
 
   function openFieldEditor(
@@ -607,143 +664,224 @@ export function ProjectWorkspacePage({
             </label>
             <button
               className="btn sm"
-              disabled={!workspace.viewerPermissions.canManageViews}
               onClick={() => setConfigOpen((open) => !open)}
               title={
-                workspace.viewerPermissions.canManageViews
-                  ? "Configure saved table view state"
-                  : "You need write access to save project views."
+                workspace.viewerPermissions.canChangeLayout
+                  ? "Open saved view layout and configuration controls"
+                  : "You can inspect layout choices, but write access is required to save changes."
               }
               type="button"
             >
-              View configuration
+              View menu
             </button>
           </div>
 
           {configOpen ? (
-            <form
-              aria-label="View configuration"
-              className="card mb-3 p-4"
-              onSubmit={saveViewState}
-            >
+            <section aria-label="View menu" className="card mb-3 p-4">
               <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="t-h3">View configuration</h2>
+                  <h2 className="t-h3">View menu</h2>
                   <p className="t-xs mt-1">
-                    Save filters, sorting, grouping, slicing, and visible fields
-                    for this table view.
+                    Save layout, filters, sorting, grouping, slicing, and
+                    visible fields for this project view.
                   </p>
                 </div>
-                {workspace.unsavedView.active ? (
-                  <span className="chip warn">
-                    Unsaved: {workspace.unsavedView.reasons.join(", ")}
-                  </span>
-                ) : null}
+                <span className="chip active">
+                  {activeLayoutChoice?.label ?? workspace.selectedView.layout}
+                </span>
               </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="t-sm">
-                  Filter query
-                  <input
-                    className="input mt-1 w-full"
-                    onChange={(event) => setConfigQuery(event.target.value)}
-                    placeholder="is:open label:frontend"
-                    value={configQuery}
-                  />
-                </label>
-                <label className="t-sm">
-                  Sort
-                  <select
-                    className="input mt-1 w-full"
-                    onChange={(event) => setConfigSort(event.target.value)}
-                    value={configSort}
+              <div className="mb-4 grid gap-2 md:grid-cols-3">
+                {(workspace.layoutChoices ?? []).map((choice) => (
+                  <button
+                    className={`chip justify-between ${choice.active ? "active" : "soft"}`}
+                    disabled={
+                      !choice.enabled ||
+                      !workspace.viewerPermissions.canChangeLayout ||
+                      layoutSaving != null
+                    }
+                    key={choice.layout}
+                    onClick={() =>
+                      saveProjectLayout(
+                        choice.layout as "table" | "board" | "roadmap",
+                      )
+                    }
+                    title={
+                      choice.unavailableReason ??
+                      `Switch to ${choice.label} layout`
+                    }
+                    type="button"
                   >
-                    {SORT_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="t-sm">
-                  Group by
-                  <select
-                    className="input mt-1 w-full"
-                    onChange={(event) => setConfigGroup(event.target.value)}
-                    value={configGroup}
-                  >
-                    <option value="">No grouping</option>
-                    {workspace.fields.map((field) => (
-                      <option key={field.id} value={field.name}>
-                        {field.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="t-sm">
-                  Slice by
-                  <select
-                    className="input mt-1 w-full"
-                    onChange={(event) => setConfigSlice(event.target.value)}
-                    value={configSlice}
-                  >
-                    <option value="">All items</option>
-                    {workspace.fields.map((field) => (
-                      <option key={field.id} value={field.name}>
-                        {field.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                    <span>{choice.label}</span>
+                    <span className="kbd">{choice.keyboardHint}</span>
+                  </button>
+                ))}
               </div>
-              <fieldset className="mt-4">
-                <legend className="t-label mb-2">Visible fields</legend>
-                <div className="flex flex-wrap gap-2">
-                  {workspace.fields.map((field) => {
-                    const checked = !hiddenFieldIds.includes(field.id);
-                    return (
-                      <label
-                        className="chip soft cursor-pointer"
-                        key={field.id}
-                      >
-                        <input
-                          checked={checked}
-                          className="mr-2"
-                          onChange={(event) => {
-                            setHiddenFieldIds((current) =>
-                              event.target.checked
-                                ? current.filter((id) => id !== field.id)
-                                : [...current, field.id],
-                            );
-                          }}
-                          type="checkbox"
-                        />
-                        {field.name}
-                      </label>
-                    );
-                  })}
+              <div className="mb-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {[
+                  [
+                    "Fields",
+                    `${visibleFields.length} visible`,
+                    "Manage table columns and card metadata.",
+                  ],
+                  [
+                    "Column by",
+                    workspace.boardConfig?.columnField?.name ?? "Not set",
+                    workspace.boardConfig?.unavailableReason ??
+                      "Board columns use a status or single-select field.",
+                  ],
+                  [
+                    "Swimlanes",
+                    workspace.boardConfig?.swimlaneField?.name ?? "None",
+                    "Group board cards across horizontal lanes.",
+                  ],
+                  [
+                    "Sort by",
+                    SORT_OPTIONS.find(
+                      (option) => option.value === workspace.filters.sort,
+                    )?.label ?? workspace.filters.sort,
+                    "Preserves the URL-backed sort state.",
+                  ],
+                  [
+                    "Field sum",
+                    "Scheduled",
+                    "Numeric summaries are implemented with board rendering.",
+                  ],
+                  [
+                    "Slice by",
+                    workspace.filters.slice ?? "All items",
+                    "Use slices to keep focused worksets visible.",
+                  ],
+                ].map(([label, value, description]) => (
+                  <div
+                    className="p-3"
+                    key={label}
+                    style={{
+                      border: "1px solid var(--line-soft)",
+                      borderRadius: "var(--radius)",
+                    }}
+                  >
+                    <div className="t-label mb-1">{label}</div>
+                    <div className="t-sm">{value}</div>
+                    <div className="t-xs mt-1">{description}</div>
+                  </div>
+                ))}
+              </div>
+              <form aria-label="View configuration" onSubmit={saveViewState}>
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                  <h3 className="t-h3">Table state</h3>
+                  {workspace.unsavedView.active ? (
+                    <span className="chip warn">
+                      Unsaved: {workspace.unsavedView.reasons.join(", ")}
+                    </span>
+                  ) : null}
                 </div>
-              </fieldset>
-              {saveError ? <p className="chip err mt-3">{saveError}</p> : null}
-              {saveMessage ? (
-                <p className="chip ok mt-3">{saveMessage}</p>
-              ) : null}
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  className="btn sm primary"
-                  disabled={saving}
-                  type="submit"
-                >
-                  {saving ? "Saving..." : "Save view"}
-                </button>
-                <button
-                  className="btn sm"
-                  onClick={revertViewState}
-                  type="button"
-                >
-                  Revert
-                </button>
-              </div>
-            </form>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="t-sm">
+                    Filter query
+                    <input
+                      className="input mt-1 w-full"
+                      onChange={(event) => setConfigQuery(event.target.value)}
+                      placeholder="is:open label:frontend"
+                      value={configQuery}
+                    />
+                  </label>
+                  <label className="t-sm">
+                    Sort
+                    <select
+                      className="input mt-1 w-full"
+                      onChange={(event) => setConfigSort(event.target.value)}
+                      value={configSort}
+                    >
+                      {SORT_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="t-sm">
+                    Group by
+                    <select
+                      className="input mt-1 w-full"
+                      onChange={(event) => setConfigGroup(event.target.value)}
+                      value={configGroup}
+                    >
+                      <option value="">No grouping</option>
+                      {workspace.fields.map((field) => (
+                        <option key={field.id} value={field.name}>
+                          {field.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="t-sm">
+                    Slice by
+                    <select
+                      className="input mt-1 w-full"
+                      onChange={(event) => setConfigSlice(event.target.value)}
+                      value={configSlice}
+                    >
+                      <option value="">All items</option>
+                      {workspace.fields.map((field) => (
+                        <option key={field.id} value={field.name}>
+                          {field.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <fieldset className="mt-4">
+                  <legend className="t-label mb-2">Visible fields</legend>
+                  <div className="flex flex-wrap gap-2">
+                    {workspace.fields.map((field) => {
+                      const checked = !hiddenFieldIds.includes(field.id);
+                      return (
+                        <label
+                          className="chip soft cursor-pointer"
+                          key={field.id}
+                        >
+                          <input
+                            checked={checked}
+                            className="mr-2"
+                            onChange={(event) => {
+                              setHiddenFieldIds((current) =>
+                                event.target.checked
+                                  ? current.filter((id) => id !== field.id)
+                                  : [...current, field.id],
+                              );
+                            }}
+                            type="checkbox"
+                          />
+                          {field.name}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+                {saveError ? (
+                  <p className="chip err mt-3">{saveError}</p>
+                ) : null}
+                {saveMessage ? (
+                  <p className="chip ok mt-3">{saveMessage}</p>
+                ) : null}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    className="btn sm primary"
+                    disabled={saving}
+                    type="submit"
+                  >
+                    {saving ? "Saving..." : "Save view"}
+                  </button>
+                  <button
+                    className="btn sm"
+                    onClick={revertViewState}
+                    type="button"
+                  >
+                    Revert
+                  </button>
+                </div>
+              </form>
+            </section>
           ) : null}
 
           <div className="mb-3 flex flex-wrap items-center gap-2">

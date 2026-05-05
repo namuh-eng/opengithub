@@ -6898,5 +6898,23 @@
       "Probe large virtualized tables, horizontal overflow on mobile, hidden private linked repositories, stale view-state conflicts, concurrent cell edits, duplicate linked issue/PR adds, grouped-row move semantics, URL paste parsing for app-relative and absolute URLs, filtered metadata defaults, read-only project and repository permission boundaries, and notification/timeline/audit side effects.",
       "Verify board, roadmap, insights, project field settings, workflow automation, project access settings, and exports remain clearly out of scope for projects-002 rather than exposed as dead controls."
     ]
+  },
+  {
+    "feature_id": "projects-003",
+    "tests_written": [
+      "Completed Phase 2 Layout Switching and View Menu without marking projects-003 build_pass=true.",
+      "Added PATCH /api/projects/{project_id}/views/{view_id}/layout with signed-session auth, project write/admin permission checks, stale expectedUpdatedAt validation, layout enum validation, compatible Board/Roadmap field validation, project_views layout/configuration persistence, audit_events writes, and refreshed workspace response.",
+      "Added same-origin Next proxy at /api/projects/{projectId}/views/{viewId}/layout and typed updateProjectViewLayoutFromCookie helper without JS-side auth.",
+      "Wired ProjectWorkspacePage View menu to real Table, Board, and Roadmap layout PATCH requests with keyboard hints t/b/r, pending/error/success states, read-only inspection, and menu rows for Fields, Column by, Swimlanes, Sort by, Field sum, and Slice by.",
+      "Extended focused Vitest coverage for View menu opening, keyboard hints, Board PATCH payload, read-only disabled layout saves, stale/server error display, URL state preservation, and Editorial banned-value guardrails.",
+      "Browser smoke passed against a local API-compatible stub and real Next dev server: loaded /orgs/namuh/projects/12/views/1, opened View menu, saved a layout via PATCH 200, verified redirect, no dead links, no unexpected horizontal overflow, and saved ralph/screenshots/build/projects-003-phase2-view-menu.jpg.",
+      "Verification passed: cargo fmt --all --check, cargo check -p opengithub-api --tests, web TypeScript, focused Biome, focused project-workspace-page Vitest with 12 tests, mandatory Editorial banned-value scan, full make check, and full make test with Cargo tests plus 542 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Rerun the View menu smoke against a clean migrated credentialed TEST_DATABASE_URL so the layout PATCH is verified against real Postgres rows and signed-session seed data instead of the local API-compatible stub.",
+      "Probe stale expectedUpdatedAt conflicts, invalid layout names, missing Board column fields, incompatible Board/Roadmap field IDs, read-only users inspecting but not saving layouts, audit_events metadata, and preservation of saved query/sort/group/slice state after layout changes.",
+      "Keyboard shortcuts t/b/r are exposed as hints only in Phase 2; QA should verify they remain non-misleading until a later keyboard handler phase implements actual shortcuts.",
+      "Phase 3 still needs real Board rendering and card column moves; Phase 4 still needs real Roadmap rendering and timeline settings."
+    ]
   }
 ]

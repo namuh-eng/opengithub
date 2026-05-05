@@ -1,3 +1,15 @@
+2026-05-06 - projects-003 phase 2 layout switching and View menu
+
+- Completed Phase 2 from `.qrspi/projects-003/structure.md`: Projects v2 workspaces now have a real View menu for persisted Table, Board, and Roadmap layout switching without marking `projects-003.build_pass=true`; Phases 3-5 remain.
+- Added `PATCH /api/projects/{project_id}/views/{view_id}/layout` with signed-session auth, project write/admin permission checks, stale `expectedUpdatedAt` validation, layout enum validation, compatible Board/Roadmap field validation, `project_views` layout/configuration persistence, `audit_events` writes, and refreshed workspace response.
+- Added the same-origin Next proxy at `/api/projects/{projectId}/views/{viewId}/layout` plus typed `ProjectViewLayoutRequest` and `updateProjectViewLayoutFromCookie` support without JS-side auth.
+- Replaced the workspace configuration button with an Editorial View menu showing Table/Board/Roadmap choices with `t`/`b`/`r` keyboard hints, read-only inspection, disabled persistence for unauthorized viewers, and real menu rows for Fields, Column by, Swimlanes, Sort by, Field sum, and Slice by.
+- Extended focused Vitest coverage for View menu opening, keyboard hints, Board PATCH payloads, read-only disabled layout saves, stale/server errors, URL state preservation, and Editorial banned-value guardrails.
+- Verification passed: `cargo fmt --all --check`; `cargo check -p opengithub-api --tests`; `cd web && npx tsc --noEmit --pretty false`; focused Biome; focused `project-workspace-page` Vitest with 12 tests; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 542 web tests; mandatory Editorial banned-value scan returned zero matches.
+- Browser smoke passed against a local API-compatible stub with real Next dev server: loaded `/orgs/namuh/projects/12/views/1`, opened View menu, saved a layout via `PATCH 200`, verified redirect, no dead links, no unexpected horizontal overflow, and saved `ralph/screenshots/build/projects-003-phase2-view-menu.jpg`.
+- Focused DB-backed layout mutation assertions should be rerun by QA against a clean migrated credentialed `TEST_DATABASE_URL`; this iteration used a local stub for browser smoke because the local signed-session E2E database credential issue is still present. `prd.json` remains `build_pass:false` because Phase 3 board layout, Phase 4 roadmap layout, and Phase 5 docs/final bookkeeping remain.
+- Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-06 - projects-002 structure planning
 
 - Determined `projects-002` is the first `build_pass:false` PRD entry and it requires structure planning before implementation.
