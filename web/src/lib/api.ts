@@ -3100,6 +3100,165 @@ export type RepositoryCodeScanningLinks = {
   settingsHref: string;
 };
 
+export type RepositorySecretScanningAvailability = {
+  enabled: boolean;
+  indexed: boolean;
+  pushProtectionEnabled: boolean;
+  message: string;
+  disabledReason: string | null;
+  settingsHref: string | null;
+};
+
+export type RepositorySecretScanningFilters = {
+  state: string;
+  query: string | null;
+  provider: string | null;
+  secretType: string | null;
+  validity: string | null;
+  resolution: string | null;
+  bypassed: string | null;
+  team: string | null;
+  topic: string | null;
+  sort: string;
+};
+
+export type RepositorySecretScanningCounts = {
+  open: number;
+  resolved: number;
+  provider: number;
+  generic: number;
+  bypassed: number;
+  total: number;
+  visible: number;
+};
+
+export type RepositorySecretScanningPattern = {
+  id: string;
+  slug: string;
+  provider: string;
+  secretType: string;
+  displayName: string;
+  resultKind: string;
+  pushProtectionEnabled: boolean;
+};
+
+export type RepositorySecretScanningValidity = {
+  status: string;
+  provider: string;
+  checkedAt: string | null;
+  message: string;
+};
+
+export type RepositorySecretScanningLocation = {
+  path: string;
+  pathHref: string;
+  rawHref: string;
+  commitHref: string | null;
+  refName: string;
+  branchName: string | null;
+  startLine: number;
+  endLine: number | null;
+  redactedSnippet: string | null;
+};
+
+export type RepositorySecretScanningAlertRow = {
+  id: string;
+  number: number;
+  state: string;
+  resolution: string | null;
+  pattern: RepositorySecretScanningPattern;
+  redactedSecret: string;
+  redactedContext: string | null;
+  fingerprint: string;
+  validity: RepositorySecretScanningValidity;
+  primaryLocation: RepositorySecretScanningLocation | null;
+  assignees: RepositoryDependabotAssignee[];
+  bypassed: boolean;
+  href: string;
+  detectedAt: string;
+  updatedAt: string;
+};
+
+export type RepositorySecretScanningProviderFilter = {
+  provider: string;
+  openCount: number;
+  selected: boolean;
+};
+
+export type RepositorySecretScanningSecretTypeFilter = {
+  secretType: string;
+  displayName: string;
+  provider: string;
+  resultKind: string;
+  openCount: number;
+  selected: boolean;
+};
+
+export type RepositoryPushProtectionSummary = {
+  enabled: boolean;
+  protectedPatternCount: number;
+  bypassCount: number;
+  pendingReviewCount: number;
+  settingsHref: string;
+};
+
+export type RepositoryPushProtectionBypass = {
+  id: string;
+  actor: RepositoryDependabotAssignee | null;
+  reason: string;
+  status: string;
+  refName: string;
+  commitOid: string | null;
+  path: string | null;
+  redactedSnippet: string | null;
+  createdAt: string;
+};
+
+export type RepositorySecretScanningTimelineEvent = {
+  id: string;
+  eventType: string;
+  message: string;
+  actor: RepositoryDependabotAssignee | null;
+  createdAt: string;
+};
+
+export type RepositorySecretScanningLinks = {
+  listHref: string;
+  providerHref: string;
+  genericHref: string;
+  openHref: string;
+  resolvedHref: string;
+  settingsHref: string;
+};
+
+export type RepositorySecretScanningAlertsView = {
+  repository: RepositorySecurityRepository;
+  viewer: RepositorySecurityViewer;
+  availability: RepositorySecretScanningAvailability;
+  filters: RepositorySecretScanningFilters;
+  counts: RepositorySecretScanningCounts;
+  alerts: RepositorySecretScanningAlertRow[];
+  providers: RepositorySecretScanningProviderFilter[];
+  secretTypes: RepositorySecretScanningSecretTypeFilter[];
+  pushProtection: RepositoryPushProtectionSummary;
+  links: RepositorySecretScanningLinks;
+  freshness: RepositoryDependabotFreshness;
+};
+
+export type RepositorySecretScanningAlertDetail = {
+  repository: RepositorySecurityRepository;
+  viewer: RepositorySecurityViewer;
+  availability: RepositorySecretScanningAvailability;
+  alert: RepositorySecretScanningAlertRow;
+  pattern: RepositorySecretScanningPattern;
+  locations: RepositorySecretScanningLocation[];
+  validity: RepositorySecretScanningValidity;
+  bypasses: RepositoryPushProtectionBypass[];
+  timeline: RepositorySecretScanningTimelineEvent[];
+  assigneeOptions: RepositoryDependabotAssignmentOption[];
+  links: RepositorySecretScanningLinks;
+};
+
 export type RepositoryCodeScanningAlertsQuery = {
   state?: string | null;
   query?: string | null;
@@ -3112,6 +3271,27 @@ export type RepositoryCodeScanningAlertsQuery = {
   applicationCode?: string | null;
   sort?: string | null;
 };
+
+export type RepositorySecretScanningAlertsQuery = {
+  state?: string | null;
+  query?: string | null;
+  provider?: string | null;
+  secretType?: string | null;
+  validity?: string | null;
+  resolution?: string | null;
+  bypassed?: string | null;
+  team?: string | null;
+  topic?: string | null;
+  sort?: string | null;
+};
+
+export type RepositorySecretScanningAlertsFetchResult =
+  | { ok: true; secretScanning: RepositorySecretScanningAlertsView }
+  | { ok: false; status: number; code: string | null; message: string };
+
+export type RepositorySecretScanningAlertDetailFetchResult =
+  | { ok: true; secretScanningAlert: RepositorySecretScanningAlertDetail }
+  | { ok: false; status: number; code: string | null; message: string };
 
 export type RepositoryCodeScanningAlertsFetchResult =
   | { ok: true; codeScanning: RepositoryCodeScanningAlertsView }
@@ -10379,6 +10559,32 @@ function appendRepositoryCodeScanningSearchParams(
   }
 }
 
+function appendRepositorySecretScanningSearchParams(
+  searchParams: URLSearchParams,
+  query?: RepositorySecretScanningAlertsQuery,
+) {
+  if (!query) {
+    return;
+  }
+  const entries: [string, string | null | undefined][] = [
+    ["state", query.state],
+    ["q", query.query],
+    ["provider", query.provider],
+    ["secret_type", query.secretType],
+    ["validity", query.validity],
+    ["resolution", query.resolution],
+    ["bypassed", query.bypassed],
+    ["team", query.team],
+    ["topic", query.topic],
+    ["sort", query.sort],
+  ];
+  for (const [key, value] of entries) {
+    if (value?.trim()) {
+      searchParams.set(key, value);
+    }
+  }
+}
+
 export async function getRepositoryCodeScanningAlertsFromCookie(
   cookie: string | null | undefined,
   owner: string,
@@ -10471,6 +10677,102 @@ export async function getRepositoryCodeScanningAlertDetailFromCookie(
     ok: true,
     codeScanningAlert:
       (await response.json()) as RepositoryCodeScanningAlertDetail,
+  };
+}
+
+export async function getRepositorySecretScanningAlertsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  query?: RepositorySecretScanningAlertsQuery,
+): Promise<RepositorySecretScanningAlertsFetchResult> {
+  const searchParams = new URLSearchParams();
+  appendRepositorySecretScanningSearchParams(searchParams, query);
+  const suffix = searchParams.size ? `?${searchParams.toString()}` : "";
+
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/secret-scanning${suffix}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Secret scanning alerts are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Secret scanning alerts are unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    secretScanning:
+      (await response.json()) as RepositorySecretScanningAlertsView,
+  };
+}
+
+export async function getRepositorySecretScanningAlertDetailFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  alertId: string | number,
+): Promise<RepositorySecretScanningAlertDetailFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/secret-scanning/${encodeURIComponent(String(alertId))}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Secret scanning alert detail is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Secret scanning alert detail is unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    secretScanningAlert:
+      (await response.json()) as RepositorySecretScanningAlertDetail,
   };
 }
 

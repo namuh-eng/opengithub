@@ -6,7 +6,7 @@
 
 ## Phase 1: Secret Scanning API Contract and Persistence - redacted list/detail data
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add repository-owned secret scanning persistence and read APIs without rendering the page yet. `GET /api/repos/{owner}/{repo}/security/secret-scanning` should return enabled/disabled state, provider/default and generic tab counts, filter metadata, selectable alert rows, push-protection summary, and privacy-safe empty states. `GET /api/repos/{owner}/{repo}/security/secret-scanning/{alert_id}` should return redacted evidence, file/commit location, validity, resolution state, bypass metadata, assignment options, timeline rows, and viewer affordances. Plaintext secret values must never be stored, returned, logged, or included in audit payloads.
 

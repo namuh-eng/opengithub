@@ -5993,5 +5993,23 @@
       "Stress concurrent dismiss/reopen/assignment/issue-link actions from two maintainer sessions to confirm stale-state conflict handling and final UI copy.",
       "Run an accessibility pass over the Code scanning filters, alert detail controls, disclosure widgets, and mobile Security sidebar."
     ]
+  },
+  {
+    "feature_id": "code-security-004",
+    "tests_written": [
+      "Completed Phase 1 Secret Scanning API Contract and Persistence without marking code-security-004 build_pass=true.",
+      "Added additive secret scanning persistence for patterns, alerts, redacted locations, assignees, validity checks, push-protection bypasses, and redacted timeline events.",
+      "Added authenticated Rust list/detail endpoints for /api/repos/{owner}/{repo}/security/secret-scanning and /api/repos/{owner}/{repo}/security/secret-scanning/{alert_id}.",
+      "Added typed Next.js API DTOs and signed-cookie fetch helpers for secret scanning list/detail contracts without adding client-side auth.",
+      "Added focused Rust contract coverage for enabled/disabled settings, private repository 404 privacy, invalid filters, provider/secret-type filters, redacted evidence, validity state, bypass metadata, assignment options, timeline rows, and no plaintext secret/session leakage.",
+      "Verification passed: focused repository_secret_scanning_alerts_contract after manually applying the additive migration around the known 202605030041 dirty migration warning; TypeScript check; focused Biome check; full make check; full make test with Cargo tests plus 472 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Phase 2 still needs the Editorial Secret scanning alerts list UI, filters, row navigation, disabled state, screenshots, and browser smoke.",
+      "Phase 3 still needs single-alert resolve/reopen/assignment mutations and the detail UI.",
+      "Phase 4 still needs real committed-blob detection and Rust Git push-protection enforcement with bypass outcomes.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL once UI phases are built.",
+      "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema after applying the additive secret scanning migration manually."
+    ]
   }
 ]

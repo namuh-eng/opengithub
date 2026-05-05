@@ -103,6 +103,8 @@ use crate::{
         repository_code_scanning_alerts_for_actor_by_owner_name,
         repository_dependabot_alert_detail_for_actor_by_owner_name,
         repository_dependabot_alerts_for_actor_by_owner_name,
+        repository_secret_scanning_alert_detail_for_actor_by_owner_name,
+        repository_secret_scanning_alerts_for_actor_by_owner_name,
         repository_security_overview_for_actor_by_owner_name,
         repository_security_policy_for_actor_by_owner_name,
         update_repository_code_scanning_alert_for_actor_by_owner_name,
@@ -110,7 +112,8 @@ use crate::{
         upload_repository_code_scanning_sarif_for_actor_by_owner_name,
         upsert_repository_security_policy_by_owner_name, CodeScanningAlertMutation,
         CodeScanningAlertsQuery, CodeScanningSarifUpload, DependabotAlertMutation,
-        DependabotAlertsQuery, DependabotBulkMutation, SecurityPolicyMutation,
+        DependabotAlertsQuery, DependabotBulkMutation, SecretScanningAlertsQuery,
+        SecurityPolicyMutation,
     },
     domain::webhooks::{
         create_repository_webhook_by_owner_name, delete_repository_webhook_by_owner_name,
@@ -182,6 +185,14 @@ pub fn router() -> Router<AppState> {
         .route(
             "/:owner/:repo/security/dependabot/:alert_id",
             get(dependabot_alert_detail).patch(update_dependabot_alert),
+        )
+        .route(
+            "/:owner/:repo/security/secret-scanning",
+            get(secret_scanning_alerts),
+        )
+        .route(
+            "/:owner/:repo/security/secret-scanning/:alert_id",
+            get(secret_scanning_alert_detail),
         )
         .route(
             "/:owner/:repo/security/policy",
@@ -1257,6 +1268,20 @@ struct CodeScanningAlertsQueryParams {
     sort: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct SecretScanningAlertsQueryParams {
+    state: Option<String>,
+    q: Option<String>,
+    provider: Option<String>,
+    secret_type: Option<String>,
+    validity: Option<String>,
+    resolution: Option<String>,
+    bypassed: Option<String>,
+    team: Option<String>,
+    topic: Option<String>,
+    sort: Option<String>,
+}
+
 async fn code_scanning_alerts(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1313,6 +1338,68 @@ async fn code_scanning_alert_detail(
             StatusCode::NOT_FOUND,
             "not_found",
             "code scanning alert was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn secret_scanning_alerts(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<SecretScanningAlertsQueryParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = repository_secret_scanning_alerts_for_actor_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        SecretScanningAlertsQuery {
+            state: query.state.as_deref(),
+            query: query.q.as_deref(),
+            provider: query.provider.as_deref(),
+            secret_type: query.secret_type.as_deref(),
+            validity: query.validity.as_deref(),
+            resolution: query.resolution.as_deref(),
+            bypassed: query.bypassed.as_deref(),
+            team: query.team.as_deref(),
+            topic: query.topic.as_deref(),
+            sort: query.sort.as_deref(),
+        },
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn secret_scanning_alert_detail(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, alert_id)): Path<(String, String, i64)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = repository_secret_scanning_alert_detail_for_actor_by_owner_name(
+        pool, actor.0.id, &owner, &repo, alert_id,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "secret scanning alert was not found".to_owned(),
         )
     })?;
 

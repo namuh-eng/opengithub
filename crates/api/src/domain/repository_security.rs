@@ -655,6 +655,209 @@ pub struct CodeScanningLinks {
     pub settings_href: String,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct SecretScanningAlertsQuery<'a> {
+    pub state: Option<&'a str>,
+    pub query: Option<&'a str>,
+    pub provider: Option<&'a str>,
+    pub secret_type: Option<&'a str>,
+    pub validity: Option<&'a str>,
+    pub resolution: Option<&'a str>,
+    pub bypassed: Option<&'a str>,
+    pub team: Option<&'a str>,
+    pub topic: Option<&'a str>,
+    pub sort: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretScanningAlertsView {
+    pub repository: RepositorySecurityRepository,
+    pub viewer: SecurityViewer,
+    pub availability: SecretScanningAvailability,
+    pub filters: SecretScanningFilters,
+    pub counts: SecretScanningAlertCounts,
+    pub alerts: Vec<SecretScanningAlertRow>,
+    pub providers: Vec<SecretScanningProviderFilter>,
+    pub secret_types: Vec<SecretScanningSecretTypeFilter>,
+    pub push_protection: PushProtectionSummary,
+    pub links: SecretScanningLinks,
+    pub freshness: DependabotAlertFreshness,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretScanningAlertDetail {
+    pub repository: RepositorySecurityRepository,
+    pub viewer: SecurityViewer,
+    pub availability: SecretScanningAvailability,
+    pub alert: SecretScanningAlertRow,
+    pub pattern: SecretScanningPatternSummary,
+    pub locations: Vec<SecretScanningLocation>,
+    pub validity: SecretScanningValidityState,
+    pub bypasses: Vec<PushProtectionBypassSummary>,
+    pub timeline: Vec<SecretScanningTimelineEvent>,
+    pub assignee_options: Vec<DependabotAlertAssignmentOption>,
+    pub links: SecretScanningLinks,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretScanningAvailability {
+    pub enabled: bool,
+    pub indexed: bool,
+    pub push_protection_enabled: bool,
+    pub message: String,
+    pub disabled_reason: Option<String>,
+    pub settings_href: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretScanningFilters {
+    pub state: String,
+    pub query: Option<String>,
+    pub provider: Option<String>,
+    pub secret_type: Option<String>,
+    pub validity: Option<String>,
+    pub resolution: Option<String>,
+    pub bypassed: Option<String>,
+    pub team: Option<String>,
+    pub topic: Option<String>,
+    pub sort: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretScanningAlertCounts {
+    pub open: i64,
+    pub resolved: i64,
+    pub provider: i64,
+    pub generic: i64,
+    pub bypassed: i64,
+    pub total: i64,
+    pub visible: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretScanningPatternSummary {
+    pub id: Uuid,
+    pub slug: String,
+    pub provider: String,
+    pub secret_type: String,
+    pub display_name: String,
+    pub result_kind: String,
+    pub push_protection_enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretScanningAlertRow {
+    pub id: Uuid,
+    pub number: i64,
+    pub state: String,
+    pub resolution: Option<String>,
+    pub pattern: SecretScanningPatternSummary,
+    pub redacted_secret: String,
+    pub redacted_context: Option<String>,
+    pub fingerprint: String,
+    pub validity: SecretScanningValidityState,
+    pub primary_location: Option<SecretScanningLocation>,
+    pub assignees: Vec<DependabotAlertAssignee>,
+    pub bypassed: bool,
+    pub href: String,
+    pub detected_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretScanningLocation {
+    pub path: String,
+    pub path_href: String,
+    pub raw_href: String,
+    pub commit_href: Option<String>,
+    pub ref_name: String,
+    pub branch_name: Option<String>,
+    pub start_line: i32,
+    pub end_line: Option<i32>,
+    pub redacted_snippet: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretScanningValidityState {
+    pub status: String,
+    pub provider: String,
+    pub checked_at: Option<DateTime<Utc>>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretScanningTimelineEvent {
+    pub id: Uuid,
+    pub event_type: String,
+    pub message: String,
+    pub actor: Option<DependabotAlertAssignee>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretScanningProviderFilter {
+    pub provider: String,
+    pub open_count: i64,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretScanningSecretTypeFilter {
+    pub secret_type: String,
+    pub display_name: String,
+    pub provider: String,
+    pub result_kind: String,
+    pub open_count: i64,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PushProtectionSummary {
+    pub enabled: bool,
+    pub protected_pattern_count: i64,
+    pub bypass_count: i64,
+    pub pending_review_count: i64,
+    pub settings_href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PushProtectionBypassSummary {
+    pub id: Uuid,
+    pub actor: Option<DependabotAlertAssignee>,
+    pub reason: String,
+    pub status: String,
+    pub ref_name: String,
+    pub commit_oid: Option<String>,
+    pub path: Option<String>,
+    pub redacted_snippet: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretScanningLinks {
+    pub list_href: String,
+    pub provider_href: String,
+    pub generic_href: String,
+    pub open_href: String,
+    pub resolved_href: String,
+    pub settings_href: String,
+}
+
 pub async fn repository_code_scanning_alerts_for_actor_by_owner_name(
     pool: &PgPool,
     actor_user_id: Uuid,
@@ -779,6 +982,59 @@ pub async fn create_or_link_repository_code_scanning_issue_for_actor_by_owner_na
     create_or_link_repository_code_scanning_issue(pool, &repository, actor_user_id, alert_number)
         .await?;
     repository_code_scanning_alert_detail_for_repository(
+        pool,
+        &repository,
+        actor_user_id,
+        alert_number,
+    )
+    .await
+}
+
+pub async fn repository_secret_scanning_alerts_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    query: SecretScanningAlertsQuery<'_>,
+) -> Result<Option<SecretScanningAlertsView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+
+    repository_secret_scanning_alerts_for_repository(pool, &repository, actor_user_id, query)
+        .await
+        .map(Some)
+}
+
+pub async fn repository_secret_scanning_alert_detail_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    alert_number: i64,
+) -> Result<Option<SecretScanningAlertDetail>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if alert_number <= 0 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "secret scanning alert id must be a positive number".to_owned(),
+        ));
+    }
+
+    repository_secret_scanning_alert_detail_for_repository(
         pool,
         &repository,
         actor_user_id,
@@ -2556,6 +2812,79 @@ fn security_links(repository: &Repository) -> SecurityOverviewLinks {
     }
 }
 
+async fn repository_secret_scanning_alerts_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    query: SecretScanningAlertsQuery<'_>,
+) -> Result<SecretScanningAlertsView, RepositoryError> {
+    let filters = normalize_secret_scanning_filters(query)?;
+    let can_write = can_write_repository(pool, repository, actor_user_id).await?;
+    let setting = secret_scanning_setting(pool, repository).await?;
+    let availability = secret_scanning_availability(repository, setting.as_ref());
+
+    let mut alerts = if availability.enabled {
+        secret_scanning_alert_rows(pool, repository).await?
+    } else {
+        Vec::new()
+    };
+    let all_alerts = alerts.clone();
+    apply_secret_scanning_filters(&mut alerts, &filters);
+    sort_secret_scanning_alerts(&mut alerts, &filters.sort);
+    let links = secret_scanning_links(repository);
+
+    Ok(SecretScanningAlertsView {
+        repository: security_repository(repository, &dependabot_links(repository)),
+        viewer: security_viewer(pool, repository, actor_user_id, can_write).await?,
+        availability,
+        filters,
+        counts: secret_scanning_counts(&all_alerts, alerts.len() as i64),
+        alerts,
+        providers: secret_scanning_provider_filters(&all_alerts, query.provider),
+        secret_types: secret_scanning_secret_type_filters(&all_alerts, query.secret_type),
+        push_protection: push_protection_summary(pool, repository, &links).await?,
+        links,
+        freshness: DependabotAlertFreshness {
+            computed_at: Utc::now(),
+            cadence: "on repository secret scanning refresh and protected pushes".to_owned(),
+        },
+    })
+}
+
+async fn repository_secret_scanning_alert_detail_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    alert_number: i64,
+) -> Result<Option<SecretScanningAlertDetail>, RepositoryError> {
+    let can_write = can_write_repository(pool, repository, actor_user_id).await?;
+    let setting = secret_scanning_setting(pool, repository).await?;
+    let availability = secret_scanning_availability(repository, setting.as_ref());
+
+    let Some(alert) = secret_scanning_alert_rows(pool, repository)
+        .await?
+        .into_iter()
+        .find(|alert| alert.number == alert_number)
+    else {
+        return Ok(None);
+    };
+
+    let links = secret_scanning_links(repository);
+    Ok(Some(SecretScanningAlertDetail {
+        repository: security_repository(repository, &dependabot_links(repository)),
+        viewer: security_viewer(pool, repository, actor_user_id, can_write).await?,
+        availability,
+        pattern: alert.pattern.clone(),
+        locations: secret_scanning_alert_locations(pool, repository, alert.id).await?,
+        validity: secret_scanning_validity_state(pool, alert.id, &alert.pattern.provider).await?,
+        bypasses: secret_scanning_bypasses(pool, alert.id).await?,
+        timeline: secret_scanning_alert_timeline(pool, alert.id).await?,
+        assignee_options: secret_scanning_assignment_options(pool, repository, alert.id).await?,
+        alert,
+        links,
+    }))
+}
+
 async fn repository_dependabot_alerts_for_repository(
     pool: &PgPool,
     repository: &Repository,
@@ -3333,6 +3662,57 @@ fn code_scanning_availability(
     }
 }
 
+async fn secret_scanning_setting(
+    pool: &PgPool,
+    repository: &Repository,
+) -> Result<Option<sqlx::postgres::PgRow>, RepositoryError> {
+    sqlx::query(
+        r#"
+        SELECT status, summary, alert_count, private_count, config_href
+        FROM repository_security_feature_settings
+        WHERE repository_id = $1 AND feature_key = 'secret_scanning'
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_optional(pool)
+    .await
+    .map_err(RepositoryError::from)
+}
+
+fn secret_scanning_availability(
+    repository: &Repository,
+    setting: Option<&sqlx::postgres::PgRow>,
+) -> SecretScanningAvailability {
+    let status = setting
+        .map(|row| row.get::<String, _>("status"))
+        .unwrap_or_else(|| "disabled".to_owned());
+    let enabled = status == "enabled";
+    let settings_href = setting
+        .and_then(|row| row.get::<Option<String>, _>("config_href"))
+        .unwrap_or_else(|| {
+            format!(
+                "/{}/{}/settings/security_analysis",
+                repository.owner_login, repository.name
+            )
+        });
+    SecretScanningAvailability {
+        enabled,
+        indexed: enabled,
+        push_protection_enabled: enabled,
+        message: if enabled {
+            "Secret scanning alerts are indexed from committed content and protected pushes."
+                .to_owned()
+        } else {
+            setting
+                .map(|row| row.get::<String, _>("summary"))
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "Secret scanning is not enabled for this repository.".to_owned())
+        },
+        disabled_reason: (!enabled).then_some(status),
+        settings_href: Some(settings_href),
+    }
+}
+
 fn dependabot_availability(
     repository: &Repository,
     setting: Option<&sqlx::postgres::PgRow>,
@@ -3578,6 +3958,86 @@ fn normalize_code_scanning_filters(
         ref_name: normalize_optional_filter(query.ref_name, "ref", 200)?,
         tag: normalize_optional_filter(query.tag, "tag", 160)?,
         application_code,
+        sort,
+    })
+}
+
+fn normalize_secret_scanning_filters(
+    query: SecretScanningAlertsQuery<'_>,
+) -> Result<SecretScanningFilters, RepositoryError> {
+    let state = match query.state.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(state @ ("open" | "resolved" | "closed" | "all")) => state.to_owned(),
+        Some(other) => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported secret scanning alert state `{other}`"
+            )))
+        }
+        None => "open".to_owned(),
+    };
+    let validity = match query
+        .validity
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(value @ ("unknown" | "active" | "inactive" | "checking" | "unsupported")) => {
+            Some(value.to_owned())
+        }
+        Some(other) => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported secret scanning validity `{other}`"
+            )))
+        }
+        None => None,
+    };
+    let resolution = match query
+        .resolution
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(value @ ("revoked" | "false_positive" | "used_in_tests" | "wont_fix")) => {
+            Some(value.to_owned())
+        }
+        Some(other) => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported secret scanning resolution `{other}`"
+            )))
+        }
+        None => None,
+    };
+    let bypassed = match query
+        .bypassed
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(value @ ("true" | "false")) => Some(value.to_owned()),
+        Some(other) => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported bypassed filter `{other}`"
+            )))
+        }
+        None => None,
+    };
+    let sort = match query.sort.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(sort @ ("recently_detected" | "recently_updated" | "provider" | "secret_type")) => {
+            sort.to_owned()
+        }
+        Some(other) => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported secret scanning sort `{other}`"
+            )))
+        }
+        None => "recently_detected".to_owned(),
+    };
+    Ok(SecretScanningFilters {
+        state,
+        query: normalize_optional_filter(query.query, "q", 120)?,
+        provider: normalize_optional_filter(query.provider, "provider", 80)?,
+        secret_type: normalize_optional_filter(query.secret_type, "secret_type", 120)?,
+        validity,
+        resolution,
+        bypassed,
+        team: normalize_optional_filter(query.team, "team", 80)?,
+        topic: normalize_optional_filter(query.topic, "topic", 80)?,
         sort,
     })
 }
@@ -3828,6 +4288,88 @@ async fn code_scanning_alert_rows(
     Ok(alerts)
 }
 
+async fn secret_scanning_alert_rows(
+    pool: &PgPool,
+    repository: &Repository,
+) -> Result<Vec<SecretScanningAlertRow>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT secret_scanning_alerts.id,
+               secret_scanning_alerts.number,
+               secret_scanning_alerts.state,
+               secret_scanning_alerts.resolution,
+               secret_scanning_alerts.fingerprint,
+               secret_scanning_alerts.redacted_secret,
+               secret_scanning_alerts.redacted_context,
+               secret_scanning_alerts.result_kind,
+               secret_scanning_alerts.validity_state,
+               secret_scanning_alerts.first_seen_at,
+               secret_scanning_alerts.updated_at,
+               secret_scanning_patterns.id AS pattern_id,
+               secret_scanning_patterns.slug AS pattern_slug,
+               secret_scanning_patterns.provider,
+               secret_scanning_patterns.secret_type,
+               secret_scanning_patterns.display_name,
+               secret_scanning_patterns.result_kind AS pattern_result_kind,
+               secret_scanning_patterns.push_protection_enabled,
+               EXISTS (
+                   SELECT 1 FROM push_protection_bypasses
+                   WHERE push_protection_bypasses.alert_id = secret_scanning_alerts.id
+               ) AS bypassed
+        FROM secret_scanning_alerts
+        JOIN secret_scanning_patterns ON secret_scanning_patterns.id = secret_scanning_alerts.pattern_id
+        WHERE secret_scanning_alerts.repository_id = $1
+        ORDER BY secret_scanning_alerts.number ASC
+        LIMIT 250
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut alerts = Vec::new();
+    for row in rows {
+        let id: Uuid = row.get("id");
+        let pattern = SecretScanningPatternSummary {
+            id: row.get("pattern_id"),
+            slug: row.get("pattern_slug"),
+            provider: row.get("provider"),
+            secret_type: row.get("secret_type"),
+            display_name: row.get("display_name"),
+            result_kind: row.get("pattern_result_kind"),
+            push_protection_enabled: row.get("push_protection_enabled"),
+        };
+        alerts.push(SecretScanningAlertRow {
+            id,
+            number: row.get("number"),
+            state: row.get("state"),
+            resolution: row.get("resolution"),
+            pattern,
+            redacted_secret: row.get("redacted_secret"),
+            redacted_context: row.get("redacted_context"),
+            fingerprint: row.get("fingerprint"),
+            validity: secret_scanning_validity_state(
+                pool,
+                id,
+                row.get::<String, _>("provider").as_str(),
+            )
+            .await?,
+            primary_location: secret_scanning_primary_location(pool, repository, id).await?,
+            assignees: secret_scanning_alert_assignees(pool, id).await?,
+            bypassed: row.get("bypassed"),
+            href: format!(
+                "/{}/{}/security/secret-scanning/{}",
+                repository.owner_login,
+                repository.name,
+                row.get::<i64, _>("number")
+            ),
+            detected_at: row.get("first_seen_at"),
+            updated_at: row.get("updated_at"),
+        });
+    }
+    Ok(alerts)
+}
+
 async fn dependabot_alert_assignees(
     pool: &PgPool,
     alert_id: Uuid,
@@ -3873,6 +4415,39 @@ async fn code_scanning_alert_assignees(
         FROM code_scanning_alert_assignees
         JOIN users ON users.id = code_scanning_alert_assignees.user_id
         WHERE code_scanning_alert_assignees.alert_id = $1
+        ORDER BY lower(COALESCE(NULLIF(users.username, ''), users.email)) ASC
+        "#,
+    )
+    .bind(alert_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let login: String = row.get("login");
+            DependabotAlertAssignee {
+                id: row.get("id"),
+                href: format!("/{login}"),
+                login,
+                avatar_url: row.get("avatar_url"),
+            }
+        })
+        .collect())
+}
+
+async fn secret_scanning_alert_assignees(
+    pool: &PgPool,
+    alert_id: Uuid,
+) -> Result<Vec<DependabotAlertAssignee>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT users.id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS login,
+               users.avatar_url
+        FROM secret_scanning_alert_assignees
+        JOIN users ON users.id = secret_scanning_alert_assignees.user_id
+        WHERE secret_scanning_alert_assignees.alert_id = $1
         ORDER BY lower(COALESCE(NULLIF(users.username, ''), users.email)) ASC
         "#,
     )
@@ -3997,6 +4572,48 @@ fn apply_code_scanning_filters(
     }
 }
 
+fn apply_secret_scanning_filters(
+    alerts: &mut Vec<SecretScanningAlertRow>,
+    filters: &SecretScanningFilters,
+) {
+    alerts.retain(|alert| match filters.state.as_str() {
+        "open" => alert.state == "open",
+        "resolved" | "closed" => alert.state == "resolved",
+        "all" => true,
+        _ => true,
+    });
+    if let Some(query) = filters.query.as_deref() {
+        let needle = query.to_lowercase();
+        alerts.retain(|alert| {
+            alert.pattern.provider.to_lowercase().contains(&needle)
+                || alert.pattern.secret_type.to_lowercase().contains(&needle)
+                || alert.pattern.display_name.to_lowercase().contains(&needle)
+                || alert
+                    .primary_location
+                    .as_ref()
+                    .is_some_and(|location| location.path.to_lowercase().contains(&needle))
+        });
+    }
+    if let Some(provider) = filters.provider.as_deref() {
+        alerts.retain(|alert| alert.pattern.provider.eq_ignore_ascii_case(provider));
+    }
+    if let Some(secret_type) = filters.secret_type.as_deref() {
+        alerts.retain(|alert| alert.pattern.secret_type.eq_ignore_ascii_case(secret_type));
+    }
+    if let Some(validity) = filters.validity.as_deref() {
+        alerts.retain(|alert| alert.validity.status == validity);
+    }
+    if let Some(resolution) = filters.resolution.as_deref() {
+        alerts.retain(|alert| alert.resolution.as_deref() == Some(resolution));
+    }
+    if let Some(bypassed) = filters.bypassed.as_deref() {
+        alerts.retain(|alert| alert.bypassed == (bypassed == "true"));
+    }
+    if let Some(topic) = filters.topic.as_deref() {
+        alerts.retain(|alert| alert.pattern.result_kind.eq_ignore_ascii_case(topic));
+    }
+}
+
 fn sort_dependabot_alerts(alerts: &mut [DependabotAlertRow], sort: &str) {
     alerts.sort_by(|left, right| match sort {
         "recently_detected" => right
@@ -4039,6 +4656,31 @@ fn sort_code_scanning_alerts(alerts: &mut [CodeScanningAlertRow], sort: &str) {
                 right.security_severity.as_deref(),
                 &right.severity,
             ))
+            .then(left.number.cmp(&right.number)),
+    });
+}
+
+fn sort_secret_scanning_alerts(alerts: &mut [SecretScanningAlertRow], sort: &str) {
+    alerts.sort_by(|left, right| match sort {
+        "recently_updated" => right
+            .updated_at
+            .cmp(&left.updated_at)
+            .then(left.number.cmp(&right.number)),
+        "provider" => left
+            .pattern
+            .provider
+            .to_lowercase()
+            .cmp(&right.pattern.provider.to_lowercase())
+            .then(left.number.cmp(&right.number)),
+        "secret_type" => left
+            .pattern
+            .secret_type
+            .to_lowercase()
+            .cmp(&right.pattern.secret_type.to_lowercase())
+            .then(left.number.cmp(&right.number)),
+        _ => right
+            .detected_at
+            .cmp(&left.detected_at)
             .then(left.number.cmp(&right.number)),
     });
 }
@@ -4086,6 +4728,30 @@ fn code_scanning_counts(alerts: &[CodeScanningAlertRow], visible: i64) -> CodeSc
     CodeScanningAlertCounts {
         open,
         closed,
+        total: alerts.len() as i64,
+        visible,
+    }
+}
+
+fn secret_scanning_counts(
+    alerts: &[SecretScanningAlertRow],
+    visible: i64,
+) -> SecretScanningAlertCounts {
+    SecretScanningAlertCounts {
+        open: alerts.iter().filter(|alert| alert.state == "open").count() as i64,
+        resolved: alerts
+            .iter()
+            .filter(|alert| alert.state == "resolved")
+            .count() as i64,
+        provider: alerts
+            .iter()
+            .filter(|alert| alert.pattern.result_kind == "provider")
+            .count() as i64,
+        generic: alerts
+            .iter()
+            .filter(|alert| alert.pattern.result_kind == "generic")
+            .count() as i64,
+        bypassed: alerts.iter().filter(|alert| alert.bypassed).count() as i64,
         total: alerts.len() as i64,
         visible,
     }
@@ -4188,6 +4854,71 @@ async fn code_scanning_branch_filters(
             .then(left.name.to_lowercase().cmp(&right.name.to_lowercase()))
     });
     Ok(branches)
+}
+
+fn secret_scanning_provider_filters(
+    alerts: &[SecretScanningAlertRow],
+    selected: Option<&str>,
+) -> Vec<SecretScanningProviderFilter> {
+    let mut providers = Vec::<SecretScanningProviderFilter>::new();
+    for alert in alerts.iter().filter(|alert| alert.state == "open") {
+        if let Some(existing) = providers
+            .iter_mut()
+            .find(|entry| entry.provider == alert.pattern.provider)
+        {
+            existing.open_count += 1;
+        } else {
+            providers.push(SecretScanningProviderFilter {
+                provider: alert.pattern.provider.clone(),
+                open_count: 1,
+                selected: selected
+                    .map(|value| value.eq_ignore_ascii_case(&alert.pattern.provider))
+                    .unwrap_or(false),
+            });
+        }
+    }
+    providers.sort_by(|left, right| {
+        right.open_count.cmp(&left.open_count).then(
+            left.provider
+                .to_lowercase()
+                .cmp(&right.provider.to_lowercase()),
+        )
+    });
+    providers
+}
+
+fn secret_scanning_secret_type_filters(
+    alerts: &[SecretScanningAlertRow],
+    selected: Option<&str>,
+) -> Vec<SecretScanningSecretTypeFilter> {
+    let mut types = Vec::<SecretScanningSecretTypeFilter>::new();
+    for alert in alerts.iter().filter(|alert| alert.state == "open") {
+        if let Some(existing) = types
+            .iter_mut()
+            .find(|entry| entry.secret_type == alert.pattern.secret_type)
+        {
+            existing.open_count += 1;
+        } else {
+            types.push(SecretScanningSecretTypeFilter {
+                secret_type: alert.pattern.secret_type.clone(),
+                display_name: alert.pattern.display_name.clone(),
+                provider: alert.pattern.provider.clone(),
+                result_kind: alert.pattern.result_kind.clone(),
+                open_count: 1,
+                selected: selected
+                    .map(|value| value.eq_ignore_ascii_case(&alert.pattern.secret_type))
+                    .unwrap_or(false),
+            });
+        }
+    }
+    types.sort_by(|left, right| {
+        right.open_count.cmp(&left.open_count).then(
+            left.secret_type
+                .to_lowercase()
+                .cmp(&right.secret_type.to_lowercase()),
+        )
+    });
+    types
 }
 
 async fn code_scanning_tool_statuses(
@@ -4335,6 +5066,229 @@ async fn code_scanning_alert_timeline(
             id: alert_id,
             event_type: "created".to_owned(),
             message: "Code scanning opened this alert from analysis results.".to_owned(),
+            actor: None,
+            created_at: Utc::now(),
+        });
+    }
+    Ok(events)
+}
+
+async fn secret_scanning_alert_locations(
+    pool: &PgPool,
+    repository: &Repository,
+    alert_id: Uuid,
+) -> Result<Vec<SecretScanningLocation>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT secret_scanning_alert_locations.ref_name,
+               secret_scanning_alert_locations.branch_name,
+               secret_scanning_alert_locations.path,
+               secret_scanning_alert_locations.start_line,
+               secret_scanning_alert_locations.end_line,
+               secret_scanning_alert_locations.redacted_snippet,
+               commits.oid AS commit_oid
+        FROM secret_scanning_alert_locations
+        LEFT JOIN commits ON commits.id = secret_scanning_alert_locations.commit_id
+        WHERE secret_scanning_alert_locations.alert_id = $1
+        ORDER BY secret_scanning_alert_locations.created_at DESC
+        LIMIT 25
+        "#,
+    )
+    .bind(alert_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let ref_name: String = row.get("ref_name");
+            let path: String = row.get("path");
+            let start_line: i32 = row.get("start_line");
+            let commit_oid: Option<String> = row.get("commit_oid");
+            SecretScanningLocation {
+                path: path.clone(),
+                path_href: format!(
+                    "{}#L{start_line}",
+                    repository_blob_href(repository, &ref_name, &path)
+                ),
+                raw_href: repository_raw_href(repository, &ref_name, &path),
+                commit_href: commit_oid.as_ref().map(|oid| {
+                    format!(
+                        "/{}/{}/commits/{}",
+                        repository.owner_login,
+                        repository.name,
+                        percent_encode_segment(oid)
+                    )
+                }),
+                ref_name,
+                branch_name: row.get("branch_name"),
+                start_line,
+                end_line: row.get("end_line"),
+                redacted_snippet: row.get("redacted_snippet"),
+            }
+        })
+        .collect())
+}
+
+async fn secret_scanning_primary_location(
+    pool: &PgPool,
+    repository: &Repository,
+    alert_id: Uuid,
+) -> Result<Option<SecretScanningLocation>, RepositoryError> {
+    Ok(secret_scanning_alert_locations(pool, repository, alert_id)
+        .await?
+        .into_iter()
+        .next())
+}
+
+async fn secret_scanning_validity_state(
+    pool: &PgPool,
+    alert_id: Uuid,
+    provider: &str,
+) -> Result<SecretScanningValidityState, RepositoryError> {
+    let row = sqlx::query(
+        r#"
+        SELECT status, checked_at, message
+        FROM secret_scanning_validity_checks
+        WHERE alert_id = $1
+        ORDER BY checked_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(alert_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(match row {
+        Some(row) => SecretScanningValidityState {
+            status: row.get("status"),
+            provider: provider.to_owned(),
+            checked_at: row.get("checked_at"),
+            message: row
+                .get::<Option<String>, _>("message")
+                .unwrap_or_else(|| "Validity was checked without exposing the secret.".to_owned()),
+        },
+        None => SecretScanningValidityState {
+            status: "unknown".to_owned(),
+            provider: provider.to_owned(),
+            checked_at: None,
+            message: "No validity check has run for this redacted secret.".to_owned(),
+        },
+    })
+}
+
+async fn secret_scanning_bypasses(
+    pool: &PgPool,
+    alert_id: Uuid,
+) -> Result<Vec<PushProtectionBypassSummary>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT push_protection_bypasses.id,
+               push_protection_bypasses.reason,
+               push_protection_bypasses.status,
+               push_protection_bypasses.ref_name,
+               push_protection_bypasses.commit_oid,
+               push_protection_bypasses.path,
+               push_protection_bypasses.redacted_snippet,
+               push_protection_bypasses.created_at,
+               users.id AS actor_id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS actor_login,
+               users.avatar_url AS actor_avatar_url
+        FROM push_protection_bypasses
+        LEFT JOIN users ON users.id = push_protection_bypasses.actor_user_id
+        WHERE push_protection_bypasses.alert_id = $1
+        ORDER BY push_protection_bypasses.created_at DESC
+        LIMIT 25
+        "#,
+    )
+    .bind(alert_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let actor = match (
+                row.try_get::<Option<Uuid>, _>("actor_id").ok().flatten(),
+                row.try_get::<Option<String>, _>("actor_login")
+                    .ok()
+                    .flatten(),
+            ) {
+                (Some(id), Some(login)) => Some(DependabotAlertAssignee {
+                    id,
+                    href: format!("/{login}"),
+                    login,
+                    avatar_url: row.get("actor_avatar_url"),
+                }),
+                _ => None,
+            };
+            PushProtectionBypassSummary {
+                id: row.get("id"),
+                actor,
+                reason: row.get("reason"),
+                status: row.get("status"),
+                ref_name: row.get("ref_name"),
+                commit_oid: row.get("commit_oid"),
+                path: row.get("path"),
+                redacted_snippet: row.get("redacted_snippet"),
+                created_at: row.get("created_at"),
+            }
+        })
+        .collect())
+}
+
+async fn secret_scanning_alert_timeline(
+    pool: &PgPool,
+    alert_id: Uuid,
+) -> Result<Vec<SecretScanningTimelineEvent>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT secret_scanning_alert_events.id,
+               secret_scanning_alert_events.event_type,
+               secret_scanning_alert_events.message,
+               secret_scanning_alert_events.created_at,
+               users.id AS actor_id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS actor_login,
+               users.avatar_url AS actor_avatar_url
+        FROM secret_scanning_alert_events
+        LEFT JOIN users ON users.id = secret_scanning_alert_events.actor_user_id
+        WHERE secret_scanning_alert_events.alert_id = $1
+        ORDER BY secret_scanning_alert_events.created_at ASC
+        "#,
+    )
+    .bind(alert_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut events = Vec::new();
+    for row in rows {
+        let actor = match (
+            row.try_get::<Option<Uuid>, _>("actor_id").ok().flatten(),
+            row.try_get::<Option<String>, _>("actor_login")
+                .ok()
+                .flatten(),
+        ) {
+            (Some(id), Some(login)) => Some(DependabotAlertAssignee {
+                id,
+                href: format!("/{login}"),
+                login,
+                avatar_url: row.get("actor_avatar_url"),
+            }),
+            _ => None,
+        };
+        events.push(SecretScanningTimelineEvent {
+            id: row.get("id"),
+            event_type: row.get("event_type"),
+            message: row.get("message"),
+            actor,
+            created_at: row.get("created_at"),
+        });
+    }
+    if events.is_empty() {
+        events.push(SecretScanningTimelineEvent {
+            id: alert_id,
+            event_type: "created".to_owned(),
+            message: "Secret scanning opened this alert with redacted evidence.".to_owned(),
             actor: None,
             created_at: Utc::now(),
         });
@@ -4614,6 +5568,60 @@ async fn code_scanning_assignment_options(
                    SELECT 1 FROM code_scanning_alert_assignees
                    WHERE code_scanning_alert_assignees.alert_id = $2
                      AND code_scanning_alert_assignees.user_id = users.id
+               ) AS selected
+        FROM repositories
+        JOIN users ON users.id = repositories.owner_user_id
+        WHERE repositories.id = $1
+        ORDER BY login ASC
+        LIMIT 50
+        "#,
+    )
+    .bind(repository.id)
+    .bind(alert_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| DependabotAlertAssignmentOption {
+            id: row.get("id"),
+            kind: row.get("kind"),
+            login: row.get("login"),
+            avatar_url: row.get("avatar_url"),
+            selected: row.get("selected"),
+        })
+        .collect())
+}
+
+async fn secret_scanning_assignment_options(
+    pool: &PgPool,
+    repository: &Repository,
+    alert_id: Uuid,
+) -> Result<Vec<DependabotAlertAssignmentOption>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT users.id,
+               'user' AS kind,
+               COALESCE(NULLIF(users.username, ''), users.email) AS login,
+               users.avatar_url,
+               EXISTS (
+                   SELECT 1 FROM secret_scanning_alert_assignees
+                   WHERE secret_scanning_alert_assignees.alert_id = $2
+                     AND secret_scanning_alert_assignees.user_id = users.id
+               ) AS selected
+        FROM repository_permissions
+        JOIN users ON users.id = repository_permissions.user_id
+        WHERE repository_permissions.repository_id = $1
+          AND repository_permissions.role IN ('read', 'triage', 'write', 'maintain', 'admin')
+        UNION
+        SELECT users.id,
+               'user' AS kind,
+               COALESCE(NULLIF(users.username, ''), users.email) AS login,
+               users.avatar_url,
+               EXISTS (
+                   SELECT 1 FROM secret_scanning_alert_assignees
+                   WHERE secret_scanning_alert_assignees.alert_id = $2
+                     AND secret_scanning_alert_assignees.user_id = users.id
                ) AS selected
         FROM repositories
         JOIN users ON users.id = repositories.owner_user_id
@@ -4941,6 +5949,60 @@ fn code_scanning_links(repository: &Repository) -> CodeScanningLinks {
         ),
         settings_href: format!(
             "/{}/{}/security/code-scanning/setup",
+            repository.owner_login, repository.name
+        ),
+    }
+}
+
+async fn push_protection_summary(
+    pool: &PgPool,
+    repository: &Repository,
+    links: &SecretScanningLinks,
+) -> Result<PushProtectionSummary, RepositoryError> {
+    let protected_pattern_count = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT count(*)
+        FROM secret_scanning_patterns
+        WHERE push_protection_enabled = true
+        "#,
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap_or(0);
+    let (bypass_count, pending_review_count) = sqlx::query_as::<_, (i64, i64)>(
+        r#"
+        SELECT count(*)::bigint,
+               count(*) FILTER (WHERE status = 'pending_review')::bigint
+        FROM push_protection_bypasses
+        WHERE repository_id = $1
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or((0, 0));
+    Ok(PushProtectionSummary {
+        enabled: protected_pattern_count > 0,
+        protected_pattern_count,
+        bypass_count,
+        pending_review_count,
+        settings_href: links.settings_href.clone(),
+    })
+}
+
+fn secret_scanning_links(repository: &Repository) -> SecretScanningLinks {
+    let base = format!(
+        "/{}/{}/security/secret-scanning",
+        repository.owner_login, repository.name
+    );
+    SecretScanningLinks {
+        list_href: base.clone(),
+        provider_href: format!("{base}?topic=provider"),
+        generic_href: format!("{base}?topic=generic"),
+        open_href: format!("{base}?state=open"),
+        resolved_href: format!("{base}?state=resolved"),
+        settings_href: format!(
+            "/{}/{}/settings/security_analysis",
             repository.owner_login, repository.name
         ),
     }
