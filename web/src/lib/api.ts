@@ -2947,6 +2947,20 @@ export type RepositoryDependabotAlertDetailFetchResult =
   | { ok: true; dependabotAlert: RepositoryDependabotAlertDetail }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type RepositoryDependabotAlertMutation =
+  | {
+      action: "dismiss";
+      dismissalReason: string;
+      dismissalComment?: string | null;
+    }
+  | {
+      action: "reopen";
+    }
+  | {
+      action: "assign";
+      assigneeIds: string[];
+    };
+
 export type RepositoryDependabotAlertsQuery = {
   state?: string | null;
   query?: string | null;
@@ -10125,6 +10139,38 @@ export async function getRepositoryDependabotAlertDetailFromCookie(
     ok: true,
     dependabotAlert: (await response.json()) as RepositoryDependabotAlertDetail,
   };
+}
+
+export async function mutateRepositoryDependabotAlertFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  alertId: string | number,
+  mutation: RepositoryDependabotAlertMutation,
+): Promise<RepositoryDependabotAlertDetail> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/dependabot/${encodeURIComponent(String(alertId))}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(mutation),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const envelope = ((await response.json().catch(() => null)) ??
+      null) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Dependabot alert update failed.",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as RepositoryDependabotAlertDetail;
 }
 
 export async function getRepositoryNetworkFromCookie(

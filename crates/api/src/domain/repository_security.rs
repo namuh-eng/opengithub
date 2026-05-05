@@ -381,6 +381,15 @@ pub struct DependabotAlertFreshness {
     pub cadence: String,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotAlertMutation {
+    pub action: String,
+    pub dismissal_reason: Option<String>,
+    pub dismissal_comment: Option<String>,
+    pub assignee_ids: Option<Vec<Uuid>>,
+}
+
 pub async fn repository_dependabot_alerts_for_actor_by_owner_name(
     pool: &PgPool,
     actor_user_id: Uuid,
@@ -425,6 +434,46 @@ pub async fn repository_dependabot_alert_detail_for_actor_by_owner_name(
         ));
     }
 
+    repository_dependabot_alert_detail_for_repository(
+        pool,
+        &repository,
+        actor_user_id,
+        alert_number,
+    )
+    .await
+}
+
+pub async fn update_repository_dependabot_alert_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    alert_number: i64,
+    mutation: DependabotAlertMutation,
+) -> Result<Option<DependabotAlertDetail>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if !can_write_repository(pool, &repository, actor_user_id).await? {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if repository.is_archived {
+        return Err(RepositoryError::ArchivedRepositoryReadOnly);
+    }
+    if alert_number <= 0 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "alert id must be a positive number".to_owned(),
+        ));
+    }
+
+    update_repository_dependabot_alert(pool, &repository, actor_user_id, alert_number, mutation)
+        .await?;
     repository_dependabot_alert_detail_for_repository(
         pool,
         &repository,
@@ -1200,6 +1249,196 @@ async fn repository_dependabot_alert_detail_for_repository(
     }))
 }
 
+async fn update_repository_dependabot_alert(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    alert_number: i64,
+    mutation: DependabotAlertMutation,
+) -> Result<(), RepositoryError> {
+    let setting = dependabot_setting(pool, repository).await?;
+    let availability = dependabot_availability(repository, setting.as_ref());
+    if !availability.enabled {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "Dependabot alerts are disabled for this repository".to_owned(),
+        ));
+    }
+    materialize_dependabot_alerts(pool, repository).await?;
+
+    let alert = sqlx::query(
+        r#"
+        SELECT id, state, fixed_version
+        FROM dependabot_alerts
+        WHERE repository_id = $1 AND number = $2
+        "#,
+    )
+    .bind(repository.id)
+    .bind(alert_number)
+    .fetch_optional(pool)
+    .await?;
+    let Some(alert) = alert else {
+        return Err(RepositoryError::NotFound);
+    };
+    let alert_id: Uuid = alert.get("id");
+    let state: String = alert.get("state");
+    let fixed_version: Option<String> = alert.get("fixed_version");
+
+    match mutation.action.as_str() {
+        "dismiss" => {
+            if state != "open" {
+                return Err(RepositoryError::InvalidDependencyGraphQuery(
+                    "only open Dependabot alerts can be dismissed".to_owned(),
+                ));
+            }
+            let reason =
+                normalize_dependabot_dismissal_reason(mutation.dismissal_reason.as_deref())?;
+            let comment =
+                normalize_dependabot_dismissal_comment(mutation.dismissal_comment.as_deref())?;
+            sqlx::query(
+                r#"
+                UPDATE dependabot_alerts
+                SET state = 'dismissed',
+                    dismissed_reason = $3,
+                    dismissed_comment = $4,
+                    dismissed_by_user_id = $5,
+                    dismissed_at = now(),
+                    updated_at = now()
+                WHERE repository_id = $1 AND id = $2
+                "#,
+            )
+            .bind(repository.id)
+            .bind(alert_id)
+            .bind(&reason)
+            .bind(&comment)
+            .bind(actor_user_id)
+            .execute(pool)
+            .await?;
+            record_dependabot_alert_event(
+                pool,
+                repository,
+                alert_id,
+                actor_user_id,
+                "dismissed",
+                &format!("Dismissed this alert as {reason}."),
+                json!({ "reason": reason, "hasComment": comment.is_some() }),
+            )
+            .await?;
+            notify_dependabot_alert_assignees(
+                pool,
+                repository,
+                alert_id,
+                "Dependabot alert dismissed",
+                "security_alert",
+            )
+            .await?;
+        }
+        "reopen" => {
+            if fixed_version.is_some() || state == "fixed" {
+                return Err(RepositoryError::InvalidDependencyGraphQuery(
+                    "fixed Dependabot alerts cannot be reopened".to_owned(),
+                ));
+            }
+            if state != "dismissed" {
+                return Err(RepositoryError::InvalidDependencyGraphQuery(
+                    "only dismissed Dependabot alerts can be reopened".to_owned(),
+                ));
+            }
+            sqlx::query(
+                r#"
+                UPDATE dependabot_alerts
+                SET state = 'open',
+                    dismissed_reason = NULL,
+                    dismissed_comment = NULL,
+                    dismissed_by_user_id = NULL,
+                    dismissed_at = NULL,
+                    updated_at = now()
+                WHERE repository_id = $1 AND id = $2
+                "#,
+            )
+            .bind(repository.id)
+            .bind(alert_id)
+            .execute(pool)
+            .await?;
+            record_dependabot_alert_event(
+                pool,
+                repository,
+                alert_id,
+                actor_user_id,
+                "reopened",
+                "Reopened this Dependabot alert.",
+                json!({ "previousState": state }),
+            )
+            .await?;
+            notify_dependabot_alert_assignees(
+                pool,
+                repository,
+                alert_id,
+                "Dependabot alert reopened",
+                "security_alert",
+            )
+            .await?;
+        }
+        "assign" => {
+            let assignee_ids = mutation.assignee_ids.unwrap_or_default();
+            if assignee_ids.len() > 25 {
+                return Err(RepositoryError::InvalidDependencyGraphQuery(
+                    "Dependabot alert assignment is limited to 25 users".to_owned(),
+                ));
+            }
+            let options = dependabot_assignment_options(pool, repository, alert_id).await?;
+            for assignee_id in &assignee_ids {
+                if !options.iter().any(|option| option.id == *assignee_id) {
+                    return Err(RepositoryError::InvalidDependencyGraphQuery(
+                        "Dependabot alert assignee must have repository access".to_owned(),
+                    ));
+                }
+            }
+            sqlx::query("DELETE FROM dependabot_alert_assignees WHERE alert_id = $1")
+                .bind(alert_id)
+                .execute(pool)
+                .await?;
+            for assignee_id in &assignee_ids {
+                sqlx::query(
+                    "INSERT INTO dependabot_alert_assignees (alert_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                )
+                .bind(alert_id)
+                .bind(assignee_id)
+                .execute(pool)
+                .await?;
+            }
+            record_dependabot_alert_event(
+                pool,
+                repository,
+                alert_id,
+                actor_user_id,
+                "assigned",
+                if assignee_ids.is_empty() {
+                    "Cleared Dependabot alert assignees."
+                } else {
+                    "Updated Dependabot alert assignees."
+                },
+                json!({ "assigneeCount": assignee_ids.len() }),
+            )
+            .await?;
+            notify_dependabot_alert_assignees(
+                pool,
+                repository,
+                alert_id,
+                "Dependabot alert assigned",
+                "assign",
+            )
+            .await?;
+        }
+        _ => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(
+                "Dependabot alert action must be dismiss, reopen, or assign".to_owned(),
+            ))
+        }
+    }
+
+    Ok(())
+}
+
 async fn security_viewer(
     pool: &PgPool,
     repository: &Repository,
@@ -1423,6 +1662,37 @@ fn normalize_optional_filter(
             return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
                 "{label} must be {max_chars} characters or fewer"
             )));
+        }
+        return Ok(Some(value.to_owned()));
+    }
+    Ok(None)
+}
+
+fn normalize_dependabot_dismissal_reason(value: Option<&str>) -> Result<String, RepositoryError> {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "dismissal reason is required".to_owned(),
+        ));
+    };
+    match value {
+        "fix_started" | "inaccurate" | "no_bandwidth" | "not_used" | "tolerable_risk" => {
+            Ok(value.to_owned())
+        }
+        other => Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+            "unsupported dismissal reason `{other}`"
+        ))),
+    }
+}
+
+fn normalize_dependabot_dismissal_comment(
+    value: Option<&str>,
+) -> Result<Option<String>, RepositoryError> {
+    let value = value.map(str::trim).filter(|value| !value.is_empty());
+    if let Some(value) = value {
+        if value.chars().count() > 500 {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(
+                "dismissal comment must be 500 characters or fewer".to_owned(),
+            ));
         }
         return Ok(Some(value.to_owned()));
     }
@@ -1774,6 +2044,83 @@ async fn dependabot_alert_timeline(
         });
     }
     Ok(events)
+}
+
+async fn record_dependabot_alert_event(
+    pool: &PgPool,
+    repository: &Repository,
+    alert_id: Uuid,
+    actor_user_id: Uuid,
+    event_type: &str,
+    message: &str,
+    metadata: serde_json::Value,
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        r#"
+        INSERT INTO security_alert_events (
+            repository_id, alert_id, actor_user_id, event_type, message, metadata
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+        "#,
+    )
+    .bind(repository.id)
+    .bind(alert_id)
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(message)
+    .bind(metadata.clone())
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO security_audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, 'repository.dependabot_alert.update', 'repository', $2, $3)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(repository.id)
+    .bind(json!({
+        "repositoryId": repository.id,
+        "alertId": alert_id,
+        "alertEvent": event_type,
+        "metadata": metadata,
+    }))
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn notify_dependabot_alert_assignees(
+    pool: &PgPool,
+    repository: &Repository,
+    alert_id: Uuid,
+    title: &str,
+    reason: &str,
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        r#"
+        INSERT INTO notifications (
+            user_id, repository_id, subject_type, subject_id, title, reason
+        )
+        SELECT dependabot_alert_assignees.user_id,
+               $2,
+               'dependabot_alert',
+               $1,
+               $3,
+               $4
+        FROM dependabot_alert_assignees
+        WHERE dependabot_alert_assignees.alert_id = $1
+        "#,
+    )
+    .bind(alert_id)
+    .bind(repository.id)
+    .bind(title)
+    .bind(reason)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 async fn dependabot_assignment_options(

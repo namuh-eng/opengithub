@@ -270,13 +270,13 @@ test("repository Dependabot alerts list supports filters, selection, disabled st
     }),
   ).toHaveAttribute("aria-current", "page");
   await expect(
-    page.getByText("Playwright test runner demo advisory"),
+    page.getByText("Playwright test runner demo advisory").first(),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "@playwright/test" }),
+    page.getByRole("link", { name: "@playwright/test" }).first(),
   ).toHaveAttribute("href", /\/security\/dependabot\/\d+/);
   await expect(
-    page.getByRole("link", { name: "package.json" }),
+    page.getByRole("link", { name: "package.json" }).first(),
   ).toHaveAttribute(
     "href",
     `${seeded.treeRepositoryHref}/blob/main/package.json`,
@@ -286,7 +286,7 @@ test("repository Dependabot alerts list supports filters, selection, disabled st
   await page.getByRole("menuitem", { name: /npm:@playwright\/test/ }).click();
   await expect(page).toHaveURL(/package=npm%3A%40playwright%2Ftest/);
   await expect(
-    page.getByText("Playwright test runner demo advisory"),
+    page.getByText("Playwright test runner demo advisory").first(),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Select all visible" }).click();
@@ -296,7 +296,53 @@ test("repository Dependabot alerts list supports filters, selection, disabled st
   await expect(
     page.getByText("Bulk triage arrives in the next phase"),
   ).toBeVisible();
+
+  await page
+    .getByRole("link", { name: "Playwright test runner demo advisory" })
+    .first()
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Playwright test runner demo advisory" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "package.json" }).first(),
+  ).toHaveAttribute(
+    "href",
+    `${seeded.treeRepositoryHref}/blob/main/package.json`,
+  );
+  await page.getByLabel("Dismiss reason").selectOption("not_used");
+  await page
+    .getByLabel("Optional comment")
+    .fill("Only a browser smoke fixture uses this.");
+  await page.getByRole("button", { name: "Dismiss alert" }).click();
+  await expect(page.getByText("Dismiss saved.")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Reopen alert" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Reopen alert" }).click();
+  await expect(page.getByText("Reopen saved.")).toBeVisible();
+  await page.getByRole("checkbox", { name: /dash-/ }).check();
+  await page.getByRole("button", { name: "Save assignments" }).click();
+  await expect(page.getByText("Assignments saved.")).toBeVisible();
+  await expect(
+    page.getByRole("list", { name: "Dependabot alert timeline" }),
+  ).toContainText("Updated Dependabot alert assignees.");
   await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/code-security-002-phase3-alert-detail.jpg",
+  });
+
+  await page.goto(`${seeded.treeRepositoryHref}/security/dependabot`);
+  await page.getByRole("button", { name: "Package: All packages" }).click();
+  await page.getByRole("menuitem", { name: /npm:@playwright\/test/ }).click();
+  await page.getByRole("button", { name: "Select all visible" }).click();
+  await expect(
+    page.getByRole("button", { name: "Clear visible" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Bulk triage arrives in the next phase"),
+  ).toBeVisible();
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/code-security-002-phase2-alerts-list.jpg",

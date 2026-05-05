@@ -1,3 +1,13 @@
+2026-05-05 - code-security-002 phase 3 alert detail triage
+
+- Completed Phase 3 from `.qrspi/code-security-002/structure.md`: Dependabot alert detail now has real single-alert dismiss, reopen, and assignment triage without marking `code-security-002.build_pass=true`.
+- Added maintainer-only `PATCH /api/repos/{owner}/{repo}/security/dependabot/{alert_id}` with disabled/archived validation, dismissal reason/comment checks, fixed-alert reopen guardrails, assignee-access validation, `security_alert_events` timeline writes, `security_audit_events` writes, and assignee notification rows.
+- Added the server-rendered `/[owner]/[repo]/security/dependabot/[alertId]` route, same-origin Next action proxy, typed mutation helper, and `RepositoryDependabotAlertDetailPage` with vulnerable dependency/advisory sections, timeline, assignee selector, dismiss/reopen controls, read-only state, and truthful Phase 4 security-update CTA copy using Editorial primitives.
+- Extended Rust contract coverage for reader 403, invalid dismissal reason 422, assignment updates, dismiss/reopen transitions, timeline reflection, audit rows, notification rows, and no secret leakage; added focused Vitest coverage for detail UI, mutation payloads, read-only/unavailable states, no dead links, unsafe-markup guardrails, and banned visual values.
+- Extended focused Playwright Dependabot smoke for list-to-detail navigation, package/manifest links, dismiss/reopen, assignment save, timeline update, no dead controls, and screenshot `ralph/screenshots/build/code-security-002-phase3-alert-detail.jpg`.
+- Verification passed: focused `repository_dependabot_alerts_contract`, focused Dependabot detail/list Vitest, web TypeScript, full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`, full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 464 web tests, and focused direct Playwright `repository-dependabot.spec.ts` with 2 passed. The dev API initially hit local disk exhaustion while writing debug artifacts; `make clean` freed generated artifacts and the browser smoke passed after rebuilding.
+- `prd.json` remains `build_pass:false` because Phases 4-5 remain. Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-05 - insights-004 phase 5 final QA handoff
 
 - Completed Phase 5 from `.qrspi/insights-004/structure.md`: repository Network and Forks Insights are now locked as a completed vertical slice and `insights-004.build_pass=true`.

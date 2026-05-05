@@ -44,6 +44,7 @@ import {
   getRepositoryCommitHistoryFromCookie,
   getRepositoryContributorsFromCookie,
   getRepositoryCreationOptionsFromCookie,
+  getRepositoryDependabotAlertDetailFromCookie,
   getRepositoryDependabotAlertsFromCookie,
   getRepositoryDependenciesFromCookie,
   getRepositoryDependentsFromCookie,
@@ -97,6 +98,7 @@ import {
   type RepositoryBranchActivityFetchResult,
   type RepositoryBranchesFetchResult,
   type RepositoryContributorsFetchResult,
+  type RepositoryDependabotAlertDetailFetchResult,
   type RepositoryDependabotAlertsFetchResult,
   type RepositoryDependabotAlertsQuery,
   type RepositoryDependenciesFetchResult,
@@ -609,6 +611,20 @@ export async function getRepositoryDependabotAlerts(
     owner,
     repo,
     options,
+  );
+}
+
+export async function getRepositoryDependabotAlertDetail(
+  owner: string,
+  repo: string,
+  alertId: string | number,
+): Promise<RepositoryDependabotAlertDetailFetchResult> {
+  const requestHeaders = await headers();
+  return getRepositoryDependabotAlertDetailFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    alertId,
   );
 }
 

@@ -42,7 +42,7 @@
 
 ## Phase 3: Alert Detail and Single-Alert Triage - dismiss, reopen, assign, and timeline
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement `/{owner}/{repo}/security/dependabot/{alert_id}` plus single-alert mutations. Maintainers can dismiss open alerts with reason/comment, reopen dismissed alerts, assign users/teams, and see an audit-backed timeline. Readers can view detail data but cannot mutate.
 

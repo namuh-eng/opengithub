@@ -1,6 +1,6 @@
 use axum::{
     body::{to_bytes, Body},
-    http::{header, Request, StatusCode},
+    http::{header, Method, Request, StatusCode},
 };
 use chrono::{Duration, Utc};
 use opengithub_api::{
@@ -124,6 +124,37 @@ async fn get_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (Status
     }
     let response = app
         .oneshot(builder.body(Body::empty()).expect("request should build"))
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    (
+        status,
+        serde_json::from_slice(&bytes).expect("response should be json"),
+    )
+}
+
+async fn patch_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method(Method::PATCH)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_string()))
+                .expect("request should build"),
+        )
         .await
         .expect("request should run");
     let status = response.status();
@@ -362,6 +393,108 @@ async fn dependabot_alerts_derive_filter_detail_and_protect_private_repositories
     .expect("alert should exist");
     assert_eq!(direct_detail.alert.assignees[0].id, owner.id);
     assert_eq!(direct_detail.alert.advisory.id, advisory_id);
+
+    let (reader_patch_status, reader_patch_body) = patch_json(
+        app.clone(),
+        &format!("{base}/{alert_number}"),
+        Some(&reader_cookie),
+        json!({
+            "action": "dismiss",
+            "dismissalReason": "not_used"
+        }),
+    )
+    .await;
+    assert_eq!(reader_patch_status, StatusCode::FORBIDDEN);
+    assert_eq!(reader_patch_body["error"]["code"], "forbidden");
+
+    let (invalid_patch_status, invalid_patch_body) = patch_json(
+        app.clone(),
+        &format!("{base}/{alert_number}"),
+        Some(&owner_cookie),
+        json!({
+            "action": "dismiss",
+            "dismissalReason": "unsupported"
+        }),
+    )
+    .await;
+    assert_eq!(invalid_patch_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(invalid_patch_body["error"]["code"], "validation_failed");
+
+    let (assign_status, assign_body) = patch_json(
+        app.clone(),
+        &format!("{base}/{alert_number}"),
+        Some(&owner_cookie),
+        json!({
+            "action": "assign",
+            "assigneeIds": [reader.id.to_string()]
+        }),
+    )
+    .await;
+    assert_eq!(assign_status, StatusCode::OK, "{assign_body}");
+    assert_eq!(
+        assign_body["alert"]["assignees"][0]["id"],
+        reader.id.to_string()
+    );
+    assert_eq!(
+        assign_body["timeline"]
+            .as_array()
+            .expect("timeline")
+            .last()
+            .expect("event")["eventType"],
+        "assigned"
+    );
+
+    let (dismiss_status, dismiss_body) = patch_json(
+        app.clone(),
+        &format!("{base}/{alert_number}"),
+        Some(&owner_cookie),
+        json!({
+            "action": "dismiss",
+            "dismissalReason": "not_used",
+            "dismissalComment": "Only a development fixture uses this dependency."
+        }),
+    )
+    .await;
+    assert_eq!(dismiss_status, StatusCode::OK, "{dismiss_body}");
+    assert_eq!(dismiss_body["alert"]["state"], "dismissed");
+    assert_eq!(
+        dismiss_body["timeline"]
+            .as_array()
+            .expect("timeline")
+            .last()
+            .expect("event")["eventType"],
+        "dismissed"
+    );
+
+    let audit_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM security_audit_events WHERE actor_user_id = $1 AND event_type = 'repository.dependabot_alert.update' AND target_id::text = $2",
+    )
+    .bind(owner.id)
+    .bind(repository.id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("security audit count should read");
+    assert!(audit_count >= 2);
+
+    let notification_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM notifications WHERE user_id = $1 AND repository_id = $2 AND subject_type = 'dependabot_alert'",
+    )
+    .bind(reader.id)
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("notification count should read");
+    assert!(notification_count >= 1);
+
+    let (reopen_status, reopen_body) = patch_json(
+        app.clone(),
+        &format!("{base}/{alert_number}"),
+        Some(&owner_cookie),
+        json!({ "action": "reopen" }),
+    )
+    .await;
+    assert_eq!(reopen_status, StatusCode::OK, "{reopen_body}");
+    assert_eq!(reopen_body["alert"]["state"], "open");
 
     let (invalid_status, invalid_body) = get_json(
         app.clone(),
