@@ -257,8 +257,26 @@ test("repository discussions list filters, rows, category rail, and mobile layou
     .click();
   await expect(page).toHaveURL(/\/discussions\/categories\/general/);
   await expect(page.getByRole("heading", { name: /General/ })).toBeVisible();
+  await expect(page.getByText("category:general")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /General.*active category/ }),
+  ).toHaveAttribute("aria-current", "page");
+
+  await page.goto(
+    `${seeded.treeRepositoryHref}/discussions/categories/ideas?q=no-match`,
+  );
+  await expect(page.getByRole("heading", { name: /Ideas/ })).toBeVisible();
+  await expect(
+    page.getByText("No Ideas discussions match this view."),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "New discussion" }).first(),
+  ).toHaveAttribute("href", /\/discussions\/new\?category=ideas$/);
 
   const upvote = page.getByRole("button", { name: "Upvote discussion 901" });
+  await page.goto(
+    `${seeded.treeRepositoryHref}/discussions/categories/general`,
+  );
   await upvote.click();
   await expect(upvote).toHaveAttribute("aria-pressed", "true");
   await upvote.click();
@@ -269,6 +287,6 @@ test("repository discussions list filters, rows, category rail, and mobile layou
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/discussions-001-phase3-votes.jpg",
+    path: "../ralph/screenshots/build/discussions-001-phase4-category.jpg",
   });
 });

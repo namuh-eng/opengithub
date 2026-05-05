@@ -6230,5 +6230,22 @@
       "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
       "Validate notification fanout in a seeded database with non-author voters and discussion authors; contract coverage asserts the write path, but the local DB credential gate prevented seeded execution here."
     ]
+  },
+  {
+    "feature_id": "discussions-001",
+    "tests_written": [
+      "Completed Phase 4 Category Route and Rail Behavior without marking discussions-001 build_pass=true.",
+      "Added /{owner}/{repo}/discussions/categories/{slug} App Router page that fetches the category-scoped Rust Discussions API with signed cookies and falls back to the repository-safe unavailable page for unknown/private categories.",
+      "Updated RepositoryDiscussionsPage and RepositoryDiscussionFilters so category-scoped pages preserve q, label, state, answered, locked, pinned, sort, and pagination across search, filter menus, state tabs, category rail, and pagination links.",
+      "Added selected category heading/description, category qualifier chip, View all discussions link, active category rail state, and category-specific empty-state New discussion CTA using Editorial tokens/primitives only.",
+      "Extended focused Vitest and Playwright coverage for category headings, active rail state, category-scoped filter links, empty category CTAs, no dead controls, and Phase 4 screenshot target.",
+      "Verification passed: focused web/tests/repository-discussions-page.test.tsx with 5 tests; cd web && npx tsc --noEmit --pretty false; focused Biome check for changed files; full TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check; full same-env make test with Cargo tests plus 491 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Phase 5 still needs API docs, final browser evidence, QA handoff, prd.json build_pass=true, and final desktop/mobile screenshots.",
+      "Focused Playwright category smoke reached the browser runner and started dev servers, but database seeding failed because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test rejected the available postgres credentials. Re-run web/tests/e2e/repository-discussions.spec.ts with a credentialed migrated TEST_DATABASE_URL to verify the category route in-browser and save ralph/screenshots/build/discussions-001-phase4-category.jpg.",
+      "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Manually verify unknown category slugs against a clean migrated database return the repository-safe unavailable state without leaking private repository metadata."
+    ]
   }
 ]

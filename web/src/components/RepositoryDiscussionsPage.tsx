@@ -10,6 +10,7 @@ import type {
   RepositoryOverview,
 } from "@/lib/api";
 import {
+  type RepositoryDiscussionHrefQuery,
   repositoryDiscussionCategoryHref,
   repositoryDiscussionDetailHref,
   repositoryDiscussionsHref,
@@ -57,6 +58,17 @@ function CategoryChip({ category }: { category: DiscussionCategorySummary }) {
       {category.name}
     </Link>
   );
+}
+
+function discussionListHref(
+  owner: string,
+  repo: string,
+  query: RepositoryDiscussionHrefQuery = {},
+  categorySlug?: string | null,
+) {
+  return categorySlug
+    ? repositoryDiscussionCategoryHref(owner, repo, categorySlug, query)
+    : repositoryDiscussionsHref(owner, repo, query);
 }
 
 function DiscussionRowItem({
@@ -201,6 +213,8 @@ function CategoryRail({
   repo: string;
   discussions: RepositoryDiscussionsView;
 }) {
+  const selectedCategory = discussions.filters.category;
+
   return (
     <aside className="space-y-4">
       <section className="card p-4">
@@ -208,7 +222,15 @@ function CategoryRail({
           <h2 className="t-h3">Categories</h2>
           <Link
             className="t-xs hover:underline"
-            href={repositoryDiscussionsHref(owner, repo)}
+            href={repositoryDiscussionsHref(owner, repo, {
+              q: discussions.filters.query,
+              label: discussions.filters.label,
+              state: discussions.filters.state,
+              answered: discussions.filters.answered,
+              locked: discussions.filters.locked,
+              pinned: discussions.filters.pinned,
+              sort: discussions.filters.sort,
+            })}
           >
             All
           </Link>
@@ -226,6 +248,9 @@ function CategoryRail({
                   q: discussions.filters.query,
                   label: discussions.filters.label,
                   state: discussions.filters.state,
+                  answered: discussions.filters.answered,
+                  locked: discussions.filters.locked,
+                  pinned: discussions.filters.pinned,
                   sort: discussions.filters.sort,
                 },
               )}
@@ -239,8 +264,13 @@ function CategoryRail({
               <span className="min-w-0 truncate">
                 <span aria-hidden="true">{category.emoji}</span> {category.name}
               </span>
-              <span className="t-num t-xs">
-                {formatNumber(category.openCount)}
+              <span className="t-xs shrink-0">
+                <span className="t-num">
+                  {formatNumber(category.openCount)}
+                </span>
+                {selectedCategory === category.slug ? (
+                  <span className="sr-only"> active category</span>
+                ) : null}
               </span>
             </Link>
           ))}
@@ -348,6 +378,8 @@ function Pagination({
   repo: string;
   discussions: RepositoryDiscussionsView;
 }) {
+  const categorySlug = discussions.filters.category;
+
   return (
     <nav
       aria-label="Discussion pagination"
@@ -361,20 +393,30 @@ function Pagination({
         <Link
           aria-disabled={discussions.page <= 1}
           className={discussions.page <= 1 ? "btn sm opacity-50" : "btn sm"}
-          href={repositoryDiscussionsHref(owner, repo, {
-            ...discussions.filters,
-            page: Math.max(1, discussions.page - 1),
-          })}
+          href={discussionListHref(
+            owner,
+            repo,
+            {
+              ...discussions.filters,
+              page: Math.max(1, discussions.page - 1),
+            },
+            categorySlug,
+          )}
         >
           Previous
         </Link>
         <Link
           aria-disabled={!discussions.hasNextPage}
           className={!discussions.hasNextPage ? "btn sm opacity-50" : "btn sm"}
-          href={repositoryDiscussionsHref(owner, repo, {
-            ...discussions.filters,
-            page: discussions.page + 1,
-          })}
+          href={discussionListHref(
+            owner,
+            repo,
+            {
+              ...discussions.filters,
+              page: discussions.page + 1,
+            },
+            categorySlug,
+          )}
         >
           Next
         </Link>
@@ -392,6 +434,7 @@ export function RepositoryDiscussionsPage({
   const activeCategory = discussions.categories.find(
     (category) => category.active,
   );
+  const categorySlug = activeCategory?.slug ?? discussions.filters.category;
 
   return (
     <RepositoryShell
@@ -418,6 +461,27 @@ export function RepositoryDiscussionsPage({
                 {activeCategory?.description ??
                   "Ask questions, share ideas, and keep repository conversations separate from issue tracking."}
               </p>
+              {activeCategory ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <span className="chip accent">
+                    category:{activeCategory.slug}
+                  </span>
+                  <Link
+                    className="chip soft hover:underline"
+                    href={repositoryDiscussionsHref(owner, repo, {
+                      q: discussions.filters.query,
+                      label: discussions.filters.label,
+                      state: discussions.filters.state,
+                      answered: discussions.filters.answered,
+                      locked: discussions.filters.locked,
+                      pinned: discussions.filters.pinned,
+                      sort: discussions.filters.sort,
+                    })}
+                  >
+                    View all discussions
+                  </Link>
+                </div>
+              ) : null}
             </div>
             <Link
               className={
@@ -453,6 +517,7 @@ export function RepositoryDiscussionsPage({
         ) : null}
 
         <RepositoryDiscussionFilters
+          categorySlug={categorySlug}
           filters={discussions.filters}
           labels={discussions.labels}
           owner={owner}
@@ -483,11 +548,16 @@ export function RepositoryDiscussionsPage({
                   className={
                     discussions.filters.state === state ? "tab active" : "tab"
                   }
-                  href={repositoryDiscussionsHref(owner, repo, {
-                    ...discussions.filters,
-                    state: state as string,
-                    page: 1,
-                  })}
+                  href={discussionListHref(
+                    owner,
+                    repo,
+                    {
+                      ...discussions.filters,
+                      state: state as string,
+                      page: 1,
+                    },
+                    categorySlug,
+                  )}
                   key={state}
                 >
                   {label}{" "}

@@ -2,12 +2,14 @@ import Link from "next/link";
 import type { DiscussionFilterState, DiscussionLabelSummary } from "@/lib/api";
 import {
   type RepositoryDiscussionHrefQuery,
+  repositoryDiscussionCategoryHref,
   repositoryDiscussionsHref,
 } from "@/lib/navigation";
 
 type RepositoryDiscussionFiltersProps = {
   owner: string;
   repo: string;
+  categorySlug?: string | null;
   filters: DiscussionFilterState;
   labels: DiscussionLabelSummary[];
 };
@@ -43,9 +45,21 @@ function activeLabel(value: string | null | boolean, fallback: string) {
   return value;
 }
 
+function discussionsHref(
+  owner: string,
+  repo: string,
+  query: RepositoryDiscussionHrefQuery = {},
+  categorySlug?: string | null,
+) {
+  return categorySlug
+    ? repositoryDiscussionCategoryHref(owner, repo, categorySlug, query)
+    : repositoryDiscussionsHref(owner, repo, query);
+}
+
 export function RepositoryDiscussionFilters({
   owner,
   repo,
+  categorySlug,
   filters,
   labels,
 }: RepositoryDiscussionFiltersProps) {
@@ -56,7 +70,7 @@ export function RepositoryDiscussionFilters({
   return (
     <div className="flex flex-wrap items-center gap-3">
       <form
-        action={repositoryDiscussionsHref(owner, repo)}
+        action={discussionsHref(owner, repo, {}, categorySlug)}
         className="flex min-w-[260px] flex-1 flex-wrap items-center gap-3"
         method="get"
       >
@@ -79,6 +93,19 @@ export function RepositoryDiscussionFilters({
         {filters.sort !== "latest" ? (
           <input name="sort" type="hidden" value={filters.sort} />
         ) : null}
+        {filters.answered !== null ? (
+          <input
+            name="answered"
+            type="hidden"
+            value={String(filters.answered)}
+          />
+        ) : null}
+        {filters.locked !== null ? (
+          <input name="locked" type="hidden" value={String(filters.locked)} />
+        ) : null}
+        {filters.pinned !== null ? (
+          <input name="pinned" type="hidden" value={String(filters.pinned)} />
+        ) : null}
         <button className="btn" type="submit">
           Search
         </button>
@@ -93,10 +120,11 @@ export function RepositoryDiscussionFilters({
             <Link
               aria-current={filters.state === state ? "page" : undefined}
               className="rounded-[var(--radius)] px-3 py-2 text-sm hover:bg-[var(--surface-2)]"
-              href={repositoryDiscussionsHref(
+              href={discussionsHref(
                 owner,
                 repo,
                 queryFor(filters, { state, page: 1 }),
+                categorySlug,
               )}
               key={state}
             >
@@ -113,10 +141,11 @@ export function RepositoryDiscussionFilters({
         <div className="card absolute right-0 z-20 mt-2 grid max-h-80 w-64 gap-1 overflow-y-auto p-2 shadow-md">
           <Link
             className="rounded-[var(--radius)] px-3 py-2 text-sm hover:bg-[var(--surface-2)]"
-            href={repositoryDiscussionsHref(
+            href={discussionsHref(
               owner,
               repo,
               queryFor(filters, { label: null, page: 1 }),
+              categorySlug,
             )}
           >
             Any label
@@ -125,10 +154,11 @@ export function RepositoryDiscussionFilters({
             <Link
               aria-current={filters.label === label.name ? "page" : undefined}
               className="flex items-center justify-between gap-3 rounded-[var(--radius)] px-3 py-2 text-sm hover:bg-[var(--surface-2)]"
-              href={repositoryDiscussionsHref(
+              href={discussionsHref(
                 owner,
                 repo,
                 queryFor(filters, { label: label.name, page: 1 }),
+                categorySlug,
               )}
               key={label.id}
             >
@@ -162,7 +192,7 @@ export function RepositoryDiscussionFilters({
           ].map(([label, overrides]) => (
             <Link
               className="rounded-[var(--radius)] px-3 py-2 text-sm hover:bg-[var(--surface-2)]"
-              href={repositoryDiscussionsHref(
+              href={discussionsHref(
                 owner,
                 repo,
                 queryFor(filters, {
@@ -171,6 +201,7 @@ export function RepositoryDiscussionFilters({
                   pinned: null,
                   ...(overrides as Partial<RepositoryDiscussionHrefQuery>),
                 }),
+                categorySlug,
               )}
               key={label as string}
             >
@@ -189,10 +220,11 @@ export function RepositoryDiscussionFilters({
             <Link
               aria-current={filters.sort === value ? "page" : undefined}
               className="rounded-[var(--radius)] px-3 py-2 text-sm hover:bg-[var(--surface-2)]"
-              href={repositoryDiscussionsHref(
+              href={discussionsHref(
                 owner,
                 repo,
                 queryFor(filters, { sort: value, page: 1 }),
+                categorySlug,
               )}
               key={value}
             >
@@ -202,7 +234,10 @@ export function RepositoryDiscussionFilters({
         </div>
       </details>
 
-      <Link className="btn sm" href={repositoryDiscussionsHref(owner, repo)}>
+      <Link
+        className="btn sm"
+        href={discussionsHref(owner, repo, {}, categorySlug)}
+      >
         Clear
       </Link>
     </div>

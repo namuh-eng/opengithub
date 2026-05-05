@@ -405,6 +405,16 @@ describe("RepositoryDiscussionsPage", () => {
     );
 
     expect(screen.getByRole("heading", { name: "💡 Ideas" })).toBeVisible();
+    expect(screen.getByText("category:ideas")).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "View all discussions" }),
+    ).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/discussions?q=is%3Aopen&label=help-wanted&answered=false&sort=top",
+    );
+    expect(
+      screen.getByRole("link", { name: /Ideas1active category/ }),
+    ).toHaveAttribute("aria-current", "page");
     expect(
       screen.getByText("No Ideas discussions match this view."),
     ).toBeVisible();
@@ -416,13 +426,17 @@ describe("RepositoryDiscussionsPage", () => {
     );
     expect(screen.getByRole("link", { name: "Any label" })).toHaveAttribute(
       "href",
-      "/namuh-eng/opengithub/discussions?q=is%3Aopen&answered=false&sort=top",
+      "/namuh-eng/opengithub/discussions/categories/ideas?q=is%3Aopen&answered=false&sort=top",
     );
     expect(
       screen.getByRole("link", { name: "Most commented" }),
     ).toHaveAttribute(
       "href",
-      "/namuh-eng/opengithub/discussions?q=is%3Aopen&label=help-wanted&answered=false&sort=most_commented",
+      "/namuh-eng/opengithub/discussions/categories/ideas?q=is%3Aopen&label=help-wanted&answered=false&sort=most_commented",
+    );
+    expect(screen.getByRole("link", { name: "Clear" })).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/discussions/categories/ideas",
     );
     expect(container.querySelector("button:not([type])")).toBeNull();
   });

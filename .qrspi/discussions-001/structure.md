@@ -64,7 +64,7 @@ Repository tabs already include a Discussions destination, organization policy e
 
 ## Phase 4: Category Route and Rail Behavior - scoped list, category-specific empty states
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement `/{owner}/{repo}/discussions/categories/{slug}` as a category-scoped variant of the list page. Category links should compose category qualifiers with the current query, update the page heading, show category metadata, and produce a category-specific empty state with a working New discussion CTA.
 
