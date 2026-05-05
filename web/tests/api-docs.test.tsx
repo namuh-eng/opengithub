@@ -625,6 +625,46 @@ describe("ApiDocsPage", () => {
       ),
     ).toBeVisible();
     expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/security/secret-scanning?state=open&provider=GitHub&sort=recently_detected",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "List repository Secret scanning alerts",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/provider\/default and generic result tabs/),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(
+        "/api/repos/{owner}/{repo}/security/secret-scanning/{alert_id}",
+      )[0],
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Read repository Secret scanning alert detail",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Update repository Secret scanning alert",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/plaintext secret bytes are not stored/),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText("/api/repos/{owner}/{repo}/git/receive-pack")[0],
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Secret scanning push protection",
+      }),
+    ).toBeVisible();
+    expect(screen.getByText(/Protected provider matches/)).toBeVisible();
+    expect(
       screen.getByText("/api/repos/{owner}/{repo}/releases?page=1&pageSize=30"),
     ).toBeVisible();
     expect(

@@ -1,3 +1,12 @@
+2026-05-05 - code-security-004 phase 5 final docs, QA handoff, and build pass
+
+- Completed Phase 5 from `.qrspi/code-security-004/structure.md`: Secret scanning alerts and push protection are now locked as a completed vertical slice and `code-security-004.build_pass=true`.
+- Added `/docs/api` coverage for `GET /api/repos/{owner}/{repo}/security/secret-scanning`, `GET/PATCH /api/repos/{owner}/{repo}/security/secret-scanning/{alert_id}`, and push-protection handling on `POST /api/repos/{owner}/{repo}/git/receive-pack`, including auth/privacy gates, filters, disabled states, resolution transitions, validity metadata, push-protection bypass outcomes, notification fanout, audit events, and no-secret error envelopes.
+- Extended API docs tests and the focused Secret scanning browser spec so successful browser runs save final list/mobile screenshots at `ralph/screenshots/build/code-security-004-final-list.jpg` and `ralph/screenshots/build/code-security-004-final-mobile.jpg`.
+- Verification passed: focused Vitest for `api-docs`, Secret scanning list, and Secret scanning detail components with 10 tests; focused Biome check for edited docs/tests/E2E files; JSON validation for `prd.json` and `qa-hints.json`; full `make check` after cleaning generated target artifacts; full `make test` with Cargo tests plus 479 web tests; mandatory Editorial banned-value scan returned zero matches.
+- Focused Playwright Secret scanning smoke was attempted against `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test`, but the seed step failed because local Postgres rejected the available credentials. An alternate local compose Postgres startup on `5434` was attempted and hung before migrations could run, so final browser screenshot generation remains a QA handoff item. Existing phase screenshots from prior successful browser smokes remain available for list/detail/push-protection evidence.
+- Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-05 - code-security-004 structure planning
 
 - Read `ralph-config.json`, `BUILD_GUIDE.md`, `build-spec.md`, `build-progress.txt`, `prd.json`, `web/AGENTS.md`, `design/project/og-screens-4.jsx`, `design/project/og-shell.jsx`, existing code-security structure outlines, current security alert references, and target secret scanning/push protection docs.

@@ -3135,6 +3135,184 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-secret-scanning-alerts",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/security/secret-scanning?state=open&provider=GitHub&sort=recently_detected",
+    title: "List repository Secret scanning alerts",
+    description:
+      "Returns the screen-ready Secret scanning alerts list from committed blob indexing and push-protection outcomes, including provider/default and generic result tabs, filter metadata, open/resolved counts, disabled states, redacted alert rows, and viewer write permissions.",
+    auth: "Signed opengithub session cookie with repository read permission; private outsiders receive not_found",
+    response: `{
+  "availability": {
+    "enabled": true,
+    "indexed": true,
+    "message": "Secret scanning alerts are monitored.",
+    "settingsHref": "/mona/octo-app/settings/security_analysis"
+  },
+  "filters": {
+    "state": "open",
+    "query": null,
+    "provider": "GitHub",
+    "secretType": null,
+    "validity": null,
+    "resolution": null,
+    "bypassed": null,
+    "resultKind": "provider",
+    "sort": "recently_detected"
+  },
+  "counts": {
+    "open": 2,
+    "resolved": 1,
+    "provider": 2,
+    "generic": 1,
+    "bypassed": 1,
+    "visible": 1
+  },
+  "alerts": [
+    {
+      "id": "alert_01",
+      "number": 1,
+      "state": "open",
+      "resultKind": "provider",
+      "redactedSecret": "ghp_************",
+      "pattern": {
+        "provider": "GitHub",
+        "secretType": "github_personal_access_token",
+        "displayName": "GitHub personal access token",
+        "pushProtectionEnabled": true
+      },
+      "validity": { "state": "active", "checkedAt": "2026-05-05T00:00:00Z" },
+      "primaryLocation": {
+        "path": ".env",
+        "startLine": 12,
+        "pathHref": "/mona/octo-app/blob/refs%2Fheads%2Fmain/.env#L12"
+      },
+      "bypass": {
+        "status": "pending_review",
+        "reason": "Needed for local example fixture."
+      },
+      "href": "/mona/octo-app/security/secret-scanning/1"
+    }
+  ]
+}`,
+    notes: [
+      "Supported filters are state, q, provider, secret_type, validity, resolution, bypassed, result_kind, team, topic, and sort. Invalid values return validation_failed with a 422 status.",
+      "Disabled repository settings return enabled=false with zero counts and no historical rows, so disabled states do not leak private alert volume.",
+      "Rows include concrete alert detail, file, commit, and settings destinations while exposing only redacted snippets and keyed fingerprints.",
+      "Responses never include plaintext secrets, token hashes, session cookies, OAuth payloads, storage keys, environment variables, raw Git object bytes, stack traces, or private repository metadata.",
+    ],
+  },
+  {
+    id: "repo-secret-scanning-alert-detail",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/security/secret-scanning/{alert_id}",
+    title: "Read repository Secret scanning alert detail",
+    description:
+      "Returns one Secret scanning alert detail view with redacted evidence, file and commit location, provider pattern metadata, validity checks, push-protection bypass metadata, assignment options, and timeline rows.",
+    auth: "Signed opengithub session cookie with repository read permission",
+    response: `{
+  "alert": {
+    "id": "alert_01",
+    "number": 1,
+    "state": "open",
+    "resolution": null,
+    "redactedSecret": "ghp_************"
+  },
+  "pattern": {
+    "provider": "GitHub",
+    "secretType": "github_personal_access_token",
+    "displayName": "GitHub personal access token",
+    "resultKind": "provider"
+  },
+  "locations": [
+    {
+      "path": ".env",
+      "startLine": 12,
+      "redactedSnippet": "TOKEN=ghp_************",
+      "commitHref": "/mona/octo-app/commit/abc123",
+      "pathHref": "/mona/octo-app/blob/refs%2Fheads%2Fmain/.env#L12"
+    }
+  ],
+  "validity": {
+    "state": "active",
+    "provider": "GitHub",
+    "message": "Provider reported the credential is active."
+  },
+  "bypass": {
+    "status": "pending_review",
+    "reason": "Needed for local example fixture.",
+    "redactedSnippet": "TOKEN=ghp_************"
+  },
+  "timeline": [
+    { "eventType": "created", "message": "Secret scanning opened this alert from committed content." }
+  ]
+}`,
+    notes: [
+      "Readers can inspect permitted redacted detail data but receive forbidden on mutation routes.",
+      "The endpoint serializes redacted evidence and fingerprints only; plaintext secret bytes are not stored, returned, logged, or copied into audit payloads.",
+      "Long paths, missing validity data, and deleted source files remain screen-safe with bounded strings and concrete fallback actions.",
+    ],
+  },
+  {
+    id: "repo-secret-scanning-alert-update",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/security/secret-scanning/{alert_id}",
+    title: "Update repository Secret scanning alert",
+    description:
+      "Lets maintainers resolve, reopen, assign, or update permitted validity metadata for one Secret scanning alert while recording redacted timeline events, security audit events, and notification updates.",
+    auth: "Signed opengithub session cookie with repository maintainer permission",
+    request: `{
+  "action": "resolve",
+  "resolution": "false_positive",
+  "comment": "The redacted fixture is not a real credential."
+}`,
+    response: `{
+  "alert": {
+    "id": "alert_01",
+    "number": 1,
+    "state": "resolved",
+    "resolution": "false_positive"
+  },
+  "timeline": [
+    { "eventType": "resolved", "message": "Resolved this alert as false_positive." }
+  ]
+}`,
+    notes: [
+      "Supported actions are resolve, reopen, assign, and validity. Resolve requires a reason of revoked, false_positive, used_in_tests, or wont_fix plus an optional bounded comment.",
+      "Archived repositories, disabled Secret scanning settings, invalid assignees, stale states, malformed transitions, and unsupported validity updates return structured validation or conflict errors.",
+      "Successful writes update secret_scanning_alerts, secret_scanning_alert_events, security_audit_events, and assignee notification rows atomically with redacted metadata only.",
+    ],
+  },
+  {
+    id: "repo-secret-scanning-push-protection",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/git/receive-pack",
+    title: "Secret scanning push protection",
+    description:
+      "Scans incoming Git smart-HTTP pushes before accepting refs when Secret scanning and push protection are enabled, creates redacted alerts for provider/default or generic matches, and records approved bypass outcomes.",
+    auth: "Personal access token or signed session with repository write permission",
+    request: `{
+  "ref": "refs/heads/main",
+  "commitOid": "abc123",
+  "pushProtectionBypassReason": "Needed for local example fixture."
+}`,
+    response: `{
+  "status": "accepted_with_bypass",
+  "createdAlerts": 1,
+  "blocked": false,
+  "bypass": {
+    "status": "pending_review",
+    "reason": "Needed for local example fixture."
+  }
+}`,
+    notes: [
+      "Protected provider matches block or warn before ref updates unless the actor supplies a bounded bypass reason that policy allows.",
+      "Existing blob backfills and new pushed commits de-duplicate alerts by provider pattern, blob/commit identity, path/line, and keyed secret hash.",
+      "Push-protection responses, bypass rows, alert events, audit events, and notifications carry only redacted snippets and never echo plaintext secrets.",
+      "Binary files, oversized blobs, archived repositories, disabled settings, malformed bypass reasons, and permission failures return truthful no-secret envelopes.",
+    ],
+  },
+  {
     id: "repo-releases-list",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/releases?page=1&pageSize=30",

@@ -6066,5 +6066,22 @@
       "Repeat focused browser smoke and full make test-e2e after the dev-server wrapper stall pattern is resolved.",
       "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures."
     ]
+  },
+  {
+    "feature_id": "code-security-004",
+    "tests_written": [
+      "Documents Secret scanning list/detail/update and push-protection endpoints on /docs/api with auth, filters, disabled states, triage transitions, bypass outcomes, audit/notification behavior, and no-secret envelopes.",
+      "Focused Vitest coverage passed for API docs, Secret scanning alerts list, and Secret scanning alert detail components (10 tests).",
+      "make check passed after cleaning generated target artifacts: Cargo check, web typecheck, Clippy, and Biome.",
+      "make test passed after clean rebuild: Cargo tests plus 479 web tests.",
+      "Mandatory Editorial banned-value scan returned zero matches under web/src outside og*.css.",
+      "Focused Playwright Secret scanning smoke was updated to save code-security-004-final-list.jpg and code-security-004-final-mobile.jpg when a usable test database is available."
+    ],
+    "needs_deeper_qa": [
+      "Focused Playwright browser smoke could not complete in this environment because the existing localhost:55432 Postgres rejected available credentials and Docker compose startup for the alternate local database hung before migrations could run.",
+      "Re-run tests/e2e/repository-secret-scanning.spec.ts against a credentialed TEST_DATABASE_URL to generate final desktop/mobile screenshots and verify resolve/reopen/assignment/validity flows through the browser.",
+      "Push-protection behavior is covered by Rust contracts from earlier phases, but QA should repeat a real smart-HTTP push with a bypass reason against a seeded database.",
+      "Provider validity checks remain placeholder/local state only; no external provider verifier is configured."
+    ]
   }
 ]

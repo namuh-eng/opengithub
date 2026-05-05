@@ -425,6 +425,10 @@ test("repository Secret scanning alerts support list filters, row links, disable
   await page.getByRole("button", { name: "Save validity" }).click();
   await expect(page.getByText("Validity saved.")).toBeVisible();
   await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/code-security-004-final-list.jpg",
+  });
 
   disableSecretScanning(seeded.treeRepositoryHref);
   await page.goto(`${seeded.treeRepositoryHref}/security/secret-scanning`);
@@ -440,4 +444,8 @@ test("repository Secret scanning alerts support list filters, row links, disable
   ).toBeVisible();
   await expect(page.locator("body")).toHaveJSProperty("scrollLeft", 0);
   await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/code-security-004-final-mobile.jpg",
+  });
 });
