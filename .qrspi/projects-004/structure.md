@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial Fields Settings Page - field list and detail pane render without dead controls
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Render the Projects settings Fields page using the Phase 1 read contract. The page shows the left settings sidebar, field list, selected field detail pane, New field action, built-in read-only fields, custom field metadata, and honest permission-disabled states.
 

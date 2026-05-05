@@ -6985,5 +6985,20 @@
       "Probe large field lists, field limit edge cases, many single-select options, many iteration cycles and breaks, read-only project members, public project anonymous reads, hidden/deleted fields, option color validation readiness, cache_version increments in later mutation phases, and private linked repository count leakage.",
       "Phase 2 still needs the Editorial settings page; Phases 3-5 still need real field lifecycle, option administration, and iteration mutation/filter behavior."
     ]
+  },
+  {
+    "feature_id": "projects-004",
+    "tests_written": [
+      "Completed Phase 2 Editorial Fields Settings Page without marking projects-004 build_pass=true.",
+      "Added user and organization project field settings routes backed by the Phase 1 signed-cookie read helpers.",
+      "Added ProjectFieldSettingsPage with settings sidebar, field list, selected field detail pane, built-in/custom chips, single-select option rows, iteration rows and breaks, New field dialog, permission-disabled states, concrete links, and no placeholder hrefs.",
+      "Added focused Vitest coverage for org/user navigation, selected field query state, built-in/custom field rendering, New field dialog, read-only mutation controls, permission-disabled states, and no dead links."
+    ],
+    "needs_deeper_qa": [
+      "Browser smoke still needs a seeded credentialed Projects database to save ralph/screenshots/build/projects-004-phase2-field-settings.jpg.",
+      "Mutation buttons are intentionally disabled/read-only in Phase 2; create, rename, delete, option CRUD, and iteration writes are owned by Phases 3-5.",
+      "Probe large field lists, field-name wrapping on mobile, empty custom field lists, read-only roles, private project denial, selected field query URLs, and iteration/option overflow.",
+      "Confirm the settings page remains visually Editorial and does not inherit GitHub/Primer colors or controls."
+    ]
   }
 ]

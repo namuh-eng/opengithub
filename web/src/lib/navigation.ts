@@ -82,6 +82,28 @@ export function organizationProjectWorkspaceHref(
   return `/orgs/${encodeURIComponent(org)}/projects/${projectNumber}/views/${viewNumber}${projectWorkspaceQueryString(query)}`;
 }
 
+export function userProjectFieldSettingsHref(
+  owner: string,
+  projectNumber: number,
+  selectedFieldId?: string | null,
+) {
+  const params = new URLSearchParams();
+  if (selectedFieldId) params.set("field", selectedFieldId);
+  const query = params.toString();
+  return `/${encodeURIComponent(owner)}/projects/${projectNumber}/settings/fields${query ? `?${query}` : ""}`;
+}
+
+export function organizationProjectFieldSettingsHref(
+  org: string,
+  projectNumber: number,
+  selectedFieldId?: string | null,
+) {
+  const params = new URLSearchParams();
+  if (selectedFieldId) params.set("field", selectedFieldId);
+  const query = params.toString();
+  return `/orgs/${encodeURIComponent(org)}/projects/${projectNumber}/settings/fields${query ? `?${query}` : ""}`;
+}
+
 export function projectItemHref(
   item: { href: string | null },
   fallbackWorkspaceHref: string,
