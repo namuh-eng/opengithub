@@ -3687,6 +3687,14 @@
       "exit_code": 0,
       "category": "test_failure",
       "attempt": 392
+    },
+    {
+      "timestamp": "2026-05-05T22:58:09.081596",
+      "phase": "build",
+      "feature": "build_cycle_1",
+      "exit_code": 0,
+      "category": "compilation_failure",
+      "attempt": 393
     }
   ]
 }
