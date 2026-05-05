@@ -3111,6 +3111,14 @@
       "exit_code": 0,
       "category": "timeout",
       "attempt": 320
+    },
+    {
+      "timestamp": "2026-05-05T04:31:10.182086",
+      "phase": "build",
+      "feature": "build_cycle_1",
+      "exit_code": 0,
+      "category": "compilation_failure",
+      "attempt": 321
     }
   ]
 }
