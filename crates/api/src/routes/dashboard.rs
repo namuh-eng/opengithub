@@ -203,6 +203,7 @@ fn map_dashboard_error(error: DashboardError) -> (StatusCode, Json<ErrorEnvelope
         | DashboardError::Repositories(RepositoryError::InvalidWatchEvent(_))
         | DashboardError::Repositories(RepositoryError::InvalidAccessRole(_))
         | DashboardError::Repositories(RepositoryError::InvalidBranchPolicy(_))
+        | DashboardError::Repositories(RepositoryError::InvalidSecurityPolicy(_))
         | DashboardError::Repositories(RepositoryError::InvalidBranchDirectoryQuery(_))
         | DashboardError::Repositories(RepositoryError::InvalidPulseQuery(_))
         | DashboardError::Repositories(RepositoryError::InvalidContributorsQuery(_))
@@ -262,6 +263,9 @@ fn map_dashboard_error(error: DashboardError) -> (StatusCode, Json<ErrorEnvelope
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }
         DashboardError::Repositories(RepositoryError::BranchPolicyConflict) => {
+            error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
+        DashboardError::Repositories(RepositoryError::SecurityPolicyConflict) => {
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }
         DashboardError::Repositories(RepositoryError::LastAdminAccess) => {

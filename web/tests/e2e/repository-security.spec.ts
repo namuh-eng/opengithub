@@ -275,3 +275,48 @@ test("repository Security policy renders markdown anchors and file actions", asy
     path: "../ralph/screenshots/build/code-security-001-phase3-policy.jpg",
   });
 });
+
+test("repository Security policy editor commits changes to file and raw views", async ({
+  page,
+}) => {
+  const seeded = seedDashboard();
+  seedSecurityOverview(seeded.treeRepositoryHref);
+  await signIn(page, seeded);
+
+  await page.goto(`${seeded.treeRepositoryHref}/security/policy/edit`);
+  await expect(
+    page.getByRole("heading", { name: "Edit security policy" }),
+  ).toBeVisible();
+  await page
+    .getByLabel("Markdown")
+    .fill(
+      "# Security policy\n\nEmail [triage](mailto:triage@example.com).\n\n## Scope\n\nDefault branch only.",
+    );
+  await page.getByRole("tab", { name: "Preview" }).click();
+  await expect(page.getByText("Default branch only.")).toBeVisible();
+  await page.getByLabel("Commit message").fill("Update security policy");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect(
+    page.getByText("Security policy saved to the default branch."),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "View file" })).toHaveAttribute(
+    "href",
+    `${seeded.treeRepositoryHref}/blob/main/SECURITY.md`,
+  );
+
+  await page.getByRole("link", { name: "Open raw" }).click();
+  await expect(page.getByText("triage@example.com")).toBeVisible();
+
+  await page.goto(`${seeded.treeRepositoryHref}/security/policy`);
+  await expect(
+    page.getByRole("link", { exact: true, name: "triage" }),
+  ).toHaveAttribute("href", "mailto:triage@example.com");
+  await expect(
+    page.getByRole("link", { name: "Update security policy" }),
+  ).toHaveAttribute("href", /\/commit\/[a-f0-9]+/);
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/code-security-001-phase4-policy-edit.jpg",
+  });
+});

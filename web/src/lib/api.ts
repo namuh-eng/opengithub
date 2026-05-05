@@ -2766,6 +2766,14 @@ export type RepositorySecurityPolicyFetchResult =
   | { ok: true; securityPolicy: RepositorySecurityPolicyView }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type RepositorySecurityPolicyMutation = {
+  markdown: string;
+  commitMessage: string;
+  path?: string | null;
+  ref?: string | null;
+  expectedContentSha?: string | null;
+};
+
 export type RepositoryTrafficView = {
   repository: RepositoryTrafficRepository;
   window: RepositoryTrafficWindow;
@@ -9783,6 +9791,38 @@ export async function getRepositorySecurityPolicyFromCookie(
     ok: true,
     securityPolicy: (await response.json()) as RepositorySecurityPolicyView,
   };
+}
+
+export async function mutateRepositorySecurityPolicyFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  mutation: RepositorySecurityPolicyMutation,
+  method: "POST" | "PATCH",
+): Promise<RepositorySecurityPolicyView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/policy`,
+    {
+      method,
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(mutation),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const envelope = ((await response.json().catch(() => null)) ??
+      null) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Repository Security policy update failed.",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as RepositorySecurityPolicyView;
 }
 
 export async function getRepositoryNetworkFromCookie(

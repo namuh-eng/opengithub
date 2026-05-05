@@ -57,7 +57,7 @@
 
 ## Phase 4: Policy Create/Edit Flow - maintainer writes update the real repository file and audit trail
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire Start setup/Edit policy to a real write flow that creates or updates `SECURITY.md`, records a commit, updates the default branch ref, refreshes `repository_security_policies`, and makes Code/blob/raw views reflect the new file.
 

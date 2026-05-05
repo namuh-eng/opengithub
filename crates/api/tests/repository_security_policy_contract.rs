@@ -1,6 +1,6 @@
 use axum::{
     body::{to_bytes, Body},
-    http::{header, Request, StatusCode},
+    http::{header, Method, Request, StatusCode},
 };
 use chrono::{Duration, Utc};
 use opengithub_api::{
@@ -124,6 +124,38 @@ async fn get_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (Status
     }
     let response = app
         .oneshot(builder.body(Body::empty()).expect("request should build"))
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    (
+        status,
+        serde_json::from_slice(&bytes).expect("response should be json"),
+    )
+}
+
+async fn send_json(
+    app: axum::Router,
+    method: Method,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_string()))
+                .expect("request should build"),
+        )
         .await
         .expect("request should run");
     let status = response.status();
@@ -360,6 +392,183 @@ async fn repository_security_overview_returns_policy_advisories_privacy_and_sani
         .edit_href
         .expect("owner edit href")
         .contains("/security/policy/edit"));
+
+    let updated_markdown = "# Security policy\n\nEmail [triage](mailto:triage@example.com).\n\n## Scope\n\nDefault branch only.";
+    let (reader_update_status, reader_update_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &policy_base,
+        Some(&reader_cookie),
+        json!({
+            "markdown": updated_markdown,
+            "commitMessage": "Update security policy",
+            "expectedContentSha": policy_body["policy"]["contentSha"],
+        }),
+    )
+    .await;
+    assert_eq!(reader_update_status, StatusCode::FORBIDDEN);
+    assert_eq!(reader_update_body["error"]["code"], "forbidden");
+
+    let (stale_status, stale_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &policy_base,
+        Some(&owner_cookie),
+        json!({
+            "markdown": updated_markdown,
+            "commitMessage": "Update security policy",
+            "expectedContentSha": "stale-content-sha",
+        }),
+    )
+    .await;
+    assert_eq!(stale_status, StatusCode::CONFLICT);
+    assert_eq!(stale_body["error"]["code"], "conflict");
+
+    let (invalid_status, invalid_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &policy_base,
+        Some(&owner_cookie),
+        json!({
+            "markdown": "",
+            "commitMessage": "Update security policy",
+            "expectedContentSha": policy_body["policy"]["contentSha"],
+        }),
+    )
+    .await;
+    assert_eq!(invalid_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(invalid_body["error"]["code"], "validation_failed");
+
+    let (update_status, update_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &policy_base,
+        Some(&owner_cookie),
+        json!({
+            "markdown": updated_markdown,
+            "commitMessage": "Update security policy",
+            "expectedContentSha": policy_body["policy"]["contentSha"],
+        }),
+    )
+    .await;
+    assert_eq!(update_status, StatusCode::OK, "{update_body}");
+    assert_eq!(update_body["policy"]["markdown"], updated_markdown);
+    assert_eq!(
+        update_body["policy"]["latestCommit"]["message"],
+        "Update security policy"
+    );
+    assert!(update_body["policy"]["html"]
+        .as_str()
+        .expect("updated html")
+        .contains("mailto:triage@example.com"));
+
+    let updated_commit_id: Uuid = sqlx::query_scalar::<_, Option<Uuid>>(
+        r#"
+        SELECT source_commit_id
+        FROM repository_security_policies
+        WHERE repository_id = $1 AND lower(path) = 'security.md'
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("policy source commit should persist")
+    .expect("source commit should not be null");
+    let reflected_file: String = sqlx::query_scalar(
+        "SELECT content FROM repository_files WHERE repository_id = $1 AND commit_id = $2 AND path = 'SECURITY.md'",
+    )
+    .bind(repository.id)
+    .bind(updated_commit_id)
+    .fetch_one(&pool)
+    .await
+    .expect("updated repository file should reflect policy");
+    assert_eq!(reflected_file, updated_markdown);
+    let ref_points_to_policy_commit: bool = sqlx::query_scalar(
+        r#"
+        SELECT EXISTS (
+            SELECT 1 FROM repository_git_refs
+            WHERE repository_id = $1
+              AND name = 'refs/heads/main'
+              AND target_commit_id = $2
+        )
+        "#,
+    )
+    .bind(repository.id)
+    .bind(updated_commit_id)
+    .fetch_one(&pool)
+    .await
+    .expect("ref should read");
+    assert!(ref_points_to_policy_commit);
+    let audit_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM security_audit_events WHERE actor_user_id = $1 AND target_id = $2 AND event_type = 'repository.security_policy.upsert'",
+    )
+    .bind(owner.id)
+    .bind(repository.id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("audit count should read");
+    assert_eq!(audit_count, 1);
+    assert!(!update_body.to_string().contains("test-session-secret"));
+
+    let create_repository_target = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("security-create-{}", Uuid::new_v4().simple()),
+            description: Some("Policy create repository".to_owned()),
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("release/2026".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("create target repository should create");
+    let create_policy_base = format!(
+        "/api/repos/{owner_login}/{}/security/policy",
+        create_repository_target.name
+    );
+    let created_markdown = "# Security policy\n\nReport issues privately.";
+    let (create_status, create_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &create_policy_base,
+        Some(&owner_cookie),
+        json!({
+            "markdown": created_markdown,
+            "commitMessage": "Create security policy",
+            "path": "SECURITY.md",
+            "ref": "release/2026",
+        }),
+    )
+    .await;
+    assert_eq!(create_status, StatusCode::CREATED, "{create_body}");
+    assert_eq!(create_body["policy"]["exists"], true);
+    assert_eq!(create_body["policy"]["ref"], "release/2026");
+    assert_eq!(create_body["policy"]["markdown"], created_markdown);
+    assert!(create_body["policy"]["sourceHref"]
+        .as_str()
+        .expect("created source href")
+        .contains("/blob/release%2F2026/SECURITY.md"));
+
+    sqlx::query("UPDATE repositories SET is_archived = true WHERE id = $1")
+        .bind(repository.id)
+        .execute(&pool)
+        .await
+        .expect("repository should archive");
+    let (archived_status, archived_body) = send_json(
+        app.clone(),
+        Method::PATCH,
+        &policy_base,
+        Some(&owner_cookie),
+        json!({
+            "markdown": updated_markdown,
+            "commitMessage": "Update security policy",
+            "expectedContentSha": update_body["policy"]["contentSha"],
+        }),
+    )
+    .await;
+    assert_eq!(archived_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(archived_body["error"]["code"], "validation_failed");
 
     let (missing_policy_status, missing_policy_body) = get_json(
         app.clone(),

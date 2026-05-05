@@ -197,6 +197,7 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         | RepositoryError::InvalidWatchEvent(_)
         | RepositoryError::InvalidAccessRole(_)
         | RepositoryError::InvalidBranchPolicy(_)
+        | RepositoryError::InvalidSecurityPolicy(_)
         | RepositoryError::InvalidBranchDirectoryQuery(_)
         | RepositoryError::InvalidPulseQuery(_)
         | RepositoryError::InvalidContributorsQuery(_)
@@ -222,6 +223,9 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }
         RepositoryError::BranchPolicyConflict => {
+            error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
+        RepositoryError::SecurityPolicyConflict => {
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }
         RepositoryError::LastAdminAccess => {

@@ -1,5 +1,12 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { RepositorySecurityPolicyEditorPage } from "@/components/RepositorySecurityPolicyEditorPage";
 import { RepositorySecurityPolicyPage } from "@/components/RepositorySecurityPolicyPage";
 import type {
   RepositoryOverview,
@@ -127,6 +134,10 @@ function securityPolicy(
 }
 
 describe("RepositorySecurityPolicyPage", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("renders the dedicated policy reader with anchors, mailto links, metadata, and file actions", () => {
     const { container } = render(
       <RepositorySecurityPolicyPage
@@ -255,5 +266,94 @@ describe("RepositorySecurityPolicyPage", () => {
     );
     expect(screen.queryByText("Publish security policy")).toBeNull();
     expect(screen.getByText("404 · not_found")).toBeVisible();
+  });
+
+  it("renders maintainer editor with preview and saves through the policy action route", async () => {
+    const maintainerPolicy = securityPolicy({
+      viewer: {
+        permission: "admin",
+        canRead: true,
+        canWrite: true,
+        canEditPolicy: true,
+        canViewPrivateAlertCounts: true,
+      },
+      policy: {
+        ...securityPolicy().policy,
+        editHref: "/namuh-eng/opengithub/security/policy/edit?path=SECURITY.md",
+      },
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/markdown/preview") {
+        return new Response(
+          JSON.stringify({
+            contentSha: "preview-sha",
+            html: '<div class="markdown-body"><h1 id="security-policy">Security policy</h1><p>Updated preview</p></div>',
+            markdown: "# Security policy\n\nUpdated preview",
+          }),
+          { status: 200 },
+        );
+      }
+      if (url === "/namuh-eng/opengithub/security/policy/actions") {
+        return new Response(
+          JSON.stringify({
+            ...maintainerPolicy,
+            policy: {
+              ...maintainerPolicy.policy,
+              contentSha: "saved-sha",
+              markdown: "# Security policy\n\nUpdated preview",
+              rawHref: "/namuh-eng/opengithub/raw/main/SECURITY.md",
+              sourceHref: "/namuh-eng/opengithub/blob/main/SECURITY.md",
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositorySecurityPolicyEditorPage
+        policyResult={{ ok: true, securityPolicy: maintainerPolicy }}
+        repository={repositoryOverview({ viewerPermission: "admin" })}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Edit security policy" }),
+    ).toBeVisible();
+    const textarea = screen.getByLabelText("Markdown");
+    fireEvent.change(textarea, {
+      target: { value: "# Security policy\n\nUpdated preview" },
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    expect(await screen.findByText("Updated preview")).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText("Commit message"), {
+      target: { value: "Update SECURITY.md" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/namuh-eng/opengithub/security/policy/actions",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"action":"update"'),
+        }),
+      );
+    });
+    expect(
+      await screen.findByText("Security policy saved to the default branch."),
+    ).toBeVisible();
+    expect(screen.getByRole("link", { name: "View file" })).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/blob/main/SECURITY.md",
+    );
+    expect(screen.getByRole("link", { name: "Open raw" })).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/raw/main/SECURITY.md",
+    );
   });
 });

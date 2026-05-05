@@ -97,6 +97,7 @@ use crate::{
     domain::repository_security::{
         repository_security_overview_for_actor_by_owner_name,
         repository_security_policy_for_actor_by_owner_name,
+        upsert_repository_security_policy_by_owner_name, SecurityPolicyMutation,
     },
     domain::webhooks::{
         create_repository_webhook_by_owner_name, delete_repository_webhook_by_owner_name,
@@ -140,7 +141,12 @@ pub fn router() -> Router<AppState> {
         )
         .route("/:owner/:repo/network", get(network))
         .route("/:owner/:repo/security", get(security_overview))
-        .route("/:owner/:repo/security/policy", get(security_policy))
+        .route(
+            "/:owner/:repo/security/policy",
+            get(security_policy)
+                .post(create_security_policy)
+                .patch(update_security_policy),
+        )
         .route("/:owner/:repo/forks/defaults", put(save_fork_defaults))
         .route("/:owner/:repo/refs", get(refs))
         .route("/:owner/:repo/file-finder", get(file_finder))
@@ -1179,6 +1185,49 @@ async fn security_policy(
         })?;
 
     Ok(Json(json!(view)))
+}
+
+async fn create_security_policy(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<SecurityPolicyMutation>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
+    mutate_security_policy(state, headers, owner, repo, request, StatusCode::CREATED).await
+}
+
+async fn update_security_policy(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<SecurityPolicyMutation>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
+    mutate_security_policy(state, headers, owner, repo, request, StatusCode::OK).await
+}
+
+async fn mutate_security_policy(
+    state: AppState,
+    headers: HeaderMap,
+    owner: String,
+    repo: String,
+    request: SecurityPolicyMutation,
+    success_status: StatusCode,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view =
+        upsert_repository_security_policy_by_owner_name(pool, actor.0.id, &owner, &repo, request)
+            .await
+            .map_err(map_repository_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository was not found".to_owned(),
+                )
+            })?;
+
+    Ok((success_status, Json(json!(view))))
 }
 
 async fn forks(
@@ -2939,6 +2988,7 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
         | RepositoryError::InvalidWatchEvent(_)
         | RepositoryError::InvalidAccessRole(_)
         | RepositoryError::InvalidBranchPolicy(_)
+        | RepositoryError::InvalidSecurityPolicy(_)
         | RepositoryError::InvalidBranchDirectoryQuery(_)
         | RepositoryError::InvalidPulseQuery(_)
         | RepositoryError::InvalidContributorsQuery(_)
@@ -2971,6 +3021,9 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }
         RepositoryError::BranchPolicyConflict => {
+            error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
+        RepositoryError::SecurityPolicyConflict => {
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }
         RepositoryError::BranchPolicyNotFound => {

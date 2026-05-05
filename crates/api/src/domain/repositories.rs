@@ -2293,6 +2293,8 @@ pub enum RepositoryError {
     TeamAccessUnsupported,
     #[error("invalid branch policy: {0}")]
     InvalidBranchPolicy(String),
+    #[error("invalid repository security policy: {0}")]
+    InvalidSecurityPolicy(String),
     #[error("invalid branch directory query: {0}")]
     InvalidBranchDirectoryQuery(String),
     #[error("invalid repository pulse query: {0}")]
@@ -2311,6 +2313,8 @@ pub enum RepositoryError {
     InvalidDiffContext(String),
     #[error("repository branch policy already exists")]
     BranchPolicyConflict,
+    #[error("repository security policy update conflicted with the current branch")]
+    SecurityPolicyConflict,
     #[error("repository branch policy was not found")]
     BranchPolicyNotFound,
     #[error("repository git storage failed")]

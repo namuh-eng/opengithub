@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use regex::{Captures, Regex};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -8,8 +9,9 @@ use uuid::Uuid;
 use super::{
     markdown::{render_markdown, RenderMarkdownInput},
     repositories::{
-        can_read_repository, can_write_repository, get_repository_by_owner_name, Repository,
-        RepositoryError, RepositoryVisibility,
+        can_read_repository, can_write_repository, get_repository_by_owner_name,
+        replace_repository_snapshot, CreateCommit, Repository, RepositoryError, RepositorySnapshot,
+        RepositorySnapshotFile, RepositoryVisibility,
     },
 };
 
@@ -155,6 +157,17 @@ pub struct SecurityPolicyCommit {
     pub href: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecurityPolicyMutation {
+    pub markdown: String,
+    pub commit_message: String,
+    pub path: Option<String>,
+    #[serde(rename = "ref")]
+    pub ref_name: Option<String>,
+    pub expected_content_sha: Option<String>,
+}
+
 pub async fn repository_security_overview_for_actor_by_owner_name(
     pool: &PgPool,
     actor_user_id: Uuid,
@@ -192,6 +205,35 @@ pub async fn repository_security_policy_for_actor_by_owner_name(
         return Err(RepositoryError::PermissionDenied);
     }
 
+    repository_security_policy_for_repository(pool, &repository, actor_user_id)
+        .await
+        .map(Some)
+}
+
+pub async fn upsert_repository_security_policy_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    mutation: SecurityPolicyMutation,
+) -> Result<Option<RepositorySecurityPolicyView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if !can_write_repository(pool, &repository, actor_user_id).await? {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if repository.is_archived {
+        return Err(RepositoryError::ArchivedRepositoryReadOnly);
+    }
+
+    write_security_policy(pool, &repository, actor_user_id, mutation).await?;
     repository_security_policy_for_repository(pool, &repository, actor_user_id)
         .await
         .map(Some)
@@ -293,9 +335,20 @@ async fn security_policy_summary(
 ) -> Result<SecurityPolicySummary, RepositoryError> {
     if let Some(row) = sqlx::query(
         r#"
-        SELECT path, ref_name, blob_oid, content_sha, markdown, rendered_html, updated_at
+        SELECT repository_security_policies.path,
+               repository_security_policies.ref_name,
+               repository_security_policies.blob_oid,
+               repository_security_policies.content_sha,
+               repository_security_policies.markdown,
+               repository_security_policies.rendered_html,
+               repository_security_policies.updated_at,
+               commits.oid AS commit_oid,
+               commits.message AS commit_message,
+               commits.committed_at AS committed_at
         FROM repository_security_policies
-        WHERE repository_id = $1 AND published = true
+        LEFT JOIN commits ON commits.id = repository_security_policies.source_commit_id
+        WHERE repository_security_policies.repository_id = $1
+          AND repository_security_policies.published = true
         ORDER BY CASE WHEN lower(path) = 'security.md' THEN 0 ELSE 1 END, updated_at DESC
         LIMIT 1
         "#,
@@ -411,9 +464,20 @@ async fn security_policy_document(
 ) -> Result<SecurityPolicyDocument, RepositoryError> {
     if let Some(row) = sqlx::query(
         r#"
-        SELECT path, ref_name, blob_oid, content_sha, markdown, rendered_html, updated_at
+        SELECT repository_security_policies.path,
+               repository_security_policies.ref_name,
+               repository_security_policies.blob_oid,
+               repository_security_policies.content_sha,
+               repository_security_policies.markdown,
+               repository_security_policies.rendered_html,
+               repository_security_policies.updated_at,
+               commits.oid AS commit_oid,
+               commits.message AS commit_message,
+               commits.committed_at AS committed_at
         FROM repository_security_policies
-        WHERE repository_id = $1 AND published = true
+        LEFT JOIN commits ON commits.id = repository_security_policies.source_commit_id
+        WHERE repository_security_policies.repository_id = $1
+          AND repository_security_policies.published = true
         ORDER BY CASE WHEN lower(path) = 'security.md' THEN 0 ELSE 1 END, updated_at DESC
         LIMIT 1
         "#,
@@ -600,7 +664,31 @@ fn policy_document_from_row(
                 percent_encode_path(&path)
             )
         }),
-        latest_commit: None,
+        latest_commit: match (
+            row.try_get::<Option<String>, _>("commit_oid")
+                .ok()
+                .flatten(),
+            row.try_get::<Option<String>, _>("commit_message")
+                .ok()
+                .flatten(),
+            row.try_get::<Option<DateTime<Utc>>, _>("committed_at")
+                .ok()
+                .flatten(),
+        ) {
+            (Some(oid), Some(message), Some(committed_at)) => Some(SecurityPolicyCommit {
+                short_oid: oid.chars().take(7).collect(),
+                href: format!(
+                    "/{}/{}/commit/{}",
+                    repository.owner_login,
+                    repository.name,
+                    percent_encode_segment(&oid)
+                ),
+                oid,
+                message,
+                committed_at,
+            }),
+            _ => None,
+        },
         updated_at: row.get("updated_at"),
         empty_state: String::new(),
     })
@@ -753,6 +841,323 @@ fn markdown_sha(markdown: &str) -> String {
 
 fn markdown_error(error: super::markdown::MarkdownError) -> RepositoryError {
     RepositoryError::Sqlx(sqlx::Error::Protocol(error.to_string()))
+}
+
+async fn write_security_policy(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    mutation: SecurityPolicyMutation,
+) -> Result<(), RepositoryError> {
+    let path = normalize_policy_path(mutation.path.as_deref())?;
+    let ref_name = normalize_policy_ref(repository, mutation.ref_name.as_deref())?;
+    let markdown = normalize_policy_markdown(&mutation.markdown)?;
+    let commit_message = normalize_policy_commit_message(&mutation.commit_message)?;
+    let rendered = render_markdown(
+        Some(pool),
+        RenderMarkdownInput {
+            markdown: markdown.clone(),
+            repository_id: Some(repository.id),
+            owner: Some(repository.owner_login.clone()),
+            repo: Some(repository.name.clone()),
+            ref_name: Some(ref_name.clone()),
+            enable_task_toggles: Some(false),
+        },
+    )
+    .await
+    .map_err(markdown_error)?;
+    let content_sha = markdown_sha(&markdown);
+
+    let current_ref = current_branch_commit(pool, repository.id, &ref_name).await?;
+    let existing_policy = current_security_policy_file(pool, repository, &ref_name).await?;
+    if let Some(expected) = mutation
+        .expected_content_sha
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        let current_sha = existing_policy
+            .as_ref()
+            .map(|file| markdown_sha(&file.content))
+            .unwrap_or_default();
+        if expected != current_sha {
+            return Err(RepositoryError::SecurityPolicyConflict);
+        }
+    }
+
+    let mut files =
+        current_branch_files(pool, repository.id, current_ref.as_ref().map(|r| r.id)).await?;
+    if let Some(file) = files
+        .iter_mut()
+        .find(|file| file.path.eq_ignore_ascii_case(&path))
+    {
+        file.content = markdown.clone();
+        file.oid = deterministic_content_oid("blob", &markdown);
+        file.byte_size = markdown.len() as i64;
+    } else {
+        files.push(RepositorySnapshotFile {
+            path: path.clone(),
+            content: markdown.clone(),
+            oid: deterministic_content_oid("blob", &markdown),
+            byte_size: markdown.len() as i64,
+        });
+    }
+    files.sort_by(|left, right| left.path.to_lowercase().cmp(&right.path.to_lowercase()));
+
+    let tree_oid = deterministic_content_oid(
+        "tree",
+        &files
+            .iter()
+            .map(|file| format!("{}:{}:{}", file.path, file.oid, file.byte_size))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
+    let parent_oids = current_ref
+        .as_ref()
+        .map(|commit| vec![commit.oid.clone()])
+        .unwrap_or_default();
+    let commit_oid = deterministic_content_oid(
+        "commit",
+        &format!(
+            "{}:{}:{}:{}:{}",
+            repository.id, ref_name, tree_oid, commit_message, content_sha
+        ),
+    );
+    let commit = replace_repository_snapshot(
+        pool,
+        repository.id,
+        RepositorySnapshot {
+            commit: CreateCommit {
+                oid: commit_oid.clone(),
+                author_user_id: Some(actor_user_id),
+                committer_user_id: Some(actor_user_id),
+                message: commit_message.clone(),
+                tree_oid: Some(tree_oid),
+                parent_oids,
+                committed_at: Utc::now(),
+            },
+            branch_name: ref_name.clone(),
+            files,
+        },
+    )
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO repository_security_policies (
+            repository_id, path, ref_name, source_commit_id, blob_oid, content_sha,
+            markdown, rendered_html, published, updated_by_user_id, updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, now())
+        ON CONFLICT (repository_id, lower(path))
+        DO UPDATE SET ref_name = EXCLUDED.ref_name,
+                      source_commit_id = EXCLUDED.source_commit_id,
+                      blob_oid = EXCLUDED.blob_oid,
+                      content_sha = EXCLUDED.content_sha,
+                      markdown = EXCLUDED.markdown,
+                      rendered_html = EXCLUDED.rendered_html,
+                      published = true,
+                      updated_by_user_id = EXCLUDED.updated_by_user_id,
+                      updated_at = now()
+        "#,
+    )
+    .bind(repository.id)
+    .bind(&path)
+    .bind(&ref_name)
+    .bind(commit.id)
+    .bind(deterministic_content_oid("blob", &markdown))
+    .bind(&content_sha)
+    .bind(&markdown)
+    .bind(&rendered.html)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO security_audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, 'repository.security_policy.upsert', 'repository', $2, $3)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(repository.id)
+    .bind(json!({
+        "repositoryId": repository.id,
+        "path": path,
+        "ref": ref_name,
+        "commitOid": commit.oid,
+        "contentSha": content_sha,
+    }))
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+#[derive(Debug)]
+struct CurrentPolicyFile {
+    content: String,
+}
+
+#[derive(Debug)]
+struct CurrentBranchCommit {
+    id: Uuid,
+    oid: String,
+}
+
+async fn current_branch_commit(
+    pool: &PgPool,
+    repository_id: Uuid,
+    ref_name: &str,
+) -> Result<Option<CurrentBranchCommit>, RepositoryError> {
+    let row = sqlx::query(
+        r#"
+        SELECT commits.id, commits.oid
+        FROM repository_git_refs
+        JOIN commits ON commits.id = repository_git_refs.target_commit_id
+        WHERE repository_git_refs.repository_id = $1
+          AND repository_git_refs.name IN ($2, 'refs/heads/' || $2)
+        ORDER BY CASE WHEN repository_git_refs.name = 'refs/heads/' || $2 THEN 0 ELSE 1 END
+        LIMIT 1
+        "#,
+    )
+    .bind(repository_id)
+    .bind(ref_name)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|row| CurrentBranchCommit {
+        id: row.get("id"),
+        oid: row.get("oid"),
+    }))
+}
+
+async fn current_branch_files(
+    pool: &PgPool,
+    repository_id: Uuid,
+    commit_id: Option<Uuid>,
+) -> Result<Vec<RepositorySnapshotFile>, RepositoryError> {
+    let Some(commit_id) = commit_id else {
+        return Ok(Vec::new());
+    };
+    let rows = sqlx::query(
+        r#"
+        SELECT path, content, oid, byte_size
+        FROM repository_files
+        WHERE repository_id = $1 AND commit_id = $2
+        ORDER BY lower(path)
+        "#,
+    )
+    .bind(repository_id)
+    .bind(commit_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| RepositorySnapshotFile {
+            path: row.get("path"),
+            content: row.get("content"),
+            oid: row.get("oid"),
+            byte_size: row.get("byte_size"),
+        })
+        .collect())
+}
+
+async fn current_security_policy_file(
+    pool: &PgPool,
+    repository: &Repository,
+    ref_name: &str,
+) -> Result<Option<CurrentPolicyFile>, RepositoryError> {
+    let row = sqlx::query(
+        r#"
+        SELECT repository_files.content
+        FROM repository_files
+        JOIN repository_git_refs
+          ON repository_git_refs.repository_id = repository_files.repository_id
+         AND repository_git_refs.target_commit_id = repository_files.commit_id
+        WHERE repository_files.repository_id = $1
+          AND repository_git_refs.name IN ($2, 'refs/heads/' || $2)
+          AND lower(repository_files.path) IN ('security.md', '.github/security.md', 'docs/security.md')
+        ORDER BY CASE lower(repository_files.path)
+            WHEN 'security.md' THEN 0
+            WHEN '.github/security.md' THEN 1
+            ELSE 2
+        END
+        LIMIT 1
+        "#,
+    )
+    .bind(repository.id)
+    .bind(ref_name)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|row| CurrentPolicyFile {
+        content: row.get("content"),
+    }))
+}
+
+fn normalize_policy_path(path: Option<&str>) -> Result<String, RepositoryError> {
+    let path = path.unwrap_or("SECURITY.md").trim();
+    let normalized = if path.is_empty() { "SECURITY.md" } else { path };
+    match normalized.to_ascii_lowercase().as_str() {
+        "security.md" | ".github/security.md" | "docs/security.md" => Ok(normalized.to_owned()),
+        _ => Err(RepositoryError::InvalidSecurityPolicy(
+            "policy path must be SECURITY.md, .github/SECURITY.md, or docs/SECURITY.md".to_owned(),
+        )),
+    }
+}
+
+fn normalize_policy_ref(
+    repository: &Repository,
+    ref_name: Option<&str>,
+) -> Result<String, RepositoryError> {
+    let ref_name = ref_name.unwrap_or(&repository.default_branch).trim();
+    let ref_name = ref_name.strip_prefix("refs/heads/").unwrap_or(ref_name);
+    if ref_name.is_empty() || ref_name.contains("..") || ref_name.starts_with('/') {
+        return Err(RepositoryError::InvalidSecurityPolicy(
+            "policy branch is invalid".to_owned(),
+        ));
+    }
+    Ok(ref_name.to_owned())
+}
+
+fn normalize_policy_markdown(markdown: &str) -> Result<String, RepositoryError> {
+    let markdown = markdown.trim();
+    if markdown.is_empty() {
+        return Err(RepositoryError::InvalidSecurityPolicy(
+            "policy markdown must not be empty".to_owned(),
+        ));
+    }
+    if markdown.len() > 128 * 1024 {
+        return Err(RepositoryError::InvalidSecurityPolicy(
+            "policy markdown must be 128 KiB or smaller".to_owned(),
+        ));
+    }
+    Ok(markdown.to_owned())
+}
+
+fn normalize_policy_commit_message(message: &str) -> Result<String, RepositoryError> {
+    let message = message.trim();
+    if message.is_empty() {
+        return Err(RepositoryError::InvalidSecurityPolicy(
+            "commit message must not be empty".to_owned(),
+        ));
+    }
+    if message.len() > 240 {
+        return Err(RepositoryError::InvalidSecurityPolicy(
+            "commit message must be 240 characters or fewer".to_owned(),
+        ));
+    }
+    Ok(message.to_owned())
+}
+
+fn deterministic_content_oid(kind: &str, content: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(kind.as_bytes());
+    hasher.update([0]);
+    hasher.update(content.as_bytes());
+    format!("{:x}", hasher.finalize())
 }
 
 fn policy_heading_outline(html: &str) -> Vec<SecurityPolicyHeading> {
