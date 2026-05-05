@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -179,6 +180,110 @@ pub struct DiscussionVoteResponse {
     pub discussion_number: i64,
     pub viewer_voted: bool,
     pub votes_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionCreationView {
+    pub repository: DiscussionRepositorySummary,
+    pub viewer: DiscussionViewer,
+    pub enabled: bool,
+    pub disabled_reason: Option<String>,
+    pub categories: Vec<DiscussionCategoryChoice>,
+    pub selected_category: Option<DiscussionCategoryChoice>,
+    pub form: DiscussionFormDefinition,
+    pub similar_search: DiscussionSimilarSearch,
+    pub community_links: Vec<CommunityLinkSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionCategoryChoice {
+    pub id: Uuid,
+    pub slug: String,
+    pub name: String,
+    pub emoji: String,
+    pub description: Option<String>,
+    pub accepts_answers: bool,
+    pub is_poll: bool,
+    pub count: i64,
+    pub open_count: i64,
+    pub href: String,
+    pub form_href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionFormDefinition {
+    pub category_slug: Option<String>,
+    pub template_path: Option<String>,
+    pub title: String,
+    pub description: Option<String>,
+    pub body: String,
+    pub fields: Vec<DiscussionFormField>,
+    pub valid: bool,
+    pub fallback: bool,
+    pub parse_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionFormField {
+    pub id: String,
+    pub field_type: String,
+    pub label: String,
+    pub description: Option<String>,
+    pub placeholder: Option<String>,
+    pub required: bool,
+    pub options: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionSimilarSearch {
+    pub required: bool,
+    pub query: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateDiscussionRequest {
+    pub category_slug: String,
+    pub title: String,
+    pub body: Option<String>,
+    pub similar_search_acknowledged: bool,
+    #[serde(default)]
+    pub form_answers: Vec<DiscussionFormAnswerInput>,
+    #[serde(default)]
+    pub attachment_drafts: Vec<DiscussionAttachmentDraft>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionFormAnswerInput {
+    pub field_id: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionAttachmentDraft {
+    pub id: Option<Uuid>,
+    pub file_name: String,
+    pub content_type: String,
+    pub byte_size: i64,
+    pub storage_key: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateDiscussionResponse {
+    pub discussion_id: Uuid,
+    pub discussion_number: i64,
+    pub href: String,
+    pub title: String,
+    pub category: DiscussionCategoryChoice,
 }
 
 #[derive(Debug)]
@@ -477,6 +582,251 @@ pub async fn set_repository_discussion_vote_by_owner_name(
     }))
 }
 
+pub async fn repository_discussion_creation_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    category_slug: Option<&str>,
+    title_query: Option<&str>,
+) -> Result<Option<DiscussionCreationView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner, repo).await? else {
+        return Ok(None);
+    };
+    let (viewer_permission, can_read, can_write) =
+        discussion_permissions(pool, &repository, actor_user_id).await?;
+    if !can_read {
+        return Err(RepositoryError::PermissionDenied);
+    }
+
+    let policy_enabled = repository_discussions_policy_enabled(pool, repository.id).await?;
+    let selected_slug = match category_slug {
+        Some(slug) => Some(normalize_slug(slug)?),
+        None => None,
+    };
+    let categories = load_discussion_category_choices(pool, &repository).await?;
+    let selected_category = match selected_slug.as_deref() {
+        Some(slug) => Some(
+            categories
+                .iter()
+                .find(|category| category.slug == slug)
+                .cloned()
+                .ok_or_else(|| RepositoryError::NotFound)?,
+        ),
+        None => categories.first().cloned(),
+    };
+    let form = match selected_category.as_ref() {
+        Some(category) => load_discussion_form_definition(pool, repository.id, category).await?,
+        None => generic_discussion_form(None),
+    };
+    let query = normalize_short_text(title_query, "title", 160)?.unwrap_or_default();
+    let similar_query = if query.is_empty() {
+        "is:open".to_owned()
+    } else {
+        format!("is:open {query}")
+    };
+
+    Ok(Some(DiscussionCreationView {
+        repository: discussion_repository_summary(&repository),
+        viewer: DiscussionViewer {
+            authenticated: true,
+            permission: viewer_permission,
+            can_read,
+            can_vote: policy_enabled && !repository.is_archived,
+            can_create: policy_enabled && !repository.is_archived && can_write,
+        },
+        enabled: policy_enabled,
+        disabled_reason: if repository.is_archived {
+            Some("Archived repositories do not accept new discussions.".to_owned())
+        } else {
+            (!policy_enabled)
+                .then(|| "Repository discussions are disabled by organization policy.".to_owned())
+        },
+        categories,
+        selected_category,
+        form,
+        similar_search: DiscussionSimilarSearch {
+            required: true,
+            href: format!(
+                "/{}/{}/discussions?q={}",
+                repository.owner_login,
+                repository.name,
+                url::form_urlencoded::byte_serialize(similar_query.as_bytes()).collect::<String>()
+            ),
+            query: similar_query,
+        },
+        community_links: load_community_links(pool, repository.id).await?,
+    }))
+}
+
+pub async fn create_repository_discussion_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    request: CreateDiscussionRequest,
+) -> Result<Option<CreateDiscussionResponse>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner, repo).await? else {
+        return Ok(None);
+    };
+    let (_, can_read, can_write) = discussion_permissions(pool, &repository, actor_user_id).await?;
+    if !can_read {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if !can_write {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if repository.is_archived {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "archived repositories do not accept new discussions".to_owned(),
+        ));
+    }
+    if !repository_discussions_policy_enabled(pool, repository.id).await? {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "repository discussions are disabled by organization policy".to_owned(),
+        ));
+    }
+    if !request.similar_search_acknowledged {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "confirm that you searched for similar discussions before starting a discussion"
+                .to_owned(),
+        ));
+    }
+
+    let category_slug = normalize_slug(&request.category_slug)?;
+    let category = load_discussion_category_choices(pool, &repository)
+        .await?
+        .into_iter()
+        .find(|category| category.slug == category_slug)
+        .ok_or_else(|| RepositoryError::NotFound)?;
+    let title = normalize_required_text(&request.title, "title", 240)?;
+    let body = normalize_optional_body(request.body.as_deref(), 64 * 1024)?;
+    let form = load_discussion_form_definition(pool, repository.id, &category).await?;
+    validate_form_answers(&form, &request.form_answers)?;
+    validate_attachment_drafts(&request.attachment_drafts)?;
+
+    let next_number: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(MAX(number), 0) + 1 FROM discussions WHERE repository_id = $1",
+    )
+    .bind(repository.id)
+    .fetch_one(pool)
+    .await?;
+    let discussion_id = Uuid::new_v4();
+    let comment_id = Uuid::new_v4();
+
+    sqlx::query(
+        r#"
+        INSERT INTO discussions (
+            id, repository_id, category_id, number, title, body, author_user_id,
+            comments_count, last_activity_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 1, now())
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(repository.id)
+    .bind(category.id)
+    .bind(next_number)
+    .bind(&title)
+    .bind(&body)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "INSERT INTO discussion_comments (id, discussion_id, author_user_id, body) VALUES ($1, $2, $3, $4)",
+    )
+    .bind(comment_id)
+    .bind(discussion_id)
+    .bind(actor_user_id)
+    .bind(&body)
+    .execute(pool)
+    .await?;
+
+    for answer in normalized_form_answers(&form, &request.form_answers)? {
+        sqlx::query(
+            r#"
+            INSERT INTO discussion_form_answers (discussion_id, field_id, field_label, value)
+            VALUES ($1, $2, $3, $4)
+            "#,
+        )
+        .bind(discussion_id)
+        .bind(answer.0)
+        .bind(answer.1)
+        .bind(answer.2)
+        .execute(pool)
+        .await?;
+    }
+
+    for attachment in request.attachment_drafts {
+        sqlx::query(
+            r#"
+            INSERT INTO discussion_attachments (
+                id, discussion_id, comment_id, uploaded_by_user_id, file_name,
+                content_type, byte_size, storage_key, status
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'attached')
+            "#,
+        )
+        .bind(attachment.id.unwrap_or_else(Uuid::new_v4))
+        .bind(discussion_id)
+        .bind(comment_id)
+        .bind(actor_user_id)
+        .bind(attachment.file_name)
+        .bind(attachment.content_type)
+        .bind(attachment.byte_size)
+        .bind(attachment.storage_key)
+        .execute(pool)
+        .await?;
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO discussion_subscriptions (discussion_id, user_id, state, reason)
+        VALUES ($1, $2, 'subscribed', 'participating')
+        ON CONFLICT (discussion_id, user_id)
+        DO UPDATE SET state = 'subscribed', reason = 'participating', updated_at = now()
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO discussion_activity_events (discussion_id, actor_user_id, event_type, payload)
+        VALUES ($1, $2, 'created', jsonb_build_object('category', $3, 'similarSearchAcknowledged', true))
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(actor_user_id)
+    .bind(&category.slug)
+    .execute(pool)
+    .await?;
+
+    notify_repository_maintainers_of_discussion(
+        pool,
+        &repository,
+        actor_user_id,
+        discussion_id,
+        next_number,
+        &title,
+    )
+    .await?;
+
+    Ok(Some(CreateDiscussionResponse {
+        discussion_id,
+        discussion_number: next_number,
+        href: format!(
+            "/{}/{}/discussions/{}",
+            repository.owner_login, repository.name, next_number
+        ),
+        title,
+        category,
+    }))
+}
+
 fn normalize_discussion_filters(
     query: RepositoryDiscussionsQuery<'_>,
 ) -> Result<NormalizedDiscussionFilters, RepositoryError> {
@@ -535,6 +885,193 @@ fn normalize_short_text(
     Ok(Some(value.to_owned()))
 }
 
+fn normalize_required_text(
+    value: &str,
+    field: &str,
+    max_len: usize,
+) -> Result<String, RepositoryError> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+            "{field} must not be empty"
+        )));
+    }
+    if value.len() > max_len {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+            "{field} must be at most {max_len} characters"
+        )));
+    }
+    Ok(value.to_owned())
+}
+
+fn normalize_optional_body(value: Option<&str>, max_len: usize) -> Result<String, RepositoryError> {
+    let value = value.unwrap_or_default().trim();
+    if value.is_empty() {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "body must not be empty".to_owned(),
+        ));
+    }
+    if value.len() > max_len {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+            "body must be at most {max_len} characters"
+        )));
+    }
+    Ok(value.to_owned())
+}
+
+fn validate_form_answers(
+    form: &DiscussionFormDefinition,
+    answers: &[DiscussionFormAnswerInput],
+) -> Result<(), RepositoryError> {
+    if form.fallback || form.fields.is_empty() {
+        return Ok(());
+    }
+    let answer_map = answers
+        .iter()
+        .map(|answer| (answer.field_id.trim(), answer.value.trim()))
+        .collect::<std::collections::HashMap<_, _>>();
+    for field in &form.fields {
+        if field.required
+            && answer_map
+                .get(field.id.as_str())
+                .is_none_or(|value| value.is_empty())
+        {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "{} is required",
+                field.label
+            )));
+        }
+    }
+    for answer in answers {
+        if answer.field_id.len() > 80 || answer.value.len() > 20_000 {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(
+                "form answers are too large".to_owned(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn normalized_form_answers(
+    form: &DiscussionFormDefinition,
+    answers: &[DiscussionFormAnswerInput],
+) -> Result<Vec<(String, String, String)>, RepositoryError> {
+    let mut out = Vec::new();
+    for answer in answers {
+        let field_id = slugify(&answer.field_id);
+        let value = answer.value.trim();
+        if field_id.is_empty() || value.is_empty() {
+            continue;
+        }
+        let Some(field) = form.fields.iter().find(|field| field.id == field_id) else {
+            if form.fields.is_empty() || form.fallback {
+                continue;
+            }
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported discussion form field `{field_id}`"
+            )));
+        };
+        out.push((field_id, field.label.clone(), value.to_owned()));
+    }
+    Ok(out)
+}
+
+fn validate_attachment_drafts(
+    attachments: &[DiscussionAttachmentDraft],
+) -> Result<(), RepositoryError> {
+    if attachments.len() > 10 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "a discussion can attach at most 10 files".to_owned(),
+        ));
+    }
+    for attachment in attachments {
+        normalize_required_text(&attachment.file_name, "attachment file name", 180)?;
+        normalize_required_text(&attachment.storage_key, "attachment storage key", 300)?;
+        normalize_required_text(&attachment.content_type, "attachment content type", 120)?;
+        if attachment.byte_size < 0 || attachment.byte_size > 25 * 1024 * 1024 {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(
+                "attachment size must be between 0 and 25 MiB".to_owned(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+async fn notify_repository_maintainers_of_discussion(
+    pool: &PgPool,
+    repository: &super::repositories::Repository,
+    actor_user_id: Uuid,
+    discussion_id: Uuid,
+    discussion_number: i64,
+    title: &str,
+) -> Result<(), RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT DISTINCT user_id
+        FROM repository_permissions
+        WHERE repository_id = $1
+          AND user_id <> $2
+          AND role IN ('owner', 'admin', 'write')
+        LIMIT 20
+        "#,
+    )
+    .bind(repository.id)
+    .bind(actor_user_id)
+    .fetch_all(pool)
+    .await?;
+    for row in rows {
+        let user_id: Uuid = row.try_get("user_id")?;
+        create_notification(
+            pool,
+            CreateNotification {
+                user_id,
+                repository_id: Some(repository.id),
+                subject_type: "discussion".to_owned(),
+                subject_id: Some(discussion_id),
+                title: format!("Discussion #{} started: {}", discussion_number, title),
+                reason: "discussion_created".to_owned(),
+            },
+        )
+        .await
+        .map_err(|error| match error {
+            super::notifications::NotificationError::Sqlx(error) => RepositoryError::Sqlx(error),
+            super::notifications::NotificationError::NotFound
+            | super::notifications::NotificationError::Validation(_) => RepositoryError::NotFound,
+        })?;
+    }
+    Ok(())
+}
+
+fn sanitize_template_text(value: impl AsRef<str>) -> String {
+    let html = ammonia::clean(value.as_ref());
+    let mut out = String::with_capacity(html.len());
+    let mut in_tag = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(ch),
+            _ => {}
+        }
+    }
+    out.trim().chars().take(2000).collect()
+}
+
+fn slugify(value: &str) -> String {
+    let mut slug = String::with_capacity(value.len());
+    let mut last_dash = false;
+    for ch in value.trim().to_ascii_lowercase().chars() {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch);
+            last_dash = false;
+        } else if !last_dash {
+            slug.push('-');
+            last_dash = true;
+        }
+    }
+    slug.trim_matches('-').chars().take(80).collect()
+}
+
 fn normalize_slug(value: &str) -> Result<String, RepositoryError> {
     let value = value.trim();
     if value.is_empty()
@@ -575,6 +1112,333 @@ async fn repository_discussions_policy_enabled(
     .bind(repository_id)
     .fetch_one(pool)
     .await?)
+}
+
+async fn discussion_permissions(
+    pool: &PgPool,
+    repository: &super::repositories::Repository,
+    actor_user_id: Uuid,
+) -> Result<(Option<String>, bool, bool), RepositoryError> {
+    let permission = repository_permission_for_user(pool, repository.id, actor_user_id).await?;
+    let can_read = repository.visibility == RepositoryVisibility::Public
+        || repository.owner_user_id == Some(actor_user_id)
+        || permission.as_ref().is_some_and(|p| p.role.can_read());
+    let viewer_permission = permission.map(|p| p.role.as_str().to_owned()).or_else(|| {
+        (repository.owner_user_id == Some(actor_user_id))
+            .then(|| RepositoryRole::Admin.as_str().to_owned())
+    });
+    let can_write = matches!(
+        viewer_permission.as_deref(),
+        Some("write" | "maintain" | "admin" | "owner")
+    );
+    Ok((viewer_permission, can_read, can_write))
+}
+
+fn discussion_repository_summary(
+    repository: &super::repositories::Repository,
+) -> DiscussionRepositorySummary {
+    DiscussionRepositorySummary {
+        id: repository.id,
+        owner: repository.owner_login.clone(),
+        name: repository.name.clone(),
+        visibility: repository.visibility.as_str().to_owned(),
+        is_archived: repository.is_archived,
+        href: format!("/{}/{}", repository.owner_login, repository.name),
+        discussions_href: format!(
+            "/{}/{}/discussions",
+            repository.owner_login, repository.name
+        ),
+    }
+}
+
+async fn load_discussion_category_choices(
+    pool: &PgPool,
+    repository: &super::repositories::Repository,
+) -> Result<Vec<DiscussionCategoryChoice>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT discussion_categories.id, discussion_categories.slug, discussion_categories.name,
+               discussion_categories.emoji, discussion_categories.description,
+               discussion_categories.accepts_answers,
+               COUNT(discussions.id)::bigint AS count,
+               COUNT(discussions.id) FILTER (WHERE discussions.state = 'open')::bigint AS open_count
+        FROM discussion_categories
+        LEFT JOIN discussions ON discussions.category_id = discussion_categories.id
+        WHERE discussion_categories.repository_id = $1
+        GROUP BY discussion_categories.id
+        ORDER BY discussion_categories.position ASC, discussion_categories.name ASC
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            let slug: String = row.try_get("slug")?;
+            Ok(DiscussionCategoryChoice {
+                id: row.try_get("id")?,
+                form_href: format!(
+                    "/{}/{}/discussions/new?category={}",
+                    repository.owner_login, repository.name, slug
+                ),
+                href: format!(
+                    "/{}/{}/discussions/categories/{}",
+                    repository.owner_login, repository.name, slug
+                ),
+                is_poll: slug == "polls" || slug == "poll",
+                slug,
+                name: row.try_get("name")?,
+                emoji: row.try_get("emoji")?,
+                description: row.try_get("description")?,
+                accepts_answers: row.try_get("accepts_answers")?,
+                count: row.try_get("count")?,
+                open_count: row.try_get("open_count")?,
+            })
+        })
+        .collect()
+}
+
+async fn load_discussion_form_definition(
+    pool: &PgPool,
+    repository_id: Uuid,
+    category: &DiscussionCategoryChoice,
+) -> Result<DiscussionFormDefinition, RepositoryError> {
+    if category.is_poll {
+        return Ok(DiscussionFormDefinition {
+            category_slug: Some(category.slug.clone()),
+            template_path: None,
+            title: "Start a poll".to_owned(),
+            description: category.description.clone(),
+            body: String::new(),
+            fields: Vec::new(),
+            valid: true,
+            fallback: false,
+            parse_error: None,
+        });
+    }
+
+    if let Some(row) = sqlx::query(
+        r#"
+        SELECT template_path, title, description, body, fields::text, valid, parse_error
+        FROM discussion_category_forms
+        WHERE repository_id = $1 AND category_id = $2
+        "#,
+    )
+    .bind(repository_id)
+    .bind(category.id)
+    .fetch_optional(pool)
+    .await?
+    {
+        let fields_json: String = row.try_get("fields")?;
+        let fields: Vec<DiscussionFormField> =
+            serde_json::from_str(&fields_json).unwrap_or_default();
+        let valid: bool = row.try_get("valid")?;
+        return Ok(DiscussionFormDefinition {
+            category_slug: Some(category.slug.clone()),
+            template_path: row.try_get("template_path")?,
+            title: row
+                .try_get::<Option<String>, _>("title")?
+                .unwrap_or_else(|| format!("Start a {} discussion", category.name)),
+            description: row.try_get("description")?,
+            body: row.try_get("body")?,
+            fields: if valid { fields } else { Vec::new() },
+            valid,
+            fallback: !valid,
+            parse_error: row.try_get("parse_error")?,
+        });
+    }
+
+    if let Some((path, content)) =
+        load_discussion_template_from_git(pool, repository_id, &category.slug).await?
+    {
+        let mut parsed = parse_discussion_template(&content, &category.slug, &path);
+        let fields_value = serde_json::to_value(&parsed.fields).unwrap_or(Value::Array(Vec::new()));
+        sqlx::query(
+            r#"
+            INSERT INTO discussion_category_forms (
+                repository_id, category_id, template_path, title, description, body,
+                fields, valid, parse_error, content_sha
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, encode(sha256($10::bytea), 'hex'))
+            ON CONFLICT (repository_id, category_id)
+            DO UPDATE SET
+                template_path = EXCLUDED.template_path,
+                title = EXCLUDED.title,
+                description = EXCLUDED.description,
+                body = EXCLUDED.body,
+                fields = EXCLUDED.fields,
+                valid = EXCLUDED.valid,
+                parse_error = EXCLUDED.parse_error,
+                content_sha = EXCLUDED.content_sha,
+                parsed_at = now(),
+                updated_at = now()
+            "#,
+        )
+        .bind(repository_id)
+        .bind(category.id)
+        .bind(&path)
+        .bind(Some(parsed.title.clone()))
+        .bind(parsed.description.clone())
+        .bind(&parsed.body)
+        .bind(fields_value.to_string())
+        .bind(parsed.valid)
+        .bind(parsed.parse_error.clone())
+        .bind(content.as_bytes())
+        .execute(pool)
+        .await?;
+        parsed.category_slug = Some(category.slug.clone());
+        return Ok(parsed);
+    }
+
+    Ok(generic_discussion_form(Some(category.slug.clone())))
+}
+
+async fn load_discussion_template_from_git(
+    pool: &PgPool,
+    repository_id: Uuid,
+    category_slug: &str,
+) -> Result<Option<(String, String)>, RepositoryError> {
+    let candidates = [
+        format!(".github/DISCUSSION_TEMPLATE/{category_slug}.yml"),
+        format!(".github/DISCUSSION_TEMPLATE/{category_slug}.yaml"),
+    ];
+    let row = sqlx::query(
+        r#"
+        SELECT repository_files.path, repository_files.content
+        FROM repository_files
+        JOIN repository_git_refs ON repository_git_refs.target_commit_id = repository_files.commit_id
+        JOIN repositories ON repositories.id = repository_files.repository_id
+        WHERE repository_files.repository_id = $1
+          AND repository_git_refs.name = 'refs/heads/' || repositories.default_branch
+          AND lower(repository_files.path) = ANY($2)
+        ORDER BY repository_files.path ASC
+        LIMIT 1
+        "#,
+    )
+    .bind(repository_id)
+    .bind(candidates.map(|candidate| candidate.to_lowercase()).to_vec())
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|row| (row.get("path"), row.get("content"))))
+}
+
+fn parse_discussion_template(
+    content: &str,
+    category_slug: &str,
+    path: &str,
+) -> DiscussionFormDefinition {
+    match serde_yaml::from_str::<Value>(content) {
+        Ok(value) => {
+            let title = yaml_string(&value, "name")
+                .or_else(|| yaml_string(&value, "title"))
+                .unwrap_or_else(|| "Start a discussion".to_owned());
+            let description = yaml_string(&value, "description").map(sanitize_template_text);
+            let body = yaml_string(&value, "body").unwrap_or_default();
+            let fields = yaml_fields(&value);
+            DiscussionFormDefinition {
+                category_slug: Some(category_slug.to_owned()),
+                template_path: Some(path.to_owned()),
+                title: sanitize_template_text(title),
+                description,
+                body: sanitize_template_text(body),
+                fields,
+                valid: true,
+                fallback: false,
+                parse_error: None,
+            }
+        }
+        Err(error) => DiscussionFormDefinition {
+            category_slug: Some(category_slug.to_owned()),
+            template_path: Some(path.to_owned()),
+            title: "Start a discussion".to_owned(),
+            description: Some(
+                "This category template could not be loaded, so the generic composer will be used."
+                    .to_owned(),
+            ),
+            body: String::new(),
+            fields: Vec::new(),
+            valid: false,
+            fallback: true,
+            parse_error: Some(sanitize_template_text(error.to_string())),
+        },
+    }
+}
+
+fn yaml_fields(value: &Value) -> Vec<DiscussionFormField> {
+    value
+        .get("body")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .take(20)
+        .filter_map(|item| {
+            let field_type = item.get("type").and_then(Value::as_str)?.to_owned();
+            let attributes = item.get("attributes").unwrap_or(item);
+            let label = attributes.get("label").and_then(Value::as_str)?.trim();
+            if label.is_empty() {
+                return None;
+            }
+            let supported = matches!(
+                field_type.as_str(),
+                "input" | "textarea" | "dropdown" | "checkboxes"
+            );
+            if !supported {
+                return None;
+            }
+            let id = item
+                .get("id")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+                .unwrap_or_else(|| slugify(label));
+            let required = item
+                .get("validations")
+                .and_then(|v| v.get("required"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let options = attributes
+                .get("options")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .take(20)
+                .map(sanitize_template_text)
+                .collect();
+            Some(DiscussionFormField {
+                id: slugify(&id),
+                field_type,
+                label: sanitize_template_text(label),
+                description: attributes
+                    .get("description")
+                    .and_then(Value::as_str)
+                    .map(sanitize_template_text),
+                placeholder: attributes
+                    .get("placeholder")
+                    .and_then(Value::as_str)
+                    .map(sanitize_template_text),
+                required,
+                options,
+            })
+        })
+        .collect()
+}
+
+fn yaml_string(value: &Value, key: &str) -> Option<String> {
+    value.get(key).and_then(Value::as_str).map(str::to_owned)
+}
+
+fn generic_discussion_form(category_slug: Option<String>) -> DiscussionFormDefinition {
+    DiscussionFormDefinition {
+        category_slug,
+        template_path: None,
+        title: "Start a discussion".to_owned(),
+        description: None,
+        body: String::new(),
+        fields: Vec::new(),
+        valid: true,
+        fallback: false,
+        parse_error: None,
+    }
 }
 
 async fn load_discussion_categories(

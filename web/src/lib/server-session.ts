@@ -50,6 +50,7 @@ import {
   getRepositoryDependabotAlertsFromCookie,
   getRepositoryDependenciesFromCookie,
   getRepositoryDependentsFromCookie,
+  getRepositoryDiscussionCreationFromCookie,
   getRepositoryDiscussionsFromCookie,
   getRepositoryFileFinderFromCookie,
   getRepositoryForksFromCookie,
@@ -115,6 +116,7 @@ import {
   type RepositoryDependenciesQuery,
   type RepositoryDependentsFetchResult,
   type RepositoryDependentsQuery,
+  type RepositoryDiscussionCreationQuery,
   type RepositoryDiscussionsQuery,
   type RepositoryForksFetchResult,
   type RepositoryForksQuery,
@@ -796,6 +798,20 @@ export async function getRepositoryDiscussions(
     repo,
     options,
     categorySlug,
+  );
+}
+
+export async function getRepositoryDiscussionCreation(
+  owner: string,
+  repo: string,
+  options: RepositoryDiscussionCreationQuery = {},
+) {
+  const requestHeaders = await headers();
+  return getRepositoryDiscussionCreationFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    options,
   );
 }
 

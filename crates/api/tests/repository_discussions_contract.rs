@@ -45,6 +45,8 @@ async fn database_pool() -> Option<PgPool> {
             SELECT to_regclass('public.discussions') IS NOT NULL
                AND to_regclass('public.discussion_categories') IS NOT NULL
                AND to_regclass('public.discussion_votes') IS NOT NULL
+               AND to_regclass('public.discussion_form_answers') IS NOT NULL
+               AND to_regclass('public.discussion_subscriptions') IS NOT NULL
             "#,
         )
         .fetch_one(&pool)
@@ -59,6 +61,306 @@ async fn database_pool() -> Option<PgPool> {
         );
     }
     Some(pool)
+}
+
+#[tokio::test]
+async fn repository_discussion_creation_returns_forms_and_persists_normal_discussion() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping repository discussion creation scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "discussion-create-owner").await;
+    let maintainer = create_user(&pool, "discussion-create-maintainer").await;
+    let reader = create_user(&pool, "discussion-create-reader").await;
+    let outsider = create_user(&pool, "discussion-create-outsider").await;
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let reader_cookie = cookie_header(&pool, &config, &reader).await;
+    let outsider_cookie = cookie_header(&pool, &config, &outsider).await;
+
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("discussion-create-{}", Uuid::new_v4().simple()),
+            description: Some("Discussion creation contract".to_owned()),
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    grant_repository_permission(
+        &pool,
+        repository.id,
+        maintainer.id,
+        RepositoryRole::Write,
+        "direct",
+    )
+    .await
+    .expect("maintainer permission should grant");
+    grant_repository_permission(
+        &pool,
+        repository.id,
+        reader.id,
+        RepositoryRole::Read,
+        "direct",
+    )
+    .await
+    .expect("reader permission should grant");
+
+    let ideas_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO discussion_categories (repository_id, slug, name, emoji, description, position, accepts_answers)
+        VALUES ($1, 'ideas', 'Ideas', '💡', 'Feature proposals.', 1, true)
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("ideas category should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO discussion_categories (repository_id, slug, name, emoji, description, position, accepts_answers)
+        VALUES ($1, 'polls', 'Polls', '📊', 'Vote on options.', 2, false)
+        "#,
+    )
+    .bind(repository.id)
+    .execute(&pool)
+    .await
+    .expect("poll category should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO repository_community_links (repository_id, label, href, kind, position)
+        VALUES ($1, 'Contributing guide', '/CONTRIBUTING.md', 'guide', 1)
+        "#,
+    )
+    .bind(repository.id)
+    .execute(&pool)
+    .await
+    .expect("community link should insert");
+
+    let commit_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO commits (repository_id, oid, author_user_id, committer_user_id, message)
+        VALUES ($1, $2, $3, $3, 'Add discussion template')
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(format!("template-{}", Uuid::new_v4().simple()))
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("commit should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO repository_git_refs (repository_id, name, kind, target_commit_id)
+        VALUES ($1, 'refs/heads/main', 'branch', $2)
+        "#,
+    )
+    .bind(repository.id)
+    .bind(commit_id)
+    .execute(&pool)
+    .await
+    .expect("default branch ref should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO repository_files (repository_id, commit_id, path, content, oid, byte_size)
+        VALUES ($1, $2, '.github/DISCUSSION_TEMPLATE/ideas.yml', $3, $4, length($3))
+        "#,
+    )
+    .bind(repository.id)
+    .bind(commit_id)
+    .bind(
+        r#"
+name: Idea
+description: <script>bad()</script>Share a feature idea.
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Tell us why this matters.
+      placeholder: What should happen?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - UI
+        - API
+"#,
+    )
+    .bind(format!("blob-{}", Uuid::new_v4().simple()))
+    .execute(&pool)
+    .await
+    .expect("template file should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let owner_login = owner.username.as_deref().expect("owner username");
+    let base = format!("/api/repos/{owner_login}/{}/discussions", repository.name);
+
+    let (outsider_status, outsider_body) =
+        get_json(app.clone(), &format!("{base}/new"), Some(&outsider_cookie)).await;
+    assert_eq!(outsider_status, StatusCode::FORBIDDEN);
+    assert!(!outsider_body.to_string().contains("Feature proposals"));
+
+    let (metadata_status, metadata_body) = get_json(
+        app.clone(),
+        &format!("{base}/new?category=ideas&title=Search%20syntax"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(metadata_status, StatusCode::OK, "{metadata_body}");
+    assert_eq!(metadata_body["viewer"]["canCreate"], true);
+    assert_eq!(metadata_body["selectedCategory"]["slug"], "ideas");
+    assert_eq!(
+        metadata_body["categories"]
+            .as_array()
+            .expect("categories")
+            .len(),
+        2
+    );
+    assert_eq!(
+        metadata_body["form"]["templatePath"],
+        ".github/DISCUSSION_TEMPLATE/ideas.yml"
+    );
+    assert_eq!(metadata_body["form"]["fields"][0]["id"], "context");
+    assert_eq!(metadata_body["form"]["fields"][0]["required"], true);
+    assert!(metadata_body["form"]["description"]
+        .as_str()
+        .expect("description")
+        .contains("Share a feature idea."));
+    assert!(!metadata_body.to_string().contains("<script>"));
+    assert_eq!(
+        metadata_body["similarSearch"]["query"],
+        "is:open Search syntax"
+    );
+    assert_eq!(
+        metadata_body["communityLinks"][0]["label"],
+        "Contributing guide"
+    );
+    assert!(!metadata_body.to_string().contains("test-session-secret"));
+
+    let (reader_create_status, reader_create_body) = post_json(
+        app.clone(),
+        &base,
+        Some(&reader_cookie),
+        json!({
+            "categorySlug": "ideas",
+            "title": "Reader should not create",
+            "body": "Missing write permission.",
+            "similarSearchAcknowledged": true,
+            "formAnswers": [{ "fieldId": "context", "value": "No write permission." }]
+        }),
+    )
+    .await;
+    assert_eq!(reader_create_status, StatusCode::FORBIDDEN);
+    assert_eq!(reader_create_body["error"]["code"], "forbidden");
+
+    let (missing_ack_status, missing_ack_body) = post_json(
+        app.clone(),
+        &base,
+        Some(&owner_cookie),
+        json!({
+            "categorySlug": "ideas",
+            "title": "Search syntax ideas",
+            "body": "Support saved discussion searches.",
+            "similarSearchAcknowledged": false,
+            "formAnswers": [{ "fieldId": "context", "value": "Users repeat search discussions." }]
+        }),
+    )
+    .await;
+    assert_eq!(missing_ack_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(missing_ack_body["error"]["code"], "validation_failed");
+
+    let (create_status, create_body) = post_json(
+        app.clone(),
+        &base,
+        Some(&owner_cookie),
+        json!({
+            "categorySlug": "ideas",
+            "title": "Search syntax ideas",
+            "body": "Support saved discussion searches.",
+            "similarSearchAcknowledged": true,
+            "formAnswers": [
+                { "fieldId": "context", "value": "Users repeat search discussions." },
+                { "fieldId": "area", "value": "UI" }
+            ],
+            "attachmentDrafts": [{
+                "fileName": "sketch.png",
+                "contentType": "image/png",
+                "byteSize": 128,
+                "storageKey": "discussion-drafts/sketch.png"
+            }]
+        }),
+    )
+    .await;
+    assert_eq!(create_status, StatusCode::OK, "{create_body}");
+    assert_eq!(create_body["discussionNumber"], 1);
+    assert_eq!(
+        create_body["href"],
+        format!("/{owner_login}/{}/discussions/1", repository.name)
+    );
+
+    let discussion_id = Uuid::parse_str(create_body["discussionId"].as_str().expect("id"))
+        .expect("discussion id should parse");
+    let discussion_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM discussions WHERE id = $1 AND category_id = $2 AND comments_count = 1",
+    )
+    .bind(discussion_id)
+    .bind(ideas_id)
+    .fetch_one(&pool)
+    .await
+    .expect("discussion should count");
+    assert_eq!(discussion_count, 1);
+    let answer_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM discussion_form_answers WHERE discussion_id = $1",
+    )
+    .bind(discussion_id)
+    .fetch_one(&pool)
+    .await
+    .expect("answers should count");
+    assert_eq!(answer_count, 2);
+    let subscription_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM discussion_subscriptions WHERE discussion_id = $1 AND user_id = $2 AND state = 'subscribed'",
+    )
+    .bind(discussion_id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("subscription should count");
+    assert_eq!(subscription_count, 1);
+    let attachment_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM discussion_attachments WHERE discussion_id = $1 AND status = 'attached'",
+    )
+    .bind(discussion_id)
+    .fetch_one(&pool)
+    .await
+    .expect("attachment should count");
+    assert_eq!(attachment_count, 1);
+    let event_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM discussion_activity_events WHERE discussion_id = $1 AND event_type = 'created'",
+    )
+    .bind(discussion_id)
+    .fetch_one(&pool)
+    .await
+    .expect("activity should count");
+    assert_eq!(event_count, 1);
+    let notification_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM notifications WHERE subject_type = 'discussion' AND subject_id = $1 AND reason = 'discussion_created'",
+    )
+    .bind(discussion_id)
+    .fetch_one(&pool)
+    .await
+    .expect("notification should count");
+    assert_eq!(notification_count, 1);
 }
 
 fn app_config() -> AppConfig {
@@ -130,6 +432,37 @@ async fn request_json(
     }
     let response = app
         .oneshot(builder.body(Body::empty()).expect("request should build"))
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    (
+        status,
+        serde_json::from_slice(&bytes).expect("response should be json"),
+    )
+}
+
+async fn post_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_string()))
+                .expect("request should build"),
+        )
         .await
         .expect("request should run");
     let status = response.status();

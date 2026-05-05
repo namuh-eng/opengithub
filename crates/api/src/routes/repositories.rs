@@ -28,8 +28,11 @@ use crate::{
         ActionsSecretsError, ActionsVariableMutation,
     },
     domain::discussions::{
+        create_repository_discussion_by_owner_name,
+        repository_discussion_creation_for_actor_by_owner_name,
         repository_discussions_for_actor_by_owner_name,
-        set_repository_discussion_vote_by_owner_name, RepositoryDiscussionsQuery,
+        set_repository_discussion_vote_by_owner_name, CreateDiscussionRequest,
+        RepositoryDiscussionsQuery,
     },
     domain::pages::{
         connect_repository_pages_actions_deployment_by_owner_name,
@@ -167,7 +170,15 @@ pub fn router() -> Router<AppState> {
             get(download_sbom_export),
         )
         .route("/:owner/:repo/network", get(network))
-        .route("/:owner/:repo/discussions", get(discussions))
+        .route(
+            "/:owner/:repo/discussions",
+            get(discussions).post(create_discussion),
+        )
+        .route("/:owner/:repo/discussions/new", get(new_discussion))
+        .route(
+            "/:owner/:repo/discussions/new/categories/:category_slug",
+            get(new_discussion_category),
+        )
         .route(
             "/:owner/:repo/discussions/:discussion_number/vote",
             put(vote_discussion).delete(unvote_discussion),
@@ -1337,6 +1348,12 @@ struct DiscussionsQueryParams {
     page_size: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+struct NewDiscussionQueryParams {
+    category: Option<String>,
+    title: Option<String>,
+}
+
 async fn discussions(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1346,6 +1363,70 @@ async fn discussions(
     repository_discussions_response(state, headers, owner, repo, None, query).await
 }
 
+async fn new_discussion(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<NewDiscussionQueryParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    repository_new_discussion_response(
+        state,
+        headers,
+        owner,
+        repo,
+        query.category.as_deref(),
+        query.title.as_deref(),
+    )
+    .await
+}
+
+async fn new_discussion_category(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, category_slug)): Path<(String, String, String)>,
+    Query(query): Query<NewDiscussionQueryParams>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    repository_new_discussion_response(
+        state,
+        headers,
+        owner,
+        repo,
+        Some(category_slug.as_str()),
+        query.title.as_deref(),
+    )
+    .await
+}
+
+async fn repository_new_discussion_response(
+    state: AppState,
+    headers: HeaderMap,
+    owner: String,
+    repo: String,
+    category_slug: Option<&str>,
+    title_query: Option<&str>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = repository_discussion_creation_for_actor_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        category_slug,
+        title_query,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository discussion creation metadata was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(view)))
+}
+
 async fn discussions_category(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1353,6 +1434,28 @@ async fn discussions_category(
     Query(query): Query<DiscussionsQueryParams>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     repository_discussions_response(state, headers, owner, repo, Some(category_slug), query).await
+}
+
+async fn create_discussion(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Json(request): Json<CreateDiscussionRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let response =
+        create_repository_discussion_by_owner_name(pool, actor.0.id, &owner, &repo, request)
+            .await
+            .map_err(map_repository_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository discussions were not found".to_owned(),
+                )
+            })?;
+    Ok(Json(json!(response)))
 }
 
 async fn repository_discussions_response(

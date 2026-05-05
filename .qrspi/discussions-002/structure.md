@@ -10,7 +10,7 @@
 
 ## Phase 1: Creation Contract and Category Form Data - chooser-ready API
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the persistence and authenticated API contracts needed for the new-discussion flow without rendering the UI yet. The API should expose creation metadata for category cards and selected-category forms, parse discussion template YAML from repository Git content when present, provide safe fallback fields for invalid templates, and create normal non-poll discussions with required similar-search acknowledgement.
 

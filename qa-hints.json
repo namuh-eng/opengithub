@@ -6264,5 +6264,22 @@
       "Manually verify unknown category slugs and disabled organization-policy states in a clean seeded database to confirm repository-safe unavailable/disabled states do not leak private metadata.",
       "Verify notification delivery fanout in the Notifications UI after real upvotes; contract coverage asserts notification rows, but local browser seeding was blocked."
     ]
+  },
+  {
+    "feature_id": "discussions-002",
+    "tests_written": [
+      "Completed Phase 1 creation contract and category form data for repository discussion creation without rendering the UI.",
+      "Added persistence for discussion category forms, form answers, subscriptions, and attachment metadata.",
+      "Added authenticated GET /api/repos/{owner}/{repo}/discussions/new, GET /api/repos/{owner}/{repo}/discussions/new/categories/{slug}, and POST /api/repos/{owner}/{repo}/discussions contracts.",
+      "Focused Rust contract covers private repository privacy, chooser metadata, selected category YAML template parsing and sanitization, similar-search metadata, reader create denial, missing acknowledgement validation, successful normal create, answer/comment/subscription/attachment/activity/notification persistence, and no session-secret leakage.",
+      "Verification passed: cargo fmt --all --check; focused repository_discussions_contract creation test under its database guard; web TypeScript; focused Biome; full TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check; full same-env make test with Cargo tests plus 491 web tests."
+    ],
+    "needs_deeper_qa": [
+      "The focused DB-backed contract path skipped seeded assertions in this workspace because localhost:55432 rejected the available postgres credentials. Re-run the focused test against a credentialed migrated TEST_DATABASE_URL.",
+      "Browser smoke is intentionally deferred because Phase 1 is API-first; Phase 2 should verify the chooser UI and save ralph/screenshots/build/discussions-002-phase2-chooser.jpg.",
+      "Template parsing currently supports input, textarea, dropdown, and checkboxes; Phase 4 should broaden UI handling and validate YAML form creation paths.",
+      "Attachment metadata is persisted from trusted draft metadata only in this phase; later phases must connect real upload/S3 draft creation and validation from the browser.",
+      "Poll creation is intentionally out of scope until Phase 4."
+    ]
   }
 ]

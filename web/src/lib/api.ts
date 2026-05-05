@@ -4557,6 +4557,90 @@ export type DiscussionVoteResponse = {
   votesCount: number;
 };
 
+export type DiscussionCategoryChoice = {
+  id: string;
+  slug: string;
+  name: string;
+  emoji: string;
+  description: string | null;
+  acceptsAnswers: boolean;
+  isPoll: boolean;
+  count: number;
+  openCount: number;
+  href: string;
+  formHref: string;
+};
+
+export type DiscussionFormField = {
+  id: string;
+  fieldType: "input" | "textarea" | "dropdown" | "checkboxes" | string;
+  label: string;
+  description: string | null;
+  placeholder: string | null;
+  required: boolean;
+  options: string[];
+};
+
+export type DiscussionFormDefinition = {
+  categorySlug: string | null;
+  templatePath: string | null;
+  title: string;
+  description: string | null;
+  body: string;
+  fields: DiscussionFormField[];
+  valid: boolean;
+  fallback: boolean;
+  parseError: string | null;
+};
+
+export type DiscussionSimilarSearch = {
+  required: boolean;
+  query: string;
+  href: string;
+};
+
+export type DiscussionCreationView = {
+  repository: DiscussionRepositorySummary;
+  viewer: DiscussionViewer;
+  enabled: boolean;
+  disabledReason: string | null;
+  categories: DiscussionCategoryChoice[];
+  selectedCategory: DiscussionCategoryChoice | null;
+  form: DiscussionFormDefinition;
+  similarSearch: DiscussionSimilarSearch;
+  communityLinks: CommunityLinkSummary[];
+};
+
+export type DiscussionFormAnswerInput = {
+  fieldId: string;
+  value: string;
+};
+
+export type DiscussionAttachmentDraft = {
+  id?: string | null;
+  fileName: string;
+  contentType: string;
+  byteSize: number;
+  storageKey: string;
+};
+
+export type CreateDiscussionRequest = {
+  categorySlug: string;
+  title: string;
+  body?: string | null;
+  similarSearchAcknowledged: boolean;
+  formAnswers?: DiscussionFormAnswerInput[];
+  attachmentDrafts?: DiscussionAttachmentDraft[];
+};
+
+export type CreateDiscussionResponse = {
+  discussionId: string;
+  discussionNumber: number;
+  href: string;
+  title: string;
+  category: DiscussionCategoryChoice;
+};
+
 export type RepositoryDiscussionsQuery = {
   q?: string;
   label?: string;
@@ -4567,6 +4651,11 @@ export type RepositoryDiscussionsQuery = {
   sort?: string;
   page?: number;
   pageSize?: number;
+};
+
+export type RepositoryDiscussionCreationQuery = {
+  category?: string;
+  title?: string;
 };
 
 export type ActionsWorkflowLatestRun = {
@@ -13551,6 +13640,82 @@ export async function getRepositoryDiscussionsFromCookie(
   }
 
   return body as RepositoryDiscussionsView;
+}
+
+export async function getRepositoryDiscussionCreationFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  query: RepositoryDiscussionCreationQuery = {},
+): Promise<DiscussionCreationView | ApiErrorEnvelope> {
+  const params = new URLSearchParams();
+  if (query.category) params.set("category", query.category);
+  if (query.title) params.set("title", query.title);
+  const search = params.toString();
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/new${search ? `?${search}` : ""}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Discussion creation is temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "repository_discussion_creation_failed",
+          message: "Discussion creation metadata could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as DiscussionCreationView;
+}
+
+export async function createRepositoryDiscussionFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  request: CreateDiscussionRequest,
+): Promise<CreateDiscussionResponse> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Discussion could not be created.",
+      { cause: envelope },
+    );
+  }
+
+  return payload as CreateDiscussionResponse;
 }
 
 export async function setRepositoryDiscussionVoteFromCookie(
