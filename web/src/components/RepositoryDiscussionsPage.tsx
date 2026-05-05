@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { RepositoryDiscussionFilters } from "@/components/RepositoryDiscussionFilters";
+import { RepositoryDiscussionVoteButton } from "@/components/RepositoryDiscussionVoteButton";
 import { RepositoryShell } from "@/components/RepositoryShell";
 import type {
   DiscussionAuthorSummary,
@@ -60,10 +61,12 @@ function CategoryChip({ category }: { category: DiscussionCategorySummary }) {
 
 function DiscussionRowItem({
   discussion,
+  discussions,
   owner,
   repo,
 }: {
   discussion: DiscussionRow;
+  discussions: RepositoryDiscussionsView;
   owner: string;
   repo: string;
 }) {
@@ -85,9 +88,15 @@ function DiscussionRowItem({
         >
           {discussion.state === "open" ? "Open" : "Closed"}
         </span>
-        <span className={discussion.viewerVoted ? "chip accent" : "chip soft"}>
-          ▲ <span className="t-num">{formatNumber(discussion.votesCount)}</span>
-        </span>
+        <RepositoryDiscussionVoteButton
+          authenticated={discussions.viewer.authenticated}
+          canVote={discussions.viewer.canVote}
+          discussionNumber={discussion.number}
+          initialViewerVoted={discussion.viewerVoted}
+          initialVotesCount={discussion.votesCount}
+          owner={owner}
+          repo={repo}
+        />
       </div>
       <div className="min-w-0">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -497,6 +506,7 @@ export function RepositoryDiscussionsPage({
                 <li key={discussion.id}>
                   <DiscussionRowItem
                     discussion={discussion}
+                    discussions={discussions}
                     owner={owner}
                     repo={repo}
                   />

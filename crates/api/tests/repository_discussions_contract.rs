@@ -114,7 +114,17 @@ async fn cookie_header(pool: &PgPool, config: &AppConfig, user: &User) -> String
 }
 
 async fn get_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (StatusCode, Value) {
+    request_json(app, "GET", uri, cookie).await
+}
+
+async fn request_json(
+    app: axum::Router,
+    method: &str,
+    uri: &str,
+    cookie: Option<&str>,
+) -> (StatusCode, Value) {
     let mut builder = Request::builder().uri(uri);
+    builder = builder.method(method);
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }
@@ -142,9 +152,11 @@ async fn repository_discussions_return_screen_ready_list_and_category_filters() 
     let config = app_config();
     let owner = create_user(&pool, "discussion-owner").await;
     let reader = create_user(&pool, "discussion-reader").await;
+    let voter = create_user(&pool, "discussion-voter").await;
     let outsider = create_user(&pool, "discussion-outsider").await;
     let owner_cookie = cookie_header(&pool, &config, &owner).await;
     let reader_cookie = cookie_header(&pool, &config, &reader).await;
+    let voter_cookie = cookie_header(&pool, &config, &voter).await;
     let outsider_cookie = cookie_header(&pool, &config, &outsider).await;
 
     let repository = create_repository(
@@ -169,6 +181,15 @@ async fn repository_discussions_return_screen_ready_list_and_category_filters() 
     )
     .await
     .expect("reader permission should grant");
+    grant_repository_permission(
+        &pool,
+        repository.id,
+        voter.id,
+        RepositoryRole::Read,
+        "direct",
+    )
+    .await
+    .expect("voter permission should grant");
 
     let general_id: Uuid = sqlx::query_scalar(
         r#"
@@ -330,11 +351,60 @@ async fn repository_discussions_return_screen_ready_list_and_category_filters() 
     assert_eq!(category_body["categories"][1]["active"], true);
 
     let (invalid_status, invalid_body) = get_json(
-        app,
+        app.clone(),
         &format!("{base}?sort=primer-blue"),
         Some(&reader_cookie),
     )
     .await;
     assert_eq!(invalid_status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(invalid_body["error"]["code"], "validation_failed");
+
+    let vote_path = format!("{base}/1/vote");
+    let (vote_status, vote_body) =
+        request_json(app.clone(), "PUT", &vote_path, Some(&voter_cookie)).await;
+    assert_eq!(vote_status, StatusCode::OK, "{vote_body}");
+    assert_eq!(vote_body["discussionNumber"], 1);
+    assert_eq!(vote_body["viewerVoted"], true);
+    assert_eq!(vote_body["votesCount"], 3);
+    let (idempotent_status, idempotent_body) =
+        request_json(app.clone(), "PUT", &vote_path, Some(&voter_cookie)).await;
+    assert_eq!(idempotent_status, StatusCode::OK, "{idempotent_body}");
+    assert_eq!(idempotent_body["votesCount"], 3);
+    let (unvote_status, unvote_body) =
+        request_json(app.clone(), "DELETE", &vote_path, Some(&voter_cookie)).await;
+    assert_eq!(unvote_status, StatusCode::OK, "{unvote_body}");
+    assert_eq!(unvote_body["viewerVoted"], false);
+    assert_eq!(unvote_body["votesCount"], 2);
+
+    let event_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM discussion_activity_events WHERE discussion_id = $1 AND event_type IN ('voted', 'unvoted')",
+    )
+    .bind(pinned_id)
+    .fetch_one(&pool)
+    .await
+    .expect("vote events should count");
+    assert_eq!(event_count, 2);
+    let notification_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM notifications WHERE subject_type = 'discussion' AND subject_id = $1 AND reason = 'discussion_vote'",
+    )
+    .bind(pinned_id)
+    .fetch_one(&pool)
+    .await
+    .expect("vote notifications should count");
+    assert_eq!(notification_count, 1);
+
+    let (anonymous_vote_status, anonymous_vote_body) =
+        request_json(app.clone(), "PUT", &vote_path, None).await;
+    assert_eq!(anonymous_vote_status, StatusCode::UNAUTHORIZED);
+    assert_eq!(anonymous_vote_body["error"]["code"], "not_authenticated");
+
+    sqlx::query("UPDATE repositories SET is_archived = true WHERE id = $1")
+        .bind(repository.id)
+        .execute(&pool)
+        .await
+        .expect("repository should archive");
+    let (archived_vote_status, archived_vote_body) =
+        request_json(app, "PUT", &vote_path, Some(&voter_cookie)).await;
+    assert_eq!(archived_vote_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(archived_vote_body["error"]["code"], "validation_failed");
 }

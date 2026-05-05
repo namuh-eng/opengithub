@@ -46,7 +46,7 @@ Repository tabs already include a Discussions destination, organization policy e
 
 ## Phase 3: Upvote Writes and Query State - optimistic controls backed by Rust
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire discussion upvote buttons to real authenticated writes and preserve query/filter state through server-confirmed navigation. Anonymous or signed-out viewers should see a sign-in affordance; authenticated viewers should get optimistic count changes that reconcile with the API response.
 

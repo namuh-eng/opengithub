@@ -28,7 +28,8 @@ use crate::{
         ActionsSecretsError, ActionsVariableMutation,
     },
     domain::discussions::{
-        repository_discussions_for_actor_by_owner_name, RepositoryDiscussionsQuery,
+        repository_discussions_for_actor_by_owner_name,
+        set_repository_discussion_vote_by_owner_name, RepositoryDiscussionsQuery,
     },
     domain::pages::{
         connect_repository_pages_actions_deployment_by_owner_name,
@@ -167,6 +168,10 @@ pub fn router() -> Router<AppState> {
         )
         .route("/:owner/:repo/network", get(network))
         .route("/:owner/:repo/discussions", get(discussions))
+        .route(
+            "/:owner/:repo/discussions/:discussion_number/vote",
+            put(vote_discussion).delete(unvote_discussion),
+        )
         .route(
             "/:owner/:repo/discussions/categories/:category_slug",
             get(discussions_category),
@@ -1389,6 +1394,53 @@ async fn repository_discussions_response(
     })?;
 
     Ok(Json(json!(view)))
+}
+
+async fn vote_discussion(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, discussion_number)): Path<(String, String, i64)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    set_discussion_vote(state, headers, owner, repo, discussion_number, true).await
+}
+
+async fn unvote_discussion(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, discussion_number)): Path<(String, String, i64)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    set_discussion_vote(state, headers, owner, repo, discussion_number, false).await
+}
+
+async fn set_discussion_vote(
+    state: AppState,
+    headers: HeaderMap,
+    owner: String,
+    repo: String,
+    discussion_number: i64,
+    voted: bool,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let vote = set_repository_discussion_vote_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        discussion_number,
+        voted,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository discussion was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(vote)))
 }
 
 async fn security_advisories(

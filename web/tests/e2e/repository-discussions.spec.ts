@@ -258,11 +258,17 @@ test("repository discussions list filters, rows, category rail, and mobile layou
   await expect(page).toHaveURL(/\/discussions\/categories\/general/);
   await expect(page.getByRole("heading", { name: /General/ })).toBeVisible();
 
+  const upvote = page.getByRole("button", { name: "Upvote discussion 901" });
+  await upvote.click();
+  await expect(upvote).toHaveAttribute("aria-pressed", "true");
+  await upvote.click();
+  await expect(upvote).toHaveAttribute("aria-pressed", "false");
+
   await page.setViewportSize({ width: 390, height: 900 });
   await expect(page.locator("body")).not.toHaveCSS("overflow-x", "scroll");
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/discussions-001-phase2-list.jpg",
+    path: "../ralph/screenshots/build/discussions-001-phase3-votes.jpg",
   });
 });

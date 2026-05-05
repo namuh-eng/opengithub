@@ -1,7 +1,19 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RepositoryDiscussionsPage } from "@/components/RepositoryDiscussionsPage";
 import type { RepositoryDiscussionsView, RepositoryOverview } from "@/lib/api";
+
+const refreshMock = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: refreshMock }),
+}));
 
 function repositoryOverview(
   overrides: Partial<RepositoryOverview> = {},
@@ -200,6 +212,11 @@ function discussionsView(
 }
 
 describe("RepositoryDiscussionsPage", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    refreshMock.mockClear();
+  });
+
   it("renders the Editorial discussions list with active tab, pinned cards, filters, rows, and rails", () => {
     const { container } = render(
       <RepositoryDiscussionsPage
@@ -244,6 +261,121 @@ describe("RepositoryDiscussionsPage", () => {
     expect(container.querySelector('[href="#"]')).toBeNull();
     expect(container.innerHTML).not.toContain("#0969da");
     expect(container.innerHTML).not.toContain("@primer/");
+  });
+
+  it("optimistically upvotes and unvotes discussions with server reconciliation", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            discussionId: "discussion-2",
+            discussionNumber: 13,
+            viewerVoted: true,
+            votesCount: 4,
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            discussionId: "discussion-2",
+            discussionNumber: 13,
+            viewerVoted: false,
+            votesCount: 3,
+          }),
+          { status: 200 },
+        ),
+      );
+
+    render(
+      <RepositoryDiscussionsPage
+        discussions={discussionsView()}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    const upvote = screen.getByRole("button", {
+      name: "Upvote discussion 13",
+    });
+    fireEvent.click(upvote);
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/namuh-eng/opengithub/discussions/13/vote",
+        { method: "PUT" },
+      ),
+    );
+    await waitFor(() => expect(upvote).toHaveAttribute("aria-pressed", "true"));
+    expect(upvote).toHaveTextContent("4");
+    expect(refreshMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(upvote);
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        "/namuh-eng/opengithub/discussions/13/vote",
+        { method: "DELETE" },
+      ),
+    );
+    await waitFor(() =>
+      expect(upvote).toHaveAttribute("aria-pressed", "false"),
+    );
+    expect(upvote).toHaveTextContent("3");
+    expect(refreshMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("rolls back failed discussion votes and shows signed-out affordances", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "validation_failed",
+            message: "Repository discussions are disabled.",
+          },
+          status: 422,
+        }),
+        { status: 422 },
+      ),
+    );
+
+    const { rerender } = render(
+      <RepositoryDiscussionsPage
+        discussions={discussionsView()}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    const upvote = screen.getByRole("button", {
+      name: "Upvote discussion 13",
+    });
+    fireEvent.click(upvote);
+    await waitFor(() =>
+      expect(upvote).toHaveAttribute("aria-pressed", "false"),
+    );
+    expect(upvote).toHaveTextContent("3");
+    expect(
+      screen.getByText("Repository discussions are disabled."),
+    ).toBeVisible();
+
+    rerender(
+      <RepositoryDiscussionsPage
+        discussions={discussionsView({
+          viewer: {
+            authenticated: false,
+            permission: null,
+            canRead: true,
+            canVote: false,
+            canCreate: false,
+          },
+        })}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(
+      screen.getAllByRole("link", { name: /Sign in to upvote discussion/i })[0],
+    ).toHaveAttribute("href", "/login?next=/namuh-eng/opengithub/discussions");
   });
 
   it("composes filter links and empty category CTAs without dead controls", () => {

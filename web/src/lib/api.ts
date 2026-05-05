@@ -4550,6 +4550,13 @@ export type RepositoryDiscussionsView = {
   hasNextPage: boolean;
 };
 
+export type DiscussionVoteResponse = {
+  discussionId: string;
+  discussionNumber: number;
+  viewerVoted: boolean;
+  votesCount: number;
+};
+
 export type RepositoryDiscussionsQuery = {
   q?: string;
   label?: string;
@@ -13544,6 +13551,34 @@ export async function getRepositoryDiscussionsFromCookie(
   }
 
   return body as RepositoryDiscussionsView;
+}
+
+export async function setRepositoryDiscussionVoteFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  discussionNumber: number | string,
+  voted: boolean,
+): Promise<DiscussionVoteResponse> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/${encodeURIComponent(String(discussionNumber))}/vote`,
+    {
+      method: voted ? "PUT" : "DELETE",
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Discussion vote could not be updated.",
+      { cause: envelope },
+    );
+  }
+
+  return payload as DiscussionVoteResponse;
 }
 
 function repositoryDiscussionsPath(

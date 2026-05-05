@@ -4,6 +4,7 @@ use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 use super::{
+    notifications::{create_notification, CreateNotification},
     permissions::RepositoryRole,
     repositories::{
         get_repository_by_owner_name, repository_permission_for_user, RepositoryError,
@@ -171,6 +172,15 @@ pub struct CommunityLinkSummary {
     pub kind: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionVoteResponse {
+    pub discussion_id: Uuid,
+    pub discussion_number: i64,
+    pub viewer_voted: bool,
+    pub votes_count: i64,
+}
+
 #[derive(Debug)]
 struct NormalizedDiscussionFilters {
     query: String,
@@ -319,6 +329,151 @@ pub async fn repository_discussions_for_actor_by_owner_name(
         page: filters.page,
         page_size: filters.page_size,
         has_next_page: filters.page * filters.page_size < total,
+    }))
+}
+
+pub async fn set_repository_discussion_vote_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    discussion_number: i64,
+    voted: bool,
+) -> Result<Option<DiscussionVoteResponse>, RepositoryError> {
+    if discussion_number < 1 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "discussion number must be positive".to_owned(),
+        ));
+    }
+    let Some(repository) = get_repository_by_owner_name(pool, owner, repo).await? else {
+        return Ok(None);
+    };
+    let permission = repository_permission_for_user(pool, repository.id, actor_user_id).await?;
+    let can_read = repository.visibility == RepositoryVisibility::Public
+        || repository.owner_user_id == Some(actor_user_id)
+        || permission.as_ref().is_some_and(|p| p.role.can_read());
+    if !can_read {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if repository.is_archived {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "archived repositories do not accept discussion votes".to_owned(),
+        ));
+    }
+    if !repository_discussions_policy_enabled(pool, repository.id).await? {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "repository discussions are disabled by organization policy".to_owned(),
+        ));
+    }
+
+    let Some(row) = sqlx::query(
+        r#"
+        SELECT id, number, title, author_user_id
+        FROM discussions
+        WHERE repository_id = $1 AND number = $2
+        "#,
+    )
+    .bind(repository.id)
+    .bind(discussion_number)
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Ok(None);
+    };
+    let discussion_id: Uuid = row.try_get("id")?;
+    let title: String = row.try_get("title")?;
+    let author_user_id: Option<Uuid> = row.try_get("author_user_id")?;
+
+    let changed = if voted {
+        sqlx::query(
+            "INSERT INTO discussion_votes (discussion_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        )
+        .bind(discussion_id)
+        .bind(actor_user_id)
+        .execute(pool)
+        .await?
+        .rows_affected()
+            > 0
+    } else {
+        sqlx::query("DELETE FROM discussion_votes WHERE discussion_id = $1 AND user_id = $2")
+            .bind(discussion_id)
+            .bind(actor_user_id)
+            .execute(pool)
+            .await?
+            .rows_affected()
+            > 0
+    };
+
+    let votes_count: i64 = sqlx::query_scalar(
+        r#"
+        UPDATE discussions
+        SET votes_count = (
+                SELECT COUNT(*)::bigint
+                FROM discussion_votes
+                WHERE discussion_votes.discussion_id = discussions.id
+            ),
+            last_activity_at = CASE WHEN $3 THEN now() ELSE last_activity_at END,
+            updated_at = CASE WHEN $3 THEN now() ELSE updated_at END
+        WHERE id = $1 AND number = $2
+        RETURNING votes_count
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(discussion_number)
+    .bind(changed)
+    .fetch_one(pool)
+    .await?;
+
+    if changed {
+        let event_type = if voted { "voted" } else { "unvoted" };
+        sqlx::query(
+            r#"
+            INSERT INTO discussion_activity_events (discussion_id, actor_user_id, event_type, payload)
+            VALUES ($1, $2, $3, jsonb_build_object('votesCount', $4))
+            "#,
+        )
+        .bind(discussion_id)
+        .bind(actor_user_id)
+        .bind(event_type)
+        .bind(votes_count)
+        .execute(pool)
+        .await?;
+
+        if voted {
+            if let Some(author_user_id) = author_user_id.filter(|id| *id != actor_user_id) {
+                create_notification(
+                    pool,
+                    CreateNotification {
+                        user_id: author_user_id,
+                        repository_id: Some(repository.id),
+                        subject_type: "discussion".to_owned(),
+                        subject_id: Some(discussion_id),
+                        title: format!(
+                            "Discussion #{} received an upvote: {}",
+                            discussion_number, title
+                        ),
+                        reason: "discussion_vote".to_owned(),
+                    },
+                )
+                .await
+                .map_err(|error| match error {
+                    super::notifications::NotificationError::Sqlx(error) => {
+                        RepositoryError::Sqlx(error)
+                    }
+                    super::notifications::NotificationError::NotFound
+                    | super::notifications::NotificationError::Validation(_) => {
+                        RepositoryError::NotFound
+                    }
+                })?;
+            }
+        }
+    }
+
+    Ok(Some(DiscussionVoteResponse {
+        discussion_id,
+        discussion_number,
+        viewer_voted: voted,
+        votes_count,
     }))
 }
 
