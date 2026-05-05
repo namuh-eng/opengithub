@@ -3407,6 +3407,14 @@
       "exit_code": 0,
       "category": "api_error",
       "attempt": 357
+    },
+    {
+      "timestamp": "2026-05-05T13:56:06.830976",
+      "phase": "build",
+      "feature": "build_cycle_1",
+      "exit_code": 0,
+      "category": "test_failure",
+      "attempt": 358
     }
   ]
 }
