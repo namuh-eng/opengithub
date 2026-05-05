@@ -226,6 +226,13 @@ export const REPOSITORY_TABS = [
     protected: false,
   },
   {
+    href: "/discussions",
+    label: "Discussions",
+    segment: "discussions",
+    kind: "repository",
+    protected: false,
+  },
+  {
     href: "/projects",
     label: "Projects",
     segment: "projects",
@@ -1774,6 +1781,95 @@ export function repositoryTabHref(
   tab: RepositoryTab,
 ) {
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}${tab.href}`;
+}
+
+export type RepositoryDiscussionHrefQuery = {
+  q?: string | null;
+  label?: string | null;
+  state?: string | null;
+  answered?: boolean | string | null;
+  locked?: boolean | string | null;
+  pinned?: boolean | string | null;
+  sort?: string | null;
+  page?: number | string | null;
+  pageSize?: number | string | null;
+};
+
+function appendDiscussionParams(
+  params: URLSearchParams,
+  query: RepositoryDiscussionHrefQuery,
+) {
+  if (query.q?.trim()) params.set("q", query.q.trim());
+  if (query.label?.trim()) params.set("label", query.label.trim());
+  if (query.state?.trim() && query.state !== "open") {
+    params.set("state", query.state.trim());
+  }
+  if (query.answered !== null && query.answered !== undefined) {
+    params.set("answered", String(query.answered));
+  }
+  if (query.locked !== null && query.locked !== undefined) {
+    params.set("locked", String(query.locked));
+  }
+  if (query.pinned !== null && query.pinned !== undefined) {
+    params.set("pinned", String(query.pinned));
+  }
+  if (query.sort?.trim() && query.sort !== "latest") {
+    params.set("sort", query.sort.trim());
+  }
+  if (query.page && String(query.page) !== "1") {
+    params.set("page", String(query.page));
+  }
+  if (query.pageSize && String(query.pageSize) !== "30") {
+    params.set("page_size", String(query.pageSize));
+  }
+}
+
+export function repositoryDiscussionsHref(
+  owner: string,
+  repo: string,
+  query: RepositoryDiscussionHrefQuery = {},
+) {
+  const params = new URLSearchParams();
+  appendDiscussionParams(params, query);
+  const search = params.toString();
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions${
+    search ? `?${search}` : ""
+  }`;
+}
+
+export function repositoryDiscussionCategoryHref(
+  owner: string,
+  repo: string,
+  categorySlug: string,
+  query: RepositoryDiscussionHrefQuery = {},
+) {
+  const params = new URLSearchParams();
+  appendDiscussionParams(params, query);
+  const search = params.toString();
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/categories/${encodeURIComponent(categorySlug)}${
+    search ? `?${search}` : ""
+  }`;
+}
+
+export function repositoryDiscussionDetailHref(
+  owner: string,
+  repo: string,
+  number: number | string,
+) {
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/${encodeURIComponent(String(number))}`;
+}
+
+export function repositoryNewDiscussionHref(
+  owner: string,
+  repo: string,
+  categorySlug?: string | null,
+) {
+  const params = new URLSearchParams();
+  if (categorySlug?.trim()) params.set("category", categorySlug.trim());
+  const search = params.toString();
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/new${
+    search ? `?${search}` : ""
+  }`;
 }
 
 export type RepositoryIssueHrefQuery = {

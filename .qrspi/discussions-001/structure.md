@@ -28,7 +28,7 @@ Repository tabs already include a Discussions destination, organization policy e
 
 ## Phase 2: Editorial Discussions List Page - repository tab, pinned cards, filters, and rows
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement `/{owner}/{repo}/discussions` inside the repository workspace with the Discussions tab active. The page should render Phase 1 data with URL-backed query controls, pinned cards, dense discussion rows, category rail, helpful contributors, community links, empty states, and concrete New discussion/detail/category links.
 

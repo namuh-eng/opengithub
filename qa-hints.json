@@ -6191,5 +6191,24 @@
       "The focused DB-backed contract test could not seed data in this workspace because localhost:55432 rejected the available postgres credentials; the test compiled and executed its skip guard. Re-run with a credentialed TEST_DATABASE_URL to exercise the seeded assertions.",
       "Browser smoke was skipped because Phase 1 is API-first and .qrspi/discussions-001/structure.md marks browser smoke optional for this phase."
     ]
+  },
+  {
+    "feature_id": "discussions-001",
+    "tests_written": [
+      "Completed Phase 2 Editorial Discussions List Page without marking discussions-001 build_pass=true.",
+      "Added /{owner}/{repo}/discussions App Router page backed by the Phase 1 Rust Discussions API and signed-cookie session helpers.",
+      "Added RepositoryDiscussionsPage and RepositoryDiscussionFilters with active repository Discussions tab, default is:open query, pinned cards, Open/Closed/All tabs, search, state/label/filter/sort URL controls, New discussion links, dense discussion rows, category rail, helpful contributors, community links, disabled policy callout, and empty state CTA using Editorial tokens/primitives only.",
+      "Added navigation helpers for discussions list, category, detail, and new-discussion URLs with encoded path/query parameters.",
+      "Added focused Vitest coverage for active tab, pinned cards, filter href composition, labels/status chips, row/category/new links, disabled and empty states, no href=#, no inert untyped buttons from this page, long-title wrapping, mobile container rendering, and banned GitHub/Primer visual guardrails.",
+      "Added focused Playwright smoke web/tests/e2e/repository-discussions.spec.ts to seed discussions, verify list filters, row/category navigation, no dead controls, mobile no-overflow, and save ralph/screenshots/build/discussions-001-phase2-list.jpg when a usable database URL is available.",
+      "Verification passed: cd web && npx tsc --noEmit --pretty false; focused Biome checks for changed web files and E2E spec; focused web/tests/repository-discussions-page.test.tsx with 3 tests; full TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check; full same-env make test with Cargo tests plus 489 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Phase 3 still needs authenticated upvote/unvote endpoints, optimistic vote UI, rollback behavior, and activity/notification side effects.",
+      "Phase 4 still needs the category route page variant with category-specific empty states and active rail behavior.",
+      "Phase 5 still needs API docs, final browser evidence, QA handoff, prd.json build_pass=true, and final screenshots.",
+      "Focused Playwright smoke reached the browser runner, but database seeding failed because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test rejected the available postgres credentials. Re-run web/tests/e2e/repository-discussions.spec.ts with a credentialed migrated TEST_DATABASE_URL to verify the browser flow and save the Phase 2 screenshot.",
+      "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures."
+    ]
   }
 ]
