@@ -1,12 +1,17 @@
+"use client";
+
 import Link from "next/link";
+import { type FormEvent, useState, useTransition } from "react";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { RepositoryShell } from "@/components/RepositoryShell";
 import type {
   DiscussionAuthorSummary,
   DiscussionCommentView,
   DiscussionEventView,
+  DiscussionReactionContent,
   DiscussionReactionSummary,
   DiscussionReplyView,
+  DiscussionSubscriptionState,
   RepositoryDiscussionDetailView,
   RepositoryOverview,
 } from "@/lib/api";
@@ -19,6 +24,20 @@ type RepositoryDiscussionDetailPageProps = {
   repository: RepositoryOverview;
   detail: RepositoryDiscussionDetailView;
 };
+
+const reactionOptions: Array<{
+  value: DiscussionReactionContent;
+  label: string;
+}> = [
+  { value: "+1", label: "+1" },
+  { value: "-1", label: "-1" },
+  { value: "laugh", label: "Laugh" },
+  { value: "hooray", label: "Hooray" },
+  { value: "confused", label: "Confused" },
+  { value: "heart", label: "Heart" },
+  { value: "rocket", label: "Rocket" },
+  { value: "eyes", label: "Eyes" },
+];
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat("en").format(value);
@@ -65,25 +84,48 @@ function statusChip(detail: RepositoryDiscussionDetailView) {
 function ReactionSummary({
   label,
   reactions,
+  canReact,
+  onToggle,
 }: {
   label: string;
   reactions: DiscussionReactionSummary[];
+  canReact: boolean;
+  onToggle?: (content: DiscussionReactionContent, reacted: boolean) => void;
 }) {
-  const visible = reactions.filter((reaction) => reaction.count > 0);
+  const byContent = new Map(
+    reactions.map((reaction) => [reaction.content, reaction]),
+  );
+  const visible = reactionOptions
+    .map((option) => ({
+      ...option,
+      reaction: byContent.get(option.value),
+    }))
+    .filter(({ reaction }) => canReact || (reaction?.count ?? 0) > 0);
   if (!visible.length) return null;
   return (
     <fieldset
       aria-label={label}
       className="mt-4 flex flex-wrap gap-2 border-0 p-0"
     >
-      {visible.map((reaction) => (
-        <span
-          className={reaction.viewerReacted ? "chip active" : "chip soft"}
-          key={reaction.content}
-        >
-          {reaction.content} <span className="t-num">{reaction.count}</span>
-        </span>
-      ))}
+      {visible.map(({ label, reaction, value }) => {
+        const active = Boolean(reaction?.viewerReacted);
+        const count = reaction?.count ?? 0;
+        return canReact && onToggle ? (
+          <button
+            aria-pressed={active}
+            className={active ? "chip active" : "chip soft"}
+            key={value}
+            onClick={() => onToggle(value, !active)}
+            type="button"
+          >
+            {label} <span className="t-num">{count}</span>
+          </button>
+        ) : (
+          <span className={active ? "chip active" : "chip soft"} key={value}>
+            {label} <span className="t-num">{count}</span>
+          </span>
+        );
+      })}
     </fieldset>
   );
 }
@@ -91,11 +133,39 @@ function ReactionSummary({
 function CommentCard({
   comment,
   isAnswer,
+  canComment,
+  canReact,
+  onReply,
+  onReaction,
 }: {
   comment: DiscussionCommentView | DiscussionReplyView;
   isAnswer?: boolean;
+  canComment: boolean;
+  canReact: boolean;
+  onReply?: (commentId: string, body: string) => Promise<void>;
+  onReaction?: (
+    commentId: string,
+    content: DiscussionReactionContent,
+    reacted: boolean,
+  ) => void;
 }) {
   const labelId = `discussion-comment-${comment.id}`;
+  const [replyBody, setReplyBody] = useState("");
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  const hasReplies = "replies" in comment;
+
+  function submitReply(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!onReply || !replyBody.trim()) return;
+    startTransition(() => {
+      void onReply(comment.id, replyBody).then(() => {
+        setReplyBody("");
+        setReplyOpen(false);
+      });
+    });
+  }
+
   return (
     <article className="flex min-w-0 gap-4" id={comment.id}>
       <Avatar size="lg" user={comment.author} />
@@ -134,9 +204,57 @@ function CommentCard({
             <MarkdownBody html={comment.body.html} labelledBy={labelId} />
           )}
           <ReactionSummary
+            canReact={canReact}
             label={`Reactions for ${comment.author.login} comment`}
+            onToggle={
+              onReaction
+                ? (content, reacted) => onReaction(comment.id, content, reacted)
+                : undefined
+            }
             reactions={comment.reactions}
           />
+          {hasReplies && canComment ? (
+            <div className="mt-4">
+              {replyOpen ? (
+                <form className="grid gap-3" onSubmit={submitReply}>
+                  <label className="t-label" htmlFor={`reply-${comment.id}`}>
+                    Reply
+                  </label>
+                  <textarea
+                    className="input min-h-24 w-full"
+                    id={`reply-${comment.id}`}
+                    onChange={(event) => setReplyBody(event.target.value)}
+                    placeholder="Write a thoughtful reply"
+                    value={replyBody}
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      className="btn accent sm"
+                      disabled={isPending || !replyBody.trim()}
+                      type="submit"
+                    >
+                      Reply
+                    </button>
+                    <button
+                      className="btn sm"
+                      onClick={() => setReplyOpen(false)}
+                      type="button"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  className="btn sm"
+                  onClick={() => setReplyOpen(true)}
+                  type="button"
+                >
+                  Reply
+                </button>
+              )}
+            </div>
+          ) : null}
         </div>
       </div>
     </article>
@@ -194,31 +312,71 @@ function SortLinks({
   );
 }
 
-function ReplyComposer({ detail }: { detail: RepositoryDiscussionDetailView }) {
+function ReplyComposer({
+  detail,
+  onComment,
+}: {
+  detail: RepositoryDiscussionDetailView;
+  onComment: (body: string) => Promise<void>;
+}) {
   const canComment = detail.viewer.authenticated && detail.viewer.canComment;
+  const [body, setBody] = useState("");
+  const [mode, setMode] = useState<"write" | "preview">("write");
+  const [isPending, startTransition] = useTransition();
+
+  function submitComment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canComment || !body.trim()) return;
+    startTransition(() => {
+      void onComment(body).then(() => setBody(""));
+    });
+  }
+
   return (
-    <section className="card p-4" aria-label="Reply composer">
+    <form
+      className="card p-4"
+      aria-label="Reply composer"
+      onSubmit={submitComment}
+    >
       <div className="tabs">
-        <button className="tab active" type="button">
+        <button
+          className={mode === "write" ? "tab active" : "tab"}
+          onClick={() => setMode("write")}
+          type="button"
+        >
           Write
         </button>
-        <button className="tab" disabled type="button">
+        <button
+          className={mode === "preview" ? "tab active" : "tab"}
+          onClick={() => setMode("preview")}
+          type="button"
+        >
           Preview
         </button>
       </div>
       <label className="t-label mt-4 block" htmlFor="discussion-reply">
         Reply
       </label>
-      <textarea
-        className="input mt-2 min-h-32 w-full"
-        disabled
-        id="discussion-reply"
-        placeholder={
-          canComment
-            ? "Comment writing lands in the next implementation phase."
-            : "Sign in with write access to join this discussion."
-        }
-      />
+      {mode === "preview" ? (
+        <div className="card mt-2 min-h-32 p-4">
+          <p className="t-sm whitespace-pre-wrap">
+            {body.trim() || "Nothing to preview yet."}
+          </p>
+        </div>
+      ) : (
+        <textarea
+          className="input mt-2 min-h-32 w-full"
+          disabled={!canComment || isPending}
+          id="discussion-reply"
+          onChange={(event) => setBody(event.target.value)}
+          placeholder={
+            canComment
+              ? "Write a comment"
+              : "Sign in with repository access to join this discussion."
+          }
+          value={body}
+        />
+      )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button className="btn sm" disabled type="button">
           Saved replies
@@ -226,31 +384,45 @@ function ReplyComposer({ detail }: { detail: RepositoryDiscussionDetailView }) {
         <button className="btn sm" disabled type="button">
           Attach files
         </button>
-        <button className="btn accent sm" disabled type="button">
+        <button
+          className="btn accent sm"
+          disabled={!canComment || isPending || !body.trim()}
+          type="submit"
+        >
           Comment
         </button>
       </div>
       <p className="t-xs mt-3" style={{ color: "var(--ink-3)" }}>
-        Comment, attachment, and preview writes are disabled until Phase 3.
+        Attachment upload storage is not yet connected; comment text is saved
+        now.
       </p>
-    </section>
+    </form>
   );
 }
 
-function Sidebar({ detail }: { detail: RepositoryDiscussionDetailView }) {
+function Sidebar({
+  detail,
+  subscription,
+  onSubscription,
+}: {
+  detail: RepositoryDiscussionDetailView;
+  subscription: DiscussionSubscriptionState;
+  onSubscription: (subscribed: boolean) => void;
+}) {
   return (
     <aside className="space-y-5">
       <section className="card p-4">
         <h2 className="t-label">Notifications</h2>
         <p className="t-sm mt-2">
-          {detail.subscription.subscribed ? "Subscribed" : "Not subscribed"}
+          {subscription.subscribed ? "Subscribed" : "Not subscribed"}
         </p>
         <button
           className="btn sm mt-3"
-          disabled={!detail.subscription.canChange}
+          disabled={!subscription.canChange}
+          onClick={() => onSubscription(!subscription.subscribed)}
           type="button"
         >
-          {detail.subscription.subscribed ? "Unsubscribe" : "Subscribe"}
+          {subscription.subscribed ? "Unsubscribe" : "Subscribe"}
         </button>
       </section>
       <section className="card p-4">
@@ -303,9 +475,93 @@ export function RepositoryDiscussionDetailPage({
   repository,
   detail,
 }: RepositoryDiscussionDetailPageProps) {
+  const [currentDetail, setCurrentDetail] = useState(detail);
+  const [subscription, setSubscription] = useState(detail.subscription);
+  const [reactions, setReactions] = useState(detail.reactions);
+  const [message, setMessage] = useState<string | null>(null);
   const owner = repository.owner_login;
   const repo = repository.name;
   const bodyLabelId = "discussion-body";
+  const detailHref = repositoryDiscussionDetailHref(
+    owner,
+    repo,
+    detail.discussion.number,
+  );
+  const canReact =
+    currentDetail.viewer.authenticated && currentDetail.viewer.canReact;
+  const canComment =
+    currentDetail.viewer.authenticated && currentDetail.viewer.canComment;
+
+  async function mutateDetail(path: string, body: string) {
+    setMessage(null);
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ body }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      setMessage(payload?.error?.message ?? "Discussion could not be updated.");
+      return;
+    }
+    setCurrentDetail(payload);
+    setSubscription(payload.subscription);
+    setReactions(payload.reactions);
+    setMessage("Discussion updated.");
+  }
+
+  async function toggleReaction(
+    content: DiscussionReactionContent,
+    reacted: boolean,
+    commentId?: string,
+  ) {
+    setMessage(null);
+    const target = commentId
+      ? `${detailHref}/comments/${encodeURIComponent(commentId)}/reactions`
+      : `${detailHref}/reactions`;
+    const response = await fetch(target, {
+      method: reacted ? "PUT" : "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      setMessage(payload?.error?.message ?? "Reaction could not be updated.");
+      return;
+    }
+    if (commentId) {
+      setCurrentDetail((previous) => ({
+        ...previous,
+        timeline: previous.timeline.map((item) =>
+          item.kind === "comment"
+            ? {
+                ...updateCommentReactions(item, commentId, payload),
+                kind: "comment" as const,
+              }
+            : item,
+        ),
+      }));
+    } else {
+      setReactions(payload);
+    }
+  }
+
+  async function toggleSubscription(subscribed: boolean) {
+    setMessage(null);
+    const response = await fetch(`${detailHref}/subscription`, {
+      method: subscribed ? "PUT" : "DELETE",
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      setMessage(
+        payload?.error?.message ??
+          "Notification subscription could not be updated.",
+      );
+      return;
+    }
+    setSubscription(payload);
+    setMessage(payload.subscribed ? "Subscribed." : "Unsubscribed.");
+  }
 
   return (
     <RepositoryShell
@@ -335,10 +591,11 @@ export function RepositoryDiscussionDetailPage({
                   {relativeTime(detail.discussion.createdAt)}
                 </span>
                 <span className="chip soft">
-                  {formatNumber(detail.discussion.commentsCount)} comments
+                  {formatNumber(currentDetail.discussion.commentsCount)}{" "}
+                  comments
                 </span>
                 <span className="chip soft">
-                  {formatNumber(detail.discussion.votesCount)} votes
+                  {formatNumber(currentDetail.discussion.votesCount)} votes
                 </span>
               </div>
             </div>
@@ -400,8 +657,12 @@ export function RepositoryDiscussionDetailPage({
                 </section>
               ) : null}
               <ReactionSummary
+                canReact={canReact}
                 label="Discussion reactions"
-                reactions={detail.reactions}
+                onToggle={(content, reacted) =>
+                  toggleReaction(content, reacted)
+                }
+                reactions={reactions}
               />
             </div>
           </div>
@@ -410,21 +671,49 @@ export function RepositoryDiscussionDetailPage({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <SortLinks detail={detail} owner={owner} repo={repo} />
           <p className="t-xs" style={{ color: "var(--ink-3)" }}>
-            {formatNumber(detail.totalComments)} timeline comments
+            {formatNumber(currentDetail.totalComments)} timeline comments
           </p>
         </div>
 
+        {message ? (
+          <p className="chip soft" role="status">
+            {message}
+          </p>
+        ) : null}
+
         <section aria-label="Discussion timeline" className="space-y-5">
-          {detail.timeline.map((item) =>
+          {currentDetail.timeline.map((item) =>
             item.kind === "event" ? (
               <EventRow event={item} key={item.id} />
             ) : (
               <div className="space-y-4" key={item.id}>
-                <CommentCard comment={item} isAnswer={item.answer} />
+                <CommentCard
+                  canComment={canComment}
+                  canReact={canReact}
+                  comment={item}
+                  isAnswer={item.answer}
+                  onReaction={(commentId, content, reacted) =>
+                    toggleReaction(content, reacted, commentId)
+                  }
+                  onReply={(commentId, body) =>
+                    mutateDetail(
+                      `${detailHref}/comments/${encodeURIComponent(commentId)}/replies`,
+                      body,
+                    )
+                  }
+                />
                 {item.replies.length ? (
                   <div className="space-y-4 pl-8 sm:pl-16">
                     {item.replies.map((reply) => (
-                      <CommentCard comment={reply} key={reply.id} />
+                      <CommentCard
+                        canComment={false}
+                        canReact={canReact}
+                        comment={reply}
+                        key={reply.id}
+                        onReaction={(commentId, content, reacted) =>
+                          toggleReaction(content, reacted, commentId)
+                        }
+                      />
                     ))}
                   </div>
                 ) : null}
@@ -433,9 +722,30 @@ export function RepositoryDiscussionDetailPage({
           )}
         </section>
 
-        <ReplyComposer detail={detail} />
+        <ReplyComposer
+          detail={currentDetail}
+          onComment={(body) => mutateDetail(`${detailHref}/comments`, body)}
+        />
       </main>
-      <Sidebar detail={detail} />
+      <Sidebar
+        detail={currentDetail}
+        onSubscription={toggleSubscription}
+        subscription={subscription}
+      />
     </RepositoryShell>
   );
+}
+
+function updateCommentReactions(
+  comment: DiscussionCommentView,
+  commentId: string,
+  reactions: DiscussionReactionSummary[],
+): DiscussionCommentView {
+  if (comment.id === commentId) return { ...comment, reactions };
+  return {
+    ...comment,
+    replies: comment.replies.map((reply) =>
+      reply.id === commentId ? { ...reply, reactions } : reply,
+    ),
+  };
 }

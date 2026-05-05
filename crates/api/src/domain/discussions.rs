@@ -485,6 +485,31 @@ pub struct CreateDiscussionResponse {
     pub category: DiscussionCategoryChoice,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateDiscussionCommentRequest {
+    pub body: String,
+    #[serde(default)]
+    pub attachment_drafts: Vec<DiscussionAttachmentDraft>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionReactionRequest {
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionSubscriptionRequest {
+    pub subscribed: bool,
+}
+
+pub struct DiscussionReactionMutation<'a> {
+    pub content: &'a str,
+    pub reacted: bool,
+}
+
 #[derive(Debug)]
 struct NormalizedDiscussionFilters {
     query: String,
@@ -1253,6 +1278,228 @@ pub async fn create_repository_discussion_by_owner_name(
     }))
 }
 
+pub async fn create_repository_discussion_comment_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    discussion_number: i64,
+    request: CreateDiscussionCommentRequest,
+) -> Result<Option<RepositoryDiscussionDetailView>, RepositoryError> {
+    create_discussion_comment_or_reply(
+        pool,
+        actor_user_id,
+        owner,
+        repo,
+        discussion_number,
+        None,
+        request,
+    )
+    .await
+}
+
+pub async fn create_repository_discussion_reply_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    discussion_number: i64,
+    comment_id: Uuid,
+    request: CreateDiscussionCommentRequest,
+) -> Result<Option<RepositoryDiscussionDetailView>, RepositoryError> {
+    create_discussion_comment_or_reply(
+        pool,
+        actor_user_id,
+        owner,
+        repo,
+        discussion_number,
+        Some(comment_id),
+        request,
+    )
+    .await
+}
+
+pub async fn toggle_repository_discussion_reaction_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    discussion_number: i64,
+    comment_id: Option<Uuid>,
+    mutation: DiscussionReactionMutation<'_>,
+) -> Result<Option<Vec<DiscussionReactionSummary>>, RepositoryError> {
+    let content = normalize_discussion_reaction(mutation.content)?;
+    let Some((repository, discussion_id, _title, _author_user_id)) =
+        load_discussion_mutation_context(pool, actor_user_id, owner, repo, discussion_number)
+            .await?
+    else {
+        return Ok(None);
+    };
+    if repository.is_archived {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "archived repositories do not accept discussion reactions".to_owned(),
+        ));
+    }
+    if !repository_discussions_policy_enabled(pool, repository.id).await? {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "repository discussions are disabled by organization policy".to_owned(),
+        ));
+    }
+    if let Some(comment_id) = comment_id {
+        let exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM discussion_comments WHERE discussion_id = $1 AND id = $2)",
+        )
+        .bind(discussion_id)
+        .bind(comment_id)
+        .fetch_one(pool)
+        .await?;
+        if !exists {
+            return Err(RepositoryError::NotFound);
+        }
+    }
+
+    let changed = if mutation.reacted {
+        let exists: bool = sqlx::query_scalar(
+            r#"
+            SELECT EXISTS(
+                SELECT 1
+                FROM discussion_reactions
+                WHERE discussion_id = $1
+                  AND (($2::uuid IS NULL AND comment_id IS NULL) OR comment_id = $2)
+                  AND user_id = $3
+                  AND content = $4
+            )
+            "#,
+        )
+        .bind(discussion_id)
+        .bind(comment_id)
+        .bind(actor_user_id)
+        .bind(&content)
+        .fetch_one(pool)
+        .await?;
+        if exists {
+            false
+        } else {
+            sqlx::query(
+                r#"
+                INSERT INTO discussion_reactions (discussion_id, comment_id, user_id, content)
+                VALUES ($1, $2, $3, $4)
+                "#,
+            )
+            .bind(discussion_id)
+            .bind(comment_id)
+            .bind(actor_user_id)
+            .bind(&content)
+            .execute(pool)
+            .await?
+            .rows_affected()
+                > 0
+        }
+    } else {
+        sqlx::query(
+            r#"
+            DELETE FROM discussion_reactions
+            WHERE discussion_id = $1
+              AND (($2::uuid IS NULL AND comment_id IS NULL) OR comment_id = $2)
+              AND user_id = $3
+              AND content = $4
+            "#,
+        )
+        .bind(discussion_id)
+        .bind(comment_id)
+        .bind(actor_user_id)
+        .bind(&content)
+        .execute(pool)
+        .await?
+        .rows_affected()
+            > 0
+    };
+
+    if changed {
+        sqlx::query(
+            r#"
+            INSERT INTO discussion_activity_events (discussion_id, actor_user_id, event_type, payload)
+            VALUES ($1, $2, $3, jsonb_build_object('content', $4, 'commentId', $5))
+            "#,
+        )
+        .bind(discussion_id)
+        .bind(actor_user_id)
+        .bind(if mutation.reacted {
+            "reaction_added"
+        } else {
+            "reaction_removed"
+        })
+        .bind(&content)
+        .bind(comment_id)
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(Some(
+        load_discussion_reactions(pool, discussion_id, comment_id, actor_user_id).await?,
+    ))
+}
+
+pub async fn set_repository_discussion_subscription_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    discussion_number: i64,
+    request: DiscussionSubscriptionRequest,
+) -> Result<Option<DiscussionSubscriptionState>, RepositoryError> {
+    let Some((repository, discussion_id, _title, _author_user_id)) =
+        load_discussion_mutation_context(pool, actor_user_id, owner, repo, discussion_number)
+            .await?
+    else {
+        return Ok(None);
+    };
+    if !repository_discussions_policy_enabled(pool, repository.id).await? {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "repository discussions are disabled by organization policy".to_owned(),
+        ));
+    }
+    let (state, reason) = if request.subscribed {
+        ("subscribed", "manual")
+    } else {
+        ("unsubscribed", "manual")
+    };
+    sqlx::query(
+        r#"
+        INSERT INTO discussion_subscriptions (discussion_id, user_id, state, reason)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (discussion_id, user_id)
+        DO UPDATE SET state = EXCLUDED.state, reason = EXCLUDED.reason, updated_at = now()
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(actor_user_id)
+    .bind(state)
+    .bind(reason)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO discussion_activity_events (discussion_id, actor_user_id, event_type, payload)
+        VALUES ($1, $2, $3, '{}'::jsonb)
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(actor_user_id)
+    .bind(if request.subscribed {
+        "subscribed"
+    } else {
+        "unsubscribed"
+    })
+    .execute(pool)
+    .await?;
+
+    load_discussion_subscription(pool, discussion_id, actor_user_id)
+        .await
+        .map(Some)
+}
+
 fn normalize_discussion_filters(
     query: RepositoryDiscussionsQuery<'_>,
 ) -> Result<NormalizedDiscussionFilters, RepositoryError> {
@@ -1319,6 +1566,234 @@ fn normalize_discussion_detail_query(
         page,
         page_size,
     })
+}
+
+async fn load_discussion_mutation_context(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    discussion_number: i64,
+) -> Result<Option<(super::repositories::Repository, Uuid, String, Option<Uuid>)>, RepositoryError>
+{
+    if discussion_number < 1 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "discussion number must be positive".to_owned(),
+        ));
+    }
+    let Some(repository) = get_repository_by_owner_name(pool, owner, repo).await? else {
+        return Ok(None);
+    };
+    let (_, can_read, _) = discussion_permissions(pool, &repository, actor_user_id).await?;
+    if !can_read {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    let Some(row) = sqlx::query(
+        "SELECT id, title, author_user_id FROM discussions WHERE repository_id = $1 AND number = $2",
+    )
+    .bind(repository.id)
+    .bind(discussion_number)
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Ok(None);
+    };
+    Ok(Some((
+        repository,
+        row.try_get("id")?,
+        row.try_get("title")?,
+        row.try_get("author_user_id")?,
+    )))
+}
+
+async fn create_discussion_comment_or_reply(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    discussion_number: i64,
+    parent_comment_id: Option<Uuid>,
+    request: CreateDiscussionCommentRequest,
+) -> Result<Option<RepositoryDiscussionDetailView>, RepositoryError> {
+    let Some((repository, discussion_id, title, author_user_id)) =
+        load_discussion_mutation_context(pool, actor_user_id, owner, repo, discussion_number)
+            .await?
+    else {
+        return Ok(None);
+    };
+    if repository.is_archived {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "archived repositories do not accept discussion comments".to_owned(),
+        ));
+    }
+    if !repository_discussions_policy_enabled(pool, repository.id).await? {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "repository discussions are disabled by organization policy".to_owned(),
+        ));
+    }
+    let locked: bool = sqlx::query_scalar("SELECT locked FROM discussions WHERE id = $1")
+        .bind(discussion_id)
+        .fetch_one(pool)
+        .await?;
+    if locked {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "locked discussions do not accept new comments".to_owned(),
+        ));
+    }
+    if let Some(parent_comment_id) = parent_comment_id {
+        let exists: bool = sqlx::query_scalar(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM discussion_comments
+                WHERE discussion_id = $1 AND id = $2 AND parent_comment_id IS NULL
+            )
+            "#,
+        )
+        .bind(discussion_id)
+        .bind(parent_comment_id)
+        .fetch_one(pool)
+        .await?;
+        if !exists {
+            return Err(RepositoryError::NotFound);
+        }
+    }
+
+    let body = normalize_required_text(&request.body, "body", 64 * 1024)?;
+    validate_attachment_drafts(&request.attachment_drafts)?;
+    let comment_id = Uuid::new_v4();
+    sqlx::query(
+        r#"
+        INSERT INTO discussion_comments (id, discussion_id, parent_comment_id, author_user_id, body)
+        VALUES ($1, $2, $3, $4, $5)
+        "#,
+    )
+    .bind(comment_id)
+    .bind(discussion_id)
+    .bind(parent_comment_id)
+    .bind(actor_user_id)
+    .bind(&body)
+    .execute(pool)
+    .await?;
+
+    for attachment in request.attachment_drafts {
+        sqlx::query(
+            r#"
+            INSERT INTO discussion_attachments (
+                id, discussion_id, comment_id, uploaded_by_user_id, file_name,
+                content_type, byte_size, storage_key, status
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'attached')
+            "#,
+        )
+        .bind(attachment.id.unwrap_or_else(Uuid::new_v4))
+        .bind(discussion_id)
+        .bind(comment_id)
+        .bind(actor_user_id)
+        .bind(attachment.file_name)
+        .bind(attachment.content_type)
+        .bind(attachment.byte_size)
+        .bind(attachment.storage_key)
+        .execute(pool)
+        .await?;
+    }
+
+    sqlx::query(
+        r#"
+        UPDATE discussions
+        SET comments_count = (
+                SELECT COUNT(*)::bigint
+                FROM discussion_comments
+                WHERE discussion_id = $1
+            ),
+            updated_at = now(),
+            last_activity_at = now()
+        WHERE id = $1
+        "#,
+    )
+    .bind(discussion_id)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO discussion_subscriptions (discussion_id, user_id, state, reason)
+        VALUES ($1, $2, 'subscribed', 'participating')
+        ON CONFLICT (discussion_id, user_id)
+        DO UPDATE SET state = 'subscribed', reason = 'participating', updated_at = now()
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO discussion_activity_events (discussion_id, actor_user_id, event_type, payload)
+        VALUES ($1, $2, $3, jsonb_build_object('commentId', $4, 'parentCommentId', $5))
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(actor_user_id)
+    .bind(if parent_comment_id.is_some() {
+        "replied"
+    } else {
+        "commented"
+    })
+    .bind(comment_id)
+    .bind(parent_comment_id)
+    .execute(pool)
+    .await?;
+
+    if let Some(author_user_id) = author_user_id.filter(|id| *id != actor_user_id) {
+        create_notification(
+            pool,
+            CreateNotification {
+                user_id: author_user_id,
+                repository_id: Some(repository.id),
+                subject_type: "discussion".to_owned(),
+                subject_id: Some(discussion_id),
+                title: format!(
+                    "New comment on discussion #{}: {}",
+                    discussion_number, title
+                ),
+                reason: "discussion_comment".to_owned(),
+            },
+        )
+        .await
+        .map_err(|error| match error {
+            super::notifications::NotificationError::Sqlx(error) => RepositoryError::Sqlx(error),
+            super::notifications::NotificationError::NotFound
+            | super::notifications::NotificationError::Validation(_) => RepositoryError::NotFound,
+        })?;
+    }
+
+    repository_discussion_detail_for_actor_by_owner_name(
+        pool,
+        actor_user_id,
+        owner,
+        repo,
+        discussion_number,
+        RepositoryDiscussionDetailQuery {
+            sort: Some("oldest"),
+            page: Some(1),
+            page_size: Some(100),
+        },
+    )
+    .await
+}
+
+fn normalize_discussion_reaction(value: &str) -> Result<String, RepositoryError> {
+    match value.trim() {
+        "+1" | "thumbs_up" => Ok("+1".to_owned()),
+        "-1" | "thumbs_down" => Ok("-1".to_owned()),
+        content @ ("laugh" | "hooray" | "confused" | "heart" | "rocket" | "eyes") => {
+            Ok(content.to_owned())
+        }
+        other => Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+            "unsupported discussion reaction `{other}`"
+        ))),
+    }
 }
 
 fn normalize_short_text(

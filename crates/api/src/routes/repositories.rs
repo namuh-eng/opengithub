@@ -29,11 +29,16 @@ use crate::{
     },
     domain::discussions::{
         create_repository_discussion_by_owner_name,
+        create_repository_discussion_comment_by_owner_name,
+        create_repository_discussion_reply_by_owner_name,
         repository_discussion_creation_for_actor_by_owner_name,
         repository_discussion_detail_for_actor_by_owner_name,
         repository_discussions_for_actor_by_owner_name,
-        set_repository_discussion_vote_by_owner_name, CreateDiscussionRequest,
-        RepositoryDiscussionDetailQuery, RepositoryDiscussionsQuery,
+        set_repository_discussion_subscription_by_owner_name,
+        set_repository_discussion_vote_by_owner_name,
+        toggle_repository_discussion_reaction_by_owner_name, CreateDiscussionCommentRequest,
+        CreateDiscussionRequest, DiscussionReactionMutation, DiscussionReactionRequest,
+        DiscussionSubscriptionRequest, RepositoryDiscussionDetailQuery, RepositoryDiscussionsQuery,
     },
     domain::pages::{
         connect_repository_pages_actions_deployment_by_owner_name,
@@ -183,6 +188,26 @@ pub fn router() -> Router<AppState> {
         .route(
             "/:owner/:repo/discussions/:discussion_number",
             get(discussion_detail),
+        )
+        .route(
+            "/:owner/:repo/discussions/:discussion_number/comments",
+            post(create_discussion_comment),
+        )
+        .route(
+            "/:owner/:repo/discussions/:discussion_number/comments/:comment_id/replies",
+            post(create_discussion_reply),
+        )
+        .route(
+            "/:owner/:repo/discussions/:discussion_number/reactions",
+            put(react_to_discussion).delete(unreact_to_discussion),
+        )
+        .route(
+            "/:owner/:repo/discussions/:discussion_number/comments/:comment_id/reactions",
+            put(react_to_discussion_comment).delete(unreact_to_discussion_comment),
+        )
+        .route(
+            "/:owner/:repo/discussions/:discussion_number/subscription",
+            put(subscribe_discussion).delete(unsubscribe_discussion),
         )
         .route(
             "/:owner/:repo/discussions/:discussion_number/vote",
@@ -1366,6 +1391,13 @@ struct NewDiscussionQueryParams {
     title: Option<String>,
 }
 
+struct DiscussionReactionTarget {
+    owner: String,
+    repo: String,
+    discussion_number: i64,
+    comment_id: Option<Uuid>,
+}
+
 async fn discussions(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1501,6 +1533,226 @@ async fn create_discussion(
                 )
             })?;
     Ok(Json(json!(response)))
+}
+
+async fn create_discussion_comment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, discussion_number)): Path<(String, String, i64)>,
+    Json(request): Json<CreateDiscussionCommentRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let detail = create_repository_discussion_comment_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        discussion_number,
+        request,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository discussion was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(detail)))
+}
+
+async fn create_discussion_reply(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, discussion_number, comment_id)): Path<(String, String, i64, Uuid)>,
+    Json(request): Json<CreateDiscussionCommentRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let detail = create_repository_discussion_reply_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        discussion_number,
+        comment_id,
+        request,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository discussion was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(detail)))
+}
+
+async fn react_to_discussion(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, discussion_number)): Path<(String, String, i64)>,
+    Json(request): Json<DiscussionReactionRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    set_discussion_reaction(
+        state,
+        headers,
+        DiscussionReactionTarget {
+            owner,
+            repo,
+            discussion_number,
+            comment_id: None,
+        },
+        request,
+        true,
+    )
+    .await
+}
+
+async fn unreact_to_discussion(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, discussion_number)): Path<(String, String, i64)>,
+    Json(request): Json<DiscussionReactionRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    set_discussion_reaction(
+        state,
+        headers,
+        DiscussionReactionTarget {
+            owner,
+            repo,
+            discussion_number,
+            comment_id: None,
+        },
+        request,
+        false,
+    )
+    .await
+}
+
+async fn react_to_discussion_comment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, discussion_number, comment_id)): Path<(String, String, i64, Uuid)>,
+    Json(request): Json<DiscussionReactionRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    set_discussion_reaction(
+        state,
+        headers,
+        DiscussionReactionTarget {
+            owner,
+            repo,
+            discussion_number,
+            comment_id: Some(comment_id),
+        },
+        request,
+        true,
+    )
+    .await
+}
+
+async fn unreact_to_discussion_comment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, discussion_number, comment_id)): Path<(String, String, i64, Uuid)>,
+    Json(request): Json<DiscussionReactionRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    set_discussion_reaction(
+        state,
+        headers,
+        DiscussionReactionTarget {
+            owner,
+            repo,
+            discussion_number,
+            comment_id: Some(comment_id),
+        },
+        request,
+        false,
+    )
+    .await
+}
+
+async fn set_discussion_reaction(
+    state: AppState,
+    headers: HeaderMap,
+    target: DiscussionReactionTarget,
+    request: DiscussionReactionRequest,
+    reacted: bool,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let reactions = toggle_repository_discussion_reaction_by_owner_name(
+        pool,
+        actor.0.id,
+        &target.owner,
+        &target.repo,
+        target.discussion_number,
+        target.comment_id,
+        DiscussionReactionMutation {
+            content: &request.content,
+            reacted,
+        },
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository discussion was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(reactions)))
+}
+
+async fn subscribe_discussion(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, discussion_number)): Path<(String, String, i64)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    set_discussion_subscription(state, headers, owner, repo, discussion_number, true).await
+}
+
+async fn unsubscribe_discussion(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, discussion_number)): Path<(String, String, i64)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    set_discussion_subscription(state, headers, owner, repo, discussion_number, false).await
+}
+
+async fn set_discussion_subscription(
+    state: AppState,
+    headers: HeaderMap,
+    owner: String,
+    repo: String,
+    discussion_number: i64,
+    subscribed: bool,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let subscription = set_repository_discussion_subscription_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        discussion_number,
+        DiscussionSubscriptionRequest { subscribed },
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository discussion was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(subscription)))
 }
 
 async fn repository_discussions_response(

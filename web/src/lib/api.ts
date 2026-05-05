@@ -4628,6 +4628,21 @@ export type DiscussionSubscriptionState = {
   canChange: boolean;
 };
 
+export type CreateDiscussionCommentRequest = {
+  body: string;
+  attachmentDrafts?: DiscussionAttachmentDraft[];
+};
+
+export type DiscussionReactionContent =
+  | "+1"
+  | "-1"
+  | "laugh"
+  | "hooray"
+  | "confused"
+  | "heart"
+  | "rocket"
+  | "eyes";
+
 export type DiscussionEventView = {
   id: string;
   eventType: string;
@@ -13946,6 +13961,137 @@ export async function setRepositoryDiscussionVoteFromCookie(
   }
 
   return payload as DiscussionVoteResponse;
+}
+
+export async function createRepositoryDiscussionCommentFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  discussionNumber: number | string,
+  request: CreateDiscussionCommentRequest,
+): Promise<RepositoryDiscussionDetailView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/${encodeURIComponent(String(discussionNumber))}/comments`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Discussion comment could not be created.",
+      { cause: envelope },
+    );
+  }
+
+  return payload as RepositoryDiscussionDetailView;
+}
+
+export async function createRepositoryDiscussionReplyFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  discussionNumber: number | string,
+  commentId: string,
+  request: CreateDiscussionCommentRequest,
+): Promise<RepositoryDiscussionDetailView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/${encodeURIComponent(String(discussionNumber))}/comments/${encodeURIComponent(commentId)}/replies`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Discussion reply could not be created.",
+      { cause: envelope },
+    );
+  }
+
+  return payload as RepositoryDiscussionDetailView;
+}
+
+export async function setRepositoryDiscussionReactionFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  discussionNumber: number | string,
+  content: DiscussionReactionContent,
+  reacted: boolean,
+  commentId?: string,
+): Promise<DiscussionReactionSummary[]> {
+  const commentSegment = commentId
+    ? `/comments/${encodeURIComponent(commentId)}`
+    : "";
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/${encodeURIComponent(String(discussionNumber))}${commentSegment}/reactions`,
+    {
+      method: reacted ? "PUT" : "DELETE",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify({ content }),
+      cache: "no-store",
+    },
+  );
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Discussion reaction could not be updated.",
+      { cause: envelope },
+    );
+  }
+
+  return payload as DiscussionReactionSummary[];
+}
+
+export async function setRepositoryDiscussionSubscriptionFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  discussionNumber: number | string,
+  subscribed: boolean,
+): Promise<DiscussionSubscriptionState> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/${encodeURIComponent(String(discussionNumber))}/subscription`,
+    {
+      method: subscribed ? "PUT" : "DELETE",
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ??
+        "Discussion notification subscription could not be updated.",
+      { cause: envelope },
+    );
+  }
+
+  return payload as DiscussionSubscriptionState;
 }
 
 function repositoryDiscussionsPath(

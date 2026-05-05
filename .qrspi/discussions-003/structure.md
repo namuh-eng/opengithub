@@ -47,7 +47,7 @@
 
 ## Phase 3: Comment, Reply, Reaction, and Subscription Writes - authenticated interaction loop
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Enable real authenticated mutations for the most common reader interactions on a discussion detail page: add top-level comments, add nested replies, react/unreact to discussion/comment/reply targets, subscribe/unsubscribe, and preserve timeline sort/query state after mutations.
 

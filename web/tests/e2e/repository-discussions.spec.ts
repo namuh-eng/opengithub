@@ -321,11 +321,27 @@ test("repository discussions list filters, rows, category rail, and mobile layou
     "href",
     /sort=newest/,
   );
-  await expect(page.getByRole("button", { name: "Comment" })).toBeDisabled();
+  await page.getByLabel("Reply").fill("Adding a browser-smoke comment.");
+  await page.getByRole("button", { name: "Preview" }).click();
+  await expect(page.getByText("Adding a browser-smoke comment.")).toBeVisible();
+  await page.getByRole("button", { name: "Write" }).click();
+  await page.getByRole("button", { name: "Comment" }).click();
+  await expect(page.getByText("Discussion updated.")).toBeVisible();
+  await page.getByRole("button", { name: /Reply/ }).first().click();
+  await page
+    .locator("textarea")
+    .last()
+    .fill("Nested reply from the browser smoke.");
+  await page.getByRole("button", { name: "Reply" }).last().click();
+  await expect(
+    page.getByText("Nested reply from the browser smoke."),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /\+1/ }).first().click();
+  await page.getByRole("button", { name: /Subscribe|Unsubscribe/ }).click();
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/discussions-003-phase2-detail.jpg",
+    path: "../ralph/screenshots/build/discussions-003-phase3-interactions.jpg",
   });
 
   await page.goto(`${seeded.treeRepositoryHref}/discussions`);
