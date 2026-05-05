@@ -114,6 +114,9 @@ describe("ProjectsListPage", () => {
       screen.getByRole("heading", { name: "namuh projects" }),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Search all projects")).toHaveValue("");
+    expect(screen.getByLabelText("Sort projects")).toHaveValue(
+      "recently_updated",
+    );
     expect(screen.getByText("On track")).toBeInTheDocument();
     expect(screen.getByText(/#12/)).toBeInTheDocument();
     expect(
@@ -142,10 +145,98 @@ describe("ProjectsListPage", () => {
     );
 
     expect(screen.getByLabelText("Search all projects")).toHaveValue("is:open");
+    expect(screen.getByRole("link", { name: /Projects 2/ })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/projects?q=is%3Aopen",
+    );
+    expect(screen.getByRole("link", { name: /Templates 1/ })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/projects?q=is%3Aopen&tab=templates",
+    );
     expect(
       screen.getByRole("link", { name: /Team planning template/ }),
     ).toHaveAttribute("href", "/orgs/namuh/projects/4/views/1");
     expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled();
+  });
+
+  it("builds URL-backed search, state, sort, and pagination controls", () => {
+    render(
+      <ProjectsListPage
+        list={projectList({
+          items: [project({ id: "project-2", title: "Design systems" })],
+          total: 90,
+          page: 2,
+          filters: {
+            query: "roadmap",
+            state: "closed",
+            tab: "projects",
+            sort: "name_asc",
+            page: 2,
+            pageSize: 30,
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByLabelText("Search all projects")).toHaveValue("roadmap");
+    expect(screen.getByLabelText("Sort projects")).toHaveValue("name_asc");
+    expect(screen.getByRole("link", { name: /Open 1/ })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/projects?q=roadmap&sort=name_asc",
+    );
+    expect(screen.getByRole("link", { name: /Closed 1/ })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/projects?q=roadmap&state=closed&sort=name_asc",
+    );
+    expect(
+      screen.getByRole("link", { name: "Search: roadmap x" }),
+    ).toHaveAttribute(
+      "href",
+      "/orgs/namuh/projects?state=closed&sort=name_asc",
+    );
+    expect(screen.getByRole("link", { name: "Clear filters" })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/projects",
+    );
+    expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/projects?q=roadmap&state=closed&sort=name_asc",
+    );
+    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/projects?q=roadmap&state=closed&sort=name_asc&page=3",
+    );
+  });
+
+  it("preserves the profile projects tab while switching user project templates", () => {
+    render(
+      <ProjectsListPage
+        list={projectList({
+          scope: {
+            kind: "user",
+            login: "mona",
+            repository: null,
+            href: "/mona?tab=projects",
+          },
+          filters: {
+            query: "planning",
+            state: "open",
+            tab: "projects",
+            sort: "recently_updated",
+            page: 1,
+            pageSize: 30,
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: /Templates 1/ })).toHaveAttribute(
+      "href",
+      "/mona?tab=projects&q=planning&projectTab=templates",
+    );
+    expect(
+      screen.getByRole("textbox", { name: "Search all projects" }),
+    ).toHaveAttribute("name", "q");
   });
 
   it("shows unavailable and empty states without placeholder links", () => {

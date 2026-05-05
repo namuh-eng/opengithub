@@ -6726,5 +6726,23 @@
       "Phase 3 still needs live URL-backed search, open/closed tabs, templates tab controls, sort menu, pagination, and browser reload preservation.",
       "Phase 4 still needs the real copy mutation and dialog; current Copy buttons are intentionally disabled or explanatory until that vertical slice is implemented."
     ]
+  },
+  {
+    "feature_id": "projects-001",
+    "tests_written": [
+      "Completed Phase 3 Query, Tabs, Sort, and URL State without marking projects-001 build_pass=true.",
+      "Made ProjectsListPage search, open/closed state filters, Projects/Templates tabs, sort selection, active filter chips, clear filters, and pagination URL-backed across organization, repository, and user project list surfaces.",
+      "Preserved /{user}?tab=projects profile navigation by mapping user project list template state through projectTab instead of clobbering the profile tab parameter.",
+      "Added navigation helpers for user, organization, repository project list URLs and project workspace URLs.",
+      "Extended focused Rust contract coverage for q/state count consistency, name_desc sorting, and page/pageSize pagination bounds.",
+      "Extended focused Vitest coverage for URL-backed controls, pagination links, user projectTab preservation, concrete row links, and Editorial banned-value guardrails.",
+      "Browser smoke passed against a local API stub with real Next.js server rendering: search submit, sort select, templates tab navigation, and screenshot ralph/screenshots/build/projects-001-phase3-list-controls.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Focused projects_list_contract compiled and ran, but DB assertions self-skipped because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test failed with password authentication failed for user postgres.",
+      "Rerun projects_list_contract and a focused Projects Playwright smoke against a clean migrated credentialed TEST_DATABASE_URL to prove real Postgres rows for search, state tabs, sort stability, pagination, repository-linked lists, and template filtering.",
+      "Browser smoke used a local API stub because the local test DB credentials are unavailable; QA should repeat the same flow against seeded DB data for org, user, and repository scopes.",
+      "Phase 4 still needs the real permissioned copy-project mutation and dialog; Copy buttons remain intentionally non-mutating until that vertical slice."
+    ]
   }
 ]

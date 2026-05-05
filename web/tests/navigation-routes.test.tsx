@@ -15,6 +15,7 @@ import {
   ORGANIZATION_TABS,
   organizationHref,
   organizationProjectHref,
+  organizationProjectListHref,
   organizationRepositoryListHref,
   organizationSettingsHref,
   organizationTabHref,
@@ -25,11 +26,13 @@ import {
   queryJumpSuggestions,
   REPOSITORY_TABS,
   repositoryJumpHref,
+  repositoryProjectListHref,
   repositoryTabHref,
   SEARCH_TABS,
   SETTINGS_NAV_ITEMS,
   searchQueryHref,
   searchTypeHref,
+  userProjectListHref,
 } from "@/lib/navigation";
 import { isProtectedPath } from "@/lib/protected-routes";
 
@@ -191,6 +194,32 @@ describe("navigation route registry", () => {
       "/orgs/namuh%20labs/repositories?q=api+server&language=Rust&sort=stars-desc&density=compact&pageSize=10",
     );
     expect(organizationProjectHref("namuh")).toBe("/orgs/namuh/projects");
+    expect(
+      organizationProjectListHref("namuh labs", {
+        q: "roadmap",
+        state: "closed",
+        tab: "templates",
+        sort: "name_asc",
+        page: 2,
+      }),
+    ).toBe(
+      "/orgs/namuh%20labs/projects?q=roadmap&state=closed&tab=templates&sort=name_asc&page=2",
+    );
+    expect(
+      userProjectListHref("mona lisa", {
+        q: "roadmap",
+        tab: "templates",
+        sort: "created_desc",
+      }),
+    ).toBe(
+      "/mona%20lisa?tab=projects&q=roadmap&projectTab=templates&sort=created_desc",
+    );
+    expect(
+      repositoryProjectListHref("namuh", "opengithub", {
+        state: "closed",
+        sort: "name_desc",
+      }),
+    ).toBe("/namuh/opengithub/projects?state=closed&sort=name_desc");
     expect(organizationSettingsHref("namuh")).toBe("/orgs/namuh/settings");
     expect(organizationTeamHref("namuh", "platform team")).toBe(
       "/orgs/namuh/teams/platform%20team",

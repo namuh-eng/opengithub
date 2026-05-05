@@ -1511,6 +1511,82 @@ export function organizationProjectHref(org: string) {
   return `${organizationHref(org)}/projects`;
 }
 
+export type ProjectListHrefQuery = {
+  q?: string | null;
+  state?: string | null;
+  tab?: string | null;
+  sort?: string | null;
+  page?: number | null;
+};
+
+function projectListHref(base: string, query: ProjectListHrefQuery = {}) {
+  const [basePath, baseQuery = ""] = base.split("?");
+  const params = new URLSearchParams(baseQuery);
+  if (query.q?.trim()) {
+    params.set("q", query.q.trim());
+  }
+  if (query.state?.trim() && query.state !== "open") {
+    params.set("state", query.state);
+  }
+  if (query.tab?.trim() && query.tab !== "projects") {
+    params.set("tab", query.tab);
+  }
+  if (query.sort?.trim() && query.sort !== "recently_updated") {
+    params.set("sort", query.sort);
+  }
+  if (query.page && query.page > 1) {
+    params.set("page", String(query.page));
+  }
+
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return `${basePath}${suffix}`;
+}
+
+export function userProjectListHref(
+  username: string,
+  query: ProjectListHrefQuery = {},
+) {
+  const params = new URLSearchParams({ tab: "projects" });
+  if (query.q?.trim()) {
+    params.set("q", query.q.trim());
+  }
+  if (query.state?.trim() && query.state !== "open") {
+    params.set("state", query.state);
+  }
+  if (query.tab?.trim() && query.tab !== "projects") {
+    params.set("projectTab", query.tab);
+  }
+  if (query.sort?.trim() && query.sort !== "recently_updated") {
+    params.set("sort", query.sort);
+  }
+  if (query.page && query.page > 1) {
+    params.set("page", String(query.page));
+  }
+  return `/${encodeURIComponent(username)}?${params.toString()}`;
+}
+
+export function organizationProjectListHref(
+  org: string,
+  query: ProjectListHrefQuery = {},
+) {
+  return projectListHref(organizationProjectHref(org), query);
+}
+
+export function repositoryProjectListHref(
+  owner: string,
+  repo: string,
+  query: ProjectListHrefQuery = {},
+) {
+  return projectListHref(
+    `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/projects`,
+    query,
+  );
+}
+
+export function projectWorkspaceHref(owner: string, number: number) {
+  return `/${encodeURIComponent(owner)}/projects/${number}/views/1`;
+}
+
 export function organizationSettingsHref(org: string) {
   return `${organizationHref(org)}/settings`;
 }

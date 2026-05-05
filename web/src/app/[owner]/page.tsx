@@ -87,7 +87,7 @@ export default async function ProfilePage({
       ? await getUserProjects(ownerLogin, {
           q: firstParam(queryParams?.q),
           state: firstParam(queryParams?.state),
-          tab: firstParam(queryParams?.tab),
+          tab: firstParam(queryParams?.projectTab),
           sort: firstParam(queryParams?.sort),
           page: numericPositive(queryParams?.page),
           pageSize: numericPositive(queryParams?.pageSize),

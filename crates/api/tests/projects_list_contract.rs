@@ -289,10 +289,26 @@ async fn projects_lists_filter_templates_and_repository_links_without_leaking_pr
         template_project_id.to_string()
     );
 
+    let sorted_uri = format!("/api/orgs/{marker}/projects?sort=name_desc&page=1&pageSize=1");
+    let (status, _, body) = get_json(app.clone(), &sorted_uri, Some(&member_cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["page"], 1);
+    assert_eq!(body["pageSize"], 1);
+    assert_eq!(body["total"], 3);
+    assert_eq!(body["items"].as_array().expect("items").len(), 1);
+    assert_eq!(body["items"][0]["title"], "Private acquisition plan");
+
     let closed_uri = format!("/api/orgs/{marker}/projects?state=closed");
     let (status, _, body) = get_json(app.clone(), &closed_uri, Some(&member_cookie)).await;
     assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["counts"]["closed"], 1);
     assert_eq!(body["items"][0]["id"], private_project_id.to_string());
+
+    let searched_closed_uri = format!("/api/orgs/{marker}/projects?q=acquisition&state=closed");
+    let (status, _, body) = get_json(app.clone(), &searched_closed_uri, Some(&member_cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["counts"]["total"], 1);
+    assert_eq!(body["items"][0]["title"], "Private acquisition plan");
 
     let (status, _, body) = get_json(app.clone(), &closed_uri, Some(&outsider_cookie)).await;
     assert_eq!(status, StatusCode::OK);

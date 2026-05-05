@@ -33,6 +33,64 @@ function statusChip(status: ProjectRow["status"]) {
   return <span className={chipClass}>{status.label}</span>;
 }
 
+const PROJECT_SORT_OPTIONS = [
+  { value: "recently_updated", label: "Recently updated" },
+  { value: "name_asc", label: "Name A-Z" },
+  { value: "name_desc", label: "Name Z-A" },
+  { value: "created_desc", label: "Newest" },
+  { value: "created_asc", label: "Oldest" },
+];
+
+function filterHref(
+  list: ProjectList,
+  overrides: Partial<{
+    q: string | null;
+    state: string | null;
+    tab: string | null;
+    sort: string | null;
+    page: number | null;
+  }> = {},
+) {
+  const [basePath, baseQuery = ""] = list.scope.href.split("?");
+  const params = new URLSearchParams(baseQuery);
+  const tabParam = list.scope.kind === "user" ? "projectTab" : "tab";
+  const next = {
+    q: list.filters.query,
+    state: list.filters.state,
+    tab: list.filters.tab,
+    sort: list.filters.sort,
+    page: list.filters.page,
+    ...overrides,
+  };
+
+  if (next.q?.trim()) {
+    params.set("q", next.q.trim());
+  }
+  if (next.state && next.state !== "open") {
+    params.set("state", next.state);
+  } else {
+    params.delete("state");
+  }
+  if (next.tab && next.tab !== "projects") {
+    params.set(tabParam, next.tab);
+  } else {
+    params.delete(tabParam);
+  }
+  if (next.sort && next.sort !== "recently_updated") {
+    params.set("sort", next.sort);
+  } else {
+    params.delete("sort");
+  }
+  if (next.page && next.page > 1) {
+    params.set("page", String(next.page));
+  } else {
+    params.delete("page");
+  }
+
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return `${basePath}${suffix}`;
+}
+
 function projectMeta(project: ProjectRow) {
   const parts = [
     `#${project.number}`,
@@ -55,7 +113,7 @@ function ProjectsTabs({ list }: { list: ProjectList }) {
       <Link
         aria-current={projectActive ? "page" : undefined}
         className={`tab ${projectActive ? "active" : ""}`}
-        href={list.scope.href}
+        href={filterHref(list, { tab: "projects", page: 1 })}
       >
         Projects{" "}
         <span className="t-num">{list.counts.total.toLocaleString()}</span>
@@ -63,11 +121,142 @@ function ProjectsTabs({ list }: { list: ProjectList }) {
       <Link
         aria-current={!projectActive ? "page" : undefined}
         className={`tab ${!projectActive ? "active" : ""}`}
-        href={`${list.scope.href}?tab=templates`}
+        href={filterHref(list, { tab: "templates", page: 1 })}
       >
         Templates{" "}
         <span className="t-num">{list.counts.templates.toLocaleString()}</span>
       </Link>
+    </nav>
+  );
+}
+
+function StateTabs({ list }: { list: ProjectList }) {
+  const state = list.filters.state === "closed" ? "closed" : "open";
+  return (
+    <nav className="flex flex-wrap gap-2" aria-label="Project state filters">
+      <Link
+        aria-current={state === "open" ? "page" : undefined}
+        className={`chip ${state === "open" ? "active" : "soft"}`}
+        href={filterHref(list, { state: "open", page: 1 })}
+      >
+        Open <span className="t-num">{list.counts.open}</span>
+      </Link>
+      <Link
+        aria-current={state === "closed" ? "page" : undefined}
+        className={`chip ${state === "closed" ? "active" : "soft"}`}
+        href={filterHref(list, { state: "closed", page: 1 })}
+      >
+        Closed <span className="t-num">{list.counts.closed}</span>
+      </Link>
+    </nav>
+  );
+}
+
+function ActiveFilters({ list }: { list: ProjectList }) {
+  const filters = [
+    list.filters.query
+      ? {
+          label: `Search: ${list.filters.query}`,
+          href: filterHref(list, { q: null, page: 1 }),
+        }
+      : null,
+    list.filters.state === "closed"
+      ? {
+          label: "Closed projects",
+          href: filterHref(list, { state: "open", page: 1 }),
+        }
+      : null,
+    list.filters.tab === "templates"
+      ? {
+          label: "Templates",
+          href: filterHref(list, { tab: "projects", page: 1 }),
+        }
+      : null,
+    list.filters.sort !== "recently_updated"
+      ? {
+          label:
+            PROJECT_SORT_OPTIONS.find(
+              (option) => option.value === list.filters.sort,
+            )?.label ?? list.filters.sort,
+          href: filterHref(list, { sort: "recently_updated", page: 1 }),
+        }
+      : null,
+  ].filter(Boolean) as Array<{ label: string; href: string }>;
+
+  if (filters.length === 0) {
+    return null;
+  }
+
+  return (
+    <fieldset className="flex flex-wrap items-center gap-2">
+      <legend className="sr-only">Active project filters</legend>
+      {filters.map((filter) => (
+        <Link
+          className="chip soft no-underline"
+          href={filter.href}
+          key={filter.label}
+        >
+          {filter.label} x
+        </Link>
+      ))}
+      <Link
+        className="btn sm ghost"
+        href={filterHref(list, {
+          q: null,
+          state: "open",
+          tab: "projects",
+          sort: "recently_updated",
+          page: 1,
+        })}
+      >
+        Clear filters
+      </Link>
+    </fieldset>
+  );
+}
+
+function Pagination({ list }: { list: ProjectList }) {
+  const showingTemplates = list.filters.tab === "templates";
+  const total = showingTemplates ? list.templates.total : list.total;
+  const pageSize = showingTemplates ? list.templates.pageSize : list.pageSize;
+  const page = showingTemplates ? list.templates.page : list.page;
+  const totalPages = Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
+
+  if (totalPages <= 1) {
+    return null;
+  }
+
+  return (
+    <nav
+      className="flex flex-wrap items-center justify-between gap-3 py-4"
+      aria-label="Projects pagination"
+    >
+      <p className="t-sm" style={{ color: "var(--ink-3)" }}>
+        Page <span className="t-num">{page}</span> of{" "}
+        <span className="t-num">{totalPages}</span>
+      </p>
+      <div className="flex gap-2">
+        <Link
+          aria-disabled={page <= 1}
+          className={`btn sm ${page <= 1 ? "disabled" : "ghost"}`}
+          href={
+            page <= 1 ? filterHref(list) : filterHref(list, { page: page - 1 })
+          }
+        >
+          Previous
+        </Link>
+        <Link
+          aria-disabled={page >= totalPages}
+          className={`btn sm ${page >= totalPages ? "disabled" : "ghost"}`}
+          href={
+            page >= totalPages
+              ? filterHref(list)
+              : filterHref(list, { page: page + 1 })
+          }
+        >
+          Next
+        </Link>
+      </div>
     </nav>
   );
 }
@@ -170,6 +359,9 @@ export function ProjectsListPage({
   const showingTemplates = list.filters.tab === "templates";
   const rows = showingTemplates ? list.templates.items : list.items;
   const unavailable = list.unavailableReason;
+  const [formAction, formBaseQuery = ""] = list.scope.href.split("?");
+  const formBaseParams = new URLSearchParams(formBaseQuery);
+  const tabParam = list.scope.kind === "user" ? "projectTab" : "tab";
 
   return (
     <section className="grid gap-5" aria-labelledby="projects-list-title">
@@ -230,24 +422,57 @@ export function ProjectsListPage({
           <ProjectsTabs list={list} />
         </div>
         <div
-          className="grid gap-3 border-b p-4 md:grid-cols-[minmax(0,1fr)_auto_auto]"
+          className="grid gap-3 border-b p-4"
           style={{ borderColor: "var(--line-soft)" }}
         >
-          <div className="input">
-            <input
-              aria-label="Search all projects"
-              defaultValue={list.filters.query ?? ""}
-              name="q"
-              placeholder="Search all projects"
-              readOnly
-            />
+          <form
+            action={formAction}
+            className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_auto]"
+          >
+            {Array.from(formBaseParams.entries()).map(([name, value]) => (
+              <input
+                key={`${name}:${value}`}
+                name={name}
+                type="hidden"
+                value={value}
+              />
+            ))}
+            {list.filters.tab !== "projects" ? (
+              <input name={tabParam} type="hidden" value={list.filters.tab} />
+            ) : null}
+            {list.filters.state !== "open" ? (
+              <input name="state" type="hidden" value={list.filters.state} />
+            ) : null}
+            <div className="input">
+              <input
+                aria-label="Search all projects"
+                defaultValue={list.filters.query ?? ""}
+                name="q"
+                placeholder="Search all projects"
+              />
+            </div>
+            <label className="input">
+              <span className="sr-only">Sort projects</span>
+              <select
+                aria-label="Sort projects"
+                defaultValue={list.filters.sort}
+                name="sort"
+              >
+                {PROJECT_SORT_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button className="btn" type="submit">
+              Apply
+            </button>
+          </form>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <StateTabs list={list} />
+            <ActiveFilters list={list} />
           </div>
-          <span className="chip soft">
-            Open <span className="t-num">{list.counts.open}</span>
-          </span>
-          <span className="chip soft">
-            Closed <span className="t-num">{list.counts.closed}</span>
-          </span>
         </div>
         <div className="px-5">
           {rows.length > 0 ? (
@@ -275,6 +500,7 @@ export function ProjectsListPage({
               </p>
             </div>
           )}
+          <Pagination list={list} />
         </div>
       </div>
     </section>

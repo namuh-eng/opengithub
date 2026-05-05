@@ -1,3 +1,14 @@
+2026-05-06 - projects-001 phase 3 URL-backed list controls
+
+- Completed Phase 3 from `.qrspi/projects-001/structure.md`: Projects list search, tabs, state filters, sort, active chips, clear filters, and pagination are now URL-backed without marking `projects-001.build_pass=true`; Phases 4-5 remain.
+- Updated `ProjectsListPage` so list controls submit or link to server-confirmed results instead of local-only state; Projects/Templates tabs preserve active filters, open/closed chips link to filtered views, sort uses the request query, and pagination keeps current query state.
+- Preserved the user profile projects route by mapping project-list template state through `projectTab` on `/{user}?tab=projects`, avoiding collision with the profile tab parameter.
+- Added stable project list/workspace navigation helpers and focused navigation tests for user, organization, and repository project list hrefs.
+- Extended `projects_list_contract` with pagination, name-desc sorting, closed count consistency, and q+state search assertions; the test compiled and ran but DB assertions self-skipped because local `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test` rejects the available `postgres` credentials.
+- Verification passed: focused Projects/navigation Vitest; web TypeScript; focused Biome; `cargo fmt --all -- --check`; focused Rust contract compile/run under its DB guard; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 528 web tests.
+- Browser smoke passed against a local API stub with real Next.js server rendering for `/orgs/namuh/projects`: search submit, sort select, templates tab navigation, and screenshot `ralph/screenshots/build/projects-001-phase3-list-controls.jpg`.
+- Mandatory Editorial banned-value scan returned zero matches. `prd.json` remains `build_pass:false` because Phase 4 copy flow and Phase 5 docs/final bookkeeping remain.
+
 2026-05-06 - projects-001 structure planning
 
 - Determined `projects-001` is the first `build_pass:false` PRD entry and it requires structure planning before implementation.

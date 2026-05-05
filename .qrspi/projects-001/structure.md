@@ -40,7 +40,7 @@
 
 ## Phase 3: Query, Tabs, Sort, and URL State - list controls drive server-confirmed results
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make search, open/closed tabs, templates tab, and sort menu functional and URL-backed across all three surfaces. This phase is complete when a browser reload preserves list state and no list-control state is local-only.
 
