@@ -137,6 +137,37 @@ async fn get_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (Status
     )
 }
 
+async fn patch_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method("PATCH")
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_string()))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    (
+        status,
+        serde_json::from_slice(&bytes).expect("response should be json"),
+    )
+}
+
 #[tokio::test]
 async fn repository_security_advisories_hide_drafts_and_return_detail_metadata() {
     let Some(pool) = database_pool().await else {
@@ -341,6 +372,55 @@ async fn repository_security_advisories_hide_drafts_and_return_detail_metadata()
     assert!(html.contains("Use patched versions"));
     assert!(!html.contains("<script"));
     assert!(!detail_body.to_string().contains("google-client-secret"));
+
+    let mutation = json!({
+        "title": "Updated repository advisory",
+        "summary": "Updated maintainer-safe summary.",
+        "detailsMarkdown": "## Remediation\n\nUpgrade immediately. <script>alert(\"x\")</script>",
+        "cveId": "CVE-2026-20002",
+        "severity": "critical",
+        "packageEcosystem": "cargo",
+        "packageName": "opengithub-markdown",
+        "affectedVersions": "< 3.0.0",
+        "patchedVersions": ">= 3.0.0",
+        "cvssVector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+        "cvssScore": 9.8,
+        "cvssMetrics": { "attackVector": "network", "availability": "high" },
+        "cwes": [{ "id": "CWE-862", "name": "Missing Authorization", "href": null }],
+        "credits": [{ "login": "security-reporter", "creditType": "analyst" }],
+        "collaborators": [{ "login": "jaeyun", "role": "author" }]
+    });
+    let (reader_patch_status, _) = patch_json(
+        app.clone(),
+        &detail_uri,
+        Some(&reader_cookie),
+        mutation.clone(),
+    )
+    .await;
+    assert_eq!(reader_patch_status, StatusCode::FORBIDDEN);
+    let (owner_patch_status, owner_patch_body) =
+        patch_json(app.clone(), &detail_uri, Some(&owner_cookie), mutation).await;
+    assert_eq!(owner_patch_status, StatusCode::OK, "{owner_patch_body}");
+    assert_eq!(
+        owner_patch_body["advisory"]["title"],
+        "Updated repository advisory"
+    );
+    assert_eq!(owner_patch_body["advisory"]["severity"], "critical");
+    assert_eq!(owner_patch_body["advisory"]["cveId"], "CVE-2026-20002");
+    assert_eq!(owner_patch_body["advisory"]["cwes"][0]["id"], "CWE-862");
+    assert_eq!(owner_patch_body["credits"][0]["creditType"], "analyst");
+    assert_eq!(
+        owner_patch_body["timeline"]
+            .as_array()
+            .expect("timeline")
+            .last()
+            .expect("edited event")["eventType"],
+        "edited"
+    );
+    assert!(!owner_patch_body["markdown"]["detailsHtml"]
+        .as_str()
+        .expect("updated html")
+        .contains("<script"));
 
     let draft_detail = format!("{base}/GHSA-advisory-draft");
     let (reader_draft_status, reader_draft_body) =

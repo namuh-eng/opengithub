@@ -6121,5 +6121,24 @@
       "Re-run web/tests/e2e/repository-security-advisories.spec.ts against a credentialed TEST_DATABASE_URL to verify list filters, draft tab privacy, mobile no-overflow, and save the Phase 2 screenshot.",
       "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures."
     ]
+  },
+  {
+    "feature_id": "code-security-005",
+    "tests_written": [
+      "Completed Phase 3 Advisory Detail and Metadata Editing without marking code-security-005 build_pass=true.",
+      "Added PATCH /api/repos/{owner}/{repo}/security/advisories/{ghsa_id} for maintainer-only advisory metadata edits with archived repository guardrails, CVE/CVSS/CWE/package/credit/collaborator validation, sanitized Markdown refresh, timeline event writes, and standard error envelopes.",
+      "Added Next.js detail route, signed-cookie mutation proxy, RepositorySecurityAdvisoryDetailPage, and inline RepositorySecurityAdvisoryEditor for title, severity, CVE, package ranges, CVSS vector/score, Markdown details, CWE ids, credits, and collaborators using Editorial primitives/tokens only.",
+      "Extended focused Rust contract coverage for reader mutation denial, maintainer metadata updates, sanitized HTML after edit, CWE/credit/collaborator replacement, and edited timeline events.",
+      "Extended focused Vitest coverage for advisory detail rendering, CVSS/CWE/package/credit/collaborator metadata, edit controls, no dead hrefs, and banned GitHub visual guardrails.",
+      "Extended focused Playwright advisory smoke with detail navigation/edit flow and screenshot path ralph/screenshots/build/code-security-005-phase3-advisory-detail.jpg when a usable migrated database is available.",
+      "Verification passed: cargo check -p opengithub-api --tests; focused repository_security_advisories_contract against the reachable compiled harness; focused web/tests/repository-security-advisories-page.test.tsx; cd web && npx tsc --noEmit --pretty false; focused Biome checks; full make check; full make test with Cargo tests plus 484 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 still needs draft creation and publish lifecycle mutations with notification/audit fanout.",
+      "Phase 5 still needs API docs, final edge-case sweep, final screenshots, prd.json build_pass=true, and final QA handoff.",
+      "Focused Playwright browser smoke could not complete because localhost:55432 rejected credentials, while localhost:5432 connected but had stale/dirty migrations (missing users.bio and duplicate _sqlx_migrations key); make db-migrate was unavailable because sqlx-cli is not installed.",
+      "Re-run web/tests/e2e/repository-security-advisories.spec.ts against a clean migrated TEST_DATABASE_URL to verify list/detail/edit flows and save Phase 2/Phase 3 screenshots.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures."
+    ]
   }
 ]

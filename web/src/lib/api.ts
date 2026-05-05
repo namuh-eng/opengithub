@@ -2834,6 +2834,24 @@ export type RepositorySecurityAdvisoryLinks = {
   withdrawnHref: string | null;
 };
 
+export type RepositorySecurityAdvisoryMutation = {
+  title: string;
+  summary: string;
+  detailsMarkdown: string;
+  cveId: string | null;
+  severity: string;
+  packageEcosystem: string | null;
+  packageName: string | null;
+  affectedVersions: string | null;
+  patchedVersions: string | null;
+  cvssVector: string | null;
+  cvssScore: number | null;
+  cvssMetrics: Record<string, unknown>;
+  cwes: CweReference[];
+  credits: { login: string; creditType: string }[];
+  collaborators: { login: string; role: string }[];
+};
+
 export type RepositorySecurityAdvisoriesQuery = {
   state?: string | null;
   query?: string | null;
@@ -10690,6 +10708,38 @@ export async function getRepositorySecurityAdvisoryDetailFromCookie(
     ok: true,
     advisory: (await response.json()) as RepositorySecurityAdvisoryDetail,
   };
+}
+
+export async function mutateRepositorySecurityAdvisoryFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  ghsaId: string,
+  mutation: RepositorySecurityAdvisoryMutation,
+): Promise<RepositorySecurityAdvisoryDetail> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/advisories/${encodeURIComponent(ghsaId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(mutation),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const envelope = ((await response.json().catch(() => null)) ??
+      null) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Repository security advisory update failed.",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as RepositorySecurityAdvisoryDetail;
 }
 
 function appendRepositoryDependabotSearchParams(

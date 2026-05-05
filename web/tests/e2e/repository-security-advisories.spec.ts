@@ -104,6 +104,38 @@ function seedSecurityAdvisories(repositoryHref: string) {
                     severity = EXCLUDED.severity,
                     updated_at = now();
 
+      WITH advisory AS (
+        SELECT id FROM repository_security_advisories
+        WHERE advisory_identifier = 'GHSA-advisory-${suffix}-one'
+        LIMIT 1
+      )
+      INSERT INTO repository_security_advisory_cwes (advisory_id, cwe_id, name)
+      SELECT advisory.id, 'CWE-284', 'Improper Access Control'
+      FROM advisory
+      ON CONFLICT (advisory_id, upper(cwe_id)) DO UPDATE
+      SET name = EXCLUDED.name;
+
+      WITH advisory AS (
+        SELECT id FROM repository_security_advisories
+        WHERE advisory_identifier = 'GHSA-advisory-${suffix}-one'
+        LIMIT 1
+      )
+      INSERT INTO repository_security_advisory_credits (advisory_id, login, credit_type)
+      SELECT advisory.id, 'security-reporter', 'reporter'
+      FROM advisory
+      ON CONFLICT (advisory_id, lower(login), credit_type) DO NOTHING;
+
+      WITH advisory AS (
+        SELECT id FROM repository_security_advisories
+        WHERE advisory_identifier = 'GHSA-advisory-${suffix}-one'
+        LIMIT 1
+      )
+      INSERT INTO repository_security_advisory_collaborators (advisory_id, login, role)
+      SELECT advisory.id, 'jaeyun', 'author'
+      FROM advisory
+      ON CONFLICT (advisory_id, lower(login)) DO UPDATE
+      SET role = EXCLUDED.role;
+
       WITH target_repo AS (
         SELECT repositories.id
         FROM repositories
@@ -253,4 +285,42 @@ test("repository security advisories list filters, links, and mobile layout work
   ).toBeVisible();
   await expect(page.locator("body")).toHaveJSProperty("scrollLeft", 0);
   await expectNoDeadControls(page);
+});
+
+test("repository security advisory detail renders and edits metadata", async ({
+  page,
+}) => {
+  const seeded = seedDashboard();
+  seedSecurityAdvisories(seeded.treeRepositoryHref);
+  await signIn(page, seeded);
+
+  await page.goto(`${seeded.treeRepositoryHref}/security/advisories`);
+  await page.getByRole("link", { name: "View advisory" }).first().click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Token scope bypass in repository import workflow",
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("GHSA-advisory-")).toBeVisible();
+  await expect(page.getByText("CVE-2026-1234")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Score 8.1" })).toBeVisible();
+  await expect(page.getByText(/CWE-284 Improper Access Control/)).toBeVisible();
+
+  await page
+    .getByRole("textbox", { name: "Title" })
+    .fill("Edited advisory title");
+  await page
+    .getByRole("combobox", { name: "Severity" })
+    .selectOption("critical");
+  await page.getByRole("button", { name: "Save advisory" }).click();
+  await expect(page.getByText("Advisory metadata saved.")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Edited advisory title" }),
+  ).toBeVisible();
+  await expect(page.getByText("critical")).toBeVisible();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/code-security-005-phase3-advisory-detail.jpg",
+  });
 });

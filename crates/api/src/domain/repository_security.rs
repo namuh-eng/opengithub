@@ -255,6 +255,40 @@ pub struct AdvisoryViewer {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct AdvisoryCreditMutation {
+    pub login: String,
+    pub credit_type: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AdvisoryCollaboratorMutation {
+    pub login: String,
+    pub role: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySecurityAdvisoryMutation {
+    pub title: String,
+    pub summary: String,
+    pub details_markdown: String,
+    pub cve_id: Option<String>,
+    pub severity: String,
+    pub package_ecosystem: Option<String>,
+    pub package_name: Option<String>,
+    pub affected_versions: Option<String>,
+    pub patched_versions: Option<String>,
+    pub cvss_vector: Option<String>,
+    pub cvss_score: Option<f64>,
+    pub cvss_metrics: Value,
+    pub cwes: Vec<CweReference>,
+    pub credits: Vec<AdvisoryCreditMutation>,
+    pub collaborators: Vec<AdvisoryCollaboratorMutation>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct RepositorySecurityAdvisoryLinks {
     pub list_href: String,
     pub new_href: Option<String>,
@@ -1310,6 +1344,33 @@ pub async fn repository_security_advisory_detail_for_actor_by_owner_name(
     let ghsa_id = normalize_ghsa_id(ghsa_id)?;
     repository_security_advisory_detail_for_repository(pool, &repository, actor_user_id, &ghsa_id)
         .await
+}
+
+pub async fn update_repository_security_advisory_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    ghsa_id: &str,
+    mutation: RepositorySecurityAdvisoryMutation,
+) -> Result<Option<RepositorySecurityAdvisoryDetail>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if !can_write_repository(pool, &repository, actor_user_id).await? {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if repository.is_archived {
+        return Err(RepositoryError::ArchivedRepositoryReadOnly);
+    }
+    let ghsa_id = normalize_ghsa_id(ghsa_id)?;
+    update_repository_security_advisory(pool, &repository, actor_user_id, &ghsa_id, mutation).await
 }
 
 pub async fn repository_dependabot_alert_detail_for_actor_by_owner_name(
@@ -3420,6 +3481,202 @@ async fn repository_security_advisory_detail_for_repository(
     }))
 }
 
+async fn update_repository_security_advisory(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    ghsa_id: &str,
+    mutation: RepositorySecurityAdvisoryMutation,
+) -> Result<Option<RepositorySecurityAdvisoryDetail>, RepositoryError> {
+    let advisory_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        SELECT id
+        FROM repository_security_advisories
+        WHERE repository_id = $1
+          AND lower(COALESCE(ghsa_id, advisory_identifier)) = lower($2)
+        "#,
+    )
+    .bind(repository.id)
+    .bind(ghsa_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some(advisory_id) = advisory_id else {
+        return Ok(None);
+    };
+
+    let title = validate_advisory_text(&mutation.title, "title", 240)?;
+    let summary = validate_advisory_text(&mutation.summary, "summary", 1000)?;
+    let details_markdown = validate_advisory_text(&mutation.details_markdown, "details", 20_000)?;
+    let severity = validate_advisory_severity(&mutation.severity)?;
+    let cve_id = validate_optional_cve(mutation.cve_id.as_deref())?;
+    let package_ecosystem = normalize_optional_advisory_text(
+        mutation.package_ecosystem.as_deref(),
+        "package ecosystem",
+        80,
+    )?;
+    let package_name =
+        normalize_optional_advisory_text(mutation.package_name.as_deref(), "package name", 160)?;
+    let affected_versions = normalize_optional_advisory_text(
+        mutation.affected_versions.as_deref(),
+        "affected versions",
+        240,
+    )?;
+    let patched_versions = normalize_optional_advisory_text(
+        mutation.patched_versions.as_deref(),
+        "patched versions",
+        240,
+    )?;
+    let cvss_vector =
+        normalize_optional_advisory_text(mutation.cvss_vector.as_deref(), "CVSS vector", 240)?;
+    if let Some(score) = mutation.cvss_score {
+        if !(0.0..=10.0).contains(&score) {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(
+                "CVSS score must be between 0 and 10".to_owned(),
+            ));
+        }
+    }
+    let cwes = validate_advisory_cwes(&mutation.cwes)?;
+    let credits = validate_advisory_credits(&mutation.credits)?;
+    let collaborators = validate_advisory_collaborators(&mutation.collaborators)?;
+    let rendered = render_markdown(
+        Some(pool),
+        RenderMarkdownInput {
+            markdown: details_markdown.clone(),
+            repository_id: Some(repository.id),
+            owner: Some(repository.owner_login.clone()),
+            repo: Some(repository.name.clone()),
+            ref_name: Some(repository.default_branch.clone()),
+            enable_task_toggles: Some(false),
+        },
+    )
+    .await
+    .map_err(markdown_error)?;
+
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        r#"
+        UPDATE repository_security_advisories
+        SET title = $3,
+            summary = $4,
+            markdown_summary = $4,
+            markdown_details = $5,
+            details_html = $6,
+            cve_id = $7,
+            severity = $8,
+            package_ecosystem = $9,
+            package_name = $10,
+            affected_versions = $11,
+            vulnerable_range = $11,
+            patched_versions = $12,
+            cvss_vector = $13,
+            cvss_score = $14,
+            cvss_metrics = $15,
+            updated_at = now()
+        WHERE repository_id = $1 AND id = $2
+        "#,
+    )
+    .bind(repository.id)
+    .bind(advisory_id)
+    .bind(&title)
+    .bind(&summary)
+    .bind(&details_markdown)
+    .bind(&rendered.html)
+    .bind(cve_id.as_deref())
+    .bind(&severity)
+    .bind(package_ecosystem.as_deref())
+    .bind(package_name.as_deref())
+    .bind(affected_versions.as_deref())
+    .bind(patched_versions.as_deref())
+    .bind(cvss_vector.as_deref())
+    .bind(mutation.cvss_score)
+    .bind(&mutation.cvss_metrics)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query("DELETE FROM repository_security_advisory_cwes WHERE advisory_id = $1")
+        .bind(advisory_id)
+        .execute(&mut *tx)
+        .await?;
+    for cwe in cwes {
+        sqlx::query(
+            r#"
+            INSERT INTO repository_security_advisory_cwes (advisory_id, cwe_id, name, href)
+            VALUES ($1, $2, $3, $4)
+            "#,
+        )
+        .bind(advisory_id)
+        .bind(cwe.id)
+        .bind(cwe.name)
+        .bind(cwe.href)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    sqlx::query("DELETE FROM repository_security_advisory_credits WHERE advisory_id = $1")
+        .bind(advisory_id)
+        .execute(&mut *tx)
+        .await?;
+    for credit in credits {
+        sqlx::query(
+            r#"
+            INSERT INTO repository_security_advisory_credits (advisory_id, login, credit_type)
+            VALUES ($1, $2, $3)
+            "#,
+        )
+        .bind(advisory_id)
+        .bind(credit.login)
+        .bind(credit.credit_type)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    sqlx::query("DELETE FROM repository_security_advisory_collaborators WHERE advisory_id = $1")
+        .bind(advisory_id)
+        .execute(&mut *tx)
+        .await?;
+    for collaborator in collaborators {
+        sqlx::query(
+            r#"
+            INSERT INTO repository_security_advisory_collaborators (
+                advisory_id, login, role, invited_by_user_id
+            )
+            VALUES ($1, $2, $3, $4)
+            "#,
+        )
+        .bind(advisory_id)
+        .bind(collaborator.login)
+        .bind(collaborator.role)
+        .bind(actor_user_id)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO repository_security_advisory_events (
+            advisory_id, actor_user_id, event_type, message, metadata
+        )
+        VALUES ($1, $2, 'edited', 'Updated advisory metadata', $3)
+        "#,
+    )
+    .bind(advisory_id)
+    .bind(actor_user_id)
+    .bind(json!({
+        "severity": severity,
+        "cveId": cve_id,
+        "package": {
+            "ecosystem": package_ecosystem,
+            "name": package_name,
+        }
+    }))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    repository_security_advisory_detail_for_repository(pool, repository, actor_user_id, ghsa_id)
+        .await
+}
+
 async fn repository_security_advisory_rows(
     pool: &PgPool,
     repository: &Repository,
@@ -3796,6 +4053,125 @@ fn normalize_ghsa_id(value: &str) -> Result<String, RepositoryError> {
         ));
     }
     Ok(value.to_owned())
+}
+
+fn validate_advisory_text(
+    value: &str,
+    field: &str,
+    max_len: usize,
+) -> Result<String, RepositoryError> {
+    let value = value.trim();
+    if value.is_empty() || value.len() > max_len {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+            "{field} must be 1 to {max_len} characters"
+        )));
+    }
+    Ok(value.to_owned())
+}
+
+fn normalize_optional_advisory_text(
+    value: Option<&str>,
+    field: &str,
+    max_len: usize,
+) -> Result<Option<String>, RepositoryError> {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    if value.len() > max_len {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+            "{field} must be {max_len} characters or fewer"
+        )));
+    }
+    Ok(Some(value.to_owned()))
+}
+
+fn validate_advisory_severity(value: &str) -> Result<String, RepositoryError> {
+    match value.trim() {
+        severity @ ("low" | "moderate" | "high" | "critical") => Ok(severity.to_owned()),
+        other => Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+            "unsupported advisory severity `{other}`"
+        ))),
+    }
+}
+
+fn validate_optional_cve(value: Option<&str>) -> Result<Option<String>, RepositoryError> {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    let valid = Regex::new(r"^CVE-[0-9]{4}-[0-9]{4,}$").expect("valid CVE regex");
+    if !valid.is_match(value) {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "CVE id must use CVE-YYYY-NNNN format".to_owned(),
+        ));
+    }
+    Ok(Some(value.to_owned()))
+}
+
+fn validate_advisory_cwes(cwes: &[CweReference]) -> Result<Vec<CweReference>, RepositoryError> {
+    let valid = Regex::new(r"^CWE-[0-9]+$").expect("valid CWE regex");
+    let mut normalized = Vec::new();
+    for cwe in cwes.iter().take(20) {
+        let id = cwe.id.trim().to_uppercase();
+        if !valid.is_match(&id) {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(
+                "CWE ids must use CWE-NNN format".to_owned(),
+            ));
+        }
+        let name = cwe.name.trim();
+        normalized.push(CweReference {
+            id,
+            name: if name.is_empty() {
+                "Common Weakness Enumeration".to_owned()
+            } else {
+                name.chars().take(200).collect()
+            },
+            href: normalize_optional_advisory_text(cwe.href.as_deref(), "CWE href", 300)?,
+        });
+    }
+    Ok(normalized)
+}
+
+fn validate_advisory_credits(
+    credits: &[AdvisoryCreditMutation],
+) -> Result<Vec<AdvisoryCreditMutation>, RepositoryError> {
+    let mut normalized = Vec::new();
+    for credit in credits.iter().take(20) {
+        let login = validate_advisory_text(&credit.login, "credit login", 80)?;
+        let credit_type = match credit.credit_type.trim() {
+            value @ ("reporter"
+            | "finder"
+            | "analyst"
+            | "coordinator"
+            | "remediation_developer"
+            | "reviewer") => value.to_owned(),
+            other => {
+                return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                    "unsupported advisory credit type `{other}`"
+                )))
+            }
+        };
+        normalized.push(AdvisoryCreditMutation { login, credit_type });
+    }
+    Ok(normalized)
+}
+
+fn validate_advisory_collaborators(
+    collaborators: &[AdvisoryCollaboratorMutation],
+) -> Result<Vec<AdvisoryCollaboratorMutation>, RepositoryError> {
+    let mut normalized = Vec::new();
+    for collaborator in collaborators.iter().take(20) {
+        let login = validate_advisory_text(&collaborator.login, "collaborator login", 80)?;
+        let role = match collaborator.role.trim() {
+            value @ ("author" | "collaborator" | "credit_only") => value.to_owned(),
+            other => {
+                return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                    "unsupported advisory collaborator role `{other}`"
+                )))
+            }
+        };
+        normalized.push(AdvisoryCollaboratorMutation { login, role });
+    }
+    Ok(normalized)
 }
 
 fn advisory_links(repository: &Repository, can_write: bool) -> RepositorySecurityAdvisoryLinks {

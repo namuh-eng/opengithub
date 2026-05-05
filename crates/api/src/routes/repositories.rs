@@ -112,11 +112,13 @@ use crate::{
         update_repository_code_scanning_alert_for_actor_by_owner_name,
         update_repository_dependabot_alert_for_actor_by_owner_name,
         update_repository_secret_scanning_alert_for_actor_by_owner_name,
+        update_repository_security_advisory_for_actor_by_owner_name,
         upload_repository_code_scanning_sarif_for_actor_by_owner_name,
         upsert_repository_security_policy_by_owner_name, CodeScanningAlertMutation,
         CodeScanningAlertsQuery, CodeScanningSarifUpload, DependabotAlertMutation,
         DependabotAlertsQuery, DependabotBulkMutation, RepositorySecurityAdvisoriesQuery,
-        SecretScanningAlertMutation, SecretScanningAlertsQuery, SecurityPolicyMutation,
+        RepositorySecurityAdvisoryMutation, SecretScanningAlertMutation, SecretScanningAlertsQuery,
+        SecurityPolicyMutation,
     },
     domain::webhooks::{
         create_repository_webhook_by_owner_name, delete_repository_webhook_by_owner_name,
@@ -166,7 +168,7 @@ pub fn router() -> Router<AppState> {
         )
         .route(
             "/:owner/:repo/security/advisories/:ghsa_id",
-            get(security_advisory_detail),
+            get(security_advisory_detail).patch(update_security_advisory),
         )
         .route(
             "/:owner/:repo/security/code-scanning",
@@ -1347,6 +1349,30 @@ async fn security_advisory_detail(
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let view = repository_security_advisory_detail_for_actor_by_owner_name(
         pool, actor.0.id, &owner, &repo, &ghsa_id,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "security advisory was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn update_security_advisory(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, ghsa_id)): Path<(String, String, String)>,
+    RestJson(request): RestJson<RepositorySecurityAdvisoryMutation>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = update_repository_security_advisory_for_actor_by_owner_name(
+        pool, actor.0.id, &owner, &repo, &ghsa_id, request,
     )
     .await
     .map_err(map_repository_error)?

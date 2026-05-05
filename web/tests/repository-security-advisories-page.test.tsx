@@ -1,9 +1,11 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { RepositorySecurityAdvisoriesPage } from "@/components/RepositorySecurityAdvisoriesPage";
+import { RepositorySecurityAdvisoryDetailPage } from "@/components/RepositorySecurityAdvisoryDetailPage";
 import type {
   RepositoryOverview,
   RepositorySecurityAdvisoriesView,
+  RepositorySecurityAdvisoryDetail,
 } from "@/lib/api";
 
 function repositoryOverview(): RepositoryOverview {
@@ -51,6 +53,71 @@ function repositoryOverview(): RepositoryOverview {
       zip: "/namuh-eng/opengithub/archive/refs/heads/main.zip",
     },
   };
+}
+
+function advisoryDetail(
+  overrides: Partial<RepositorySecurityAdvisoryDetail> = {},
+): RepositorySecurityAdvisoryDetail {
+  const view = advisoriesView();
+  const base: RepositorySecurityAdvisoryDetail = {
+    repository: view.repository,
+    viewer: {
+      permission: "write",
+      canRead: true,
+      canWrite: true,
+      canEdit: true,
+      canPublish: false,
+      canInviteCollaborators: true,
+    },
+    advisory: view.advisories[0],
+    markdown: {
+      summaryMarkdown: "Visible summary",
+      detailsMarkdown: "## Impact\n\nUse patched versions.",
+      detailsHtml: "<h2>Impact</h2><p>Use patched versions.</p>",
+    },
+    credits: [
+      {
+        id: "credit-1",
+        actor: {
+          id: "user-2",
+          login: "security-reporter",
+          avatarUrl: null,
+          profileHref: "/security-reporter",
+        },
+        creditType: "reporter",
+        createdAt: "2026-05-05T00:00:00Z",
+      },
+    ],
+    collaborators: [
+      {
+        id: "collaborator-1",
+        actor: {
+          id: "user-1",
+          login: "jaeyun",
+          avatarUrl: null,
+          profileHref: "/jaeyun",
+        },
+        role: "author",
+        createdAt: "2026-05-05T00:00:00Z",
+      },
+    ],
+    timeline: [
+      {
+        id: "event-1",
+        eventType: "published",
+        message: "Published advisory GHSA-demo-2026",
+        actor: {
+          id: "user-1",
+          login: "jaeyun",
+          avatarUrl: null,
+          profileHref: "/jaeyun",
+        },
+        createdAt: "2026-05-05T00:00:00Z",
+      },
+    ],
+    links: view.links,
+  };
+  return { ...base, ...overrides };
 }
 
 function advisoriesView(
@@ -337,6 +404,34 @@ describe("RepositorySecurityAdvisoriesPage", () => {
     expect(screen.getByRole("link", { name: "Start draft" })).toHaveAttribute(
       "href",
       "/namuh-eng/opengithub/security/advisories/new",
+    );
+  });
+
+  it("renders advisory detail metadata and maintainer edit controls with concrete mutation destination", () => {
+    const { container } = render(
+      <RepositorySecurityAdvisoryDetailPage
+        advisoryResult={{ ok: true, advisory: advisoryDetail() }}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", {
+        name: "Token scope bypass in repository import workflow",
+      }),
+    ).toBeVisible();
+    expect(screen.getByText("GHSA-demo-2026")).toBeVisible();
+    expect(screen.getByText("CVE-2026-1234")).toBeVisible();
+    expect(screen.getByText(/cargo:opengithub-import/)).toBeVisible();
+    expect(screen.getByRole("button", { name: /Score 8.1/ })).toBeVisible();
+    expect(screen.getByText(/CWE-284 Improper Access Control/)).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue(
+      "Token scope bypass in repository import workflow",
+    );
+    expect(screen.getByRole("button", { name: "Save advisory" })).toBeVisible();
+    expect(container.innerHTML).not.toContain('href="#"');
+    expect(container.innerHTML).not.toMatch(
+      /#(0969da|1f883d|1a7f37|cf222e|82071e|f6f8fa|1f2328|d0d7de|59636e|f1aeb5|fff1f3)\b|@primer\/|Octicon/i,
     );
   });
 });

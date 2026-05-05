@@ -42,7 +42,7 @@
 
 ## Phase 3: Advisory Detail and Metadata Editing - Markdown, CVSS, CWE, credits
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement `/{owner}/{repo}/security/advisories/{ghsa_id}` plus maintainer edit flow for draft and published advisory metadata. The detail page should render the full advisory with CVSS score/modal data, package ranges, CVE/CWE disclosure, credits, collaborators, timeline, and edit controls. Mutations validate fields server-side and write audit/notification events.
 
