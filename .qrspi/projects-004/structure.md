@@ -40,7 +40,7 @@
 
 ## Phase 3: Field Create, Rename, and Delete - custom field lifecycle mutates durable project schema
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make New field, Rename, and Delete real for custom date/text/number/single-select/iteration fields. Authorized users can create fields up to limits, rename custom fields, and delete fields after confirmation; deletion removes project item field values but never deletes linked issues or pull requests.
 

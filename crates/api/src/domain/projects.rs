@@ -184,6 +184,26 @@ pub struct ProjectRoadmapSettingsRequest {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ProjectFieldCreateRequest {
+    pub name: String,
+    pub field_type: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectFieldUpdateRequest {
+    pub name: String,
+    pub expected_updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectFieldDeleteRequest {
+    pub expected_updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectItemFieldValueRequest {
     pub value: Value,
     pub expected_updated_at: Option<DateTime<Utc>>,
@@ -941,6 +961,232 @@ pub async fn project_field_settings(
         },
         unavailable_reason: None,
     })
+}
+
+pub async fn create_project_field_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectFieldCreateRequest,
+) -> Result<ProjectFieldSettings, ProjectsError> {
+    let project = workspace_project_row(pool, project_id, Some(actor_user_id)).await?;
+    let can_manage = project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role);
+    if !can_manage {
+        return Err(ProjectsError::Forbidden);
+    }
+
+    let name = normalize_project_field_name(&request.name)?;
+    let field_type = normalize_custom_project_field_type(&request.field_type)?;
+    let fields = field_settings_fields(pool, project_id).await?;
+    if fields.len() >= 50 {
+        return Err(ProjectsError::Validation(
+            "Project field limit has been reached.".to_owned(),
+        ));
+    }
+    ensure_unique_project_field_name(pool, project_id, None, &name).await?;
+    let position = fields.iter().map(|field| field.position).max().unwrap_or(0) + 1;
+
+    let field_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO project_fields (project_id, name, field_type, position, settings)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id
+        "#,
+    )
+    .bind(project_id)
+    .bind(&name)
+    .bind(&field_type)
+    .bind(position as i32)
+    .bind(default_project_field_settings(&field_type))
+    .fetch_one(pool)
+    .await?;
+
+    invalidate_project_view_caches(pool, project_id).await?;
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, 'project.field.create', 'project_field', $2, $3)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(field_id.to_string())
+    .bind(json!({
+        "projectId": project_id,
+        "fieldName": name,
+        "fieldType": field_type,
+    }))
+    .execute(pool)
+    .await?;
+
+    project_field_settings(pool, project_id, Some(actor_user_id)).await
+}
+
+pub async fn update_project_field_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    field_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectFieldUpdateRequest,
+) -> Result<ProjectFieldSettings, ProjectsError> {
+    let project = workspace_project_row(pool, project_id, Some(actor_user_id)).await?;
+    let can_manage = project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role);
+    if !can_manage {
+        return Err(ProjectsError::Forbidden);
+    }
+
+    let field = project_field_admin_target(pool, project_id, field_id).await?;
+    if is_builtin_project_field(&field.field_type) {
+        return Err(ProjectsError::Validation(
+            "Built-in project fields cannot be renamed.".to_owned(),
+        ));
+    }
+    if let Some(expected) = request.expected_updated_at {
+        if field.updated_at != expected {
+            return Err(ProjectsError::Validation(
+                "Project field changed since it was loaded. Refresh before saving.".to_owned(),
+            ));
+        }
+    }
+
+    let name = normalize_project_field_name(&request.name)?;
+    ensure_unique_project_field_name(pool, project_id, Some(field_id), &name).await?;
+    sqlx::query(
+        r#"
+        UPDATE project_fields
+        SET name = $3, cache_version = cache_version + 1, updated_at = now()
+        WHERE project_id = $1 AND id = $2 AND deleted_at IS NULL
+        "#,
+    )
+    .bind(project_id)
+    .bind(field_id)
+    .bind(&name)
+    .execute(pool)
+    .await?;
+    invalidate_project_view_caches(pool, project_id).await?;
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, 'project.field.rename', 'project_field', $2, $3)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(field_id.to_string())
+    .bind(json!({
+        "projectId": project_id,
+        "previousName": field.name,
+        "fieldName": name,
+        "fieldType": field.field_type,
+    }))
+    .execute(pool)
+    .await?;
+
+    project_field_settings(pool, project_id, Some(actor_user_id)).await
+}
+
+pub async fn delete_project_field_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    field_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectFieldDeleteRequest,
+) -> Result<ProjectFieldSettings, ProjectsError> {
+    let project = workspace_project_row(pool, project_id, Some(actor_user_id)).await?;
+    let can_manage = project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role);
+    if !can_manage {
+        return Err(ProjectsError::Forbidden);
+    }
+
+    let field = project_field_admin_target(pool, project_id, field_id).await?;
+    if is_builtin_project_field(&field.field_type) {
+        return Err(ProjectsError::Validation(
+            "Built-in project fields cannot be deleted.".to_owned(),
+        ));
+    }
+    if let Some(expected) = request.expected_updated_at {
+        if field.updated_at != expected {
+            return Err(ProjectsError::Validation(
+                "Project field changed since it was loaded. Refresh before deleting.".to_owned(),
+            ));
+        }
+    }
+
+    let affected_item_ids = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        SELECT project_items.id
+        FROM project_item_field_values
+        JOIN project_items ON project_items.id = project_item_field_values.project_item_id
+        WHERE project_items.project_id = $1
+          AND project_item_field_values.project_field_id = $2
+        "#,
+    )
+    .bind(project_id)
+    .bind(field_id)
+    .fetch_all(pool)
+    .await?;
+
+    sqlx::query("DELETE FROM project_item_field_values WHERE project_field_id = $1")
+        .bind(field_id)
+        .execute(pool)
+        .await?;
+    sqlx::query(
+        r#"
+        UPDATE project_fields
+        SET deleted_at = now(), cache_version = cache_version + 1, updated_at = now()
+        WHERE project_id = $1 AND id = $2 AND deleted_at IS NULL
+        "#,
+    )
+    .bind(project_id)
+    .bind(field_id)
+    .execute(pool)
+    .await?;
+    invalidate_project_view_caches(pool, project_id).await?;
+
+    for item_id in &affected_item_ids {
+        sqlx::query(
+            r#"
+            INSERT INTO project_item_events (project_id, project_item_id, actor_user_id, event_type, metadata)
+            VALUES ($1, $2, $3, 'project.field_value.delete', $4)
+            "#,
+        )
+        .bind(project_id)
+        .bind(item_id)
+        .bind(actor_user_id)
+        .bind(json!({
+            "fieldId": field_id,
+            "fieldName": field.name,
+            "fieldType": field.field_type,
+        }))
+        .execute(pool)
+        .await?;
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, 'project.field.delete', 'project_field', $2, $3)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(field_id.to_string())
+    .bind(json!({
+        "projectId": project_id,
+        "fieldName": field.name,
+        "fieldType": field.field_type,
+        "removedValues": affected_item_ids.len(),
+    }))
+    .execute(pool)
+    .await?;
+
+    project_field_settings(pool, project_id, Some(actor_user_id)).await
 }
 
 pub async fn update_project_view_state_for_actor(
@@ -2351,6 +2597,112 @@ async fn field_settings_breaks(
             )
         })
         .collect())
+}
+
+struct ProjectFieldAdminTarget {
+    name: String,
+    field_type: String,
+    updated_at: DateTime<Utc>,
+}
+
+async fn project_field_admin_target(
+    pool: &PgPool,
+    project_id: Uuid,
+    field_id: Uuid,
+) -> Result<ProjectFieldAdminTarget, ProjectsError> {
+    let row = sqlx::query(
+        r#"
+        SELECT name, field_type, updated_at
+        FROM project_fields
+        WHERE project_id = $1 AND id = $2 AND deleted_at IS NULL
+        "#,
+    )
+    .bind(project_id)
+    .bind(field_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| {
+        ProjectsError::InvalidFilter("field must reference a project field".to_owned())
+    })?;
+    Ok(ProjectFieldAdminTarget {
+        name: row.get("name"),
+        field_type: row.get("field_type"),
+        updated_at: row.get("updated_at"),
+    })
+}
+
+fn normalize_project_field_name(input: &str) -> Result<String, ProjectsError> {
+    let name = input.trim().chars().take(80).collect::<String>();
+    if name.is_empty() {
+        return Err(ProjectsError::Validation(
+            "Project field name is required.".to_owned(),
+        ));
+    }
+    Ok(name)
+}
+
+fn normalize_custom_project_field_type(input: &str) -> Result<String, ProjectsError> {
+    let field_type = input.trim().to_ascii_lowercase();
+    if matches!(
+        field_type.as_str(),
+        "single_select" | "iteration" | "date" | "text" | "number"
+    ) {
+        Ok(field_type)
+    } else {
+        Err(ProjectsError::Validation(
+            "Project field type must be single_select, iteration, date, text, or number."
+                .to_owned(),
+        ))
+    }
+}
+
+fn default_project_field_settings(field_type: &str) -> Value {
+    match field_type {
+        "iteration" => json!({ "durationUnit": "weeks", "duration": 2 }),
+        "number" => json!({ "format": "number" }),
+        _ => json!({}),
+    }
+}
+
+async fn ensure_unique_project_field_name(
+    pool: &PgPool,
+    project_id: Uuid,
+    current_field_id: Option<Uuid>,
+    name: &str,
+) -> Result<(), ProjectsError> {
+    let duplicate: Option<Uuid> = sqlx::query_scalar(
+        r#"
+        SELECT id
+        FROM project_fields
+        WHERE project_id = $1
+          AND deleted_at IS NULL
+          AND lower(name) = lower($2)
+          AND ($3::uuid IS NULL OR id <> $3)
+        LIMIT 1
+        "#,
+    )
+    .bind(project_id)
+    .bind(name)
+    .bind(current_field_id)
+    .fetch_optional(pool)
+    .await?;
+    if duplicate.is_some() {
+        return Err(ProjectsError::Validation(
+            "A project field with that name already exists.".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+async fn invalidate_project_view_caches(
+    pool: &PgPool,
+    project_id: Uuid,
+) -> Result<(), ProjectsError> {
+    sqlx::query("UPDATE project_views SET updated_at = now() WHERE project_id = $1")
+        .bind(project_id)
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
 fn is_builtin_project_field(field_type: &str) -> bool {

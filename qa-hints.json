@@ -7000,5 +7000,25 @@
       "Probe large field lists, field-name wrapping on mobile, empty custom field lists, read-only roles, private project denial, selected field query URLs, and iteration/option overflow.",
       "Confirm the settings page remains visually Editorial and does not inherit GitHub/Primer colors or controls."
     ]
+  },
+  {
+    "feature_id": "projects-004",
+    "tests_written": [
+      "Completed Phase 3 Field Create, Rename, and Delete without marking projects-004 build_pass=true.",
+      "Added signed-session Rust mutations for POST /api/projects/{project_id}/settings/fields, PATCH /api/projects/{project_id}/fields/{field_id}, and DELETE /api/projects/{project_id}/fields/{field_id}.",
+      "Field lifecycle writes enforce project write/admin permission, supported custom field types, max-field limit, unique normalized names, built-in field protection, stale expectedUpdatedAt checks, project view cache invalidation, audit_events, and project_item_events for deleted field values.",
+      "Added same-origin Next proxies and typed api.ts helpers for create, rename, and delete while preserving Rust API/session authority.",
+      "Wired ProjectFieldSettingsPage New field, rename/save, and delete confirmation controls to real API submissions with pending/error/success states and Editorial primitives only.",
+      "Extended focused Rust projects_workspace_contract coverage for create, duplicate-name validation, read-only denial, rename, built-in rename denial, delete value cleanup, audit rows, and item-event evidence under the DB guard.",
+      "Extended focused Vitest coverage for field create, rename payloads, delete confirmation payloads, success feedback, and existing no-dead-link/editorial guardrails.",
+      "Verification passed: cargo fmt --all, cargo check -p opengithub-api --tests, focused project-field-settings-page Vitest with 6 tests, focused Biome, web TypeScript, mandatory Editorial banned-value scan, full make check, and full make test with Cargo tests plus 551 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Focused Rust DB assertions self-skipped because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test failed with password authentication failed for user postgres; rerun projects_workspace_contract against a clean migrated credentialed database.",
+      "Full make test-e2e was attempted. Playwright started 144 tests, public/setup tests began passing, and signed-session tests repeatedly failed because local Postgres rejected the configured postgres password; the run was terminated after repeated credential failures, so no browser screenshot was saved for projects-004 Phase 3.",
+      "Rerun a focused field lifecycle browser smoke against a clean migrated credentialed TEST_DATABASE_URL to save ralph/screenshots/build/projects-004-phase3-field-lifecycle.jpg.",
+      "Probe field limit edges, duplicate names with case/whitespace differences, stale expectedUpdatedAt conflicts, read-only users, built-in field rename/delete denial, deletion cleanup for many project_item_field_values, view/filter cache invalidation, audit metadata, long field names, mobile dialog fit, and no dead controls after API errors.",
+      "Phase 4 still owns single-select option CRUD/reorder/delete; Phase 5 still owns iteration schedules/breaks/filter tokens; Phase 6 still owns final docs, screenshots, QA handoff, and build_pass bookkeeping."
+    ]
   }
 ]

@@ -1,5 +1,11 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectFieldSettingsPage } from "@/components/ProjectFieldSettingsPage";
 import type { ProjectFieldSettings } from "@/lib/api";
 
@@ -121,6 +127,10 @@ function settings(
 }
 
 describe("ProjectFieldSettingsPage", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("renders the Editorial field settings shell with concrete navigation", () => {
     render(
       <ProjectFieldSettingsPage
@@ -166,7 +176,7 @@ describe("ProjectFieldSettingsPage", () => {
     expect(screen.getByRole("button", { name: "Add option" })).toBeDisabled();
   });
 
-  it("renders iteration schedules and read-only mutation controls", () => {
+  it("renders iteration schedules and mutation controls for editable fields", () => {
     render(
       <ProjectFieldSettingsPage
         owner="mona"
@@ -187,10 +197,38 @@ describe("ProjectFieldSettingsPage", () => {
     ).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Rename" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeEnabled();
   });
 
-  it("opens the New field dialog while keeping creation disabled for the later phase", () => {
+  it("creates a field through the same-origin project field API", async () => {
+    const nextSettings = settings({
+      fields: [
+        ...settings().fields,
+        {
+          id: "field-priority",
+          name: "Priority",
+          fieldType: "single_select",
+          position: 4,
+          settings: {},
+          builtIn: false,
+          editable: true,
+          deletable: true,
+          usageCount: 0,
+          options: [],
+          iterations: [],
+          breaks: [],
+          cacheVersion: 1,
+          updatedAt: "2026-05-05T00:00:00Z",
+        },
+      ],
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(nextSettings), {
+        status: 201,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
     render(
       <ProjectFieldSettingsPage
         owner="namuh"
@@ -208,9 +246,103 @@ describe("ProjectFieldSettingsPage", () => {
       "placeholder",
       "Priority",
     );
-    expect(
+    fireEvent.change(within(dialog).getByLabelText("Name"), {
+      target: { value: "Priority" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Type"), {
+      target: { value: "single_select" },
+    });
+    fireEvent.click(
       within(dialog).getByRole("button", { name: "Create field" }),
-    ).toBeDisabled();
+    );
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/projects/project-1/fields",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            name: "Priority",
+            fieldType: "single_select",
+          }),
+        }),
+      ),
+    );
+    expect(await screen.findByText("Field created.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Priority/ })).toBeInTheDocument();
+  });
+
+  it("renames and deletes custom fields with stale timestamp payloads", async () => {
+    const renamedSettings = settings({
+      fields: settings().fields.map((field) =>
+        field.id === "field-status" ? { ...field, name: "Stage" } : field,
+      ),
+    });
+    const deletedSettings = settings({
+      fields: settings().fields.filter((field) => field.id !== "field-status"),
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(renamedSettings), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(deletedSettings), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+    render(
+      <ProjectFieldSettingsPage
+        owner="namuh"
+        scope="organization"
+        selectedFieldId="field-status"
+        settings={settings()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Stage" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await screen.findByText("Field renamed.");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/projects/project-1/fields/field-status",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          name: "Stage",
+          expectedUpdatedAt: "2026-05-03T00:00:00Z",
+        }),
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    const dialog = screen.getByRole("dialog");
+    expect(
+      within(dialog).getByText(/Linked issues and pull requests/),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Delete field" }),
+    );
+    await screen.findByText(
+      "Field deleted. Existing item values were removed.",
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/projects/project-1/fields/field-status",
+      expect.objectContaining({
+        method: "DELETE",
+        body: JSON.stringify({
+          expectedUpdatedAt: "2026-05-03T00:00:00Z",
+        }),
+      }),
+    );
   });
 
   it("shows permission-disabled controls and no placeholder links", () => {

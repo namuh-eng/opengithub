@@ -12,11 +12,13 @@ use crate::{
     auth::extractor::AuthenticatedUser,
     domain::projects::{
         add_project_item_for_actor, bulk_add_project_items_for_actor, copy_project_for_actor,
-        organization_projects, project_field_settings, project_workspace,
-        remove_project_item_for_actor, repository_projects, update_project_item_field_for_actor,
+        create_project_field_for_actor, delete_project_field_for_actor, organization_projects,
+        project_field_settings, project_workspace, remove_project_item_for_actor,
+        repository_projects, update_project_field_for_actor, update_project_item_field_for_actor,
         update_project_item_position_for_actor, update_project_roadmap_settings_for_actor,
         update_project_view_layout_for_actor, update_project_view_state_for_actor, user_projects,
-        CopiedProject, CopyProjectRequest, ProjectFieldSettings, ProjectItemAddRequest,
+        CopiedProject, CopyProjectRequest, ProjectFieldCreateRequest, ProjectFieldDeleteRequest,
+        ProjectFieldSettings, ProjectFieldUpdateRequest, ProjectItemAddRequest,
         ProjectItemFieldValueRequest, ProjectItemPositionRequest, ProjectItemsBulkAddRequest,
         ProjectList, ProjectListQuery, ProjectRoadmapSettingsRequest, ProjectViewLayoutRequest,
         ProjectViewStateRequest, ProjectWorkspace, ProjectWorkspaceQuery, ProjectsError,
@@ -34,7 +36,11 @@ pub fn router() -> Router<AppState> {
         )
         .route(
             "/api/projects/:project_id/settings/fields",
-            get(project_field_settings_route),
+            get(project_field_settings_route).post(create_project_field_route),
+        )
+        .route(
+            "/api/projects/:project_id/fields/:field_id",
+            patch(update_project_field_route).delete(delete_project_field_route),
         )
         .route(
             "/api/projects/:project_id/views/:view_id/state",
@@ -228,6 +234,58 @@ async fn project_field_settings_route(
     let settings = project_field_settings(pool, project_id, actor.map(|user| user.id))
         .await
         .map_err(map_projects_error)?;
+    Ok(Json(settings))
+}
+
+async fn create_project_field_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(project_id): Path<Uuid>,
+    Json(request): Json<ProjectFieldCreateRequest>,
+) -> Result<(StatusCode, Json<ProjectFieldSettings>), (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let settings = create_project_field_for_actor(pool, project_id, actor.id, request)
+        .await
+        .map_err(map_projects_error)?;
+    Ok((StatusCode::CREATED, Json(settings)))
+}
+
+async fn update_project_field_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project_id, field_id)): Path<(Uuid, Uuid)>,
+    Json(request): Json<ProjectFieldUpdateRequest>,
+) -> Result<Json<ProjectFieldSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let settings = update_project_field_for_actor(pool, project_id, field_id, actor.id, request)
+        .await
+        .map_err(map_projects_error)?;
+    Ok(Json(settings))
+}
+
+async fn delete_project_field_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project_id, field_id)): Path<(Uuid, Uuid)>,
+    request: Option<Json<ProjectFieldDeleteRequest>>,
+) -> Result<Json<ProjectFieldSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let settings = delete_project_field_for_actor(
+        pool,
+        project_id,
+        field_id,
+        actor.id,
+        request
+            .map(|Json(body)| body)
+            .unwrap_or(ProjectFieldDeleteRequest {
+                expected_updated_at: None,
+            }),
+    )
+    .await
+    .map_err(map_projects_error)?;
     Ok(Json(settings))
 }
 

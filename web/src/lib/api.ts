@@ -438,6 +438,20 @@ export type ProjectFieldSettingsFetchResult =
   | { ok: true; settings: ProjectFieldSettings }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type ProjectFieldCreateRequest = {
+  name: string;
+  fieldType: "single_select" | "iteration" | "date" | "text" | "number";
+};
+
+export type ProjectFieldUpdateRequest = {
+  name: string;
+  expectedUpdatedAt?: string | null;
+};
+
+export type ProjectFieldDeleteRequest = {
+  expectedUpdatedAt?: string | null;
+};
+
 export type ProjectViewStateRequest = {
   query: string | null;
   sort: string;
@@ -7684,6 +7698,86 @@ export async function updateProjectViewStateFromCookie(
     );
   }
   return payload as ProjectWorkspace;
+}
+
+async function mutateProjectFieldSettingsFromCookie(
+  cookie: string | null | undefined,
+  path: string,
+  method: "POST" | "PATCH" | "DELETE",
+  fallbackCode: string,
+  fallbackMessage: string,
+  body?: unknown,
+): Promise<ProjectFieldSettings> {
+  const response = await fetch(`${apiBaseUrl()}${path}`, {
+    method,
+    headers: {
+      ...(body == null ? {} : { "content-type": "application/json" }),
+      ...(cookie ? { cookie } : {}),
+    },
+    body: body == null ? undefined : JSON.stringify(body),
+    cache: "no-store",
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(envelope?.error.message ?? fallbackMessage, {
+      cause: {
+        error: envelope?.error ?? {
+          code: fallbackCode,
+          message: fallbackMessage,
+        },
+        status: envelope?.status ?? response.status,
+      } satisfies ApiErrorEnvelope,
+    });
+  }
+  return payload as ProjectFieldSettings;
+}
+
+export function createProjectFieldFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  request: ProjectFieldCreateRequest,
+): Promise<ProjectFieldSettings> {
+  return mutateProjectFieldSettingsFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/settings/fields`,
+    "POST",
+    "project_field_create_failed",
+    "Project field could not be created.",
+    request,
+  );
+}
+
+export function updateProjectFieldFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  fieldId: string,
+  request: ProjectFieldUpdateRequest,
+): Promise<ProjectFieldSettings> {
+  return mutateProjectFieldSettingsFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/fields/${encodeURIComponent(fieldId)}`,
+    "PATCH",
+    "project_field_update_failed",
+    "Project field could not be saved.",
+    request,
+  );
+}
+
+export function deleteProjectFieldFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  fieldId: string,
+  request: ProjectFieldDeleteRequest,
+): Promise<ProjectFieldSettings> {
+  return mutateProjectFieldSettingsFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/fields/${encodeURIComponent(fieldId)}`,
+    "DELETE",
+    "project_field_delete_failed",
+    "Project field could not be deleted.",
+    request,
+  );
 }
 
 export async function updateProjectViewLayoutFromCookie(

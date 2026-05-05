@@ -743,6 +743,177 @@ async fn project_field_settings_returns_options_iterations_limits_and_guards() {
 }
 
 #[tokio::test]
+async fn project_field_lifecycle_creates_renames_deletes_and_audits() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping projects field lifecycle scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("fieldlifecycle{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let reader = create_user(&pool, &format!("{marker}-reader")).await;
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let reader_cookie = cookie_header(&pool, &config, &reader).await;
+
+    let project_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO projects (owner_user_id, number, title, visibility, created_by_user_id)
+        VALUES ($1, 61, 'Field lifecycle project', 'private', $1)
+        RETURNING id
+        "#,
+    )
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("project should insert");
+    sqlx::query(
+        "INSERT INTO project_permissions (project_id, user_id, role) VALUES ($1, $2, 'admin'), ($1, $3, 'read')",
+    )
+    .bind(project_id)
+    .bind(owner.id)
+    .bind(reader.id)
+    .execute(&pool)
+    .await
+    .expect("permissions should insert");
+    let title_field: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_fields (project_id, name, field_type, position) VALUES ($1, 'Title', 'title', 1) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("title field should insert");
+    let status_field: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_fields (project_id, name, field_type, position) VALUES ($1, 'Status', 'single_select', 2) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("status field should insert");
+    sqlx::query(
+        "INSERT INTO project_views (project_id, name, layout, position) VALUES ($1, 'Table', 'table', 1)",
+    )
+    .bind(project_id)
+    .execute(&pool)
+    .await
+    .expect("view should insert");
+    let item_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_items (project_id, item_type, title, position) VALUES ($1, 'draft_issue', 'Keep values scoped', 1) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("item should insert");
+    sqlx::query(
+        "INSERT INTO project_item_field_values (project_item_id, project_field_id, value, updated_by_user_id) VALUES ($1, $2, $3, $4)",
+    )
+    .bind(item_id)
+    .bind(status_field)
+    .bind(json!("Todo"))
+    .bind(owner.id)
+    .execute(&pool)
+    .await
+    .expect("field value should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/settings/fields"),
+        Some(&owner_cookie),
+        json!({ "name": "Priority", "fieldType": "single_select" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert!(body["fields"]
+        .as_array()
+        .expect("fields")
+        .iter()
+        .any(|field| field["name"] == "Priority" && field["fieldType"] == "single_select"));
+
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/settings/fields"),
+        Some(&owner_cookie),
+        json!({ "name": "Priority", "fieldType": "date" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["error"]["code"], "validation_failed");
+
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/settings/fields"),
+        Some(&reader_cookie),
+        json!({ "name": "Blocked", "fieldType": "text" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/fields/{status_field}"),
+        Some(&owner_cookie),
+        json!({ "name": "Stage" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body["fields"]
+        .as_array()
+        .expect("fields")
+        .iter()
+        .any(|field| field["id"] == status_field.to_string()
+            && field["name"] == "Stage"
+            && field["cacheVersion"].as_i64().unwrap_or_default() > 1));
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/fields/{title_field}"),
+        Some(&owner_cookie),
+        json!({ "name": "Summary" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["error"]["code"], "validation_failed");
+
+    let (status, _, body) = delete_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/fields/{status_field}"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(!body["fields"]
+        .as_array()
+        .expect("fields")
+        .iter()
+        .any(|field| field["id"] == status_field.to_string()));
+    let removed_values: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM project_item_field_values WHERE project_field_id = $1",
+    )
+    .bind(status_field)
+    .fetch_one(&pool)
+    .await
+    .expect("value count should load");
+    assert_eq!(removed_values, 0);
+    let audits: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM audit_events WHERE target_id = $1 AND event_type LIKE 'project.field.%'",
+    )
+    .bind(status_field.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("audit count should load");
+    assert_eq!(audits, 2);
+    let item_events: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM project_item_events WHERE project_item_id = $1 AND event_type = 'project.field_value.delete'",
+    )
+    .bind(item_id)
+    .fetch_one(&pool)
+    .await
+    .expect("item event count should load");
+    assert_eq!(item_events, 1);
+}
+
+#[tokio::test]
 async fn project_workspace_adds_reorders_and_removes_items() {
     let Some(pool) = database_pool().await else {
         eprintln!("skipping projects workspace scenario; set TEST_DATABASE_URL");

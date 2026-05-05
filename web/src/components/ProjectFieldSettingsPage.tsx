@@ -34,6 +34,14 @@ const FIELD_TYPE_LABELS: Record<string, string> = {
   number: "Number",
 };
 
+const CREATE_FIELD_TYPES = [
+  { label: "Single-select", value: "single_select" },
+  { label: "Date", value: "date" },
+  { label: "Text", value: "text" },
+  { label: "Number", value: "number" },
+  { label: "Iteration", value: "iteration" },
+];
+
 const SETTINGS_NAV = [
   { label: "General", key: "general", disabled: true },
   { label: "Fields", key: "fields", disabled: false },
@@ -110,14 +118,22 @@ export function ProjectFieldSettingsPage({
   owner,
   selectedFieldId,
 }: ProjectFieldSettingsPageProps) {
+  const [fields, setFields] = useState(settings.fields);
   const [newFieldOpen, setNewFieldOpen] = useState(false);
+  const [newFieldName, setNewFieldName] = useState("");
+  const [newFieldType, setNewFieldType] = useState("single_select");
+  const [fieldName, setFieldName] = useState("");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const selectedField = useMemo(
     () =>
-      settings.fields.find((field) => field.id === selectedFieldId) ??
-      settings.fields.find((field) => !field.builtIn) ??
-      settings.fields[0] ??
+      fields.find((field) => field.id === selectedFieldId) ??
+      fields.find((field) => !field.builtIn) ??
+      fields[0] ??
       null,
-    [settings.fields, selectedFieldId],
+    [fields, selectedFieldId],
   );
   const canManageAny =
     settings.viewerPermissions.canCreateFields ||
@@ -128,6 +144,122 @@ export function ProjectFieldSettingsPage({
     owner,
     settings.project.number,
   );
+
+  const activeFieldName =
+    fieldName || (selectedField ? selectedField.name : "");
+  const canRenameSelected = Boolean(
+    selectedField?.editable && settings.viewerPermissions.canRenameFields,
+  );
+  const canDeleteSelected = Boolean(
+    selectedField?.deletable && settings.viewerPermissions.canDeleteFields,
+  );
+
+  async function submitFieldMutation(
+    action: string,
+    path: string,
+    init: RequestInit,
+  ) {
+    setPendingAction(action);
+    setNotice(null);
+    setError(null);
+    try {
+      const response = await fetch(path, {
+        ...init,
+        headers: {
+          "content-type": "application/json",
+          ...(init.headers ?? {}),
+        },
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message =
+          payload?.error?.message ?? "Project field change could not be saved.";
+        throw new Error(message);
+      }
+      if (Array.isArray(payload?.fields)) {
+        setFields(payload.fields);
+      }
+      return payload as ProjectFieldSettings;
+    } catch (mutationError) {
+      setError(
+        mutationError instanceof Error
+          ? mutationError.message
+          : "Project field change could not be saved.",
+      );
+      return null;
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  async function createField() {
+    const payload = await submitFieldMutation(
+      "create",
+      `/api/projects/${encodeURIComponent(settings.project.id)}/fields`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: newFieldName,
+          fieldType: newFieldType,
+        }),
+      },
+    );
+    if (!payload) return;
+    const created = payload.fields.find(
+      (field) =>
+        field.name.trim().toLowerCase() === newFieldName.trim().toLowerCase(),
+    );
+    setNewFieldOpen(false);
+    setNewFieldName("");
+    setNewFieldType("single_select");
+    setNotice("Field created.");
+    if (created) {
+      window.history.replaceState(
+        null,
+        "",
+        fieldSettingsHref(scope, owner, settings.project.number, created.id),
+      );
+    }
+  }
+
+  async function renameField() {
+    if (!selectedField) return;
+    const payload = await submitFieldMutation(
+      "rename",
+      `/api/projects/${encodeURIComponent(settings.project.id)}/fields/${encodeURIComponent(selectedField.id)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: activeFieldName,
+          expectedUpdatedAt: selectedField.updatedAt,
+        }),
+      },
+    );
+    if (!payload) return;
+    setFieldName("");
+    setNotice("Field renamed.");
+  }
+
+  async function deleteField() {
+    if (!selectedField) return;
+    const payload = await submitFieldMutation(
+      "delete",
+      `/api/projects/${encodeURIComponent(settings.project.id)}/fields/${encodeURIComponent(selectedField.id)}`,
+      {
+        method: "DELETE",
+        body: JSON.stringify({ expectedUpdatedAt: selectedField.updatedAt }),
+      },
+    );
+    if (!payload) return;
+    setDeleteConfirmOpen(false);
+    setFieldName("");
+    setNotice("Field deleted. Existing item values were removed.");
+    window.history.replaceState(
+      null,
+      "",
+      fieldSettingsHref(scope, owner, settings.project.number),
+    );
+  }
 
   return (
     <main
@@ -165,7 +297,11 @@ export function ProjectFieldSettingsPage({
         </div>
         <button
           className="btn primary"
-          disabled={!settings.viewerPermissions.canCreateFields}
+          disabled={
+            !settings.viewerPermissions.canCreateFields ||
+            pendingAction !== null ||
+            settings.limits.remainingFields <= 0
+          }
           onClick={() => setNewFieldOpen(true)}
           type="button"
         >
@@ -183,6 +319,17 @@ export function ProjectFieldSettingsPage({
           <p className="t-sm" style={{ marginTop: 6, color: "var(--ink-3)" }}>
             {settings.unavailableReason}
           </p>
+        </div>
+      ) : null}
+
+      {notice ? (
+        <div className="chip ok" role="status" style={{ marginBottom: 14 }}>
+          {notice}
+        </div>
+      ) : null}
+      {error ? (
+        <div className="chip err" role="alert" style={{ marginBottom: 14 }}>
+          {error}
         </div>
       ) : null}
 
@@ -269,7 +416,7 @@ export function ProjectFieldSettingsPage({
               </span>
             </div>
 
-            {settings.fields.map((field) => {
+            {fields.map((field) => {
               const active = selectedField?.id === field.id;
               return (
                 <Link
@@ -355,14 +502,11 @@ export function ProjectFieldSettingsPage({
                   </label>
                   <input
                     className="input"
-                    disabled={
-                      !selectedField.editable ||
-                      !settings.viewerPermissions.canRenameFields
-                    }
+                    disabled={!canRenameSelected || pendingAction !== null}
                     id="project-field-name"
-                    readOnly
+                    onChange={(event) => setFieldName(event.target.value)}
                     style={{ display: "block", marginTop: 8, width: "100%" }}
-                    value={selectedField.name}
+                    value={activeFieldName}
                   />
                 </div>
 
@@ -511,21 +655,44 @@ export function ProjectFieldSettingsPage({
                   className="row"
                   style={{ gap: 10, marginTop: 26, flexWrap: "wrap" }}
                 >
-                  <button className="btn primary" disabled type="button">
+                  <button
+                    className="btn primary"
+                    disabled={
+                      !canRenameSelected ||
+                      pendingAction !== null ||
+                      activeFieldName.trim() === selectedField.name
+                    }
+                    onClick={renameField}
+                    type="button"
+                  >
                     Save changes
                   </button>
-                  <button className="btn" disabled type="button">
+                  <button
+                    className="btn"
+                    disabled={
+                      !canRenameSelected ||
+                      pendingAction !== null ||
+                      activeFieldName.trim() === selectedField.name
+                    }
+                    onClick={renameField}
+                    type="button"
+                  >
                     Rename
                   </button>
-                  <button className="btn" disabled type="button">
+                  <button
+                    className="btn"
+                    disabled={!canDeleteSelected || pendingAction !== null}
+                    onClick={() => setDeleteConfirmOpen(true)}
+                    type="button"
+                  >
                     Delete
                   </button>
                 </div>
 
                 {canManageAny ? (
                   <p className="t-xs" style={{ marginTop: 14 }}>
-                    Field mutations are completed in the next vertical phases;
-                    this screen is read-only until those APIs are wired.
+                    Field changes are saved to the project schema and refresh
+                    table, board, and roadmap views.
                   </p>
                 ) : (
                   <p className="t-xs" style={{ marginTop: 14 }}>
@@ -584,9 +751,10 @@ export function ProjectFieldSettingsPage({
           <input
             className="input"
             id="new-project-field-name"
+            onChange={(event) => setNewFieldName(event.target.value)}
             placeholder="Priority"
-            readOnly
             style={{ display: "block", marginTop: 8, width: "100%" }}
+            value={newFieldName}
           />
           <label
             className="t-label"
@@ -598,26 +766,76 @@ export function ProjectFieldSettingsPage({
           <select
             className="input"
             id="new-project-field-type"
+            onChange={(event) => setNewFieldType(event.target.value)}
             style={{ display: "block", marginTop: 8, width: "100%" }}
+            value={newFieldType}
           >
-            <option>Single-select</option>
-            <option>Date</option>
-            <option>Text</option>
-            <option>Number</option>
-            <option>Iteration</option>
+            {CREATE_FIELD_TYPES.map((fieldType) => (
+              <option key={fieldType.value} value={fieldType.value}>
+                {fieldType.label}
+              </option>
+            ))}
           </select>
           <p className="t-xs" style={{ marginTop: 12 }}>
-            Creation is wired in the next vertical phase; this dialog locks the
-            page flow and accessible controls.
+            Field type is fixed after creation. Options and iteration cycles are
+            configured after the field exists.
           </p>
           <button
             className="btn primary"
-            disabled
+            disabled={
+              pendingAction !== null ||
+              !newFieldName.trim() ||
+              settings.limits.remainingFields <= 0
+            }
+            onClick={createField}
             style={{ marginTop: 14 }}
             type="button"
           >
             Create field
           </button>
+        </div>
+      ) : null}
+
+      {deleteConfirmOpen && selectedField ? (
+        <div
+          aria-modal="true"
+          className="card"
+          role="dialog"
+          style={{
+            position: "fixed",
+            inset: "auto 24px 24px auto",
+            width: "min(420px, calc(100vw - 48px))",
+            padding: 18,
+            boxShadow: "var(--shadow-lg)",
+            background: "var(--surface)",
+            zIndex: 21,
+          }}
+        >
+          <div className="t-label">Delete field</div>
+          <h2 className="t-h3" style={{ marginTop: 6 }}>
+            Delete {selectedField.name}?
+          </h2>
+          <p className="t-sm" style={{ color: "var(--ink-3)", marginTop: 10 }}>
+            This removes {selectedField.usageCount} saved project values from
+            items. Linked issues and pull requests are not deleted.
+          </p>
+          <div className="row" style={{ gap: 10, marginTop: 16 }}>
+            <button
+              className="btn"
+              onClick={() => setDeleteConfirmOpen(false)}
+              type="button"
+            >
+              Cancel
+            </button>
+            <button
+              className="btn primary"
+              disabled={pendingAction !== null}
+              onClick={deleteField}
+              type="button"
+            >
+              Delete field
+            </button>
+          </div>
         </div>
       ) : null}
     </main>
