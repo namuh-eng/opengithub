@@ -46,7 +46,7 @@
 
 ## Phase 3: Sections, Ordering, and Delete-With-Move - safe category restructuring
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Complete structural administration: create/edit/delete sections, assign categories to sections, reorder section/category rows, delete a category only after choosing a destination category for moved discussions, and ensure format changes do not corrupt existing discussions.
 

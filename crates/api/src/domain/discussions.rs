@@ -643,6 +643,51 @@ pub struct UpdateDiscussionCategoryRequest {
     pub section_id: Option<Option<Uuid>>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateDiscussionCategorySectionRequest {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateDiscussionCategorySectionRequest {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionCategoryOrderItem {
+    pub id: Uuid,
+    pub section_id: Option<Uuid>,
+    pub position: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionSectionOrderItem {
+    pub id: Uuid,
+    pub position: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionCategoryOrderRequest {
+    pub items: Vec<DiscussionCategoryOrderItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionSectionOrderRequest {
+    pub items: Vec<DiscussionSectionOrderItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeleteDiscussionCategoryRequest {
+    pub move_to_category_id: Option<Uuid>,
+}
+
 pub struct DiscussionReactionMutation<'a> {
     pub content: &'a str,
     pub reacted: bool,
@@ -1028,6 +1073,343 @@ pub async fn update_repository_discussion_category_by_owner_name(
             "emoji": next_emoji,
             "format": next_format.as_str(),
             "sectionId": next_section_id,
+        }),
+    )
+    .await?;
+    repository_discussion_category_settings_for_actor_by_owner_name(
+        pool,
+        actor_user_id,
+        owner,
+        repo,
+    )
+    .await
+}
+
+pub async fn create_repository_discussion_category_section_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    request: CreateDiscussionCategorySectionRequest,
+) -> Result<Option<DiscussionCategorySettingsView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner, repo).await? else {
+        return Ok(None);
+    };
+    ensure_category_admin_allowed(pool, &repository, actor_user_id).await?;
+    if repository.is_archived {
+        return Err(RepositoryError::ArchivedRepositoryReadOnly);
+    }
+    let name = normalize_category_section_name(&request.name)?;
+    ensure_section_name_unique(pool, repository.id, None, &name).await?;
+    let position: i32 = sqlx::query_scalar(
+        "SELECT COALESCE(MAX(position), 0) + 1 FROM discussion_category_sections WHERE repository_id = $1",
+    )
+    .bind(repository.id)
+    .fetch_one(pool)
+    .await?;
+    let section_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO discussion_category_sections (repository_id, name, position)
+        VALUES ($1, $2, $3)
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(&name)
+    .bind(position)
+    .fetch_one(pool)
+    .await?;
+    record_discussion_settings_audit(
+        pool,
+        actor_user_id,
+        repository.id,
+        "repository.discussion_category_section.create",
+        "repository_discussion_category_section",
+        section_id,
+        json!({ "name": name, "position": position }),
+    )
+    .await?;
+    repository_discussion_category_settings_for_actor_by_owner_name(
+        pool,
+        actor_user_id,
+        owner,
+        repo,
+    )
+    .await
+}
+
+pub async fn update_repository_discussion_category_section_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    section_id: Uuid,
+    request: UpdateDiscussionCategorySectionRequest,
+) -> Result<Option<DiscussionCategorySettingsView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner, repo).await? else {
+        return Ok(None);
+    };
+    ensure_category_admin_allowed(pool, &repository, actor_user_id).await?;
+    if repository.is_archived {
+        return Err(RepositoryError::ArchivedRepositoryReadOnly);
+    }
+    ensure_category_section_exists(pool, repository.id, Some(section_id)).await?;
+    let name = normalize_category_section_name(&request.name)?;
+    ensure_section_name_unique(pool, repository.id, Some(section_id), &name).await?;
+    sqlx::query(
+        "UPDATE discussion_category_sections SET name = $1, updated_at = now() WHERE repository_id = $2 AND id = $3",
+    )
+    .bind(&name)
+    .bind(repository.id)
+    .bind(section_id)
+    .execute(pool)
+    .await?;
+    record_discussion_settings_audit(
+        pool,
+        actor_user_id,
+        repository.id,
+        "repository.discussion_category_section.update",
+        "repository_discussion_category_section",
+        section_id,
+        json!({ "name": name }),
+    )
+    .await?;
+    repository_discussion_category_settings_for_actor_by_owner_name(
+        pool,
+        actor_user_id,
+        owner,
+        repo,
+    )
+    .await
+}
+
+pub async fn delete_repository_discussion_category_section_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    section_id: Uuid,
+) -> Result<Option<DiscussionCategorySettingsView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner, repo).await? else {
+        return Ok(None);
+    };
+    ensure_category_admin_allowed(pool, &repository, actor_user_id).await?;
+    if repository.is_archived {
+        return Err(RepositoryError::ArchivedRepositoryReadOnly);
+    }
+    ensure_category_section_exists(pool, repository.id, Some(section_id)).await?;
+    sqlx::query(
+        "UPDATE discussion_categories SET section_id = NULL, updated_at = now() WHERE repository_id = $1 AND section_id = $2",
+    )
+    .bind(repository.id)
+    .bind(section_id)
+    .execute(pool)
+    .await?;
+    sqlx::query("DELETE FROM discussion_category_sections WHERE repository_id = $1 AND id = $2")
+        .bind(repository.id)
+        .bind(section_id)
+        .execute(pool)
+        .await?;
+    record_discussion_settings_audit(
+        pool,
+        actor_user_id,
+        repository.id,
+        "repository.discussion_category_section.delete",
+        "repository_discussion_category_section",
+        section_id,
+        json!({ "movedCategoriesTo": null }),
+    )
+    .await?;
+    repository_discussion_category_settings_for_actor_by_owner_name(
+        pool,
+        actor_user_id,
+        owner,
+        repo,
+    )
+    .await
+}
+
+pub async fn reorder_repository_discussion_categories_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    request: DiscussionCategoryOrderRequest,
+) -> Result<Option<DiscussionCategorySettingsView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner, repo).await? else {
+        return Ok(None);
+    };
+    ensure_category_admin_allowed(pool, &repository, actor_user_id).await?;
+    if repository.is_archived {
+        return Err(RepositoryError::ArchivedRepositoryReadOnly);
+    }
+    if request.items.is_empty() {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "category order must include at least one category".to_owned(),
+        ));
+    }
+    for item in &request.items {
+        ensure_category_section_exists(pool, repository.id, item.section_id).await?;
+        let updated = sqlx::query(
+            "UPDATE discussion_categories SET section_id = $1, position = $2, updated_at = now() WHERE repository_id = $3 AND id = $4",
+        )
+        .bind(item.section_id)
+        .bind(item.position.max(1))
+        .bind(repository.id)
+        .bind(item.id)
+        .execute(pool)
+        .await?;
+        if updated.rows_affected() == 0 {
+            return Err(RepositoryError::NotFound);
+        }
+    }
+    record_discussion_settings_audit(
+        pool,
+        actor_user_id,
+        repository.id,
+        "repository.discussion_category.reorder",
+        "repository",
+        repository.id,
+        json!({ "count": request.items.len() }),
+    )
+    .await?;
+    repository_discussion_category_settings_for_actor_by_owner_name(
+        pool,
+        actor_user_id,
+        owner,
+        repo,
+    )
+    .await
+}
+
+pub async fn reorder_repository_discussion_category_sections_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    request: DiscussionSectionOrderRequest,
+) -> Result<Option<DiscussionCategorySettingsView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner, repo).await? else {
+        return Ok(None);
+    };
+    ensure_category_admin_allowed(pool, &repository, actor_user_id).await?;
+    if repository.is_archived {
+        return Err(RepositoryError::ArchivedRepositoryReadOnly);
+    }
+    if request.items.is_empty() {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "section order must include at least one section".to_owned(),
+        ));
+    }
+    for item in &request.items {
+        let updated = sqlx::query(
+            "UPDATE discussion_category_sections SET position = $1, updated_at = now() WHERE repository_id = $2 AND id = $3",
+        )
+        .bind(item.position.max(1))
+        .bind(repository.id)
+        .bind(item.id)
+        .execute(pool)
+        .await?;
+        if updated.rows_affected() == 0 {
+            return Err(RepositoryError::NotFound);
+        }
+    }
+    record_discussion_settings_audit(
+        pool,
+        actor_user_id,
+        repository.id,
+        "repository.discussion_category_section.reorder",
+        "repository",
+        repository.id,
+        json!({ "count": request.items.len() }),
+    )
+    .await?;
+    repository_discussion_category_settings_for_actor_by_owner_name(
+        pool,
+        actor_user_id,
+        owner,
+        repo,
+    )
+    .await
+}
+
+pub async fn delete_repository_discussion_category_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    category_id: Uuid,
+    request: DeleteDiscussionCategoryRequest,
+) -> Result<Option<DiscussionCategorySettingsView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner, repo).await? else {
+        return Ok(None);
+    };
+    ensure_category_admin_allowed(pool, &repository, actor_user_id).await?;
+    if repository.is_archived {
+        return Err(RepositoryError::ArchivedRepositoryReadOnly);
+    }
+    let category_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM discussion_categories WHERE repository_id = $1",
+    )
+    .bind(repository.id)
+    .fetch_one(pool)
+    .await?;
+    if category_count <= 1 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "the last discussion category cannot be deleted".to_owned(),
+        ));
+    }
+    let discussion_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM discussions WHERE repository_id = $1 AND category_id = $2",
+    )
+    .bind(repository.id)
+    .bind(category_id)
+    .fetch_one(pool)
+    .await?;
+    let move_to_category_id = request.move_to_category_id;
+    if discussion_count > 0 {
+        let Some(destination_id) = move_to_category_id else {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(
+                "choose a destination category before deleting a category with discussions"
+                    .to_owned(),
+            ));
+        };
+        if destination_id == category_id {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(
+                "destination category must be different from the deleted category".to_owned(),
+            ));
+        }
+        load_category_admin_row(pool, repository.id, destination_id)
+            .await?
+            .ok_or(RepositoryError::NotFound)?;
+        sqlx::query(
+            "UPDATE discussions SET category_id = $1, updated_at = now() WHERE repository_id = $2 AND category_id = $3",
+        )
+        .bind(destination_id)
+        .bind(repository.id)
+        .bind(category_id)
+        .execute(pool)
+        .await?;
+    }
+    let deleted =
+        sqlx::query("DELETE FROM discussion_categories WHERE repository_id = $1 AND id = $2")
+            .bind(repository.id)
+            .bind(category_id)
+            .execute(pool)
+            .await?;
+    if deleted.rows_affected() == 0 {
+        return Err(RepositoryError::NotFound);
+    }
+    record_discussion_settings_audit(
+        pool,
+        actor_user_id,
+        repository.id,
+        "repository.discussion_category.delete",
+        "repository_discussion_category",
+        category_id,
+        json!({
+            "movedDiscussions": discussion_count,
+            "moveToCategoryId": move_to_category_id,
         }),
     )
     .await?;
@@ -3236,6 +3618,46 @@ fn normalize_category_description(value: Option<&str>) -> Result<Option<String>,
     normalize_short_text(value, "description", 280)
 }
 
+fn normalize_category_section_name(value: &str) -> Result<String, RepositoryError> {
+    normalize_short_text(Some(value), "section name", 80)?
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            RepositoryError::InvalidDependencyGraphQuery(
+                "discussion category section name is required".to_owned(),
+            )
+        })
+}
+
+async fn ensure_section_name_unique(
+    pool: &PgPool,
+    repository_id: Uuid,
+    except_section_id: Option<Uuid>,
+    name: &str,
+) -> Result<(), RepositoryError> {
+    let conflict: bool = sqlx::query_scalar(
+        r#"
+        SELECT EXISTS(
+            SELECT 1
+            FROM discussion_category_sections
+            WHERE repository_id = $1
+              AND ($2::uuid IS NULL OR id <> $2)
+              AND lower(name) = lower($3)
+        )
+        "#,
+    )
+    .bind(repository_id)
+    .bind(except_section_id)
+    .bind(name)
+    .fetch_one(pool)
+    .await?;
+    if conflict {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "discussion category section names must be unique within the repository".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
 async fn record_category_admin_audit(
     pool: &PgPool,
     actor_user_id: Uuid,
@@ -3270,6 +3692,31 @@ async fn record_category_admin_audit(
     .bind(actor_user_id)
     .bind(event_type)
     .bind(category_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn record_discussion_settings_audit(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    _repository_id: Uuid,
+    event_type: &str,
+    target_type: &str,
+    target_id: Uuid,
+    metadata: Value,
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, $2, $3, $4, $5::jsonb)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(target_type)
+    .bind(target_id.to_string())
+    .bind(metadata.to_string())
     .execute(pool)
     .await?;
     Ok(())

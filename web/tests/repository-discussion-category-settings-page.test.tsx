@@ -164,7 +164,9 @@ describe("RepositoryDiscussionCategorySettingsPage", () => {
       "href",
       "/namuh-eng/opengithub/discussions/categories/general",
     );
-    expect(screen.getByText("Product work")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Product work" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Question and Answer")).toBeInTheDocument();
     expect(screen.getByText("Can manage")).toBeInTheDocument();
     expect(screen.getByText("22")).toBeInTheDocument();
@@ -287,7 +289,44 @@ describe("RepositoryDiscussionCategorySettingsPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("keeps phase-three section controls explicit instead of inert", () => {
+  it("creates sections and moves categories through concrete controls", async () => {
+    const updated = categorySettings({
+      sections: [
+        ...categorySettings().sections,
+        {
+          id: "section-2",
+          name: "Maintainer notes",
+          position: 2,
+          categoryCount: 0,
+        },
+      ],
+    });
+    const moved = categorySettings({
+      categories: categorySettings().categories.map((category) =>
+        category.id === "cat-1"
+          ? {
+              ...category,
+              sectionId: "section-1",
+              sectionName: "Product work",
+            }
+          : category,
+      ),
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(updated), {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(moved), {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        }),
+      );
+
     render(
       <RepositoryDiscussionCategorySettingsPage
         repository={repositoryOverview()}
@@ -296,10 +335,84 @@ describe("RepositoryDiscussionCategorySettingsPage", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "New section" }));
+    fireEvent.change(screen.getByLabelText("Section name"), {
+      target: { value: "Maintainer notes" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create section" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/repos/namuh-eng/opengithub/settings/discussions/sections",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
     expect(
-      screen.getByText(
-        "Section creation is reserved for the next restructuring phase.",
-      ),
+      await screen.findByRole("heading", { name: "Maintainer notes" }),
     ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Move General to section"), {
+      target: { value: "section-1" },
+    });
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        "/api/repos/namuh-eng/opengithub/settings/discussions/categories/order",
+        expect.objectContaining({ method: "PUT" }),
+      );
+    });
+    expect(
+      JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)).items,
+    ).toContainEqual(
+      expect.objectContaining({ id: "cat-1", sectionId: "section-1" }),
+    );
+  });
+
+  it("deletes categories only after choosing a move destination", async () => {
+    const updated = categorySettings({
+      categories: [categorySettings().categories[1]],
+      remainingCategories: 23,
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(updated), {
+        headers: { "content-type": "application/json" },
+        status: 200,
+      }),
+    );
+
+    render(
+      <RepositoryDiscussionCategorySettingsPage
+        repository={repositoryOverview()}
+        settings={categorySettings()}
+      />,
+    );
+
+    const generalRow = screen
+      .getByRole("link", { name: "General" })
+      .closest(".list-row");
+    expect(generalRow).not.toBeNull();
+    fireEvent.click(
+      within(generalRow as HTMLElement).getByRole("button", {
+        name: "Delete",
+      }),
+    );
+    expect(
+      screen.getByRole("heading", { name: "Move discussions before deleting" }),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Destination category"), {
+      target: { value: "cat-2" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Delete and move" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/repos/namuh-eng/opengithub/settings/discussions/categories/cat-1",
+        expect.objectContaining({ method: "DELETE" }),
+      );
+    });
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({
+      moveToCategoryId: "cat-2",
+    });
+    expect(
+      screen.queryByRole("link", { name: "General" }),
+    ).not.toBeInTheDocument();
   });
 });

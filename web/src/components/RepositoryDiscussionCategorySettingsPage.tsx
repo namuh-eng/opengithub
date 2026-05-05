@@ -7,6 +7,7 @@ import type {
   ApiErrorEnvelope,
   DiscussionCategoryAdminItem,
   DiscussionCategoryFormat,
+  DiscussionCategorySectionItem,
   DiscussionCategorySettingsView,
   RepositoryOverview,
 } from "@/lib/api";
@@ -19,6 +20,10 @@ type RepositoryDiscussionCategorySettingsPageProps = {
 type DialogMode =
   | { kind: "create" }
   | { category: DiscussionCategoryAdminItem; kind: "edit" };
+type SectionDialogMode =
+  | { kind: "create" }
+  | { kind: "edit"; section: DiscussionCategorySectionItem };
+type DeleteCategoryMode = { category: DiscussionCategoryAdminItem };
 
 const formatOptions: Array<{ label: string; value: DiscussionCategoryFormat }> =
   [
@@ -50,6 +55,19 @@ function categoryEndpoint(owner: string, repo: string, categoryId?: string) {
   return categoryId ? `${base}/${encodeURIComponent(categoryId)}` : base;
 }
 
+function sectionEndpoint(owner: string, repo: string, sectionId?: string) {
+  const base = `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/discussions/sections`;
+  return sectionId ? `${base}/${encodeURIComponent(sectionId)}` : base;
+}
+
+function categoryOrderEndpoint(owner: string, repo: string) {
+  return `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/discussions/categories/order`;
+}
+
+function sectionOrderEndpoint(owner: string, repo: string) {
+  return `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/discussions/sections/order`;
+}
+
 function groupCategories(settings: DiscussionCategorySettingsView) {
   const sections = settings.sections.map((section) => ({
     id: section.id,
@@ -67,6 +85,22 @@ function groupCategories(settings: DiscussionCategorySettingsView) {
         : category.sectionId === section.id,
     ),
   }));
+}
+
+async function settingsMutation(
+  endpoint: string,
+  options: RequestInit,
+): Promise<DiscussionCategorySettingsView> {
+  const response = await fetch(endpoint, options);
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ??
+        "Discussion category settings could not be saved.",
+    );
+  }
+  return payload as DiscussionCategorySettingsView;
 }
 
 function CategoryDialog({
@@ -250,14 +284,247 @@ function CategoryDialog({
   );
 }
 
+function SectionDialog({
+  mode,
+  onClose,
+  onSaved,
+  owner,
+  repo,
+}: {
+  mode: SectionDialogMode;
+  onClose: () => void;
+  onSaved: (settings: DiscussionCategorySettingsView) => void;
+  owner: string;
+  repo: string;
+}) {
+  const section = mode.kind === "edit" ? mode.section : null;
+  const [name, setName] = useState(section?.name ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError("Section name is required.");
+      return;
+    }
+    setPending(true);
+    setError(null);
+    try {
+      const settings = await settingsMutation(
+        sectionEndpoint(owner, repo, section?.id),
+        {
+          body: JSON.stringify({ name: trimmedName }),
+          headers: { "content-type": "application/json" },
+          method: section ? "PATCH" : "POST",
+        },
+      );
+      onSaved(settings);
+      onClose();
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Discussion category section could not be saved.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div
+      aria-labelledby="discussion-section-dialog-title"
+      aria-modal="true"
+      className="fixed inset-0 z-50 grid place-items-center px-4"
+      role="dialog"
+      style={{
+        background: "color-mix(in oklch, var(--ink-1) 24%, transparent)",
+      }}
+    >
+      <form className="card w-full max-w-lg p-5" onSubmit={submit}>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="t-label" style={{ color: "var(--ink-3)" }}>
+              Discussion section
+            </p>
+            <h2 className="t-h2 mt-1" id="discussion-section-dialog-title">
+              {section ? "Edit section" : "New section"}
+            </h2>
+          </div>
+          <button className="btn ghost sm" onClick={onClose} type="button">
+            Close
+          </button>
+        </div>
+        {error ? (
+          <div
+            className="mt-4 rounded-[var(--radius)] border p-3 t-sm"
+            style={{ background: "var(--err-soft)", borderColor: "var(--err)" }}
+          >
+            {error}
+          </div>
+        ) : null}
+        <label className="mt-5 grid gap-2">
+          <span className="t-label">Name</span>
+          <input
+            aria-label="Section name"
+            className="input"
+            maxLength={80}
+            onChange={(event) => setName(event.target.value)}
+            value={name}
+          />
+        </label>
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <button className="btn ghost" onClick={onClose} type="button">
+            Cancel
+          </button>
+          <button className="btn primary" disabled={pending} type="submit">
+            {pending
+              ? "Saving..."
+              : section
+                ? "Save section"
+                : "Create section"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function DeleteCategoryDialog({
+  mode,
+  onClose,
+  onSaved,
+  owner,
+  repo,
+  settings,
+}: {
+  mode: DeleteCategoryMode;
+  onClose: () => void;
+  onSaved: (settings: DiscussionCategorySettingsView) => void;
+  owner: string;
+  repo: string;
+  settings: DiscussionCategorySettingsView;
+}) {
+  const destinations = settings.categories.filter(
+    (category) => category.id !== mode.category.id,
+  );
+  const [moveToCategoryId, setMoveToCategoryId] = useState(
+    destinations[0]?.id ?? "",
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    setError(null);
+    try {
+      const settings = await settingsMutation(
+        categoryEndpoint(owner, repo, mode.category.id),
+        {
+          body: JSON.stringify({ moveToCategoryId: moveToCategoryId || null }),
+          headers: { "content-type": "application/json" },
+          method: "DELETE",
+        },
+      );
+      onSaved(settings);
+      onClose();
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Discussion category could not be deleted.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div
+      aria-labelledby="delete-category-dialog-title"
+      aria-modal="true"
+      className="fixed inset-0 z-50 grid place-items-center px-4"
+      role="dialog"
+      style={{
+        background: "color-mix(in oklch, var(--ink-1) 24%, transparent)",
+      }}
+    >
+      <form className="card w-full max-w-lg p-5" onSubmit={submit}>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="t-label" style={{ color: "var(--err)" }}>
+              Delete category
+            </p>
+            <h2 className="t-h2 mt-1" id="delete-category-dialog-title">
+              Move discussions before deleting
+            </h2>
+          </div>
+          <button className="btn ghost sm" onClick={onClose} type="button">
+            Close
+          </button>
+        </div>
+        <p className="t-sm mt-3" style={{ color: "var(--ink-3)" }}>
+          Deleting {mode.category.name} moves its{" "}
+          <span className="t-num">{formatNumber(mode.category.count)}</span>{" "}
+          discussions to the destination category.
+        </p>
+        {error ? (
+          <div
+            className="mt-4 rounded-[var(--radius)] border p-3 t-sm"
+            style={{ background: "var(--err-soft)", borderColor: "var(--err)" }}
+          >
+            {error}
+          </div>
+        ) : null}
+        <label className="mt-5 grid gap-2">
+          <span className="t-label">Destination category</span>
+          <select
+            aria-label="Destination category"
+            className="input"
+            onChange={(event) => setMoveToCategoryId(event.target.value)}
+            value={moveToCategoryId}
+          >
+            {destinations.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.emoji} {category.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
+          <button className="btn ghost" onClick={onClose} type="button">
+            Cancel
+          </button>
+          <button
+            className="btn"
+            disabled={pending || !destinations.length}
+            type="submit"
+          >
+            {pending ? "Deleting..." : "Delete and move"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function CategoryRow({
   category,
   canManage,
+  onDelete,
   onEdit,
+  onMove,
+  sections,
 }: {
   category: DiscussionCategoryAdminItem;
   canManage: boolean;
+  onDelete: (category: DiscussionCategoryAdminItem) => void;
   onEdit: (category: DiscussionCategoryAdminItem) => void;
+  onMove: (category: DiscussionCategoryAdminItem, sectionId: string) => void;
+  sections: DiscussionCategorySectionItem[];
 }) {
   return (
     <div className="list-row flex min-w-0 items-start gap-4 px-5 py-4">
@@ -308,6 +575,20 @@ function CategoryRow({
         </div>
       </div>
       <div className="flex shrink-0 flex-wrap justify-end gap-2">
+        <select
+          aria-label={`Move ${category.name} to section`}
+          className="input max-w-44"
+          disabled={!canManage}
+          onChange={(event) => onMove(category, event.target.value)}
+          value={category.sectionId ?? ""}
+        >
+          <option value="">General categories</option>
+          {sections.map((section) => (
+            <option key={section.id} value={section.id}>
+              {section.name}
+            </option>
+          ))}
+        </select>
         <Link className="btn ghost sm" href={category.templateHref}>
           Template
         </Link>
@@ -318,6 +599,30 @@ function CategoryRow({
           type="button"
         >
           Edit
+        </button>
+        <button
+          className="btn ghost sm"
+          disabled={!canManage}
+          onClick={() => onMove(category, "__up__")}
+          type="button"
+        >
+          Up
+        </button>
+        <button
+          className="btn ghost sm"
+          disabled={!canManage}
+          onClick={() => onMove(category, "__down__")}
+          type="button"
+        >
+          Down
+        </button>
+        <button
+          className="btn ghost sm"
+          disabled={!canManage}
+          onClick={() => onDelete(category)}
+          type="button"
+        >
+          Delete
         </button>
       </div>
     </div>
@@ -356,7 +661,13 @@ export function RepositoryDiscussionCategorySettingsPage({
 }: RepositoryDiscussionCategorySettingsPageProps) {
   const [current, setCurrent] = useState(settings);
   const [dialog, setDialog] = useState<DialogMode | null>(null);
+  const [sectionDialog, setSectionDialog] = useState<SectionDialogMode | null>(
+    null,
+  );
+  const [deleteCategory, setDeleteCategory] =
+    useState<DeleteCategoryMode | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
   const owner = repository.owner_login;
   const repo = repository.name;
   const groups = useMemo(
@@ -368,7 +679,108 @@ export function RepositoryDiscussionCategorySettingsPage({
     return <UnavailableSettings repository={repository} settings={current} />;
   }
 
+  const settingsView = current;
   const disabled = !current.enabled || !current.viewer.canManage;
+
+  async function runAction(
+    success: string,
+    action: () => Promise<DiscussionCategorySettingsView>,
+  ) {
+    setPendingAction(success);
+    setNotice(null);
+    try {
+      setCurrent(await action());
+      setNotice(success);
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : "Discussion category settings could not be saved.",
+      );
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  function orderedCategoryPayload() {
+    return settingsView.categories.map((category, index) => ({
+      id: category.id,
+      position: index + 1,
+      sectionId: category.sectionId,
+    }));
+  }
+
+  function moveCategory(
+    category: DiscussionCategoryAdminItem,
+    sectionId: string,
+  ) {
+    if (sectionId === "__up__" || sectionId === "__down__") {
+      moveCategoryPosition(category, sectionId === "__up__" ? -1 : 1);
+      return;
+    }
+    void runAction("Category section assignment saved.", () =>
+      settingsMutation(categoryOrderEndpoint(owner, repo), {
+        body: JSON.stringify({
+          items: orderedCategoryPayload().map((item) =>
+            item.id === category.id
+              ? { ...item, sectionId: sectionId || null }
+              : item,
+          ),
+        }),
+        headers: { "content-type": "application/json" },
+        method: "PUT",
+      }),
+    );
+  }
+
+  function moveCategoryPosition(
+    category: DiscussionCategoryAdminItem,
+    delta: -1 | 1,
+  ) {
+    const categories = [...settingsView.categories];
+    const index = categories.findIndex((item) => item.id === category.id);
+    const nextIndex = index + delta;
+    if (index < 0 || nextIndex < 0 || nextIndex >= categories.length) return;
+    const [selected] = categories.splice(index, 1);
+    categories.splice(nextIndex, 0, selected);
+    void runAction("Category order saved.", () =>
+      settingsMutation(categoryOrderEndpoint(owner, repo), {
+        body: JSON.stringify({
+          items: categories.map((item, position) => ({
+            id: item.id,
+            position: position + 1,
+            sectionId: item.sectionId,
+          })),
+        }),
+        headers: { "content-type": "application/json" },
+        method: "PUT",
+      }),
+    );
+  }
+
+  function moveSectionPosition(
+    section: DiscussionCategorySectionItem,
+    delta: -1 | 1,
+  ) {
+    const sections = [...settingsView.sections];
+    const index = sections.findIndex((item) => item.id === section.id);
+    const nextIndex = index + delta;
+    if (index < 0 || nextIndex < 0 || nextIndex >= sections.length) return;
+    const [selected] = sections.splice(index, 1);
+    sections.splice(nextIndex, 0, selected);
+    void runAction("Section order saved.", () =>
+      settingsMutation(sectionOrderEndpoint(owner, repo), {
+        body: JSON.stringify({
+          items: sections.map((item, position) => ({
+            id: item.id,
+            position: position + 1,
+          })),
+        }),
+        headers: { "content-type": "application/json" },
+        method: "PUT",
+      }),
+    );
+  }
 
   return (
     <RepositoryShell
@@ -395,11 +807,8 @@ export function RepositoryDiscussionCategorySettingsPage({
             <div className="flex flex-wrap gap-2">
               <button
                 className="btn"
-                onClick={() =>
-                  setNotice(
-                    "Section creation is reserved for the next restructuring phase.",
-                  )
-                }
+                disabled={disabled}
+                onClick={() => setSectionDialog({ kind: "create" })}
                 type="button"
               >
                 New section
@@ -442,6 +851,9 @@ export function RepositoryDiscussionCategorySettingsPage({
             <p className="t-sm mt-1" style={{ color: "var(--ink-2)" }}>
               {notice}
             </p>
+            {pendingAction ? (
+              <p className="t-xs mt-2">Saving {pendingAction}</p>
+            ) : null}
           </section>
         ) : null}
 
@@ -462,17 +874,66 @@ export function RepositoryDiscussionCategorySettingsPage({
                 </p>
               </div>
               {group.id === "unsectioned" ? null : (
-                <button
-                  className="btn ghost sm"
-                  onClick={() =>
-                    setNotice(
-                      "Section editing is reserved for the next restructuring phase.",
-                    )
-                  }
-                  type="button"
-                >
-                  Edit section
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="btn ghost sm"
+                    disabled={disabled}
+                    onClick={() => {
+                      const section = current.sections.find(
+                        (item) => item.id === group.id,
+                      );
+                      if (section) setSectionDialog({ kind: "edit", section });
+                    }}
+                    type="button"
+                  >
+                    Edit section
+                  </button>
+                  <button
+                    className="btn ghost sm"
+                    disabled={disabled}
+                    onClick={() => {
+                      const section = current.sections.find(
+                        (item) => item.id === group.id,
+                      );
+                      if (section) moveSectionPosition(section, -1);
+                    }}
+                    type="button"
+                  >
+                    Move up
+                  </button>
+                  <button
+                    className="btn ghost sm"
+                    disabled={disabled}
+                    onClick={() => {
+                      const section = current.sections.find(
+                        (item) => item.id === group.id,
+                      );
+                      if (section) moveSectionPosition(section, 1);
+                    }}
+                    type="button"
+                  >
+                    Move down
+                  </button>
+                  <button
+                    className="btn ghost sm"
+                    disabled={disabled}
+                    onClick={() => {
+                      void runAction(
+                        "Section deleted and categories moved.",
+                        () =>
+                          settingsMutation(
+                            sectionEndpoint(owner, repo, group.id),
+                            {
+                              method: "DELETE",
+                            },
+                          ),
+                      );
+                    }}
+                    type="button"
+                  >
+                    Delete section
+                  </button>
+                </div>
               )}
             </div>
             {group.categories.length ? (
@@ -481,9 +942,14 @@ export function RepositoryDiscussionCategorySettingsPage({
                   canManage={!disabled}
                   category={category}
                   key={category.id}
+                  onDelete={(selected) =>
+                    setDeleteCategory({ category: selected })
+                  }
                   onEdit={(selected) =>
                     setDialog({ category: selected, kind: "edit" })
                   }
+                  onMove={moveCategory}
+                  sections={current.sections}
                 />
               ))
             ) : (
@@ -529,6 +995,25 @@ export function RepositoryDiscussionCategorySettingsPage({
         <CategoryDialog
           mode={dialog}
           onClose={() => setDialog(null)}
+          onSaved={setCurrent}
+          owner={owner}
+          repo={repo}
+          settings={current}
+        />
+      ) : null}
+      {sectionDialog ? (
+        <SectionDialog
+          mode={sectionDialog}
+          onClose={() => setSectionDialog(null)}
+          onSaved={setCurrent}
+          owner={owner}
+          repo={repo}
+        />
+      ) : null}
+      {deleteCategory ? (
+        <DeleteCategoryDialog
+          mode={deleteCategory}
+          onClose={() => setDeleteCategory(null)}
           onSaved={setCurrent}
           owner={owner}
           repo={repo}

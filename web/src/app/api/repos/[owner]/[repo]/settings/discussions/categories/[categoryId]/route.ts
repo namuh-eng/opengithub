@@ -1,6 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
 import {
   type ApiErrorEnvelope,
+  type DeleteDiscussionCategoryRequest,
+  deleteRepositoryDiscussionCategoryFromCookie,
   type UpdateDiscussionCategoryRequest,
   updateRepositoryDiscussionCategoryFromCookie,
 } from "@/lib/api";
@@ -62,6 +64,44 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         error: {
           code: "repository_discussion_category_failed",
           message: "Discussion category could not be updated.",
+        },
+        status: 502,
+      },
+      { status: envelope?.status ?? 502 },
+    );
+  }
+}
+
+function parseDelete(input: unknown): DeleteDiscussionCategoryRequest {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return { moveToCategoryId: null };
+  }
+  const value = (input as Record<string, unknown>).moveToCategoryId;
+  return {
+    moveToCategoryId: typeof value === "string" && value ? value : null,
+  };
+}
+
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  const { categoryId, owner, repo } = await context.params;
+  try {
+    const settings = await deleteRepositoryDiscussionCategoryFromCookie(
+      request.headers.get("cookie"),
+      decodeURIComponent(owner),
+      decodeURIComponent(repo),
+      decodeURIComponent(categoryId),
+      parseDelete(await request.json().catch(() => null)),
+    );
+    return NextResponse.json(settings);
+  } catch (error) {
+    const envelope = (
+      error instanceof Error ? error.cause : null
+    ) as ApiErrorEnvelope | null;
+    return NextResponse.json(
+      envelope ?? {
+        error: {
+          code: "repository_discussion_category_failed",
+          message: "Discussion category could not be deleted.",
         },
         status: 502,
       },

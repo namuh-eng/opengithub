@@ -519,15 +519,29 @@ test("repository discussions list filters, rows, category rail, and mobile layou
     page.getByText("Edited maintainer updates from the browser smoke."),
   ).toBeVisible();
   await page.getByRole("button", { name: "New section" }).click();
+  await page.getByLabel("Section name").fill(`Maintainer notes ${suffix}`);
+  await page.getByRole("button", { name: "Create section" }).click();
   await expect(
-    page.getByText(
-      "Section creation is reserved for the next restructuring phase.",
-    ),
+    page.getByRole("heading", { name: `Maintainer notes ${suffix}` }),
   ).toBeVisible();
+  await createdCategoryRow
+    .getByLabel(`Move Announcements ${suffix} to section`)
+    .selectOption({ label: `Maintainer notes ${suffix}` });
+  await expect(
+    page.getByText("Category section assignment saved."),
+  ).toBeVisible();
+  await createdCategoryRow.getByRole("button", { name: "Delete" }).click();
+  await page
+    .getByLabel("Destination category")
+    .selectOption({ label: "💬 General" });
+  await page.getByRole("button", { name: "Delete and move" }).click();
+  await expect(
+    page.getByRole("link", { name: `Announcements ${suffix}` }),
+  ).toHaveCount(0);
   await expectNoDeadControls(page);
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/discussions-004-phase2-category-settings.jpg",
+    path: "../ralph/screenshots/build/discussions-004-phase3-section-delete.jpg",
   });
 
   await page.setViewportSize({ width: 390, height: 900 });

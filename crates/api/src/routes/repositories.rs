@@ -30,8 +30,13 @@ use crate::{
     domain::discussions::{
         create_repository_discussion_by_owner_name,
         create_repository_discussion_category_by_owner_name,
+        create_repository_discussion_category_section_by_owner_name,
         create_repository_discussion_comment_by_owner_name,
         create_repository_discussion_reply_by_owner_name,
+        delete_repository_discussion_category_by_owner_name,
+        delete_repository_discussion_category_section_by_owner_name,
+        reorder_repository_discussion_categories_by_owner_name,
+        reorder_repository_discussion_category_sections_by_owner_name,
         repository_discussion_category_settings_for_actor_by_owner_name,
         repository_discussion_creation_for_actor_by_owner_name,
         repository_discussion_detail_for_actor_by_owner_name,
@@ -41,12 +46,15 @@ use crate::{
         set_repository_discussion_vote_by_owner_name,
         toggle_repository_discussion_reaction_by_owner_name,
         update_repository_discussion_category_by_owner_name,
+        update_repository_discussion_category_section_by_owner_name,
         update_repository_discussion_metadata_by_owner_name,
         update_repository_discussion_state_by_owner_name, CreateDiscussionCategoryRequest,
-        CreateDiscussionCommentRequest, CreateDiscussionRequest, DiscussionAnswerRequest,
-        DiscussionMetadataRequest, DiscussionReactionMutation, DiscussionReactionRequest,
-        DiscussionStateRequest, DiscussionSubscriptionRequest, RepositoryDiscussionDetailQuery,
-        RepositoryDiscussionsQuery, UpdateDiscussionCategoryRequest,
+        CreateDiscussionCategorySectionRequest, CreateDiscussionCommentRequest,
+        CreateDiscussionRequest, DeleteDiscussionCategoryRequest, DiscussionAnswerRequest,
+        DiscussionCategoryOrderRequest, DiscussionMetadataRequest, DiscussionReactionMutation,
+        DiscussionReactionRequest, DiscussionSectionOrderRequest, DiscussionStateRequest,
+        DiscussionSubscriptionRequest, RepositoryDiscussionDetailQuery, RepositoryDiscussionsQuery,
+        UpdateDiscussionCategoryRequest, UpdateDiscussionCategorySectionRequest,
     },
     domain::pages::{
         connect_repository_pages_actions_deployment_by_owner_name,
@@ -385,8 +393,24 @@ pub fn router() -> Router<AppState> {
             get(discussion_category_settings).post(create_discussion_category),
         )
         .route(
+            "/:owner/:repo/settings/discussions/categories/order",
+            put(reorder_discussion_categories),
+        )
+        .route(
             "/:owner/:repo/settings/discussions/categories/:category_id",
-            patch(update_discussion_category),
+            patch(update_discussion_category).delete(delete_discussion_category),
+        )
+        .route(
+            "/:owner/:repo/settings/discussions/sections",
+            post(create_discussion_category_section),
+        )
+        .route(
+            "/:owner/:repo/settings/discussions/sections/order",
+            put(reorder_discussion_category_sections),
+        )
+        .route(
+            "/:owner/:repo/settings/discussions/sections/:section_id",
+            patch(update_discussion_category_section).delete(delete_discussion_category_section),
         )
         .route(
             "/:owner/:repo/settings/branches/rules",
@@ -1562,6 +1586,148 @@ async fn update_discussion_category(
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let settings = update_repository_discussion_category_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        category_id,
+        request,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(settings)))
+}
+
+async fn create_discussion_category_section(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<CreateDiscussionCategorySectionRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = create_repository_discussion_category_section_by_owner_name(
+        pool, actor.0.id, &owner, &repo, request,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(settings)))
+}
+
+async fn update_discussion_category_section(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, section_id)): Path<(String, String, Uuid)>,
+    RestJson(request): RestJson<UpdateDiscussionCategorySectionRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = update_repository_discussion_category_section_by_owner_name(
+        pool, actor.0.id, &owner, &repo, section_id, request,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(settings)))
+}
+
+async fn delete_discussion_category_section(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, section_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = delete_repository_discussion_category_section_by_owner_name(
+        pool, actor.0.id, &owner, &repo, section_id,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(settings)))
+}
+
+async fn reorder_discussion_categories(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<DiscussionCategoryOrderRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = reorder_repository_discussion_categories_by_owner_name(
+        pool, actor.0.id, &owner, &repo, request,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(settings)))
+}
+
+async fn reorder_discussion_category_sections(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<DiscussionSectionOrderRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = reorder_repository_discussion_category_sections_by_owner_name(
+        pool, actor.0.id, &owner, &repo, request,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+    Ok(Json(json!(settings)))
+}
+
+async fn delete_discussion_category(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, category_id)): Path<(String, String, Uuid)>,
+    RestJson(request): RestJson<DeleteDiscussionCategoryRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = delete_repository_discussion_category_by_owner_name(
         pool,
         actor.0.id,
         &owner,

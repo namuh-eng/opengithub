@@ -4801,6 +4801,26 @@ export type UpdateDiscussionCategoryRequest = {
   sectionId?: string | null;
 };
 
+export type CreateDiscussionCategorySectionRequest = {
+  name: string;
+};
+
+export type UpdateDiscussionCategorySectionRequest = {
+  name: string;
+};
+
+export type DiscussionCategoryOrderRequest = {
+  items: Array<{ id: string; position: number; sectionId: string | null }>;
+};
+
+export type DiscussionSectionOrderRequest = {
+  items: Array<{ id: string; position: number }>;
+};
+
+export type DeleteDiscussionCategoryRequest = {
+  moveToCategoryId?: string | null;
+};
+
 export type DiscussionFormField = {
   id: string;
   fieldType: "input" | "textarea" | "dropdown" | "checkboxes" | string;
@@ -14070,6 +14090,183 @@ export async function updateRepositoryDiscussionCategoryFromCookie(
     const envelope = payload as ApiErrorEnvelope | null;
     throw new Error(
       envelope?.error.message ?? "Discussion category could not be updated.",
+      { cause: envelope },
+    );
+  }
+  return payload as DiscussionCategorySettingsView;
+}
+
+export async function createRepositoryDiscussionCategorySectionFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  request: CreateDiscussionCategorySectionRequest,
+): Promise<DiscussionCategorySettingsView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/discussions/sections`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ??
+        "Discussion category section could not be created.",
+      { cause: envelope },
+    );
+  }
+  return payload as DiscussionCategorySettingsView;
+}
+
+export async function updateRepositoryDiscussionCategorySectionFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  sectionId: string,
+  request: UpdateDiscussionCategorySectionRequest,
+): Promise<DiscussionCategorySettingsView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/discussions/sections/${encodeURIComponent(sectionId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ??
+        "Discussion category section could not be updated.",
+      { cause: envelope },
+    );
+  }
+  return payload as DiscussionCategorySettingsView;
+}
+
+export async function deleteRepositoryDiscussionCategorySectionFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  sectionId: string,
+): Promise<DiscussionCategorySettingsView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/discussions/sections/${encodeURIComponent(sectionId)}`,
+    {
+      method: "DELETE",
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ??
+        "Discussion category section could not be deleted.",
+      { cause: envelope },
+    );
+  }
+  return payload as DiscussionCategorySettingsView;
+}
+
+export async function reorderRepositoryDiscussionCategoriesFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  request: DiscussionCategoryOrderRequest,
+): Promise<DiscussionCategorySettingsView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/discussions/categories/order`,
+    {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ??
+        "Discussion category order could not be saved.",
+      { cause: envelope },
+    );
+  }
+  return payload as DiscussionCategorySettingsView;
+}
+
+export async function reorderRepositoryDiscussionSectionsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  request: DiscussionSectionOrderRequest,
+): Promise<DiscussionCategorySettingsView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/discussions/sections/order`,
+    {
+      method: "PUT",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ??
+        "Discussion category section order could not be saved.",
+      { cause: envelope },
+    );
+  }
+  return payload as DiscussionCategorySettingsView;
+}
+
+export async function deleteRepositoryDiscussionCategoryFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  categoryId: string,
+  request: DeleteDiscussionCategoryRequest,
+): Promise<DiscussionCategorySettingsView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/discussions/categories/${encodeURIComponent(categoryId)}`,
+    {
+      method: "DELETE",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Discussion category could not be deleted.",
       { cause: envelope },
     );
   }

@@ -846,6 +846,68 @@ async fn patch_json(
     )
 }
 
+async fn put_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method("PUT")
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_string()))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    (
+        status,
+        serde_json::from_slice(&bytes).expect("response should be json"),
+    )
+}
+
+async fn delete_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method("DELETE")
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_string()))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    (
+        status,
+        serde_json::from_slice(&bytes).expect("response should be json"),
+    )
+}
+
 #[tokio::test]
 async fn repository_discussion_category_settings_support_admin_create_and_edit() {
     let Some(pool) = database_pool().await else {
@@ -1028,6 +1090,191 @@ async fn repository_discussion_category_settings_support_admin_create_and_edit()
     .await;
     assert_eq!(missing_status, StatusCode::NOT_FOUND);
     assert_eq!(missing_body["error"]["code"], "not_found");
+}
+
+#[tokio::test]
+async fn repository_discussion_category_settings_support_sections_order_and_delete_move() {
+    let Some(pool) = database_pool().await else {
+        eprintln!(
+            "skipping repository discussion category restructuring scenario; set TEST_DATABASE_URL"
+        );
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "discussion-restructure-owner").await;
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!(
+                "discussion-category-restructure-{}",
+                Uuid::new_v4().simple()
+            ),
+            description: Some("Discussion category restructuring contract".to_owned()),
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    let general_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO discussion_categories (repository_id, slug, name, emoji, position, format)
+        VALUES ($1, 'general', 'General', '💬', 1, 'open_ended')
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("general category should insert");
+    let ideas_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO discussion_categories (repository_id, slug, name, emoji, position, format)
+        VALUES ($1, 'ideas', 'Ideas', '💡', 2, 'question_and_answer')
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("ideas category should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO discussions (repository_id, category_id, number, title, body, author_user_id)
+        VALUES ($1, $2, 1, 'Welcome', 'Introduce yourself.', $3)
+        "#,
+    )
+    .bind(repository.id)
+    .bind(general_id)
+    .bind(owner.id)
+    .execute(&pool)
+    .await
+    .expect("discussion should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let owner_login = owner.username.as_deref().expect("owner username");
+    let base = format!(
+        "/api/repos/{owner_login}/{}/settings/discussions",
+        repository.name
+    );
+
+    let (section_status, section_body) = post_json(
+        app.clone(),
+        &format!("{base}/sections"),
+        Some(&owner_cookie),
+        json!({ "name": "Community" }),
+    )
+    .await;
+    assert_eq!(section_status, StatusCode::OK, "{section_body}");
+    let section_id = section_body["sections"][0]["id"]
+        .as_str()
+        .expect("section id");
+
+    let (rename_status, rename_body) = patch_json(
+        app.clone(),
+        &format!("{base}/sections/{section_id}"),
+        Some(&owner_cookie),
+        json!({ "name": "Support" }),
+    )
+    .await;
+    assert_eq!(rename_status, StatusCode::OK, "{rename_body}");
+    assert_eq!(rename_body["sections"][0]["name"], "Support");
+
+    let (order_status, order_body) = put_json(
+        app.clone(),
+        &format!("{base}/categories/order"),
+        Some(&owner_cookie),
+        json!({
+            "items": [
+                { "id": ideas_id, "sectionId": section_id, "position": 1 },
+                { "id": general_id, "sectionId": null, "position": 2 }
+            ]
+        }),
+    )
+    .await;
+    assert_eq!(order_status, StatusCode::OK, "{order_body}");
+    let moved = order_body["categories"]
+        .as_array()
+        .expect("categories")
+        .iter()
+        .find(|category| category["id"] == ideas_id.to_string())
+        .expect("ideas category");
+    assert_eq!(moved["sectionName"], "Support");
+    assert_eq!(moved["position"], 1);
+
+    let (delete_missing_destination_status, delete_missing_destination_body) = delete_json(
+        app.clone(),
+        &format!("{base}/categories/{general_id}"),
+        Some(&owner_cookie),
+        json!({}),
+    )
+    .await;
+    assert_eq!(
+        delete_missing_destination_status,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    assert_eq!(
+        delete_missing_destination_body["error"]["code"],
+        "validation_failed"
+    );
+
+    let (delete_status, delete_body) = delete_json(
+        app.clone(),
+        &format!("{base}/categories/{general_id}"),
+        Some(&owner_cookie),
+        json!({ "moveToCategoryId": ideas_id }),
+    )
+    .await;
+    assert_eq!(delete_status, StatusCode::OK, "{delete_body}");
+    assert_eq!(
+        delete_body["categories"]
+            .as_array()
+            .expect("categories")
+            .len(),
+        1
+    );
+    let migrated_category_id: Uuid = sqlx::query_scalar(
+        "SELECT category_id FROM discussions WHERE repository_id = $1 AND number = 1",
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("discussion should remain");
+    assert_eq!(migrated_category_id, ideas_id);
+
+    let (last_delete_status, last_delete_body) = delete_json(
+        app.clone(),
+        &format!("{base}/categories/{ideas_id}"),
+        Some(&owner_cookie),
+        json!({}),
+    )
+    .await;
+    assert_eq!(last_delete_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(last_delete_body["error"]["code"], "validation_failed");
+
+    let audit_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)::bigint
+        FROM audit_events
+        WHERE actor_user_id = $1
+          AND event_type IN (
+            'repository.discussion_category_section.create',
+            'repository.discussion_category_section.update',
+            'repository.discussion_category.reorder',
+            'repository.discussion_category.delete'
+          )
+        "#,
+    )
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("audit events should count");
+    assert_eq!(audit_count, 4);
 }
 
 #[tokio::test]

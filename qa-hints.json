@@ -6473,5 +6473,23 @@
       "Phase 4 still needs real YAML template editor preview/commit behavior for .github/DISCUSSION_TEMPLATE/*.yml.",
       "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures."
     ]
+  },
+  {
+    "feature_id": "discussions-004",
+    "tests_written": [
+      "Completed Phase 3 Sections, Ordering, and Delete-With-Move without marking discussions-004 build_pass=true.",
+      "Added Rust routes for POST/PATCH/DELETE /api/repos/{owner}/{repo}/settings/discussions/sections, PUT /settings/discussions/categories/order, PUT /settings/discussions/sections/order, and DELETE /settings/discussions/categories/{category_id}.",
+      "Added backend validation for section uniqueness, category section assignment, order persistence, destination-required delete migration, self-destination denial, last-category denial, archived/admin guardrails, audit rows, and no-secret error envelopes.",
+      "Updated the Editorial category settings page with real New/Edit/Delete section dialogs/controls, category move-to-section selectors, reorder controls, delete-with-move confirmation, and same-origin cookie-forwarding proxies.",
+      "Extended focused Vitest and Playwright coverage for section creation, category movement, delete-with-move, no dead controls, and screenshot target ralph/screenshots/build/discussions-004-phase3-section-delete.jpg when a seeded browser database is available.",
+      "Verification passed: cargo fmt --all --check; cargo check -p opengithub-api --tests; focused repository_discussions_contract compiled and ran through its database guard; cd web && npm test -- --run repository-discussion-category-settings-page.test.tsx with 5 tests; cd web && npx tsc --noEmit --pretty false; focused Biome checks; full TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check; full same-env make test with Cargo tests plus 510 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Focused Rust DB-backed assertions self-skipped because localhost:55432 rejected the available postgres password; rerun repository_discussions_contract against a clean migrated credentialed TEST_DATABASE_URL to exercise section/order/delete assertions against real rows.",
+      "Focused Playwright repository-discussions smoke was attempted and the anonymous setup passed, but dashboard_e2e_seed failed with password authentication failed for user postgres before reaching the browser flow; screenshot generation remains blocked.",
+      "Rerun web/tests/e2e/repository-discussions.spec.ts against a credentialed seeded database to verify section create/edit/delete, category move/reorder, delete-with-move, and save ralph/screenshots/build/discussions-004-phase3-section-delete.jpg.",
+      "Phase 4 still needs the real YAML template editor preview/commit behavior for .github/DISCUSSION_TEMPLATE/*.yml.",
+      "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures."
+    ]
   }
 ]
