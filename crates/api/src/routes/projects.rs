@@ -1,0 +1,135 @@
+use axum::{
+    extract::{Path, Query, State},
+    http::{HeaderMap, StatusCode},
+    routing::get,
+    Json, Router,
+};
+use serde::Deserialize;
+
+use crate::{
+    api_types::{database_unavailable, error_response, ErrorEnvelope},
+    auth::extractor::AuthenticatedUser,
+    domain::projects::{
+        organization_projects, repository_projects, user_projects, ProjectList, ProjectListQuery,
+        ProjectsError,
+    },
+    AppState,
+};
+
+pub fn router() -> Router<AppState> {
+    Router::new()
+        .route("/api/users/:username/projects", get(user_projects_route))
+        .route("/api/orgs/:org/projects", get(organization_projects_route))
+        .route(
+            "/api/repos/:owner/:repo/projects",
+            get(repository_projects_route),
+        )
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectsQuery {
+    q: Option<String>,
+    state: Option<String>,
+    tab: Option<String>,
+    sort: Option<String>,
+    page: Option<i64>,
+    #[serde(rename = "pageSize")]
+    page_size: Option<i64>,
+}
+
+impl ProjectsQuery {
+    fn as_domain_query(&self) -> ProjectListQuery<'_> {
+        ProjectListQuery {
+            query: self.q.as_deref(),
+            state: self.state.as_deref(),
+            tab: self.tab.as_deref(),
+            sort: self.sort.as_deref(),
+            page: self.page,
+            page_size: self.page_size,
+        }
+    }
+}
+
+async fn user_projects_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+    Query(query): Query<ProjectsQuery>,
+) -> Result<Json<ProjectList>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let list = user_projects(
+        pool,
+        &username,
+        actor.map(|user| user.id),
+        query.as_domain_query(),
+    )
+    .await
+    .map_err(map_projects_error)?;
+    Ok(Json(list))
+}
+
+async fn organization_projects_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(org): Path<String>,
+    Query(query): Query<ProjectsQuery>,
+) -> Result<Json<ProjectList>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let list = organization_projects(
+        pool,
+        &org,
+        actor.map(|user| user.id),
+        query.as_domain_query(),
+    )
+    .await
+    .map_err(map_projects_error)?;
+    Ok(Json(list))
+}
+
+async fn repository_projects_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<ProjectsQuery>,
+) -> Result<Json<ProjectList>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let list = repository_projects(
+        pool,
+        &owner,
+        &repo,
+        actor.map(|user| user.id),
+        query.as_domain_query(),
+    )
+    .await
+    .map_err(map_projects_error)?;
+    Ok(Json(list))
+}
+
+fn map_projects_error(error: ProjectsError) -> (StatusCode, Json<ErrorEnvelope>) {
+    match error {
+        ProjectsError::NotFound => error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "Project list was not found",
+        ),
+        ProjectsError::Forbidden => error_response(
+            StatusCode::FORBIDDEN,
+            "forbidden",
+            "You do not have access to this project list",
+        ),
+        ProjectsError::InvalidFilter(message) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            message,
+        ),
+        ProjectsError::Sqlx(_) | ProjectsError::Repository(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "Project list could not be loaded",
+        ),
+    }
+}

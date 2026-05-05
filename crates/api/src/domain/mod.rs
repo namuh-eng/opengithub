@@ -20,6 +20,7 @@ pub mod pages;
 pub mod permissions;
 pub mod personal_settings;
 pub mod profiles;
+pub mod projects;
 pub mod pulls;
 pub mod releases;
 pub mod repositories;

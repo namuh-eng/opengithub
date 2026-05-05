@@ -6,7 +6,7 @@
 
 ## Phase 1: Projects List API Contract - account, organization, and repository lists are readable
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the Rust/Postgres contract for Projects v2 list pages across users, organizations, and repositories. This phase makes project rows, templates, counts, permissions, and repository linkage testable through API responses while keeping UI changes minimal.
 

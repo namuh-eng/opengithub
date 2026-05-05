@@ -12,6 +12,7 @@ pub mod notifications;
 pub mod onboarding;
 pub mod organizations;
 pub mod packages;
+pub mod projects;
 pub mod pulls;
 pub mod repositories;
 pub mod repository_imports;

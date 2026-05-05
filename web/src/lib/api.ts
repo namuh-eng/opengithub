@@ -74,6 +74,129 @@ export type AccountSecuritySettingsFetchResult =
   | { ok: true; settings: AccountSecuritySettings }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type ProjectListScopeSummary = {
+  kind: "user" | "organization" | "repository" | string;
+  login: string;
+  repository: ProjectRepositoryScopeSummary | null;
+  href: string;
+};
+
+export type ProjectRepositoryScopeSummary = {
+  id: string;
+  owner: string;
+  name: string;
+  fullName: string;
+  href: string;
+};
+
+export type ProjectStatusSummary = {
+  status: "on_track" | "at_risk" | "off_track" | "complete" | string;
+  label: string;
+  body: string | null;
+  createdAt: string;
+};
+
+export type ProjectItemCounts = {
+  total: number;
+  open: number;
+  closed: number;
+  draft: number;
+};
+
+export type ProjectRow = {
+  id: string;
+  number: number;
+  title: string;
+  description: string | null;
+  state: "open" | "closed" | string;
+  visibility: "public" | "private" | string;
+  href: string;
+  workspaceHref: string;
+  owner: string;
+  isTemplate: boolean;
+  defaultRepository: ProjectRepositoryScopeSummary | null;
+  linkedRepositoriesCount: number;
+  status: ProjectStatusSummary | null;
+  counts: ProjectItemCounts;
+  viewerRole: string | null;
+  viewerCanCopy: boolean;
+  createdAt: string;
+  updatedAt: string;
+  closedAt: string | null;
+};
+
+export type ProjectTemplateRow = {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string | null;
+  projectTitle: string;
+  projectHref: string;
+  isPublic: boolean;
+  viewerCanCopy: boolean;
+  createdAt: string;
+};
+
+export type ProjectCounts = {
+  open: number;
+  closed: number;
+  templates: number;
+  total: number;
+};
+
+export type ProjectListFilters = {
+  query: string | null;
+  state: "open" | "closed" | string;
+  tab: "projects" | "templates" | string;
+  sort:
+    | "recently_updated"
+    | "name_asc"
+    | "name_desc"
+    | "created_asc"
+    | "created_desc"
+    | string;
+  page: number;
+  pageSize: number;
+};
+
+export type ProjectListPermissions = {
+  authenticated: boolean;
+  viewerRole: string | null;
+  canCreate: boolean;
+  canCopy: boolean;
+};
+
+export type ProjectList = {
+  items: ProjectRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  scope: ProjectListScopeSummary;
+  filters: ProjectListFilters;
+  counts: ProjectCounts;
+  templates: {
+    items: ProjectTemplateRow[];
+    total: number;
+    page: number;
+    pageSize: number;
+  };
+  viewerPermissions: ProjectListPermissions;
+  unavailableReason: string | null;
+};
+
+export type ProjectListQuery = {
+  q?: string | null;
+  state?: "open" | "closed" | string | null;
+  tab?: "projects" | "templates" | string | null;
+  sort?: string | null;
+  page?: number | null;
+  pageSize?: number | null;
+};
+
+export type ProjectListFetchResult =
+  | { ok: true; projects: ProjectList }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type OrganizationSettingsIdentity = {
   id: string;
   slug: string;
@@ -6792,6 +6915,136 @@ export async function getSessionFromHeaders(
   requestHeaders: Headers,
 ): Promise<AuthSession> {
   return getSessionFromCookie(requestHeaders.get("cookie"));
+}
+
+function projectListPath(path: string, query: ProjectListQuery = {}): string {
+  const params = new URLSearchParams();
+  if (query.q?.trim()) {
+    params.set("q", query.q.trim());
+  }
+  if (query.state?.trim()) {
+    params.set("state", query.state.trim());
+  }
+  if (query.tab?.trim()) {
+    params.set("tab", query.tab.trim());
+  }
+  if (query.sort?.trim()) {
+    params.set("sort", query.sort.trim());
+  }
+  if (query.page) {
+    params.set("page", String(query.page));
+  }
+  if (query.pageSize) {
+    params.set("pageSize", String(query.pageSize));
+  }
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return `${path}${suffix}`;
+}
+
+async function getProjectListFromCookie(
+  cookie: string | null | undefined,
+  path: string,
+  query: ProjectListQuery = {},
+): Promise<ProjectListFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${projectListPath(path, query)}`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Projects are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let body: ApiErrorEnvelope | null = null;
+    try {
+      body = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      body = null;
+    }
+    return {
+      ok: false,
+      status: body?.status ?? response.status,
+      code: body?.error.code ?? null,
+      message: body?.error.message ?? "Projects could not be loaded.",
+    };
+  }
+
+  return { ok: true, projects: (await response.json()) as ProjectList };
+}
+
+export function userProjectsPath(
+  username: string,
+  query: ProjectListQuery = {},
+): string {
+  return projectListPath(
+    `/api/users/${encodeURIComponent(username)}/projects`,
+    query,
+  );
+}
+
+export function organizationProjectsPath(
+  org: string,
+  query: ProjectListQuery = {},
+): string {
+  return projectListPath(
+    `/api/orgs/${encodeURIComponent(org)}/projects`,
+    query,
+  );
+}
+
+export function repositoryProjectsPath(
+  owner: string,
+  repo: string,
+  query: ProjectListQuery = {},
+): string {
+  return projectListPath(
+    `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/projects`,
+    query,
+  );
+}
+
+export function getUserProjectsFromCookie(
+  cookie: string | null | undefined,
+  username: string,
+  query: ProjectListQuery = {},
+): Promise<ProjectListFetchResult> {
+  return getProjectListFromCookie(
+    cookie,
+    `/api/users/${encodeURIComponent(username)}/projects`,
+    query,
+  );
+}
+
+export function getOrganizationProjectsFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  query: ProjectListQuery = {},
+): Promise<ProjectListFetchResult> {
+  return getProjectListFromCookie(
+    cookie,
+    `/api/orgs/${encodeURIComponent(org)}/projects`,
+    query,
+  );
+}
+
+export function getRepositoryProjectsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  query: ProjectListQuery = {},
+): Promise<ProjectListFetchResult> {
+  return getProjectListFromCookie(
+    cookie,
+    `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/projects`,
+    query,
+  );
 }
 
 export async function getPersonalAccessTokenListFromCookie(

@@ -6694,5 +6694,21 @@
       "Run DB-backed QA for poll result privacy in private repositories, anonymous result suppression, invalid option ids, vote replacement policy, multi-choice aggregation, locked/archived/deleted denial, poll/non-poll category compatibility through category and transfer endpoints, activity/audit rows, and absence of session/OAuth/env/storage leaks.",
       "Run browser QA for keyboard traversal through poll controls, long option wrapping on mobile, comments/replies/reactions after voting, anonymous sign-in prompts, server error recovery, and moderator constraint messaging."
     ]
+  },
+  {
+    "feature_id": "projects-001",
+    "tests_written": [
+      "Completed Phase 1 Projects List API Contract without marking projects-001 build_pass=true.",
+      "Added additive Projects v2 schema for projects, repository links, permissions, latest status updates, templates, views, fields, workflows, and items.",
+      "Added Rust read contracts for GET /api/users/{username}/projects, GET /api/orgs/{org}/projects, and GET /api/repos/{owner}/{repo}/projects with q/state/tab/sort/page/pageSize validation.",
+      "Added typed frontend Project list DTOs and cookie-backed helpers for user, organization, and repository project list surfaces.",
+      "Added focused Rust contract coverage for organization list reads, repository-linked projects, templates tab metadata, closed-state filtering, invalid sort envelopes, and private project non-leakage."
+    ],
+    "needs_deeper_qa": [
+      "Focused projects_list_contract compiled and ran, but DB assertions self-skipped because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test failed with password authentication failed for user postgres.",
+      "Rerun projects_list_contract against a clean migrated credentialed TEST_DATABASE_URL to prove real Postgres rows for project lists, templates, repository links, status updates, private visibility, and invalid filter envelopes.",
+      "Browser smoke was skipped because Phase 1 is API-first and .qrspi/projects-001/structure.md marks browser smoke optional for this phase.",
+      "Phase 2 still needs the Editorial Projects list UI for user, organization, and repository surfaces before projects-001 can be marked build_pass=true."
+    ]
   }
 ]
