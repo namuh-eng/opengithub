@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use super::{
     markdown::{render_markdown, RenderMarkdownInput},
+    pulls::{create_pull_request, CreatePullRequest},
     repositories::{
         can_read_repository, can_write_repository, get_repository_by_owner_name,
         replace_repository_snapshot, CreateCommit, Repository, RepositoryError, RepositorySnapshot,
@@ -390,6 +391,47 @@ pub struct DependabotAlertMutation {
     pub assignee_ids: Option<Vec<Uuid>>,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotBulkMutation {
+    pub action: String,
+    pub alert_ids: Vec<Uuid>,
+    pub dismissal_reason: Option<String>,
+    pub dismissal_comment: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotBulkMutationResult {
+    pub repository: RepositorySecurityRepository,
+    pub requested_count: usize,
+    pub updated_count: usize,
+    pub results: Vec<DependabotBulkAlertResult>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotBulkAlertResult {
+    pub id: Uuid,
+    pub number: i64,
+    pub state: String,
+    pub ok: bool,
+    pub message: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DependabotSecurityUpdateResult {
+    pub alert: DependabotAlertRow,
+    pub status: String,
+    pub branch: String,
+    pub commit_oid: Option<String>,
+    pub pull_request_href: Option<String>,
+    pub message: String,
+}
+
 pub async fn repository_dependabot_alerts_for_actor_by_owner_name(
     pool: &PgPool,
     actor_user_id: Uuid,
@@ -481,6 +523,66 @@ pub async fn update_repository_dependabot_alert_for_actor_by_owner_name(
         alert_number,
     )
     .await
+}
+
+pub async fn bulk_update_repository_dependabot_alerts_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    mutation: DependabotBulkMutation,
+) -> Result<Option<DependabotBulkMutationResult>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if !can_write_repository(pool, &repository, actor_user_id).await? {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if repository.is_archived {
+        return Err(RepositoryError::ArchivedRepositoryReadOnly);
+    }
+
+    bulk_update_repository_dependabot_alerts(pool, &repository, actor_user_id, mutation)
+        .await
+        .map(Some)
+}
+
+pub async fn create_repository_dependabot_security_update_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    alert_number: i64,
+) -> Result<Option<DependabotSecurityUpdateResult>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if !can_write_repository(pool, &repository, actor_user_id).await? {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if repository.is_archived {
+        return Err(RepositoryError::ArchivedRepositoryReadOnly);
+    }
+    if alert_number <= 0 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "alert id must be a positive number".to_owned(),
+        ));
+    }
+
+    create_repository_dependabot_security_update(pool, &repository, actor_user_id, alert_number)
+        .await
 }
 
 pub async fn repository_security_overview_for_actor_by_owner_name(
@@ -1233,7 +1335,7 @@ async fn repository_dependabot_alert_detail_for_repository(
         current_version: alert.current_version.clone(),
         relationship: alert.relationship.clone(),
     };
-    let security_update = dependabot_security_update_state(repository, &alert);
+    let security_update = dependabot_security_update_state(pool, repository, &alert).await?;
 
     Ok(Some(DependabotAlertDetail {
         repository: security_repository(repository, &links),
@@ -1437,6 +1539,390 @@ async fn update_repository_dependabot_alert(
     }
 
     Ok(())
+}
+
+async fn bulk_update_repository_dependabot_alerts(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    mutation: DependabotBulkMutation,
+) -> Result<DependabotBulkMutationResult, RepositoryError> {
+    let alert_ids = normalize_dependabot_bulk_alert_ids(&mutation.alert_ids)?;
+    let action = mutation.action.trim();
+    if !matches!(action, "dismiss" | "reopen") {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "Dependabot bulk action must be dismiss or reopen".to_owned(),
+        ));
+    }
+    let dismissal_reason = if action == "dismiss" {
+        Some(normalize_dependabot_dismissal_reason(
+            mutation.dismissal_reason.as_deref(),
+        )?)
+    } else {
+        None
+    };
+    let dismissal_comment = if action == "dismiss" {
+        normalize_dependabot_dismissal_comment(mutation.dismissal_comment.as_deref())?
+    } else {
+        None
+    };
+
+    let setting = dependabot_setting(pool, repository).await?;
+    let availability = dependabot_availability(repository, setting.as_ref());
+    if !availability.enabled {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "Dependabot alerts are disabled for this repository".to_owned(),
+        ));
+    }
+    materialize_dependabot_alerts(pool, repository).await?;
+
+    let mut results = Vec::new();
+    for alert_id in alert_ids {
+        let row = sqlx::query(
+            r#"
+            SELECT id, number, state, fixed_version
+            FROM dependabot_alerts
+            WHERE repository_id = $1 AND id = $2
+            "#,
+        )
+        .bind(repository.id)
+        .bind(alert_id)
+        .fetch_optional(pool)
+        .await?;
+        let Some(row) = row else {
+            results.push(DependabotBulkAlertResult {
+                id: alert_id,
+                number: 0,
+                state: "hidden".to_owned(),
+                ok: false,
+                message: "Alert was not found or is no longer visible.".to_owned(),
+                href: dependabot_links(repository).list_href,
+            });
+            continue;
+        };
+        let number: i64 = row.get("number");
+        let state: String = row.get("state");
+        let fixed_version: Option<String> = row.get("fixed_version");
+        let href = format!(
+            "/{}/{}/security/dependabot/{}",
+            repository.owner_login, repository.name, number
+        );
+
+        match action {
+            "dismiss" if state != "open" => {
+                results.push(DependabotBulkAlertResult {
+                    id: alert_id,
+                    number,
+                    state,
+                    ok: false,
+                    message: "Only open Dependabot alerts can be dismissed.".to_owned(),
+                    href,
+                });
+            }
+            "reopen" if fixed_version.is_some() || state == "fixed" => {
+                results.push(DependabotBulkAlertResult {
+                    id: alert_id,
+                    number,
+                    state,
+                    ok: false,
+                    message: "Fixed Dependabot alerts cannot be reopened.".to_owned(),
+                    href,
+                });
+            }
+            "reopen" if state != "dismissed" => {
+                results.push(DependabotBulkAlertResult {
+                    id: alert_id,
+                    number,
+                    state,
+                    ok: false,
+                    message: "Only dismissed Dependabot alerts can be reopened.".to_owned(),
+                    href,
+                });
+            }
+            "dismiss" => {
+                sqlx::query(
+                    r#"
+                    UPDATE dependabot_alerts
+                    SET state = 'dismissed',
+                        dismissed_reason = $3,
+                        dismissed_comment = $4,
+                        dismissed_by_user_id = $5,
+                        dismissed_at = now(),
+                        updated_at = now()
+                    WHERE repository_id = $1 AND id = $2
+                    "#,
+                )
+                .bind(repository.id)
+                .bind(alert_id)
+                .bind(dismissal_reason.as_deref())
+                .bind(dismissal_comment.as_deref())
+                .bind(actor_user_id)
+                .execute(pool)
+                .await?;
+                record_dependabot_alert_event(
+                    pool,
+                    repository,
+                    alert_id,
+                    actor_user_id,
+                    "bulk_dismissed",
+                    "Dismissed this alert from bulk triage.",
+                    json!({
+                        "reason": dismissal_reason,
+                        "hasComment": dismissal_comment.is_some(),
+                    }),
+                )
+                .await?;
+                notify_dependabot_alert_assignees(
+                    pool,
+                    repository,
+                    alert_id,
+                    "Dependabot alert dismissed",
+                    "security_alert",
+                )
+                .await?;
+                results.push(DependabotBulkAlertResult {
+                    id: alert_id,
+                    number,
+                    state: "dismissed".to_owned(),
+                    ok: true,
+                    message: "Dismissed.".to_owned(),
+                    href,
+                });
+            }
+            "reopen" => {
+                sqlx::query(
+                    r#"
+                    UPDATE dependabot_alerts
+                    SET state = 'open',
+                        dismissed_reason = NULL,
+                        dismissed_comment = NULL,
+                        dismissed_by_user_id = NULL,
+                        dismissed_at = NULL,
+                        updated_at = now()
+                    WHERE repository_id = $1 AND id = $2
+                    "#,
+                )
+                .bind(repository.id)
+                .bind(alert_id)
+                .execute(pool)
+                .await?;
+                record_dependabot_alert_event(
+                    pool,
+                    repository,
+                    alert_id,
+                    actor_user_id,
+                    "bulk_reopened",
+                    "Reopened this alert from bulk triage.",
+                    json!({ "previousState": state }),
+                )
+                .await?;
+                notify_dependabot_alert_assignees(
+                    pool,
+                    repository,
+                    alert_id,
+                    "Dependabot alert reopened",
+                    "security_alert",
+                )
+                .await?;
+                results.push(DependabotBulkAlertResult {
+                    id: alert_id,
+                    number,
+                    state: "open".to_owned(),
+                    ok: true,
+                    message: "Reopened.".to_owned(),
+                    href,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    let updated_count = results.iter().filter(|result| result.ok).count();
+    let links = dependabot_links(repository);
+    Ok(DependabotBulkMutationResult {
+        repository: security_repository(repository, &links),
+        requested_count: results.len(),
+        updated_count,
+        results,
+        message: format!("{updated_count} Dependabot alerts updated."),
+    })
+}
+
+async fn create_repository_dependabot_security_update(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    alert_number: i64,
+) -> Result<Option<DependabotSecurityUpdateResult>, RepositoryError> {
+    let setting = dependabot_setting(pool, repository).await?;
+    let availability = dependabot_availability(repository, setting.as_ref());
+    if !availability.enabled {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "Dependabot alerts are disabled for this repository".to_owned(),
+        ));
+    }
+    materialize_dependabot_alerts(pool, repository).await?;
+    let Some(alert) = dependabot_alert_rows(pool, repository)
+        .await?
+        .into_iter()
+        .find(|alert| alert.number == alert_number)
+    else {
+        return Ok(None);
+    };
+    if alert.state != "open" {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "security update pull requests require an open Dependabot alert".to_owned(),
+        ));
+    }
+    if !matches!(alert.package.ecosystem.as_str(), "npm" | "cargo" | "pip") {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "security update pull requests are unsupported for this ecosystem".to_owned(),
+        ));
+    }
+
+    if let Some(existing) = dependabot_existing_security_update_pr(pool, repository, &alert).await?
+    {
+        return Ok(Some(DependabotSecurityUpdateResult {
+            alert,
+            status: "linked".to_owned(),
+            branch: existing.0,
+            commit_oid: None,
+            pull_request_href: Some(existing.1),
+            message: "A security update pull request already exists for this alert.".to_owned(),
+        }));
+    }
+
+    let branch = dependabot_security_update_branch(&alert);
+    let default_commit = current_branch_commit(pool, repository.id, &repository.default_branch)
+        .await?
+        .ok_or_else(|| RepositoryError::DefaultBranchNotFound(repository.default_branch.clone()))?;
+    let mut files = current_branch_files(pool, repository.id, Some(default_commit.id)).await?;
+    let target_version = dependabot_security_update_version(&alert)?;
+    let Some(manifest) = files
+        .iter_mut()
+        .find(|file| file.path.eq_ignore_ascii_case(&alert.manifest_path))
+    else {
+        return Err(RepositoryError::PathNotFound);
+    };
+    let next_content = update_dependency_manifest_content(
+        &alert.package.ecosystem,
+        &manifest.content,
+        &alert.package.name,
+        &target_version,
+    )?;
+    if next_content == manifest.content {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "security update did not change the dependency manifest".to_owned(),
+        ));
+    }
+    manifest.content = next_content;
+    manifest.oid = deterministic_content_oid("blob", &manifest.content);
+    manifest.byte_size = manifest.content.len() as i64;
+
+    let tree_oid = deterministic_content_oid(
+        "tree",
+        &files
+            .iter()
+            .map(|file| format!("{}:{}:{}", file.path, file.oid, file.byte_size))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
+    let title = format!("Bump {} to {}", alert.package.name, target_version);
+    let body = format!(
+        "Security update for {}.\n\n- Alert: {}\n- Advisory: {}\n- Manifest: `{}`\n",
+        alert.package.name, alert.href, alert.advisory.identifier, alert.manifest_path
+    );
+    let commit_oid = deterministic_content_oid(
+        "commit",
+        &format!(
+            "{}:{}:{}:{}:{}",
+            repository.id, branch, tree_oid, alert.id, target_version
+        ),
+    );
+    let commit = replace_repository_snapshot(
+        pool,
+        repository.id,
+        RepositorySnapshot {
+            commit: CreateCommit {
+                oid: commit_oid.clone(),
+                author_user_id: Some(actor_user_id),
+                committer_user_id: Some(actor_user_id),
+                message: title.clone(),
+                tree_oid: Some(tree_oid),
+                parent_oids: vec![default_commit.oid],
+                committed_at: Utc::now(),
+            },
+            branch_name: branch.clone(),
+            files,
+        },
+    )
+    .await?;
+
+    let pull = create_pull_request(
+        pool,
+        CreatePullRequest {
+            repository_id: repository.id,
+            actor_user_id,
+            title,
+            body: Some(body),
+            head_ref: branch.clone(),
+            base_ref: repository.default_branch.clone(),
+            head_repository_id: None,
+            is_draft: false,
+            label_ids: Vec::new(),
+            milestone_id: None,
+            assignee_user_ids: Vec::new(),
+            reviewer_user_ids: Vec::new(),
+            template_slug: None,
+        },
+    )
+    .await
+    .map_err(collaboration_to_repository_error)?;
+
+    sqlx::query(
+        r#"
+        UPDATE dependabot_alerts
+        SET security_update_pull_request_id = $3, updated_at = now()
+        WHERE repository_id = $1 AND id = $2
+        "#,
+    )
+    .bind(repository.id)
+    .bind(alert.id)
+    .bind(pull.pull_request.id)
+    .execute(pool)
+    .await?;
+    record_dependabot_alert_event(
+        pool,
+        repository,
+        alert.id,
+        actor_user_id,
+        "security_update_opened",
+        "Opened a security update pull request.",
+        json!({
+            "pullRequestId": pull.pull_request.id,
+            "pullRequestNumber": pull.pull_request.number,
+            "branch": branch,
+            "commitOid": commit.oid,
+        }),
+    )
+    .await?;
+    notify_dependabot_alert_assignees(
+        pool,
+        repository,
+        alert.id,
+        "Dependabot security update opened",
+        "security_alert",
+    )
+    .await?;
+
+    Ok(Some(DependabotSecurityUpdateResult {
+        alert,
+        status: "created".to_owned(),
+        branch,
+        commit_oid: Some(commit.oid),
+        pull_request_href: Some(pull.href),
+        message: "Security update pull request created.".to_owned(),
+    }))
 }
 
 async fn security_viewer(
@@ -2166,21 +2652,27 @@ async fn dependabot_assignment_options(
         .collect())
 }
 
-fn dependabot_security_update_state(
+async fn dependabot_security_update_state(
+    pool: &PgPool,
     repository: &Repository,
     alert: &DependabotAlertRow,
-) -> DependabotSecurityUpdateState {
+) -> Result<DependabotSecurityUpdateState, RepositoryError> {
+    let existing_href = dependabot_existing_security_update_pr(pool, repository, alert)
+        .await?
+        .map(|(_, href)| href);
     let supported = alert.state == "open"
         && matches!(alert.package.ecosystem.as_str(), "npm" | "cargo" | "pip");
-    DependabotSecurityUpdateState {
+    Ok(DependabotSecurityUpdateState {
         supported,
-        status: if supported {
+        status: if existing_href.is_some() {
+            "linked"
+        } else if supported {
             "available"
         } else {
             "unsupported"
         }
         .to_owned(),
-        href: supported.then(|| {
+        href: (supported && existing_href.is_none()).then(|| {
             format!(
                 "/api/repos/{}/{}/security/dependabot/{}/security-update",
                 percent_encode_segment(&repository.owner_login),
@@ -2188,13 +2680,246 @@ fn dependabot_security_update_state(
                 alert.number
             )
         }),
-        pull_request_href: None,
-        message: if supported {
+        pull_request_href: existing_href.clone(),
+        message: if existing_href.is_some() {
+            "A security update pull request is already linked to this alert.".to_owned()
+        } else if supported {
             "A security update pull request can be prepared for this manifest.".to_owned()
         } else {
             "Security update pull requests are unavailable for this alert state or ecosystem."
                 .to_owned()
         },
+    })
+}
+
+fn normalize_dependabot_bulk_alert_ids(alert_ids: &[Uuid]) -> Result<Vec<Uuid>, RepositoryError> {
+    if alert_ids.is_empty() {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "at least one Dependabot alert must be selected".to_owned(),
+        ));
+    }
+    if alert_ids.len() > 100 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "bulk triage is limited to 100 Dependabot alerts".to_owned(),
+        ));
+    }
+    let mut normalized = Vec::new();
+    for alert_id in alert_ids {
+        if !normalized.contains(alert_id) {
+            normalized.push(*alert_id);
+        }
+    }
+    Ok(normalized)
+}
+
+fn dependabot_security_update_branch(alert: &DependabotAlertRow) -> String {
+    let package = Regex::new(r"[^A-Za-z0-9._-]+")
+        .expect("branch package regex")
+        .replace_all(&alert.package.name, "-")
+        .trim_matches('-')
+        .to_ascii_lowercase();
+    format!(
+        "dependabot/{}/{}-{}",
+        alert.package.ecosystem,
+        if package.is_empty() {
+            "package"
+        } else {
+            &package
+        },
+        alert.number
+    )
+}
+
+fn dependabot_security_update_version(
+    alert: &DependabotAlertRow,
+) -> Result<String, RepositoryError> {
+    if let Some(version) = alert
+        .fixed_version
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return Ok(version.to_owned());
+    }
+    let Some(current) = alert
+        .current_version
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "security update requires a current dependency version".to_owned(),
+        ));
+    };
+    Ok(format!("{current}-security"))
+}
+
+fn update_dependency_manifest_content(
+    ecosystem: &str,
+    content: &str,
+    package: &str,
+    version: &str,
+) -> Result<String, RepositoryError> {
+    match ecosystem {
+        "npm" => update_json_dependency_manifest(content, package, version),
+        "cargo" => update_line_dependency_manifest(content, package, version, " = "),
+        "pip" => update_requirements_manifest(content, package, version),
+        _ => Err(RepositoryError::InvalidDependencyGraphQuery(
+            "security update pull requests are unsupported for this ecosystem".to_owned(),
+        )),
+    }
+}
+
+fn update_json_dependency_manifest(
+    content: &str,
+    package: &str,
+    version: &str,
+) -> Result<String, RepositoryError> {
+    let mut document: serde_json::Value = serde_json::from_str(content).map_err(|_| {
+        RepositoryError::InvalidDependencyGraphQuery(
+            "package.json must be valid JSON before a security update can be prepared".to_owned(),
+        )
+    })?;
+    for section in [
+        "dependencies",
+        "devDependencies",
+        "optionalDependencies",
+        "peerDependencies",
+    ] {
+        if let Some(dependencies) = document
+            .get_mut(section)
+            .and_then(|value| value.as_object_mut())
+        {
+            if dependencies.contains_key(package) {
+                dependencies.insert(
+                    package.to_owned(),
+                    serde_json::Value::String(version.to_owned()),
+                );
+                return serde_json::to_string_pretty(&document)
+                    .map(|json| format!("{json}\n"))
+                    .map_err(|_| {
+                        RepositoryError::InvalidDependencyGraphQuery(
+                            "package.json could not be serialized after the security update"
+                                .to_owned(),
+                        )
+                    });
+            }
+        }
+    }
+    Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+        "package `{package}` was not found in package.json"
+    )))
+}
+
+fn update_line_dependency_manifest(
+    content: &str,
+    package: &str,
+    version: &str,
+    separator: &str,
+) -> Result<String, RepositoryError> {
+    let mut changed = false;
+    let mut lines = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        if !changed
+            && (trimmed.starts_with(&format!("{package}{separator}"))
+                || trimmed.starts_with(&format!("{package}=")))
+        {
+            let indent_len = line.len() - trimmed.len();
+            let indent = &line[..indent_len];
+            lines.push(format!("{indent}{package}{separator}\"{version}\""));
+            changed = true;
+        } else {
+            lines.push(line.to_owned());
+        }
+    }
+    if !changed {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+            "package `{package}` was not found in the manifest"
+        )));
+    }
+    Ok(format!("{}\n", lines.join("\n")))
+}
+
+fn update_requirements_manifest(
+    content: &str,
+    package: &str,
+    version: &str,
+) -> Result<String, RepositoryError> {
+    let mut changed = false;
+    let mut lines = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        if !changed
+            && trimmed
+                .to_ascii_lowercase()
+                .starts_with(&package.to_ascii_lowercase())
+        {
+            let indent_len = line.len() - trimmed.len();
+            let indent = &line[..indent_len];
+            lines.push(format!("{indent}{package}=={version}"));
+            changed = true;
+        } else {
+            lines.push(line.to_owned());
+        }
+    }
+    if !changed {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+            "package `{package}` was not found in requirements.txt"
+        )));
+    }
+    Ok(format!("{}\n", lines.join("\n")))
+}
+
+async fn dependabot_existing_security_update_pr(
+    pool: &PgPool,
+    repository: &Repository,
+    alert: &DependabotAlertRow,
+) -> Result<Option<(String, String)>, RepositoryError> {
+    let row = sqlx::query(
+        r#"
+        SELECT pull_requests.head_ref,
+               pull_requests.number
+        FROM dependabot_alerts
+        JOIN pull_requests ON pull_requests.id = dependabot_alerts.security_update_pull_request_id
+        WHERE dependabot_alerts.id = $1
+          AND pull_requests.state = 'open'
+        LIMIT 1
+        "#,
+    )
+    .bind(alert.id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|row| {
+        let number: i64 = row.get("number");
+        (
+            row.get("head_ref"),
+            format!(
+                "/{}/{}/pull/{}",
+                repository.owner_login, repository.name, number
+            ),
+        )
+    }))
+}
+
+fn collaboration_to_repository_error(error: super::issues::CollaborationError) -> RepositoryError {
+    match error {
+        super::issues::CollaborationError::RepositoryNotFound
+        | super::issues::CollaborationError::IssueNotFound
+        | super::issues::CollaborationError::PullRequestNotFound => RepositoryError::NotFound,
+        super::issues::CollaborationError::RepositoryAccessDenied => {
+            RepositoryError::PermissionDenied
+        }
+        super::issues::CollaborationError::InvalidState(message)
+        | super::issues::CollaborationError::InvalidReaction(message)
+        | super::issues::CollaborationError::InvalidIssueFilter(message)
+        | super::issues::CollaborationError::InvalidIssueAttachment(message) => {
+            RepositoryError::InvalidDependencyGraphQuery(message)
+        }
+        super::issues::CollaborationError::InvalidIssueField { message, .. } => {
+            RepositoryError::InvalidDependencyGraphQuery(message)
+        }
+        super::issues::CollaborationError::Sqlx(error) => RepositoryError::Sqlx(error),
     }
 }
 

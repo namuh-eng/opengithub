@@ -59,7 +59,7 @@
 
 ## Phase 4: Bulk Triage and Security Update PR CTA - list actions become real writes
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make list-row selection useful. Maintainers can bulk dismiss/reopen selected alerts. Supported open alerts expose a security-update PR CTA that creates or links a real pull request using existing PR infrastructure and records notifications/audit events.
 

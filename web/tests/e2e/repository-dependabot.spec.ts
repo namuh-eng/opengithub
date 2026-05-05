@@ -178,6 +178,44 @@ function seedDependabotAlerts(repositoryHref: string) {
       DO UPDATE SET severity = EXCLUDED.severity,
                     title = EXCLUDED.title,
                     advisory_href = EXCLUDED.advisory_href;
+
+      WITH target_repo AS (
+        SELECT repositories.id
+        FROM repositories
+        LEFT JOIN users ON users.id = repositories.owner_user_id
+        LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
+        WHERE COALESCE(users.username, organizations.slug) = ${sqlLiteral(decodedOwner)}
+          AND repositories.name = ${sqlLiteral(decodedRepo)}
+        LIMIT 1
+      ),
+      main_commit AS (
+        SELECT repository_git_refs.target_commit_id AS id
+        FROM repository_git_refs, target_repo
+        WHERE repository_git_refs.repository_id = target_repo.id
+          AND repository_git_refs.name IN ('main', 'refs/heads/main')
+        ORDER BY CASE WHEN repository_git_refs.name = 'refs/heads/main' THEN 0 ELSE 1 END
+        LIMIT 1
+      ),
+      package_file AS (
+        SELECT ${sqlLiteral(`{
+  "dependencies": {
+    "@playwright/test": "1.55.0"
+  }
+}
+`)}::text AS content
+      )
+      INSERT INTO repository_files (repository_id, commit_id, path, content, oid, byte_size)
+      SELECT target_repo.id,
+             main_commit.id,
+             'package.json',
+             package_file.content,
+             md5(package_file.content),
+             length(package_file.content)
+      FROM target_repo, main_commit, package_file
+      ON CONFLICT (repository_id, commit_id, lower(path))
+      DO UPDATE SET content = EXCLUDED.content,
+                    oid = EXCLUDED.oid,
+                    byte_size = EXCLUDED.byte_size;
       `,
     ],
     { stdio: "ignore" },
@@ -294,7 +332,7 @@ test("repository Dependabot alerts list supports filters, selection, disabled st
     page.getByRole("button", { name: "Clear visible" }),
   ).toBeVisible();
   await expect(
-    page.getByText("Bulk triage arrives in the next phase"),
+    page.getByRole("button", { name: "Dismiss selected" }),
   ).toBeVisible();
 
   await page
@@ -321,6 +359,10 @@ test("repository Dependabot alerts list supports filters, selection, disabled st
   ).toBeVisible();
   await page.getByRole("button", { name: "Reopen alert" }).click();
   await expect(page.getByText("Reopen saved.")).toBeVisible();
+  await page.getByRole("button", { name: "Create security update PR" }).click();
+  await expect(
+    page.getByRole("link", { name: "Open security update PR" }),
+  ).toHaveAttribute("href", /\/pull\/\d+/);
   await page.getByRole("checkbox", { name: /dash-/ }).check();
   await page.getByRole("button", { name: "Save assignments" }).click();
   await expect(page.getByText("Assignments saved.")).toBeVisible();
@@ -341,11 +383,11 @@ test("repository Dependabot alerts list supports filters, selection, disabled st
     page.getByRole("button", { name: "Clear visible" }),
   ).toBeVisible();
   await expect(
-    page.getByText("Bulk triage arrives in the next phase"),
+    page.getByRole("button", { name: "Dismiss selected" }),
   ).toBeVisible();
   await page.screenshot({
     fullPage: true,
-    path: "../ralph/screenshots/build/code-security-002-phase2-alerts-list.jpg",
+    path: "../ralph/screenshots/build/code-security-002-phase4-bulk-security-update.jpg",
   });
 
   disableDependabot(seeded.treeRepositoryHref);

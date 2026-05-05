@@ -273,6 +273,83 @@ function DetailActions({
   );
 }
 
+function RepositoryDependabotSecurityUpdateButton({
+  detail,
+  onLinked,
+}: {
+  detail: RepositoryDependabotAlertDetail;
+  onLinked: (href: string) => void;
+}) {
+  const [pending, setPending] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  if (detail.securityUpdate.pullRequestHref) {
+    return (
+      <div className="grid gap-2">
+        <Link
+          className="btn primary"
+          href={detail.securityUpdate.pullRequestHref}
+        >
+          Open security update PR
+        </Link>
+        {message ? <span className="chip ok">{message}</span> : null}
+      </div>
+    );
+  }
+
+  if (!detail.securityUpdate.supported) {
+    return <span className="chip soft">Unsupported</span>;
+  }
+
+  async function createSecurityUpdate() {
+    setPending(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const response = await fetch(`${basePath(detail)}/security-update`, {
+        method: "POST",
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          body?.error?.message ?? "Security update pull request failed.",
+        );
+      }
+      if (body?.pullRequestHref) {
+        onLinked(body.pullRequestHref);
+      }
+      setMessage(body?.message ?? "Security update pull request ready.");
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Security update pull request failed.",
+      );
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="grid gap-2">
+      <button
+        className="btn primary"
+        disabled={pending}
+        onClick={createSecurityUpdate}
+        type="button"
+      >
+        Create security update PR
+      </button>
+      {pending ? (
+        <span className="chip soft">Preparing pull request</span>
+      ) : null}
+      {message ? <span className="chip ok">{message}</span> : null}
+      {error ? <span className="chip err">{error}</span> : null}
+    </div>
+  );
+}
+
 function DetailReadyPage({
   repository,
   initialDetail,
@@ -428,24 +505,20 @@ function DetailReadyPage({
               <p className="t-sm" style={{ color: "var(--ink-3)" }}>
                 {detail.securityUpdate.message}
               </p>
-              {detail.securityUpdate.pullRequestHref ? (
-                <Link
-                  className="btn primary"
-                  href={detail.securityUpdate.pullRequestHref}
-                >
-                  Open security update PR
-                </Link>
-              ) : (
-                <span
-                  className={
-                    detail.securityUpdate.supported ? "chip ok" : "chip soft"
-                  }
-                >
-                  {detail.securityUpdate.supported
-                    ? "PR can be prepared in Phase 4"
-                    : "Unsupported"}
-                </span>
-              )}
+              <RepositoryDependabotSecurityUpdateButton
+                detail={detail}
+                onLinked={(href) =>
+                  setDetail((current) => ({
+                    ...current,
+                    securityUpdate: {
+                      ...current.securityUpdate,
+                      href: null,
+                      pullRequestHref: href,
+                      status: "linked",
+                    },
+                  }))
+                }
+              />
             </section>
 
             <section className="card grid gap-3 p-5">

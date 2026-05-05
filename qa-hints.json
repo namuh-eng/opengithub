@@ -5862,5 +5862,24 @@
       "Exercise concurrent dismiss/reopen attempts from two browser sessions to confirm stale-state conflict copy after Phase 4 adds broader bulk validation.",
       "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema."
     ]
+  },
+  {
+    "feature_id": "code-security-002",
+    "tests_written": [
+      "Completed Phase 4 Bulk Triage and Security Update PR CTA without marking code-security-002 build_pass=true.",
+      "Added POST /api/repos/{owner}/{repo}/security/dependabot/bulk for maintainer-only selected-alert dismiss/reopen with per-alert results, validation, audit events, timeline rows, and assignee notification writes.",
+      "Added POST /api/repos/{owner}/{repo}/security/dependabot/{alert_id}/security-update to create or reuse a real security update branch and pull request through existing repository snapshot and pull request contracts.",
+      "Added Next same-origin proxy routes, list-page bulk triage controls, and detail-page security update PR CTA with pending/success/error states using Editorial primitives/tokens only.",
+      "Extended Rust contract coverage for bulk dismiss/reopen, security-update branch and pull request linking, audit writes, notifications, private repository privacy, invalid filters, and no secret leakage.",
+      "Extended Vitest and Playwright coverage for bulk selected-alert payloads, same-origin security-update PR creation, concrete PR links, no dead controls, mobile no-overflow, and screenshot ralph/screenshots/build/code-security-002-phase4-bulk-security-update.jpg.",
+      "Verification passed: focused repository_dependabot_alerts_contract, focused repository-dependabot list/detail Vitest, TypeScript check, focused Biome checks, cargo fmt --all --check, focused direct Playwright repository-dependabot smoke with 2 passed, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 5 still needs API docs, final edge-case coverage, final desktop/mobile screenshots, prd.json build_pass=true, and full QA handoff.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Run keyboard-only and screen-reader traversal for bulk action controls, dismissal reason/comment fields, security-update CTA feedback, linked PR destination, and mobile Security sidebar.",
+      "Exercise concurrent bulk dismiss/reopen and security-update PR creation attempts from two browser sessions to confirm stale-state and reuse behavior.",
+      "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema and adding the Phase 4 column when the dirty migration prevented normal migration replay."
+    ]
   }
 ]

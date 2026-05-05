@@ -10,8 +10,9 @@ use opengithub_api::{
         identity::{upsert_session, upsert_user_by_email, User},
         permissions::RepositoryRole,
         repositories::{
-            create_repository, grant_repository_permission, CreateRepository, RepositoryOwner,
-            RepositoryVisibility,
+            create_repository, grant_repository_permission, replace_repository_snapshot,
+            CreateCommit, CreateRepository, RepositoryOwner, RepositorySnapshot,
+            RepositorySnapshotFile, RepositoryVisibility,
         },
         repository_security::{
             repository_dependabot_alert_detail_for_actor_by_owner_name,
@@ -62,6 +63,15 @@ async fn database_pool() -> Option<PgPool> {
             "continuing dependabot alerts scenario with pre-applied schema after migration warning: {error}"
         );
     }
+    sqlx::query(
+        r#"
+        ALTER TABLE dependabot_alerts
+        ADD COLUMN IF NOT EXISTS security_update_pull_request_id uuid REFERENCES pull_requests(id) ON DELETE SET NULL
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .expect("dependabot security update column should exist");
     Some(pool)
 }
 
@@ -167,6 +177,37 @@ async fn patch_json(
     )
 }
 
+async fn post_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method(Method::POST)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_string()))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    (
+        status,
+        serde_json::from_slice(&bytes).expect("response should be json"),
+    )
+}
+
 #[tokio::test]
 async fn dependabot_alerts_derive_filter_detail_and_protect_private_repositories() {
     let Some(pool) = database_pool().await else {
@@ -219,6 +260,40 @@ async fn dependabot_alerts_derive_filter_detail_and_protect_private_repositories
 
     let package_name = format!("ansi-regex-{}", Uuid::new_v4().simple());
     let package_href = format!("https://www.npmjs.com/package/{package_name}");
+    let package_json =
+        format!("{{\n  \"dependencies\": {{\n    \"{package_name}\": \"5.0.0\"\n  }}\n}}\n");
+    replace_repository_snapshot(
+        &pool,
+        repository.id,
+        RepositorySnapshot {
+            commit: CreateCommit {
+                oid: format!("commit-{}", Uuid::new_v4().simple()),
+                author_user_id: Some(owner.id),
+                committer_user_id: Some(owner.id),
+                message: "Seed vulnerable package manifest".to_owned(),
+                tree_oid: Some(format!("tree-{}", Uuid::new_v4().simple())),
+                parent_oids: Vec::new(),
+                committed_at: Utc::now(),
+            },
+            branch_name: "main".to_owned(),
+            files: vec![
+                RepositorySnapshotFile {
+                    path: "package.json".to_owned(),
+                    content: package_json.clone(),
+                    oid: format!("blob-{}", Uuid::new_v4().simple()),
+                    byte_size: package_json.len() as i64,
+                },
+                RepositorySnapshotFile {
+                    path: "package-lock.json".to_owned(),
+                    content: "{}\n".to_owned(),
+                    oid: format!("blob-{}", Uuid::new_v4().simple()),
+                    byte_size: 3,
+                },
+            ],
+        },
+    )
+    .await
+    .expect("default branch files should seed");
     let manifest_id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO dependency_manifests (
@@ -495,6 +570,73 @@ async fn dependabot_alerts_derive_filter_detail_and_protect_private_repositories
     .await;
     assert_eq!(reopen_status, StatusCode::OK, "{reopen_body}");
     assert_eq!(reopen_body["alert"]["state"], "open");
+
+    let (bulk_dismiss_status, bulk_dismiss_body) = post_json(
+        app.clone(),
+        &format!("{base}/bulk"),
+        Some(&owner_cookie),
+        json!({
+            "action": "dismiss",
+            "alertIds": [alert_id.to_string()],
+            "dismissalReason": "tolerable_risk",
+            "dismissalComment": "Bulk triage accepts this risk for now."
+        }),
+    )
+    .await;
+    assert_eq!(bulk_dismiss_status, StatusCode::OK, "{bulk_dismiss_body}");
+    assert_eq!(bulk_dismiss_body["updatedCount"], 1);
+    assert_eq!(bulk_dismiss_body["results"][0]["state"], "dismissed");
+
+    let (bulk_reopen_status, bulk_reopen_body) = post_json(
+        app.clone(),
+        &format!("{base}/bulk"),
+        Some(&owner_cookie),
+        json!({
+            "action": "reopen",
+            "alertIds": [alert_id.to_string()]
+        }),
+    )
+    .await;
+    assert_eq!(bulk_reopen_status, StatusCode::OK, "{bulk_reopen_body}");
+    assert_eq!(bulk_reopen_body["updatedCount"], 1);
+    assert_eq!(bulk_reopen_body["results"][0]["state"], "open");
+
+    sqlx::query("UPDATE dependabot_alerts SET fixed_version = '6.0.0' WHERE id = $1")
+        .bind(alert_id)
+        .execute(&pool)
+        .await
+        .expect("alert fixed version should update");
+
+    let (security_update_status, security_update_body) = post_json(
+        app.clone(),
+        &format!("{base}/{alert_number}/security-update"),
+        Some(&owner_cookie),
+        json!({}),
+    )
+    .await;
+    assert_eq!(
+        security_update_status,
+        StatusCode::CREATED,
+        "{security_update_body}"
+    );
+    assert_eq!(security_update_body["status"], "created");
+    assert!(security_update_body["pullRequestHref"]
+        .as_str()
+        .expect("security update pull href")
+        .contains("/pull/"));
+    assert!(security_update_body["branch"]
+        .as_str()
+        .expect("security update branch")
+        .starts_with("dependabot/npm/"));
+
+    let linked_pull_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM dependabot_alerts JOIN pull_requests ON pull_requests.id = dependabot_alerts.security_update_pull_request_id WHERE dependabot_alerts.id = $1",
+    )
+    .bind(alert_id)
+    .fetch_one(&pool)
+    .await
+    .expect("linked pull request count should read");
+    assert_eq!(linked_pull_count, 1);
 
     let (invalid_status, invalid_body) = get_json(
         app.clone(),

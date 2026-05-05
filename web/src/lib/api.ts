@@ -2927,6 +2927,39 @@ export type RepositoryDependabotSecurityUpdateState = {
   message: string;
 };
 
+export type RepositoryDependabotBulkMutation = {
+  action: "dismiss" | "reopen";
+  alertIds: string[];
+  dismissalReason?: string | null;
+  dismissalComment?: string | null;
+};
+
+export type RepositoryDependabotBulkMutationResult = {
+  repository: RepositorySecurityRepository;
+  requestedCount: number;
+  updatedCount: number;
+  results: RepositoryDependabotBulkAlertResult[];
+  message: string;
+};
+
+export type RepositoryDependabotBulkAlertResult = {
+  id: string;
+  number: number;
+  state: string;
+  ok: boolean;
+  message: string;
+  href: string;
+};
+
+export type RepositoryDependabotSecurityUpdateResult = {
+  alert: RepositoryDependabotAlertRow;
+  status: string;
+  branch: string;
+  commitOid: string | null;
+  pullRequestHref: string | null;
+  message: string;
+};
+
 export type RepositoryDependabotLinks = {
   listHref: string;
   openHref: string;
@@ -10171,6 +10204,64 @@ export async function mutateRepositoryDependabotAlertFromCookie(
   }
 
   return (await response.json()) as RepositoryDependabotAlertDetail;
+}
+
+export async function bulkMutateRepositoryDependabotAlertsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  mutation: RepositoryDependabotBulkMutation,
+): Promise<RepositoryDependabotBulkMutationResult> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/dependabot/bulk`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(mutation),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const envelope = ((await response.json().catch(() => null)) ??
+      null) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Dependabot bulk update failed.",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as RepositoryDependabotBulkMutationResult;
+}
+
+export async function createRepositoryDependabotSecurityUpdateFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  alertId: string | number,
+): Promise<RepositoryDependabotSecurityUpdateResult> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/dependabot/${encodeURIComponent(String(alertId))}/security-update`,
+    {
+      method: "POST",
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const envelope = ((await response.json().catch(() => null)) ??
+      null) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Dependabot security update failed.",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as RepositoryDependabotSecurityUpdateResult;
 }
 
 export async function getRepositoryNetworkFromCookie(

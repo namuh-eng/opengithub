@@ -1,10 +1,24 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RepositoryDependabotAlertsPage } from "@/components/RepositoryDependabotAlertsPage";
 import type {
   RepositoryDependabotAlertsView,
   RepositoryOverview,
 } from "@/lib/api";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: vi.fn() }),
+}));
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 function repositoryOverview(): RepositoryOverview {
   return {
@@ -291,7 +305,17 @@ describe("RepositoryDependabotAlertsPage", () => {
     );
   });
 
-  it("selects visible rows without exposing bulk mutation controls yet", () => {
+  it("selects visible rows and submits bulk dismiss through the same-origin route", async () => {
+    const fetchMock = vi.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        requestedCount: 2,
+        updatedCount: 2,
+        results: [],
+        message: "2 Dependabot alerts updated.",
+      }),
+    } as Response);
+
     render(
       <RepositoryDependabotAlertsPage
         dependabotResult={{ ok: true, dependabot: dependabotView() }}
@@ -306,8 +330,26 @@ describe("RepositoryDependabotAlertsPage", () => {
     expect(within(summary).getByText("0")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Select all visible" }));
     expect(screen.getByRole("button", { name: "Clear visible" })).toBeVisible();
+    fireEvent.change(screen.getByLabelText("Comment"), {
+      target: { value: "Batch triaged from the alerts queue" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss selected" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/namuh-eng/opengithub/security/dependabot/bulk",
+      expect.objectContaining({
+        body: JSON.stringify({
+          action: "dismiss",
+          alertIds: ["alert-1", "alert-2"],
+          dismissalComment: "Batch triaged from the alerts queue",
+          dismissalReason: "fix_started",
+        }),
+        method: "POST",
+      }),
+    );
     expect(
-      screen.getByText("Bulk triage arrives in the next phase"),
+      await screen.findByText("2 Dependabot alerts updated."),
     ).toBeVisible();
   });
 

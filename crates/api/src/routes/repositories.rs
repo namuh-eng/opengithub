@@ -95,13 +95,15 @@ use crate::{
         RepositoryWatchSettingsPatch,
     },
     domain::repository_security::{
+        bulk_update_repository_dependabot_alerts_for_actor_by_owner_name,
+        create_repository_dependabot_security_update_for_actor_by_owner_name,
         repository_dependabot_alert_detail_for_actor_by_owner_name,
         repository_dependabot_alerts_for_actor_by_owner_name,
         repository_security_overview_for_actor_by_owner_name,
         repository_security_policy_for_actor_by_owner_name,
         update_repository_dependabot_alert_for_actor_by_owner_name,
         upsert_repository_security_policy_by_owner_name, DependabotAlertMutation,
-        DependabotAlertsQuery, SecurityPolicyMutation,
+        DependabotAlertsQuery, DependabotBulkMutation, SecurityPolicyMutation,
     },
     domain::webhooks::{
         create_repository_webhook_by_owner_name, delete_repository_webhook_by_owner_name,
@@ -146,6 +148,14 @@ pub fn router() -> Router<AppState> {
         .route("/:owner/:repo/network", get(network))
         .route("/:owner/:repo/security", get(security_overview))
         .route("/:owner/:repo/security/dependabot", get(dependabot_alerts))
+        .route(
+            "/:owner/:repo/security/dependabot/bulk",
+            post(bulk_update_dependabot_alerts),
+        )
+        .route(
+            "/:owner/:repo/security/dependabot/:alert_id/security-update",
+            post(create_dependabot_security_update),
+        )
         .route(
             "/:owner/:repo/security/dependabot/:alert_id",
             get(dependabot_alert_detail).patch(update_dependabot_alert),
@@ -1290,6 +1300,53 @@ async fn update_dependabot_alert(
     })?;
 
     Ok(Json(json!(view)))
+}
+
+async fn bulk_update_dependabot_alerts(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<DependabotBulkMutation>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let result = bulk_update_repository_dependabot_alerts_for_actor_by_owner_name(
+        pool, actor.0.id, &owner, &repo, request,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(result)))
+}
+
+async fn create_dependabot_security_update(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, alert_id)): Path<(String, String, i64)>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let result = create_repository_dependabot_security_update_for_actor_by_owner_name(
+        pool, actor.0.id, &owner, &repo, alert_id,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "dependabot alert was not found".to_owned(),
+        )
+    })?;
+
+    Ok((StatusCode::CREATED, Json(json!(result))))
 }
 
 async fn create_security_policy(

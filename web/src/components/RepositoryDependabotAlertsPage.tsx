@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { RepositoryDependabotAlertFilters } from "@/components/RepositoryDependabotAlertFilters";
 import { RepositorySecurityShell } from "@/components/RepositorySecurityShell";
@@ -16,6 +17,14 @@ type RepositoryDependabotAlertsPageProps = {
   repository: RepositoryOverview;
   dependabotResult: RepositoryDependabotAlertsFetchResult;
 };
+
+const DISMISSAL_REASONS = [
+  { value: "fix_started", label: "A fix has already started" },
+  { value: "inaccurate", label: "This alert is inaccurate" },
+  { value: "no_bandwidth", label: "No bandwidth to fix this" },
+  { value: "not_used", label: "Vulnerable code is not used" },
+  { value: "tolerable_risk", label: "Risk is tolerable" },
+];
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat("en").format(value);
@@ -231,6 +240,143 @@ function DisabledState({ view }: { view: RepositoryDependabotAlertsView }) {
   );
 }
 
+function RepositoryDependabotBulkActions({
+  canWrite,
+  owner,
+  repo,
+  selectedIds,
+  selectedState,
+  visibleAlerts,
+  onClear,
+  onToggleAll,
+}: {
+  canWrite: boolean;
+  owner: string;
+  repo: string;
+  selectedIds: string[];
+  selectedState: string;
+  visibleAlerts: RepositoryDependabotAlertRow[];
+  onClear: () => void;
+  onToggleAll: () => void;
+}) {
+  const router = useRouter();
+  const [reason, setReason] = useState(DISMISSAL_REASONS[0]?.value ?? "");
+  const [comment, setComment] = useState("");
+  const [pending, setPending] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const selectedCount = selectedIds.length;
+
+  async function submit(action: "dismiss" | "reopen") {
+    setPending(action);
+    setMessage(null);
+    setError(null);
+    try {
+      const response = await fetch(
+        `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/dependabot/bulk`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action,
+            alertIds: selectedIds,
+            dismissalComment: action === "dismiss" ? comment : null,
+            dismissalReason: action === "dismiss" ? reason : null,
+          }),
+        },
+      );
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(body?.error?.message ?? "Bulk update failed.");
+      }
+      setMessage(body?.message ?? "Bulk update saved.");
+      onClear();
+      router.refresh();
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Bulk update failed.",
+      );
+    } finally {
+      setPending(null);
+    }
+  }
+
+  return (
+    <div className="grid gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          className="btn sm"
+          disabled={visibleAlerts.length === 0}
+          onClick={onToggleAll}
+          type="button"
+        >
+          {selectedCount === visibleAlerts.length && visibleAlerts.length > 0
+            ? "Clear visible"
+            : "Select all visible"}
+        </button>
+        <span className="chip soft">
+          {formatNumber(selectedCount)} selected
+        </span>
+      </div>
+      {canWrite ? (
+        <div className="flex flex-wrap items-end gap-2">
+          {selectedState === "open" ? (
+            <>
+              <label className="grid gap-1 t-xs" htmlFor="bulk-dismiss-reason">
+                Dismiss reason
+                <select
+                  className="input min-w-56"
+                  id="bulk-dismiss-reason"
+                  onChange={(event) => setReason(event.target.value)}
+                  value={reason}
+                >
+                  {DISMISSAL_REASONS.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-1 t-xs" htmlFor="bulk-dismiss-comment">
+                Comment
+                <input
+                  className="input min-w-64"
+                  id="bulk-dismiss-comment"
+                  maxLength={500}
+                  onChange={(event) => setComment(event.target.value)}
+                  value={comment}
+                />
+              </label>
+              <button
+                className="btn primary sm"
+                disabled={selectedCount === 0 || pending !== null}
+                onClick={() => submit("dismiss")}
+                type="button"
+              >
+                Dismiss selected
+              </button>
+            </>
+          ) : (
+            <button
+              className="btn primary sm"
+              disabled={selectedCount === 0 || pending !== null}
+              onClick={() => submit("reopen")}
+              type="button"
+            >
+              Reopen selected
+            </button>
+          )}
+        </div>
+      ) : (
+        <span className="chip soft">Write access required for bulk triage</span>
+      )}
+      {pending ? <span className="chip soft">Saving {pending}</span> : null}
+      {message ? <span className="chip ok">{message}</span> : null}
+      {error ? <span className="chip err">{error}</span> : null}
+    </div>
+  );
+}
+
 function AlertsReadyPage({
   repository,
   view,
@@ -242,9 +388,6 @@ function AlertsReadyPage({
   const repo = view.repository.name;
   const [selected, setSelected] = useState<string[]>([]);
   const selectedSet = useMemo(() => new Set(selected), [selected]);
-  const allVisibleSelected =
-    view.alerts.length > 0 &&
-    view.alerts.every((alert) => selectedSet.has(alert.id));
 
   function toggle(id: string) {
     setSelected((current) =>
@@ -364,17 +507,18 @@ function AlertsReadyPage({
               </h2>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button
-                className="btn sm"
-                disabled={view.alerts.length === 0}
-                onClick={toggleAllVisible}
-                type="button"
-              >
-                {allVisibleSelected ? "Clear visible" : "Select all visible"}
-              </button>
-              <span className="chip soft">
-                Bulk triage arrives in the next phase
-              </span>
+              <RepositoryDependabotBulkActions
+                canWrite={view.viewer.canWrite}
+                onClear={() => setSelected([])}
+                onToggleAll={toggleAllVisible}
+                owner={owner}
+                repo={repo}
+                selectedIds={selected}
+                selectedState={
+                  view.filters.state === "closed" ? "closed" : "open"
+                }
+                visibleAlerts={view.alerts}
+              />
             </div>
           </div>
           {view.alerts.length === 0 ? (

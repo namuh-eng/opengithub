@@ -202,6 +202,9 @@ describe("RepositoryDependabotAlertDetailPage", () => {
       screen.getByRole("button", { name: "Save assignments" }),
     ).toBeVisible();
     expect(
+      screen.getByRole("button", { name: "Create security update PR" }),
+    ).toBeVisible();
+    expect(
       within(
         screen.getByRole("list", { name: "Dependabot alert timeline" }),
       ).getByText("Dependabot opened this alert from the dependency graph."),
@@ -260,6 +263,42 @@ describe("RepositoryDependabotAlertDetailPage", () => {
       }),
     );
     expect(await screen.findByText("Dismiss saved.")).toBeVisible();
+  });
+
+  it("creates a security update pull request through the same-origin route", async () => {
+    const fetchMock = vi.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: "created",
+        branch: "dependabot/npm/testing-library-react-1",
+        commitOid: "abc123",
+        pullRequestHref: "/namuh-eng/opengithub/pull/12",
+        message: "Security update pull request created.",
+      }),
+    } as Response);
+
+    render(
+      <RepositoryDependabotAlertDetailPage
+        detailResult={{ ok: true, dependabotAlert: detail() }}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create security update PR" }),
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/namuh-eng/opengithub/security/dependabot/1/security-update",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(
+      await screen.findByText("Security update pull request created."),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Open security update PR" }),
+    ).toHaveAttribute("href", "/namuh-eng/opengithub/pull/12");
   });
 
   it("renders read-only and unavailable states without mutation controls", () => {
