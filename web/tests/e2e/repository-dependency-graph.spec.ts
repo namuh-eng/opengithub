@@ -286,6 +286,14 @@ test("repository Dependencies renders filters, rows, and concrete actions", asyn
   await expect(
     page.getByRole("list", { name: "Indexed dependency manifests" }),
   ).toBeVisible();
+  await page.getByRole("textbox", { name: "Search" }).fill("not-present");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(
+    page.getByRole("heading", {
+      name: "No matching dependencies were found.",
+    }),
+  ).toBeVisible();
+  await page.goto(`${seeded.treeRepositoryHref}/network/dependencies`);
   await page.getByRole("button", { name: "Export SBOM" }).click();
   await expect(page.getByText("Latest SBOM ready")).toBeVisible();
   const downloadHref = await page
@@ -304,6 +312,10 @@ test("repository Dependencies renders filters, rows, and concrete actions", asyn
     fullPage: true,
     path: "../ralph/screenshots/build/insights-005-phase3-sbom-export.jpg",
   });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/insights-005-final-dependencies.jpg",
+  });
 
   seedDependents(seeded.treeRepositoryHref);
   const dependentSuffix = decodeURIComponent(
@@ -319,6 +331,8 @@ test("repository Dependencies renders filters, rows, and concrete actions", asyn
   ).toHaveAttribute("aria-current", "page");
   await expect(page.getByLabel("Dependents summary metrics")).toBeVisible();
   await expect(page.getByText("Counts are approximate")).toBeVisible();
+  await page.getByText("Counts are approximate").click();
+  await expect(page.getByText(/Private consumers are counted/)).toBeVisible();
   await expect(
     page.getByRole("list", { name: "Repository dependents list" }),
   ).toBeVisible();
@@ -338,6 +352,13 @@ test("repository Dependencies renders filters, rows, and concrete actions", asyn
   await expect(
     page.getByRole("list", { name: "Repository dependents list" }),
   ).toBeVisible();
+  await page.getByRole("textbox", { name: "Owner" }).fill("missing-owner");
+  await page.getByRole("button", { name: "Apply owner" }).click();
+  await expect(
+    page.getByRole("heading", {
+      name: "No public dependents matched these filters.",
+    }),
+  ).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(
@@ -351,5 +372,9 @@ test("repository Dependencies renders filters, rows, and concrete actions", asyn
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/insights-005-phase4-dependents.jpg",
+  });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/insights-005-final-mobile.jpg",
   });
 });

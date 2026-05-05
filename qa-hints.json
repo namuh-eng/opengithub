@@ -5695,5 +5695,22 @@
       "Stress large public dependent sets above the current 100-row response cap to confirm ordering, truncation clarity, and browser performance with realistic package usage data.",
       "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema."
     ]
+  },
+  {
+    "feature_id": "insights-005",
+    "tests_written": [
+      "Completed Phase 5 API Docs, Edge Cases, Browser Evidence, QA Handoff, and Build Pass.",
+      "Documented GET /api/repos/{owner}/{repo}/network/dependencies, POST /network/dependencies/sbom, GET /network/dependencies/sbom/{export_id}, and GET /network/dependents in /docs/api with auth, privacy, filter, unavailable-state, SBOM lifecycle, and public-only dependent behavior.",
+      "Extended Rust dependency graph contract coverage for unsupported manifest omission, malformed manifest handling, vulnerable/advisory rows, private repository privacy, SBOM export/download, dependents privacy, invalid filters, and no secret leakage.",
+      "Extended Dependencies and Dependents Vitest coverage for accessible focusable controls, semantic chips, Editorial visual guardrails, no dead anchors, no inert click handlers, and no unsafe HTML rendering.",
+      "Extended Playwright smoke for Dependencies empty filters, SBOM download, Dependents warning disclosure, empty owner filter, mobile no-overflow, and final screenshots ralph/screenshots/build/insights-005-final-dependencies.jpg and ralph/screenshots/build/insights-005-final-mobile.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Run keyboard-only and screen-reader traversal for the Dependency graph tabs, Dependencies filters, Export SBOM button/download link, Dependents package menu, owner filter, warning disclosure, empty/unavailable states, and long package labels.",
+      "Stress large dependency graphs and public dependent sets above the current 100-row response cap to confirm ordering, truncation clarity, and browser performance with realistic package usage data.",
+      "Exercise additional malformed manifest variants and unsupported package manager files from real repositories; final Rust coverage verifies representative malformed package.json and unsupported yarn.lock behavior.",
+      "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema."
+    ]
   }
 ]

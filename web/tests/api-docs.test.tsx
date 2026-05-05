@@ -502,6 +502,66 @@ describe("ApiDocsPage", () => {
       screen.getByText(/same period, repository type, and sort enums/),
     ).toBeVisible();
     expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/network/dependencies?q=sqlx&ecosystem=cargo&relationship=direct",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Repository Dependency graph dependencies",
+      }),
+    ).toBeVisible();
+    expect(screen.getByText(/Supported ecosystems are npm/)).toBeVisible();
+    expect(
+      screen.getByText(/malformed supported manifests produce no rows/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /dependency_graph_unavailable states use structured 422/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/network/dependencies/sbom"),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Create repository Dependency graph SBOM export",
+      }),
+    ).toBeVisible();
+    expect(screen.getByText(/SPDX-2.3 package/)).toBeVisible();
+    expect(screen.getByText(/dependency_graph.sbom_export/)).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/network/dependencies/sbom/{export_id}",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Download repository Dependency graph SBOM export",
+      }),
+    ).toBeVisible();
+    expect(screen.getByText(/attachment Content-Disposition/)).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/network/dependents?package=npm%3A%40namuh%2Fflow&owner=acme",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Repository Dependency graph dependents",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Dependents are shown only for public source repositories/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Private consumers contribute only to hiddenPrivateCount/,
+      ),
+    ).toBeVisible();
+    expect(
       screen.getByText("/api/repos/{owner}/{repo}/releases?page=1&pageSize=30"),
     ).toBeVisible();
     expect(

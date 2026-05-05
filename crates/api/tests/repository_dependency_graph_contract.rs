@@ -310,6 +310,22 @@ version = "0.5.2"
         "fastapi==0.110.0\nuvicorn>=0.29\n",
     )
     .await;
+    seed_file(
+        &pool,
+        repository.id,
+        commit.id,
+        "web/yarn.lock",
+        "# unsupported package manager lockfile is ignored by the MVP extractor\n",
+    )
+    .await;
+    seed_file(
+        &pool,
+        repository.id,
+        commit.id,
+        "examples/malformed/package.json",
+        r#"{"dependencies":"not an object""#,
+    )
+    .await;
 
     let view = repository_dependencies_for_actor_by_owner_name(
         &pool,
@@ -352,6 +368,50 @@ version = "0.5.2"
         .iter()
         .any(|count| count.ecosystem == "cargo" && count.count >= 2));
     assert!(view.export.supported);
+    assert!(!view
+        .manifests
+        .iter()
+        .any(|manifest| manifest.path == "web/yarn.lock"
+            || manifest.path == "examples/malformed/package.json"));
+
+    let flow_package_id = sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM dependency_packages WHERE ecosystem = 'npm' AND lower(name) = lower('@namuh/flow')",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("flow package should exist");
+    sqlx::query(
+        r#"
+        INSERT INTO dependency_advisories (
+            package_id, advisory_identifier, severity, title, advisory_href
+        )
+        VALUES ($1, 'GHSA-final-demo', 'high', 'Final dependency graph coverage', '/advisories/GHSA-final-demo')
+        ON CONFLICT (package_id, advisory_identifier) DO UPDATE SET severity = EXCLUDED.severity
+        "#,
+    )
+    .bind(flow_package_id)
+    .execute(&pool)
+    .await
+    .expect("advisory should insert");
+    let advisory_view = repository_dependencies_for_actor_by_owner_name(
+        &pool,
+        actor.id,
+        &repository.owner_login,
+        &repository.name,
+        RepositoryDependencyQuery {
+            query: Some("@namuh/flow"),
+            ecosystem: Some("npm"),
+            relationship: Some("direct"),
+        },
+    )
+    .await
+    .expect("advisory dependencies should load")
+    .expect("repository should exist");
+    assert_eq!(advisory_view.summary.advisory_count, 1);
+    assert_eq!(
+        advisory_view.dependencies[0].advisories[0].identifier,
+        "GHSA-final-demo"
+    );
 
     let filtered = repository_dependencies_for_actor_by_owner_name(
         &pool,

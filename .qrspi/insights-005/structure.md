@@ -75,7 +75,7 @@
 
 ## Phase 5: API Docs, Edge Cases, Browser Evidence, QA Handoff, and Build Pass
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `insights-005` only after dependencies extraction, dependencies page, query filters, SBOM export, dependents page, package/owner filters, unavailable states, docs, screenshots, and QA handoff are verified. Mark `build_pass=true` only in this phase and leave `qa_pass=false`.
 

@@ -179,6 +179,8 @@ describe("RepositoryDependentsPage", () => {
     expect(screen.getByText("Counts are approximate")).toBeVisible();
     fireEvent.click(screen.getByText("Counts are approximate"));
     expect(screen.getByText(/Private consumers are counted/)).toBeVisible();
+    expect(container.querySelector(".chip.ok")).not.toBeNull();
+    expect(container.querySelector(".chip.warn")).not.toBeNull();
 
     expect(screen.getByLabelText("Dependents summary metrics")).toBeVisible();
     const list = screen.getByRole("list", {
@@ -208,6 +210,17 @@ describe("RepositoryDependentsPage", () => {
     for (const button of container.querySelectorAll("button")) {
       expect(button).toHaveAccessibleName();
     }
+    const focusableLabels = Array.from(
+      container.querySelectorAll<HTMLElement>("a[href], button, input"),
+    ).map(
+      (element) =>
+        element.getAttribute("aria-label") || element.textContent?.trim(),
+    );
+    expect(focusableLabels).toContain("Dependencies");
+    expect(focusableLabels).toContain("Dependents");
+    expect(focusableLabels).toContain("Package: All packages");
+    expect(screen.getByLabelText("Owner")).toBeVisible();
+    expect(focusableLabels).toContain("Repository");
   });
 
   it("renders empty and unavailable dependents states without private repository names", () => {

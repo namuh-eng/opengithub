@@ -268,6 +268,7 @@ describe("RepositoryDependencyGraphPage", () => {
 
     expect(container.querySelectorAll(".card").length).toBeGreaterThan(4);
     expect(container.querySelector(".chip.ok")).not.toBeNull();
+    expect(container.querySelector(".chip.err")).not.toBeNull();
     expect(container.innerHTML).not.toMatch(
       /#0969da|#1f883d|#1a7f37|#cf222e|#82071e|#f6f8fa|#1f2328|#d0d7de|#59636e|#f1aeb5|#fff1f3|@primer\/|Octicon/i,
     );
@@ -277,6 +278,16 @@ describe("RepositoryDependencyGraphPage", () => {
     for (const button of container.querySelectorAll("button")) {
       expect(button).toHaveAccessibleName();
     }
+    const focusableLabels = Array.from(
+      container.querySelectorAll<HTMLElement>("a[href], button, input"),
+    ).map(
+      (element) =>
+        element.getAttribute("aria-label") || element.textContent?.trim(),
+    );
+    expect(focusableLabels).toContain("Dependencies");
+    expect(focusableLabels).toContain("Dependents");
+    expect(focusableLabels).toContain("Export SBOM");
+    expect(focusableLabels).toContain("@testing-library/react package details");
   });
 
   it("starts a real SBOM export and exposes the signed download", async () => {

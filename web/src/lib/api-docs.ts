@@ -2397,6 +2397,197 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-dependency-graph-dependencies",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/network/dependencies?q=sqlx&ecosystem=cargo&relationship=direct",
+    title: "Repository Dependency graph dependencies",
+    description:
+      "Returns the screen-ready Dependency graph Dependencies tab contract from supported default-branch manifests and lockfiles, including package rows, direct and transitive relationship state, advisory summaries, manifest links, filter state, freshness metadata, and SBOM export affordances.",
+    auth: "Public repositories are readable by signed-in users; private repositories require read permission; anonymous callers receive 401",
+    response: `{
+  "repository": {
+    "ownerLogin": "mona",
+    "name": "octo-app",
+    "defaultBranch": "main",
+    "visibility": "private",
+    "viewerPermission": "read",
+    "href": "/mona/octo-app",
+    "treeHref": "/mona/octo-app/tree/main"
+  },
+  "filters": {
+    "query": "sqlx",
+    "ecosystem": "cargo",
+    "relationship": "direct"
+  },
+  "summary": {
+    "total": 1,
+    "directCount": 1,
+    "transitiveCount": 0,
+    "ecosystemCounts": [{ "ecosystem": "cargo", "count": 1 }],
+    "manifestCount": 2,
+    "advisoryCount": 0
+  },
+  "manifests": [
+    {
+      "path": "crates/api/Cargo.toml",
+      "ecosystem": "cargo",
+      "lockfilePath": "crates/api/Cargo.lock",
+      "dependencyCount": 1,
+      "href": "/mona/octo-app/blob/main/crates%2Fapi%2FCargo.toml",
+      "lockfileHref": "/mona/octo-app/blob/main/crates%2Fapi%2FCargo.lock"
+    }
+  ],
+  "dependencies": [
+    {
+      "package": {
+        "ecosystem": "cargo",
+        "name": "sqlx",
+        "href": "/packages/cargo/sqlx"
+      },
+      "version": "0.8",
+      "relationship": "direct",
+      "license": null,
+      "manifestPath": "crates/api/Cargo.toml",
+      "manifestHref": "/mona/octo-app/blob/main/crates%2Fapi%2FCargo.toml",
+      "lockfilePath": "crates/api/Cargo.lock",
+      "advisories": [],
+      "detailsHref": "/packages/cargo/sqlx",
+      "advisoryHref": null
+    }
+  ],
+  "availability": {
+    "enabled": true,
+    "indexed": true,
+    "supportedEcosystems": ["npm", "cargo", "pip"],
+    "message": "Dependency graph is indexed from supported manifest and lock files.",
+    "unavailableReason": null
+  },
+  "export": {
+    "supported": true,
+    "href": "/api/repos/mona/octo-app/network/dependencies/sbom",
+    "latestStatus": null
+  }
+}`,
+    notes: [
+      "Supported ecosystems are npm, cargo, and pip. Unsupported manifests are ignored truthfully; malformed supported manifests produce no rows instead of leaking parser internals.",
+      "Supported relationship filters are direct and transitive. q is bounded to 120 characters and matches package name, version, or manifest path.",
+      "Extraction reads repository_files from the resolved default branch, handles duplicate package declarations deterministically, and never calls the upstream GitHub API.",
+      "Private repository outsiders receive not_found; dependency_graph_unavailable states use structured 422 envelopes for disabled or unindexed graphs.",
+      "Responses never include raw session rows, OAuth data, token hashes, environment secrets, storage keys, stack traces, private repository paths, or private consumer names.",
+    ],
+  },
+  {
+    id: "repo-dependency-graph-sbom-export",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/network/dependencies/sbom",
+    title: "Create repository Dependency graph SBOM export",
+    description:
+      "Creates a ready SPDX JSON SBOM artifact from the current indexed dependency graph, records repository audit metadata, and returns a signed download affordance for the browser Export SBOM flow.",
+    auth: "Signed opengithub session cookie with repository read permission",
+    response: `{
+  "id": "export_01",
+  "status": "ready",
+  "format": "spdx-json",
+  "artifactSha256": "b7f2...",
+  "artifactByteSize": 4096,
+  "downloadHref": "/api/repos/mona/octo-app/network/dependencies/sbom/export_01",
+  "pollHref": "/api/repos/mona/octo-app/network/dependencies/sbom/export_01",
+  "expiresAt": "2026-05-06T00:00:00Z",
+  "createdAt": "2026-05-05T00:00:00Z",
+  "completedAt": "2026-05-05T00:00:01Z"
+}`,
+    notes: [
+      "Exports are generated from currently indexed rows, not mock data, and include SPDX-2.3 package and relationship sections.",
+      "Empty or unindexed graphs return dependency_graph_unavailable with a 422 status so the browser can show a disabled export state.",
+      "Successful exports write dependency_graph.sbom_export repository_settings_audit_events with package and manifest counts.",
+      "The response includes artifact hashes and byte size, but never returns raw storage keys, session cookies, OAuth data, token hashes, environment secrets, stack traces, or private package rows.",
+    ],
+  },
+  {
+    id: "repo-dependency-graph-sbom-download",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/network/dependencies/sbom/{export_id}",
+    title: "Download repository Dependency graph SBOM export",
+    description:
+      "Downloads the ready SPDX JSON artifact for an SBOM export that belongs to the requested repository.",
+    auth: "Signed opengithub session cookie with repository read permission",
+    response: `{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "mona/octo-app dependency graph",
+  "packages": [],
+  "relationships": []
+}`,
+    notes: [
+      "Ready downloads return application/json with an attachment Content-Disposition filename.",
+      "Unknown export IDs return not_found within the repository scope and cannot be used to discover exports from another private repository.",
+      "Expired or non-ready artifacts remain metadata-only until regenerated by POST /api/repos/{owner}/{repo}/network/dependencies/sbom.",
+      "Downloaded artifacts are derived from package names, versions, licenses, and manifest paths only; they never include OAuth data, raw session rows, token hashes, storage keys, environment secrets, stack traces, or private dependent repository names.",
+    ],
+  },
+  {
+    id: "repo-dependency-graph-dependents",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/network/dependents?package=npm%3A%40namuh%2Fflow&owner=acme",
+    title: "Repository Dependency graph dependents",
+    description:
+      "Returns the public Dependents tab contract for packages indexed from a public source repository, including package filter options, owner filtering, approximate counts, hidden private counts, and dependent repository rows.",
+    auth: "Signed opengithub session cookie; source repository must be public and readable",
+    response: `{
+  "repository": {
+    "ownerLogin": "mona",
+    "name": "octo-app",
+    "visibility": "public",
+    "viewerPermission": "read",
+    "href": "/mona/octo-app"
+  },
+  "filters": {
+    "package": "npm:@namuh/flow",
+    "owner": "acme"
+  },
+  "summary": {
+    "repositoryCount": 1,
+    "packageCount": 1,
+    "hiddenPrivateCount": 2,
+    "approximate": true
+  },
+  "packages": [
+    {
+      "package": {
+        "ecosystem": "npm",
+        "name": "@namuh/flow",
+        "href": "/packages/npm/%40namuh%2Fflow"
+      },
+      "dependentCount": 1,
+      "selected": true
+    }
+  ],
+  "dependents": [
+    {
+      "ownerLogin": "acme",
+      "name": "workflow-tools",
+      "visibility": "public",
+      "package": {
+        "ecosystem": "npm",
+        "name": "@namuh/flow"
+      },
+      "manifestPath": "package.json",
+      "href": "/acme/workflow-tools",
+      "ownerHref": "/acme",
+      "packageHref": "/packages/npm/%40namuh%2Fflow"
+    }
+  ]
+}`,
+    notes: [
+      "Dependents are shown only for public source repositories. Private source repositories return dependency_graph_unavailable with 422, even when the actor can read the source.",
+      "The package filter accepts either a package name or ecosystem:name; owner is bounded to 80 URL-safe username characters.",
+      "Dependent rows are limited to public repositories. Private consumers contribute only to hiddenPrivateCount and are never named in rows, links, empty states, or errors.",
+      "Counts are approximate because they are derived from public indexed dependency graph rows and explicit dependent projection rows.",
+      "Responses never include private repository names, private owner logins, raw session rows, OAuth data, token hashes, storage keys, environment secrets, stack traces, or private manifest contents.",
+    ],
+  },
+  {
     id: "repo-releases-list",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/releases?page=1&pageSize=30",
