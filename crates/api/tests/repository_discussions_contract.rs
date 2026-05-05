@@ -48,6 +48,8 @@ async fn database_pool() -> Option<PgPool> {
                AND to_regclass('public.discussion_form_answers') IS NOT NULL
                AND to_regclass('public.discussion_subscriptions') IS NOT NULL
                AND to_regclass('public.discussion_polls') IS NOT NULL
+               AND to_regclass('public.discussion_reactions') IS NOT NULL
+               AND to_regclass('public.discussion_answers') IS NOT NULL
             "#,
         )
         .fetch_one(&pool)
@@ -62,6 +64,274 @@ async fn database_pool() -> Option<PgPool> {
         );
     }
     Some(pool)
+}
+
+#[tokio::test]
+async fn repository_discussion_detail_returns_timeline_sidebar_and_answer_metadata() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping repository discussion detail scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "discussion-detail-owner").await;
+    let reader = create_user(&pool, "discussion-detail-reader").await;
+    let commenter = create_user(&pool, "discussion-detail-commenter").await;
+    let outsider = create_user(&pool, "discussion-detail-outsider").await;
+    let reader_cookie = cookie_header(&pool, &config, &reader).await;
+    let outsider_cookie = cookie_header(&pool, &config, &outsider).await;
+
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("discussion-detail-{}", Uuid::new_v4().simple()),
+            description: Some("Discussion detail contract".to_owned()),
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    grant_repository_permission(
+        &pool,
+        repository.id,
+        reader.id,
+        RepositoryRole::Read,
+        "direct",
+    )
+    .await
+    .expect("reader permission should grant");
+
+    let category_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO discussion_categories (repository_id, slug, name, emoji, description, position, accepts_answers)
+        VALUES ($1, 'q-a', 'Q&A', '💬', 'Questions with accepted answers.', 1, true)
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("category should insert");
+    let label_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO labels (repository_id, name, color, description)
+        VALUES ($1, 'help-wanted', 'a16207', 'Needs community help')
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("label should insert");
+    let discussion_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO discussions (
+            repository_id, category_id, number, title, body, state, answered,
+            author_user_id, comments_count, votes_count, last_activity_at
+        )
+        VALUES (
+            $1, $2, 7, 'How do discussion answers work?',
+            'Use **Markdown** safely <script>bad()</script> in a discussion body.',
+            'open', true, $3, 3, 2, now()
+        )
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(category_id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("discussion should insert");
+    sqlx::query("INSERT INTO discussion_labels (discussion_id, label_id) VALUES ($1, $2)")
+        .bind(discussion_id)
+        .bind(label_id)
+        .execute(&pool)
+        .await
+        .expect("discussion label should insert");
+    let first_comment_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO discussion_comments (discussion_id, author_user_id, body, created_at)
+        VALUES ($1, $2, 'First timeline comment', now() - interval '2 hours')
+        RETURNING id
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(commenter.id)
+    .fetch_one(&pool)
+    .await
+    .expect("first comment should insert");
+    let answer_comment_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO discussion_comments (discussion_id, author_user_id, body, created_at)
+        VALUES ($1, $2, 'This is the accepted answer.', now() - interval '1 hour')
+        RETURNING id
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(commenter.id)
+    .fetch_one(&pool)
+    .await
+    .expect("answer comment should insert");
+    let reply_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO discussion_comments (discussion_id, parent_comment_id, author_user_id, body)
+        VALUES ($1, $2, $3, 'Nested reply context')
+        RETURNING id
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(answer_comment_id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("reply should insert");
+    sqlx::query("UPDATE discussions SET answer_comment_id = $1 WHERE id = $2")
+        .bind(answer_comment_id)
+        .bind(discussion_id)
+        .execute(&pool)
+        .await
+        .expect("answer pointer should update");
+    sqlx::query(
+        "INSERT INTO discussion_answers (discussion_id, comment_id, marked_by_user_id) VALUES ($1, $2, $3)",
+    )
+    .bind(discussion_id)
+    .bind(answer_comment_id)
+    .bind(owner.id)
+    .execute(&pool)
+    .await
+    .expect("answer should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO discussion_form_answers (discussion_id, field_id, field_label, value)
+        VALUES ($1, 'context', 'Context', 'Readers need answer summaries.')
+        "#,
+    )
+    .bind(discussion_id)
+    .execute(&pool)
+    .await
+    .expect("form answer should insert");
+    let poll_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO discussion_polls (discussion_id, question, allows_multiple) VALUES ($1, 'Which path?', false) RETURNING id",
+    )
+    .bind(discussion_id)
+    .fetch_one(&pool)
+    .await
+    .expect("poll should insert");
+    sqlx::query(
+        "INSERT INTO discussion_poll_options (poll_id, position, label) VALUES ($1, 0, 'Read'), ($1, 1, 'Write')",
+    )
+    .bind(poll_id)
+    .execute(&pool)
+    .await
+    .expect("poll options should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO discussion_reactions (discussion_id, comment_id, user_id, content)
+        VALUES ($1, NULL, $2, 'heart'), ($1, $3, $2, '+1'), ($1, $4, $5, 'eyes')
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(reader.id)
+    .bind(answer_comment_id)
+    .bind(reply_id)
+    .bind(owner.id)
+    .execute(&pool)
+    .await
+    .expect("reactions should insert");
+    sqlx::query(
+        "INSERT INTO discussion_subscriptions (discussion_id, user_id, state, reason) VALUES ($1, $2, 'subscribed', 'manual')",
+    )
+    .bind(discussion_id)
+    .bind(reader.id)
+    .execute(&pool)
+    .await
+    .expect("subscription should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO discussion_activity_events (discussion_id, actor_user_id, event_type, payload)
+        VALUES ($1, $2, 'answer_marked', jsonb_build_object('commentId', $3::text))
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(owner.id)
+    .bind(answer_comment_id)
+    .execute(&pool)
+    .await
+    .expect("event should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let owner_login = owner.username.as_deref().expect("owner username");
+    let path = format!(
+        "/api/repos/{owner_login}/{}/discussions/7?sort=oldest",
+        repository.name
+    );
+
+    let (outsider_status, outsider_body) =
+        get_json(app.clone(), &path, Some(&outsider_cookie)).await;
+    assert_eq!(outsider_status, StatusCode::FORBIDDEN);
+    assert!(!outsider_body.to_string().contains("accepted answer"));
+
+    let (status, body) = get_json(app.clone(), &path, Some(&reader_cookie)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["discussion"]["number"], 7);
+    assert_eq!(body["discussion"]["answered"], true);
+    assert_eq!(body["viewer"]["canComment"], true);
+    assert_eq!(body["viewer"]["canMarkAnswer"], false);
+    assert_eq!(body["category"]["slug"], "q-a");
+    assert_eq!(body["labels"][0]["name"], "help-wanted");
+    assert!(body["body"]["html"]
+        .as_str()
+        .expect("html")
+        .contains("<strong>Markdown</strong>"));
+    assert!(!body["body"]["html"]
+        .as_str()
+        .expect("html")
+        .contains("<script>"));
+    assert_eq!(body["formAnswers"][0]["fieldLabel"], "Context");
+    assert_eq!(
+        body["poll"]["options"].as_array().expect("options").len(),
+        2
+    );
+    assert_eq!(body["answer"]["commentId"], answer_comment_id.to_string());
+    assert!(body["answer"]["href"]
+        .as_str()
+        .expect("answer href")
+        .contains("#discussioncomment-"));
+    assert_eq!(body["reactions"][0]["content"], "heart");
+    assert_eq!(body["reactions"][0]["viewerReacted"], true);
+    assert_eq!(body["subscription"]["state"], "subscribed");
+    assert_eq!(
+        body["sidebar"]["participants"]
+            .as_array()
+            .expect("participants")
+            .len(),
+        2
+    );
+    assert_eq!(body["sidebar"]["events"][0]["eventType"], "answer_marked");
+    assert_eq!(body["timeline"][0]["kind"], "comment");
+    assert_eq!(body["timeline"][1]["answer"], true);
+    assert_eq!(
+        body["timeline"][1]["replies"][0]["body"]["markdown"],
+        "Nested reply context"
+    );
+    assert!(!body.to_string().contains("test-session-secret"));
+
+    let (invalid_status, invalid_body) = get_json(
+        app,
+        &format!(
+            "/api/repos/{owner_login}/{}/discussions/7?sort=primer-blue",
+            repository.name
+        ),
+        Some(&reader_cookie),
+    )
+    .await;
+    assert_eq!(invalid_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(invalid_body["error"]["code"], "validation_failed");
+    assert_ne!(first_comment_id, answer_comment_id);
 }
 
 #[tokio::test]

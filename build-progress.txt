@@ -1,3 +1,14 @@
+2026-05-05 - discussions-003 phase 1 detail API contract
+
+- Completed Phase 1 from `.qrspi/discussions-003/structure.md`: discussion detail now has a screen-ready read-only Rust API contract without marking `discussions-003.build_pass=true`; Phases 2-5 remain.
+- Added additive migration `202605050017_repository_discussion_detail` for nested replies, edited/deleted comment metadata, discussion reactions, accepted answers, and supporting indexes.
+- Added `GET /api/repos/{owner}/{repo}/discussions/{discussion_number}` with sort/page validation, repository read permission, private repository privacy, disabled-policy metadata, sanitized Markdown body/comment/reply HTML, form answers, poll summaries, reaction aggregates, subscription state, participants, events, answer summary, and viewer capability flags.
+- Added typed frontend discussion detail DTOs plus `getRepositoryDiscussionDetailFromCookie` so Phase 2 can render the Editorial detail page without adding client-side auth.
+- Extended the focused Rust discussion contract with nested replies, answer summary, reactions, form answers, poll metadata, subscription/sidebar data, private denial, malformed sort validation, and no-secret assertions.
+- Verification passed: focused `repository_discussion_detail_returns_timeline_sidebar_and_answer_metadata` compiled and executed under its DB guard; `cd web && npx tsc --noEmit --pretty false`; focused Biome for `web/src/lib/api.ts`; `cargo fmt --all` plus `git diff --check`; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 501 web tests; mandatory Editorial banned-value scan returned zero matches.
+- Local `localhost:55432` rejected the available postgres credentials during the focused DB-backed scenario, so the seeded assertions self-skipped; rerun against a credentialed migrated `TEST_DATABASE_URL` during QA. Browser smoke was skipped because Phase 1 is API-first and the structure marks it optional.
+- Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-05 - discussions-002 phase 3 generic Markdown discussion creation
 
 - Completed Phase 3 from `.qrspi/discussions-002/structure.md` without marking `discussions-002.build_pass=true`; Phases 4-5 remain.

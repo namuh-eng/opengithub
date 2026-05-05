@@ -6352,5 +6352,22 @@
       "Verify real S3/object upload draft creation when the upload path is connected; this feature persists bounded browser-selected attachment draft metadata but does not prove object storage writes.",
       "Run notification UI QA after creating discussions to confirm subscription and maintainer notification rows surface correctly outside contract tests."
     ]
+  },
+  {
+    "feature_id": "discussions-003",
+    "tests_written": [
+      "Completed Phase 1 Detail Contract and Read-Only Timeline without marking discussions-003 build_pass=true.",
+      "Added additive discussion detail migration for parent replies, edited/deleted comment metadata, discussion reactions, and accepted-answer rows/indexes.",
+      "Added GET /api/repos/{owner}/{repo}/discussions/{discussion_number} with sort/page bounds, repository read permission, private repository privacy, disabled-policy metadata, sanitized Markdown body/comment/reply HTML, form answer summaries, poll summaries, reaction aggregates, subscription state, participants, events, answer summary, and viewer permissions.",
+      "Added typed frontend Discussion detail DTOs and signed-cookie fetch helper in web/src/lib/api.ts for Phase 2 UI consumption.",
+      "Extended repository_discussions_contract with a detail timeline/sidebar/answer scenario covering nested replies, reactions, form answers, poll metadata, subscription state, privacy denial, malformed sort validation, and no-secret response checks.",
+      "Verification passed: focused contract test compiled and executed under its DB guard; cd web && npx tsc --noEmit --pretty false; focused Biome for web/src/lib/api.ts; cargo fmt --all plus git diff --check; full TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check; full DB_SSL=false CARGO_INCREMENTAL=0 make test with Cargo tests plus 501 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "The focused DB-backed seeded assertions self-skipped in this workspace because localhost:55432 rejected the available postgres credentials. Re-run repository_discussions_contract against a credentialed migrated TEST_DATABASE_URL to prove the detail rows in Postgres.",
+      "Browser smoke is intentionally deferred because Phase 1 is API-first; Phase 2 should build /{owner}/{repo}/discussions/{number}, verify list-to-detail navigation, and save ralph/screenshots/build/discussions-003-phase2-detail.jpg.",
+      "Reaction/comment/reply/subscription writes are intentionally out of scope until Phase 3; Phase 1 only exposes read-ready aggregates and viewer capability flags.",
+      "Answer mark/unmark, close/reopen, category/label editing, and richer event rendering are intentionally out of scope until Phase 4."
+    ]
   }
 ]

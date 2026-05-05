@@ -184,6 +184,187 @@ pub struct DiscussionVoteResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RepositoryDiscussionDetailQuery<'a> {
+    pub sort: Option<&'a str>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryDiscussionDetailView {
+    pub repository: DiscussionRepositorySummary,
+    pub viewer: DiscussionDetailViewer,
+    pub enabled: bool,
+    pub disabled_reason: Option<String>,
+    pub discussion: DiscussionDetailSummary,
+    pub author: DiscussionAuthorSummary,
+    pub category: DiscussionCategorySummary,
+    pub labels: Vec<DiscussionLabelSummary>,
+    pub body: DiscussionBodyView,
+    pub form_answers: Vec<DiscussionFormAnswerView>,
+    pub poll: Option<DiscussionPollView>,
+    pub answer: Option<DiscussionAnswerSummary>,
+    pub reactions: Vec<DiscussionReactionSummary>,
+    pub subscription: DiscussionSubscriptionState,
+    pub sidebar: DiscussionSidebarView,
+    pub timeline: Vec<DiscussionTimelineItem>,
+    pub sort: String,
+    pub page: i64,
+    pub page_size: i64,
+    pub total_comments: i64,
+    pub has_next_page: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionDetailViewer {
+    pub authenticated: bool,
+    pub permission: Option<String>,
+    pub can_read: bool,
+    pub can_comment: bool,
+    pub can_react: bool,
+    pub can_subscribe: bool,
+    pub can_mark_answer: bool,
+    pub can_moderate: bool,
+    pub viewer_voted: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionDetailSummary {
+    pub id: Uuid,
+    pub number: i64,
+    pub title: String,
+    pub state: String,
+    pub answered: bool,
+    pub locked: bool,
+    pub comments_count: i64,
+    pub votes_count: i64,
+    pub href: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub last_activity_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionBodyView {
+    pub markdown: String,
+    pub html: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionFormAnswerView {
+    pub field_id: String,
+    pub field_label: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionPollView {
+    pub id: Uuid,
+    pub question: String,
+    pub allows_multiple: bool,
+    pub options: Vec<DiscussionPollOptionView>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionPollOptionView {
+    pub id: Uuid,
+    pub position: i32,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionAnswerSummary {
+    pub comment_id: Uuid,
+    pub marked_by: Option<DiscussionAuthorSummary>,
+    pub marked_at: DateTime<Utc>,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionReactionSummary {
+    pub content: String,
+    pub count: i64,
+    pub viewer_reacted: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionSubscriptionState {
+    pub state: String,
+    pub reason: Option<String>,
+    pub subscribed: bool,
+    pub can_change: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionSidebarView {
+    pub category: DiscussionCategorySummary,
+    pub labels: Vec<DiscussionLabelSummary>,
+    pub participants: Vec<DiscussionAuthorSummary>,
+    pub events: Vec<DiscussionEventView>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionEventView {
+    pub id: Uuid,
+    pub event_type: String,
+    pub actor: Option<DiscussionAuthorSummary>,
+    pub payload: Value,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum DiscussionTimelineItem {
+    Comment(DiscussionCommentView),
+    Event(DiscussionEventView),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionCommentView {
+    pub id: Uuid,
+    pub author: DiscussionAuthorSummary,
+    pub body: DiscussionBodyView,
+    pub reactions: Vec<DiscussionReactionSummary>,
+    pub replies: Vec<DiscussionReplyView>,
+    pub answer: bool,
+    pub href: String,
+    pub edited: bool,
+    pub deleted: bool,
+    pub deleted_reason: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionReplyView {
+    pub id: Uuid,
+    pub author: DiscussionAuthorSummary,
+    pub body: DiscussionBodyView,
+    pub reactions: Vec<DiscussionReactionSummary>,
+    pub href: String,
+    pub edited: bool,
+    pub deleted: bool,
+    pub deleted_reason: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DiscussionCreationView {
     pub repository: DiscussionRepositorySummary,
     pub viewer: DiscussionViewer,
@@ -312,6 +493,13 @@ struct NormalizedDiscussionFilters {
     answered: Option<bool>,
     locked: Option<bool>,
     pinned: Option<bool>,
+    sort: String,
+    page: i64,
+    page_size: i64,
+}
+
+#[derive(Debug, Clone)]
+struct NormalizedDiscussionDetailQuery {
     sort: String,
     page: i64,
     page_size: i64,
@@ -597,6 +785,182 @@ pub async fn set_repository_discussion_vote_by_owner_name(
         discussion_number,
         viewer_voted: voted,
         votes_count,
+    }))
+}
+
+pub async fn repository_discussion_detail_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    discussion_number: i64,
+    query: RepositoryDiscussionDetailQuery<'_>,
+) -> Result<Option<RepositoryDiscussionDetailView>, RepositoryError> {
+    if discussion_number < 1 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "discussion number must be positive".to_owned(),
+        ));
+    }
+    let Some(repository) = get_repository_by_owner_name(pool, owner, repo).await? else {
+        return Ok(None);
+    };
+    let (viewer_permission, can_read, _) =
+        discussion_permissions(pool, &repository, actor_user_id).await?;
+    if !can_read {
+        return Err(RepositoryError::PermissionDenied);
+    }
+
+    let normalized = normalize_discussion_detail_query(query)?;
+    let policy_enabled = repository_discussions_policy_enabled(pool, repository.id).await?;
+    let Some(row) = sqlx::query(
+        r#"
+        SELECT discussions.id, discussions.number, discussions.title, discussions.body,
+               discussions.state, discussions.answered, discussions.locked,
+               discussions.comments_count, discussions.votes_count, discussions.created_at,
+               discussions.updated_at, discussions.last_activity_at, discussions.answer_comment_id,
+               discussion_categories.id AS category_id, discussion_categories.slug AS category_slug,
+               discussion_categories.name AS category_name, discussion_categories.emoji AS category_emoji,
+               discussion_categories.description AS category_description,
+               discussion_categories.accepts_answers AS category_accepts_answers,
+               author.id AS author_id,
+               COALESCE(NULLIF(author.username, ''), author.email, 'ghost') AS author_login,
+               author.display_name AS author_display_name,
+               author.avatar_url AS author_avatar_url,
+               EXISTS (
+                 SELECT 1 FROM discussion_votes
+                 WHERE discussion_votes.discussion_id = discussions.id
+                   AND discussion_votes.user_id = $3
+               ) AS viewer_voted
+        FROM discussions
+        JOIN discussion_categories ON discussion_categories.id = discussions.category_id
+        LEFT JOIN users author ON author.id = discussions.author_user_id
+        WHERE discussions.repository_id = $1 AND discussions.number = $2
+        "#,
+    )
+    .bind(repository.id)
+    .bind(discussion_number)
+    .bind(actor_user_id)
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Ok(None);
+    };
+
+    let discussion_id: Uuid = row.try_get("id")?;
+    let answer_comment_id: Option<Uuid> = row.try_get("answer_comment_id")?;
+    let category = DiscussionCategorySummary {
+        id: row.try_get("category_id")?,
+        slug: row.try_get("category_slug")?,
+        name: row.try_get("category_name")?,
+        emoji: row.try_get("category_emoji")?,
+        description: row.try_get("category_description")?,
+        count: 0,
+        open_count: 0,
+        href: format!(
+            "/{}/{}/discussions/categories/{}",
+            repository.owner_login,
+            repository.name,
+            row.try_get::<String, _>("category_slug")?
+        ),
+        active: true,
+    };
+    let category_accepts_answers: bool = row.try_get("category_accepts_answers")?;
+    let labels = load_discussion_labels_for_discussion(pool, discussion_id).await?;
+    let comments = load_discussion_detail_comments(
+        pool,
+        &repository,
+        discussion_id,
+        answer_comment_id,
+        actor_user_id,
+        &normalized,
+    )
+    .await?;
+    let events = load_discussion_detail_events(pool, discussion_id).await?;
+    let participants = load_discussion_participants(pool, discussion_id).await?;
+    let total_comments = count_top_level_discussion_comments(pool, discussion_id).await?;
+    let subscription = load_discussion_subscription(pool, discussion_id, actor_user_id).await?;
+    let form_answers = load_discussion_form_answer_views(pool, discussion_id).await?;
+    let poll = load_discussion_poll_view(pool, discussion_id).await?;
+    let reactions = load_discussion_reactions(pool, discussion_id, None, actor_user_id).await?;
+    let answer = load_discussion_answer_summary(
+        pool,
+        &repository,
+        discussion_id,
+        answer_comment_id,
+        actor_user_id,
+    )
+    .await?;
+    let author = DiscussionAuthorSummary {
+        id: row.try_get("author_id")?,
+        login: row.try_get("author_login")?,
+        display_name: row.try_get("author_display_name")?,
+        avatar_url: row.try_get("author_avatar_url")?,
+    };
+    let can_moderate = matches!(
+        viewer_permission.as_deref(),
+        Some("triage" | "write" | "maintain" | "admin" | "owner")
+    );
+    let locked: bool = row.try_get("locked")?;
+    let can_comment = policy_enabled && !repository.is_archived && !locked;
+    let body_markdown: String = row.try_get("body")?;
+
+    Ok(Some(RepositoryDiscussionDetailView {
+        repository: discussion_repository_summary(&repository),
+        viewer: DiscussionDetailViewer {
+            authenticated: true,
+            permission: viewer_permission,
+            can_read,
+            can_comment,
+            can_react: policy_enabled && !repository.is_archived,
+            can_subscribe: policy_enabled,
+            can_mark_answer: policy_enabled
+                && category_accepts_answers
+                && !repository.is_archived
+                && can_moderate,
+            can_moderate,
+            viewer_voted: row.try_get("viewer_voted")?,
+        },
+        enabled: policy_enabled,
+        disabled_reason: (!policy_enabled)
+            .then(|| "Repository discussions are disabled by organization policy.".to_owned()),
+        discussion: DiscussionDetailSummary {
+            id: discussion_id,
+            number: row.try_get("number")?,
+            title: row.try_get("title")?,
+            state: row.try_get("state")?,
+            answered: row.try_get("answered")?,
+            locked,
+            comments_count: row.try_get("comments_count")?,
+            votes_count: row.try_get("votes_count")?,
+            href: format!(
+                "/{}/{}/discussions/{}",
+                repository.owner_login, repository.name, discussion_number
+            ),
+            created_at: row.try_get("created_at")?,
+            updated_at: row.try_get("updated_at")?,
+            last_activity_at: row.try_get("last_activity_at")?,
+        },
+        author,
+        category: category.clone(),
+        labels: labels.clone(),
+        body: discussion_body_view(body_markdown),
+        form_answers,
+        poll,
+        answer,
+        reactions,
+        subscription,
+        sidebar: DiscussionSidebarView {
+            category,
+            labels,
+            participants,
+            events: events.clone(),
+        },
+        timeline: merge_discussion_timeline(comments, events),
+        sort: normalized.sort,
+        page: normalized.page,
+        page_size: normalized.page_size,
+        total_comments,
+        has_next_page: normalized.page * normalized.page_size < total_comments,
     }))
 }
 
@@ -931,6 +1295,32 @@ fn normalize_discussion_filters(
     })
 }
 
+fn normalize_discussion_detail_query(
+    query: RepositoryDiscussionDetailQuery<'_>,
+) -> Result<NormalizedDiscussionDetailQuery, RepositoryError> {
+    let sort = match query.sort.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(sort @ ("oldest" | "newest" | "top")) => sort.to_owned(),
+        Some(other) => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+                "unsupported discussion comment sort `{other}`"
+            )))
+        }
+        None => "oldest".to_owned(),
+    };
+    let page = query.page.unwrap_or(1);
+    let page_size = query.page_size.unwrap_or(30);
+    if page < 1 || !(1..=100).contains(&page_size) {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "page must be positive and page_size must be between 1 and 100".to_owned(),
+        ));
+    }
+    Ok(NormalizedDiscussionDetailQuery {
+        sort,
+        page,
+        page_size,
+    })
+}
+
 fn normalize_short_text(
     value: Option<&str>,
     field: &str,
@@ -945,6 +1335,13 @@ fn normalize_short_text(
         )));
     }
     Ok(Some(value.to_owned()))
+}
+
+fn discussion_body_view(markdown: String) -> DiscussionBodyView {
+    DiscussionBodyView {
+        html: ammonia::clean(&markdown),
+        markdown,
+    }
 }
 
 fn normalize_required_text(
@@ -1634,6 +2031,453 @@ async fn load_discussion_labels(
             })
         })
         .collect()
+}
+
+async fn load_discussion_labels_for_discussion(
+    pool: &PgPool,
+    discussion_id: Uuid,
+) -> Result<Vec<DiscussionLabelSummary>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT labels.id, labels.name, labels.color, labels.description
+        FROM discussion_labels
+        JOIN labels ON labels.id = discussion_labels.label_id
+        WHERE discussion_labels.discussion_id = $1
+        ORDER BY labels.name ASC
+        "#,
+    )
+    .bind(discussion_id)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(DiscussionLabelSummary {
+                id: row.try_get("id")?,
+                name: row.try_get("name")?,
+                color: row.try_get("color")?,
+                description: row.try_get("description")?,
+                count: 0,
+            })
+        })
+        .collect()
+}
+
+async fn load_discussion_detail_comments(
+    pool: &PgPool,
+    repository: &super::repositories::Repository,
+    discussion_id: Uuid,
+    answer_comment_id: Option<Uuid>,
+    actor_user_id: Uuid,
+    query: &NormalizedDiscussionDetailQuery,
+) -> Result<Vec<DiscussionCommentView>, RepositoryError> {
+    let order = match query.sort.as_str() {
+        "newest" => "discussion_comments.created_at DESC",
+        "top" => "reaction_count DESC, discussion_comments.created_at ASC",
+        _ => "discussion_comments.created_at ASC",
+    };
+    let rows = sqlx::query(&format!(
+        r#"
+        SELECT discussion_comments.id, discussion_comments.body, discussion_comments.created_at,
+               discussion_comments.updated_at, discussion_comments.edited_at,
+               discussion_comments.deleted_at, discussion_comments.deleted_reason,
+               author.id AS author_id,
+               COALESCE(NULLIF(author.username, ''), author.email, 'ghost') AS author_login,
+               author.display_name AS author_display_name,
+               author.avatar_url AS author_avatar_url,
+               COUNT(discussion_reactions.id)::bigint AS reaction_count
+        FROM discussion_comments
+        LEFT JOIN users author ON author.id = discussion_comments.author_user_id
+        LEFT JOIN discussion_reactions ON discussion_reactions.comment_id = discussion_comments.id
+        WHERE discussion_comments.discussion_id = $1
+          AND discussion_comments.parent_comment_id IS NULL
+        GROUP BY discussion_comments.id, author.id
+        ORDER BY {order}
+        OFFSET $2 LIMIT $3
+        "#
+    ))
+    .bind(discussion_id)
+    .bind((query.page - 1) * query.page_size)
+    .bind(query.page_size)
+    .fetch_all(pool)
+    .await?;
+
+    let mut comments = Vec::new();
+    for row in rows {
+        let comment_id: Uuid = row.try_get("id")?;
+        let replies =
+            load_discussion_replies(pool, repository, discussion_id, comment_id, actor_user_id)
+                .await?;
+        comments.push(DiscussionCommentView {
+            id: comment_id,
+            author: author_from_row(&row)?,
+            body: discussion_body_view(row.try_get("body")?),
+            reactions: load_discussion_reactions(
+                pool,
+                discussion_id,
+                Some(comment_id),
+                actor_user_id,
+            )
+            .await?,
+            replies,
+            answer: answer_comment_id == Some(comment_id),
+            href: format!(
+                "/{}/{}/discussions/{}#discussioncomment-{}",
+                repository.owner_login,
+                repository.name,
+                discussion_number_for_comment(pool, discussion_id).await?,
+                comment_id
+            ),
+            edited: row
+                .try_get::<Option<DateTime<Utc>>, _>("edited_at")?
+                .is_some(),
+            deleted: row
+                .try_get::<Option<DateTime<Utc>>, _>("deleted_at")?
+                .is_some(),
+            deleted_reason: row.try_get("deleted_reason")?,
+            created_at: row.try_get("created_at")?,
+            updated_at: row.try_get("updated_at")?,
+        });
+    }
+    Ok(comments)
+}
+
+async fn discussion_number_for_comment(
+    pool: &PgPool,
+    discussion_id: Uuid,
+) -> Result<i64, RepositoryError> {
+    Ok(
+        sqlx::query_scalar("SELECT number FROM discussions WHERE id = $1")
+            .bind(discussion_id)
+            .fetch_one(pool)
+            .await?,
+    )
+}
+
+async fn load_discussion_replies(
+    pool: &PgPool,
+    repository: &super::repositories::Repository,
+    discussion_id: Uuid,
+    parent_comment_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<Vec<DiscussionReplyView>, RepositoryError> {
+    let number = discussion_number_for_comment(pool, discussion_id).await?;
+    let rows = sqlx::query(
+        r#"
+        SELECT discussion_comments.id, discussion_comments.body, discussion_comments.created_at,
+               discussion_comments.updated_at, discussion_comments.edited_at,
+               discussion_comments.deleted_at, discussion_comments.deleted_reason,
+               author.id AS author_id,
+               COALESCE(NULLIF(author.username, ''), author.email, 'ghost') AS author_login,
+               author.display_name AS author_display_name,
+               author.avatar_url AS author_avatar_url
+        FROM discussion_comments
+        LEFT JOIN users author ON author.id = discussion_comments.author_user_id
+        WHERE discussion_comments.discussion_id = $1
+          AND discussion_comments.parent_comment_id = $2
+        ORDER BY discussion_comments.created_at ASC
+        LIMIT 100
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(parent_comment_id)
+    .fetch_all(pool)
+    .await?;
+    let mut replies = Vec::new();
+    for row in rows {
+        let reply_id: Uuid = row.try_get("id")?;
+        replies.push(DiscussionReplyView {
+            id: reply_id,
+            author: author_from_row(&row)?,
+            body: discussion_body_view(row.try_get("body")?),
+            reactions: load_discussion_reactions(
+                pool,
+                discussion_id,
+                Some(reply_id),
+                actor_user_id,
+            )
+            .await?,
+            href: format!(
+                "/{}/{}/discussions/{}#discussioncomment-{}",
+                repository.owner_login, repository.name, number, reply_id
+            ),
+            edited: row
+                .try_get::<Option<DateTime<Utc>>, _>("edited_at")?
+                .is_some(),
+            deleted: row
+                .try_get::<Option<DateTime<Utc>>, _>("deleted_at")?
+                .is_some(),
+            deleted_reason: row.try_get("deleted_reason")?,
+            created_at: row.try_get("created_at")?,
+            updated_at: row.try_get("updated_at")?,
+        });
+    }
+    Ok(replies)
+}
+
+async fn load_discussion_reactions(
+    pool: &PgPool,
+    discussion_id: Uuid,
+    comment_id: Option<Uuid>,
+    actor_user_id: Uuid,
+) -> Result<Vec<DiscussionReactionSummary>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT content, COUNT(*)::bigint AS count,
+               BOOL_OR(user_id = $3) AS viewer_reacted
+        FROM discussion_reactions
+        WHERE discussion_id = $1
+          AND (
+            ($2::uuid IS NULL AND comment_id IS NULL)
+            OR comment_id = $2
+          )
+        GROUP BY content
+        ORDER BY content ASC
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(comment_id)
+    .bind(actor_user_id)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(DiscussionReactionSummary {
+                content: row.try_get("content")?,
+                count: row.try_get("count")?,
+                viewer_reacted: row.try_get("viewer_reacted")?,
+            })
+        })
+        .collect()
+}
+
+async fn load_discussion_detail_events(
+    pool: &PgPool,
+    discussion_id: Uuid,
+) -> Result<Vec<DiscussionEventView>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT discussion_activity_events.id, discussion_activity_events.event_type,
+               discussion_activity_events.payload, discussion_activity_events.created_at,
+               actor.id AS author_id,
+               COALESCE(NULLIF(actor.username, ''), actor.email, 'ghost') AS author_login,
+               actor.display_name AS author_display_name,
+               actor.avatar_url AS author_avatar_url
+        FROM discussion_activity_events
+        LEFT JOIN users actor ON actor.id = discussion_activity_events.actor_user_id
+        WHERE discussion_activity_events.discussion_id = $1
+        ORDER BY discussion_activity_events.created_at ASC
+        LIMIT 100
+        "#,
+    )
+    .bind(discussion_id)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(DiscussionEventView {
+                id: row.try_get("id")?,
+                event_type: row.try_get("event_type")?,
+                actor: Some(author_from_row(&row)?),
+                payload: row.try_get("payload")?,
+                created_at: row.try_get("created_at")?,
+            })
+        })
+        .collect()
+}
+
+async fn load_discussion_participants(
+    pool: &PgPool,
+    discussion_id: Uuid,
+) -> Result<Vec<DiscussionAuthorSummary>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT DISTINCT users.id, COALESCE(NULLIF(users.username, ''), users.email, 'ghost') AS author_login,
+               users.display_name AS author_display_name, users.avatar_url AS author_avatar_url
+        FROM users
+        JOIN discussion_comments ON discussion_comments.author_user_id = users.id
+        WHERE discussion_comments.discussion_id = $1
+        ORDER BY author_login ASC
+        LIMIT 20
+        "#,
+    )
+    .bind(discussion_id)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter().map(|row| author_from_row(&row)).collect()
+}
+
+async fn count_top_level_discussion_comments(
+    pool: &PgPool,
+    discussion_id: Uuid,
+) -> Result<i64, RepositoryError> {
+    Ok(sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM discussion_comments WHERE discussion_id = $1 AND parent_comment_id IS NULL",
+    )
+    .bind(discussion_id)
+    .fetch_one(pool)
+    .await?)
+}
+
+async fn load_discussion_subscription(
+    pool: &PgPool,
+    discussion_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<DiscussionSubscriptionState, RepositoryError> {
+    let row = sqlx::query(
+        "SELECT state, reason FROM discussion_subscriptions WHERE discussion_id = $1 AND user_id = $2",
+    )
+    .bind(discussion_id)
+    .bind(actor_user_id)
+    .fetch_optional(pool)
+    .await?;
+    let (state, reason) = match row {
+        Some(row) => (
+            row.try_get::<String, _>("state")?,
+            row.try_get::<Option<String>, _>("reason")?,
+        ),
+        None => ("unsubscribed".to_owned(), None),
+    };
+    Ok(DiscussionSubscriptionState {
+        subscribed: state == "subscribed",
+        state,
+        reason,
+        can_change: true,
+    })
+}
+
+async fn load_discussion_form_answer_views(
+    pool: &PgPool,
+    discussion_id: Uuid,
+) -> Result<Vec<DiscussionFormAnswerView>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT field_id, field_label, value
+        FROM discussion_form_answers
+        WHERE discussion_id = $1
+        ORDER BY created_at ASC, field_label ASC
+        "#,
+    )
+    .bind(discussion_id)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(DiscussionFormAnswerView {
+                field_id: row.try_get("field_id")?,
+                field_label: row.try_get("field_label")?,
+                value: row.try_get("value")?,
+            })
+        })
+        .collect()
+}
+
+async fn load_discussion_poll_view(
+    pool: &PgPool,
+    discussion_id: Uuid,
+) -> Result<Option<DiscussionPollView>, RepositoryError> {
+    let Some(row) = sqlx::query(
+        "SELECT id, question, allows_multiple FROM discussion_polls WHERE discussion_id = $1",
+    )
+    .bind(discussion_id)
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Ok(None);
+    };
+    let poll_id: Uuid = row.try_get("id")?;
+    let option_rows = sqlx::query(
+        "SELECT id, position, label FROM discussion_poll_options WHERE poll_id = $1 ORDER BY position ASC",
+    )
+    .bind(poll_id)
+    .fetch_all(pool)
+    .await?;
+    let options = option_rows
+        .into_iter()
+        .map(|row| {
+            Ok(DiscussionPollOptionView {
+                id: row.try_get("id")?,
+                position: row.try_get("position")?,
+                label: row.try_get("label")?,
+            })
+        })
+        .collect::<Result<Vec<_>, RepositoryError>>()?;
+    Ok(Some(DiscussionPollView {
+        id: poll_id,
+        question: row.try_get("question")?,
+        allows_multiple: row.try_get("allows_multiple")?,
+        options,
+    }))
+}
+
+async fn load_discussion_answer_summary(
+    pool: &PgPool,
+    repository: &super::repositories::Repository,
+    discussion_id: Uuid,
+    answer_comment_id: Option<Uuid>,
+    _actor_user_id: Uuid,
+) -> Result<Option<DiscussionAnswerSummary>, RepositoryError> {
+    let Some(comment_id) = answer_comment_id else {
+        return Ok(None);
+    };
+    let number = discussion_number_for_comment(pool, discussion_id).await?;
+    let row = sqlx::query(
+        r#"
+        SELECT COALESCE(discussion_answers.marked_at, discussion_comments.updated_at) AS marked_at,
+               marker.id AS author_id,
+               COALESCE(NULLIF(marker.username, ''), marker.email, 'ghost') AS author_login,
+               marker.display_name AS author_display_name,
+               marker.avatar_url AS author_avatar_url
+        FROM discussion_comments
+        LEFT JOIN discussion_answers ON discussion_answers.comment_id = discussion_comments.id
+        LEFT JOIN users marker ON marker.id = discussion_answers.marked_by_user_id
+        WHERE discussion_comments.discussion_id = $1 AND discussion_comments.id = $2
+        "#,
+    )
+    .bind(discussion_id)
+    .bind(comment_id)
+    .fetch_optional(pool)
+    .await?;
+    row.map(|row| {
+        Ok(DiscussionAnswerSummary {
+            comment_id,
+            marked_by: if row.try_get::<Option<Uuid>, _>("author_id")?.is_some() {
+                Some(author_from_row(&row)?)
+            } else {
+                None
+            },
+            marked_at: row.try_get("marked_at")?,
+            href: format!(
+                "/{}/{}/discussions/{}#discussioncomment-{}",
+                repository.owner_login, repository.name, number, comment_id
+            ),
+        })
+    })
+    .transpose()
+}
+
+fn merge_discussion_timeline(
+    comments: Vec<DiscussionCommentView>,
+    events: Vec<DiscussionEventView>,
+) -> Vec<DiscussionTimelineItem> {
+    let mut items = Vec::with_capacity(comments.len() + events.len());
+    for comment in comments {
+        items.push(DiscussionTimelineItem::Comment(comment));
+    }
+    for event in events {
+        items.push(DiscussionTimelineItem::Event(event));
+    }
+    items
+}
+
+fn author_from_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<DiscussionAuthorSummary, RepositoryError> {
+    Ok(DiscussionAuthorSummary {
+        id: row.try_get("author_id")?,
+        login: row.try_get("author_login")?,
+        display_name: row.try_get("author_display_name")?,
+        avatar_url: row.try_get("author_avatar_url")?,
+    })
 }
 
 async fn load_discussion_rows(

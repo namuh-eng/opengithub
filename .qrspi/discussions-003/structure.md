@@ -10,7 +10,7 @@
 
 ## Phase 1: Detail Contract and Read-Only Timeline - screen-ready discussion page data
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the authenticated API and DTOs needed to render one discussion detail page without enabling mutations yet. The view should include repository/read permission checks, private repository privacy, title/status/category metadata, author and collaborator badges, sanitized Markdown body, initial comment, timeline comments, nested replies, reactions summary, poll/form answer summaries, sidebar data, viewer permissions, and stable sort controls.
 

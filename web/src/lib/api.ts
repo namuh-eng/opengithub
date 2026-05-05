@@ -4557,6 +4557,148 @@ export type DiscussionVoteResponse = {
   votesCount: number;
 };
 
+export type DiscussionBodyView = {
+  markdown: string;
+  html: string;
+};
+
+export type DiscussionDetailViewer = {
+  authenticated: boolean;
+  permission: string | null;
+  canRead: boolean;
+  canComment: boolean;
+  canReact: boolean;
+  canSubscribe: boolean;
+  canMarkAnswer: boolean;
+  canModerate: boolean;
+  viewerVoted: boolean;
+};
+
+export type DiscussionDetailSummary = {
+  id: string;
+  number: number;
+  title: string;
+  state: "open" | "closed" | string;
+  answered: boolean;
+  locked: boolean;
+  commentsCount: number;
+  votesCount: number;
+  href: string;
+  createdAt: string;
+  updatedAt: string;
+  lastActivityAt: string;
+};
+
+export type DiscussionFormAnswerView = {
+  fieldId: string;
+  fieldLabel: string;
+  value: string;
+};
+
+export type DiscussionPollOptionView = {
+  id: string;
+  position: number;
+  label: string;
+};
+
+export type DiscussionPollView = {
+  id: string;
+  question: string;
+  allowsMultiple: boolean;
+  options: DiscussionPollOptionView[];
+};
+
+export type DiscussionAnswerSummary = {
+  commentId: string;
+  markedBy: DiscussionAuthorSummary | null;
+  markedAt: string;
+  href: string;
+};
+
+export type DiscussionReactionSummary = {
+  content: string;
+  count: number;
+  viewerReacted: boolean;
+};
+
+export type DiscussionSubscriptionState = {
+  state: string;
+  reason: string | null;
+  subscribed: boolean;
+  canChange: boolean;
+};
+
+export type DiscussionEventView = {
+  id: string;
+  eventType: string;
+  actor: DiscussionAuthorSummary | null;
+  payload: unknown;
+  createdAt: string;
+};
+
+export type DiscussionReplyView = {
+  id: string;
+  author: DiscussionAuthorSummary;
+  body: DiscussionBodyView;
+  reactions: DiscussionReactionSummary[];
+  href: string;
+  edited: boolean;
+  deleted: boolean;
+  deletedReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DiscussionCommentView = {
+  id: string;
+  author: DiscussionAuthorSummary;
+  body: DiscussionBodyView;
+  reactions: DiscussionReactionSummary[];
+  replies: DiscussionReplyView[];
+  answer: boolean;
+  href: string;
+  edited: boolean;
+  deleted: boolean;
+  deletedReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DiscussionTimelineItem =
+  | ({ kind: "comment" } & DiscussionCommentView)
+  | ({ kind: "event" } & DiscussionEventView);
+
+export type DiscussionSidebarView = {
+  category: DiscussionCategorySummary;
+  labels: DiscussionLabelSummary[];
+  participants: DiscussionAuthorSummary[];
+  events: DiscussionEventView[];
+};
+
+export type RepositoryDiscussionDetailView = {
+  repository: DiscussionRepositorySummary;
+  viewer: DiscussionDetailViewer;
+  enabled: boolean;
+  disabledReason: string | null;
+  discussion: DiscussionDetailSummary;
+  author: DiscussionAuthorSummary;
+  category: DiscussionCategorySummary;
+  labels: DiscussionLabelSummary[];
+  body: DiscussionBodyView;
+  formAnswers: DiscussionFormAnswerView[];
+  poll: DiscussionPollView | null;
+  answer: DiscussionAnswerSummary | null;
+  reactions: DiscussionReactionSummary[];
+  subscription: DiscussionSubscriptionState;
+  sidebar: DiscussionSidebarView;
+  timeline: DiscussionTimelineItem[];
+  sort: "oldest" | "newest" | "top" | string;
+  page: number;
+  pageSize: number;
+  totalComments: number;
+  hasNextPage: boolean;
+};
+
 export type DiscussionCategoryChoice = {
   id: string;
   slug: string;
@@ -4663,6 +4805,12 @@ export type RepositoryDiscussionsQuery = {
 export type RepositoryDiscussionCreationQuery = {
   category?: string;
   title?: string;
+};
+
+export type RepositoryDiscussionDetailQuery = {
+  sort?: string;
+  page?: number;
+  pageSize?: number;
 };
 
 export type ActionsWorkflowLatestRun = {
@@ -13692,6 +13840,53 @@ export async function getRepositoryDiscussionCreationFromCookie(
   }
 
   return body as DiscussionCreationView;
+}
+
+export async function getRepositoryDiscussionDetailFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  discussionNumber: number | string,
+  query: RepositoryDiscussionDetailQuery = {},
+): Promise<RepositoryDiscussionDetailView | ApiErrorEnvelope> {
+  const params = new URLSearchParams();
+  if (query.sort) params.set("sort", query.sort);
+  if (query.page) params.set("page", String(query.page));
+  if (query.pageSize) params.set("page_size", String(query.pageSize));
+  const search = params.toString();
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/discussions/${encodeURIComponent(String(discussionNumber))}${search ? `?${search}` : ""}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Discussion detail is temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "repository_discussion_detail_failed",
+          message: "Discussion detail could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as RepositoryDiscussionDetailView;
 }
 
 export async function createRepositoryDiscussionFromCookie(
