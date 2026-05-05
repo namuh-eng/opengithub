@@ -1,0 +1,56 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "node '/Users/jaeyunha/.clawhip/hooks/native-hook.mjs' --provider codex",
+            "type": "command"
+          }
+        ],
+        "matcher": ".*"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "node '/Users/jaeyunha/.clawhip/hooks/native-hook.mjs' --provider codex",
+            "type": "command"
+          }
+        ],
+        "matcher": ".*"
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "node '/Users/jaeyunha/.clawhip/hooks/native-hook.mjs' --provider codex",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": "node '/Users/jaeyunha/.clawhip/hooks/native-hook.mjs' --provider codex",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "command": "node '/Users/jaeyunha/.clawhip/hooks/native-hook.mjs' --provider codex",
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  }
+}
