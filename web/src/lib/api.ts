@@ -197,6 +197,24 @@ export type ProjectListFetchResult =
   | { ok: true; projects: ProjectList }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type CopyProjectRequest = {
+  title: string;
+  includeDraftIssues: boolean;
+};
+
+export type CopiedProject = {
+  id: string;
+  number: number;
+  title: string;
+  href: string;
+  workspaceHref: string;
+  owner: string;
+  copiedViews: number;
+  copiedFields: number;
+  copiedWorkflows: number;
+  copiedDraftItems: number;
+};
+
 export type OrganizationSettingsIdentity = {
   id: string;
   slug: string;
@@ -7045,6 +7063,39 @@ export function getRepositoryProjectsFromCookie(
     `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/projects`,
     query,
   );
+}
+
+export async function copyProjectFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  request: CopyProjectRequest,
+): Promise<CopiedProject> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/projects/${encodeURIComponent(projectId)}/copies`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(envelope?.error.message ?? "Project could not be copied.", {
+      cause: {
+        error: envelope?.error ?? {
+          code: "project_copy_failed",
+          message: "Project could not be copied.",
+        },
+        status: envelope?.status ?? response.status,
+      } satisfies ApiErrorEnvelope,
+    });
+  }
+  return payload as CopiedProject;
 }
 
 export async function getPersonalAccessTokenListFromCookie(

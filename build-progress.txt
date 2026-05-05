@@ -1,3 +1,16 @@
+2026-05-06 - projects-001 phase 4 copy project flow
+
+- Completed Phase 4 from `.qrspi/projects-001/structure.md`: Projects list copy actions now use a real permissioned mutation without marking `projects-001.build_pass=true`; Phase 5 remains.
+- Added `POST /api/projects/{project_id}/copies` with signed-session/PAT auth, title validation, organization Projects policy guardrails, owner/org/project permission checks, transactional project clone, repository link clone, view/field/workflow clone, optional draft issue clone, linked issue/PR exclusion, `audit_events` writes, and `project_recent_visits` writes.
+- Added additive migration `202605060007_project_copy_flow` for `project_recent_visits`.
+- Added the same-origin Next proxy at `/api/projects/[projectId]/copies` and converted Projects copy buttons into an Editorial dialog with prefilled `[COPY]` title, Include draft issues checkbox, Cancel, pending/error states, and redirect to the copied workspace href.
+- Extended focused Rust and Vitest coverage for copy payloads, redirect behavior, permission errors, draft inclusion/exclusion, cloned counts, audit/recent visit writes, and Editorial banned-value guardrails.
+- Verification passed: `cargo fmt --all`; focused Biome; focused `projects-list-page` Vitest with 8 tests; `cd web && npx tsc --noEmit --pretty false`; `cargo check -p opengithub-api --tests`; focused `projects_list_contract` compile/run under its DB guard; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 530 web tests; mandatory Editorial banned-value scan returned zero matches.
+- Browser smoke passed against a local API stub with real Next.js server rendering/proxy: opened `/orgs/namuh/projects`, opened copy dialog, submitted copy, verified redirect to `/namuh/projects/13/views/1`, reopened the dialog, checked no dead links/no horizontal overflow, and saved `ralph/screenshots/build/projects-001-phase4-copy-flow.jpg`.
+- Focused DB-backed Projects contract compiled and ran, but local Postgres rejected `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test` with password authentication failed for user `postgres`, so row assertions self-skipped under the existing guard. Full `make test-e2e` was attempted with the signed-session/test DB environment but stayed silent for over one minute and was terminated; focused browser smoke passed separately.
+- Mandatory Editorial banned-value scan returned zero matches. `prd.json` remains `build_pass:false` because Phase 5 API docs/final E2E/screenshots/QA handoff/build-pass bookkeeping remain.
+- Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-06 - projects-001 phase 3 URL-backed list controls
 
 - Completed Phase 3 from `.qrspi/projects-001/structure.md`: Projects list search, tabs, state filters, sort, active chips, clear filters, and pagination are now URL-backed without marking `projects-001.build_pass=true`; Phases 4-5 remain.

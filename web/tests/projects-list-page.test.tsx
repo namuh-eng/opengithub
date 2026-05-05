@@ -1,7 +1,19 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectsListPage } from "@/components/ProjectsListPage";
 import type { ProjectList, ProjectRow, ProjectTemplateRow } from "@/lib/api";
+
+const push = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push }),
+}));
 
 function project(overrides: Partial<ProjectRow> = {}): ProjectRow {
   return {
@@ -105,6 +117,11 @@ function projectList(overrides: Partial<ProjectList> = {}): ProjectList {
 }
 
 describe("ProjectsListPage", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    push.mockReset();
+  });
+
   it("renders dense Editorial project rows with concrete workspace links", () => {
     render(
       <ProjectsListPage list={projectList()} scopeLabel="namuh projects" />,
@@ -157,6 +174,86 @@ describe("ProjectsListPage", () => {
       screen.getByRole("link", { name: /Team planning template/ }),
     ).toHaveAttribute("href", "/orgs/namuh/projects/4/views/1");
     expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled();
+  });
+
+  it("submits the copy dialog through the same-origin proxy and redirects", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          id: "project-copy",
+          number: 13,
+          title: "[COPY] Roadmap planning",
+          href: "/namuh/projects/13",
+          workspaceHref: "/namuh/projects/13/views/1",
+          owner: "namuh",
+          copiedViews: 1,
+          copiedFields: 2,
+          copiedWorkflows: 1,
+          copiedDraftItems: 1,
+        }),
+        { status: 201, headers: { "content-type": "application/json" } },
+      ),
+    );
+    render(<ProjectsListPage list={projectList()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    expect(
+      screen.getByRole("dialog", { name: "Roadmap planning" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue("[COPY] Roadmap planning"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Copy project" }));
+
+    await waitFor(() =>
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        "/api/projects/project-1/copies",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            title: "[COPY] Roadmap planning",
+            includeDraftIssues: true,
+          }),
+        }),
+      ),
+    );
+    expect(push).toHaveBeenCalledWith("/namuh/projects/13/views/1");
+  });
+
+  it("keeps server permission errors inside the copy dialog", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "forbidden",
+            message: "You do not have access to this project list",
+          },
+          status: 403,
+        }),
+        { status: 403, headers: { "content-type": "application/json" } },
+      ),
+    );
+    render(<ProjectsListPage list={projectList()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /Include draft issues/ }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Copy project" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "You do not have access to this project list",
+    );
+    expect(push).not.toHaveBeenCalled();
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/projects/project-1/copies",
+      expect.objectContaining({
+        body: JSON.stringify({
+          title: "[COPY] Roadmap planning",
+          includeDraftIssues: false,
+        }),
+      }),
+    );
   });
 
   it("builds URL-backed search, state, sort, and pagination controls", () => {

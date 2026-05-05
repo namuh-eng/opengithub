@@ -57,7 +57,7 @@
 
 ## Phase 4: Copy Project Flow - permissioned copies clone views, fields, workflows, and optional drafts
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire the visible copy-project action to a real mutation. Authorized users can copy a project from list rows or templates, choose whether to include draft issues, and land on the new project workspace stub; unauthorized viewers see a permission error without local-only creation.
 

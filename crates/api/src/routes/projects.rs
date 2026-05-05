@@ -1,17 +1,18 @@
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use serde::Deserialize;
+use uuid::Uuid;
 
 use crate::{
     api_types::{database_unavailable, error_response, ErrorEnvelope},
     auth::extractor::AuthenticatedUser,
     domain::projects::{
-        organization_projects, repository_projects, user_projects, ProjectList, ProjectListQuery,
-        ProjectsError,
+        copy_project_for_actor, organization_projects, repository_projects, user_projects,
+        CopiedProject, CopyProjectRequest, ProjectList, ProjectListQuery, ProjectsError,
     },
     AppState,
 };
@@ -20,6 +21,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/users/:username/projects", get(user_projects_route))
         .route("/api/orgs/:org/projects", get(organization_projects_route))
+        .route("/api/projects/:project_id/copies", post(copy_project_route))
         .route(
             "/api/repos/:owner/:repo/projects",
             get(repository_projects_route),
@@ -109,6 +111,20 @@ async fn repository_projects_route(
     Ok(Json(list))
 }
 
+async fn copy_project_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(project_id): Path<Uuid>,
+    Json(request): Json<CopyProjectRequest>,
+) -> Result<(StatusCode, Json<CopiedProject>), (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let copied = copy_project_for_actor(pool, project_id, actor.id, request)
+        .await
+        .map_err(map_projects_error)?;
+    Ok((StatusCode::CREATED, Json(copied)))
+}
+
 fn map_projects_error(error: ProjectsError) -> (StatusCode, Json<ErrorEnvelope>) {
     match error {
         ProjectsError::NotFound => error_response(
@@ -122,6 +138,11 @@ fn map_projects_error(error: ProjectsError) -> (StatusCode, Json<ErrorEnvelope>)
             "You do not have access to this project list",
         ),
         ProjectsError::InvalidFilter(message) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            message,
+        ),
+        ProjectsError::Validation(message) => error_response(
             StatusCode::UNPROCESSABLE_ENTITY,
             "validation_failed",
             message,

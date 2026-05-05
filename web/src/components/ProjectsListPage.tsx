@@ -1,4 +1,8 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { type FormEvent, useState } from "react";
 import type { ProjectList, ProjectRow, ProjectTemplateRow } from "@/lib/api";
 
 type ProjectsListPageProps = {
@@ -261,7 +265,20 @@ function Pagination({ list }: { list: ProjectList }) {
   );
 }
 
-function ProjectRowView({ project }: { project: ProjectRow }) {
+type CopyTarget = {
+  id: string;
+  title: string;
+  kind: "project" | "template";
+  viewerCanCopy: boolean;
+};
+
+function ProjectRowView({
+  project,
+  onCopy,
+}: {
+  project: ProjectRow;
+  onCopy: (target: CopyTarget) => void;
+}) {
   return (
     <article className="list-row grid gap-3 py-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
       <Link className="min-w-0 no-underline" href={project.workspaceHref}>
@@ -299,11 +316,15 @@ function ProjectRowView({ project }: { project: ProjectRow }) {
         <button
           className="btn sm"
           disabled={!project.viewerCanCopy}
-          title={
-            project.viewerCanCopy
-              ? "Copy flow arrives in the next Projects phase"
-              : "You need write access to copy this project"
+          onClick={() =>
+            onCopy({
+              id: project.id,
+              title: project.title,
+              kind: "project",
+              viewerCanCopy: project.viewerCanCopy,
+            })
           }
+          title="Copy this project"
           type="button"
         >
           Copy
@@ -313,7 +334,13 @@ function ProjectRowView({ project }: { project: ProjectRow }) {
   );
 }
 
-function TemplateRowView({ template }: { template: ProjectTemplateRow }) {
+function TemplateRowView({
+  template,
+  onCopy,
+}: {
+  template: ProjectTemplateRow;
+  onCopy: (target: CopyTarget) => void;
+}) {
   return (
     <article className="list-row grid gap-3 py-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
       <Link className="min-w-0 no-underline" href={template.projectHref}>
@@ -339,11 +366,15 @@ function TemplateRowView({ template }: { template: ProjectTemplateRow }) {
       <button
         className="btn sm"
         disabled={!template.viewerCanCopy}
-        title={
-          template.viewerCanCopy
-            ? "Copy flow arrives in the next Projects phase"
-            : "You need write access to copy this template"
+        onClick={() =>
+          onCopy({
+            id: template.projectId,
+            title: template.title,
+            kind: "template",
+            viewerCanCopy: template.viewerCanCopy,
+          })
         }
+        title="Copy this template"
         type="button"
       >
         Copy
@@ -352,10 +383,121 @@ function TemplateRowView({ template }: { template: ProjectTemplateRow }) {
   );
 }
 
+function CopyProjectDialog({
+  target,
+  onClose,
+}: {
+  target: CopyTarget;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [title, setTitle] = useState(`[COPY] ${target.title}`);
+  const [includeDraftIssues, setIncludeDraftIssues] = useState(true);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const normalizedTitle = title.trim();
+    if (!normalizedTitle) {
+      setError("Project title is required.");
+      return;
+    }
+    setPending(true);
+    setError(null);
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(target.id)}/copies`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: normalizedTitle,
+          includeDraftIssues,
+        }),
+      },
+    );
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      setPending(false);
+      setError(
+        body?.error?.message ??
+          "Project could not be copied. Check your permissions and try again.",
+      );
+      return;
+    }
+    router.push(body.workspaceHref ?? body.href);
+  }
+
+  return (
+    <div
+      aria-labelledby="copy-project-title"
+      aria-modal="true"
+      className="fixed inset-0 z-50 grid place-items-center px-4"
+      role="dialog"
+      style={{
+        background: "color-mix(in oklch, var(--ink-1) 28%, transparent)",
+      }}
+    >
+      <form className="card grid w-full max-w-lg gap-4 p-5" onSubmit={submit}>
+        <div>
+          <p className="t-label" style={{ color: "var(--ink-3)" }}>
+            Copy {target.kind}
+          </p>
+          <h3 className="t-h2 mt-1" id="copy-project-title">
+            {target.title}
+          </h3>
+        </div>
+        <label className="grid gap-2">
+          <span className="t-sm">Project title</span>
+          <span className="input">
+            <input
+              onChange={(event) => setTitle(event.target.value)}
+              value={title}
+            />
+          </span>
+        </label>
+        <label className="flex items-start gap-3 t-sm">
+          <input
+            checked={includeDraftIssues}
+            className="mt-1"
+            onChange={(event) => setIncludeDraftIssues(event.target.checked)}
+            type="checkbox"
+          />
+          <span>
+            Include draft issues
+            <span className="block t-xs">
+              Linked issues and pull requests stay in the source project.
+            </span>
+          </span>
+        </label>
+        {error ? (
+          <p className="chip err justify-self-start" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <div className="flex flex-wrap justify-end gap-2">
+          <button
+            className="btn"
+            disabled={pending}
+            onClick={onClose}
+            type="button"
+          >
+            Cancel
+          </button>
+          <button className="btn primary" disabled={pending} type="submit">
+            {pending ? "Copying..." : "Copy project"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 export function ProjectsListPage({
   list,
   scopeLabel = list.scope.login,
 }: ProjectsListPageProps) {
+  const [copyTarget, setCopyTarget] = useState<CopyTarget | null>(null);
   const showingTemplates = list.filters.tab === "templates";
   const rows = showingTemplates ? list.templates.items : list.items;
   const unavailable = list.unavailableReason;
@@ -480,11 +622,13 @@ export function ProjectsListPage({
               showingTemplates ? (
                 <TemplateRowView
                   key={(row as ProjectTemplateRow).id}
+                  onCopy={setCopyTarget}
                   template={row as ProjectTemplateRow}
                 />
               ) : (
                 <ProjectRowView
                   key={(row as ProjectRow).id}
+                  onCopy={setCopyTarget}
                   project={row as ProjectRow}
                 />
               ),
@@ -503,6 +647,13 @@ export function ProjectsListPage({
           <Pagination list={list} />
         </div>
       </div>
+      {copyTarget ? (
+        <CopyProjectDialog
+          key={copyTarget.id}
+          onClose={() => setCopyTarget(null)}
+          target={copyTarget}
+        />
+      ) : null}
     </section>
   );
 }

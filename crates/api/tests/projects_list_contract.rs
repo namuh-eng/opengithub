@@ -16,7 +16,7 @@ use opengithub_api::{
     },
 };
 use serde_json::{json, Value};
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use tower::ServiceExt;
 use url::Url;
 use uuid::Uuid;
@@ -108,6 +108,36 @@ async fn get_json(
     }
     let response = app
         .oneshot(builder.body(Body::empty()).expect("request should build"))
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let headers = response.headers().clone();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = serde_json::from_slice(&bytes).expect("response should be JSON");
+    (status, headers, value)
+}
+
+async fn post_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, HeaderMap, Value) {
+    let mut builder = Request::builder()
+        .method(Method::POST)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_string()))
+                .expect("request should build"),
+        )
         .await
         .expect("request should run");
     let status = response.status();
@@ -260,6 +290,27 @@ async fn projects_lists_filter_templates_and_repository_links_without_leaking_pr
         .execute(&pool)
         .await
         .expect("items should insert");
+    sqlx::query(
+        "INSERT INTO project_views (project_id, name, layout, position) VALUES ($1, 'Table', 'table', 1), ($1, 'Roadmap', 'roadmap', 2)",
+    )
+    .bind(public_project_id)
+    .execute(&pool)
+    .await
+    .expect("views should insert");
+    sqlx::query(
+        "INSERT INTO project_fields (project_id, name, field_type, position, settings) VALUES ($1, 'Status', 'single_select', 1, '{\"options\":[\"Todo\",\"Done\"]}'::jsonb)",
+    )
+    .bind(public_project_id)
+    .execute(&pool)
+    .await
+    .expect("fields should insert");
+    sqlx::query(
+        "INSERT INTO project_workflows (project_id, name, enabled, trigger_event) VALUES ($1, 'Auto archive', true, 'item_closed')",
+    )
+    .bind(public_project_id)
+    .execute(&pool)
+    .await
+    .expect("workflows should insert");
 
     let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
     let org_uri = format!("/api/orgs/{marker}/projects?q=roadmap&sort=name_asc");
@@ -288,6 +339,65 @@ async fn projects_lists_filter_templates_and_repository_links_without_leaking_pr
         body["templates"]["items"][0]["projectId"],
         template_project_id.to_string()
     );
+
+    let copy_uri = format!("/api/projects/{public_project_id}/copies");
+    let (status, headers, body) = post_json(
+        app.clone(),
+        &copy_uri,
+        Some(&member_cookie),
+        json!({ "title": "[COPY] Platform roadmap", "includeDraftIssues": true }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_json(&headers);
+    let copied_project_id = Uuid::parse_str(body["id"].as_str().expect("copy id")).expect("uuid");
+    assert_eq!(body["title"], "[COPY] Platform roadmap");
+    assert_eq!(body["number"], 4);
+    assert_eq!(body["copiedViews"], 2);
+    assert_eq!(body["copiedFields"], 1);
+    assert_eq!(body["copiedWorkflows"], 1);
+    assert_eq!(body["copiedDraftItems"], 1);
+    assert_eq!(
+        body["workspaceHref"],
+        format!("/{marker}/projects/4/views/1")
+    );
+    let cloned_counts = sqlx::query(
+        r#"
+        SELECT
+          (SELECT count(*)::bigint FROM project_views WHERE project_id = $1) AS views,
+          (SELECT count(*)::bigint FROM project_fields WHERE project_id = $1) AS fields,
+          (SELECT count(*)::bigint FROM project_workflows WHERE project_id = $1) AS workflows,
+          (SELECT count(*)::bigint FROM project_items WHERE project_id = $1 AND item_type = 'draft_issue') AS drafts,
+          (SELECT count(*)::bigint FROM project_items WHERE project_id = $1 AND item_type <> 'draft_issue') AS linked_items,
+          (SELECT count(*)::bigint FROM audit_events WHERE target_id = $1 AND event_type = 'project.copy') AS audits,
+          (SELECT count(*)::bigint FROM project_recent_visits WHERE project_id = $1 AND user_id = $2 AND reason = 'copy') AS visits
+        "#
+    )
+    .bind(copied_project_id)
+    .bind(member.id)
+    .fetch_one(&pool)
+    .await
+    .expect("copy counts should load");
+    assert_eq!(cloned_counts.try_get::<i64, _>("views").ok(), Some(2));
+    assert_eq!(cloned_counts.try_get::<i64, _>("fields").ok(), Some(1));
+    assert_eq!(cloned_counts.try_get::<i64, _>("workflows").ok(), Some(1));
+    assert_eq!(cloned_counts.try_get::<i64, _>("drafts").ok(), Some(1));
+    assert_eq!(
+        cloned_counts.try_get::<i64, _>("linked_items").ok(),
+        Some(0)
+    );
+    assert_eq!(cloned_counts.try_get::<i64, _>("audits").ok(), Some(1));
+    assert_eq!(cloned_counts.try_get::<i64, _>("visits").ok(), Some(1));
+
+    let (status, _, body) = post_json(
+        app.clone(),
+        &copy_uri,
+        Some(&outsider_cookie),
+        json!({ "title": "[COPY] Forbidden", "includeDraftIssues": false }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(body["error"]["code"], "forbidden");
 
     let sorted_uri = format!("/api/orgs/{marker}/projects?sort=name_desc&page=1&pageSize=1");
     let (status, _, body) = get_json(app.clone(), &sorted_uri, Some(&member_cookie)).await;

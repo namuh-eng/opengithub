@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -136,6 +137,29 @@ pub struct ProjectListQuery<'a> {
     pub page_size: Option<i64>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CopyProjectRequest {
+    pub title: String,
+    #[serde(default)]
+    pub include_draft_issues: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CopiedProject {
+    pub id: Uuid,
+    pub number: i64,
+    pub title: String,
+    pub href: String,
+    pub workspace_href: String,
+    pub owner: String,
+    pub copied_views: i64,
+    pub copied_fields: i64,
+    pub copied_workflows: i64,
+    pub copied_draft_items: i64,
+}
+
 #[derive(Debug, Clone)]
 enum ProjectScope {
     User {
@@ -165,10 +189,254 @@ pub enum ProjectsError {
     Forbidden,
     #[error("invalid project list filter: {0}")]
     InvalidFilter(String),
+    #[error("invalid project mutation: {0}")]
+    Validation(String),
     #[error("database error")]
     Sqlx(#[from] sqlx::Error),
     #[error("repository error")]
     Repository(#[from] super::repositories::RepositoryError),
+}
+
+pub async fn copy_project_for_actor(
+    pool: &PgPool,
+    source_project_id: Uuid,
+    actor_user_id: Uuid,
+    request: CopyProjectRequest,
+) -> Result<CopiedProject, ProjectsError> {
+    let title = request.title.trim().chars().take(160).collect::<String>();
+    if title.is_empty() {
+        return Err(ProjectsError::Validation(
+            "Project title is required.".to_owned(),
+        ));
+    }
+
+    let mut tx = pool.begin().await?;
+    let source = sqlx::query(
+        r#"
+        SELECT
+          projects.id,
+          projects.owner_user_id,
+          projects.owner_organization_id,
+          projects.number,
+          projects.title,
+          projects.short_description,
+          projects.readme,
+          projects.visibility,
+          projects.default_repository_id,
+          projects.created_by_user_id,
+          COALESCE(NULLIF(owner_user.username, ''), owner_user.email, owner_org.slug) AS owner_login,
+          COALESCE(organization_policy_settings.projects_enabled, true) AS projects_enabled,
+          organization_memberships.role AS organization_role,
+          organization_policy_settings.projects_base_permission AS organization_base_role,
+          project_permissions.role AS project_role
+        FROM projects
+        LEFT JOIN users owner_user ON owner_user.id = projects.owner_user_id
+        LEFT JOIN organizations owner_org ON owner_org.id = projects.owner_organization_id
+        LEFT JOIN organization_policy_settings
+          ON organization_policy_settings.organization_id = projects.owner_organization_id
+        LEFT JOIN organization_memberships
+          ON organization_memberships.organization_id = projects.owner_organization_id
+         AND organization_memberships.user_id = $2
+        LEFT JOIN project_permissions
+          ON project_permissions.project_id = projects.id
+         AND project_permissions.user_id = $2
+        WHERE projects.id = $1
+        FOR UPDATE
+        "#,
+    )
+    .bind(source_project_id)
+    .bind(actor_user_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(ProjectsError::NotFound)?;
+
+    let owner_user_id: Option<Uuid> = source.try_get("owner_user_id")?;
+    let owner_organization_id: Option<Uuid> = source.try_get("owner_organization_id")?;
+    let projects_enabled: bool = source.try_get("projects_enabled")?;
+    if !projects_enabled {
+        return Err(ProjectsError::Forbidden);
+    }
+    let project_role: Option<String> = source.try_get("project_role")?;
+    let org_role: Option<String> = source.try_get("organization_role")?;
+    let org_base_role: Option<String> = source.try_get("organization_base_role")?;
+    let can_copy = owner_user_id == Some(actor_user_id)
+        || project_role.as_deref().is_some_and(can_write_project_role)
+        || org_role
+            .as_deref()
+            .is_some_and(|role| matches!(role, "owner" | "admin"))
+        || org_base_role.as_deref().is_some_and(can_write_project_role);
+    if !can_copy {
+        return Err(ProjectsError::Forbidden);
+    }
+
+    let next_number: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(max(number), 0) + 1
+        FROM projects
+        WHERE (($1::uuid IS NOT NULL AND owner_user_id = $1)
+            OR ($2::uuid IS NOT NULL AND owner_organization_id = $2))
+        "#,
+    )
+    .bind(owner_user_id)
+    .bind(owner_organization_id)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    let new_project_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO projects (
+          owner_user_id, owner_organization_id, number, title, short_description,
+          readme, visibility, default_repository_id, created_by_user_id
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id
+        "#,
+    )
+    .bind(owner_user_id)
+    .bind(owner_organization_id)
+    .bind(next_number)
+    .bind(&title)
+    .bind(source.try_get::<Option<String>, _>("short_description")?)
+    .bind(source.try_get::<Option<String>, _>("readme")?)
+    .bind(source.try_get::<String, _>("visibility")?)
+    .bind(source.try_get::<Option<Uuid>, _>("default_repository_id")?)
+    .bind(actor_user_id)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO project_repositories (project_id, repository_id, link_type)
+        SELECT $2, repository_id, link_type
+        FROM project_repositories
+        WHERE project_id = $1
+        ON CONFLICT (project_id, repository_id) DO NOTHING
+        "#,
+    )
+    .bind(source_project_id)
+    .bind(new_project_id)
+    .execute(&mut *tx)
+    .await?;
+
+    let copied_views = sqlx::query_scalar::<_, i64>(
+        r#"
+        WITH inserted AS (
+          INSERT INTO project_views (project_id, name, layout, position, configuration)
+          SELECT $2, name, layout, position, configuration
+          FROM project_views
+          WHERE project_id = $1
+          RETURNING 1
+        )
+        SELECT count(*)::bigint FROM inserted
+        "#,
+    )
+    .bind(source_project_id)
+    .bind(new_project_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    let copied_fields = sqlx::query_scalar::<_, i64>(
+        r#"
+        WITH inserted AS (
+          INSERT INTO project_fields (project_id, name, field_type, position, settings)
+          SELECT $2, name, field_type, position, settings
+          FROM project_fields
+          WHERE project_id = $1
+          RETURNING 1
+        )
+        SELECT count(*)::bigint FROM inserted
+        "#,
+    )
+    .bind(source_project_id)
+    .bind(new_project_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    let copied_workflows = sqlx::query_scalar::<_, i64>(
+        r#"
+        WITH inserted AS (
+          INSERT INTO project_workflows (project_id, name, enabled, trigger_event, configuration)
+          SELECT $2, name, enabled, trigger_event, configuration
+          FROM project_workflows
+          WHERE project_id = $1
+          RETURNING 1
+        )
+        SELECT count(*)::bigint FROM inserted
+        "#,
+    )
+    .bind(source_project_id)
+    .bind(new_project_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    let copied_draft_items = if request.include_draft_issues {
+        sqlx::query_scalar::<_, i64>(
+            r#"
+            WITH inserted AS (
+              INSERT INTO project_items (project_id, item_type, title, body, position)
+              SELECT $2, item_type, title, body, position
+              FROM project_items
+              WHERE project_id = $1
+                AND item_type = 'draft_issue'
+                AND archived_at IS NULL
+              RETURNING 1
+            )
+            SELECT count(*)::bigint FROM inserted
+            "#,
+        )
+        .bind(source_project_id)
+        .bind(new_project_id)
+        .fetch_one(&mut *tx)
+        .await?
+    } else {
+        0
+    };
+
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, 'project.copy', 'project', $2, $3)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(new_project_id)
+    .bind(json!({
+        "sourceProjectId": source_project_id,
+        "includeDraftIssues": request.include_draft_issues,
+        "copiedViews": copied_views,
+        "copiedFields": copied_fields,
+        "copiedWorkflows": copied_workflows,
+        "copiedDraftItems": copied_draft_items
+    }))
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO project_recent_visits (project_id, user_id, reason, metadata)
+        VALUES ($1, $2, 'copy', $3)
+        ON CONFLICT (project_id, user_id, reason)
+        DO UPDATE SET viewed_at = now(), metadata = EXCLUDED.metadata
+        "#,
+    )
+    .bind(new_project_id)
+    .bind(actor_user_id)
+    .bind(json!({ "sourceProjectId": source_project_id }))
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    let owner: String = source
+        .try_get::<Option<String>, _>("owner_login")?
+        .unwrap_or_else(|| "unknown".to_owned());
+    Ok(CopiedProject {
+        id: new_project_id,
+        number: next_number,
+        title,
+        href: format!("/{owner}/projects/{next_number}"),
+        workspace_href: format!("/{owner}/projects/{next_number}/views/1"),
+        owner,
+        copied_views,
+        copied_fields,
+        copied_workflows,
+        copied_draft_items,
+    })
 }
 
 pub async fn user_projects(

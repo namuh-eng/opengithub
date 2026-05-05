@@ -6744,5 +6744,24 @@
       "Browser smoke used a local API stub because the local test DB credentials are unavailable; QA should repeat the same flow against seeded DB data for org, user, and repository scopes.",
       "Phase 4 still needs the real permissioned copy-project mutation and dialog; Copy buttons remain intentionally non-mutating until that vertical slice."
     ]
+  },
+  {
+    "feature_id": "projects-001",
+    "tests_written": [
+      "Completed Phase 4 Copy Project Flow without marking projects-001 build_pass=true.",
+      "Added POST /api/projects/{project_id}/copies with signed-session/PAT auth, title validation, permission checks, organization policy guardrails, transactional project clone, view/field/workflow cloning, optional draft issue cloning, audit_events writes, and project_recent_visits writes.",
+      "Added same-origin Next proxy at /api/projects/{projectId}/copies and wired ProjectsListPage Copy buttons to an Editorial copy dialog with prefilled [COPY] title, Include draft issues checkbox, Cancel, pending, error, and redirect states.",
+      "Extended focused Rust Projects contract coverage for successful copy counts, audit/recent visit writes, linked issue/PR exclusion, and forbidden copy denial.",
+      "Extended focused Vitest coverage for copy dialog payloads, redirect behavior, server permission errors, draft issue checkbox behavior, and Editorial guardrails.",
+      "Browser smoke passed against a local API stub with real Next.js rendering/proxy: opened org Projects, submitted copy, verified redirect to /namuh/projects/13/views/1, reopened the dialog, checked no dead links/no horizontal overflow, and saved ralph/screenshots/build/projects-001-phase4-copy-flow.jpg.",
+      "Verification passed: cargo fmt --all; focused Biome; focused Projects Vitest; web TypeScript; cargo check -p opengithub-api --tests; focused projects_list_contract compile/run under DB guard; full make check; full make test with Cargo tests plus 530 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Focused projects_list_contract compiled and ran, but DB assertions self-skipped because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test failed with password authentication failed for user postgres.",
+      "Full make test-e2e was attempted with the signed-session/test DB environment, but the wrapper produced no output for over one minute and was terminated; focused browser smoke passed separately.",
+      "Rerun Projects copy QA against a clean migrated credentialed TEST_DATABASE_URL to prove real Postgres cloning for views, fields, workflows, repository links, draft items, audit_events, and project_recent_visits.",
+      "Probe permission boundaries for user-owned projects, org owner/admin/member/base permission combinations, direct project permissions, disabled organization Projects policy, private project visibility, closed source projects, concurrent copy numbering, long titles, and copy without draft issues.",
+      "Phase 5 still needs API docs, final desktop/mobile/user/repo/org screenshots, final E2E coverage, and build_pass bookkeeping before projects-001 is complete."
+    ]
   }
 ]
