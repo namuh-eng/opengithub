@@ -14,7 +14,7 @@ describe("ApiDocsPage", () => {
         name: "Build against implemented opengithub APIs",
       }),
     ).toBeVisible();
-    expect(apiEndpointDocs.length).toBeGreaterThanOrEqual(52);
+    expect(apiEndpointDocs.length).toBeGreaterThanOrEqual(62);
 
     for (const endpoint of apiEndpointDocs) {
       const card = screen
@@ -567,7 +567,7 @@ describe("ApiDocsPage", () => {
       }),
     ).toBeVisible();
     expect(
-      screen.getByText(/expectedContentSha protects concurrent edits/),
+      screen.getAllByText(/expectedContentSha protects concurrent edits/)[0],
     ).toBeVisible();
     expect(
       screen.getByText(/repository.security_policy.upsert audit events/),
@@ -911,6 +911,73 @@ describe("ApiDocsPage", () => {
     ).toBeVisible();
     expect(
       screen.getByText("/api/repos/{owner}/{repo}/pulls/{number}.patch"),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(
+        "/api/repos/{owner}/{repo}/settings/discussions/categories",
+      )[0],
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Read repository Discussion category settings",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Create repository Discussion category",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/settings/discussions/categories/{category_id}",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/settings/discussions/categories/order",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/settings/discussions/sections",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/settings/discussions/sections/{section_id}",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/settings/discussions/sections/order",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(
+        "/api/repos/{owner}/{repo}/settings/discussions/categories/{category_id}/template",
+      )[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/settings/discussions/categories/{category_id}/template/preview",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Delete-with-move updates affected discussion category ids atomically/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Poll categories return a validation envelope/),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(/expectedContentSha protects concurrent edits/)[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText(/discussion_category_forms cache rows/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Preview does not write Git objects/),
     ).toBeVisible();
     expect(
       screen.getByText(

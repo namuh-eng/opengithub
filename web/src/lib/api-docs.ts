@@ -4019,6 +4019,271 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-discussion-category-settings-read",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/settings/discussions/categories",
+    title: "Read repository Discussion category settings",
+    description:
+      "Returns the maintainer settings contract for Discussion categories, sections, category formats, counts, template metadata, permissions, and admin limits.",
+    auth: "Signed opengithub session cookie with repository admin or owner permission",
+    response: `{
+  "repository": {
+    "owner": "mona",
+    "name": "octo-app",
+    "settingsHref": "/mona/octo-app/discussions/categories/edit"
+  },
+  "viewer": { "canManage": true },
+  "limits": { "maxCategories": 25, "maxSections": 12 },
+  "sections": [
+    { "id": "section_01", "name": "Product", "position": 1, "categoryCount": 2 }
+  ],
+  "categories": [
+    {
+      "id": "cat_01",
+      "slug": "q-a",
+      "emoji": "🙏",
+      "name": "Q&A",
+      "description": "Ask and answer product questions.",
+      "format": "question_answer",
+      "sectionId": "section_01",
+      "position": 1,
+      "discussionCount": 8,
+      "templatePath": ".github/DISCUSSION_TEMPLATE/q-a.yml"
+    }
+  ]
+}`,
+    notes: [
+      "Readers, anonymous callers, and private repository outsiders cannot read admin-only settings metadata; private access failures use not_found where appropriate.",
+      "Archived repositories and organization-policy-disabled Discussions return explicit disabled capabilities so the browser does not render dead mutation controls.",
+      "The response contains parsed metadata and counts only. It never includes raw YAML source, session rows, OAuth payloads, token hashes, environment variables, storage keys, or stack traces.",
+    ],
+  },
+  {
+    id: "repo-discussion-category-create",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/settings/discussions/categories",
+    title: "Create repository Discussion category",
+    description:
+      "Creates a Discussion category with bounded emoji/name/description metadata, a supported category format, optional section placement, stable ordering, and audit/activity side effects.",
+    auth: "Signed opengithub session cookie with repository admin or owner permission",
+    request: `{
+  "emoji": "💡",
+  "name": "Ideas",
+  "description": "Share product ideas.",
+  "format": "open_ended",
+  "sectionId": "section_01"
+}`,
+    response: `{
+  "category": {
+    "id": "cat_02",
+    "slug": "ideas",
+    "name": "Ideas",
+    "format": "open_ended",
+    "position": 2
+  },
+  "settings": { "categories": [], "sections": [] }
+}`,
+    notes: [
+      "The server enforces the 25-category limit, unique normalized names/slugs, bounded emoji/name/description lengths, valid formats, and repository-owned section ids.",
+      "Supported formats are announcement, open_ended, poll, and question_answer. Poll categories cannot be paired with YAML form templates.",
+      "Successful writes record repository.discussion_category.create activity plus audit metadata without copying raw session, OAuth, environment, or storage secrets.",
+    ],
+  },
+  {
+    id: "repo-discussion-category-update-delete",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/settings/discussions/categories/{category_id}",
+    title: "Update or delete repository Discussion category",
+    description:
+      "Updates category metadata/format/section assignment, or deletes a category after moving existing Discussions to a chosen destination category.",
+    auth: "Signed opengithub session cookie with repository admin or owner permission",
+    request: `{
+  "emoji": "✅",
+  "name": "Answered questions",
+  "description": "Resolved support conversations.",
+  "format": "question_answer",
+  "sectionId": null,
+  "moveToCategoryId": "cat_02"
+}`,
+    response: `{
+  "category": {
+    "id": "cat_01",
+    "slug": "answered-questions",
+    "format": "question_answer",
+    "sectionId": null
+  },
+  "settings": { "categories": [], "sections": [] }
+}`,
+    notes: [
+      "PATCH updates metadata and category format; DELETE on the same path requires moveToCategoryId when the category owns Discussions, rejects self-destinations, and blocks deleting the final category.",
+      "Delete-with-move updates affected discussion category ids atomically while preserving discussion numbers, timelines, answers, polls, form answers, labels, subscriptions, and notifications.",
+      "Format changes preserve existing Discussions and validate poll/template compatibility instead of silently corrupting creation or detail behavior.",
+    ],
+  },
+  {
+    id: "repo-discussion-category-order",
+    method: "PUT",
+    path: "/api/repos/{owner}/{repo}/settings/discussions/categories/order",
+    title: "Reorder repository Discussion categories",
+    description:
+      "Persists the maintainer-defined category order and section assignment order used by the settings page, chooser, and category rail.",
+    auth: "Signed opengithub session cookie with repository admin or owner permission",
+    request: `{
+  "items": [
+    { "categoryId": "cat_01", "sectionId": "section_01", "position": 1 },
+    { "categoryId": "cat_02", "sectionId": null, "position": 2 }
+  ]
+}`,
+    response: `{
+  "settings": { "categories": [], "sections": [] }
+}`,
+    notes: [
+      "Every category id must belong to the repository; section ids are optional but must be repository-owned when present.",
+      "The server normalizes contiguous positions so repeated saves are idempotent and stable across list/create/detail responses.",
+      "Ordering writes record bounded audit/activity metadata and never expose raw audit rows, session cookies, OAuth data, environment variables, or stack traces.",
+    ],
+  },
+  {
+    id: "repo-discussion-section-create",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/settings/discussions/sections",
+    title: "Create repository Discussion category section",
+    description:
+      "Creates a one-level Discussion category section for grouping category rows in the settings page, chooser, and category rail.",
+    auth: "Signed opengithub session cookie with repository admin or owner permission",
+    request: `{
+  "name": "Product"
+}`,
+    response: `{
+  "section": { "id": "section_01", "name": "Product", "position": 1 },
+  "settings": { "categories": [], "sections": [] }
+}`,
+    notes: [
+      "Section names are unique per repository after normalization and are bounded for browser rendering.",
+      "Sections do not nest; the API rejects parent ids or cross-repository section references.",
+      "Archived repositories, disabled Discussions, readers, and private outsiders receive stable permission or not_found envelopes without secret leakage.",
+    ],
+  },
+  {
+    id: "repo-discussion-section-update-delete",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/settings/discussions/sections/{section_id}",
+    title: "Update or delete repository Discussion category section",
+    description:
+      "Renames a Discussion category section or deletes it while moving its categories back to the unsectioned category group.",
+    auth: "Signed opengithub session cookie with repository admin or owner permission",
+    request: `{
+  "name": "Support"
+}`,
+    response: `{
+  "section": { "id": "section_01", "name": "Support", "position": 1 },
+  "settings": { "categories": [], "sections": [] }
+}`,
+    notes: [
+      "PATCH renames the section; DELETE on the same path removes only the grouping row and preserves all categories and Discussions.",
+      "Deleting a section clears category section ids atomically and then re-normalizes category and section positions.",
+      "Every write records repository.discussion_category_section.* activity plus audit metadata without exposing raw audit payloads or session internals.",
+    ],
+  },
+  {
+    id: "repo-discussion-section-order",
+    method: "PUT",
+    path: "/api/repos/{owner}/{repo}/settings/discussions/sections/order",
+    title: "Reorder repository Discussion category sections",
+    description:
+      "Persists the maintainer-defined order for top-level Discussion category sections.",
+    auth: "Signed opengithub session cookie with repository admin or owner permission",
+    request: `{
+  "sectionIds": ["section_01", "section_02"]
+}`,
+    response: `{
+  "settings": { "categories": [], "sections": [] }
+}`,
+    notes: [
+      "All ids must belong to the repository and each id may appear once. Missing or duplicate ids return validation_failed.",
+      "Section ordering is independent from per-section category ordering; clients save category order through the category order endpoint.",
+      "Responses never include raw session rows, OAuth provider payloads, token hashes, environment variables, storage credentials, or stack traces.",
+    ],
+  },
+  {
+    id: "repo-discussion-category-template-read",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/settings/discussions/categories/{category_id}/template",
+    title: "Read repository Discussion category template",
+    description:
+      "Returns the YAML editor contract for a category's `.github/DISCUSSION_TEMPLATE/*.yml` file, parsed form preview, current content hash, and commit/propose affordances.",
+    auth: "Signed opengithub session cookie with repository admin or owner permission",
+    response: `{
+  "category": { "id": "cat_01", "slug": "q-a", "format": "question_answer" },
+  "template": {
+    "path": ".github/DISCUSSION_TEMPLATE/q-a.yml",
+    "content": "body:\\n  - type: textarea\\n    attributes:\\n      label: Context",
+    "contentSha": "abc123",
+    "parsed": { "valid": true, "fields": [] },
+    "canCommit": true,
+    "canProposeChange": true
+  }
+}`,
+    notes: [
+      "Poll categories return a validation envelope because poll creation and category forms are mutually exclusive.",
+      "Malformed YAML remains maintainer-visible in this settings endpoint while reader creation flows keep using a safe generic fallback.",
+      "The response is admin-only and never exposes private Git object storage keys, raw session rows, OAuth payloads, environment variables, or stack traces.",
+    ],
+  },
+  {
+    id: "repo-discussion-category-template-preview",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/settings/discussions/categories/{category_id}/template/preview",
+    title: "Preview repository Discussion category template",
+    description:
+      "Parses submitted YAML without committing it and returns the sanitized form schema or validation errors for the template editor preview pane.",
+    auth: "Signed opengithub session cookie with repository admin or owner permission",
+    request: `{
+  "content": "body:\\n  - type: input\\n    id: context\\n    attributes:\\n      label: Context\\n    validations:\\n      required: true"
+}`,
+    response: `{
+  "valid": true,
+  "parseError": null,
+  "fields": [
+    { "id": "context", "fieldType": "input", "label": "Context", "required": true }
+  ]
+}`,
+    notes: [
+      "Preview uses the same bounded parser as Discussion creation: input, textarea, dropdown, and checkboxes are supported; oversized or unsupported fields are rejected or ignored safely.",
+      "Preview does not write Git objects, commits, category rows, form caches, audit events, activity events, notifications, or storage objects.",
+      "Markdown descriptions and labels are sanitized before returning to the browser, and raw parser stack traces are never serialized.",
+    ],
+  },
+  {
+    id: "repo-discussion-category-template-commit",
+    method: "PUT",
+    path: "/api/repos/{owner}/{repo}/settings/discussions/categories/{category_id}/template",
+    title: "Commit repository Discussion category template",
+    description:
+      "Writes or updates a category form template file on the default branch or a proposed branch, validates expected content sha, refreshes the parsed form cache, and records audit metadata.",
+    auth: "Signed opengithub session cookie with repository admin or owner permission",
+    request: `{
+  "content": "body:\\n  - type: textarea\\n    id: context\\n    attributes:\\n      label: Context",
+  "expectedContentSha": "abc123",
+  "commitMessage": "Update Q&A discussion template",
+  "targetBranch": "main",
+  "proposeChange": false
+}`,
+    response: `{
+  "templatePath": ".github/DISCUSSION_TEMPLATE/q-a.yml",
+  "contentSha": "def456",
+  "commitOid": "1234abcd",
+  "branchName": "main",
+  "proposedChangeHref": null,
+  "parsed": { "valid": true, "fields": [] }
+}`,
+    notes: [
+      "expectedContentSha protects concurrent edits; conflicts return a stable validation envelope with no raw Git object internals.",
+      "Successful commits update repository_files, commits, repository_git_refs or a proposed branch snapshot, category template_path, discussion_category_forms cache rows, repository_activity_events, and audit_events.",
+      "YAML size, field count, option count, branch name, commit message, archived repository, poll category, and permission checks all run before any write is committed.",
+    ],
+  },
+  {
     id: "repo-releases-list",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/releases?page=1&pageSize=30",

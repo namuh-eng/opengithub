@@ -82,7 +82,7 @@
 
 ## Phase 5: API Docs, Browser Evidence, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `discussions-004` only after category/section management, delete migration, YAML template preview/commit, docs, screenshots, QA handoff, and PRD bookkeeping are complete. Do not implement organization-level discussion policy, poll voting, or unrelated repository settings here.
 

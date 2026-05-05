@@ -6509,5 +6509,21 @@
       "Repeat QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
       "Phase 5 still needs API docs, final browser evidence, QA handoff, prd.json build_pass=true, and final desktop/mobile screenshots."
     ]
+  },
+  {
+    "feature_id": "discussions-004",
+    "tests_written": [
+      "Completed Phase 5 API Docs, Browser Evidence, QA Handoff, and Build-Pass Bookkeeping and marked discussions-004 build_pass=true while leaving qa_pass=false.",
+      "Added /docs/api endpoint coverage for GET/POST/PATCH/DELETE/PUT Discussion category settings, category ordering, section CRUD/order, delete-with-move migration, and template read/preview/commit.",
+      "Added focused API docs assertions for category settings headings/paths, section paths, template preview/commit paths, delete-with-move behavior, poll/template rejection, expectedContentSha conflict protection, form-cache refresh, and preview non-persistence.",
+      "Verification passed before bookkeeping: cd web && npm test -- --run api-docs.test.tsx; cd web && npx biome check src/lib/api-docs.ts tests/api-docs.test.tsx; cd web && npx tsc --noEmit --pretty false."
+    ],
+    "needs_deeper_qa": [
+      "Full make check, make test, make test-e2e, and final Editorial banned-value scan are recorded in build-progress.txt for this phase.",
+      "The local seeded Playwright path has previously been blocked by TEST_DATABASE_URL postgres password authentication failures; rerun web/tests/e2e/repository-discussions.spec.ts against a clean migrated credentialed TEST_DATABASE_URL to capture ralph/screenshots/build/discussions-004-final-desktop.jpg and ralph/screenshots/build/discussions-004-final-mobile.jpg.",
+      "Repeat category create/edit, section create/edit/delete/order, delete-with-move, and YAML template preview/commit with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Rerun focused Rust DB-backed assertions against a clean migrated credentialed TEST_DATABASE_URL to prove discussion migration, repository_files/commits/repository_git_refs, discussion_category_forms cache refresh, audit_events, and activity rows with real rows.",
+      "Poll category template rejection and malformed YAML fallback should be checked manually in the browser after seeded database credentials are available."
+    ]
   }
 ]
