@@ -879,8 +879,19 @@ export function repositoryDependenciesHref(
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/network/dependencies${query ? `?${query}` : ""}`;
 }
 
-export function repositoryDependentsHref(owner: string, repo: string) {
-  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/network/dependents`;
+export function repositoryDependentsHref(
+  owner: string,
+  repo: string,
+  options: {
+    package?: string | null;
+    owner?: string | null;
+  } = {},
+) {
+  const params = new URLSearchParams();
+  if (options.package?.trim()) params.set("package", options.package.trim());
+  if (options.owner?.trim()) params.set("owner", options.owner.trim());
+  const query = params.toString();
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/network/dependents${query ? `?${query}` : ""}`;
 }
 
 export function repositoryDependencyPackageHref({

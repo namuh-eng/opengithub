@@ -71,6 +71,7 @@ use crate::{
         repository_commit_history_for_actor_by_owner_name,
         repository_contributors_for_actor_by_owner_name, repository_creation_options,
         repository_dependencies_for_actor_by_owner_name,
+        repository_dependents_for_actor_by_owner_name,
         repository_file_finder_for_actor_by_owner_name, repository_forks_for_actor_by_owner_name,
         repository_name_availability, repository_network_for_actor_by_owner_name,
         repository_overview_for_viewer_by_owner_name,
@@ -87,9 +88,9 @@ use crate::{
         RepositoryAccessInviteRequest, RepositoryAccessRolePatch, RepositoryAccessTeamGrantRequest,
         RepositoryBootstrapRequest, RepositoryBranchRuleMutation, RepositoryBranchesQuery,
         RepositoryCommitDetailContextQuery, RepositoryCommitHistoryQuery,
-        RepositoryContributorsQuery, RepositoryDependencyQuery, RepositoryError,
-        RepositoryFileFinderQuery, RepositoryForksQuery, RepositoryOwner, RepositoryPathQuery,
-        RepositoryPulseQuery, RepositoryRefsQuery, RepositoryRulesetMutation,
+        RepositoryContributorsQuery, RepositoryDependencyQuery, RepositoryDependentsQuery,
+        RepositoryError, RepositoryFileFinderQuery, RepositoryForksQuery, RepositoryOwner,
+        RepositoryPathQuery, RepositoryPulseQuery, RepositoryRefsQuery, RepositoryRulesetMutation,
         RepositorySettingsPatch, RepositoryTrafficQuery, RepositoryVisibility,
         RepositoryWatchSettingsPatch,
     },
@@ -124,6 +125,7 @@ pub fn router() -> Router<AppState> {
         .route("/:owner/:repo/graphs/contributors", get(contributors))
         .route("/:owner/:repo/graphs/traffic", get(traffic))
         .route("/:owner/:repo/network/dependencies", get(dependencies))
+        .route("/:owner/:repo/network/dependents", get(dependents))
         .route(
             "/:owner/:repo/network/dependencies/sbom",
             post(create_sbom_export),
@@ -430,6 +432,13 @@ struct DependenciesQuery {
     q: Option<String>,
     ecosystem: Option<String>,
     relationship: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DependentsQuery {
+    package: Option<String>,
+    owner: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -977,6 +986,37 @@ async fn dependencies(
             query: query.q.as_deref(),
             ecosystem: query.ecosystem.as_deref(),
             relationship: query.relationship.as_deref(),
+        },
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn dependents(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<DependentsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = repository_dependents_for_actor_by_owner_name(
+        pool,
+        actor.0.id,
+        &owner,
+        &repo,
+        RepositoryDependentsQuery {
+            package: query.package.as_deref(),
+            owner: query.owner.as_deref(),
         },
     )
     .await

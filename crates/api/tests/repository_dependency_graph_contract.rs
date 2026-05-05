@@ -11,8 +11,10 @@ use opengithub_api::{
         permissions::RepositoryRole,
         repositories::{
             create_repository, grant_repository_permission, insert_commit,
-            repository_dependencies_for_actor_by_owner_name, upsert_git_ref, CreateCommit,
-            CreateRepository, RepositoryDependencyQuery, RepositoryOwner, RepositoryVisibility,
+            repository_dependencies_for_actor_by_owner_name,
+            repository_dependents_for_actor_by_owner_name, upsert_git_ref, CreateCommit,
+            CreateRepository, RepositoryDependencyQuery, RepositoryDependentsQuery,
+            RepositoryOwner, RepositoryVisibility,
         },
     },
 };
@@ -518,4 +520,232 @@ async fn dependency_graph_exports_downloadable_spdx_sbom_and_audits() {
     .await
     .expect("audit count should load");
     assert_eq!(audit_count, 1);
+}
+
+#[tokio::test]
+async fn dependency_graph_dependents_filter_public_usage_and_hide_private_consumers() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping dependency graph dependents scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "dependents-owner").await;
+    let actor = create_user(&pool, "dependents-actor").await;
+    let public_consumer_owner = create_user(&pool, "public-consumer").await;
+    let private_consumer_owner = create_user(&pool, "private-consumer").await;
+    let actor_cookie = cookie_header(&pool, &config, &actor).await;
+    let package_name = format!("@namuh/flow-{}", Uuid::new_v4().simple());
+
+    let source = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("source-{}", Uuid::new_v4().simple()),
+            description: Some("Public package source".to_owned()),
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("source repository should create");
+    grant_repository_permission(&pool, source.id, actor.id, RepositoryRole::Read, "direct")
+        .await
+        .expect("actor should read source");
+
+    let public_consumer = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User {
+                id: public_consumer_owner.id,
+            },
+            name: format!("consumer-{}", Uuid::new_v4().simple()),
+            description: Some("Public dependent repository".to_owned()),
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: public_consumer_owner.id,
+        },
+    )
+    .await
+    .expect("public dependent should create");
+    let private_consumer = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User {
+                id: private_consumer_owner.id,
+            },
+            name: format!("private-consumer-{}", Uuid::new_v4().simple()),
+            description: Some("Private dependent repository".to_owned()),
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: private_consumer_owner.id,
+        },
+    )
+    .await
+    .expect("private dependent should create");
+
+    for repository in [&source, &public_consumer, &private_consumer] {
+        let commit = insert_commit(
+            &pool,
+            repository.id,
+            CreateCommit {
+                oid: format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple()),
+                author_user_id: Some(owner.id),
+                committer_user_id: Some(owner.id),
+                message: "Add package manifest".to_owned(),
+                tree_oid: Some(format!("tree-{}", Uuid::new_v4().simple())),
+                parent_oids: Vec::new(),
+                committed_at: Utc::now(),
+            },
+        )
+        .await
+        .expect("commit should insert");
+        upsert_git_ref(&pool, repository.id, "main", "branch", Some(commit.id))
+            .await
+            .expect("main ref should upsert");
+        seed_file(
+            &pool,
+            repository.id,
+            commit.id,
+            "package.json",
+            &format!(
+                r#"{{"dependencies":{{"{}":"^1.2.3","vite":"5.0.0"}}}}"#,
+                package_name
+            ),
+        )
+        .await;
+    }
+
+    for repository in [&source, &public_consumer, &private_consumer] {
+        repository_dependencies_for_actor_by_owner_name(
+            &pool,
+            if repository.id == private_consumer.id {
+                private_consumer_owner.id
+            } else {
+                actor.id
+            },
+            &repository.owner_login,
+            &repository.name,
+            RepositoryDependencyQuery {
+                query: None,
+                ecosystem: None,
+                relationship: None,
+            },
+        )
+        .await
+        .expect("dependency extraction should run")
+        .expect("repository should exist");
+    }
+
+    let view = repository_dependents_for_actor_by_owner_name(
+        &pool,
+        actor.id,
+        &source.owner_login,
+        &source.name,
+        RepositoryDependentsQuery {
+            package: Some(&format!("npm:{package_name}")),
+            owner: Some(&public_consumer.owner_login),
+        },
+    )
+    .await
+    .expect("dependents should load")
+    .expect("source should exist");
+    assert_eq!(
+        view.filters.package.as_deref(),
+        Some(format!("npm:{package_name}").as_str())
+    );
+    assert_eq!(
+        view.filters.owner.as_deref(),
+        Some(public_consumer.owner_login.as_str())
+    );
+    assert_eq!(view.summary.repository_count, 1);
+    assert_eq!(view.summary.hidden_private_count, 0);
+    assert!(view.summary.approximate);
+    assert_eq!(view.dependents.len(), 1);
+    assert_eq!(view.dependents[0].owner_login, public_consumer.owner_login);
+    assert_eq!(view.dependents[0].package.name, package_name);
+    assert!(view
+        .packages
+        .iter()
+        .any(|package| package.selected && package.package.name == package_name));
+
+    let unfiltered = repository_dependents_for_actor_by_owner_name(
+        &pool,
+        actor.id,
+        &source.owner_login,
+        &source.name,
+        RepositoryDependentsQuery {
+            package: Some(&package_name),
+            owner: None,
+        },
+    )
+    .await
+    .expect("unfiltered dependents should load")
+    .expect("source should exist");
+    assert_eq!(unfiltered.summary.repository_count, 1);
+    assert_eq!(unfiltered.summary.hidden_private_count, 1);
+    assert!(!serde_json::to_string(&unfiltered)
+        .expect("dependents should serialize")
+        .contains(&private_consumer.name));
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+    let encoded_package =
+        url::form_urlencoded::byte_serialize(format!("npm:{package_name}").as_bytes())
+            .collect::<String>();
+    let uri = format!(
+        "/api/repos/{}/{}/network/dependents?package={}&owner={}",
+        source.owner_login, source.name, encoded_package, public_consumer.owner_login
+    );
+    let (status, body) = get_json(app.clone(), &uri, Some(&actor_cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["summary"]["repositoryCount"], 1);
+    assert_eq!(
+        body["dependents"][0]["href"],
+        format!("/{}/{}", public_consumer.owner_login, public_consumer.name)
+    );
+    assert!(!body.to_string().contains(&private_consumer.name));
+
+    let invalid_uri = format!(
+        "/api/repos/{}/{}/network/dependents?owner=bad/owner",
+        source.owner_login, source.name
+    );
+    let (invalid_status, invalid_body) =
+        get_json(app.clone(), &invalid_uri, Some(&actor_cookie)).await;
+    assert_eq!(invalid_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(invalid_body["error"]["code"], "validation_failed");
+
+    let private_source = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("private-source-{}", Uuid::new_v4().simple()),
+            description: Some("Private package source".to_owned()),
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("private source should create");
+    grant_repository_permission(
+        &pool,
+        private_source.id,
+        actor.id,
+        RepositoryRole::Read,
+        "direct",
+    )
+    .await
+    .expect("actor should read private source");
+    let private_uri = format!(
+        "/api/repos/{}/{}/network/dependents",
+        private_source.owner_login, private_source.name
+    );
+    let (private_status, private_body) = get_json(app, &private_uri, Some(&actor_cookie)).await;
+    assert_eq!(private_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        private_body["error"]["code"],
+        "dependency_graph_unavailable"
+    );
+    assert!(!private_body.to_string().contains("private-consumer"));
 }

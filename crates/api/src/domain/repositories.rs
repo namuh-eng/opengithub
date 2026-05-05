@@ -1267,10 +1267,30 @@ pub struct RepositoryDependenciesView {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct RepositoryDependentsView {
+    pub repository: RepositoryNetworkRepository,
+    pub filters: RepositoryDependentsFilters,
+    pub summary: RepositoryDependentsSummary,
+    pub packages: Vec<RepositoryDependentPackage>,
+    pub dependents: Vec<RepositoryDependentRow>,
+    pub availability: RepositoryDependencyGraphAvailability,
+    pub links: RepositoryDependencyLinks,
+    pub freshness: RepositoryNetworkFreshness,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct RepositoryDependencyFilters {
     pub query: Option<String>,
     pub ecosystem: Option<String>,
     pub relationship: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryDependentsFilters {
+    pub package: Option<String>,
+    pub owner: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1282,6 +1302,15 @@ pub struct RepositoryDependencySummary {
     pub ecosystem_counts: Vec<RepositoryDependencyEcosystemCount>,
     pub manifest_count: i64,
     pub advisory_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryDependentsSummary {
+    pub repository_count: i64,
+    pub package_count: i64,
+    pub hidden_private_count: i64,
+    pub approximate: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1311,6 +1340,35 @@ pub struct RepositoryDependencyPackage {
     pub ecosystem: String,
     pub name: String,
     pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryDependentPackage {
+    pub package: RepositoryDependencyPackage,
+    pub dependent_count: i64,
+    pub selected: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryDependentRow {
+    pub repository_id: Uuid,
+    pub owner_login: String,
+    pub owner_avatar_url: Option<String>,
+    pub name: String,
+    pub description: Option<String>,
+    pub visibility: RepositoryVisibility,
+    pub package: RepositoryDependencyPackage,
+    pub manifest_path: Option<String>,
+    pub detected_at: DateTime<Utc>,
+    pub stars_count: i64,
+    pub forks_count: i64,
+    pub open_issues_count: i64,
+    pub open_pull_requests_count: i64,
+    pub href: String,
+    pub owner_href: String,
+    pub package_href: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1713,6 +1771,12 @@ pub struct RepositoryDependencyQuery<'a> {
     pub query: Option<&'a str>,
     pub ecosystem: Option<&'a str>,
     pub relationship: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct RepositoryDependentsQuery<'a> {
+    pub package: Option<&'a str>,
+    pub owner: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -2798,6 +2862,27 @@ pub async fn repository_dependencies_for_actor_by_owner_name(
         return Err(RepositoryError::PermissionDenied);
     }
     repository_dependencies_for_repository(pool, &repository, actor_user_id, query)
+        .await
+        .map(Some)
+}
+
+pub async fn repository_dependents_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    query: RepositoryDependentsQuery<'_>,
+) -> Result<Option<RepositoryDependentsView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    repository_dependents_for_repository(pool, &repository, actor_user_id, query)
         .await
         .map(Some)
 }
@@ -9444,6 +9529,89 @@ async fn repository_dependencies_for_repository(
     })
 }
 
+async fn repository_dependents_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    query: RepositoryDependentsQuery<'_>,
+) -> Result<RepositoryDependentsView, RepositoryError> {
+    let filters = normalize_dependents_filters(query)?;
+    if repository.visibility != RepositoryVisibility::Public {
+        return Err(RepositoryError::DependencyGraphUnavailable(
+            "Dependents are shown only for public source repositories.".to_owned(),
+        ));
+    }
+
+    extract_repository_dependencies_for_repository(pool, repository).await?;
+    let source_packages =
+        repository_dependent_packages(pool, repository, filters.package.as_deref()).await?;
+    if filters.package.is_some() && source_packages.is_empty() {
+        return Err(RepositoryError::DependencyGraphUnavailable(
+            "The selected package is not indexed for this repository.".to_owned(),
+        ));
+    }
+    let dependents = repository_dependent_rows(pool, repository, &filters).await?;
+    let hidden_private_count =
+        repository_hidden_dependent_count(pool, repository, &filters).await?;
+    let freshness =
+        record_repository_dependents_snapshot(pool, repository.id, dependents.len() as i64).await?;
+    let viewer_permission = viewer_permission_for_user(pool, repository, actor_user_id)
+        .await?
+        .unwrap_or_else(|| "read".to_owned());
+    let selected_package_count = source_packages
+        .iter()
+        .filter(|package| package.selected)
+        .count()
+        .max(source_packages.len().min(1)) as i64;
+    let repository_count = dependents
+        .iter()
+        .map(|row| row.repository_id)
+        .collect::<BTreeSet<_>>()
+        .len() as i64;
+
+    Ok(RepositoryDependentsView {
+        repository: repository_network_repository(
+            pool,
+            repository,
+            actor_user_id,
+            viewer_permission,
+        )
+        .await?,
+        filters,
+        summary: RepositoryDependentsSummary {
+            repository_count,
+            package_count: selected_package_count,
+            hidden_private_count,
+            approximate: true,
+        },
+        packages: source_packages,
+        dependents,
+        availability: RepositoryDependencyGraphAvailability {
+            enabled: true,
+            indexed: true,
+            supported_ecosystems: vec!["npm".to_owned(), "cargo".to_owned(), "pip".to_owned()],
+            message: "Dependents are estimated from public indexed dependency usage.".to_owned(),
+            unavailable_reason: None,
+        },
+        links: RepositoryDependencyLinks {
+            dependencies_href: format!(
+                "/{}/{}/network/dependencies",
+                repository.owner_login, repository.name
+            ),
+            dependents_href: format!(
+                "/{}/{}/network/dependents",
+                repository.owner_login, repository.name
+            ),
+            export_sbom_href: format!(
+                "/api/repos/{}/{}/network/dependencies/sbom",
+                percent_encode_segment(&repository.owner_login),
+                percent_encode_segment(&repository.name)
+            ),
+        },
+        freshness,
+    })
+}
+
 #[derive(Debug, Clone)]
 struct ExtractedDependency {
     ecosystem: &'static str,
@@ -9871,6 +10039,38 @@ fn normalize_dependency_filters(
     })
 }
 
+fn normalize_dependents_filters(
+    query: RepositoryDependentsQuery<'_>,
+) -> Result<RepositoryDependentsFilters, RepositoryError> {
+    let package = query
+        .package
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if let Some(value) = package {
+        if value.chars().count() > 160 {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(
+                "package must be 160 characters or fewer".to_owned(),
+            ));
+        }
+    }
+    let owner = query.owner.map(str::trim).filter(|value| !value.is_empty());
+    if let Some(value) = owner {
+        let valid = value.chars().count() <= 80
+            && value
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_'));
+        if !valid {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(
+                "owner must be 80 characters or fewer and contain only letters, numbers, hyphen, or underscore".to_owned(),
+            ));
+        }
+    }
+    Ok(RepositoryDependentsFilters {
+        package: package.map(str::to_owned),
+        owner: owner.map(str::to_owned),
+    })
+}
+
 async fn repository_dependency_manifests(
     pool: &PgPool,
     repository: &Repository,
@@ -9987,6 +10187,291 @@ async fn repository_dependency_rows(
     Ok(dependencies)
 }
 
+async fn repository_dependent_packages(
+    pool: &PgPool,
+    repository: &Repository,
+    package_filter: Option<&str>,
+) -> Result<Vec<RepositoryDependentPackage>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        WITH source_packages AS (
+            SELECT DISTINCT dependency_packages.id,
+                   dependency_packages.ecosystem,
+                   dependency_packages.name,
+                   dependency_packages.package_href
+            FROM repository_dependencies
+            JOIN dependency_packages ON dependency_packages.id = repository_dependencies.package_id
+            WHERE repository_dependencies.repository_id = $1
+              AND (
+                $2::text IS NULL
+                OR lower(dependency_packages.name) = lower($2)
+                OR lower(dependency_packages.ecosystem || ':' || dependency_packages.name) = lower($2)
+              )
+        ),
+        public_dependents AS (
+            SELECT repository_dependencies.package_id,
+                   repository_dependencies.repository_id AS dependent_repository_id
+            FROM repository_dependencies
+            JOIN repositories ON repositories.id = repository_dependencies.repository_id
+            WHERE repository_dependencies.repository_id <> $1
+              AND repositories.visibility = 'public'
+            UNION
+            SELECT repository_dependents.package_id,
+                   repository_dependents.dependent_repository_id
+            FROM repository_dependents
+            JOIN repositories ON repositories.id = repository_dependents.dependent_repository_id
+            WHERE repository_dependents.source_repository_id = $1
+              AND repositories.visibility = 'public'
+        )
+        SELECT source_packages.id,
+               source_packages.ecosystem,
+               source_packages.name,
+               source_packages.package_href,
+               count(DISTINCT public_dependents.dependent_repository_id)::bigint AS dependent_count
+        FROM source_packages
+        LEFT JOIN public_dependents ON public_dependents.package_id = source_packages.id
+        GROUP BY source_packages.id,
+                 source_packages.ecosystem,
+                 source_packages.name,
+                 source_packages.package_href
+        ORDER BY dependent_count DESC, lower(source_packages.name) ASC
+        "#,
+    )
+    .bind(repository.id)
+    .bind(package_filter)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let id: Uuid = row.get("id");
+            let ecosystem: String = row.get("ecosystem");
+            let name: String = row.get("name");
+            let selected = package_filter
+                .map(|filter| {
+                    filter.eq_ignore_ascii_case(&name)
+                        || filter.eq_ignore_ascii_case(&format!("{ecosystem}:{name}"))
+                })
+                .unwrap_or(false);
+            RepositoryDependentPackage {
+                package: RepositoryDependencyPackage {
+                    id,
+                    ecosystem: ecosystem.clone(),
+                    name: name.clone(),
+                    href: row
+                        .get::<Option<String>, _>("package_href")
+                        .unwrap_or_else(|| dependency_package_href(&ecosystem, &name)),
+                },
+                dependent_count: row.get("dependent_count"),
+                selected,
+            }
+        })
+        .collect())
+}
+
+async fn repository_dependent_rows(
+    pool: &PgPool,
+    repository: &Repository,
+    filters: &RepositoryDependentsFilters,
+) -> Result<Vec<RepositoryDependentRow>, RepositoryError> {
+    let rows = sqlx::query(
+        r#"
+        WITH source_packages AS (
+            SELECT DISTINCT dependency_packages.id,
+                   dependency_packages.ecosystem,
+                   dependency_packages.name,
+                   dependency_packages.package_href
+            FROM repository_dependencies
+            JOIN dependency_packages ON dependency_packages.id = repository_dependencies.package_id
+            WHERE repository_dependencies.repository_id = $1
+              AND (
+                $2::text IS NULL
+                OR lower(dependency_packages.name) = lower($2)
+                OR lower(dependency_packages.ecosystem || ':' || dependency_packages.name) = lower($2)
+              )
+        ),
+        inferred_dependents AS (
+            SELECT repository_dependencies.repository_id AS dependent_repository_id,
+                   repository_dependencies.package_id,
+                   min(repository_dependencies.manifest_id::text) AS manifest_id,
+                   max(repository_dependencies.detected_at) AS detected_at
+            FROM repository_dependencies
+            JOIN source_packages ON source_packages.id = repository_dependencies.package_id
+            WHERE repository_dependencies.repository_id <> $1
+            GROUP BY repository_dependencies.repository_id, repository_dependencies.package_id
+        ),
+        explicit_dependents AS (
+            SELECT repository_dependents.dependent_repository_id,
+                   repository_dependents.package_id,
+                   NULL::text AS manifest_id,
+                   max(repository_dependents.detected_at) AS detected_at
+            FROM repository_dependents
+            JOIN source_packages ON source_packages.id = repository_dependents.package_id
+            WHERE repository_dependents.source_repository_id = $1
+            GROUP BY repository_dependents.dependent_repository_id, repository_dependents.package_id
+        ),
+        combined AS (
+            SELECT * FROM inferred_dependents
+            UNION ALL
+            SELECT * FROM explicit_dependents
+        ),
+        deduped AS (
+            SELECT DISTINCT ON (combined.dependent_repository_id, combined.package_id)
+                   combined.dependent_repository_id,
+                   combined.package_id,
+                   combined.manifest_id,
+                   combined.detected_at
+            FROM combined
+            ORDER BY combined.dependent_repository_id, combined.package_id, combined.detected_at DESC
+        )
+        SELECT repositories.id,
+               repositories.owner_user_id,
+               repositories.owner_organization_id,
+               COALESCE(NULLIF(owner_user.username, ''), owner_user.email, organizations.slug) AS owner_login,
+               owner_user.avatar_url AS owner_avatar_url,
+               repositories.name,
+               repositories.description,
+               repositories.visibility,
+               source_packages.id AS package_id,
+               source_packages.ecosystem,
+               source_packages.name AS package_name,
+               source_packages.package_href,
+               dependency_manifests.path AS manifest_path,
+               deduped.detected_at,
+               COALESCE(star_counts.count, 0)::bigint AS stars_count,
+               COALESCE(fork_counts.count, 0)::bigint AS forks_count,
+               COALESCE(issue_counts.count, 0)::bigint AS open_issues_count,
+               COALESCE(pull_counts.count, 0)::bigint AS open_pull_requests_count
+        FROM deduped
+        JOIN source_packages ON source_packages.id = deduped.package_id
+        JOIN repositories ON repositories.id = deduped.dependent_repository_id
+        LEFT JOIN users owner_user ON owner_user.id = repositories.owner_user_id
+        LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
+        LEFT JOIN dependency_manifests ON dependency_manifests.id::text = deduped.manifest_id
+        LEFT JOIN LATERAL (
+            SELECT count(*)::bigint AS count FROM repository_stars WHERE repository_id = repositories.id
+        ) star_counts ON true
+        LEFT JOIN LATERAL (
+            SELECT count(*)::bigint AS count FROM repository_forks WHERE source_repository_id = repositories.id
+        ) fork_counts ON true
+        LEFT JOIN LATERAL (
+            SELECT count(*)::bigint AS count
+            FROM issues
+            WHERE issues.repository_id = repositories.id
+              AND issues.state = 'open'
+              AND NOT EXISTS (
+                  SELECT 1 FROM pull_requests WHERE pull_requests.issue_id = issues.id
+              )
+        ) issue_counts ON true
+        LEFT JOIN LATERAL (
+            SELECT count(*)::bigint AS count
+            FROM pull_requests
+            WHERE pull_requests.repository_id = repositories.id
+              AND pull_requests.state = 'open'
+        ) pull_counts ON true
+        WHERE repositories.visibility = 'public'
+          AND ($3::text IS NULL OR lower(COALESCE(NULLIF(owner_user.username, ''), owner_user.email, organizations.slug)) = lower($3))
+        ORDER BY lower(COALESCE(NULLIF(owner_user.username, ''), owner_user.email, organizations.slug)) ASC,
+                 lower(repositories.name) ASC,
+                 lower(source_packages.name) ASC
+        LIMIT 100
+        "#,
+    )
+    .bind(repository.id)
+    .bind(filters.package.as_deref())
+    .bind(filters.owner.as_deref())
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            let owner_login: String = row.get("owner_login");
+            let name: String = row.get("name");
+            let ecosystem: String = row.get("ecosystem");
+            let package_name: String = row.get("package_name");
+            let package_href = row
+                .get::<Option<String>, _>("package_href")
+                .unwrap_or_else(|| dependency_package_href(&ecosystem, &package_name));
+            Ok(RepositoryDependentRow {
+                repository_id: row.get("id"),
+                owner_login: owner_login.clone(),
+                owner_avatar_url: row.get("owner_avatar_url"),
+                name: name.clone(),
+                description: row.get("description"),
+                visibility: RepositoryVisibility::try_from(
+                    row.get::<String, _>("visibility").as_str(),
+                )?,
+                package: RepositoryDependencyPackage {
+                    id: row.get("package_id"),
+                    ecosystem,
+                    name: package_name,
+                    href: package_href.clone(),
+                },
+                manifest_path: row.get("manifest_path"),
+                detected_at: row.get("detected_at"),
+                stars_count: row.get("stars_count"),
+                forks_count: row.get("forks_count"),
+                open_issues_count: row.get("open_issues_count"),
+                open_pull_requests_count: row.get("open_pull_requests_count"),
+                href: format!("/{owner_login}/{name}"),
+                owner_href: format!("/{owner_login}"),
+                package_href,
+            })
+        })
+        .collect::<Result<Vec<_>, RepositoryError>>()
+}
+
+async fn repository_hidden_dependent_count(
+    pool: &PgPool,
+    repository: &Repository,
+    filters: &RepositoryDependentsFilters,
+) -> Result<i64, RepositoryError> {
+    sqlx::query_scalar::<_, i64>(
+        r#"
+        WITH source_packages AS (
+            SELECT DISTINCT dependency_packages.id
+            FROM repository_dependencies
+            JOIN dependency_packages ON dependency_packages.id = repository_dependencies.package_id
+            WHERE repository_dependencies.repository_id = $1
+              AND (
+                $2::text IS NULL
+                OR lower(dependency_packages.name) = lower($2)
+                OR lower(dependency_packages.ecosystem || ':' || dependency_packages.name) = lower($2)
+              )
+        ),
+        private_dependents AS (
+            SELECT repository_dependencies.repository_id AS dependent_repository_id
+            FROM repository_dependencies
+            JOIN source_packages ON source_packages.id = repository_dependencies.package_id
+            JOIN repositories ON repositories.id = repository_dependencies.repository_id
+            LEFT JOIN users owner_user ON owner_user.id = repositories.owner_user_id
+            LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
+            WHERE repository_dependencies.repository_id <> $1
+              AND repositories.visibility <> 'public'
+              AND ($3::text IS NULL OR lower(COALESCE(NULLIF(owner_user.username, ''), owner_user.email, organizations.slug)) = lower($3))
+            UNION
+            SELECT repository_dependents.dependent_repository_id
+            FROM repository_dependents
+            JOIN source_packages ON source_packages.id = repository_dependents.package_id
+            JOIN repositories ON repositories.id = repository_dependents.dependent_repository_id
+            LEFT JOIN users owner_user ON owner_user.id = repositories.owner_user_id
+            LEFT JOIN organizations ON organizations.id = repositories.owner_organization_id
+            WHERE repository_dependents.source_repository_id = $1
+              AND repositories.visibility <> 'public'
+              AND ($3::text IS NULL OR lower(COALESCE(NULLIF(owner_user.username, ''), owner_user.email, organizations.slug)) = lower($3))
+        )
+        SELECT count(DISTINCT dependent_repository_id)::bigint FROM private_dependents
+        "#,
+    )
+    .bind(repository.id)
+    .bind(filters.package.as_deref())
+    .bind(filters.owner.as_deref())
+    .fetch_one(pool)
+    .await
+    .map_err(RepositoryError::from)
+}
+
 async fn repository_dependency_advisories(
     pool: &PgPool,
     package_id: Uuid,
@@ -10073,6 +10558,37 @@ async fn record_repository_dependency_snapshot(
     )
     .bind(repository_id)
     .bind(Json(json!({ "dependencyCount": dependency_count })))
+    .fetch_one(pool)
+    .await?;
+    let expires_at: DateTime<Utc> = row.get("expires_at");
+    Ok(RepositoryNetworkFreshness {
+        computed_at: row.get("computed_at"),
+        expires_at,
+        stale: expires_at <= Utc::now(),
+        cadence: "daily".to_owned(),
+    })
+}
+
+async fn record_repository_dependents_snapshot(
+    pool: &PgPool,
+    repository_id: Uuid,
+    dependent_count: i64,
+) -> Result<RepositoryNetworkFreshness, RepositoryError> {
+    let row = sqlx::query(
+        r#"
+        INSERT INTO repository_insight_snapshots (
+            repository_id, period_key, cache_key, snapshot, computed_at, expires_at
+        )
+        VALUES ($1, '1m', 'dependency-graph:dependents', $2, now(), now() + interval '1 day')
+        ON CONFLICT (repository_id, period_key, cache_key) DO UPDATE SET
+            snapshot = EXCLUDED.snapshot,
+            computed_at = now(),
+            expires_at = now() + interval '1 day'
+        RETURNING computed_at, expires_at
+        "#,
+    )
+    .bind(repository_id)
+    .bind(Json(json!({ "dependentCount": dependent_count })))
     .fetch_one(pool)
     .await?;
     let expires_at: DateTime<Utc> = row.get("expires_at");

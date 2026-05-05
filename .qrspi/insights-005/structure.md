@@ -58,7 +58,7 @@
 
 ## Phase 4: Dependents API and Page Filters - package and owner scoped usage view
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement `/{owner}/{repo}/network/dependents` with package filtering, owner filtering, repository/package count summary, warning disclosure, and dependent repository rows. Public repository dependents should be visible from indexed package usage; private repository dependents should return a truthful unavailable/empty state without exposing private consumers.
 

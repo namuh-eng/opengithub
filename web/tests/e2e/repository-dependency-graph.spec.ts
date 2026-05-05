@@ -103,6 +103,114 @@ function seedDependencies(repositoryHref: string) {
   );
 }
 
+function seedDependents(repositoryHref: string) {
+  if (!databaseUrl) {
+    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
+  }
+  const [, , repo] = repositoryHref.split("/");
+  const decodedRepo = decodeURIComponent(repo);
+  const suffix = decodedRepo.replace(/^tree-nav-/, "");
+  execFileSync(
+    "psql",
+    [
+      databaseUrl,
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-c",
+      `
+      WITH package AS (
+        SELECT dependency_packages.id
+        FROM dependency_packages
+        WHERE dependency_packages.ecosystem = 'npm'
+          AND lower(dependency_packages.name) = lower('@playwright/test')
+        LIMIT 1
+      ),
+      public_owner AS (
+        INSERT INTO users (username, email, display_name, avatar_url)
+        VALUES (
+          'public-consumer-${suffix}',
+          'public-consumer-${suffix}@opengithub.local',
+          'Public consumer ${suffix}',
+          NULL
+        )
+        ON CONFLICT (lower(email)) DO UPDATE SET username = EXCLUDED.username
+        RETURNING id
+      ),
+      private_owner AS (
+        INSERT INTO users (username, email, display_name, avatar_url)
+        VALUES (
+          'private-consumer-${suffix}',
+          'private-consumer-${suffix}@opengithub.local',
+          'Private consumer ${suffix}',
+          NULL
+        )
+        ON CONFLICT (lower(email)) DO UPDATE SET username = EXCLUDED.username
+        RETURNING id
+      ),
+      public_repo AS (
+        INSERT INTO repositories (
+          owner_user_id, name, description, visibility, default_branch, created_by_user_id
+        )
+        SELECT public_owner.id,
+               'workflow-tools-${suffix}',
+               'Uses the opengithub package in production.',
+               'public',
+               'main',
+               public_owner.id
+        FROM public_owner
+        ON CONFLICT (owner_user_id, lower(name)) WHERE owner_user_id IS NOT NULL
+        DO UPDATE SET description = EXCLUDED.description, visibility = 'public'
+        RETURNING id
+      ),
+      private_repo AS (
+        INSERT INTO repositories (
+          owner_user_id, name, description, visibility, default_branch, created_by_user_id
+        )
+        SELECT private_owner.id,
+               'private-workflow-tools-${suffix}',
+               'Private dependent repository.',
+               'private',
+               'main',
+               private_owner.id
+        FROM private_owner
+        ON CONFLICT (owner_user_id, lower(name)) WHERE owner_user_id IS NOT NULL
+        DO UPDATE SET description = EXCLUDED.description, visibility = 'private'
+        RETURNING id
+      ),
+      manifest AS (
+        INSERT INTO dependency_manifests (
+          repository_id, path, ecosystem, lockfile_path, dependency_count
+        )
+        SELECT public_repo.id, 'package.json', 'npm', NULL, 1
+        FROM public_repo
+        ON CONFLICT (repository_id, lower(path)) DO UPDATE SET dependency_count = 1
+        RETURNING id, repository_id
+      ),
+      private_manifest AS (
+        INSERT INTO dependency_manifests (
+          repository_id, path, ecosystem, lockfile_path, dependency_count
+        )
+        SELECT private_repo.id, 'package.json', 'npm', NULL, 1
+        FROM private_repo
+        ON CONFLICT (repository_id, lower(path)) DO UPDATE SET dependency_count = 1
+        RETURNING id, repository_id
+      )
+      INSERT INTO repository_dependencies (
+        repository_id, manifest_id, package_id, package_version, relationship, license
+      )
+      SELECT manifest.repository_id, manifest.id, package.id, '1.56.0', 'direct', 'Apache-2.0'
+      FROM manifest, package
+      UNION ALL
+      SELECT private_manifest.repository_id, private_manifest.id, package.id, '1.56.0', 'direct', 'Apache-2.0'
+      FROM private_manifest, package
+      ON CONFLICT (manifest_id, package_id, relationship)
+      DO UPDATE SET package_version = EXCLUDED.package_version;
+      `,
+    ],
+    { stdio: "ignore" },
+  );
+}
+
 async function signIn(page: Page, seeded: SeededDashboard) {
   await page.context().addCookies([
     {
@@ -197,12 +305,51 @@ test("repository Dependencies renders filters, rows, and concrete actions", asyn
     path: "../ralph/screenshots/build/insights-005-phase3-sbom-export.jpg",
   });
 
+  seedDependents(seeded.treeRepositoryHref);
+  const dependentSuffix = decodeURIComponent(
+    seeded.treeRepositoryHref.split("/")[2],
+  ).replace(/^tree-nav-/, "");
+  const dependentOwner = `public-consumer-${dependentSuffix}`;
+  await page.goto(`${seeded.treeRepositoryHref}/network/dependents`);
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Dependents" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { exact: true, name: "Dependents" }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(page.getByLabel("Dependents summary metrics")).toBeVisible();
+  await expect(page.getByText("Counts are approximate")).toBeVisible();
+  await expect(
+    page.getByRole("list", { name: "Repository dependents list" }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("link", { name: /public-consumer-.+\/workflow-tools-/ })
+      .first(),
+  ).toBeVisible();
+  await expect(page.getByText(/private-workflow-tools/)).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Package: All packages" }).click();
+  await page.getByRole("menuitem", { name: /npm:@playwright\/test/ }).click();
+  await expect(page).toHaveURL(/package=npm%3A%40playwright%2Ftest/);
+  await page.getByRole("textbox", { name: "Owner" }).fill(dependentOwner);
+  await page.getByRole("button", { name: "Apply owner" }).click();
+  await expect(page).toHaveURL(new RegExp(`owner=${dependentOwner}`));
+  await expect(
+    page.getByRole("list", { name: "Repository dependents list" }),
+  ).toBeVisible();
+
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(
-    page.getByRole("heading", { exact: true, name: "Dependencies" }),
+    page.getByRole("heading", { exact: true, name: "Dependents" }),
   ).toBeVisible();
   const horizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,
   );
   expect(horizontalOverflow).toBe(false);
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/insights-005-phase4-dependents.jpg",
+  });
 });

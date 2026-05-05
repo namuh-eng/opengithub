@@ -2859,10 +2859,26 @@ export type RepositoryDependenciesView = {
   freshness: RepositoryNetworkFreshness;
 };
 
+export type RepositoryDependentsView = {
+  repository: RepositoryNetworkRepository;
+  filters: RepositoryDependentsFilters;
+  summary: RepositoryDependentsSummary;
+  packages: RepositoryDependentPackage[];
+  dependents: RepositoryDependentRow[];
+  availability: RepositoryDependencyGraphAvailability;
+  links: RepositoryDependencyLinks;
+  freshness: RepositoryNetworkFreshness;
+};
+
 export type RepositoryDependencyFilters = {
   query: string | null;
   ecosystem: string | null;
   relationship: string | null;
+};
+
+export type RepositoryDependentsFilters = {
+  package: string | null;
+  owner: string | null;
 };
 
 export type RepositoryDependencySummary = {
@@ -2872,6 +2888,13 @@ export type RepositoryDependencySummary = {
   ecosystemCounts: RepositoryDependencyEcosystemCount[];
   manifestCount: number;
   advisoryCount: number;
+};
+
+export type RepositoryDependentsSummary = {
+  repositoryCount: number;
+  packageCount: number;
+  hiddenPrivateCount: number;
+  approximate: boolean;
 };
 
 export type RepositoryDependencyEcosystemCount = {
@@ -2895,6 +2918,31 @@ export type RepositoryDependencyPackage = {
   ecosystem: string;
   name: string;
   href: string;
+};
+
+export type RepositoryDependentPackage = {
+  package: RepositoryDependencyPackage;
+  dependentCount: number;
+  selected: boolean;
+};
+
+export type RepositoryDependentRow = {
+  repositoryId: string;
+  ownerLogin: string;
+  ownerAvatarUrl: string | null;
+  name: string;
+  description: string | null;
+  visibility: string;
+  package: RepositoryDependencyPackage;
+  manifestPath: string | null;
+  detectedAt: string;
+  starsCount: number;
+  forksCount: number;
+  openIssuesCount: number;
+  openPullRequestsCount: number;
+  href: string;
+  ownerHref: string;
+  packageHref: string;
 };
 
 export type RepositoryDependencyAdvisorySummary = {
@@ -2957,10 +3005,19 @@ export type RepositoryDependenciesFetchResult =
   | { ok: true; dependencies: RepositoryDependenciesView }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type RepositoryDependentsFetchResult =
+  | { ok: true; dependents: RepositoryDependentsView }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type RepositoryDependenciesQuery = {
   query?: string | null;
   ecosystem?: string | null;
   relationship?: string | null;
+};
+
+export type RepositoryDependentsQuery = {
+  package?: string | null;
+  owner?: string | null;
 };
 
 export type WebhookContentType = "json" | "form" | string;
@@ -9628,6 +9685,16 @@ function repositoryDependenciesQueryString(
   return query ? `?${query}` : "";
 }
 
+function repositoryDependentsQueryString(
+  options: RepositoryDependentsQuery = {},
+) {
+  const params = new URLSearchParams();
+  if (options.package?.trim()) params.set("package", options.package.trim());
+  if (options.owner?.trim()) params.set("owner", options.owner.trim());
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
 export async function getRepositoryDependenciesFromCookie(
   cookie: string | null | undefined,
   owner: string,
@@ -9670,6 +9737,51 @@ export async function getRepositoryDependenciesFromCookie(
   return {
     ok: true,
     dependencies: (await response.json()) as RepositoryDependenciesView,
+  };
+}
+
+export async function getRepositoryDependentsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  options: RepositoryDependentsQuery = {},
+): Promise<RepositoryDependentsFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/network/dependents${repositoryDependentsQueryString(options)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository dependents are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Repository dependents are unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    dependents: (await response.json()) as RepositoryDependentsView,
   };
 }
 
