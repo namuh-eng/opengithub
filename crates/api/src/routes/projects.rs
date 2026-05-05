@@ -1,7 +1,7 @@
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    routing::{get, patch, post},
+    routing::{delete, get, patch, post},
     Json, Router,
 };
 use serde::Deserialize;
@@ -11,11 +11,13 @@ use crate::{
     api_types::{database_unavailable, error_response, ErrorEnvelope},
     auth::extractor::AuthenticatedUser,
     domain::projects::{
-        copy_project_for_actor, organization_projects, project_workspace, repository_projects,
-        update_project_item_field_for_actor, update_project_view_state_for_actor, user_projects,
-        CopiedProject, CopyProjectRequest, ProjectItemFieldValueRequest, ProjectList,
-        ProjectListQuery, ProjectViewStateRequest, ProjectWorkspace, ProjectWorkspaceQuery,
-        ProjectsError,
+        add_project_item_for_actor, bulk_add_project_items_for_actor, copy_project_for_actor,
+        organization_projects, project_workspace, remove_project_item_for_actor,
+        repository_projects, update_project_item_field_for_actor,
+        update_project_item_position_for_actor, update_project_view_state_for_actor, user_projects,
+        CopiedProject, CopyProjectRequest, ProjectItemAddRequest, ProjectItemFieldValueRequest,
+        ProjectItemPositionRequest, ProjectItemsBulkAddRequest, ProjectList, ProjectListQuery,
+        ProjectViewStateRequest, ProjectWorkspace, ProjectWorkspaceQuery, ProjectsError,
     },
     AppState,
 };
@@ -35,6 +37,22 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/projects/:project_id/items/:item_id/fields/:field_id",
             patch(update_project_item_field_route),
+        )
+        .route(
+            "/api/projects/:project_id/items",
+            post(add_project_item_route),
+        )
+        .route(
+            "/api/projects/:project_id/items/bulk",
+            post(bulk_add_project_items_route),
+        )
+        .route(
+            "/api/projects/:project_id/items/:item_id/position",
+            patch(update_project_item_position_route),
+        )
+        .route(
+            "/api/projects/:project_id/items/:item_id",
+            delete(remove_project_item_route),
         )
         .route("/api/projects/:project_id/copies", post(copy_project_route))
         .route(
@@ -213,6 +231,62 @@ async fn update_project_item_field_route(
         update_project_item_field_for_actor(pool, project_id, item_id, field_id, actor.id, request)
             .await
             .map_err(map_projects_error)?;
+    Ok(Json(workspace))
+}
+
+async fn add_project_item_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(project_id): Path<Uuid>,
+    Json(request): Json<ProjectItemAddRequest>,
+) -> Result<(StatusCode, Json<ProjectWorkspace>), (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let workspace = add_project_item_for_actor(pool, project_id, actor.id, request)
+        .await
+        .map_err(map_projects_error)?;
+    Ok((StatusCode::CREATED, Json(workspace)))
+}
+
+async fn bulk_add_project_items_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(project_id): Path<Uuid>,
+    Json(request): Json<ProjectItemsBulkAddRequest>,
+) -> Result<(StatusCode, Json<ProjectWorkspace>), (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let workspace = bulk_add_project_items_for_actor(pool, project_id, actor.id, request)
+        .await
+        .map_err(map_projects_error)?;
+    Ok((StatusCode::CREATED, Json(workspace)))
+}
+
+async fn update_project_item_position_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project_id, item_id)): Path<(Uuid, Uuid)>,
+    Json(request): Json<ProjectItemPositionRequest>,
+) -> Result<Json<ProjectWorkspace>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let workspace =
+        update_project_item_position_for_actor(pool, project_id, item_id, actor.id, request)
+            .await
+            .map_err(map_projects_error)?;
+    Ok(Json(workspace))
+}
+
+async fn remove_project_item_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project_id, item_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<ProjectWorkspace>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let workspace = remove_project_item_for_actor(pool, project_id, item_id, actor.id)
+        .await
+        .map_err(map_projects_error)?;
     Ok(Json(workspace))
 }
 

@@ -167,6 +167,35 @@ pub struct ProjectItemFieldValueRequest {
     pub expected_updated_at: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectItemAddRequest {
+    pub item_type: Option<String>,
+    pub title: Option<String>,
+    pub body: Option<String>,
+    pub url: Option<String>,
+    pub issue_id: Option<Uuid>,
+    pub pull_request_id: Option<Uuid>,
+    pub position_after_item_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectItemsBulkAddRequest {
+    #[serde(default)]
+    pub items: Vec<ProjectItemAddRequest>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectItemPositionRequest {
+    pub before_item_id: Option<Uuid>,
+    pub after_item_id: Option<Uuid>,
+    pub group_field_id: Option<Uuid>,
+    pub group_value: Option<Value>,
+    pub expected_updated_at: Option<DateTime<Utc>>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectWorkspace {
@@ -951,6 +980,188 @@ pub async fn update_project_item_field_for_actor(
         },
     )
     .await
+}
+
+pub async fn add_project_item_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectItemAddRequest,
+) -> Result<ProjectWorkspace, ProjectsError> {
+    let project = writable_workspace_project(pool, project_id, actor_user_id).await?;
+    let created_item_id = create_project_item(pool, project_id, actor_user_id, request).await?;
+    record_project_item_event(
+        pool,
+        project_id,
+        created_item_id,
+        actor_user_id,
+        "project.item.add",
+        json!({ "source": "workspace_add_row" }),
+    )
+    .await?;
+    record_project_audit(
+        pool,
+        actor_user_id,
+        "project.item.add",
+        created_item_id,
+        json!({ "projectId": project_id, "projectTitle": project.title }),
+    )
+    .await?;
+    project_workspace_after_item_mutation(pool, project_id, actor_user_id).await
+}
+
+pub async fn bulk_add_project_items_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectItemsBulkAddRequest,
+) -> Result<ProjectWorkspace, ProjectsError> {
+    let project = writable_workspace_project(pool, project_id, actor_user_id).await?;
+    if request.items.is_empty() {
+        return Err(ProjectsError::Validation(
+            "At least one project item is required".to_owned(),
+        ));
+    }
+    if request.items.len() > 50 {
+        return Err(ProjectsError::Validation(
+            "Bulk add supports at most 50 items".to_owned(),
+        ));
+    }
+    let mut created = Vec::new();
+    for item in request.items {
+        let item_id = create_project_item(pool, project_id, actor_user_id, item).await?;
+        record_project_item_event(
+            pool,
+            project_id,
+            item_id,
+            actor_user_id,
+            "project.item.add",
+            json!({ "source": "workspace_bulk_add" }),
+        )
+        .await?;
+        created.push(item_id);
+    }
+    record_project_audit(
+        pool,
+        actor_user_id,
+        "project.item.bulk_add",
+        project_id,
+        json!({
+            "projectId": project_id,
+            "projectTitle": project.title,
+            "createdItemIds": created,
+        }),
+    )
+    .await?;
+    project_workspace_after_item_mutation(pool, project_id, actor_user_id).await
+}
+
+pub async fn update_project_item_position_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    item_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectItemPositionRequest,
+) -> Result<ProjectWorkspace, ProjectsError> {
+    writable_workspace_project(pool, project_id, actor_user_id).await?;
+    let item = workspace_item_edit_target(pool, project_id, item_id).await?;
+    if item.archived_at.is_some() {
+        return Err(ProjectsError::Validation(
+            "Archived project items cannot be reordered".to_owned(),
+        ));
+    }
+    if let Some(expected) = request.expected_updated_at {
+        if item.updated_at != expected {
+            return Err(ProjectsError::Validation(
+                "Project item changed since it was loaded. Refresh before reordering.".to_owned(),
+            ));
+        }
+    }
+
+    let position = next_project_item_position(
+        pool,
+        project_id,
+        request.after_item_id,
+        request.before_item_id,
+    )
+    .await?;
+    sqlx::query("UPDATE project_items SET position = $2, updated_at = now() WHERE id = $1")
+        .bind(item_id)
+        .bind(position)
+        .execute(pool)
+        .await?;
+
+    if let Some(group_field_id) = request.group_field_id {
+        let field = workspace_field(pool, project_id, group_field_id).await?;
+        if !field.editable {
+            return Err(ProjectsError::Validation(
+                "Grouped rows can only move into editable fields".to_owned(),
+            ));
+        }
+        let value = request.group_value.unwrap_or(Value::Null);
+        let normalized = normalize_project_field_value(&field, &value)?;
+        apply_project_field_value(pool, &item, &field, &normalized, actor_user_id).await?;
+    }
+
+    record_project_item_event(
+        pool,
+        project_id,
+        item_id,
+        actor_user_id,
+        "project.item.reorder",
+        json!({
+            "beforeItemId": request.before_item_id,
+            "afterItemId": request.after_item_id,
+            "groupFieldId": request.group_field_id,
+        }),
+    )
+    .await?;
+    record_project_audit(
+        pool,
+        actor_user_id,
+        "project.item.reorder",
+        item_id,
+        json!({ "projectId": project_id, "position": position.to_string() }),
+    )
+    .await?;
+    project_workspace_after_item_mutation(pool, project_id, actor_user_id).await
+}
+
+pub async fn remove_project_item_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    item_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<ProjectWorkspace, ProjectsError> {
+    writable_workspace_project(pool, project_id, actor_user_id).await?;
+    let item = workspace_item_edit_target(pool, project_id, item_id).await?;
+    if item.archived_at.is_some() {
+        return Err(ProjectsError::Validation(
+            "Project item is already removed".to_owned(),
+        ));
+    }
+    sqlx::query("UPDATE project_items SET archived_at = now(), updated_at = now() WHERE id = $1")
+        .bind(item_id)
+        .execute(pool)
+        .await?;
+    record_project_item_event(
+        pool,
+        project_id,
+        item_id,
+        actor_user_id,
+        "project.item.remove",
+        json!({ "itemType": item.item_type }),
+    )
+    .await?;
+    record_project_audit(
+        pool,
+        actor_user_id,
+        "project.item.remove",
+        item_id,
+        json!({ "projectId": project_id }),
+    )
+    .await?;
+    project_workspace_after_item_mutation(pool, project_id, actor_user_id).await
 }
 
 pub async fn organization_projects(
@@ -2097,6 +2308,455 @@ async fn workspace_item_edit_target(
         archived_at: row.get("archived_at"),
         updated_at: row.get("updated_at"),
     })
+}
+
+async fn writable_workspace_project(
+    pool: &PgPool,
+    project_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<ProjectWorkspaceProject, ProjectsError> {
+    let project = workspace_project_row(pool, project_id, Some(actor_user_id)).await?;
+    if !project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role)
+    {
+        return Err(ProjectsError::Forbidden);
+    }
+    Ok(project)
+}
+
+async fn project_workspace_after_item_mutation(
+    pool: &PgPool,
+    project_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<ProjectWorkspace, ProjectsError> {
+    project_workspace(
+        pool,
+        project_id,
+        Some(actor_user_id),
+        ProjectWorkspaceQuery {
+            view: None,
+            query: None,
+            sort: Some("manual"),
+            group: None,
+            slice: None,
+            page: Some(1),
+            page_size: None,
+        },
+    )
+    .await
+}
+
+async fn create_project_item(
+    pool: &PgPool,
+    project_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectItemAddRequest,
+) -> Result<Uuid, ProjectsError> {
+    let item_type = request
+        .item_type
+        .as_deref()
+        .unwrap_or(if request.pull_request_id.is_some() {
+            "pull_request"
+        } else if request.issue_id.is_some() || request.url.is_some() {
+            "issue"
+        } else {
+            "draft_issue"
+        })
+        .trim();
+    match item_type {
+        "draft_issue" => create_draft_project_item(pool, project_id, actor_user_id, request).await,
+        "issue" | "pull_request" => {
+            let linked =
+                resolve_linked_project_item(pool, actor_user_id, item_type, &request).await?;
+            create_linked_project_item(pool, project_id, actor_user_id, linked, request).await
+        }
+        _ => Err(ProjectsError::Validation(
+            "Project item type must be draft_issue, issue, or pull_request".to_owned(),
+        )),
+    }
+}
+
+async fn create_draft_project_item(
+    pool: &PgPool,
+    project_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectItemAddRequest,
+) -> Result<Uuid, ProjectsError> {
+    let title = request
+        .title
+        .as_deref()
+        .unwrap_or_default()
+        .trim()
+        .to_owned();
+    if title.is_empty() {
+        return Err(ProjectsError::Validation(
+            "Draft project items require a title".to_owned(),
+        ));
+    }
+    if title.len() > 256 {
+        return Err(ProjectsError::Validation(
+            "Draft project item title must be 256 characters or fewer".to_owned(),
+        ));
+    }
+    let position =
+        next_project_item_position(pool, project_id, request.position_after_item_id, None).await?;
+    let item_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO project_items (project_id, item_type, title, body, position)
+        VALUES ($1, 'draft_issue', $2, $3, $4)
+        RETURNING id
+        "#,
+    )
+    .bind(project_id)
+    .bind(title)
+    .bind(
+        request
+            .body
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty()),
+    )
+    .bind(position)
+    .fetch_one(pool)
+    .await?;
+    record_project_item_event(
+        pool,
+        project_id,
+        item_id,
+        actor_user_id,
+        "project.item.draft_create",
+        json!({ "title": request.title }),
+    )
+    .await?;
+    Ok(item_id)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct LinkedProjectItemTarget {
+    item_type: &'static str,
+    issue_id: Option<Uuid>,
+    pull_request_id: Option<Uuid>,
+    repository_id: Uuid,
+}
+
+async fn resolve_linked_project_item(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    requested_type: &str,
+    request: &ProjectItemAddRequest,
+) -> Result<LinkedProjectItemTarget, ProjectsError> {
+    if let Some(pull_request_id) = request.pull_request_id {
+        return linked_pull_request_target(pool, actor_user_id, pull_request_id).await;
+    }
+    if let Some(issue_id) = request.issue_id {
+        return linked_issue_target(pool, actor_user_id, issue_id).await;
+    }
+    if let Some(url) = request.url.as_deref() {
+        return linked_target_from_url(pool, actor_user_id, requested_type, url).await;
+    }
+    Err(ProjectsError::Validation(
+        "Linked project items require an issue, pull request, or URL".to_owned(),
+    ))
+}
+
+async fn linked_target_from_url(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    requested_type: &str,
+    url: &str,
+) -> Result<LinkedProjectItemTarget, ProjectsError> {
+    let path = url
+        .split('?')
+        .next()
+        .unwrap_or(url)
+        .trim_end_matches('/')
+        .trim();
+    let parts = path
+        .split('/')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    let window = parts
+        .windows(4)
+        .find(|parts| matches!(parts[2], "issues" | "pull"))
+        .ok_or_else(|| {
+            ProjectsError::Validation(
+                "Paste a URL like /owner/repo/issues/1 or /owner/repo/pull/1".to_owned(),
+            )
+        })?;
+    let owner = window[0];
+    let repo = window[1];
+    let kind = window[2];
+    let number = window[3]
+        .parse::<i64>()
+        .map_err(|_| ProjectsError::Validation("Linked item number must be numeric".to_owned()))?;
+    if requested_type == "pull_request" || kind == "pull" {
+        linked_pull_request_target_by_number(pool, actor_user_id, owner, repo, number).await
+    } else {
+        linked_issue_target_by_number(pool, actor_user_id, owner, repo, number).await
+    }
+}
+
+async fn linked_issue_target_by_number(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    number: i64,
+) -> Result<LinkedProjectItemTarget, ProjectsError> {
+    let repository = get_repository_by_owner_name(pool, owner, repo)
+        .await?
+        .ok_or(ProjectsError::NotFound)?;
+    ensure_repository_readable(pool, repository.id, actor_user_id).await?;
+    let issue_id: Uuid =
+        sqlx::query_scalar("SELECT id FROM issues WHERE repository_id = $1 AND number = $2")
+            .bind(repository.id)
+            .bind(number)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(ProjectsError::NotFound)?;
+    linked_issue_target(pool, actor_user_id, issue_id).await
+}
+
+async fn linked_pull_request_target_by_number(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner: &str,
+    repo: &str,
+    number: i64,
+) -> Result<LinkedProjectItemTarget, ProjectsError> {
+    let repository = get_repository_by_owner_name(pool, owner, repo)
+        .await?
+        .ok_or(ProjectsError::NotFound)?;
+    ensure_repository_readable(pool, repository.id, actor_user_id).await?;
+    let pull_request_id: Uuid =
+        sqlx::query_scalar("SELECT id FROM pull_requests WHERE repository_id = $1 AND number = $2")
+            .bind(repository.id)
+            .bind(number)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(ProjectsError::NotFound)?;
+    linked_pull_request_target(pool, actor_user_id, pull_request_id).await
+}
+
+async fn linked_issue_target(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    issue_id: Uuid,
+) -> Result<LinkedProjectItemTarget, ProjectsError> {
+    let repository_id: Uuid = sqlx::query_scalar("SELECT repository_id FROM issues WHERE id = $1")
+        .bind(issue_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or(ProjectsError::NotFound)?;
+    ensure_repository_readable(pool, repository_id, actor_user_id).await?;
+    Ok(LinkedProjectItemTarget {
+        item_type: "issue",
+        issue_id: Some(issue_id),
+        pull_request_id: None,
+        repository_id,
+    })
+}
+
+async fn linked_pull_request_target(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    pull_request_id: Uuid,
+) -> Result<LinkedProjectItemTarget, ProjectsError> {
+    let row = sqlx::query(
+        "SELECT issue_id, COALESCE(base_repository_id, repository_id) AS repository_id FROM pull_requests WHERE id = $1",
+    )
+    .bind(pull_request_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ProjectsError::NotFound)?;
+    let repository_id: Uuid = row.get("repository_id");
+    ensure_repository_readable(pool, repository_id, actor_user_id).await?;
+    Ok(LinkedProjectItemTarget {
+        item_type: "pull_request",
+        issue_id: Some(row.get("issue_id")),
+        pull_request_id: Some(pull_request_id),
+        repository_id,
+    })
+}
+
+async fn ensure_repository_readable(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<(), ProjectsError> {
+    let repository =
+        sqlx::query("SELECT visibility, owner_user_id FROM repositories WHERE id = $1")
+            .bind(repository_id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or(ProjectsError::NotFound)?;
+    let visibility: String = repository.get("visibility");
+    let owner_user_id: Option<Uuid> = repository.get("owner_user_id");
+    let permission = repository_permission_for_user(pool, repository_id, actor_user_id).await?;
+    if visibility == "public"
+        || owner_user_id == Some(actor_user_id)
+        || permission.is_some_and(|permission| permission.role.can_read())
+    {
+        Ok(())
+    } else {
+        Err(ProjectsError::Forbidden)
+    }
+}
+
+async fn create_linked_project_item(
+    pool: &PgPool,
+    project_id: Uuid,
+    actor_user_id: Uuid,
+    target: LinkedProjectItemTarget,
+    request: ProjectItemAddRequest,
+) -> Result<Uuid, ProjectsError> {
+    let duplicate: Option<Uuid> = sqlx::query_scalar(
+        r#"
+        SELECT id FROM project_items
+        WHERE project_id = $1
+          AND archived_at IS NULL
+          AND (
+            ($2::uuid IS NOT NULL AND issue_id = $2)
+            OR ($3::uuid IS NOT NULL AND pull_request_id = $3)
+          )
+        "#,
+    )
+    .bind(project_id)
+    .bind(target.issue_id)
+    .bind(target.pull_request_id)
+    .fetch_optional(pool)
+    .await?;
+    if duplicate.is_some() {
+        return Err(ProjectsError::Validation(
+            "This issue or pull request is already in the project".to_owned(),
+        ));
+    }
+    let position =
+        next_project_item_position(pool, project_id, request.position_after_item_id, None).await?;
+    let item_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO project_items (project_id, item_type, issue_id, pull_request_id, position)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id
+        "#,
+    )
+    .bind(project_id)
+    .bind(target.item_type)
+    .bind(target.issue_id)
+    .bind(target.pull_request_id)
+    .bind(position)
+    .fetch_one(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO timeline_events (repository_id, issue_id, pull_request_id, actor_user_id, event_type, metadata)
+        VALUES ($1, $2, $3, $4, 'project_item_added', $5)
+        "#,
+    )
+    .bind(target.repository_id)
+    .bind(target.issue_id)
+    .bind(target.pull_request_id)
+    .bind(actor_user_id)
+    .bind(json!({ "projectId": project_id, "projectItemId": item_id }))
+    .execute(pool)
+    .await?;
+    Ok(item_id)
+}
+
+async fn next_project_item_position(
+    pool: &PgPool,
+    project_id: Uuid,
+    after_item_id: Option<Uuid>,
+    before_item_id: Option<Uuid>,
+) -> Result<f64, ProjectsError> {
+    let before = if let Some(before_item_id) = before_item_id {
+        Some(project_item_position(pool, project_id, before_item_id).await?)
+    } else {
+        None
+    };
+    let after = if let Some(after_item_id) = after_item_id {
+        Some(project_item_position(pool, project_id, after_item_id).await?)
+    } else {
+        None
+    };
+    match (after, before) {
+        (Some(after), Some(before)) if before > after => Ok((after + before) / 2.0),
+        (Some(after), _) => Ok(after + 1.0),
+        (_, Some(before)) if before > 1.0 => Ok(before / 2.0),
+        (_, Some(before)) => Ok(before - 1.0),
+        (None, None) => {
+            let max: Option<f64> = sqlx::query_scalar(
+                "SELECT max(position)::float8 FROM project_items WHERE project_id = $1 AND archived_at IS NULL",
+            )
+            .bind(project_id)
+            .fetch_one(pool)
+            .await?;
+            Ok(max.unwrap_or(0.0) + 1.0)
+        }
+    }
+}
+
+async fn project_item_position(
+    pool: &PgPool,
+    project_id: Uuid,
+    item_id: Uuid,
+) -> Result<f64, ProjectsError> {
+    sqlx::query_scalar(
+        "SELECT position::float8 FROM project_items WHERE project_id = $1 AND id = $2 AND archived_at IS NULL",
+    )
+    .bind(project_id)
+    .bind(item_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ProjectsError::NotFound)
+}
+
+async fn record_project_item_event(
+    pool: &PgPool,
+    project_id: Uuid,
+    item_id: Uuid,
+    actor_user_id: Uuid,
+    event_type: &str,
+    metadata: Value,
+) -> Result<(), ProjectsError> {
+    sqlx::query(
+        r#"
+        INSERT INTO project_item_events (project_id, project_item_id, actor_user_id, event_type, metadata)
+        VALUES ($1, $2, $3, $4, $5)
+        "#,
+    )
+    .bind(project_id)
+    .bind(item_id)
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(metadata)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn record_project_audit(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    event_type: &str,
+    target_id: Uuid,
+    metadata: Value,
+) -> Result<(), ProjectsError> {
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, $2, 'project_item', $3, $4)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(target_id.to_string())
+    .bind(metadata)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 fn is_linked_native_field(field: &ProjectWorkspaceField) -> bool {

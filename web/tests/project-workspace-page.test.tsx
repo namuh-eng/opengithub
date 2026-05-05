@@ -460,6 +460,152 @@ describe("ProjectWorkspacePage", () => {
     expect(screen.getByDisplayValue("Blocked")).toBeInTheDocument();
   });
 
+  it("adds linked items and draft issues through real project item routes", async () => {
+    const assign = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => workspace(),
+    });
+    vi.stubGlobal("location", { assign });
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <ProjectWorkspacePage
+        owner="namuh"
+        scope="organization"
+        viewNumber={1}
+        workspace={workspace()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add item" }));
+    fireEvent.change(screen.getByLabelText("Issue or pull request URL"), {
+      target: { value: "/namuh/opengithub/pull/44" },
+    });
+    fireEvent.submit(
+      screen.getByRole("form", { name: "Add linked issue or pull request" }),
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/projects/project-1/items",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          itemType: "pull_request",
+          url: "/namuh/opengithub/pull/44",
+          positionAfterItemId: "item-2",
+        }),
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Draft issue" }));
+    fireEvent.change(screen.getByLabelText("Draft title"), {
+      target: { value: "Triage copied roadmap notes" },
+    });
+    fireEvent.change(screen.getByLabelText("Draft body"), {
+      target: { value: "Keep this as a project-only draft." },
+    });
+    fireEvent.submit(
+      screen.getByRole("form", { name: "Create draft project item" }),
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/projects/project-1/items",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          itemType: "draft_issue",
+          title: "Triage copied roadmap notes",
+          body: "Keep this as a project-only draft.",
+          positionAfterItemId: "item-2",
+        }),
+      }),
+    );
+    expect(assign).toHaveBeenCalledWith(
+      "/orgs/namuh/projects/12/views/1?q=is%3Aopen&sort=manual&group=Status",
+    );
+  });
+
+  it("bulk adds project URLs and persists row reorder and removal", async () => {
+    const assign = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => workspace(),
+    });
+    vi.stubGlobal("location", { assign });
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <ProjectWorkspacePage
+        owner="namuh"
+        scope="organization"
+        viewNumber={1}
+        workspace={workspace()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add item" }));
+    fireEvent.click(screen.getByRole("button", { name: "Bulk add" }));
+    fireEvent.change(
+      screen.getByLabelText("Bulk issue and pull request URLs"),
+      {
+        target: {
+          value: "/namuh/opengithub/issues/45\n/namuh/opengithub/pull/46",
+        },
+      },
+    );
+    fireEvent.submit(
+      screen.getByRole("form", { name: "Bulk add project items" }),
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/projects/project-1/items/bulk",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          items: [
+            { itemType: "issue", url: "/namuh/opengithub/issues/45" },
+            { itemType: "pull_request", url: "/namuh/opengithub/pull/46" },
+          ],
+        }),
+      }),
+    );
+
+    const secondRow = screen
+      .getByRole("link", { name: "Draft launch notes" })
+      .closest("tr");
+    expect(secondRow).not.toBeNull();
+    fireEvent.click(
+      within(secondRow as HTMLTableRowElement).getByRole("button", {
+        name: "Up",
+      }),
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/projects/project-1/items/item-2/position",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          beforeItemId: "item-1",
+          afterItemId: null,
+          expectedUpdatedAt: "2026-05-04T00:00:00Z",
+        }),
+      }),
+    );
+
+    fireEvent.click(
+      within(secondRow as HTMLTableRowElement).getByRole("button", {
+        name: "Remove",
+      }),
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/projects/project-1/items/item-2",
+      { method: "DELETE" },
+    );
+  });
+
   it("uses Editorial primitives instead of banned GitHub visual values", () => {
     const { container } = render(
       <ProjectWorkspacePage

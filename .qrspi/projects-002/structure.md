@@ -77,7 +77,7 @@
 
 ## Phase 5: Add Row and Reordering - workspace can add items and persist manual order
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make the bottom add row and manual ordering real. Users can paste issue/PR URLs, search repositories with `#`, bulk add existing issues/PRs, create draft issues, open the issue creation modal where available, and reorder rows within the table or grouped sections.
 

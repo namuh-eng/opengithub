@@ -336,6 +336,28 @@ export type ProjectItemFieldValueRequest = {
   expectedUpdatedAt?: string | null;
 };
 
+export type ProjectItemAddRequest = {
+  itemType?: "draft_issue" | "issue" | "pull_request" | string | null;
+  title?: string | null;
+  body?: string | null;
+  url?: string | null;
+  issueId?: string | null;
+  pullRequestId?: string | null;
+  positionAfterItemId?: string | null;
+};
+
+export type ProjectItemsBulkAddRequest = {
+  items: ProjectItemAddRequest[];
+};
+
+export type ProjectItemPositionRequest = {
+  beforeItemId?: string | null;
+  afterItemId?: string | null;
+  groupFieldId?: string | null;
+  groupValue?: unknown;
+  expectedUpdatedAt?: string | null;
+};
+
 export type CopyProjectRequest = {
   title: string;
   includeDraftIssues: boolean;
@@ -7454,6 +7476,99 @@ export async function updateProjectItemFieldFromCookie(
     );
   }
   return payload as ProjectWorkspace;
+}
+
+async function mutateProjectWorkspaceFromCookie(
+  cookie: string | null | undefined,
+  path: string,
+  method: "POST" | "PATCH" | "DELETE",
+  fallbackCode: string,
+  fallbackMessage: string,
+  body?: unknown,
+): Promise<ProjectWorkspace> {
+  const response = await fetch(`${apiBaseUrl()}${path}`, {
+    method,
+    headers: {
+      ...(body == null ? {} : { "content-type": "application/json" }),
+      ...(cookie ? { cookie } : {}),
+    },
+    body: body == null ? undefined : JSON.stringify(body),
+    cache: "no-store",
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(envelope?.error.message ?? fallbackMessage, {
+      cause: {
+        error: envelope?.error ?? {
+          code: fallbackCode,
+          message: fallbackMessage,
+        },
+        status: envelope?.status ?? response.status,
+      } satisfies ApiErrorEnvelope,
+    });
+  }
+  return payload as ProjectWorkspace;
+}
+
+export function addProjectItemFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  request: ProjectItemAddRequest,
+): Promise<ProjectWorkspace> {
+  return mutateProjectWorkspaceFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/items`,
+    "POST",
+    "project_item_add_failed",
+    "Project item could not be added.",
+    request,
+  );
+}
+
+export function bulkAddProjectItemsFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  request: ProjectItemsBulkAddRequest,
+): Promise<ProjectWorkspace> {
+  return mutateProjectWorkspaceFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/items/bulk`,
+    "POST",
+    "project_item_bulk_add_failed",
+    "Project items could not be added.",
+    request,
+  );
+}
+
+export function updateProjectItemPositionFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  itemId: string,
+  request: ProjectItemPositionRequest,
+): Promise<ProjectWorkspace> {
+  return mutateProjectWorkspaceFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/items/${encodeURIComponent(itemId)}/position`,
+    "PATCH",
+    "project_item_position_failed",
+    "Project item position could not be saved.",
+    request,
+  );
+}
+
+export function removeProjectItemFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  itemId: string,
+): Promise<ProjectWorkspace> {
+  return mutateProjectWorkspaceFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/items/${encodeURIComponent(itemId)}`,
+    "DELETE",
+    "project_item_remove_failed",
+    "Project item could not be removed.",
+  );
 }
 
 export async function getPersonalAccessTokenListFromCookie(

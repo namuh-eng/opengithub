@@ -148,6 +148,15 @@ export function ProjectWorkspacePage({
   const [fieldSaving, setFieldSaving] = useState(false);
   const [fieldMessage, setFieldMessage] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addMode, setAddMode] = useState<"url" | "draft" | "bulk">("url");
+  const [addUrl, setAddUrl] = useState("");
+  const [bulkUrls, setBulkUrls] = useState("");
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftBody, setDraftBody] = useState("");
+  const [itemSaving, setItemSaving] = useState(false);
+  const [itemMessage, setItemMessage] = useState<string | null>(null);
+  const [itemError, setItemError] = useState<string | null>(null);
   const visibleFields = workspace.fields.filter((field) => !field.hidden);
   const groupedItems = useMemo(() => groupItems(workspace), [workspace]);
   const baseQuery = {
@@ -273,6 +282,152 @@ export function ProjectWorkspacePage({
     }
     setFieldMessage(`${field.name} saved`);
     setEditingCell(null);
+    window.location.assign(currentHref);
+  }
+
+  async function submitAddItem(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setItemSaving(true);
+    setItemError(null);
+    setItemMessage(null);
+    const url = addUrl.trim();
+    const isPull = /\/pull\//.test(url);
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(workspace.project.id)}/items`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          itemType: isPull ? "pull_request" : "issue",
+          url,
+          positionAfterItemId: workspace.items.at(-1)?.id ?? null,
+        }),
+      },
+    ).catch(() => null);
+    setItemSaving(false);
+    if (!response?.ok) {
+      const body = await response?.json().catch(() => null);
+      setItemError(body?.error?.message ?? "Project item could not be added.");
+      return;
+    }
+    setItemMessage("Item added");
+    window.location.assign(currentHref);
+  }
+
+  async function submitDraftItem(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setItemSaving(true);
+    setItemError(null);
+    setItemMessage(null);
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(workspace.project.id)}/items`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          itemType: "draft_issue",
+          title: draftTitle.trim(),
+          body: draftBody.trim() || null,
+          positionAfterItemId: workspace.items.at(-1)?.id ?? null,
+        }),
+      },
+    ).catch(() => null);
+    setItemSaving(false);
+    if (!response?.ok) {
+      const body = await response?.json().catch(() => null);
+      setItemError(body?.error?.message ?? "Draft issue could not be created.");
+      return;
+    }
+    setItemMessage("Draft issue created");
+    window.location.assign(currentHref);
+  }
+
+  async function submitBulkItems(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setItemSaving(true);
+    setItemError(null);
+    setItemMessage(null);
+    const items = bulkUrls
+      .split(/\s+/)
+      .map((url) => url.trim())
+      .filter(Boolean)
+      .map((url) => ({
+        itemType: /\/pull\//.test(url) ? "pull_request" : "issue",
+        url,
+      }));
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(workspace.project.id)}/items/bulk`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ items }),
+      },
+    ).catch(() => null);
+    setItemSaving(false);
+    if (!response?.ok) {
+      const body = await response?.json().catch(() => null);
+      setItemError(body?.error?.message ?? "Project items could not be added.");
+      return;
+    }
+    setItemMessage("Items added");
+    window.location.assign(currentHref);
+  }
+
+  async function moveItem(
+    item: ProjectWorkspaceItem,
+    direction: "up" | "down",
+  ) {
+    const currentIndex = workspace.items.findIndex(
+      (entry) => entry.id === item.id,
+    );
+    const targetIndex =
+      direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    const target = workspace.items[targetIndex];
+    if (currentIndex < 0 || !target) return;
+    setItemSaving(true);
+    setItemError(null);
+    setItemMessage(null);
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(workspace.project.id)}/items/${encodeURIComponent(item.id)}/position`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          beforeItemId: direction === "up" ? target.id : null,
+          afterItemId: direction === "down" ? target.id : null,
+          expectedUpdatedAt: item.updatedAt,
+        }),
+      },
+    ).catch(() => null);
+    setItemSaving(false);
+    if (!response?.ok) {
+      const body = await response?.json().catch(() => null);
+      setItemError(
+        body?.error?.message ?? "Project item position could not be saved.",
+      );
+      return;
+    }
+    setItemMessage("Row order saved");
+    window.location.assign(currentHref);
+  }
+
+  async function removeItem(item: ProjectWorkspaceItem) {
+    setItemSaving(true);
+    setItemError(null);
+    setItemMessage(null);
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(workspace.project.id)}/items/${encodeURIComponent(item.id)}`,
+      { method: "DELETE" },
+    ).catch(() => null);
+    setItemSaving(false);
+    if (!response?.ok) {
+      const body = await response?.json().catch(() => null);
+      setItemError(
+        body?.error?.message ?? "Project item could not be removed.",
+      );
+      return;
+    }
+    setItemMessage("Item removed");
     window.location.assign(currentHref);
   }
 
@@ -638,8 +793,8 @@ export function ProjectWorkspacePage({
                         {field.name}
                       </th>
                     ))}
-                    <th className="t-label min-w-[120px] px-3 py-3 text-left">
-                      Updated
+                    <th className="t-label min-w-[190px] px-3 py-3 text-left">
+                      Controls
                     </th>
                   </tr>
                 </thead>
@@ -798,7 +953,47 @@ export function ProjectWorkspacePage({
                             );
                           })}
                           <td className="t-xs px-3 py-3">
-                            {formatDate(item.updatedAt)}
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span>{formatDate(item.updatedAt)}</span>
+                              <button
+                                className="btn sm ghost"
+                                disabled={
+                                  itemSaving ||
+                                  !workspace.viewerPermissions.canEdit ||
+                                  workspace.items[0]?.id === item.id
+                                }
+                                onClick={() => moveItem(item, "up")}
+                                title="Move row up"
+                                type="button"
+                              >
+                                Up
+                              </button>
+                              <button
+                                className="btn sm ghost"
+                                disabled={
+                                  itemSaving ||
+                                  !workspace.viewerPermissions.canEdit ||
+                                  workspace.items.at(-1)?.id === item.id
+                                }
+                                onClick={() => moveItem(item, "down")}
+                                title="Move row down"
+                                type="button"
+                              >
+                                Down
+                              </button>
+                              <button
+                                className="btn sm ghost"
+                                disabled={
+                                  itemSaving ||
+                                  !workspace.viewerPermissions.canEdit
+                                }
+                                onClick={() => removeItem(item)}
+                                title="Remove item from project"
+                                type="button"
+                              >
+                                Remove
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -817,12 +1012,17 @@ export function ProjectWorkspacePage({
               {fieldMessage ? (
                 <span className="chip ok">{fieldMessage}</span>
               ) : null}
+              {itemError ? <span className="chip err">{itemError}</span> : null}
+              {itemMessage ? (
+                <span className="chip ok">{itemMessage}</span>
+              ) : null}
               <button
                 className="btn sm"
                 disabled={!workspace.viewerPermissions.canAddItems}
+                onClick={() => setAddOpen((open) => !open)}
                 title={
                   workspace.viewerPermissions.canAddItems
-                    ? "Add row is implemented in Phase 5."
+                    ? "Add issue, pull request, or draft item"
                     : "You need write access to add project items."
                 }
                 type="button"
@@ -830,10 +1030,107 @@ export function ProjectWorkspacePage({
                 Add item
               </button>
               <span className="t-xs">
-                Paste issue or pull request URLs, create drafts, and reorder
-                rows in the add-row phase.
+                Paste issue or pull request URLs, create drafts, or bulk add
+                rows.
               </span>
             </div>
+            {addOpen ? (
+              <section
+                aria-label="Add project item"
+                className="border-t p-4"
+                style={{ borderColor: "var(--line)" }}
+              >
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {(["url", "draft", "bulk"] as const).map((mode) => (
+                    <button
+                      className={`chip ${addMode === mode ? "active" : "soft"}`}
+                      key={mode}
+                      onClick={() => setAddMode(mode)}
+                      type="button"
+                    >
+                      {mode === "url"
+                        ? "Paste URL"
+                        : mode === "draft"
+                          ? "Draft issue"
+                          : "Bulk add"}
+                    </button>
+                  ))}
+                </div>
+                {addMode === "url" ? (
+                  <form
+                    aria-label="Add linked issue or pull request"
+                    className="flex flex-wrap gap-2"
+                    onSubmit={submitAddItem}
+                  >
+                    <input
+                      aria-label="Issue or pull request URL"
+                      className="input min-w-[280px] flex-1"
+                      onChange={(event) => setAddUrl(event.target.value)}
+                      placeholder="/namuh/opengithub/issues/42"
+                      value={addUrl}
+                    />
+                    <button
+                      className="btn sm primary"
+                      disabled={itemSaving || !addUrl.trim()}
+                      type="submit"
+                    >
+                      {itemSaving ? "Adding..." : "Add linked item"}
+                    </button>
+                  </form>
+                ) : null}
+                {addMode === "draft" ? (
+                  <form
+                    aria-label="Create draft project item"
+                    className="grid gap-2"
+                    onSubmit={submitDraftItem}
+                  >
+                    <input
+                      aria-label="Draft title"
+                      className="input"
+                      onChange={(event) => setDraftTitle(event.target.value)}
+                      placeholder="Draft issue title"
+                      value={draftTitle}
+                    />
+                    <textarea
+                      aria-label="Draft body"
+                      className="input min-h-[84px]"
+                      onChange={(event) => setDraftBody(event.target.value)}
+                      placeholder="Optional notes"
+                      value={draftBody}
+                    />
+                    <button
+                      className="btn sm primary w-fit"
+                      disabled={itemSaving || !draftTitle.trim()}
+                      type="submit"
+                    >
+                      {itemSaving ? "Creating..." : "Create draft"}
+                    </button>
+                  </form>
+                ) : null}
+                {addMode === "bulk" ? (
+                  <form
+                    aria-label="Bulk add project items"
+                    className="grid gap-2"
+                    onSubmit={submitBulkItems}
+                  >
+                    <textarea
+                      aria-label="Bulk issue and pull request URLs"
+                      className="input min-h-[110px]"
+                      onChange={(event) => setBulkUrls(event.target.value)}
+                      placeholder="/namuh/opengithub/issues/42 /namuh/opengithub/pull/43"
+                      value={bulkUrls}
+                    />
+                    <button
+                      className="btn sm primary w-fit"
+                      disabled={itemSaving || !bulkUrls.trim()}
+                      type="submit"
+                    >
+                      {itemSaving ? "Adding..." : "Bulk add"}
+                    </button>
+                  </form>
+                ) : null}
+              </section>
+            ) : null}
           </div>
         </section>
       </div>

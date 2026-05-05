@@ -6848,5 +6848,23 @@
       "Probe every field type with real DB rows: single-select/status option validation, iteration values, date formatting, text length, number coercion, labels/assignees/milestone lookup failures, linked PR title/status sync, draft title updates, stale updatedAt conflicts, archived item denial, project read-only denial, repository read-only denial, timeline/audit/notification side effects, keyboard-only editor save/cancel, and mobile table overflow.",
       "Phase 5 still needs add-row, bulk linked issue/PR add, draft creation, duplicate handling, item removal, and row ordering."
     ]
+  },
+  {
+    "feature_id": "projects-002",
+    "tests_written": [
+      "Completed Phase 5 Add Row and Reordering without marking projects-002 build_pass=true.",
+      "Added POST /api/projects/{project_id}/items, POST /api/projects/{project_id}/items/bulk, PATCH /api/projects/{project_id}/items/{item_id}/position, and DELETE /api/projects/{project_id}/items with signed-session auth, project write/admin checks, linked issue/PR URL or id resolution, readable-repository checks, duplicate linked-item validation, draft issue creation, manual position assignment, archived removal, project item events, timeline events, and audit events.",
+      "Added same-origin Next proxies for add, bulk add, reorder, and remove while preserving Rust API cookie/session authority and no-secret error envelopes.",
+      "Wired ProjectWorkspacePage bottom omnibar to real Add linked item, Create draft, Bulk add, Up, Down, and Remove controls with pending, success, and server error feedback using Editorial primitives.",
+      "Extended focused Rust projects_workspace_contract coverage for draft add, linked issue add, duplicate denial, reorder, archived removal, and project_item_events evidence; extended focused Vitest coverage for add/draft/bulk/reorder/remove fetch payloads.",
+      "Verification passed: cargo fmt --all --check, cargo check -p opengithub-api --tests, focused projects_workspace_contract compile/run under DB guard, web TypeScript, focused Biome, focused project-workspace-page Vitest with 11 tests, full make check, full make test with Cargo tests plus 541 web tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Focused DB assertions self-skipped because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test failed with password authentication failed for user postgres; rerun projects_workspace_contract against a clean migrated credentialed database.",
+      "Full make test-e2e ran 142 Playwright tests: 19 public/setup/docs tests passed and 123 signed-session tests failed because dashboard_e2e_seed and related helpers could not authenticate to local Postgres on localhost:55432 as user postgres.",
+      "Rerun focused Projects workspace browser smoke against a clean migrated credentialed TEST_DATABASE_URL to save ralph/screenshots/build/projects-002-phase5-add-row-reorder.jpg.",
+      "Probe URL paste parsing for absolute GitHub-style URLs and app-relative URLs, linked pull request adds, duplicate linked issue/PR handling, bulk partial-failure behavior, item limit validation, private repository non-leakage, read-only project denial, archived item denial, stale reorder conflicts, grouped-row move value updates, remove audit/timeline side effects, keyboard-only add dialog use, and mobile table overflow.",
+      "Phase 6 still needs API docs, final browser screenshots, final QA handoff, and projects-002 build_pass bookkeeping."
+    ]
   }
 ]

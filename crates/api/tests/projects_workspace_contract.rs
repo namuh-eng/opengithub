@@ -148,6 +148,58 @@ async fn patch_json(
     (status, headers, value)
 }
 
+async fn post_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, HeaderMap, Value) {
+    let mut builder = Request::builder()
+        .method(Method::POST)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_string()))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let headers = response.headers().clone();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = serde_json::from_slice(&bytes).expect("response should be JSON");
+    (status, headers, value)
+}
+
+async fn delete_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+) -> (StatusCode, HeaderMap, Value) {
+    let mut builder = Request::builder().method(Method::DELETE).uri(uri);
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(builder.body(Body::empty()).expect("request should build"))
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let headers = response.headers().clone();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = serde_json::from_slice(&bytes).expect("response should be JSON");
+    (status, headers, value)
+}
+
 #[tokio::test]
 async fn project_workspace_returns_table_fields_items_filters_and_private_guards() {
     let Some(pool) = database_pool().await else {
@@ -368,4 +420,167 @@ async fn project_workspace_returns_table_fields_items_filters_and_private_guards
     )
     .await;
     assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+}
+
+#[tokio::test]
+async fn project_workspace_adds_reorders_and_removes_items() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping projects workspace scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("workspace{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let member = create_user(&pool, &format!("{marker}-member")).await;
+    let member_cookie = cookie_header(&pool, &config, &member).await;
+
+    let org = create_organization(
+        &pool,
+        CreateOrganization {
+            slug: marker.clone(),
+            display_name: "Workspace Org".to_owned(),
+            description: None,
+            owner_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("organization should create");
+    let repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::Organization { id: org.id },
+            name: format!("planning-{}", Uuid::new_v4().simple()),
+            description: None,
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    grant_repository_permission(&pool, repo.id, member.id, RepositoryRole::Write, "direct")
+        .await
+        .expect("repository permission should grant");
+
+    let project_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO projects (owner_organization_id, number, title, short_description, visibility, created_by_user_id)
+        VALUES ($1, 42, 'Editable table workspace', 'Adds rows and order', 'private', $2)
+        RETURNING id
+        "#,
+    )
+    .bind(org.id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("project should insert");
+    sqlx::query(
+        "INSERT INTO project_permissions (project_id, user_id, role) VALUES ($1, $2, 'write')",
+    )
+    .bind(project_id)
+    .bind(member.id)
+    .execute(&pool)
+    .await
+    .expect("permission should insert");
+    sqlx::query(
+        "INSERT INTO project_views (project_id, name, layout, position, configuration) VALUES ($1, 'Table', 'table', 1, '{\"sort\":\"manual\"}')",
+    )
+    .bind(project_id)
+    .execute(&pool)
+    .await
+    .expect("view should insert");
+    sqlx::query(
+        "INSERT INTO project_fields (project_id, name, field_type, position) VALUES ($1, 'Title', 'title', 1)",
+    )
+    .bind(project_id)
+    .execute(&pool)
+    .await
+    .expect("field should insert");
+    let issue_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO issues (repository_id, number, title, body, state, author_user_id)
+        VALUES ($1, 8, 'Linked add target', 'Can be added to a project', 'open', $2)
+        RETURNING id
+        "#,
+    )
+    .bind(repo.id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("issue should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/items"),
+        Some(&member_cookie),
+        json!({ "itemType": "draft_issue", "title": "Draft planning note", "body": "Keep it project-only" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["items"][0]["title"], "Draft planning note");
+    let draft_item_id =
+        Uuid::parse_str(body["items"][0]["id"].as_str().expect("draft id")).expect("uuid");
+
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/items"),
+        Some(&member_cookie),
+        json!({ "itemType": "issue", "issueId": issue_id }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert!(body["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .any(|item| item["title"] == "Linked add target"));
+
+    let (duplicate_status, _, duplicate_body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/items"),
+        Some(&member_cookie),
+        json!({ "itemType": "issue", "issueId": issue_id }),
+    )
+    .await;
+    assert_eq!(duplicate_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(duplicate_body["error"]["code"], "validation_failed");
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/items/{draft_item_id}/position"),
+        Some(&member_cookie),
+        json!({ "afterItemId": null, "beforeItemId": null }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let (status, _, body) = delete_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/items/{draft_item_id}"),
+        Some(&member_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(!body["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .any(|item| item["id"] == draft_item_id.to_string()));
+    let archived_at: Option<chrono::DateTime<Utc>> =
+        sqlx::query_scalar("SELECT archived_at FROM project_items WHERE id = $1")
+            .bind(draft_item_id)
+            .fetch_one(&pool)
+            .await
+            .expect("archived item should load");
+    assert!(archived_at.is_some());
+    let event_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM project_item_events WHERE project_id = $1 AND event_type IN ('project.item.add', 'project.item.reorder', 'project.item.remove')",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("event count should load");
+    assert!(event_count >= 3);
 }
