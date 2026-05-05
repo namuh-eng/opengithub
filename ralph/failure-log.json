@@ -3215,6 +3215,14 @@
       "exit_code": 0,
       "category": "test_failure",
       "attempt": 333
+    },
+    {
+      "timestamp": "2026-05-05T08:19:44.160006",
+      "phase": "build",
+      "feature": "build_cycle_1",
+      "exit_code": 0,
+      "category": "compilation_failure",
+      "attempt": 334
     }
   ]
 }
