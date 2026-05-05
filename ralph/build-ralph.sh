@@ -164,7 +164,7 @@ for ((i=1; i<=$ITERATIONS; i++)); do
     echo "  → Rebuild mode: QA failures detected, providing root-cause context"
 
     MASTER_PROMPT=$(cat ralph/build-prompt.md)
-    result=$(timeout 2400 codex exec --dangerously-bypass-approvals-and-sandbox \
+    result=$(timeout 2400 codex exec -c model_reasoning_effort="low" --dangerously-bypass-approvals-and-sandbox \
 "$MASTER_PROMPT
 
 == ITERATION CONTEXT ==
@@ -209,7 +209,7 @@ Output <promise>COMPLETE</promise> only if ALL features pass." 2>&1)
   else
     # FRESH BUILD MODE: No QA failures — standard build prompt
     MASTER_PROMPT=$(cat ralph/build-prompt.md)
-    result=$(timeout 2400 codex exec --dangerously-bypass-approvals-and-sandbox \
+    result=$(timeout 2400 codex exec -c model_reasoning_effort="low" --dangerously-bypass-approvals-and-sandbox \
 "$MASTER_PROMPT
 
 == ITERATION CONTEXT ==

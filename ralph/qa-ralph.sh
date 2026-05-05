@@ -424,7 +424,7 @@ except:
   done
   QA_PROMPT+=$'\n'"$(cat ralph/qa/footer.md)"
 
-  result=$(timeout "$QA_TIMEOUT" codex exec --dangerously-bypass-approvals-and-sandbox \
+  result=$(timeout "$QA_TIMEOUT" codex exec -c model_reasoning_effort="low" --dangerously-bypass-approvals-and-sandbox \
 "$QA_PROMPT
 
 == FEATURE TO TEST ==
