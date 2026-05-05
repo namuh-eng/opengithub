@@ -1,3 +1,12 @@
+2026-05-06 - projects-002 structure planning
+
+- Determined `projects-002` is the first `build_pass:false` PRD entry and it requires structure planning before implementation.
+- Read the stack/design sources and Projects context needed for this lane: `BUILD_GUIDE.md`, `build-spec.md`, `prd.json`, `web/AGENTS.md`, `.qrspi/projects-001/structure.md`, existing Projects list/copy routes and components, the Projects v2 foundation migration, Projects inspect screenshots, and extracted Projects table/filter/item docs.
+- Added `.qrspi/projects-002/structure.md` with six vertical phases: workspace read contract, Editorial table workspace shell, view-state editing, inline cell editing, add-row/reordering, and final docs/browser/QA/build-pass bookkeeping.
+- Did not change `prd.json`; `projects-002.build_pass` remains `false` until all implementation phases pass verification.
+- Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches.
+- Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-06 - projects-001 phase 5 final docs, QA handoff, and build pass
 
 - Completed Phase 5 from `.qrspi/projects-001/structure.md`: Projects v2 list pages and copy flow are now locked as a completed vertical slice and `projects-001.build_pass=true`.
