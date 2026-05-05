@@ -452,6 +452,22 @@ export type ProjectFieldDeleteRequest = {
   expectedUpdatedAt?: string | null;
 };
 
+export type ProjectFieldOptionCreateRequest = {
+  name: string;
+  color?: string | null;
+  description?: string | null;
+};
+
+export type ProjectFieldOptionUpdateRequest = {
+  name: string;
+  color?: string | null;
+  description?: string | null;
+};
+
+export type ProjectFieldOptionReorderRequest = {
+  optionIds: string[];
+};
+
 export type ProjectViewStateRequest = {
   query: string | null;
   sort: string;
@@ -7777,6 +7793,70 @@ export function deleteProjectFieldFromCookie(
     "project_field_delete_failed",
     "Project field could not be deleted.",
     request,
+  );
+}
+
+export function createProjectFieldOptionFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  fieldId: string,
+  request: ProjectFieldOptionCreateRequest,
+): Promise<ProjectFieldSettings> {
+  return mutateProjectFieldSettingsFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/fields/${encodeURIComponent(fieldId)}/options`,
+    "POST",
+    "project_field_option_create_failed",
+    "Project field option could not be created.",
+    request,
+  );
+}
+
+export function updateProjectFieldOptionFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  fieldId: string,
+  optionId: string,
+  request: ProjectFieldOptionUpdateRequest,
+): Promise<ProjectFieldSettings> {
+  return mutateProjectFieldSettingsFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/fields/${encodeURIComponent(fieldId)}/options/${encodeURIComponent(optionId)}`,
+    "PATCH",
+    "project_field_option_update_failed",
+    "Project field option could not be saved.",
+    request,
+  );
+}
+
+export function reorderProjectFieldOptionsFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  fieldId: string,
+  request: ProjectFieldOptionReorderRequest,
+): Promise<ProjectFieldSettings> {
+  return mutateProjectFieldSettingsFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/fields/${encodeURIComponent(fieldId)}/options/reorder`,
+    "PATCH",
+    "project_field_option_reorder_failed",
+    "Project field options could not be reordered.",
+    request,
+  );
+}
+
+export function deleteProjectFieldOptionFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  fieldId: string,
+  optionId: string,
+): Promise<ProjectFieldSettings> {
+  return mutateProjectFieldSettingsFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/fields/${encodeURIComponent(fieldId)}/options/${encodeURIComponent(optionId)}`,
+    "DELETE",
+    "project_field_option_delete_failed",
+    "Project field option could not be deleted.",
   );
 }
 

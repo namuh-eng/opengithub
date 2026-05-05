@@ -7020,5 +7020,25 @@
       "Probe field limit edges, duplicate names with case/whitespace differences, stale expectedUpdatedAt conflicts, read-only users, built-in field rename/delete denial, deletion cleanup for many project_item_field_values, view/filter cache invalidation, audit metadata, long field names, mobile dialog fit, and no dead controls after API errors.",
       "Phase 4 still owns single-select option CRUD/reorder/delete; Phase 5 still owns iteration schedules/breaks/filter tokens; Phase 6 still owns final docs, screenshots, QA handoff, and build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-004",
+    "tests_written": [
+      "Completed Phase 4 Single-Select Options and Field Values without marking projects-004 build_pass=true.",
+      "Added signed-session Rust mutations for POST /api/projects/{project_id}/fields/{field_id}/options, PATCH /api/projects/{project_id}/fields/{field_id}/options/{option_id}, PATCH /api/projects/{project_id}/fields/{field_id}/options/reorder, and DELETE /api/projects/{project_id}/fields/{field_id}/options/{option_id}.",
+      "Option writes enforce project write/admin permission, single-select/status-compatible fields, color validation, duplicate-name validation, max option limits, field cache-version touches, view cache invalidation, audit_events, and project_item_events for deleted matching values.",
+      "Option rename synchronizes existing project_item_field_values and project_board_column_settings; option delete removes matching item values and board columns without deleting linked issues or pull requests.",
+      "Added same-origin Next proxies and typed api.ts helpers for option create/update/reorder/delete while preserving Rust API/session authority.",
+      "Wired ProjectFieldSettingsPage option rows to real add, inline edit, color selection, reorder, and delete submissions with pending/error/success states and Editorial primitives only.",
+      "Extended focused Rust projects_workspace_contract coverage for option create, invalid field denial, read-only denial, rename value sync, board column sync, reorder persistence, delete cleanup, audit rows, and item-event evidence under the DB guard.",
+      "Extended focused Vitest coverage for option add, update, reorder, delete payloads, success feedback, editable row controls, and existing no-dead-link/editorial guardrails.",
+      "Verification passed: cargo fmt --all, cargo check -p opengithub-api --tests, focused projects_workspace_contract option test compile/run under DB guard, focused project-field-settings-page Vitest with 7 tests, focused Biome, web TypeScript, full make check, and full make test with Cargo tests plus 552 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Focused Rust DB assertions self-skipped because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test failed with password authentication failed for user postgres; rerun projects_workspace_contract against a clean migrated credentialed database.",
+      "Full make test-e2e was attempted with the signed-session/test DB environment but produced no output for about two minutes while Playwright/API/Next children were active, so it was terminated and child processes were cleaned up. Run a focused field option browser smoke against a clean migrated credentialed TEST_DATABASE_URL to save ralph/screenshots/build/projects-004-phase4-single-select-options.jpg.",
+      "Probe large option lists, max-option limit edges, duplicate names with case/whitespace differences, invalid colors, concurrent option rename/delete/reorder, stale UI after failed mutations, board views that use option columns, filters that reference renamed/deleted options, item value cleanup on delete, read-only users, built-in/non-single-select field denial, long option names/descriptions, keyboard-only row controls, and mobile text fit.",
+      "Phase 5 still owns iteration schedules/breaks/filter tokens; Phase 6 still owns final API docs, screenshots, QA handoff, and build_pass bookkeeping."
+    ]
   }
 ]

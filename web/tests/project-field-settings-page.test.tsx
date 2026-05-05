@@ -171,9 +171,15 @@ describe("ProjectFieldSettingsPage", () => {
     expect(screen.getByLabelText("Name")).toHaveValue("Status");
     expect(screen.getByLabelText("Type")).toHaveValue("single_select");
     expect(screen.getByText("2 of 25 options.")).toBeInTheDocument();
-    expect(screen.getByText("Backlog")).toBeInTheDocument();
-    expect(screen.getByText("In progress")).toBeInTheDocument();
+    expect(screen.getByLabelText("Backlog option name")).toHaveDisplayValue(
+      "Backlog",
+    );
+    expect(screen.getByLabelText("In progress option name")).toHaveDisplayValue(
+      "In progress",
+    );
     expect(screen.getByRole("button", { name: "Add option" })).toBeDisabled();
+    expect(screen.getByLabelText("Backlog option name")).toHaveValue("Backlog");
+    expect(screen.getByLabelText("Backlog option color")).toHaveValue("yellow");
   });
 
   it("renders iteration schedules and mutation controls for editable fields", () => {
@@ -342,6 +348,175 @@ describe("ProjectFieldSettingsPage", () => {
           expectedUpdatedAt: "2026-05-03T00:00:00Z",
         }),
       }),
+    );
+  });
+
+  it("adds, updates, reorders, and deletes single-select options", async () => {
+    const addedSettings = settings({
+      fields: settings().fields.map((field) =>
+        field.id === "field-status"
+          ? {
+              ...field,
+              options: [
+                ...field.options,
+                {
+                  id: "option-3",
+                  name: "Ready",
+                  color: "green",
+                  position: 3,
+                  description: "Ready to ship",
+                },
+              ],
+            }
+          : field,
+      ),
+    });
+    const updatedSettings = settings({
+      fields: settings().fields.map((field) =>
+        field.id === "field-status"
+          ? {
+              ...field,
+              options: field.options.map((option) =>
+                option.id === "option-1"
+                  ? {
+                      ...option,
+                      name: "Queued",
+                      color: "blue",
+                      description: "Queued work",
+                    }
+                  : option,
+              ),
+            }
+          : field,
+      ),
+    });
+    const reorderedSettings = settings({
+      fields: settings().fields.map((field) =>
+        field.id === "field-status"
+          ? {
+              ...field,
+              options: [
+                { ...field.options[1], position: 1 },
+                { ...field.options[0], position: 2 },
+              ],
+            }
+          : field,
+      ),
+    });
+    const deletedSettings = settings({
+      fields: settings().fields.map((field) =>
+        field.id === "field-status"
+          ? { ...field, options: field.options.slice(1), usageCount: 4 }
+          : field,
+      ),
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(addedSettings), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(updatedSettings), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(reorderedSettings), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(deletedSettings), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+    render(
+      <ProjectFieldSettingsPage
+        owner="namuh"
+        scope="organization"
+        selectedFieldId="field-status"
+        settings={settings()}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("Ready"), {
+      target: { value: "Ready" },
+    });
+    fireEvent.change(screen.getAllByLabelText("Color")[0], {
+      target: { value: "green" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Optional"), {
+      target: { value: "Ready to ship" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add option" }));
+    await screen.findByText("Option added.");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/projects/project-1/fields/field-status/options",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          name: "Ready",
+          color: "green",
+          description: "Ready to ship",
+        }),
+      }),
+    );
+
+    fireEvent.change(screen.getByLabelText("Backlog option name"), {
+      target: { value: "Queued" },
+    });
+    fireEvent.change(screen.getByLabelText("Backlog option color"), {
+      target: { value: "blue" },
+    });
+    fireEvent.change(screen.getByLabelText("Backlog option description"), {
+      target: { value: "Queued work" },
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "Save option" })[0]);
+    await screen.findByText("Option saved.");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/projects/project-1/fields/field-status/options/option-1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          name: "Queued",
+          color: "blue",
+          description: "Queued work",
+        }),
+      }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Move Queued option down" }),
+    );
+    await screen.findByText("Options reordered.");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/projects/project-1/fields/field-status/options/reorder",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ optionIds: ["option-2", "option-1"] }),
+      }),
+    );
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Delete option" })[0],
+    );
+    await screen.findByText(
+      "Option deleted. Matching item values were removed.",
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "/api/projects/project-1/fields/field-status/options/option-2",
+      expect.objectContaining({ method: "DELETE" }),
     );
   });
 

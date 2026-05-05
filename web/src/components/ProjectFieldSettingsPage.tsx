@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type {
+  ProjectFieldOption,
   ProjectFieldSettings,
   ProjectFieldSettingsField,
 } from "@/lib/api";
@@ -40,6 +41,17 @@ const CREATE_FIELD_TYPES = [
   { label: "Text", value: "text" },
   { label: "Number", value: "number" },
   { label: "Iteration", value: "iteration" },
+];
+
+const OPTION_COLORS = [
+  "gray",
+  "red",
+  "orange",
+  "yellow",
+  "green",
+  "blue",
+  "purple",
+  "pink",
 ];
 
 const SETTINGS_NAV = [
@@ -123,6 +135,12 @@ export function ProjectFieldSettingsPage({
   const [newFieldName, setNewFieldName] = useState("");
   const [newFieldType, setNewFieldType] = useState("single_select");
   const [fieldName, setFieldName] = useState("");
+  const [optionName, setOptionName] = useState("");
+  const [optionColor, setOptionColor] = useState("gray");
+  const [optionDescription, setOptionDescription] = useState("");
+  const [optionDrafts, setOptionDrafts] = useState<
+    Record<string, { name: string; color: string; description: string }>
+  >({});
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -152,6 +170,10 @@ export function ProjectFieldSettingsPage({
   );
   const canDeleteSelected = Boolean(
     selectedField?.deletable && settings.viewerPermissions.canDeleteFields,
+  );
+  const canManageSelectedOptions = Boolean(
+    selectedField?.fieldType === "single_select" &&
+      settings.viewerPermissions.canManageOptions,
   );
 
   async function submitFieldMutation(
@@ -259,6 +281,94 @@ export function ProjectFieldSettingsPage({
       "",
       fieldSettingsHref(scope, owner, settings.project.number),
     );
+  }
+
+  function optionDraft(option: ProjectFieldOption) {
+    return (
+      optionDrafts[option.id] ?? {
+        name: option.name,
+        color: option.color,
+        description: option.description ?? "",
+      }
+    );
+  }
+
+  async function createOption() {
+    if (!selectedField) return;
+    const payload = await submitFieldMutation(
+      "option-create",
+      `/api/projects/${encodeURIComponent(settings.project.id)}/fields/${encodeURIComponent(selectedField.id)}/options`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: optionName,
+          color: optionColor,
+          description: optionDescription || null,
+        }),
+      },
+    );
+    if (!payload) return;
+    setOptionName("");
+    setOptionColor("gray");
+    setOptionDescription("");
+    setNotice("Option added.");
+  }
+
+  async function updateOption(option: ProjectFieldOption) {
+    if (!selectedField) return;
+    const draft = optionDraft(option);
+    const payload = await submitFieldMutation(
+      `option-update-${option.id}`,
+      `/api/projects/${encodeURIComponent(settings.project.id)}/fields/${encodeURIComponent(selectedField.id)}/options/${encodeURIComponent(option.id)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: draft.name,
+          color: draft.color,
+          description: draft.description || null,
+        }),
+      },
+    );
+    if (!payload) return;
+    setOptionDrafts((drafts) => {
+      const next = { ...drafts };
+      delete next[option.id];
+      return next;
+    });
+    setNotice("Option saved.");
+  }
+
+  async function deleteOption(option: ProjectFieldOption) {
+    if (!selectedField) return;
+    const payload = await submitFieldMutation(
+      `option-delete-${option.id}`,
+      `/api/projects/${encodeURIComponent(settings.project.id)}/fields/${encodeURIComponent(selectedField.id)}/options/${encodeURIComponent(option.id)}`,
+      { method: "DELETE" },
+    );
+    if (!payload) return;
+    setNotice("Option deleted. Matching item values were removed.");
+  }
+
+  async function moveOption(option: ProjectFieldOption, direction: -1 | 1) {
+    if (!selectedField) return;
+    const options = [...selectedField.options].sort(
+      (left, right) => left.position - right.position,
+    );
+    const index = options.findIndex((item) => item.id === option.id);
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= options.length) return;
+    const [moved] = options.splice(index, 1);
+    options.splice(nextIndex, 0, moved);
+    const payload = await submitFieldMutation(
+      `option-reorder-${option.id}`,
+      `/api/projects/${encodeURIComponent(settings.project.id)}/fields/${encodeURIComponent(selectedField.id)}/options/reorder`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ optionIds: options.map((item) => item.id) }),
+      },
+    );
+    if (!payload) return;
+    setNotice("Options reordered.");
   }
 
   return (
@@ -543,40 +653,250 @@ export function ProjectFieldSettingsPage({
                           {settings.limits.maxOptionsPerField} options.
                         </p>
                       </div>
-                      <button className="btn sm" disabled type="button">
-                        Add option
-                      </button>
+                    </div>
+                    <div
+                      className="card"
+                      style={{
+                        marginTop: 12,
+                        padding: 12,
+                        background: "var(--surface-2)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns:
+                            "minmax(140px, 1fr) 120px minmax(150px, 1fr) auto",
+                          gap: 10,
+                          alignItems: "end",
+                        }}
+                      >
+                        <label>
+                          <span className="t-label">Option name</span>
+                          <input
+                            className="input"
+                            disabled={
+                              !canManageSelectedOptions ||
+                              pendingAction !== null
+                            }
+                            onChange={(event) =>
+                              setOptionName(event.target.value)
+                            }
+                            placeholder="Ready"
+                            style={{
+                              display: "block",
+                              marginTop: 6,
+                              width: "100%",
+                            }}
+                            value={optionName}
+                          />
+                        </label>
+                        <label>
+                          <span className="t-label">Color</span>
+                          <select
+                            className="input"
+                            disabled={
+                              !canManageSelectedOptions ||
+                              pendingAction !== null
+                            }
+                            onChange={(event) =>
+                              setOptionColor(event.target.value)
+                            }
+                            style={{
+                              display: "block",
+                              marginTop: 6,
+                              width: "100%",
+                            }}
+                            value={optionColor}
+                          >
+                            {OPTION_COLORS.map((color) => (
+                              <option key={color} value={color}>
+                                {color}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          <span className="t-label">Description</span>
+                          <input
+                            className="input"
+                            disabled={
+                              !canManageSelectedOptions ||
+                              pendingAction !== null
+                            }
+                            onChange={(event) =>
+                              setOptionDescription(event.target.value)
+                            }
+                            placeholder="Optional"
+                            style={{
+                              display: "block",
+                              marginTop: 6,
+                              width: "100%",
+                            }}
+                            value={optionDescription}
+                          />
+                        </label>
+                        <button
+                          className="btn sm"
+                          disabled={
+                            !canManageSelectedOptions ||
+                            pendingAction !== null ||
+                            !optionName.trim() ||
+                            selectedField.options.length >=
+                              settings.limits.maxOptionsPerField
+                          }
+                          onClick={createOption}
+                          type="button"
+                        >
+                          Add option
+                        </button>
+                      </div>
                     </div>
                     <div style={{ marginTop: 10 }}>
                       {selectedField.options.length > 0 ? (
-                        selectedField.options.map((option) => (
-                          <div
-                            className="list-row"
-                            key={option.id}
-                            style={{ padding: "10px 0", gap: 10 }}
-                          >
-                            <span
-                              aria-hidden="true"
+                        selectedField.options.map((option, index) => {
+                          const draft = optionDraft(option);
+                          return (
+                            <div
+                              className="list-row"
+                              key={option.id}
                               style={{
-                                width: 12,
-                                height: 12,
-                                borderRadius: "var(--radius-pill)",
-                                background: optionSwatchColor(option.color),
-                                border: "1px solid var(--line-strong)",
-                                flex: "0 0 auto",
+                                padding: "12px 0",
+                                gap: 10,
+                                alignItems: "center",
                               }}
-                            />
-                            <span className="t-sm" style={{ flex: 1 }}>
-                              {option.name}
-                            </span>
-                            <span className="t-xs">
-                              {option.description ?? "No description"}
-                            </span>
-                          </div>
-                        ))
+                            >
+                              <span
+                                aria-hidden="true"
+                                style={{
+                                  width: 12,
+                                  height: 12,
+                                  borderRadius: "var(--radius-pill)",
+                                  background: optionSwatchColor(option.color),
+                                  border: "1px solid var(--line-strong)",
+                                  flex: "0 0 auto",
+                                }}
+                              />
+                              <input
+                                aria-label={`${option.name} option name`}
+                                className="input"
+                                disabled={
+                                  !canManageSelectedOptions ||
+                                  pendingAction !== null
+                                }
+                                onChange={(event) =>
+                                  setOptionDrafts((drafts) => ({
+                                    ...drafts,
+                                    [option.id]: {
+                                      ...draft,
+                                      name: event.target.value,
+                                    },
+                                  }))
+                                }
+                                style={{ minWidth: 120, flex: 1 }}
+                                value={draft.name}
+                              />
+                              <select
+                                aria-label={`${option.name} option color`}
+                                className="input"
+                                disabled={
+                                  !canManageSelectedOptions ||
+                                  pendingAction !== null
+                                }
+                                onChange={(event) =>
+                                  setOptionDrafts((drafts) => ({
+                                    ...drafts,
+                                    [option.id]: {
+                                      ...draft,
+                                      color: event.target.value,
+                                    },
+                                  }))
+                                }
+                                style={{ width: 110 }}
+                                value={draft.color}
+                              >
+                                {OPTION_COLORS.map((color) => (
+                                  <option key={color} value={color}>
+                                    {color}
+                                  </option>
+                                ))}
+                              </select>
+                              <input
+                                aria-label={`${option.name} option description`}
+                                className="input"
+                                disabled={
+                                  !canManageSelectedOptions ||
+                                  pendingAction !== null
+                                }
+                                onChange={(event) =>
+                                  setOptionDrafts((drafts) => ({
+                                    ...drafts,
+                                    [option.id]: {
+                                      ...draft,
+                                      description: event.target.value,
+                                    },
+                                  }))
+                                }
+                                style={{ minWidth: 140, flex: 1 }}
+                                value={draft.description}
+                              />
+                              <button
+                                className="btn sm"
+                                disabled={
+                                  !canManageSelectedOptions ||
+                                  pendingAction !== null ||
+                                  !draft.name.trim()
+                                }
+                                onClick={() => updateOption(option)}
+                                type="button"
+                              >
+                                Save option
+                              </button>
+                              <button
+                                aria-label={`Move ${option.name} option up`}
+                                className="btn sm"
+                                disabled={
+                                  !canManageSelectedOptions ||
+                                  pendingAction !== null ||
+                                  index === 0
+                                }
+                                onClick={() => moveOption(option, -1)}
+                                type="button"
+                              >
+                                Up
+                              </button>
+                              <button
+                                aria-label={`Move ${option.name} option down`}
+                                className="btn sm"
+                                disabled={
+                                  !canManageSelectedOptions ||
+                                  pendingAction !== null ||
+                                  index === selectedField.options.length - 1
+                                }
+                                onClick={() => moveOption(option, 1)}
+                                type="button"
+                              >
+                                Down
+                              </button>
+                              <button
+                                className="btn sm"
+                                disabled={
+                                  !canManageSelectedOptions ||
+                                  pendingAction !== null
+                                }
+                                onClick={() => deleteOption(option)}
+                                type="button"
+                              >
+                                Delete option
+                              </button>
+                            </div>
+                          );
+                        })
                       ) : (
                         <p className="t-sm" style={{ color: "var(--ink-3)" }}>
-                          No options have been added yet.
+                          No options have been added yet. Add one to make this
+                          field available in table cells, filters, and board
+                          columns.
                         </p>
                       )}
                     </div>

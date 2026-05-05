@@ -57,7 +57,7 @@
 
 ## Phase 4: Single-Select Options and Field Values - option rows and workspace values stay in sync
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add full single-select option administration and ensure option changes remain compatible with Projects workspace field values, board columns, filters, and item cells. Authorized users can add, rename, recolor, reorder, and delete options with visible impact on existing item values.
 

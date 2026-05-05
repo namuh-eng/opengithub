@@ -204,6 +204,28 @@ pub struct ProjectFieldDeleteRequest {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ProjectFieldOptionCreateRequest {
+    pub name: String,
+    pub color: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectFieldOptionUpdateRequest {
+    pub name: String,
+    pub color: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectFieldOptionReorderRequest {
+    pub option_ids: Vec<Uuid>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectItemFieldValueRequest {
     pub value: Value,
     pub expected_updated_at: Option<DateTime<Utc>>,
@@ -1186,6 +1208,276 @@ pub async fn delete_project_field_for_actor(
     .execute(pool)
     .await?;
 
+    project_field_settings(pool, project_id, Some(actor_user_id)).await
+}
+
+pub async fn create_project_field_option_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    field_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectFieldOptionCreateRequest,
+) -> Result<ProjectFieldSettings, ProjectsError> {
+    let field = option_admin_target(pool, project_id, field_id, actor_user_id).await?;
+    let name = normalize_project_option_name(&request.name)?;
+    let color = normalize_project_option_color(request.color.as_deref())?;
+    let description = normalize_project_option_description(request.description.as_deref());
+    ensure_unique_project_option_name(pool, field_id, None, &name).await?;
+
+    let option_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM project_field_options WHERE project_field_id = $1",
+    )
+    .bind(field_id)
+    .fetch_one(pool)
+    .await?;
+    if option_count >= 50 {
+        return Err(ProjectsError::Validation(
+            "Project option limit has been reached for this field.".to_owned(),
+        ));
+    }
+    let position = next_project_option_position(pool, field_id).await?;
+    let option_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO project_field_options (project_field_id, name, color, position, description)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id
+        "#,
+    )
+    .bind(field_id)
+    .bind(&name)
+    .bind(&color)
+    .bind(position as i32)
+    .bind(&description)
+    .fetch_one(pool)
+    .await?;
+
+    touch_project_field(pool, project_id, field_id).await?;
+    invalidate_project_view_caches(pool, project_id).await?;
+    audit_project_option_change(
+        pool,
+        actor_user_id,
+        "project.field_option.create",
+        option_id,
+        json!({
+            "projectId": project_id,
+            "fieldId": field_id,
+            "fieldName": field.name,
+            "optionName": name,
+            "color": color,
+        }),
+    )
+    .await?;
+    project_field_settings(pool, project_id, Some(actor_user_id)).await
+}
+
+pub async fn update_project_field_option_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    field_id: Uuid,
+    option_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectFieldOptionUpdateRequest,
+) -> Result<ProjectFieldSettings, ProjectsError> {
+    let field = option_admin_target(pool, project_id, field_id, actor_user_id).await?;
+    let option = project_option_admin_target(pool, field_id, option_id).await?;
+    let name = normalize_project_option_name(&request.name)?;
+    let color = normalize_project_option_color(request.color.as_deref())?;
+    let description = normalize_project_option_description(request.description.as_deref());
+    ensure_unique_project_option_name(pool, field_id, Some(option_id), &name).await?;
+
+    sqlx::query(
+        r#"
+        UPDATE project_field_options
+        SET name = $3, color = $4, description = $5
+        WHERE project_field_id = $1 AND id = $2
+        "#,
+    )
+    .bind(field_id)
+    .bind(option_id)
+    .bind(&name)
+    .bind(&color)
+    .bind(&description)
+    .execute(pool)
+    .await?;
+
+    if option.name != name {
+        sqlx::query(
+            r#"
+            UPDATE project_item_field_values
+            SET value = to_jsonb($3::text), updated_by_user_id = $4, updated_at = now()
+            WHERE project_field_id = $1 AND value = to_jsonb($2::text)
+            "#,
+        )
+        .bind(field_id)
+        .bind(&option.name)
+        .bind(&name)
+        .bind(actor_user_id)
+        .execute(pool)
+        .await?;
+        sqlx::query(
+            r#"
+            UPDATE project_board_column_settings
+            SET option_key = $4, label = CASE WHEN label = $3 THEN $4 ELSE label END, updated_at = now()
+            WHERE project_field_id = $1 AND option_key = $2
+            "#,
+        )
+        .bind(field_id)
+        .bind(&option.name)
+        .bind(&option.name)
+        .bind(&name)
+        .execute(pool)
+        .await?;
+    }
+
+    touch_project_field(pool, project_id, field_id).await?;
+    invalidate_project_view_caches(pool, project_id).await?;
+    audit_project_option_change(
+        pool,
+        actor_user_id,
+        "project.field_option.update",
+        option_id,
+        json!({
+            "projectId": project_id,
+            "fieldId": field_id,
+            "fieldName": field.name,
+            "previousName": option.name,
+            "optionName": name,
+            "color": color,
+        }),
+    )
+    .await?;
+    project_field_settings(pool, project_id, Some(actor_user_id)).await
+}
+
+pub async fn reorder_project_field_options_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    field_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectFieldOptionReorderRequest,
+) -> Result<ProjectFieldSettings, ProjectsError> {
+    option_admin_target(pool, project_id, field_id, actor_user_id).await?;
+    let existing: Vec<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM project_field_options WHERE project_field_id = $1 ORDER BY position, created_at",
+    )
+    .bind(field_id)
+    .fetch_all(pool)
+    .await?;
+    if existing.len() != request.option_ids.len()
+        || !existing.iter().all(|id| request.option_ids.contains(id))
+    {
+        return Err(ProjectsError::Validation(
+            "Option reorder must include every option exactly once.".to_owned(),
+        ));
+    }
+    for (index, option_id) in request.option_ids.iter().enumerate() {
+        sqlx::query(
+            "UPDATE project_field_options SET position = $3 WHERE project_field_id = $1 AND id = $2",
+        )
+        .bind(field_id)
+        .bind(option_id)
+        .bind((index + 1) as i32)
+        .execute(pool)
+        .await?;
+    }
+    touch_project_field(pool, project_id, field_id).await?;
+    invalidate_project_view_caches(pool, project_id).await?;
+    audit_project_option_change(
+        pool,
+        actor_user_id,
+        "project.field_option.reorder",
+        field_id,
+        json!({
+            "projectId": project_id,
+            "fieldId": field_id,
+            "optionIds": request.option_ids,
+        }),
+    )
+    .await?;
+    project_field_settings(pool, project_id, Some(actor_user_id)).await
+}
+
+pub async fn delete_project_field_option_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    field_id: Uuid,
+    option_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<ProjectFieldSettings, ProjectsError> {
+    let field = option_admin_target(pool, project_id, field_id, actor_user_id).await?;
+    let option = project_option_admin_target(pool, field_id, option_id).await?;
+    let affected_item_ids = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        SELECT project_items.id
+        FROM project_item_field_values
+        JOIN project_items ON project_items.id = project_item_field_values.project_item_id
+        WHERE project_items.project_id = $1
+          AND project_item_field_values.project_field_id = $2
+          AND project_item_field_values.value = to_jsonb($3::text)
+        "#,
+    )
+    .bind(project_id)
+    .bind(field_id)
+    .bind(&option.name)
+    .fetch_all(pool)
+    .await?;
+
+    sqlx::query(
+        "DELETE FROM project_item_field_values WHERE project_field_id = $1 AND value = to_jsonb($2::text)",
+    )
+    .bind(field_id)
+    .bind(&option.name)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "DELETE FROM project_board_column_settings WHERE project_field_id = $1 AND option_key = $2",
+    )
+    .bind(field_id)
+    .bind(&option.name)
+    .execute(pool)
+    .await?;
+    sqlx::query("DELETE FROM project_field_options WHERE project_field_id = $1 AND id = $2")
+        .bind(field_id)
+        .bind(option_id)
+        .execute(pool)
+        .await?;
+
+    for item_id in &affected_item_ids {
+        sqlx::query(
+            r#"
+            INSERT INTO project_item_events (project_id, project_item_id, actor_user_id, event_type, metadata)
+            VALUES ($1, $2, $3, 'project.field_option.delete', $4)
+            "#,
+        )
+        .bind(project_id)
+        .bind(item_id)
+        .bind(actor_user_id)
+        .bind(json!({
+            "fieldId": field_id,
+            "fieldName": field.name,
+            "optionId": option_id,
+            "optionName": option.name,
+        }))
+        .execute(pool)
+        .await?;
+    }
+
+    touch_project_field(pool, project_id, field_id).await?;
+    invalidate_project_view_caches(pool, project_id).await?;
+    audit_project_option_change(
+        pool,
+        actor_user_id,
+        "project.field_option.delete",
+        option_id,
+        json!({
+            "projectId": project_id,
+            "fieldId": field_id,
+            "fieldName": field.name,
+            "optionName": option.name,
+            "removedValues": affected_item_ids.len(),
+        }),
+    )
+    .await?;
     project_field_settings(pool, project_id, Some(actor_user_id)).await
 }
 
@@ -2605,6 +2897,10 @@ struct ProjectFieldAdminTarget {
     updated_at: DateTime<Utc>,
 }
 
+struct ProjectOptionAdminTarget {
+    name: String,
+}
+
 async fn project_field_admin_target(
     pool: &PgPool,
     project_id: Uuid,
@@ -2631,6 +2927,53 @@ async fn project_field_admin_target(
     })
 }
 
+async fn option_admin_target(
+    pool: &PgPool,
+    project_id: Uuid,
+    field_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<ProjectFieldAdminTarget, ProjectsError> {
+    let project = workspace_project_row(pool, project_id, Some(actor_user_id)).await?;
+    let can_manage = project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role);
+    if !can_manage {
+        return Err(ProjectsError::Forbidden);
+    }
+    let field = project_field_admin_target(pool, project_id, field_id).await?;
+    if !matches!(field.field_type.as_str(), "single_select" | "status") {
+        return Err(ProjectsError::Validation(
+            "Options can only be managed on single-select fields.".to_owned(),
+        ));
+    }
+    Ok(field)
+}
+
+async fn project_option_admin_target(
+    pool: &PgPool,
+    field_id: Uuid,
+    option_id: Uuid,
+) -> Result<ProjectOptionAdminTarget, ProjectsError> {
+    let row = sqlx::query(
+        r#"
+        SELECT name
+        FROM project_field_options
+        WHERE project_field_id = $1 AND id = $2
+        "#,
+    )
+    .bind(field_id)
+    .bind(option_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| {
+        ProjectsError::InvalidFilter("option must reference a project field option".to_owned())
+    })?;
+    Ok(ProjectOptionAdminTarget {
+        name: row.get("name"),
+    })
+}
+
 fn normalize_project_field_name(input: &str) -> Result<String, ProjectsError> {
     let name = input.trim().chars().take(80).collect::<String>();
     if name.is_empty() {
@@ -2654,6 +2997,42 @@ fn normalize_custom_project_field_type(input: &str) -> Result<String, ProjectsEr
                 .to_owned(),
         ))
     }
+}
+
+fn normalize_project_option_name(input: &str) -> Result<String, ProjectsError> {
+    let name = input.trim().chars().take(80).collect::<String>();
+    if name.is_empty() {
+        return Err(ProjectsError::Validation(
+            "Project option name is required.".to_owned(),
+        ));
+    }
+    Ok(name)
+}
+
+fn normalize_project_option_color(input: Option<&str>) -> Result<String, ProjectsError> {
+    let color = input.unwrap_or("gray").trim().to_ascii_lowercase();
+    if matches!(
+        color.as_str(),
+        "gray" | "red" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink"
+    ) {
+        Ok(color)
+    } else {
+        Err(ProjectsError::Validation(
+            "Project option color must be gray, red, orange, yellow, green, blue, purple, or pink."
+                .to_owned(),
+        ))
+    }
+}
+
+fn normalize_project_option_description(input: Option<&str>) -> Option<String> {
+    input.and_then(|value| {
+        let description = value.trim().chars().take(200).collect::<String>();
+        if description.is_empty() {
+            None
+        } else {
+            Some(description)
+        }
+    })
 }
 
 fn default_project_field_settings(field_type: &str) -> Value {
@@ -2691,6 +3070,86 @@ async fn ensure_unique_project_field_name(
             "A project field with that name already exists.".to_owned(),
         ));
     }
+    Ok(())
+}
+
+async fn ensure_unique_project_option_name(
+    pool: &PgPool,
+    field_id: Uuid,
+    current_option_id: Option<Uuid>,
+    name: &str,
+) -> Result<(), ProjectsError> {
+    let duplicate: Option<Uuid> = sqlx::query_scalar(
+        r#"
+        SELECT id
+        FROM project_field_options
+        WHERE project_field_id = $1
+          AND lower(name) = lower($2)
+          AND ($3::uuid IS NULL OR id <> $3)
+        LIMIT 1
+        "#,
+    )
+    .bind(field_id)
+    .bind(name)
+    .bind(current_option_id)
+    .fetch_optional(pool)
+    .await?;
+    if duplicate.is_some() {
+        return Err(ProjectsError::Validation(
+            "A project option with that name already exists.".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+async fn next_project_option_position(pool: &PgPool, field_id: Uuid) -> Result<i64, ProjectsError> {
+    let max_position: Option<i32> = sqlx::query_scalar(
+        "SELECT max(position) FROM project_field_options WHERE project_field_id = $1",
+    )
+    .bind(field_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(i64::from(max_position.unwrap_or(0)) + 1)
+}
+
+async fn touch_project_field(
+    pool: &PgPool,
+    project_id: Uuid,
+    field_id: Uuid,
+) -> Result<(), ProjectsError> {
+    sqlx::query(
+        r#"
+        UPDATE project_fields
+        SET cache_version = cache_version + 1, updated_at = now()
+        WHERE project_id = $1 AND id = $2 AND deleted_at IS NULL
+        "#,
+    )
+    .bind(project_id)
+    .bind(field_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn audit_project_option_change(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    event_type: &str,
+    target_id: Uuid,
+    metadata: Value,
+) -> Result<(), ProjectsError> {
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, $2, 'project_field_option', $3, $4)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(target_id.to_string())
+    .bind(metadata)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
