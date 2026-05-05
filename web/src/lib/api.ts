@@ -3121,6 +3121,24 @@ export type RepositoryCodeScanningAlertDetailFetchResult =
   | { ok: true; codeScanningAlert: RepositoryCodeScanningAlertDetail }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type RepositoryCodeScanningAlertMutation =
+  | {
+      action: "dismiss";
+      dismissalReason: string;
+      dismissalComment?: string | null;
+    }
+  | {
+      action: "reopen";
+    }
+  | {
+      action: "assign";
+      assigneeIds: string[];
+    }
+  | {
+      action: "link_issue";
+      linkedIssueId: string;
+    };
+
 export type RepositoryDependabotLinks = {
   listHref: string;
   openHref: string;
@@ -10454,6 +10472,65 @@ export async function getRepositoryCodeScanningAlertDetailFromCookie(
     codeScanningAlert:
       (await response.json()) as RepositoryCodeScanningAlertDetail,
   };
+}
+
+export async function mutateRepositoryCodeScanningAlertFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  alertId: string | number,
+  mutation: RepositoryCodeScanningAlertMutation,
+): Promise<RepositoryCodeScanningAlertDetail> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/code-scanning/${encodeURIComponent(String(alertId))}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(mutation),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const envelope = ((await response.json().catch(() => null)) ??
+      null) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Code scanning alert update failed.",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as RepositoryCodeScanningAlertDetail;
+}
+
+export async function createRepositoryCodeScanningIssueFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  alertId: string | number,
+): Promise<RepositoryCodeScanningAlertDetail> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/code-scanning/${encodeURIComponent(String(alertId))}/issue`,
+    {
+      method: "POST",
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const envelope = ((await response.json().catch(() => null)) ??
+      null) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Code scanning issue link failed.",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as RepositoryCodeScanningAlertDetail;
 }
 
 export async function mutateRepositoryDependabotAlertFromCookie(

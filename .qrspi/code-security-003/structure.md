@@ -42,7 +42,7 @@
 
 ## Phase 3: Alert Detail and Single-Alert Triage - dismiss, reopen, assign, link issue
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement `/{owner}/{repo}/security/code-scanning/{alert_id}` plus single-alert mutations. Maintainers can dismiss open alerts with reason/comment, reopen dismissed alerts, assign users/teams, and create or link an issue. Readers can view permitted PR annotations/detail data but cannot mutate.
 

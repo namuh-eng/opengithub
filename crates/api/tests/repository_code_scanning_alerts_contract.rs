@@ -137,6 +137,41 @@ async fn get_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (Status
     )
 }
 
+async fn request_json(
+    app: axum::Router,
+    method: &str,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Option<Value>,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder().method(method).uri(uri);
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    if body.is_some() {
+        builder = builder.header(header::CONTENT_TYPE, "application/json");
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(match body {
+                    Some(body) => Body::from(body.to_string()),
+                    None => Body::empty(),
+                })
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    (
+        status,
+        serde_json::from_slice(&bytes).expect("response should be json"),
+    )
+}
+
 #[tokio::test]
 async fn code_scanning_alerts_filter_detail_and_protect_private_repositories() {
     let Some(pool) = database_pool().await else {
@@ -324,6 +359,105 @@ async fn code_scanning_alerts_filter_detail_and_protect_private_repositories() {
     assert_eq!(detail_body["assigneeOptions"][0]["kind"], "user");
     assert_eq!(detail_body["linkedIssue"]["canLink"], true);
 
+    let (reader_patch_status, reader_patch_body) = request_json(
+        app.clone(),
+        "PATCH",
+        &format!("{base}/1"),
+        Some(&reader_cookie),
+        Some(json!({ "action": "dismiss", "dismissalReason": "false_positive" })),
+    )
+    .await;
+    assert_eq!(reader_patch_status, StatusCode::FORBIDDEN);
+    assert_eq!(reader_patch_body["error"]["code"], "forbidden");
+
+    let (invalid_dismiss_status, invalid_dismiss_body) = request_json(
+        app.clone(),
+        "PATCH",
+        &format!("{base}/1"),
+        Some(&owner_cookie),
+        Some(json!({ "action": "dismiss" })),
+    )
+    .await;
+    assert_eq!(invalid_dismiss_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(invalid_dismiss_body["error"]["code"], "validation_failed");
+
+    let (dismiss_status, dismiss_body) = request_json(
+        app.clone(),
+        "PATCH",
+        &format!("{base}/1"),
+        Some(&owner_cookie),
+        Some(json!({
+            "action": "dismiss",
+            "dismissalReason": "false_positive",
+            "dismissalComment": "Confirmed by triage"
+        })),
+    )
+    .await;
+    assert_eq!(dismiss_status, StatusCode::OK, "{dismiss_body}");
+    assert_eq!(dismiss_body["alert"]["state"], "dismissed");
+    assert!(dismiss_body["timeline"]
+        .as_array()
+        .expect("timeline")
+        .iter()
+        .any(|event| event["eventType"] == "dismissed"));
+
+    let (reopen_status, reopen_body) = request_json(
+        app.clone(),
+        "PATCH",
+        &format!("{base}/1"),
+        Some(&owner_cookie),
+        Some(json!({ "action": "reopen" })),
+    )
+    .await;
+    assert_eq!(reopen_status, StatusCode::OK, "{reopen_body}");
+    assert_eq!(reopen_body["alert"]["state"], "open");
+
+    let (assign_status, assign_body) = request_json(
+        app.clone(),
+        "PATCH",
+        &format!("{base}/1"),
+        Some(&owner_cookie),
+        Some(json!({ "action": "assign", "assigneeIds": [reader.id] })),
+    )
+    .await;
+    assert_eq!(assign_status, StatusCode::OK, "{assign_body}");
+    assert_eq!(
+        assign_body["alert"]["assignees"][0]["id"],
+        reader.id.to_string()
+    );
+
+    let (issue_status, issue_body) = request_json(
+        app.clone(),
+        "POST",
+        &format!("{base}/1/issue"),
+        Some(&owner_cookie),
+        None,
+    )
+    .await;
+    assert_eq!(issue_status, StatusCode::CREATED, "{issue_body}");
+    assert_eq!(issue_body["linkedIssue"]["issue"]["number"], 1);
+    assert_eq!(
+        issue_body["linkedIssue"]["issue"]["href"],
+        format!("/{owner_login}/{}/issues/1", repository.name)
+    );
+
+    let notification_count = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM notifications WHERE repository_id = $1 AND subject_type IN ('code_scanning_alert', 'issue')",
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("notification count should load");
+    assert!(notification_count >= 1);
+    let audit_payloads = sqlx::query_scalar::<_, Value>(
+        "SELECT metadata FROM security_audit_events WHERE event_type = 'repository.code_scanning_alert.update' AND target_id = $1 ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(repository.id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("audit event should persist");
+    assert!(!audit_payloads.to_string().contains("test-session-secret"));
+
     let filtered = repository_code_scanning_alerts_for_actor_by_owner_name(
         &pool,
         owner.id,
@@ -359,7 +493,7 @@ async fn code_scanning_alerts_filter_detail_and_protect_private_repositories() {
     .await
     .expect("direct alert detail should load")
     .expect("alert should exist");
-    assert_eq!(direct_detail.alert.assignees[0].id, owner.id);
+    assert_eq!(direct_detail.alert.assignees[0].id, reader.id);
     assert_eq!(direct_detail.rule.name, "Log injection");
 
     let (invalid_status, invalid_body) = get_json(

@@ -5937,5 +5937,25 @@
       "Run keyboard-only and screen-reader traversal for the filter menus, alert settings details menu, row checkboxes, disabled callout, and mobile Security sidebar.",
       "Repeat full make test-e2e after the wrapper stall and shared local 202605030041 migration drift are resolved; the focused repository-code-scanning Playwright smoke passed against the current pre-applied schema."
     ]
+  },
+  {
+    "feature_id": "code-security-003",
+    "tests_written": [
+      "Completed Phase 3 Alert Detail and Single-Alert Triage without marking code-security-003 build_pass=true.",
+      "Added PATCH /api/repos/{owner}/{repo}/security/code-scanning/{alert_id} for maintainer-only dismiss, reopen, assignment changes, and existing issue linking with validation, timeline events, audit events, and assignee notifications.",
+      "Added POST /api/repos/{owner}/{repo}/security/code-scanning/{alert_id}/issue to create and link a real issue from alert rule/location/remediation data while avoiding duplicate linked issues.",
+      "Added the server-rendered /{owner}/{repo}/security/code-scanning/{alert_id} detail route, same-origin mutation proxy routes, and RepositoryCodeScanningAlertDetailPage with code snippet, path disclosure, remediation details, timeline, assignee selector, dismiss/reopen controls, and linked issue actions using Editorial primitives/tokens only.",
+      "Extended Rust contract coverage for anonymous/outsider privacy, reader mutation denial, dismiss validation, dismiss/reopen state transitions, assignment persistence, issue creation/linking, notifications, audit redaction, and no secret leakage.",
+      "Extended Vitest and Playwright coverage for detail rendering, concrete routes, mutation submissions, read-only state, unavailable state, no dead controls, and screenshot ralph/screenshots/build/code-security-003-phase3-alert-detail.jpg.",
+      "Verification passed: focused repository_code_scanning_alerts_contract; focused repository-code-scanning list/detail Vitest; TypeScript check; focused Biome checks; focused direct Playwright repository-code-scanning smoke with 2 passed; full make check; full make test with Cargo tests plus 472 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 still needs real SARIF upload ingestion and PR/check annotation integration; Phase 3 mutates existing normalized alert rows only.",
+      "Phase 5 still needs API docs, final edge-case sweep, final desktop/mobile screenshots, prd.json build_pass=true, and final QA handoff.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Run keyboard-only and screen-reader traversal for the alert detail code snippet, Show paths disclosure, remediation details disclosure, dismissal reason/comment fields, assignment checkboxes, linked issue action, and mobile Security sidebar.",
+      "Exercise concurrent dismiss/reopen/issue-link attempts from two browser sessions to confirm stale-state conflict copy after Phase 5 broadens final edge-case coverage.",
+      "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema."
+    ]
   }
 ]

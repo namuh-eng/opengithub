@@ -393,6 +393,16 @@ pub struct DependabotAlertMutation {
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct CodeScanningAlertMutation {
+    pub action: String,
+    pub dismissal_reason: Option<String>,
+    pub dismissal_comment: Option<String>,
+    pub assignee_ids: Option<Vec<Uuid>>,
+    pub linked_issue_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct DependabotBulkMutation {
     pub action: String,
     pub alert_ids: Vec<Uuid>,
@@ -659,6 +669,85 @@ pub async fn repository_code_scanning_alert_detail_for_actor_by_owner_name(
         ));
     }
 
+    repository_code_scanning_alert_detail_for_repository(
+        pool,
+        &repository,
+        actor_user_id,
+        alert_number,
+    )
+    .await
+}
+
+pub async fn update_repository_code_scanning_alert_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    alert_number: i64,
+    mutation: CodeScanningAlertMutation,
+) -> Result<Option<CodeScanningAlertDetail>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if !can_write_repository(pool, &repository, actor_user_id).await? {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if repository.is_archived {
+        return Err(RepositoryError::ArchivedRepositoryReadOnly);
+    }
+    if alert_number <= 0 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "code scanning alert id must be a positive number".to_owned(),
+        ));
+    }
+
+    update_repository_code_scanning_alert(pool, &repository, actor_user_id, alert_number, mutation)
+        .await?;
+    repository_code_scanning_alert_detail_for_repository(
+        pool,
+        &repository,
+        actor_user_id,
+        alert_number,
+    )
+    .await
+}
+
+pub async fn create_or_link_repository_code_scanning_issue_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    alert_number: i64,
+) -> Result<Option<CodeScanningAlertDetail>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if !can_write_repository(pool, &repository, actor_user_id).await? {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if repository.is_archived {
+        return Err(RepositoryError::ArchivedRepositoryReadOnly);
+    }
+    if alert_number <= 0 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "code scanning alert id must be a positive number".to_owned(),
+        ));
+    }
+
+    create_or_link_repository_code_scanning_issue(pool, &repository, actor_user_id, alert_number)
+        .await?;
     repository_code_scanning_alert_detail_for_repository(
         pool,
         &repository,
@@ -1036,6 +1125,306 @@ async fn repository_code_scanning_alert_detail_for_repository(
         alert,
         links,
     }))
+}
+
+async fn update_repository_code_scanning_alert(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    alert_number: i64,
+    mutation: CodeScanningAlertMutation,
+) -> Result<(), RepositoryError> {
+    let setting = code_scanning_setting(pool, repository).await?;
+    let availability = code_scanning_availability(repository, setting.as_ref());
+    if !availability.enabled {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "Code scanning alerts are disabled for this repository".to_owned(),
+        ));
+    }
+
+    let alert = sqlx::query(
+        "SELECT id, state, fixed_at FROM code_scanning_alerts WHERE repository_id = $1 AND number = $2",
+    )
+    .bind(repository.id)
+    .bind(alert_number)
+    .fetch_optional(pool)
+    .await?;
+    let Some(alert) = alert else {
+        return Err(RepositoryError::NotFound);
+    };
+    let alert_id: Uuid = alert.get("id");
+    let state: String = alert.get("state");
+    let fixed_at: Option<DateTime<Utc>> = alert.get("fixed_at");
+
+    match mutation.action.as_str() {
+        "dismiss" => {
+            if state != "open" {
+                return Err(RepositoryError::InvalidDependencyGraphQuery(
+                    "only open code scanning alerts can be dismissed".to_owned(),
+                ));
+            }
+            let reason =
+                normalize_code_scanning_dismissal_reason(mutation.dismissal_reason.as_deref())?;
+            let comment =
+                normalize_dependabot_dismissal_comment(mutation.dismissal_comment.as_deref())?;
+            sqlx::query(
+                r#"
+                UPDATE code_scanning_alerts
+                SET state = 'dismissed',
+                    dismissed_reason = $3,
+                    dismissed_comment = $4,
+                    dismissed_by_user_id = $5,
+                    dismissed_at = now(),
+                    updated_at = now()
+                WHERE repository_id = $1 AND id = $2
+                "#,
+            )
+            .bind(repository.id)
+            .bind(alert_id)
+            .bind(&reason)
+            .bind(&comment)
+            .bind(actor_user_id)
+            .execute(pool)
+            .await?;
+            record_code_scanning_alert_event(
+                pool,
+                repository,
+                alert_id,
+                actor_user_id,
+                "dismissed",
+                &format!("Dismissed this alert as {reason}."),
+                json!({ "reason": reason, "hasComment": comment.is_some() }),
+            )
+            .await?;
+            notify_code_scanning_alert_assignees(
+                pool,
+                repository,
+                alert_id,
+                "Code scanning alert dismissed",
+                "security_alert",
+            )
+            .await?;
+        }
+        "reopen" => {
+            if fixed_at.is_some() || state == "fixed" {
+                return Err(RepositoryError::InvalidDependencyGraphQuery(
+                    "fixed code scanning alerts cannot be reopened".to_owned(),
+                ));
+            }
+            if state != "dismissed" {
+                return Err(RepositoryError::InvalidDependencyGraphQuery(
+                    "only dismissed code scanning alerts can be reopened".to_owned(),
+                ));
+            }
+            sqlx::query(
+                r#"
+                UPDATE code_scanning_alerts
+                SET state = 'open',
+                    dismissed_reason = NULL,
+                    dismissed_comment = NULL,
+                    dismissed_by_user_id = NULL,
+                    dismissed_at = NULL,
+                    updated_at = now()
+                WHERE repository_id = $1 AND id = $2
+                "#,
+            )
+            .bind(repository.id)
+            .bind(alert_id)
+            .execute(pool)
+            .await?;
+            record_code_scanning_alert_event(
+                pool,
+                repository,
+                alert_id,
+                actor_user_id,
+                "reopened",
+                "Reopened this code scanning alert.",
+                json!({ "previousState": state }),
+            )
+            .await?;
+            notify_code_scanning_alert_assignees(
+                pool,
+                repository,
+                alert_id,
+                "Code scanning alert reopened",
+                "security_alert",
+            )
+            .await?;
+        }
+        "assign" => {
+            let assignee_ids = mutation.assignee_ids.unwrap_or_default();
+            if assignee_ids.len() > 25 {
+                return Err(RepositoryError::InvalidDependencyGraphQuery(
+                    "code scanning alert assignment is limited to 25 users".to_owned(),
+                ));
+            }
+            let options = code_scanning_assignment_options(pool, repository, alert_id).await?;
+            for assignee_id in &assignee_ids {
+                if !options.iter().any(|option| option.id == *assignee_id) {
+                    return Err(RepositoryError::InvalidDependencyGraphQuery(
+                        "code scanning alert assignee must have repository access".to_owned(),
+                    ));
+                }
+            }
+            sqlx::query("DELETE FROM code_scanning_alert_assignees WHERE alert_id = $1")
+                .bind(alert_id)
+                .execute(pool)
+                .await?;
+            for assignee_id in &assignee_ids {
+                sqlx::query(
+                    "INSERT INTO code_scanning_alert_assignees (alert_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                )
+                .bind(alert_id)
+                .bind(assignee_id)
+                .execute(pool)
+                .await?;
+            }
+            record_code_scanning_alert_event(
+                pool,
+                repository,
+                alert_id,
+                actor_user_id,
+                "assigned",
+                if assignee_ids.is_empty() {
+                    "Cleared code scanning alert assignees."
+                } else {
+                    "Updated code scanning alert assignees."
+                },
+                json!({ "assigneeCount": assignee_ids.len() }),
+            )
+            .await?;
+            notify_code_scanning_alert_assignees(
+                pool,
+                repository,
+                alert_id,
+                "Code scanning alert assigned",
+                "assign",
+            )
+            .await?;
+        }
+        "link_issue" => {
+            let Some(issue_id) = mutation.linked_issue_id else {
+                return Err(RepositoryError::InvalidDependencyGraphQuery(
+                    "linked issue id is required".to_owned(),
+                ));
+            };
+            let issue_number = code_scanning_link_existing_issue(
+                pool,
+                repository,
+                alert_id,
+                issue_id,
+                actor_user_id,
+            )
+            .await?;
+            record_code_scanning_alert_event(
+                pool,
+                repository,
+                alert_id,
+                actor_user_id,
+                "issue_linked",
+                &format!("Linked issue #{issue_number} to this alert."),
+                json!({ "issueId": issue_id, "issueNumber": issue_number }),
+            )
+            .await?;
+        }
+        _ => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(
+                "code scanning alert action must be dismiss, reopen, assign, or link_issue"
+                    .to_owned(),
+            ))
+        }
+    }
+
+    Ok(())
+}
+
+async fn create_or_link_repository_code_scanning_issue(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    alert_number: i64,
+) -> Result<(), RepositoryError> {
+    let Some(detail) = repository_code_scanning_alert_detail_for_repository(
+        pool,
+        repository,
+        actor_user_id,
+        alert_number,
+    )
+    .await?
+    else {
+        return Err(RepositoryError::NotFound);
+    };
+    if detail.linked_issue.issue.is_some() {
+        return Ok(());
+    }
+
+    let issue_number = sqlx::query_scalar::<_, i64>(
+        "SELECT COALESCE(max(number), 0) + 1 FROM issues WHERE repository_id = $1",
+    )
+    .bind(repository.id)
+    .fetch_one(pool)
+    .await?;
+    let title = format!("Code scanning: {}", detail.rule.name);
+    let body = format!(
+        "Code scanning reported `{}` in `{}` at line {}.\n\n{}\n\nRule: `{}`\nTool: `{}`\nSeverity: `{}`{}\n\nRemediation:\n{}",
+        detail.alert.message,
+        detail.location.path,
+        detail.location.start_line,
+        detail.rule.description.as_deref().unwrap_or("Review the affected path and apply the recommended remediation."),
+        detail.rule.id,
+        detail.alert.tool_name,
+        detail.alert.security_severity.as_deref().unwrap_or(&detail.alert.severity),
+        detail
+            .rule
+            .help_uri
+            .as_deref()
+            .map(|href| format!("\nReference: {href}"))
+            .unwrap_or_default(),
+        detail
+            .rule
+            .help_markdown
+            .as_deref()
+            .unwrap_or("Assess the data flow, add validation, and rerun code scanning.")
+    );
+    let issue_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO issues (repository_id, number, title, body, author_user_id) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+    )
+    .bind(repository.id)
+    .bind(issue_number)
+    .bind(&title)
+    .bind(&body)
+    .bind(actor_user_id)
+    .fetch_one(pool)
+    .await?;
+
+    sqlx::query(
+        "UPDATE code_scanning_alerts SET linked_issue_id = $3, updated_at = now() WHERE repository_id = $1 AND id = $2 AND linked_issue_id IS NULL",
+    )
+    .bind(repository.id)
+    .bind(detail.alert.id)
+    .bind(issue_id)
+    .execute(pool)
+    .await?;
+
+    record_code_scanning_alert_event(
+        pool,
+        repository,
+        detail.alert.id,
+        actor_user_id,
+        "issue_linked",
+        &format!("Created and linked issue #{issue_number}."),
+        json!({ "issueId": issue_id, "issueNumber": issue_number }),
+    )
+    .await?;
+    notify_code_scanning_alert_assignees(
+        pool,
+        repository,
+        detail.alert.id,
+        "Code scanning alert linked to an issue",
+        "mention",
+    )
+    .await?;
+    Ok(())
 }
 
 async fn repository_security_policy_for_repository(
@@ -2655,6 +3044,22 @@ fn normalize_dependabot_dismissal_comment(
     Ok(None)
 }
 
+fn normalize_code_scanning_dismissal_reason(
+    value: Option<&str>,
+) -> Result<String, RepositoryError> {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "dismissal reason is required".to_owned(),
+        ));
+    };
+    match value {
+        "false_positive" | "won_t_fix" | "used_in_tests" | "not_used" => Ok(value.to_owned()),
+        other => Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+            "unsupported code scanning dismissal reason `{other}`"
+        ))),
+    }
+}
+
 async fn dependabot_alert_rows(
     pool: &PgPool,
     repository: &Repository,
@@ -3414,6 +3819,52 @@ async fn record_dependabot_alert_event(
     Ok(())
 }
 
+async fn record_code_scanning_alert_event(
+    pool: &PgPool,
+    repository: &Repository,
+    alert_id: Uuid,
+    actor_user_id: Uuid,
+    event_type: &str,
+    message: &str,
+    metadata: serde_json::Value,
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        r#"
+        INSERT INTO code_scanning_alert_events (
+            repository_id, alert_id, actor_user_id, event_type, message, metadata
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+        "#,
+    )
+    .bind(repository.id)
+    .bind(alert_id)
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(message)
+    .bind(metadata.clone())
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO security_audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, 'repository.code_scanning_alert.update', 'repository', $2, $3)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(repository.id)
+    .bind(json!({
+        "repositoryId": repository.id,
+        "alertId": alert_id,
+        "alertEvent": event_type,
+        "metadata": metadata,
+    }))
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
 async fn notify_dependabot_alert_assignees(
     pool: &PgPool,
     repository: &Repository,
@@ -3443,6 +3894,83 @@ async fn notify_dependabot_alert_assignees(
     .execute(pool)
     .await?;
     Ok(())
+}
+
+async fn notify_code_scanning_alert_assignees(
+    pool: &PgPool,
+    repository: &Repository,
+    alert_id: Uuid,
+    title: &str,
+    reason: &str,
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        r#"
+        INSERT INTO notifications (
+            user_id, repository_id, subject_type, subject_id, title, reason
+        )
+        SELECT code_scanning_alert_assignees.user_id,
+               $2,
+               'code_scanning_alert',
+               $1,
+               $3,
+               $4
+        FROM code_scanning_alert_assignees
+        WHERE code_scanning_alert_assignees.alert_id = $1
+        "#,
+    )
+    .bind(alert_id)
+    .bind(repository.id)
+    .bind(title)
+    .bind(reason)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn code_scanning_link_existing_issue(
+    pool: &PgPool,
+    repository: &Repository,
+    alert_id: Uuid,
+    issue_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<i64, RepositoryError> {
+    let issue = sqlx::query("SELECT number FROM issues WHERE repository_id = $1 AND id = $2")
+        .bind(repository.id)
+        .bind(issue_id)
+        .fetch_optional(pool)
+        .await?;
+    let Some(issue) = issue else {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "linked issue must belong to this repository".to_owned(),
+        ));
+    };
+    let issue_number: i64 = issue.get("number");
+    sqlx::query(
+        "UPDATE code_scanning_alerts SET linked_issue_id = $3, updated_at = now() WHERE repository_id = $1 AND id = $2",
+    )
+    .bind(repository.id)
+    .bind(alert_id)
+    .bind(issue_id)
+    .execute(pool)
+    .await?;
+    notify_code_scanning_alert_assignees(
+        pool,
+        repository,
+        alert_id,
+        "Code scanning alert linked to an issue",
+        "mention",
+    )
+    .await?;
+    sqlx::query(
+        "INSERT INTO notifications (user_id, repository_id, subject_type, subject_id, title, reason) VALUES ($1, $2, 'issue', $3, $4, 'mention')",
+    )
+    .bind(actor_user_id)
+    .bind(repository.id)
+    .bind(issue_id)
+    .bind(format!("Issue #{issue_number} linked to a code scanning alert"))
+    .execute(pool)
+    .await?;
+    Ok(issue_number)
 }
 
 async fn dependabot_assignment_options(

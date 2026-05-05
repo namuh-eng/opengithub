@@ -328,6 +328,27 @@ test("repository Code scanning alerts support list filters, row navigation, disa
     .first()
     .click();
   await expect(page).toHaveURL(/\/security\/code-scanning\/1/);
+  await expect(
+    page.getByRole("heading", { name: "Unsanitized SQL query" }),
+  ).toBeVisible();
+  await expect(page.getByText(/sqlx::query/)).toBeVisible();
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/code-security-003-phase3-alert-detail.jpg",
+  });
+
+  await page.getByRole("button", { name: "Dismiss alert" }).click();
+  await expect(page.getByText("Dismiss saved.")).toBeVisible();
+  await expect(page.getByText("Dismissed").first()).toBeVisible();
+  await page.getByRole("button", { name: "Reopen alert" }).click();
+  await expect(page.getByText("Reopen saved.")).toBeVisible();
+  await page.getByRole("button", { name: "Save assignments" }).click();
+  await expect(page.getByText("Assignments saved.")).toBeVisible();
+  await page.getByRole("button", { name: "Create linked issue" }).click();
+  await expect(
+    page.getByRole("link", { name: /Open linked issue #/ }),
+  ).toBeVisible();
 
   disableCodeScanning(seeded.treeRepositoryHref);
   await page.goto(`${seeded.treeRepositoryHref}/security/code-scanning`);
