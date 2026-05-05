@@ -2722,6 +2722,50 @@ export type RepositorySecurityOverviewFetchResult =
   | { ok: true; security: RepositorySecurityOverviewView }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type RepositorySecurityPolicyView = {
+  repository: RepositorySecurityRepository;
+  viewer: RepositorySecurityViewer;
+  policy: RepositorySecurityPolicyDocument;
+  links: RepositorySecurityLinks;
+};
+
+export type RepositorySecurityPolicyDocument = {
+  exists: boolean;
+  path: string | null;
+  ref: string | null;
+  blobOid: string | null;
+  contentSha: string | null;
+  markdown: string | null;
+  html: string | null;
+  outline: RepositorySecurityPolicyHeading[];
+  sourceHref: string | null;
+  rawHref: string | null;
+  historyHref: string | null;
+  editHref: string | null;
+  latestCommit: RepositorySecurityPolicyCommit | null;
+  updatedAt: string | null;
+  emptyState: string;
+};
+
+export type RepositorySecurityPolicyHeading = {
+  id: string;
+  level: number;
+  text: string;
+  href: string;
+};
+
+export type RepositorySecurityPolicyCommit = {
+  oid: string;
+  shortOid: string;
+  message: string;
+  committedAt: string;
+  href: string;
+};
+
+export type RepositorySecurityPolicyFetchResult =
+  | { ok: true; securityPolicy: RepositorySecurityPolicyView }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type RepositoryTrafficView = {
   repository: RepositoryTrafficRepository;
   window: RepositoryTrafficWindow;
@@ -9694,6 +9738,50 @@ export async function getRepositorySecurityOverviewFromCookie(
   return {
     ok: true,
     security: (await response.json()) as RepositorySecurityOverviewView,
+  };
+}
+
+export async function getRepositorySecurityPolicyFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+): Promise<RepositorySecurityPolicyFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/policy`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository Security policy is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Repository Security policy is unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    securityPolicy: (await response.json()) as RepositorySecurityPolicyView,
   };
 }
 

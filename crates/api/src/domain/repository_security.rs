@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use regex::{Captures, Regex};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
@@ -105,6 +106,55 @@ pub struct SecurityOverviewLinks {
     pub secret_scanning_href: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositorySecurityPolicyView {
+    pub repository: RepositorySecurityRepository,
+    pub viewer: SecurityViewer,
+    pub policy: SecurityPolicyDocument,
+    pub links: SecurityOverviewLinks,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SecurityPolicyDocument {
+    pub exists: bool,
+    pub path: Option<String>,
+    #[serde(rename = "ref")]
+    pub ref_name: Option<String>,
+    pub blob_oid: Option<String>,
+    pub content_sha: Option<String>,
+    pub markdown: Option<String>,
+    pub html: Option<String>,
+    pub outline: Vec<SecurityPolicyHeading>,
+    pub source_href: Option<String>,
+    pub raw_href: Option<String>,
+    pub history_href: Option<String>,
+    pub edit_href: Option<String>,
+    pub latest_commit: Option<SecurityPolicyCommit>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub empty_state: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SecurityPolicyHeading {
+    pub id: String,
+    pub level: i32,
+    pub text: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SecurityPolicyCommit {
+    pub oid: String,
+    pub short_oid: String,
+    pub message: String,
+    pub committed_at: DateTime<Utc>,
+    pub href: String,
+}
+
 pub async fn repository_security_overview_for_actor_by_owner_name(
     pool: &PgPool,
     actor_user_id: Uuid,
@@ -122,6 +172,27 @@ pub async fn repository_security_overview_for_actor_by_owner_name(
     }
 
     repository_security_overview_for_repository(pool, &repository, actor_user_id)
+        .await
+        .map(Some)
+}
+
+pub async fn repository_security_policy_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+) -> Result<Option<RepositorySecurityPolicyView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+
+    repository_security_policy_for_repository(pool, &repository, actor_user_id)
         .await
         .map(Some)
 }
@@ -156,6 +227,38 @@ async fn repository_security_overview_for_repository(
         policy: security_policy_summary(pool, repository, can_write).await?,
         features: security_feature_cards(pool, repository, can_write).await?,
         advisories: published_advisories(pool, repository).await?,
+        links,
+    })
+}
+
+async fn repository_security_policy_for_repository(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+) -> Result<RepositorySecurityPolicyView, RepositoryError> {
+    let can_write = can_write_repository(pool, repository, actor_user_id).await?;
+    let permission = viewer_permission(pool, repository, actor_user_id, can_write).await?;
+    let links = security_links(repository);
+
+    Ok(RepositorySecurityPolicyView {
+        repository: RepositorySecurityRepository {
+            id: repository.id,
+            owner_login: repository.owner_login.clone(),
+            name: repository.name.clone(),
+            visibility: repository.visibility.as_str().to_owned(),
+            default_branch: repository.default_branch.clone(),
+            security_href: links.overview_href.clone(),
+            policy_href: links.policy_href.clone(),
+            advisories_href: links.advisories_href.clone(),
+        },
+        viewer: SecurityViewer {
+            permission,
+            can_read: true,
+            can_write,
+            can_edit_policy: can_write && !repository.is_archived,
+            can_view_private_alert_counts: can_write,
+        },
+        policy: security_policy_document(pool, repository, can_write).await?,
         links,
     })
 }
@@ -301,6 +404,144 @@ async fn security_policy_summary(
     })
 }
 
+async fn security_policy_document(
+    pool: &PgPool,
+    repository: &Repository,
+    can_write: bool,
+) -> Result<SecurityPolicyDocument, RepositoryError> {
+    if let Some(row) = sqlx::query(
+        r#"
+        SELECT path, ref_name, blob_oid, content_sha, markdown, rendered_html, updated_at
+        FROM repository_security_policies
+        WHERE repository_id = $1 AND published = true
+        ORDER BY CASE WHEN lower(path) = 'security.md' THEN 0 ELSE 1 END, updated_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_optional(pool)
+    .await?
+    {
+        return policy_document_from_row(repository, row, can_write);
+    }
+
+    let row = sqlx::query(
+        r#"
+        SELECT repository_files.path,
+               $2::text AS ref_name,
+               repository_files.oid AS blob_oid,
+               repository_files.content AS markdown,
+               commits.oid AS commit_oid,
+               commits.message AS commit_message,
+               commits.committed_at AS committed_at
+        FROM repository_files
+        JOIN repository_git_refs
+          ON repository_git_refs.repository_id = repository_files.repository_id
+         AND repository_git_refs.target_commit_id = repository_files.commit_id
+        JOIN commits ON commits.id = repository_files.commit_id
+        WHERE repository_files.repository_id = $1
+          AND repository_git_refs.name IN ($2, 'refs/heads/' || $2)
+          AND lower(repository_files.path) IN ('security.md', '.github/security.md', 'docs/security.md')
+        ORDER BY CASE lower(repository_files.path)
+            WHEN 'security.md' THEN 0
+            WHEN '.github/security.md' THEN 1
+            ELSE 2
+        END
+        LIMIT 1
+        "#,
+    )
+    .bind(repository.id)
+    .bind(&repository.default_branch)
+    .fetch_optional(pool)
+    .await?;
+
+    let Some(row) = row else {
+        return Ok(SecurityPolicyDocument {
+            exists: false,
+            path: None,
+            ref_name: None,
+            blob_oid: None,
+            content_sha: None,
+            markdown: None,
+            html: None,
+            outline: Vec::new(),
+            source_href: None,
+            raw_href: None,
+            history_href: None,
+            edit_href: if can_write {
+                Some(format!(
+                    "/{}/{}/security/policy/edit",
+                    repository.owner_login, repository.name
+                ))
+            } else {
+                None
+            },
+            latest_commit: None,
+            updated_at: None,
+            empty_state: if can_write {
+                "No SECURITY.md policy has been published. Maintainers can start setup.".to_owned()
+            } else {
+                "No security policy has been published for this repository.".to_owned()
+            },
+        });
+    };
+
+    let path: String = row.get("path");
+    let ref_name: String = row.get("ref_name");
+    let markdown: String = row.get("markdown");
+    let rendered = render_markdown(
+        Some(pool),
+        RenderMarkdownInput {
+            markdown: markdown.clone(),
+            repository_id: Some(repository.id),
+            owner: Some(repository.owner_login.clone()),
+            repo: Some(repository.name.clone()),
+            ref_name: Some(ref_name.clone()),
+            enable_task_toggles: Some(false),
+        },
+    )
+    .await
+    .map_err(markdown_error)?;
+    let commit_oid: String = row.get("commit_oid");
+    let committed_at: DateTime<Utc> = row.get("committed_at");
+
+    Ok(SecurityPolicyDocument {
+        exists: true,
+        path: Some(path.clone()),
+        ref_name: Some(ref_name.clone()),
+        blob_oid: row.get("blob_oid"),
+        content_sha: Some(rendered.content_sha.clone()),
+        markdown: Some(markdown),
+        outline: policy_heading_outline(&rendered.html),
+        html: Some(rendered.html),
+        source_href: Some(repository_blob_href(repository, &ref_name, &path)),
+        raw_href: Some(repository_raw_href(repository, &ref_name, &path)),
+        history_href: Some(repository_history_href(repository, &ref_name, &path)),
+        edit_href: can_write.then(|| {
+            format!(
+                "/{}/{}/security/policy/edit?path={}",
+                repository.owner_login,
+                repository.name,
+                percent_encode_path(&path)
+            )
+        }),
+        latest_commit: Some(SecurityPolicyCommit {
+            short_oid: commit_oid.chars().take(7).collect(),
+            href: format!(
+                "/{}/{}/commit/{}",
+                repository.owner_login,
+                repository.name,
+                percent_encode_segment(&commit_oid)
+            ),
+            oid: commit_oid,
+            message: row.get("commit_message"),
+            committed_at,
+        }),
+        updated_at: Some(committed_at),
+        empty_state: String::new(),
+    })
+}
+
 async fn policy_from_row(
     repository: &Repository,
     row: sqlx::postgres::PgRow,
@@ -326,6 +567,40 @@ async fn policy_from_row(
                 percent_encode_path(&path)
             )
         }),
+        updated_at: row.get("updated_at"),
+        empty_state: String::new(),
+    })
+}
+
+fn policy_document_from_row(
+    repository: &Repository,
+    row: sqlx::postgres::PgRow,
+    can_write: bool,
+) -> Result<SecurityPolicyDocument, RepositoryError> {
+    let path: String = row.get("path");
+    let ref_name: String = row.get("ref_name");
+    let html: String = row.get("rendered_html");
+    Ok(SecurityPolicyDocument {
+        exists: true,
+        path: Some(path.clone()),
+        ref_name: Some(ref_name.clone()),
+        blob_oid: row.get("blob_oid"),
+        content_sha: Some(row.get("content_sha")),
+        markdown: Some(row.get("markdown")),
+        outline: policy_heading_outline(&html),
+        html: Some(html),
+        source_href: Some(repository_blob_href(repository, &ref_name, &path)),
+        raw_href: Some(repository_raw_href(repository, &ref_name, &path)),
+        history_href: Some(repository_history_href(repository, &ref_name, &path)),
+        edit_href: can_write.then(|| {
+            format!(
+                "/{}/{}/security/policy/edit?path={}",
+                repository.owner_login,
+                repository.name,
+                percent_encode_path(&path)
+            )
+        }),
+        latest_commit: None,
         updated_at: row.get("updated_at"),
         empty_state: String::new(),
     })
@@ -478,6 +753,43 @@ fn markdown_sha(markdown: &str) -> String {
 
 fn markdown_error(error: super::markdown::MarkdownError) -> RepositoryError {
     RepositoryError::Sqlx(sqlx::Error::Protocol(error.to_string()))
+}
+
+fn policy_heading_outline(html: &str) -> Vec<SecurityPolicyHeading> {
+    Regex::new(r#"<h([1-6]) id="([^"]+)">(.*?)</h[1-6]>"#)
+        .expect("heading outline regex")
+        .captures_iter(html)
+        .map(|captures| {
+            let level = captures[1].parse::<i32>().unwrap_or(1);
+            let id = captures[2].to_owned();
+            let text = strip_tags(&captures[3])
+                .trim()
+                .trim_start_matches('#')
+                .trim()
+                .to_owned();
+            SecurityPolicyHeading {
+                href: format!("#{id}"),
+                id,
+                level,
+                text,
+            }
+        })
+        .collect()
+}
+
+fn strip_tags(value: &str) -> String {
+    Regex::new(r"<[^>]+>")
+        .expect("tag regex")
+        .replace_all(value, |captures: &Captures<'_>| {
+            if captures[0].starts_with("</") {
+                " "
+            } else {
+                ""
+            }
+        })
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn repository_blob_href(repository: &Repository, ref_name: &str, path: &str) -> String {

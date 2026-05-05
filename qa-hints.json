@@ -5748,5 +5748,23 @@
       "Run keyboard-only and screen-reader traversal for the Security sidebar, repository header controls, policy preview links, feature cards, advisory rows, empty states, and mobile wrapping.",
       "make test-e2e wrapper produced no output for more than 90 seconds and was terminated to avoid stale child processes; the focused direct Playwright Security smoke passed with screenshot evidence."
     ]
+  },
+  {
+    "feature_id": "code-security-001",
+    "tests_written": [
+      "Completed Phase 3 Security Policy Page and Markdown Reader without marking code-security-001 build_pass=true.",
+      "Added GET /api/repos/{owner}/{repo}/security/policy with signed-session auth, private repository 404 privacy, sanitized Markdown HTML, heading outline anchors, source/raw/history/edit hrefs, latest commit metadata, and maintainer/reader empty states.",
+      "Added typed frontend fetch/session helpers and the server-rendered /{owner}/{repo}/security/policy page through RepositorySecurityShell.",
+      "Added RepositorySecurityPolicyPage with MarkdownBody rendering, policy heading navigation, mailto/relative links from the sanitizer, concrete file actions, latest commit metadata, maintainer Start setup/Edit policy affordances, unavailable states, and Editorial primitives/tokens only.",
+      "Extended Rust contract, Vitest, and Playwright coverage for the policy endpoint/page, heading anchors, safe mailto and relative links, file actions, latest commit links, missing-policy maintainer CTA, no dead controls, no unsafe script rendering, and screenshot ralph/screenshots/build/code-security-001-phase3-policy.jpg.",
+      "Verification passed: focused Rust repository_security_policy_contract, focused RepositorySecurityPolicy/Overview Vitest tests, TypeScript check, focused Biome checks, focused direct Playwright repository-security smoke, full make check, full make test with Cargo tests plus 453 web tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 still needs real SECURITY.md create/edit mutations through repository file materialization, commit/ref updates, propose-change fallback, and audit events.",
+      "Phase 5 still needs final API docs coverage, final browser smoke including create/edit, QA handoff, and build_pass bookkeeping.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Run keyboard-only and screen-reader traversal for the dedicated policy page, Security sidebar, heading outline links, file actions, missing-policy empty states, and mobile wrapping.",
+      "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema."
+    ]
   }
 ]

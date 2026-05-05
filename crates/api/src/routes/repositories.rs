@@ -94,7 +94,10 @@ use crate::{
         RepositorySettingsPatch, RepositoryTrafficQuery, RepositoryVisibility,
         RepositoryWatchSettingsPatch,
     },
-    domain::repository_security::repository_security_overview_for_actor_by_owner_name,
+    domain::repository_security::{
+        repository_security_overview_for_actor_by_owner_name,
+        repository_security_policy_for_actor_by_owner_name,
+    },
     domain::webhooks::{
         create_repository_webhook_by_owner_name, delete_repository_webhook_by_owner_name,
         ping_repository_webhook_by_owner_name, redeliver_repository_webhook_delivery_by_owner_name,
@@ -137,6 +140,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/:owner/:repo/network", get(network))
         .route("/:owner/:repo/security", get(security_overview))
+        .route("/:owner/:repo/security/policy", get(security_policy))
         .route("/:owner/:repo/forks/defaults", put(save_fork_defaults))
         .route("/:owner/:repo/refs", get(refs))
         .route("/:owner/:repo/file-finder", get(file_finder))
@@ -1152,6 +1156,27 @@ async fn security_overview(
                     "repository was not found".to_owned(),
                 )
             })?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn security_policy(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = repository_security_policy_for_actor_by_owner_name(pool, actor.0.id, &owner, &repo)
+        .await
+        .map_err(map_repository_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "repository was not found".to_owned(),
+            )
+        })?;
 
     Ok(Json(json!(view)))
 }

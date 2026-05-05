@@ -206,7 +206,7 @@ test("repository Security overview renders policy, feature cards, and advisory l
   await expect(
     page.getByText("Dependency alerts are monitored."),
   ).toBeVisible();
-  await expect(page.getByText("7")).toBeVisible();
+  await expect(page.getByText("7", { exact: true })).toBeVisible();
   await expect(page.getByText("Visible advisory")).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Visible advisory" }),
@@ -215,5 +215,63 @@ test("repository Security overview renders policy, feature cards, and advisory l
   await page.screenshot({
     fullPage: true,
     path: "../ralph/screenshots/build/code-security-001-phase2-overview.jpg",
+  });
+});
+
+test("repository Security policy renders markdown anchors and file actions", async ({
+  page,
+}) => {
+  const seeded = seedDashboard();
+  seedSecurityOverview(seeded.treeRepositoryHref);
+  await signIn(page, seeded);
+
+  await page.goto(`${seeded.treeRepositoryHref}/security/policy`);
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Security policy" }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", {
+      name: "Security policy Responsible disclosure guidance",
+    }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(
+    page.getByRole("heading", { name: "SECURITY.md" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { exact: true, name: "security" }),
+  ).toHaveAttribute("href", "mailto:security@example.com");
+  await expect(
+    page
+      .getByRole("navigation", { name: "Policy headings" })
+      .getByRole("link", {
+        name: "Security policy",
+      }),
+  ).toHaveAttribute("href", "#security-policy");
+  await expect(
+    page.getByRole("link", { exact: true, name: "Source" }),
+  ).toHaveAttribute(
+    "href",
+    `${seeded.treeRepositoryHref}/blob/main/SECURITY.md`,
+  );
+  await expect(
+    page.getByRole("link", { exact: true, name: "Raw" }),
+  ).toHaveAttribute(
+    "href",
+    `${seeded.treeRepositoryHref}/raw/main/SECURITY.md`,
+  );
+  await expect(
+    page.getByRole("link", { exact: true, name: "History" }),
+  ).toHaveAttribute(
+    "href",
+    `${seeded.treeRepositoryHref}/commits/main/SECURITY.md`,
+  );
+  await expect(
+    page.getByRole("link", { name: "Initial commit" }),
+  ).toHaveAttribute("href", /\/commit\/[a-f0-9]+/);
+  await expect(page.locator("script", { hasText: "alert" })).toHaveCount(0);
+  await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/code-security-001-phase3-policy.jpg",
   });
 });

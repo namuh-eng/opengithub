@@ -40,7 +40,7 @@
 
 ## Phase 3: Security Policy Page and Markdown Reader - `/security/policy` exposes anchors, links, and file actions
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the dedicated policy reader page. It must render sanitized Markdown with heading anchors, `mailto:` links, file action menu destinations, and clear empty states for maintainers vs readers.
 

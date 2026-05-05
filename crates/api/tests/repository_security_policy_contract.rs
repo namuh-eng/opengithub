@@ -13,7 +13,10 @@ use opengithub_api::{
             create_repository, grant_repository_permission, insert_commit, upsert_git_ref,
             CreateCommit, CreateRepository, RepositoryOwner, RepositoryVisibility,
         },
-        repository_security::repository_security_overview_for_actor_by_owner_name,
+        repository_security::{
+            repository_security_overview_for_actor_by_owner_name,
+            repository_security_policy_for_actor_by_owner_name,
+        },
     },
 };
 use serde_json::{json, Value};
@@ -188,7 +191,7 @@ async fn repository_security_overview_returns_policy_advisories_privacy_and_sani
     upsert_git_ref(&pool, repository.id, "main", "branch", Some(commit.id))
         .await
         .expect("main ref should upsert");
-    let policy_markdown = "# Security policy\n\nPlease email [security](mailto:security@example.com).\n\n<script>alert('x')</script>";
+    let policy_markdown = "# Security policy\n\nPlease email [security](mailto:security@example.com).\n\n## Supported versions\n\nSee [the guide](docs/security-guide.md).\n\n<script>alert('x')</script>";
     sqlx::query(
         r#"
         INSERT INTO repository_files (repository_id, commit_id, path, content, oid, byte_size)
@@ -295,7 +298,7 @@ async fn repository_security_overview_returns_policy_advisories_privacy_and_sani
         Some(7)
     );
 
-    let (owner_status, owner_body) = get_json(app, &base, Some(&owner_cookie)).await;
+    let (owner_status, owner_body) = get_json(app.clone(), &base, Some(&owner_cookie)).await;
     assert_eq!(owner_status, StatusCode::OK);
     assert_eq!(owner_body["viewer"]["canViewPrivateAlertCounts"], true);
     assert_eq!(owner_body["features"][0]["alertCount"], 7);
@@ -303,4 +306,67 @@ async fn repository_security_overview_returns_policy_advisories_privacy_and_sani
         .as_str()
         .expect("edit href")
         .contains("/security/policy/edit"));
+
+    let policy_base = format!("{base}/policy");
+    let (policy_status, policy_body) =
+        get_json(app.clone(), &policy_base, Some(&reader_cookie)).await;
+    assert_eq!(policy_status, StatusCode::OK, "{policy_body}");
+    assert_eq!(policy_body["policy"]["exists"], true);
+    assert_eq!(policy_body["policy"]["path"], "SECURITY.md");
+    assert_eq!(
+        policy_body["policy"]["latestCommit"]["message"],
+        "Publish security policy"
+    );
+    assert!(policy_body["policy"]["latestCommit"]["href"]
+        .as_str()
+        .expect("commit href")
+        .contains("/commit/policy"));
+    assert_eq!(
+        policy_body["policy"]["outline"][0]["href"],
+        "#security-policy"
+    );
+    assert_eq!(
+        policy_body["policy"]["outline"][1]["text"],
+        "Supported versions"
+    );
+    assert!(policy_body["policy"]["html"]
+        .as_str()
+        .expect("policy html")
+        .contains("mailto:security@example.com"));
+    assert!(policy_body["policy"]["html"]
+        .as_str()
+        .expect("policy html")
+        .contains("/blob/main/docs/security-guide.md"));
+    assert!(!policy_body["policy"]["html"]
+        .as_str()
+        .expect("policy html")
+        .contains("<script"));
+    assert_eq!(policy_body["policy"]["editHref"], Value::Null);
+    assert!(!policy_body.to_string().contains("test-session-secret"));
+
+    let direct_policy = repository_security_policy_for_actor_by_owner_name(
+        &pool,
+        owner.id,
+        owner_login,
+        &repository.name,
+    )
+    .await
+    .expect("direct security policy should load")
+    .expect("repository should exist");
+    assert!(direct_policy.viewer.can_edit_policy);
+    assert_eq!(direct_policy.policy.outline.len(), 2);
+    assert!(direct_policy
+        .policy
+        .edit_href
+        .expect("owner edit href")
+        .contains("/security/policy/edit"));
+
+    let (missing_policy_status, missing_policy_body) = get_json(
+        app.clone(),
+        "/api/repos/missing/repo/security/policy",
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(missing_policy_status, StatusCode::NOT_FOUND);
+    assert_eq!(missing_policy_body["error"]["code"], "not_found");
 }
