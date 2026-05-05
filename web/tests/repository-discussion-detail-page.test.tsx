@@ -199,9 +199,27 @@ function discussionDetail(
       id: "poll-1",
       question: "Which strategy should ship first?",
       allowsMultiple: false,
+      allowsVoteChanges: true,
+      totalVotes: 7,
+      viewerCanVote: true,
+      resultsVisible: true,
+      viewerVoteOptionIds: [],
+      unavailableReasons: [],
       options: [
-        { id: "option-1", position: 1, label: "Cursor batches" },
-        { id: "option-2", position: 2, label: "Background job" },
+        {
+          id: "option-1",
+          position: 1,
+          label: "Cursor batches",
+          votesCount: 3,
+          percentage: 43,
+        },
+        {
+          id: "option-2",
+          position: 2,
+          label: "Background job",
+          votesCount: 4,
+          percentage: 57,
+        },
       ],
     },
     answer: {
@@ -304,6 +322,131 @@ describe("RepositoryDiscussionDetailPage", () => {
     expect(within(sidebar).getByText("Subscribed")).toBeVisible();
     expect(within(sidebar).getByText("Q&A")).toBeVisible();
     expect(within(sidebar).getAllByText("api").length).toBeGreaterThan(0);
+  });
+
+  it("submits poll votes and refreshes result bars", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        discussionId: "discussion-1",
+        discussionNumber: 42,
+        changed: true,
+        poll: {
+          ...discussionDetail().poll,
+          totalVotes: 8,
+          viewerVoteOptionIds: ["option-2"],
+          options: [
+            {
+              id: "option-1",
+              position: 1,
+              label: "Cursor batches",
+              votesCount: 3,
+              percentage: 38,
+            },
+            {
+              id: "option-2",
+              position: 2,
+              label: "Background job",
+              votesCount: 5,
+              percentage: 62,
+            },
+          ],
+        },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryDiscussionDetailPage
+        detail={discussionDetail()}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: /Background job/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Vote" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/namuh-eng/opengithub/discussions/42/poll/vote",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ optionIds: ["option-2"] }),
+        }),
+      ),
+    );
+    expect(await screen.findByText("Poll vote updated.")).toBeVisible();
+    expect(screen.getByText("8 total votes")).toBeVisible();
+    expect(screen.getByText("62%")).toBeVisible();
+  });
+
+  it("supports multiple-choice poll vote updates and server errors", async () => {
+    const basePoll = discussionDetail().poll;
+    if (!basePoll) throw new Error("expected poll fixture");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      json: vi.fn().mockResolvedValue({
+        error: { message: "this poll does not allow vote changes" },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryDiscussionDetailPage
+        detail={discussionDetail({
+          poll: {
+            ...basePoll,
+            allowsMultiple: true,
+            viewerVoteOptionIds: ["option-1"],
+          },
+        })}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /Background job/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Update vote" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/namuh-eng/opengithub/discussions/42/poll/vote",
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify({ optionIds: ["option-1", "option-2"] }),
+        }),
+      ),
+    );
+    expect(
+      await screen.findByText("this poll does not allow vote changes"),
+    ).toBeVisible();
+  });
+
+  it("shows a concrete sign-in prompt instead of dead poll controls", () => {
+    const basePoll = discussionDetail().poll;
+    if (!basePoll) throw new Error("expected poll fixture");
+    const { container } = render(
+      <RepositoryDiscussionDetailPage
+        detail={discussionDetail({
+          poll: {
+            ...basePoll,
+            viewerCanVote: false,
+            resultsVisible: false,
+            unavailableReasons: ["Sign in to vote in this poll."],
+          },
+          viewer: {
+            ...discussionDetail().viewer,
+            authenticated: false,
+          },
+        })}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("link", { name: "Sign in to vote" }),
+    ).toHaveAttribute("href", "/login");
+    expect(screen.queryByRole("button", { name: "Vote" })).toBeNull();
+    expect(container.querySelector('[href="#"]')).toBeNull();
   });
 
   it("keeps sort and permalink anchors concrete and composer controls disabled for Phase 2", () => {

@@ -44,7 +44,7 @@
 
 ## Phase 3: Editorial Poll Detail UI - voting controls and result bars
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the current read-only poll detail block on `/{owner}/{repo}/discussions/{number}` with operational Editorial voting controls backed by Phase 2. Radio/checkbox controls, vote actions, sign-in prompts, and result bars should all be concrete and accessible.
 

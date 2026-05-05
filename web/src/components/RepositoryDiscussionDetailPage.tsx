@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useState, useTransition } from "react";
+import { type FormEvent, useEffect, useState, useTransition } from "react";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { RepositoryShell } from "@/components/RepositoryShell";
 import type {
   DiscussionAuthorSummary,
   DiscussionCommentView,
   DiscussionEventView,
+  DiscussionPollView,
   DiscussionReactionContent,
   DiscussionReactionSummary,
   DiscussionReplyView,
@@ -129,6 +130,191 @@ function ReactionSummary({
         );
       })}
     </fieldset>
+  );
+}
+
+function PollVotingCard({
+  poll,
+  detailHref,
+  onPollUpdate,
+  onMessage,
+}: {
+  poll: DiscussionPollView;
+  detailHref: string;
+  onPollUpdate: (poll: DiscussionPollView) => void;
+  onMessage: (message: string | null) => void;
+}) {
+  const initialSelection = poll.viewerVoteOptionIds ?? [];
+  const [selectedOptionIds, setSelectedOptionIds] =
+    useState<string[]>(initialSelection);
+  const [isPending, startTransition] = useTransition();
+  const hasVote = initialSelection.length > 0;
+  const canVote = Boolean(poll.viewerCanVote);
+  const resultsVisible = Boolean(poll.resultsVisible);
+  const canSubmit =
+    canVote &&
+    selectedOptionIds.length > 0 &&
+    (poll.allowsMultiple || selectedOptionIds.length === 1);
+  const actionLabel = hasVote ? "Update vote" : "Vote";
+  const prompt =
+    poll.unavailableReasons?.[0] ?? "Sign in to vote in this poll.";
+
+  useEffect(() => {
+    setSelectedOptionIds(poll.viewerVoteOptionIds ?? []);
+  }, [poll.viewerVoteOptionIds]);
+
+  function toggleOption(optionId: string, checked: boolean) {
+    if (!poll.allowsMultiple) {
+      setSelectedOptionIds([optionId]);
+      return;
+    }
+    setSelectedOptionIds((current) =>
+      checked
+        ? Array.from(new Set([...current, optionId]))
+        : current.filter((id) => id !== optionId),
+    );
+  }
+
+  function submitVote(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canSubmit) return;
+    onMessage(null);
+    startTransition(() => {
+      void fetch(`${detailHref}/poll/vote`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ optionIds: selectedOptionIds }),
+      })
+        .then(async (response) => {
+          const payload = await response.json().catch(() => null);
+          if (!response.ok) {
+            onMessage(
+              payload?.error?.message ??
+                "Discussion poll vote could not be updated.",
+            );
+            return;
+          }
+          onPollUpdate(payload.poll);
+          onMessage(
+            payload.changed ? "Poll vote updated." : "Poll vote saved.",
+          );
+        })
+        .catch(() => {
+          onMessage("Discussion poll vote could not be updated.");
+        });
+    });
+  }
+
+  return (
+    <section className="card mt-5 p-4" aria-labelledby="discussion-poll-title">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="t-label">Poll</p>
+          <h3 className="t-h3 mt-1 break-words" id="discussion-poll-title">
+            {poll.question}
+          </h3>
+        </div>
+        <span className="chip soft">
+          {poll.allowsMultiple ? "Multiple choice" : "Single choice"}
+        </span>
+      </div>
+      <form className="mt-4 grid gap-3" onSubmit={submitVote}>
+        <fieldset
+          aria-describedby="discussion-poll-help"
+          className="m-0 grid gap-2 border-0 p-0"
+        >
+          {poll.options.map((option) => {
+            const selected = selectedOptionIds.includes(option.id);
+            const percentage = Math.max(
+              0,
+              Math.min(100, option.percentage ?? 0),
+            );
+            return (
+              <label
+                className="card block cursor-pointer p-3"
+                htmlFor={`discussion-poll-option-${option.id}`}
+                key={option.id}
+              >
+                <span className="flex min-w-0 items-start gap-3">
+                  <input
+                    checked={selected}
+                    disabled={!canVote}
+                    id={`discussion-poll-option-${option.id}`}
+                    name="discussion-poll-option"
+                    onChange={(event) =>
+                      toggleOption(option.id, event.currentTarget.checked)
+                    }
+                    type={poll.allowsMultiple ? "checkbox" : "radio"}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="t-sm block break-words">
+                      {option.label}
+                    </span>
+                    {resultsVisible ? (
+                      <span className="mt-2 grid gap-1">
+                        <span
+                          aria-label={`${option.label} has ${formatNumber(
+                            option.votesCount ?? 0,
+                          )} votes and ${percentage}%`}
+                          aria-valuemax={100}
+                          aria-valuemin={0}
+                          aria-valuenow={percentage}
+                          className="block h-2 overflow-hidden"
+                          role="progressbar"
+                          style={{
+                            background: "var(--surface-2)",
+                            borderRadius: "var(--radius-pill)",
+                          }}
+                        >
+                          <span
+                            className="block h-full"
+                            style={{
+                              background: selected
+                                ? "var(--accent)"
+                                : "var(--line-strong)",
+                              width: `${percentage}%`,
+                            }}
+                          />
+                        </span>
+                        <span
+                          className="t-xs flex flex-wrap justify-between gap-2"
+                          style={{ color: "var(--ink-3)" }}
+                        >
+                          <span>{percentage}%</span>
+                          <span>
+                            {formatNumber(option.votesCount ?? 0)} votes
+                          </span>
+                        </span>
+                      </span>
+                    ) : null}
+                  </span>
+                </span>
+              </label>
+            );
+          })}
+        </fieldset>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="t-xs" id="discussion-poll-help">
+            {resultsVisible
+              ? `${formatNumber(poll.totalVotes ?? 0)} total votes`
+              : prompt}
+          </p>
+          {canVote ? (
+            <button
+              className="btn primary sm"
+              disabled={!canSubmit || isPending}
+              type="submit"
+            >
+              {isPending ? "Saving..." : actionLabel}
+            </button>
+          ) : (
+            <Link className="btn sm" href="/login">
+              Sign in to vote
+            </Link>
+          )}
+        </div>
+      </form>
+    </section>
   );
 }
 
@@ -1380,16 +1566,14 @@ export function RepositoryDiscussionDetailPage({
                 </dl>
               ) : null}
               {detail.poll ? (
-                <section className="card mt-5 p-4">
-                  <h3 className="t-h3">{detail.poll.question}</h3>
-                  <ul className="mt-3 grid gap-2">
-                    {detail.poll.options.map((option) => (
-                      <li className="chip soft justify-start" key={option.id}>
-                        {option.label}
-                      </li>
-                    ))}
-                  </ul>
-                </section>
+                <PollVotingCard
+                  detailHref={detailHref}
+                  onMessage={setMessage}
+                  onPollUpdate={(poll) =>
+                    setCurrentDetail((previous) => ({ ...previous, poll }))
+                  }
+                  poll={currentDetail.poll ?? detail.poll}
+                />
               ) : null}
               <ReactionSummary
                 canReact={canReact}

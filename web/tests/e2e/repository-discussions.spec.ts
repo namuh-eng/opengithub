@@ -559,6 +559,22 @@ test("repository discussions list filters, rows, category rail, and mobile layou
   });
   await page.getByRole("button", { name: "Start discussion" }).click();
   await expect(page).toHaveURL(/\/discussions\/905$/);
+  await expect(
+    page.getByRole("heading", {
+      name: "Which branch policy should ship first?",
+    }),
+  ).toBeVisible();
+  await page.getByRole("checkbox", { name: /Linear history/ }).check();
+  await page.getByRole("button", { name: "Vote" }).click();
+  await expect(page.getByText(/Poll vote/)).toBeVisible();
+  await expect(page.getByText("1 total votes")).toBeVisible();
+  await page.getByRole("checkbox", { name: /Required reviews/ }).check();
+  await page.getByRole("button", { name: "Update vote" }).click();
+  await expect(page.getByText(/Poll vote/)).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/discussions-006-phase3-poll-vote.jpg",
+  });
 
   await page.goto(
     `${seeded.treeRepositoryHref}/discussions/categories/ideas?q=no-match`,

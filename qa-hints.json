@@ -6645,5 +6645,21 @@
       "Browser smoke was skipped because Phase 2 is API-first and .qrspi/discussions-006/structure.md marks browser smoke optional for this phase.",
       "Phase 3 still needs the Editorial poll detail voting UI, same-origin Next.js proxy route, result bars, anonymous prompt, and Playwright browser smoke."
     ]
+  },
+  {
+    "feature_id": "discussions-006",
+    "tests_written": [
+      "Completed Phase 3 Editorial Poll Detail UI without marking discussions-006 build_pass=true.",
+      "Replaced the read-only poll option chip block in RepositoryDiscussionDetailPage with accessible radio/checkbox controls, Vote/Update vote actions, result bars, total vote text, inline success/error feedback, and anonymous sign-in prompt links.",
+      "Added same-origin cookie-forwarding Next route at /{owner}/{repo}/discussions/{number}/poll/vote backed by the existing Rust poll vote API helper.",
+      "Extended focused Vitest coverage for single-choice voting, multiple-choice update payloads, server error display, anonymous prompt state, no dead hrefs, and Editorial guardrails.",
+      "Extended repository-discussions Playwright coverage with poll creation, vote, update vote, result-bar assertions, and screenshot target ralph/screenshots/build/discussions-006-phase3-poll-vote.jpg when seeded DB credentials are available."
+    ],
+    "needs_deeper_qa": [
+      "Full make test-e2e reached Playwright: 18 public/setup tests passed, then 124 signed-session tests failed because dashboard_e2e_seed and related seed helpers could not authenticate to localhost:55432 as postgres; the wrapper also reported an address-in-use webserver warning from the local API port.",
+      "Rerun web/tests/e2e/repository-discussions.spec.ts against a clean migrated credentialed TEST_DATABASE_URL to verify the poll vote browser path and save ralph/screenshots/build/discussions-006-phase3-poll-vote.jpg.",
+      "Run browser QA for keyboard traversal through radio/checkbox options, long poll option wrapping on mobile, anonymous results-hidden prompts, result visibility for private repositories, and vote-change-denied server errors.",
+      "Phase 4 still needs poll-specific comments/reactions/moderation compatibility and category move/transfer constraints before discussions-006 can be marked build_pass=true."
+    ]
   }
 ]
