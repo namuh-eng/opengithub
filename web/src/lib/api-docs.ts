@@ -2939,6 +2939,202 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-code-scanning-alerts",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/security/code-scanning?state=open&tool=CodeQL&sort=most_important",
+    title: "List repository Code scanning alerts",
+    description:
+      "Returns the screen-ready Code scanning alerts list from SARIF and Actions analysis, including filter metadata, tool status summaries, open/closed counts, selectable alert rows, disabled states, and viewer write permissions.",
+    auth: "Signed opengithub session cookie with repository read permission; private outsiders receive not_found",
+    response: `{
+  "availability": {
+    "enabled": true,
+    "indexed": true,
+    "message": "Code scanning alerts are normalized from SARIF analysis.",
+    "settingsHref": "/mona/octo-app/settings/security"
+  },
+  "filters": {
+    "state": "open",
+    "query": null,
+    "severity": null,
+    "securitySeverity": null,
+    "tool": "CodeQL",
+    "branch": null,
+    "ref": null,
+    "tag": null,
+    "applicationCode": "true",
+    "sort": "most_important"
+  },
+  "counts": { "open": 2, "closed": 1, "fixed": 1, "total": 4, "visible": 2 },
+  "tools": [
+    {
+      "name": "CodeQL",
+      "version": "2.18.0",
+      "latestStatus": "completed",
+      "latestUploadAt": "2026-05-05T00:00:00Z",
+      "checkRunHref": "/mona/octo-app/actions/runs/42"
+    }
+  ],
+  "alerts": [
+    {
+      "id": "alert_01",
+      "number": 1,
+      "state": "open",
+      "ruleName": "Unsanitized SQL query",
+      "severity": "error",
+      "securitySeverity": "critical",
+      "toolName": "CodeQL",
+      "path": "crates/api/src/routes/search.rs",
+      "startLine": 42,
+      "pathHref": "/mona/octo-app/blob/refs%2Fheads%2Fmain/crates/api/src/routes/search.rs#L42",
+      "href": "/mona/octo-app/security/code-scanning/1"
+    }
+  ]
+}`,
+    notes: [
+      "Supported filters are state, q, severity, security_severity, tool, branch, ref, tag, application_code, and sort. Invalid values return validation_failed with a 422 status.",
+      "Disabled repository settings return enabled=false with zero counts and no historical rows, so disabled states do not leak past private alert volume.",
+      "Tool summaries expose reader-safe SARIF upload and check-run destinations without raw storage keys, workflow secrets, environment variables, token hashes, OAuth data, or stack traces.",
+      "List rows include concrete alert detail and file destinations; private repository access failures are redacted as not_found.",
+    ],
+  },
+  {
+    id: "repo-code-scanning-alert-detail",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/security/code-scanning/{alert_id}",
+    title: "Read repository Code scanning alert detail",
+    description:
+      "Returns one Code scanning alert detail view with rule metadata, source location, sanitized snippet/help content, timeline rows, assignee options, linked issue state, and PR/check annotation destinations.",
+    auth: "Signed opengithub session cookie with repository read permission",
+    response: `{
+  "alert": {
+    "id": "alert_01",
+    "number": 1,
+    "state": "open",
+    "ruleId": "rust/sql-injection",
+    "ruleName": "Unsanitized SQL query",
+    "severity": "error",
+    "securitySeverity": "critical"
+  },
+  "location": {
+    "path": "crates/api/src/routes/search.rs",
+    "startLine": 42,
+    "snippet": "sqlx::query(&format!(...))",
+    "pathHref": "/mona/octo-app/blob/refs%2Fheads%2Fmain/crates/api/src/routes/search.rs#L42"
+  },
+  "rule": {
+    "id": "rust/sql-injection",
+    "name": "Unsanitized SQL query",
+    "helpMarkdown": "Use parameterized queries."
+  },
+  "timeline": [
+    { "eventType": "created", "message": "Code scanning opened this alert from analysis results." }
+  ],
+  "linkedIssue": {
+    "canLink": true,
+    "issue": null,
+    "createHref": "/api/repos/mona/octo-app/security/code-scanning/1/issue"
+  }
+}`,
+    notes: [
+      "Readers can inspect permitted detail and PR annotations but receive forbidden on mutation routes.",
+      "Rendered Markdown and snippets are sanitized; script tags, unsafe URLs, raw SARIF storage metadata, session values, token hashes, OAuth payloads, and provider secrets are never serialized.",
+      "Missing source snippets and long paths remain screen-safe: the response keeps concrete file/action hrefs and bounded strings for mobile layouts.",
+    ],
+  },
+  {
+    id: "repo-code-scanning-alert-update",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/security/code-scanning/{alert_id}",
+    title: "Update repository Code scanning alert",
+    description:
+      "Lets maintainers dismiss, reopen, assign, or link an existing issue to one Code scanning alert while recording timeline events, security audit events, and notification updates.",
+    auth: "Signed opengithub session cookie with repository maintainer permission",
+    request: `{
+  "action": "dismiss",
+  "dismissalReason": "false_positive",
+  "dismissalComment": "Confirmed by security review."
+}`,
+    response: `{
+  "alert": {
+    "id": "alert_01",
+    "number": 1,
+    "state": "dismissed",
+    "dismissalReason": "false_positive"
+  },
+  "timeline": [
+    { "eventType": "dismissed", "message": "Dismissed this alert as false_positive." }
+  ]
+}`,
+    notes: [
+      "Supported actions are dismiss, reopen, assign, and link_issue. Dismiss requires a bounded dismissalReason and optional bounded comment.",
+      "Archived repositories, disabled Code scanning settings, invalid assignees, stale alert states, malformed issue links, and invalid transitions return structured validation or conflict errors.",
+      "Successful writes update code_scanning_alerts, code_scanning_alert_events, security_audit_events, linked issue state, and assignee notification rows atomically.",
+    ],
+  },
+  {
+    id: "repo-code-scanning-alert-issue",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/security/code-scanning/{alert_id}/issue",
+    title: "Create Code scanning linked issue",
+    description:
+      "Creates or reuses a repository issue from Code scanning rule, location, and remediation data, then links it back to the alert detail view.",
+    auth: "Signed opengithub session cookie with repository maintainer permission",
+    response: `{
+  "linkedIssue": {
+    "issue": {
+      "number": 12,
+      "title": "Code scanning: Unsanitized SQL query",
+      "href": "/mona/octo-app/issues/12"
+    },
+    "canLink": true
+  },
+  "timeline": [
+    { "eventType": "issue_linked", "message": "Linked this alert to issue #12." }
+  ]
+}`,
+    notes: [
+      "Duplicate requests return the existing linked issue instead of creating a second issue.",
+      "Issue bodies are generated from bounded alert fields and sanitized remediation text; raw SARIF blobs and private environment metadata are not copied.",
+      "Issue creation records normal issue notifications plus a redacted Code scanning alert timeline event.",
+    ],
+  },
+  {
+    id: "repo-code-scanning-sarif-upload",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/code-scanning/sarifs",
+    title: "Upload repository Code scanning SARIF",
+    description:
+      "Accepts a bounded SARIF 2.1.0 payload from Actions or REST clients, stores redacted upload metadata, normalizes alerts by fingerprint/location/rule, updates fixed-alert state, and links reader-safe check-run annotations.",
+    auth: "Signed opengithub session cookie or API token with repository write permission",
+    request: `{
+  "ref": "main",
+  "commitSha": "abc123",
+  "sarif": {
+    "version": "2.1.0",
+    "runs": [
+      {
+        "tool": { "driver": { "name": "CodeQL", "version": "2.18.0" } },
+        "results": []
+      }
+    ]
+  }
+}`,
+    response: `{
+  "status": "processed",
+  "processedAlerts": 1,
+  "fixedAlerts": 1,
+  "toolName": "CodeQL",
+  "toolVersion": "2.18.0",
+  "artifactStorageKey": "redacted://code-scanning/repository/upload.sarif"
+}`,
+    notes: [
+      "Uploads larger than 2 MiB return 413; malformed JSON, missing runs, missing tool.driver.name, invalid locations, or unknown refs return standard validation_failed envelopes.",
+      "Repeated uploads de-duplicate by stable fingerprint, path, line, rule, and ref; alerts absent from the latest analysis are marked fixed unless already dismissed.",
+      "Responses expose only redacted storage identifiers and reader-safe PR/check annotations, never S3 object keys, raw SARIF blobs, secrets, token hashes, session cookies, OAuth payloads, environment variables, or stack traces.",
+    ],
+  },
+  {
     id: "repo-releases-list",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/releases?page=1&pageSize=30",

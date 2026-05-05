@@ -5976,5 +5976,22 @@
       "The full make test-e2e wrapper was attempted with the signed-session/test DB environment but stayed silent for several minutes and was terminated; the focused direct Playwright browser smoke passed and saved Phase 4 evidence.",
       "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema."
     ]
+  },
+  {
+    "feature_id": "code-security-003",
+    "tests_written": [
+      "Completed Phase 5 final docs, browser evidence, QA handoff, and build pass for code-security-003.",
+      "Added /docs/api coverage for Code scanning list, detail, single-alert mutation, linked issue creation, and SARIF upload endpoints, including auth/privacy gates, filters, disabled states, upload limits, state transitions, notifications, audit writes, and no-secret response constraints.",
+      "Extended Rust contract coverage for malformed SARIF upload validation and no secret leakage alongside existing privacy, mutation, fixed-alert, notification, audit, and SARIF ingestion assertions.",
+      "Extended ApiDocs Vitest coverage for the Code scanning endpoint family and updated focused Playwright smoke to save final desktop/mobile screenshots.",
+      "Set code-security-003 build_pass=true and marked every phase in .qrspi/code-security-003/structure.md done after verification."
+    ],
+    "needs_deeper_qa": [
+      "Repeat full make test-e2e after the wrapper stall and shared local 202605030041 migration drift are resolved; the focused repository-code-scanning Playwright smoke is the browser evidence for this build iteration.",
+      "Exercise real Google OAuth with TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Exercise SARIF uploads from real Actions workflow runs with workflow_run_id and pull request heads to confirm annotations render in every intended PR/check surface.",
+      "Stress concurrent dismiss/reopen/assignment/issue-link actions from two maintainer sessions to confirm stale-state conflict handling and final UI copy.",
+      "Run an accessibility pass over the Code scanning filters, alert detail controls, disclosure widgets, and mobile Security sidebar."
+    ]
   }
 ]

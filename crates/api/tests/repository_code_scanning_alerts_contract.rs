@@ -546,6 +546,20 @@ async fn code_scanning_alerts_filter_detail_and_protect_private_repositories() {
     assert_eq!(reader_upload_status, StatusCode::FORBIDDEN);
     assert_eq!(reader_upload_body["error"]["code"], "forbidden");
 
+    let (malformed_upload_status, malformed_upload_body) = request_json(
+        app.clone(),
+        "POST",
+        &upload_endpoint,
+        Some(&owner_cookie),
+        Some(json!({ "sarif": { "version": "2.1.0", "runs": [] } })),
+    )
+    .await;
+    assert_eq!(malformed_upload_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(malformed_upload_body["error"]["code"], "validation_failed");
+    assert!(!malformed_upload_body
+        .to_string()
+        .contains("test-session-secret"));
+
     let (upload_status, upload_body) = request_json(
         app.clone(),
         "POST",

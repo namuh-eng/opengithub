@@ -1077,6 +1077,40 @@ describe("ApiDocsPage", () => {
       screen.getByText(/Dependabot alert triage writes notification rows/),
     ).toBeVisible();
     expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/security/code-scanning?state=open&tool=CodeQL&sort=most_important",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(
+        "/api/repos/{owner}/{repo}/security/code-scanning/{alert_id}",
+      )[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/security/code-scanning/{alert_id}/issue",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/code-scanning/sarifs"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Supported filters are state, q, severity, security_severity, tool, branch, ref, tag, application_code, and sort/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Successful writes update code_scanning_alerts, code_scanning_alert_events/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Uploads larger than 2 MiB return 413; malformed JSON/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Repeated uploads de-duplicate by stable fingerprint/),
+    ).toBeVisible();
+    expect(
       screen.getByText("/api/search?q=router&type=code&page=1&pageSize=30"),
     ).toBeVisible();
     expect(

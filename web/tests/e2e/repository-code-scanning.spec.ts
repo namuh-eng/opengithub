@@ -417,6 +417,10 @@ test("repository Code scanning alerts support list filters, row navigation, disa
     fullPage: true,
     path: "../ralph/screenshots/build/code-security-003-phase4-sarif-upload-status.jpg",
   });
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/code-security-003-final-list.jpg",
+  });
 
   disableCodeScanning(seeded.treeRepositoryHref);
   await page.goto(`${seeded.treeRepositoryHref}/security/code-scanning`);
@@ -435,4 +439,8 @@ test("repository Code scanning alerts support list filters, row navigation, disa
   ).toBeVisible();
   await expect(page.locator("body")).toHaveJSProperty("scrollLeft", 0);
   await expectNoDeadControls(page);
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/code-security-003-final-mobile.jpg",
+  });
 });
