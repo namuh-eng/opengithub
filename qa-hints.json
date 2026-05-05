@@ -6083,8 +6083,7 @@
       "Push-protection behavior is covered by Rust contracts from earlier phases, but QA should repeat a real smart-HTTP push with a bypass reason against a seeded database.",
       "Provider validity checks remain placeholder/local state only; no external provider verifier is configured."
     ]
-  }
-  ,
+  },
   {
     "feature_id": "code-security-005",
     "tests_written": [
@@ -6159,6 +6158,21 @@
       "Re-run web/tests/e2e/repository-security-advisories.spec.ts --grep \"draft creation and publish\" against a clean migrated TEST_DATABASE_URL to verify the browser flow and save code-security-005-phase4-create-publish.jpg.",
       "Repeat create/publish QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
       "Review notification delivery in a seeded database with real advisory collaborators; unit coverage asserts rows are written, but browser smoke could not verify inbox delivery because seeding was blocked."
+    ]
+  },
+  {
+    "feature_id": "code-security-005",
+    "tests_written": [
+      "Completed Phase 5 API docs, final verification, QA handoff, and build-pass bookkeeping for repository security advisories.",
+      "Added /docs/api coverage for advisory list, detail, create draft, update metadata, and publish endpoints, including auth/privacy gates, filters, pagination, validation, draft privacy, sanitized Markdown, CVSS/CVE/CWE/package fields, credits/collaborators, notifications, audit events, dependency advisory linkage, and no-secret error envelopes.",
+      "Added focused API docs assertions so docs coverage for all repository advisory endpoints remains locked by Vitest.",
+      "Verification passed: focused api-docs and repository-security-advisories Vitest; web TypeScript; focused Biome; full make check; full make test with Cargo tests plus 486 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "DB-backed Playwright advisory smoke could not run in this workspace: TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test is reachable but rejects the available postgres credentials, and .env DATABASE_URL is present but empty.",
+      "Re-run web/tests/e2e/repository-security-advisories.spec.ts against a clean migrated TEST_DATABASE_URL to save final desktop/mobile screenshots under ralph/screenshots/build/code-security-005-final-*.jpg.",
+      "Repeat list/detail/edit/create/publish browser QA with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Verify notification delivery fanout and dependency advisory feed linkage in a seeded database with real advisory collaborators/watchers; unit and contract coverage assert writes, but local browser seeding was blocked."
     ]
   }
 ]

@@ -1,3 +1,12 @@
+2026-05-05 - code-security-005 phase 5 final docs, QA handoff, and build pass
+
+- Completed Phase 5 from `.qrspi/code-security-005/structure.md`: repository security advisories are now locked as a completed vertical slice and `code-security-005.build_pass=true`.
+- Added `/docs/api` coverage for `GET /api/repos/{owner}/{repo}/security/advisories`, `GET/PATCH /api/repos/{owner}/{repo}/security/advisories/{ghsa_id}`, `POST /api/repos/{owner}/{repo}/security/advisories`, and `POST /api/repos/{owner}/{repo}/security/advisories/{ghsa_id}/publish`, including auth/privacy gates, filters, pagination, validation, draft privacy, sanitized Markdown, CVSS/CVE/CWE/package fields, credits/collaborators, notifications, audit events, dependency advisory linkage, and no-secret error envelopes.
+- Added focused API docs assertions so advisory endpoint documentation remains covered by Vitest.
+- Verification passed: focused `api-docs` and repository security advisory component Vitest with 10 tests; web TypeScript; focused Biome checks; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 486 web tests; mandatory Editorial banned-value scan returned zero matches.
+- Focused Playwright advisory smoke was attempted against `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test`, but the seed helper failed because local Postgres rejected the available credentials. `.env` contains `DATABASE_URL` but it is empty, so final browser screenshots remain a QA handoff item.
+- Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-05 - code-security-004 phase 5 final docs, QA handoff, and build pass
 
 - Completed Phase 5 from `.qrspi/code-security-004/structure.md`: Secret scanning alerts and push protection are now locked as a completed vertical slice and `code-security-004.build_pass=true`.

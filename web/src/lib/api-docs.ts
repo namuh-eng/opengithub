@@ -2310,6 +2310,194 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-security-advisories-list",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/security/advisories?state=published&severity=high&page=1&page_size=10",
+    title: "List repository security advisories",
+    description:
+      "Returns the repository advisory list used by the Security and quality Advisories tab, including URL-backed filters, pagination, draft privacy, package metadata, author summaries, and viewer write affordances.",
+    auth: "Signed opengithub session cookie with repository read permission; draft rows require maintainer or advisory collaborator access",
+    response: `{
+  "repository": {
+    "ownerLogin": "mona",
+    "name": "octo-app",
+    "advisoriesHref": "/mona/octo-app/security/advisories"
+  },
+  "viewer": {
+    "canRead": true,
+    "canWrite": true,
+    "canCreate": true
+  },
+  "filters": {
+    "state": "published",
+    "severity": "high",
+    "query": "",
+    "sort": "recently_updated",
+    "page": 1,
+    "pageSize": 10
+  },
+  "advisories": [
+    {
+      "id": "adv_01",
+      "ghsaId": "GHSA-demo-2026",
+      "cveId": "CVE-2026-1234",
+      "state": "published",
+      "severity": "high",
+      "title": "Token scope bypass",
+      "summary": "Repository imports could retain a broad token scope.",
+      "href": "/mona/octo-app/security/advisories/GHSA-demo-2026",
+      "author": { "login": "mona", "profileHref": "/mona" },
+      "package": {
+        "ecosystem": "cargo",
+        "name": "opengithub-import",
+        "affectedVersions": "< 1.2.3",
+        "patchedVersions": ">= 1.2.3"
+      }
+    }
+  ],
+  "pagination": { "total": 1, "page": 1, "pageSize": 10, "hasNext": false }
+}`,
+    notes: [
+      "Supported states are published, draft, and withdrawn; supported severities are critical, high, moderate, low, and unknown. Invalid filters return validation_failed with field-level messages for inline rendering.",
+      "Readers only receive published advisories. Draft advisories, draft counts, collaborators, and private repository metadata stay hidden from unauthorised viewers.",
+      "Rows are sorted by recently_updated by default. Search matches title, GHSA id, CVE id, package ecosystem/name, and summary without reflecting raw HTML.",
+      "Error envelopes never include session cookies, OAuth profile payloads, package storage keys, private fork names, environment variables, or stack traces.",
+    ],
+  },
+  {
+    id: "repo-security-advisory-detail",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/security/advisories/{ghsa_id}",
+    title: "Get repository security advisory detail",
+    description:
+      "Returns the full advisory detail contract with sanitized Markdown, CVSS score and base metrics, CVE/CWE disclosures, package version ranges, credits, collaborators, timeline rows, and maintainer action affordances.",
+    auth: "Signed opengithub session cookie with repository read permission; draft detail requires maintainer or advisory collaborator access",
+    response: `{
+  "advisory": {
+    "id": "adv_01",
+    "ghsaId": "GHSA-demo-2026",
+    "cveId": "CVE-2026-1234",
+    "state": "published",
+    "severity": "high",
+    "title": "Token scope bypass",
+    "summary": "Repository imports could retain a broad token scope.",
+    "html": "<p>Upgrade before running imports.</p>",
+    "cvss": {
+      "vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+      "score": 8.1,
+      "metrics": { "attackVector": "network", "privilegesRequired": "low" }
+    },
+    "cwes": [{ "id": "CWE-284", "name": "Improper Access Control" }],
+    "credits": [{ "login": "security-reporter", "creditType": "reporter" }],
+    "collaborators": [{ "login": "mona", "role": "author" }],
+    "timeline": [{ "eventType": "published", "message": "Published advisory GHSA-demo-2026" }]
+  },
+  "viewer": { "canEdit": true, "canPublish": false }
+}`,
+    notes: [
+      "Private repository outsiders and unauthorised draft readers receive not_found without confirming whether the advisory exists.",
+      "Markdown is sanitized on write and returned as safe HTML plus raw Markdown for authorised editors. Unsafe tags, event handlers, javascript URLs, and raw HTML reflections are stripped.",
+      "CVSS, CWE, CVE, package ecosystem/name, affected version, patched version, credit, and collaborator fields are normalised for the browser detail and edit flows.",
+      "Response payloads never expose session rows, OAuth data, notification internals, audit redaction payloads, private fork storage identifiers, or environment secrets.",
+    ],
+  },
+  {
+    id: "repo-security-advisory-create",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/security/advisories",
+    title: "Create draft repository security advisory",
+    description:
+      "Creates a private draft advisory with a generated GHSA-local identifier, optional package/CVE/CVSS/CWE metadata, initial author collaboration, sanitized Markdown, notifications, and audit events.",
+    auth: "Signed opengithub session cookie with maintainer permission",
+    request: `{
+  "title": "Token scope bypass",
+  "summary": "Repository imports could retain a broad token scope.",
+  "details": "Upgrade before running imports.",
+  "severity": "high",
+  "cveId": "CVE-2026-1234",
+  "packageEcosystem": "cargo",
+  "packageName": "opengithub-import",
+  "affectedVersions": "< 1.2.3",
+  "patchedVersions": ">= 1.2.3",
+  "cvssVector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N",
+  "cvssScore": 8.1,
+  "cwes": [{ "id": "CWE-284", "name": "Improper Access Control" }],
+  "credits": [{ "login": "security-reporter", "creditType": "reporter" }]
+}`,
+    response: `{
+  "advisory": {
+    "ghsaId": "GHSA-local-01",
+    "state": "draft",
+    "title": "Token scope bypass",
+    "href": "/mona/octo-app/security/advisories/GHSA-local-01"
+  }
+}`,
+    notes: [
+      "Title is required. Invalid CVE, CVSS, CWE, package, credit, collaborator, and version-range fields return validation_failed with stable field keys.",
+      "Drafts remain private to maintainers and advisory collaborators until published; readers cannot infer draft count changes from public list responses.",
+      "Creation writes a redacted security_audit_events row and timeline entry and notifies advisory collaborators when present.",
+      "The endpoint does not call GitHub APIs and never returns raw session cookies, OAuth profile payloads, notification secrets, storage keys, or stack traces.",
+    ],
+  },
+  {
+    id: "repo-security-advisory-update",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/security/advisories/{ghsa_id}",
+    title: "Update repository security advisory metadata",
+    description:
+      "Updates draft or published advisory metadata and collaboration fields with maintainer permission, server-side validation, sanitized Markdown refresh, timeline entries, notifications, and redacted audit events.",
+    auth: "Signed opengithub session cookie with maintainer permission",
+    request: `{
+  "title": "Updated token scope bypass",
+  "severity": "critical",
+  "cveId": "CVE-2026-20002",
+  "packageEcosystem": "cargo",
+  "packageName": "opengithub-import",
+  "affectedVersions": "< 1.2.4",
+  "patchedVersions": ">= 1.2.4",
+  "cvssScore": 9.1,
+  "cwes": [{ "id": "CWE-862", "name": "Missing Authorization" }],
+  "collaborators": [{ "login": "mona", "role": "author" }]
+}`,
+    response: `{
+  "advisory": {
+    "ghsaId": "GHSA-demo-2026",
+    "state": "published",
+    "severity": "critical",
+    "title": "Updated token scope bypass"
+  }
+}`,
+    notes: [
+      "Read-only users receive 403 and archived repositories reject mutation attempts. Missing advisories and private draft misses return not_found.",
+      "Validation errors use the standard envelope; stale or duplicate GHSA/CVE conflicts are reported without leaking private advisory titles.",
+      "Credits and collaborators are replaced from the validated request in one transaction so the browser never sees a partially updated advisory.",
+      "Audit and notification rows redact Markdown bodies, session identifiers, OAuth data, environment values, and storage details.",
+    ],
+  },
+  {
+    id: "repo-security-advisory-publish",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/security/advisories/{ghsa_id}/publish",
+    title: "Publish repository security advisory",
+    description:
+      "Publishes a draft advisory to the public repository advisory list after readiness validation, records immutable publish metadata, sends collaborator notifications, writes audit/timeline rows, and links dependency advisory feed data when package metadata is present.",
+    auth: "Signed opengithub session cookie with maintainer permission",
+    response: `{
+  "advisory": {
+    "ghsaId": "GHSA-local-01",
+    "state": "published",
+    "publishedAt": "2026-05-05T12:00:00Z",
+    "href": "/mona/octo-app/security/advisories/GHSA-local-01"
+  }
+}`,
+    notes: [
+      "Only draft advisories can be published. Re-publish attempts, missing titles, invalid package metadata, and package advisories without patched-version guidance return validation_failed.",
+      "After publication, readers can view the advisory from the list and detail endpoints; draft collaborator-only fields remain redacted.",
+      "Publishing creates security_audit_events, advisory timeline rows, notification fanout for collaborators/watchers, and dependency advisory feed rows when package metadata is present.",
+      "The publish response never exposes private fork references, raw notification payloads, session cookies, OAuth data, storage keys, environment secrets, or stack traces.",
+    ],
+  },
+  {
     id: "repo-security-policy",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/security/policy",

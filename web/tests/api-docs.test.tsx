@@ -474,6 +474,64 @@ describe("ApiDocsPage", () => {
       screen.getAllByText(/Script tags, unsafe URLs, raw session rows/)[0],
     ).toBeVisible();
     expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/security/advisories?state=published&severity=high&page=1&page_size=10",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "List repository security advisories",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /draft rows require maintainer or advisory collaborator/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(
+        "/api/repos/{owner}/{repo}/security/advisories/{ghsa_id}",
+      )[0],
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Get repository security advisory detail",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/CVSS score and base metrics, CVE\/CWE disclosures/),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText("/api/repos/{owner}/{repo}/security/advisories")[0],
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Create draft repository security advisory",
+      }),
+    ).toBeVisible();
+    expect(screen.getByText(/generated GHSA-local identifier/)).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Update repository security advisory metadata",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Credits and collaborators are replaced/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/security/advisories/{ghsa_id}/publish",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Publish repository security advisory",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/dependency advisory feed rows when package metadata/),
+    ).toBeVisible();
+    expect(
       screen.getAllByText("/api/repos/{owner}/{repo}/security/policy")[0],
     ).toBeVisible();
     expect(
