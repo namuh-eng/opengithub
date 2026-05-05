@@ -6796,5 +6796,22 @@
       "Browser smoke and make test-e2e were skipped because Phase 1 is API-first and .qrspi/projects-002/structure.md marks browser smoke optional for this phase.",
       "Phase 2 still needs the Editorial Projects table workspace UI before users can exercise this read contract in the browser."
     ]
+  },
+  {
+    "feature_id": "projects-002",
+    "tests_written": [
+      "Completed Phase 2 Editorial Workspace Shell without marking projects-002 build_pass=true.",
+      "Added user and organization project workspace routes that resolve project numbers through signed-cookie Projects list helpers and load the Phase 1 workspace contract.",
+      "Added shared ProjectWorkspacePage rendering Editorial breadcrumb/header, saved view tabs, slice rail, filter bar, item count, unsaved chip, grouped high-density table, concrete item links, field-value filter chips, and permission-aware disabled controls for later phases.",
+      "Added navigation helpers for user/org workspace URLs, query-backed view controls, and item fallback links.",
+      "Added focused Vitest coverage for saved views, field columns, issue/draft rows, grouped headers, URL-backed filters/slices, disabled future controls, no dead placeholder links, and banned GitHub visual guardrails."
+    ],
+    "needs_deeper_qa": [
+      "Full make test-e2e was attempted with the signed-session/test DB environment; it produced no output for over one minute while Playwright/dev-server children were active and was terminated cleanly, so no Phase 2 browser screenshot was produced.",
+      "Rerun a focused Projects workspace browser smoke against a clean migrated credentialed TEST_DATABASE_URL to verify /orgs/{org}/projects/{number}/views/{view} and /{user}/projects/{number}/views/{view}, then save ralph/screenshots/build/projects-002-phase2-workspace.jpg.",
+      "The workspace route resolves project numbers by scanning the first 100 open and closed projects; QA should probe projects beyond that bound once backend owner/number convenience routes exist.",
+      "Phase 3 still needs persisted view-state editing for filters, sorting, grouping, slicing, hidden fields, save/revert, and read-only URL-only behavior.",
+      "Phase 4 and Phase 5 still need real inline field edits, linked issue/PR sync, add-row flows, draft creation, bulk linked item add, removal, and row ordering."
+    ]
   }
 ]

@@ -7264,6 +7264,76 @@ export async function getProjectWorkspaceFromCookie(
   };
 }
 
+async function getProjectWorkspaceByNumberFromCookie(
+  cookie: string | null | undefined,
+  listPath: string,
+  projectNumber: number,
+  query: ProjectWorkspaceQuery = {},
+): Promise<ProjectWorkspaceFetchResult> {
+  const openProjects = await getProjectListFromCookie(cookie, listPath, {
+    state: "open",
+    pageSize: 100,
+  });
+  const closedProjects =
+    openProjects.ok &&
+    openProjects.projects.items.some(
+      (project) => project.number === projectNumber,
+    )
+      ? null
+      : await getProjectListFromCookie(cookie, listPath, {
+          state: "closed",
+          pageSize: 100,
+        });
+  const candidates = [
+    ...(openProjects.ok ? openProjects.projects.items : []),
+    ...(closedProjects?.ok ? closedProjects.projects.items : []),
+  ];
+  const project = candidates.find((item) => item.number === projectNumber);
+
+  if (!project) {
+    const failure = !openProjects.ok ? openProjects : closedProjects;
+    return {
+      ok: false,
+      status: failure && !failure.ok ? failure.status : 404,
+      code: failure && !failure.ok ? failure.code : "not_found",
+      message:
+        failure && !failure.ok
+          ? failure.message
+          : "Project workspace could not be found.",
+    };
+  }
+
+  return getProjectWorkspaceFromCookie(cookie, project.id, query);
+}
+
+export function getUserProjectWorkspaceFromCookie(
+  cookie: string | null | undefined,
+  username: string,
+  projectNumber: number,
+  query: ProjectWorkspaceQuery = {},
+): Promise<ProjectWorkspaceFetchResult> {
+  return getProjectWorkspaceByNumberFromCookie(
+    cookie,
+    `/api/users/${encodeURIComponent(username)}/projects`,
+    projectNumber,
+    query,
+  );
+}
+
+export function getOrganizationProjectWorkspaceFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  projectNumber: number,
+  query: ProjectWorkspaceQuery = {},
+): Promise<ProjectWorkspaceFetchResult> {
+  return getProjectWorkspaceByNumberFromCookie(
+    cookie,
+    `/api/orgs/${encodeURIComponent(org)}/projects`,
+    projectNumber,
+    query,
+  );
+}
+
 export async function copyProjectFromCookie(
   cookie: string | null | undefined,
   projectId: string,

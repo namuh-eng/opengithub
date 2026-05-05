@@ -24,7 +24,7 @@
 
 ## Phase 2: Editorial Workspace Shell - saved views and table render without dead controls
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Render the Projects table workspace with the Editorial design system. The page should show the compact breadcrumb/header, project title, View/Insights/Settings controls, saved-view tabs, plus-view affordance, side slice rail, filter bar, matching item count, view configuration button, high-density table, grouped headers, and bottom add row shell using the Phase 1 read contract.
 

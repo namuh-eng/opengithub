@@ -19,6 +19,7 @@ import {
   getOrganizationPeopleFromCookie,
   getOrganizationProfileSettingsFromCookie,
   getOrganizationProjectsFromCookie,
+  getOrganizationProjectWorkspaceFromCookie,
   getOrganizationRepositoriesFromCookie,
   getOrganizationTeamDetailFromCookie,
   getOrganizationTeamsFromCookie,
@@ -95,6 +96,7 @@ import {
   getUserPackageSettingsFromCookie,
   getUserPackagesFromCookie,
   getUserProjectsFromCookie,
+  getUserProjectWorkspaceFromCookie,
   type KeySettingsFetchResult,
   type OrganizationMemberPrivilegesFetchResult,
   type OrganizationPeopleAdminQuery,
@@ -110,6 +112,8 @@ import {
   type ProfileRepositoryListQuery,
   type ProjectListFetchResult,
   type ProjectListQuery,
+  type ProjectWorkspaceFetchResult,
+  type ProjectWorkspaceQuery,
   type RepositoryActionsDashboardQuery,
   type RepositoryBranchActivityFetchResult,
   type RepositoryBranchesFetchResult,
@@ -281,6 +285,34 @@ export async function getOrganizationProjects(
   return getOrganizationProjectsFromCookie(
     requestHeaders.get("cookie"),
     org,
+    query,
+  );
+}
+
+export async function getUserProjectWorkspace(
+  username: string,
+  projectNumber: number,
+  query: ProjectWorkspaceQuery = {},
+): Promise<ProjectWorkspaceFetchResult> {
+  const requestHeaders = await headers();
+  return getUserProjectWorkspaceFromCookie(
+    requestHeaders.get("cookie"),
+    username,
+    projectNumber,
+    query,
+  );
+}
+
+export async function getOrganizationProjectWorkspace(
+  org: string,
+  projectNumber: number,
+  query: ProjectWorkspaceQuery = {},
+): Promise<ProjectWorkspaceFetchResult> {
+  const requestHeaders = await headers();
+  return getOrganizationProjectWorkspaceFromCookie(
+    requestHeaders.get("cookie"),
+    org,
+    projectNumber,
     query,
   );
 }

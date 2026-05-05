@@ -45,6 +45,50 @@ export type QueryTab = {
   description: string;
 };
 
+export type ProjectWorkspaceRouteQuery = {
+  q?: string | null;
+  sort?: string | null;
+  group?: string | null;
+  slice?: string | null;
+  page?: number | null;
+};
+
+function projectWorkspaceQueryString(query: ProjectWorkspaceRouteQuery = {}) {
+  const params = new URLSearchParams();
+  if (query.q?.trim()) params.set("q", query.q.trim());
+  if (query.sort?.trim()) params.set("sort", query.sort.trim());
+  if (query.group?.trim()) params.set("group", query.group.trim());
+  if (query.slice?.trim()) params.set("slice", query.slice.trim());
+  if (query.page && query.page > 1) params.set("page", String(query.page));
+  const value = params.toString();
+  return value ? `?${value}` : "";
+}
+
+export function userProjectWorkspaceHref(
+  owner: string,
+  projectNumber: number,
+  viewNumber: number | string,
+  query: ProjectWorkspaceRouteQuery = {},
+) {
+  return `/${encodeURIComponent(owner)}/projects/${projectNumber}/views/${viewNumber}${projectWorkspaceQueryString(query)}`;
+}
+
+export function organizationProjectWorkspaceHref(
+  org: string,
+  projectNumber: number,
+  viewNumber: number | string,
+  query: ProjectWorkspaceRouteQuery = {},
+) {
+  return `/orgs/${encodeURIComponent(org)}/projects/${projectNumber}/views/${viewNumber}${projectWorkspaceQueryString(query)}`;
+}
+
+export function projectItemHref(
+  item: { href: string | null },
+  fallbackWorkspaceHref: string,
+) {
+  return item.href ?? fallbackWorkspaceHref;
+}
+
 export const GLOBAL_NAV_ITEMS = [
   {
     href: "/dashboard",
