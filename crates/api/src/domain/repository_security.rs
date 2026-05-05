@@ -401,6 +401,16 @@ pub struct CodeScanningAlertMutation {
     pub linked_issue_id: Option<Uuid>,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretScanningAlertMutation {
+    pub action: String,
+    pub resolution: Option<String>,
+    pub resolution_comment: Option<String>,
+    pub validity: Option<String>,
+    pub assignee_ids: Option<Vec<Uuid>>,
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeScanningSarifUpload {
@@ -1165,6 +1175,52 @@ pub async fn update_repository_dependabot_alert_for_actor_by_owner_name(
     .await
 }
 
+pub async fn update_repository_secret_scanning_alert_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    alert_number: i64,
+    mutation: SecretScanningAlertMutation,
+) -> Result<Option<SecretScanningAlertDetail>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    if !can_read_repository(pool, &repository, actor_user_id).await? {
+        if repository.visibility == RepositoryVisibility::Private {
+            return Ok(None);
+        }
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if !can_write_repository(pool, &repository, actor_user_id).await? {
+        return Err(RepositoryError::PermissionDenied);
+    }
+    if repository.is_archived {
+        return Err(RepositoryError::ArchivedRepositoryReadOnly);
+    }
+    if alert_number <= 0 {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "secret scanning alert id must be a positive number".to_owned(),
+        ));
+    }
+
+    update_repository_secret_scanning_alert(
+        pool,
+        &repository,
+        actor_user_id,
+        alert_number,
+        mutation,
+    )
+    .await?;
+    repository_secret_scanning_alert_detail_for_repository(
+        pool,
+        &repository,
+        actor_user_id,
+        alert_number,
+    )
+    .await
+}
+
 pub async fn bulk_update_repository_dependabot_alerts_for_actor_by_owner_name(
     pool: &PgPool,
     actor_user_id: Uuid,
@@ -1647,6 +1703,213 @@ async fn update_repository_code_scanning_alert(
                 "code scanning alert action must be dismiss, reopen, assign, or link_issue"
                     .to_owned(),
             ))
+        }
+    }
+
+    Ok(())
+}
+
+async fn update_repository_secret_scanning_alert(
+    pool: &PgPool,
+    repository: &Repository,
+    actor_user_id: Uuid,
+    alert_number: i64,
+    mutation: SecretScanningAlertMutation,
+) -> Result<(), RepositoryError> {
+    let setting = secret_scanning_setting(pool, repository).await?;
+    let availability = secret_scanning_availability(repository, setting.as_ref());
+    if !availability.enabled {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "Secret scanning alerts are disabled for this repository".to_owned(),
+        ));
+    }
+
+    let alert = sqlx::query(
+        "SELECT id, state FROM secret_scanning_alerts WHERE repository_id = $1 AND number = $2",
+    )
+    .bind(repository.id)
+    .bind(alert_number)
+    .fetch_optional(pool)
+    .await?;
+    let Some(alert) = alert else {
+        return Err(RepositoryError::NotFound);
+    };
+    let alert_id: Uuid = alert.get("id");
+    let state: String = alert.get("state");
+
+    match mutation.action.as_str() {
+        "resolve" => {
+            if state != "open" {
+                return Err(RepositoryError::InvalidDependencyGraphQuery(
+                    "only open secret scanning alerts can be resolved".to_owned(),
+                ));
+            }
+            let resolution = normalize_secret_scanning_resolution(mutation.resolution.as_deref())?;
+            let comment =
+                normalize_dependabot_dismissal_comment(mutation.resolution_comment.as_deref())?;
+            sqlx::query(
+                r#"
+                UPDATE secret_scanning_alerts
+                SET state = 'resolved',
+                    resolution = $3,
+                    resolution_comment = $4,
+                    resolved_by_user_id = $5,
+                    resolved_at = now(),
+                    updated_at = now()
+                WHERE repository_id = $1 AND id = $2
+                "#,
+            )
+            .bind(repository.id)
+            .bind(alert_id)
+            .bind(&resolution)
+            .bind(&comment)
+            .bind(actor_user_id)
+            .execute(pool)
+            .await?;
+            record_secret_scanning_alert_event(
+                pool,
+                repository,
+                alert_id,
+                actor_user_id,
+                "resolved",
+                &format!("Resolved this alert as {resolution}."),
+                json!({ "resolution": resolution, "hasComment": comment.is_some() }),
+            )
+            .await?;
+            notify_secret_scanning_alert_assignees(
+                pool,
+                repository,
+                alert_id,
+                "Secret scanning alert resolved",
+                "security_alert",
+            )
+            .await?;
+        }
+        "reopen" => {
+            if state != "resolved" {
+                return Err(RepositoryError::InvalidDependencyGraphQuery(
+                    "only resolved secret scanning alerts can be reopened".to_owned(),
+                ));
+            }
+            sqlx::query(
+                r#"
+                UPDATE secret_scanning_alerts
+                SET state = 'open',
+                    resolution = NULL,
+                    resolution_comment = NULL,
+                    resolved_by_user_id = NULL,
+                    resolved_at = NULL,
+                    updated_at = now()
+                WHERE repository_id = $1 AND id = $2
+                "#,
+            )
+            .bind(repository.id)
+            .bind(alert_id)
+            .execute(pool)
+            .await?;
+            record_secret_scanning_alert_event(
+                pool,
+                repository,
+                alert_id,
+                actor_user_id,
+                "reopened",
+                "Reopened this secret scanning alert.",
+                json!({ "previousState": state }),
+            )
+            .await?;
+            notify_secret_scanning_alert_assignees(
+                pool,
+                repository,
+                alert_id,
+                "Secret scanning alert reopened",
+                "security_alert",
+            )
+            .await?;
+        }
+        "assign" => {
+            let assignee_ids = mutation.assignee_ids.unwrap_or_default();
+            if assignee_ids.len() > 25 {
+                return Err(RepositoryError::InvalidDependencyGraphQuery(
+                    "secret scanning alert assignment is limited to 25 users".to_owned(),
+                ));
+            }
+            let options = secret_scanning_assignment_options(pool, repository, alert_id).await?;
+            for assignee_id in &assignee_ids {
+                if !options.iter().any(|option| option.id == *assignee_id) {
+                    return Err(RepositoryError::InvalidDependencyGraphQuery(
+                        "secret scanning alert assignee must have repository access".to_owned(),
+                    ));
+                }
+            }
+            sqlx::query("DELETE FROM secret_scanning_alert_assignees WHERE alert_id = $1")
+                .bind(alert_id)
+                .execute(pool)
+                .await?;
+            for assignee_id in &assignee_ids {
+                sqlx::query(
+                    "INSERT INTO secret_scanning_alert_assignees (alert_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                )
+                .bind(alert_id)
+                .bind(assignee_id)
+                .execute(pool)
+                .await?;
+            }
+            record_secret_scanning_alert_event(
+                pool,
+                repository,
+                alert_id,
+                actor_user_id,
+                "assigned",
+                if assignee_ids.is_empty() {
+                    "Cleared secret scanning alert assignees."
+                } else {
+                    "Updated secret scanning alert assignees."
+                },
+                json!({ "assigneeCount": assignee_ids.len() }),
+            )
+            .await?;
+            notify_secret_scanning_alert_assignees(
+                pool,
+                repository,
+                alert_id,
+                "Secret scanning alert assigned",
+                "assign",
+            )
+            .await?;
+        }
+        "validity" => {
+            let validity = normalize_secret_scanning_validity(mutation.validity.as_deref())?;
+            sqlx::query(
+                "UPDATE secret_scanning_alerts SET validity_state = $3, updated_at = now() WHERE repository_id = $1 AND id = $2",
+            )
+            .bind(repository.id)
+            .bind(alert_id)
+            .bind(&validity)
+            .execute(pool)
+            .await?;
+            sqlx::query(
+                "INSERT INTO secret_scanning_validity_checks (alert_id, provider, status, message) VALUES ($1, 'manual', $2, 'Validity updated by a maintainer.')",
+            )
+            .bind(alert_id)
+            .bind(&validity)
+            .execute(pool)
+            .await?;
+            record_secret_scanning_alert_event(
+                pool,
+                repository,
+                alert_id,
+                actor_user_id,
+                "validity_updated",
+                &format!("Marked token validity as {validity}."),
+                json!({ "validity": validity }),
+            )
+            .await?;
+        }
+        _ => {
+            return Err(RepositoryError::InvalidDependencyGraphQuery(
+                "secret scanning alert action must be resolve, reopen, assign, or validity"
+                    .to_owned(),
+            ));
         }
     }
 
@@ -4089,6 +4352,34 @@ fn normalize_code_scanning_dismissal_reason(
     }
 }
 
+fn normalize_secret_scanning_resolution(value: Option<&str>) -> Result<String, RepositoryError> {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "resolution reason is required".to_owned(),
+        ));
+    };
+    match value {
+        "revoked" | "false_positive" | "used_in_tests" | "wont_fix" => Ok(value.to_owned()),
+        other => Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+            "unsupported secret scanning resolution `{other}`"
+        ))),
+    }
+}
+
+fn normalize_secret_scanning_validity(value: Option<&str>) -> Result<String, RepositoryError> {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Err(RepositoryError::InvalidDependencyGraphQuery(
+            "validity state is required".to_owned(),
+        ));
+    };
+    match value {
+        "unknown" | "active" | "inactive" | "unsupported" => Ok(value.to_owned()),
+        other => Err(RepositoryError::InvalidDependencyGraphQuery(format!(
+            "unsupported secret scanning validity `{other}`"
+        ))),
+    }
+}
+
 async fn dependabot_alert_rows(
     pool: &PgPool,
     repository: &Repository,
@@ -5439,6 +5730,83 @@ async fn notify_code_scanning_alert_assignees(
                $4
         FROM code_scanning_alert_assignees
         WHERE code_scanning_alert_assignees.alert_id = $1
+        "#,
+    )
+    .bind(alert_id)
+    .bind(repository.id)
+    .bind(title)
+    .bind(reason)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn record_secret_scanning_alert_event(
+    pool: &PgPool,
+    repository: &Repository,
+    alert_id: Uuid,
+    actor_user_id: Uuid,
+    event_type: &str,
+    message: &str,
+    metadata: serde_json::Value,
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        r#"
+        INSERT INTO secret_scanning_alert_events (
+            repository_id, alert_id, actor_user_id, event_type, message, metadata
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+        "#,
+    )
+    .bind(repository.id)
+    .bind(alert_id)
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(message)
+    .bind(metadata.clone())
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO security_audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, 'repository.secret_scanning_alert.update', 'repository', $2, $3)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(repository.id)
+    .bind(json!({
+        "repositoryId": repository.id,
+        "alertId": alert_id,
+        "alertEvent": event_type,
+        "metadata": metadata,
+    }))
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn notify_secret_scanning_alert_assignees(
+    pool: &PgPool,
+    repository: &Repository,
+    alert_id: Uuid,
+    title: &str,
+    reason: &str,
+) -> Result<(), RepositoryError> {
+    sqlx::query(
+        r#"
+        INSERT INTO notifications (
+            user_id, repository_id, subject_type, subject_id, title, reason
+        )
+        SELECT secret_scanning_alert_assignees.user_id,
+               $2,
+               'secret_scanning_alert',
+               $1,
+               $3,
+               $4
+        FROM secret_scanning_alert_assignees
+        WHERE secret_scanning_alert_assignees.alert_id = $1
         "#,
     )
     .bind(alert_id)

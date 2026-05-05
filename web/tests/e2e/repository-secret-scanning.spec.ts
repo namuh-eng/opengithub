@@ -391,6 +391,35 @@ test("repository Secret scanning alerts support list filters, row links, disable
     `${seeded.treeRepositoryHref}/security/secret-scanning/1`,
   );
 
+  await page.goto(`${seeded.treeRepositoryHref}/security/secret-scanning/1`);
+  await expect(
+    page.getByRole("heading", { name: "GitHub personal access token" }),
+  ).toBeVisible();
+  await expect(page.getByText("super-secret-value")).toHaveCount(0);
+  await expect(page.getByText("ghp_************").first()).toBeVisible();
+  await expect(
+    page.getByRole("list", { name: "Secret scanning alert timeline" }),
+  ).toBeVisible();
+  await page.screenshot({
+    fullPage: true,
+    path: "../ralph/screenshots/build/code-security-004-phase3-alert-detail.jpg",
+  });
+  await page.getByRole("button", { name: "Resolve alert" }).click();
+  await expect(page.getByText("Resolution saved.")).toBeVisible();
+  await expect(page.getByText("Resolved").first()).toBeVisible();
+  await page.getByRole("button", { name: "Reopen alert" }).click();
+  await expect(page.getByText("Reopen saved.")).toBeVisible();
+  await page
+    .locator('section[aria-label="Alert triage actions"] input[type="checkbox"]')
+    .first()
+    .uncheck();
+  await page.getByRole("button", { name: "Save assignments" }).click();
+  await expect(page.getByText("Assignments saved.")).toBeVisible();
+  await page.getByLabel("Token validity").selectOption("inactive");
+  await page.getByRole("button", { name: "Save validity" }).click();
+  await expect(page.getByText("Validity saved.")).toBeVisible();
+  await expectNoDeadControls(page);
+
   disableSecretScanning(seeded.treeRepositoryHref);
   await page.goto(`${seeded.treeRepositoryHref}/security/secret-scanning`);
   await expect(

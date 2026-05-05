@@ -42,7 +42,7 @@
 
 ## Phase 3: Alert Detail and Single-Alert Triage - resolve, reopen, assign, timeline
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement `/{owner}/{repo}/security/secret-scanning/{alert_id}` plus single-alert mutations. Maintainers can resolve open alerts as revoked, false positive, used in tests, or won't fix; reopen resolved alerts; assign users/teams; and inspect a redacted audit-backed timeline. Readers can view permitted redacted detail data but cannot mutate.
 

@@ -3319,6 +3319,24 @@ export type RepositoryCodeScanningAlertMutation =
       linkedIssueId: string;
     };
 
+export type RepositorySecretScanningAlertMutation =
+  | {
+      action: "resolve";
+      resolution: string;
+      resolutionComment?: string | null;
+    }
+  | {
+      action: "reopen";
+    }
+  | {
+      action: "assign";
+      assigneeIds: string[];
+    }
+  | {
+      action: "validity";
+      validity: string;
+    };
+
 export type RepositoryDependabotLinks = {
   listHref: string;
   openHref: string;
@@ -10774,6 +10792,38 @@ export async function getRepositorySecretScanningAlertDetailFromCookie(
     secretScanningAlert:
       (await response.json()) as RepositorySecretScanningAlertDetail,
   };
+}
+
+export async function mutateRepositorySecretScanningAlertFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  alertId: string | number,
+  mutation: RepositorySecretScanningAlertMutation,
+): Promise<RepositorySecretScanningAlertDetail> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/security/secret-scanning/${encodeURIComponent(String(alertId))}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(mutation),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    const envelope = ((await response.json().catch(() => null)) ??
+      null) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Secret scanning alert update failed.",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as RepositorySecretScanningAlertDetail;
 }
 
 export async function mutateRepositoryCodeScanningAlertFromCookie(

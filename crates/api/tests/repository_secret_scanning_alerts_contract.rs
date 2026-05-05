@@ -16,7 +16,9 @@ use opengithub_api::{
         },
         repository_security::{
             repository_secret_scanning_alert_detail_for_actor_by_owner_name,
-            repository_secret_scanning_alerts_for_actor_by_owner_name, SecretScanningAlertsQuery,
+            repository_secret_scanning_alerts_for_actor_by_owner_name,
+            update_repository_secret_scanning_alert_for_actor_by_owner_name,
+            SecretScanningAlertMutation, SecretScanningAlertsQuery,
         },
     },
 };
@@ -125,6 +127,37 @@ async fn get_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (Status
     }
     let response = app
         .oneshot(builder.body(Body::empty()).expect("request should build"))
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    (
+        status,
+        serde_json::from_slice(&bytes).expect("response should be json"),
+    )
+}
+
+async fn patch_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method("PATCH")
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_string()))
+                .expect("request should build"),
+        )
         .await
         .expect("request should run");
     let status = response.status();
@@ -395,9 +428,107 @@ async fn secret_scanning_alerts_redact_filter_and_protect_private_repositories()
     assert_eq!(detail_body["assigneeOptions"][0]["kind"], "user");
     assert!(!detail_body.to_string().contains(plaintext_secret));
 
+    let (reader_patch_status, reader_patch_body) = patch_json(
+        app.clone(),
+        &format!("{base}/1"),
+        Some(&reader_cookie),
+        json!({ "action": "resolve", "resolution": "revoked" }),
+    )
+    .await;
+    assert_eq!(reader_patch_status, StatusCode::FORBIDDEN);
+    assert_eq!(reader_patch_body["error"]["code"], "forbidden");
+
+    let (resolve_status, resolve_body) = patch_json(
+        app.clone(),
+        &format!("{base}/1"),
+        Some(&owner_cookie),
+        json!({
+            "action": "resolve",
+            "resolution": "revoked",
+            "resolutionComment": "Rotated outside opengithub."
+        }),
+    )
+    .await;
+    assert_eq!(resolve_status, StatusCode::OK, "{resolve_body}");
+    assert_eq!(resolve_body["alert"]["state"], "resolved");
+    assert_eq!(resolve_body["alert"]["resolution"], "revoked");
+    assert_eq!(
+        resolve_body["timeline"]
+            .as_array()
+            .expect("timeline")
+            .last()
+            .expect("latest event")["eventType"],
+        "resolved"
+    );
+    assert!(!resolve_body.to_string().contains(plaintext_secret));
+
+    let (reopen_status, reopen_body) = patch_json(
+        app.clone(),
+        &format!("{base}/1"),
+        Some(&owner_cookie),
+        json!({ "action": "reopen" }),
+    )
+    .await;
+    assert_eq!(reopen_status, StatusCode::OK, "{reopen_body}");
+    assert_eq!(reopen_body["alert"]["state"], "open");
+    assert_eq!(reopen_body["alert"]["resolution"], Value::Null);
+
+    let (assign_status, assign_body) = patch_json(
+        app.clone(),
+        &format!("{base}/1"),
+        Some(&owner_cookie),
+        json!({ "action": "assign", "assigneeIds": [reader.id] }),
+    )
+    .await;
+    assert_eq!(assign_status, StatusCode::OK, "{assign_body}");
+    assert_eq!(
+        assign_body["alert"]["assignees"][0]["login"],
+        reader.username.as_deref().expect("reader username")
+    );
+
+    let (validity_status, validity_body) = patch_json(
+        app.clone(),
+        &format!("{base}/1"),
+        Some(&owner_cookie),
+        json!({ "action": "validity", "validity": "inactive" }),
+    )
+    .await;
+    assert_eq!(validity_status, StatusCode::OK, "{validity_body}");
+    assert_eq!(validity_body["validity"]["status"], "inactive");
+
+    let audit_and_events: String = sqlx::query_scalar::<_, Option<String>>(
+        r#"
+        SELECT jsonb_agg(payload)::text
+        FROM (
+            SELECT metadata AS payload FROM secret_scanning_alert_events WHERE alert_id = $1
+            UNION ALL
+            SELECT metadata AS payload FROM security_audit_events
+            WHERE event_type = 'repository.secret_scanning_alert.update'
+              AND target_id = $2::text
+        ) events
+        "#,
+    )
+    .bind(alert_id)
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("audit payloads should load")
+    .unwrap_or_default();
+    assert!(audit_and_events.contains("revoked"));
+    assert!(!audit_and_events.contains(plaintext_secret));
+
+    let notification_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM notifications WHERE repository_id = $1 AND subject_type = 'secret_scanning_alert'",
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("notifications should count");
+    assert!(notification_count >= 1);
+
     let (filtered_status, filtered_body) = get_json(
         app.clone(),
-        &format!("{base}?state=open&q=github&provider=GitHub&secret_type=github_pat&validity=active&bypassed=true&topic=provider&sort=provider"),
+        &format!("{base}?state=open&q=github&provider=GitHub&secret_type=github_pat&validity=inactive&bypassed=true&topic=provider&sort=provider"),
         Some(&owner_cookie),
     )
     .await;
@@ -435,7 +566,7 @@ async fn secret_scanning_alerts_redact_filter_and_protect_private_repositories()
             query: Some("github"),
             provider: Some("GitHub"),
             secret_type: Some("github_pat"),
-            validity: Some("active"),
+            validity: Some("inactive"),
             resolution: None,
             bypassed: Some("true"),
             team: None,
@@ -465,4 +596,27 @@ async fn secret_scanning_alerts_redact_filter_and_protect_private_repositories()
     assert!(!serde_json::to_string(&direct_detail)
         .expect("detail should serialize")
         .contains(plaintext_secret));
+
+    let direct_resolved = update_repository_secret_scanning_alert_for_actor_by_owner_name(
+        &pool,
+        owner.id,
+        owner_login,
+        &repository.name,
+        1,
+        SecretScanningAlertMutation {
+            action: "resolve".to_owned(),
+            resolution: Some("false_positive".to_owned()),
+            resolution_comment: None,
+            validity: None,
+            assignee_ids: None,
+        },
+    )
+    .await
+    .expect("direct update should succeed")
+    .expect("alert should exist");
+    assert_eq!(direct_resolved.alert.state, "resolved");
+    assert_eq!(
+        direct_resolved.alert.resolution.as_deref(),
+        Some("false_positive")
+    );
 }

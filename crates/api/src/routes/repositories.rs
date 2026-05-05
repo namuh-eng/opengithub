@@ -109,11 +109,12 @@ use crate::{
         repository_security_policy_for_actor_by_owner_name,
         update_repository_code_scanning_alert_for_actor_by_owner_name,
         update_repository_dependabot_alert_for_actor_by_owner_name,
+        update_repository_secret_scanning_alert_for_actor_by_owner_name,
         upload_repository_code_scanning_sarif_for_actor_by_owner_name,
         upsert_repository_security_policy_by_owner_name, CodeScanningAlertMutation,
         CodeScanningAlertsQuery, CodeScanningSarifUpload, DependabotAlertMutation,
-        DependabotAlertsQuery, DependabotBulkMutation, SecretScanningAlertsQuery,
-        SecurityPolicyMutation,
+        DependabotAlertsQuery, DependabotBulkMutation, SecretScanningAlertMutation,
+        SecretScanningAlertsQuery, SecurityPolicyMutation,
     },
     domain::webhooks::{
         create_repository_webhook_by_owner_name, delete_repository_webhook_by_owner_name,
@@ -192,7 +193,7 @@ pub fn router() -> Router<AppState> {
         )
         .route(
             "/:owner/:repo/security/secret-scanning/:alert_id",
-            get(secret_scanning_alert_detail),
+            get(secret_scanning_alert_detail).patch(update_secret_scanning_alert),
         )
         .route(
             "/:owner/:repo/security/policy",
@@ -1392,6 +1393,30 @@ async fn secret_scanning_alert_detail(
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let view = repository_secret_scanning_alert_detail_for_actor_by_owner_name(
         pool, actor.0.id, &owner, &repo, alert_id,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "secret scanning alert was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn update_secret_scanning_alert(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, alert_id)): Path<(String, String, i64)>,
+    RestJson(request): RestJson<SecretScanningAlertMutation>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let view = update_repository_secret_scanning_alert_for_actor_by_owner_name(
+        pool, actor.0.id, &owner, &repo, alert_id, request,
     )
     .await
     .map_err(map_repository_error)?

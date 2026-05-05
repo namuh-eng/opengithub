@@ -6030,5 +6030,24 @@
       "Run keyboard-only and screen-reader traversal for the Secret scanning filter menus, result-kind tabs, row checkboxes, alert settings menu, disabled callout, and mobile Security sidebar.",
       "Repeat full make test-e2e after the wrapper stall and shared local 202605030041 migration drift are resolved; the focused repository-secret-scanning Playwright smoke is the browser evidence for this phase."
     ]
+  },
+  {
+    "feature_id": "code-security-004",
+    "tests_written": [
+      "Completed Phase 3 Alert Detail and Single-Alert Triage without marking code-security-004 build_pass=true.",
+      "Added maintainer-only PATCH /api/repos/{owner}/{repo}/security/secret-scanning/{alert_id} for resolve, reopen, assignment changes, and manual validity updates.",
+      "Added redacted secret scanning alert detail UI at /{owner}/{repo}/security/secret-scanning/{alert_id} with evidence, file/commit links, validity, push-protection bypasses, timeline, read-only state, and mutation feedback.",
+      "Added a same-origin Next.js mutation proxy at /{owner}/{repo}/security/secret-scanning/{alert_id}/actions.",
+      "Extended Rust contract coverage for reader mutation denial, resolve/reopen, assignment updates, validity updates, notification writes, audit/event redaction, and no plaintext secret leakage.",
+      "Added focused Vitest coverage for detail rendering, redacted evidence, concrete links, resolve/validity/assignment mutation routes, read-only state, unavailable state, no dead links, and Editorial banned-value guardrails.",
+      "Extended focused Playwright smoke to cover detail navigation, resolve, reopen, assignment clearing, validity update, disabled state, no dead controls, and screenshot ralph/screenshots/build/code-security-004-phase3-alert-detail.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Phase 4 still needs real committed-blob detection and Rust Git push-protection enforcement with bypass outcomes; Phase 3 uses seeded persisted alerts for browser coverage.",
+      "Phase 5 still needs API docs, final edge-case sweep, final screenshots, prd.json build_pass=true, and final QA handoff.",
+      "Run keyboard-only QA through the detail resolution form, validity selector, assignee checkboxes, Show paths disclosure, and Security sidebar on desktop and mobile.",
+      "Repeat with a real Google OAuth browser session using TEST_ACCOUNT_EMAIL instead of deterministic signed-cookie fixtures.",
+      "Repeat against a clean migrated database after the shared local 202605030041 migration drift is resolved; focused Rust coverage passed by continuing on the pre-applied schema."
+    ]
   }
 ]
