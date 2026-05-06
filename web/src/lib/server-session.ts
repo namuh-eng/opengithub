@@ -71,6 +71,7 @@ import {
   getRepositoryIssuesFromCookie,
   getRepositoryIssueTemplatesFromCookie,
   getRepositoryIssueTimelineFromCookie,
+  getRepositoryLabelsFromCookie,
   getRepositoryNetworkFromCookie,
   getRepositoryPagesSettingsFromCookie,
   getRepositoryPathFromCookie,
@@ -158,6 +159,7 @@ import {
   type RepositoryForksFetchResult,
   type RepositoryForksQuery,
   type RepositoryIssueListQuery,
+  type RepositoryLabelsQuery,
   type RepositoryNetworkFetchResult,
   type RepositoryPullRequestDiffQuery,
   type RepositoryPullRequestListQuery,
@@ -663,6 +665,20 @@ export async function getDashboardSummary(query: DashboardSummaryQuery = {}) {
 export async function getRepository(owner: string, repo: string) {
   const requestHeaders = await headers();
   return getRepositoryFromCookie(requestHeaders.get("cookie"), owner, repo);
+}
+
+export async function getRepositoryLabels(
+  owner: string,
+  repo: string,
+  query: RepositoryLabelsQuery = {},
+) {
+  const requestHeaders = await headers();
+  return getRepositoryLabelsFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    query,
+  );
 }
 
 export async function getRepositoryReleases(

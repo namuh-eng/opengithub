@@ -1027,6 +1027,27 @@ export function repositoryWikiHref(
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/wiki${encodedSlug}`;
 }
 
+export type RepositoryLabelsRouteQuery = {
+  q?: string | null;
+  sort?: string | null;
+  direction?: string | null;
+  page?: number | null;
+};
+
+export function repositoryLabelsHref(
+  owner: string,
+  repo: string,
+  query: RepositoryLabelsRouteQuery = {},
+) {
+  const params = new URLSearchParams();
+  if (query.q?.trim()) params.set("q", query.q.trim());
+  if (query.sort?.trim()) params.set("sort", query.sort.trim());
+  if (query.direction?.trim()) params.set("direction", query.direction.trim());
+  if (query.page && query.page > 1) params.set("page", String(query.page));
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/labels${suffix}`;
+}
+
 export function repositoryWikiPagesHref(owner: string, repo: string) {
   return repositoryWikiHref(owner, repo, "_pages");
 }

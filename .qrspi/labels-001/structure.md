@@ -30,7 +30,7 @@ The collaboration foundation already has repository-scoped `labels`, `issue_labe
 
 ## Phase 2: Editorial Labels Page - repository labels are searchable and sortable
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the placeholder `/{owner}/{repo}/labels` route with a real reader/writer page backed by Phase 1. Users should search labels, change sort order, follow issue/PR count links, and see permissioned management controls with no dead interactions.
 

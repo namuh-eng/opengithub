@@ -7741,5 +7741,23 @@
       "Probe case-insensitive label rename collisions, concurrent label edits/deletes, delete cascade visibility across issue_labels and discussion_labels, arbitrary user-label color contrast, very long label names/descriptions, private repository leakage, archived repository mutation denial, and count accuracy when PRs are closed or merged.",
       "Phases 2-5 still own the Editorial Labels page, issue/PR sidebar label application, discussion label consistency, docs, signed-in E2E, browser screenshots, QA handoff consolidation, and labels-001 build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "labels-001",
+    "tests_written": [
+      "Completed Phase 2 Editorial Labels Page without marking labels-001 build_pass=true.",
+      "Added the real /{owner}/{repo}/labels page backed by the Rust labels API with repository shell integration, label search, count text, sort menu, compact label rows, color swatches, descriptions, and concrete issue/PR count links.",
+      "Added permissioned New/Edit/Delete label controls with shared form validation, random color selection, live preview chip, same-origin Next mutation proxies under /labels/actions, structured error display, delete confirmation, and no inert controls.",
+      "Added repositoryLabelsHref navigation helper and server-session getRepositoryLabels wrapper while preserving Rust API/session authority.",
+      "Added focused Vitest coverage for search/count rendering, sort query links, create/edit/delete payloads, reader control hiding, long label wrapping, no placeholder links, and no dead controls.",
+      "Browser smoke passed against a local API-compatible stub on :3016 and fresh Next dev server on :3025: loaded /namuh-eng/opengithub/labels, searched, sorted, created, edited, deleted after confirmation, followed an issue-count link, checked no href=\"#\", checked no horizontal overflow, and saved ralph/screenshots/build/labels-001-phase2-labels-page.jpg.",
+      "Verification passed: focused repository-labels-page Vitest, web TypeScript, focused Biome, full make check, full make test with Cargo tests plus 610 web tests, and mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Bounded TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false timeout 120 make test-e2e was rerun after stopping the temporary smoke servers and terminated after 120 seconds with no Playwright result output; rerun signed-in E2E after the local E2E database/dev-server path is healthy.",
+      "Probe real Rust-backed create/edit/delete against a migrated credentialed TEST_DATABASE_URL, especially duplicate names, invalid colors, archived repositories, private repository access, and permission boundaries.",
+      "Probe arbitrary user-label color contrast, very long names/descriptions on mobile, rapid search/sort changes, sort-menu keyboard behavior, delete cancellation, stale UI after concurrent edits/deletes, and count-link query correctness for labels containing spaces or punctuation.",
+      "Phases 3-5 still own issue/PR sidebar label application, discussion consistency, docs, signed-in E2E coverage, final QA handoff consolidation, and labels-001 build_pass bookkeeping."
+    ]
   }
 ]
