@@ -7725,5 +7725,21 @@
       "Probe large histories, ambiguous short SHA collisions, identical timestamps, page-scoped histories across nested slugs, same-content revisions, huge truncated diffs, keyboard-only checkbox-to-compare and Revert Changes flows, and mobile long-line wrapping.",
       "Probe concurrent reverts and stale compare pages, disabled wiki and archived repository denial, cross-page revision rejection, private repository leakage, notification fanout where enabled, audit/activity/revert-event consistency, and local bare Git contents after revert."
     ]
+  },
+  {
+    "feature_id": "labels-001",
+    "tests_written": [
+      "Completed Phase 1 Label Management API Contract without marking labels-001 build_pass=true.",
+      "Added repository_label_events migration and indexes for repository label event evidence, label name/count queries, issue label joins, and discussion label joins.",
+      "Added Rust domain DTOs and REST endpoints for GET/POST/PATCH/DELETE /api/repos/{owner}/{repo}/labels with optional signed reads, write-permission mutations, search, sort, pagination, open issue/open PR/discussion counts, issue/PR/discussion hrefs, normalized hex colors, duplicate-name conflicts, archived-repository denial, and structured no-secret errors.",
+      "Added typed web/src/lib/api.ts label DTOs and signed-cookie fetch helpers for list/create/update/delete while preserving Rust API auth authority.",
+      "Added repository_labels_contract HTTP scenario that seeds real users, a public repository, default labels, an issue, a PR-backed issue, and a discussion, then exercises label list/counts/search/sort/create/update/delete/permission errors when TEST_DATABASE_URL is healthy.",
+      "Verification passed: cargo fmt --all --check, cargo check -p opengithub-api --tests, web TypeScript, focused Biome for src/lib/api.ts, focused repository_labels_contract compiled and ran under the DB guard, full make check, full make test with Cargo tests plus 605 web tests, and mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Run repository_labels_contract against a clean migrated credentialed TEST_DATABASE_URL; local localhost:55432 rejected the available postgres credentials, so the DB scenario self-skipped after compiling.",
+      "Probe case-insensitive label rename collisions, concurrent label edits/deletes, delete cascade visibility across issue_labels and discussion_labels, arbitrary user-label color contrast, very long label names/descriptions, private repository leakage, archived repository mutation denial, and count accuracy when PRs are closed or merged.",
+      "Phases 2-5 still own the Editorial Labels page, issue/PR sidebar label application, discussion label consistency, docs, signed-in E2E, browser screenshots, QA handoff consolidation, and labels-001 build_pass bookkeeping."
+    ]
   }
 ]

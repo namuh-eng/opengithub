@@ -10,6 +10,7 @@ pub mod git_transport;
 pub mod highlight;
 pub mod identity;
 pub mod issues;
+pub mod labels;
 pub mod markdown;
 pub mod notifications;
 pub mod onboarding;

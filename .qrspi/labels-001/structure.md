@@ -10,7 +10,7 @@ The collaboration foundation already has repository-scoped `labels`, `issue_labe
 
 ## Phase 1: Label Management API Contract - list/search/sort and CRUD work through Rust
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the Rust API contract for repository label management. Readers can list/search/sort labels and follow count links; writers can create, update, and delete labels with audit/timeline-safe side effects. This phase should be API-first and independently testable without replacing the placeholder UI.
 

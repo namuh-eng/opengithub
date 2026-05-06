@@ -10,6 +10,72 @@ export type AuthSession = {
   user: AuthUser | null;
 };
 
+export type RepositoryLabelCounts = {
+  openIssues: number;
+  openPullRequests: number;
+  discussions: number;
+  totalIssueCount: number;
+};
+
+export type RepositoryLabelSummary = {
+  id: string;
+  name: string;
+  color: string;
+  description: string | null;
+  isDefault: boolean;
+  counts: RepositoryLabelCounts;
+  issuesHref: string;
+  pullRequestsHref: string;
+  discussionsHref: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RepositoryLabelsView = {
+  items: RepositoryLabelSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  filters: {
+    query: string | null;
+    sort: "name" | "total_issue_count" | string;
+    direction: "asc" | "desc" | string;
+  };
+  viewer: {
+    authenticated: boolean;
+    role: string | null;
+    canRead: boolean;
+    canWrite: boolean;
+    canAdmin: boolean;
+  };
+  repository: {
+    id: string;
+    owner: string;
+    name: string;
+    visibility: RepositoryVisibility | string;
+    isArchived: boolean;
+  };
+};
+
+export type RepositoryLabelsQuery = {
+  q?: string | null;
+  sort?: "name" | "total_issue_count" | string | null;
+  direction?: "asc" | "desc" | string | null;
+  page?: number | null;
+  pageSize?: number | null;
+};
+
+export type RepositoryLabelMutationRequest = {
+  name: string;
+  color: string;
+  description?: string | null;
+};
+
+export type RepositoryLabelMutationResult = {
+  label: RepositoryLabelSummary;
+  eventId: string;
+};
+
 export type PersonalAccessTokenResourceOwner = {
   id: string;
   kind: "user" | "organization" | string;
@@ -13495,6 +13561,137 @@ export async function getRepositoryFromCookie(
   }
 
   return (await response.json()) as RepositoryOverview;
+}
+
+function repositoryLabelsPath(
+  owner: string,
+  repo: string,
+  query: RepositoryLabelsQuery = {},
+) {
+  const params = new URLSearchParams();
+  if (query.q) params.set("q", query.q);
+  if (query.sort) params.set("sort", query.sort);
+  if (query.direction) params.set("direction", query.direction);
+  if (query.page) params.set("page", String(query.page));
+  if (query.pageSize) params.set("pageSize", String(query.pageSize));
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/labels${suffix}`;
+}
+
+export async function getRepositoryLabelsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  query: RepositoryLabelsQuery = {},
+): Promise<RepositoryLabelsView> {
+  const response = await fetch(
+    `${apiBaseUrl()}${repositoryLabelsPath(owner, repo, query)}`,
+    {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(envelope?.error.message ?? "Repository labels failed.", {
+      cause: envelope,
+    });
+  }
+  return payload as RepositoryLabelsView;
+}
+
+export async function createRepositoryLabelFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  request: RepositoryLabelMutationRequest,
+): Promise<RepositoryLabelMutationResult> {
+  return mutateRepositoryLabelFromCookie(
+    cookie,
+    owner,
+    repo,
+    null,
+    "POST",
+    request,
+  );
+}
+
+export async function updateRepositoryLabelFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  labelId: string,
+  request: RepositoryLabelMutationRequest,
+): Promise<RepositoryLabelMutationResult> {
+  return mutateRepositoryLabelFromCookie(
+    cookie,
+    owner,
+    repo,
+    labelId,
+    "PATCH",
+    request,
+  );
+}
+
+export async function deleteRepositoryLabelFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  labelId: string,
+): Promise<RepositoryLabelMutationResult> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/labels/${encodeURIComponent(labelId)}`,
+    {
+      method: "DELETE",
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Repository label delete failed.",
+      {
+        cause: envelope,
+      },
+    );
+  }
+  return payload as RepositoryLabelMutationResult;
+}
+
+async function mutateRepositoryLabelFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  labelId: string | null,
+  method: "POST" | "PATCH",
+  request: RepositoryLabelMutationRequest,
+): Promise<RepositoryLabelMutationResult> {
+  const path = labelId
+    ? `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/labels/${encodeURIComponent(labelId)}`
+    : repositoryLabelsPath(owner, repo);
+  const response = await fetch(`${apiBaseUrl()}${path}`, {
+    method,
+    headers: {
+      "content-type": "application/json",
+      ...(cookie ? { cookie } : {}),
+    },
+    body: JSON.stringify(request),
+    cache: "no-store",
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Repository label save failed.",
+      {
+        cause: envelope,
+      },
+    );
+  }
+  return payload as RepositoryLabelMutationResult;
 }
 
 function repositoryReleaseListPath(

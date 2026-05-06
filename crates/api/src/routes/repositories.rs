@@ -71,6 +71,12 @@ use crate::{
         TransferDiscussionRequest, UpdateDiscussionCategoryRequest,
         UpdateDiscussionCategorySectionRequest, UpdatePinnedDiscussionRequest,
     },
+    domain::labels::{
+        create_repository_label_by_owner_name, delete_repository_label_by_owner_name,
+        repository_labels_for_actor_by_owner_name, update_repository_label_by_owner_name,
+        LabelsError, RepositoryLabelDirection, RepositoryLabelMutationRequest, RepositoryLabelSort,
+        RepositoryLabelsListQuery,
+    },
     domain::pages::{
         connect_repository_pages_actions_deployment_by_owner_name,
         recheck_repository_pages_dns_by_owner_name, remove_repository_pages_domain_by_owner_name,
@@ -218,6 +224,11 @@ pub fn router() -> Router<AppState> {
         )
         .route("/:owner/:repo/network", get(network))
         .route("/:owner/:repo/wiki", get(wiki_home))
+        .route("/:owner/:repo/labels", get(labels).post(create_label))
+        .route(
+            "/:owner/:repo/labels/:label_id",
+            patch(update_label).delete(delete_label),
+        )
         .route("/:owner/:repo/wiki/_compare", get(wiki_compare))
         .route("/:owner/:repo/wiki/_history", get(wiki_history))
         .route("/:owner/:repo/wiki/_pages", get(wiki_pages))
@@ -871,6 +882,92 @@ async fn read(
     })?;
 
     Ok(Json(json!(repository)))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LabelsQuery {
+    q: Option<String>,
+    sort: Option<String>,
+    direction: Option<String>,
+    page: Option<i64>,
+    page_size: Option<i64>,
+}
+
+async fn labels(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<LabelsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let pagination = normalize_pagination(query.page, query.page_size);
+    let sort = RepositoryLabelSort::parse(query.sort.as_deref()).map_err(map_labels_error)?;
+    let direction =
+        RepositoryLabelDirection::parse(query.direction.as_deref()).map_err(map_labels_error)?;
+    let view = repository_labels_for_actor_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        actor.map(|user| user.id),
+        RepositoryLabelsListQuery {
+            query: query.q,
+            sort,
+            direction,
+            page: pagination.page,
+            page_size: pagination.page_size,
+        },
+    )
+    .await
+    .map_err(map_labels_error)?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn create_label(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<RepositoryLabelMutationRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let result = create_repository_label_by_owner_name(pool, &owner, &repo, actor.0.id, request)
+        .await
+        .map_err(map_labels_error)?;
+
+    Ok((StatusCode::CREATED, Json(json!(result))))
+}
+
+async fn update_label(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, label_id)): Path<(String, String, Uuid)>,
+    RestJson(request): RestJson<RepositoryLabelMutationRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let result =
+        update_repository_label_by_owner_name(pool, &owner, &repo, label_id, actor.0.id, request)
+            .await
+            .map_err(map_labels_error)?;
+
+    Ok(Json(json!(result)))
+}
+
+async fn delete_label(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, label_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let result = delete_repository_label_by_owner_name(pool, &owner, &repo, label_id, actor.0.id)
+        .await
+        .map_err(map_labels_error)?;
+
+    Ok(Json(json!(result)))
 }
 
 async fn wiki_home(
@@ -5348,6 +5445,30 @@ fn map_repository_error(error: RepositoryError) -> (StatusCode, Json<ErrorEnvelo
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal_error",
             "repository operation failed".to_owned(),
+        ),
+    }
+}
+
+fn map_labels_error(error: LabelsError) -> (StatusCode, Json<ErrorEnvelope>) {
+    match error {
+        LabelsError::RepositoryNotFound | LabelsError::LabelNotFound => {
+            error_response(StatusCode::NOT_FOUND, "not_found", error.to_string())
+        }
+        LabelsError::RepositoryAccessDenied => {
+            error_response(StatusCode::FORBIDDEN, "forbidden", error.to_string())
+        }
+        LabelsError::ArchivedRepository | LabelsError::Conflict => {
+            error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
+        LabelsError::Validation(_) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            error.to_string(),
+        ),
+        LabelsError::Sqlx(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "label operation failed".to_owned(),
         ),
     }
 }
