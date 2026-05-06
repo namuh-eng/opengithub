@@ -3775,6 +3775,14 @@
       "exit_code": 0,
       "category": "compilation_failure",
       "attempt": 403
+    },
+    {
+      "timestamp": "2026-05-06T01:34:10.658410",
+      "phase": "build",
+      "feature": "build_cycle_1",
+      "exit_code": 0,
+      "category": "test_failure",
+      "attempt": 404
     }
   ]
 }
