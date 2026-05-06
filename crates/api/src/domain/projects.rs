@@ -653,6 +653,28 @@ pub struct ProjectDraftIssueMetadata {
     pub repository_notifications_enabled: bool,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectDraftUpdateRequest {
+    pub title: String,
+    pub body: Option<String>,
+    pub expected_updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectItemCommentCreateRequest {
+    pub body: String,
+    pub expected_updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectItemCommentUpdateRequest {
+    pub body: String,
+    pub expected_updated_at: Option<DateTime<Utc>>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectItemDetailPermissions {
@@ -2538,6 +2560,208 @@ pub async fn bulk_add_project_items_for_actor(
     )
     .await?;
     project_workspace_after_item_mutation(pool, project_id, actor_user_id).await
+}
+
+pub async fn update_project_draft_item_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    item_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectDraftUpdateRequest,
+) -> Result<ProjectItemDetail, ProjectsError> {
+    writable_workspace_project(pool, project_id, actor_user_id).await?;
+    let item =
+        draft_item_edit_target(pool, project_id, item_id, request.expected_updated_at).await?;
+    let title = normalize_draft_title(&request.title)?;
+    let body = normalize_draft_body(request.body.as_deref())?;
+
+    sqlx::query(
+        r#"
+        UPDATE project_items
+        SET title = $2, body = $3, updated_at = now()
+        WHERE id = $1
+        "#,
+    )
+    .bind(item.id)
+    .bind(&title)
+    .bind(&body)
+    .execute(pool)
+    .await?;
+
+    record_project_item_event(
+        pool,
+        project_id,
+        item_id,
+        actor_user_id,
+        "project.draft.update",
+        json!({
+            "title": title,
+            "bodyUpdated": body.is_some(),
+            "repositoryNotificationsEnabled": false,
+        }),
+    )
+    .await?;
+    record_project_audit(
+        pool,
+        actor_user_id,
+        "project.draft.update",
+        item_id,
+        json!({
+            "projectId": project_id,
+            "repositoryNotificationsEnabled": false,
+        }),
+    )
+    .await?;
+
+    project_item_detail(pool, project_id, item_id, Some(actor_user_id)).await
+}
+
+pub async fn create_project_item_comment_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    item_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectItemCommentCreateRequest,
+) -> Result<ProjectItemDetail, ProjectsError> {
+    writable_workspace_project(pool, project_id, actor_user_id).await?;
+    draft_item_edit_target(pool, project_id, item_id, request.expected_updated_at).await?;
+    let body = normalize_project_item_comment_body(&request.body)?;
+
+    let comment_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO project_item_comments (project_id, project_item_id, author_user_id, body)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id
+        "#,
+    )
+    .bind(project_id)
+    .bind(item_id)
+    .bind(actor_user_id)
+    .bind(&body)
+    .fetch_one(pool)
+    .await?;
+
+    record_project_item_event(
+        pool,
+        project_id,
+        item_id,
+        actor_user_id,
+        "project.draft_comment.create",
+        json!({
+            "commentId": comment_id,
+            "repositoryNotificationsEnabled": false,
+        }),
+    )
+    .await?;
+    record_project_audit(
+        pool,
+        actor_user_id,
+        "project.draft_comment.create",
+        comment_id,
+        json!({ "projectId": project_id, "projectItemId": item_id }),
+    )
+    .await?;
+
+    project_item_detail(pool, project_id, item_id, Some(actor_user_id)).await
+}
+
+pub async fn update_project_item_comment_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    item_id: Uuid,
+    comment_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectItemCommentUpdateRequest,
+) -> Result<ProjectItemDetail, ProjectsError> {
+    writable_workspace_project(pool, project_id, actor_user_id).await?;
+    draft_item_edit_target(pool, project_id, item_id, request.expected_updated_at).await?;
+    let body = normalize_project_item_comment_body(&request.body)?;
+    ensure_project_item_comment(pool, project_id, item_id, comment_id).await?;
+
+    sqlx::query(
+        r#"
+        UPDATE project_item_comments
+        SET body = $4, is_deleted = false, updated_at = now()
+        WHERE project_id = $1 AND project_item_id = $2 AND id = $3
+        "#,
+    )
+    .bind(project_id)
+    .bind(item_id)
+    .bind(comment_id)
+    .bind(&body)
+    .execute(pool)
+    .await?;
+
+    record_project_item_event(
+        pool,
+        project_id,
+        item_id,
+        actor_user_id,
+        "project.draft_comment.update",
+        json!({
+            "commentId": comment_id,
+            "repositoryNotificationsEnabled": false,
+        }),
+    )
+    .await?;
+    record_project_audit(
+        pool,
+        actor_user_id,
+        "project.draft_comment.update",
+        comment_id,
+        json!({ "projectId": project_id, "projectItemId": item_id }),
+    )
+    .await?;
+
+    project_item_detail(pool, project_id, item_id, Some(actor_user_id)).await
+}
+
+pub async fn delete_project_item_comment_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    item_id: Uuid,
+    comment_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<ProjectItemDetail, ProjectsError> {
+    writable_workspace_project(pool, project_id, actor_user_id).await?;
+    draft_item_edit_target(pool, project_id, item_id, None).await?;
+    ensure_project_item_comment(pool, project_id, item_id, comment_id).await?;
+
+    sqlx::query(
+        r#"
+        UPDATE project_item_comments
+        SET is_deleted = true, body = '[deleted]', updated_at = now()
+        WHERE project_id = $1 AND project_item_id = $2 AND id = $3
+        "#,
+    )
+    .bind(project_id)
+    .bind(item_id)
+    .bind(comment_id)
+    .execute(pool)
+    .await?;
+
+    record_project_item_event(
+        pool,
+        project_id,
+        item_id,
+        actor_user_id,
+        "project.draft_comment.delete",
+        json!({
+            "commentId": comment_id,
+            "repositoryNotificationsEnabled": false,
+        }),
+    )
+    .await?;
+    record_project_audit(
+        pool,
+        actor_user_id,
+        "project.draft_comment.delete",
+        comment_id,
+        json!({ "projectId": project_id, "projectItemId": item_id }),
+    )
+    .await?;
+
+    project_item_detail(pool, project_id, item_id, Some(actor_user_id)).await
 }
 
 pub async fn update_project_item_position_for_actor(
@@ -5314,6 +5538,97 @@ async fn workspace_item_edit_target(
         archived_at: row.get("archived_at"),
         updated_at: row.get("updated_at"),
     })
+}
+
+async fn draft_item_edit_target(
+    pool: &PgPool,
+    project_id: Uuid,
+    item_id: Uuid,
+    expected_updated_at: Option<DateTime<Utc>>,
+) -> Result<ProjectWorkspaceEditItem, ProjectsError> {
+    let item = workspace_item_edit_target(pool, project_id, item_id).await?;
+    if item.item_type != "draft_issue" {
+        return Err(ProjectsError::Validation(
+            "Only draft project items can be edited from this panel".to_owned(),
+        ));
+    }
+    if item.archived_at.is_some() {
+        return Err(ProjectsError::Validation(
+            "Archived project items cannot be edited".to_owned(),
+        ));
+    }
+    if let Some(expected) = expected_updated_at {
+        if item.updated_at != expected {
+            return Err(ProjectsError::Validation(
+                "Project item changed since it was loaded. Refresh before editing.".to_owned(),
+            ));
+        }
+    }
+    Ok(item)
+}
+
+fn normalize_draft_title(value: &str) -> Result<String, ProjectsError> {
+    let title = value.trim();
+    if title.is_empty() {
+        return Err(ProjectsError::Validation(
+            "Draft project items require a title".to_owned(),
+        ));
+    }
+    if title.chars().count() > 256 {
+        return Err(ProjectsError::Validation(
+            "Draft project item title must be 256 characters or fewer".to_owned(),
+        ));
+    }
+    Ok(title.to_owned())
+}
+
+fn normalize_draft_body(value: Option<&str>) -> Result<Option<String>, ProjectsError> {
+    let body = value.map(str::trim).filter(|value| !value.is_empty());
+    if let Some(body) = body {
+        if body.chars().count() > 65_536 {
+            return Err(ProjectsError::Validation(
+                "Draft project item body must be 65536 characters or fewer".to_owned(),
+            ));
+        }
+        return Ok(Some(body.to_owned()));
+    }
+    Ok(None)
+}
+
+fn normalize_project_item_comment_body(value: &str) -> Result<String, ProjectsError> {
+    let body = value.trim();
+    if body.is_empty() {
+        return Err(ProjectsError::Validation(
+            "Project item comments require a body".to_owned(),
+        ));
+    }
+    if body.chars().count() > 65_536 {
+        return Err(ProjectsError::Validation(
+            "Project item comments must be 65536 characters or fewer".to_owned(),
+        ));
+    }
+    Ok(body.to_owned())
+}
+
+async fn ensure_project_item_comment(
+    pool: &PgPool,
+    project_id: Uuid,
+    item_id: Uuid,
+    comment_id: Uuid,
+) -> Result<(), ProjectsError> {
+    let exists: Option<Uuid> = sqlx::query_scalar(
+        r#"
+        SELECT id
+        FROM project_item_comments
+        WHERE project_id = $1 AND project_item_id = $2 AND id = $3
+        "#,
+    )
+    .bind(project_id)
+    .bind(item_id)
+    .bind(comment_id)
+    .fetch_optional(pool)
+    .await?;
+    exists.map(|_| ()).ok_or(ProjectsError::NotFound)
 }
 
 async fn writable_workspace_project(

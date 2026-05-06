@@ -751,6 +751,239 @@ async fn project_item_detail_and_archived_list_enforce_visibility() {
 }
 
 #[tokio::test]
+async fn project_draft_editing_and_comments_are_project_only() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping projects draft editing scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("draftedit{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let member = create_user(&pool, &format!("{marker}-member")).await;
+    let reader = create_user(&pool, &format!("{marker}-reader")).await;
+    let member_cookie = cookie_header(&pool, &config, &member).await;
+    let reader_cookie = cookie_header(&pool, &config, &reader).await;
+
+    let project_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO projects (owner_user_id, number, title, short_description, visibility, created_by_user_id)
+        VALUES ($1, 72, 'Draft edit project', 'Project-only mutation contract', 'private', $1)
+        RETURNING id
+        "#,
+    )
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("project should insert");
+    sqlx::query(
+        "INSERT INTO project_permissions (project_id, user_id, role) VALUES ($1, $2, 'write'), ($1, $3, 'read')",
+    )
+    .bind(project_id)
+    .bind(member.id)
+    .bind(reader.id)
+    .execute(&pool)
+    .await
+    .expect("project permissions should insert");
+    sqlx::query(
+        "INSERT INTO project_fields (project_id, name, field_type, position) VALUES ($1, 'Title', 'title', 1)",
+    )
+    .bind(project_id)
+    .execute(&pool)
+    .await
+    .expect("fields should insert");
+    let draft_item_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_items (project_id, item_type, title, body, position) VALUES ($1, 'draft_issue', 'Original draft', 'Original body', 1) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("draft should insert");
+    let archived_item_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_items (project_id, item_type, title, archived_at, position) VALUES ($1, 'draft_issue', 'Archived draft', now(), 2) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("archived draft should insert");
+
+    let repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("linked-{}", Uuid::new_v4().simple()),
+            description: None,
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    let issue_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO issues (repository_id, number, title, body, state, author_user_id)
+        VALUES ($1, 73, 'Linked issue', 'Repository-backed issue', 'open', $2)
+        RETURNING id
+        "#,
+    )
+    .bind(repo.id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("issue should insert");
+    let linked_item_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_items (project_id, item_type, issue_id, position) VALUES ($1, 'issue', $2, 3) RETURNING id",
+    )
+    .bind(project_id)
+    .bind(issue_id)
+    .fetch_one(&pool)
+    .await
+    .expect("linked project item should insert");
+
+    let original_updated_at: chrono::DateTime<Utc> =
+        sqlx::query_scalar("SELECT updated_at FROM project_items WHERE id = $1")
+            .bind(draft_item_id)
+            .fetch_one(&pool)
+            .await
+            .expect("draft timestamp should read");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/items/{draft_item_id}/draft"),
+        Some(&member_cookie),
+        json!({
+            "title": "Updated project-only draft",
+            "body": "Updated project-only body",
+            "expectedUpdatedAt": original_updated_at.to_rfc3339(),
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["item"]["title"], "Updated project-only draft");
+    assert_eq!(body["item"]["body"], "Updated project-only body");
+    assert_eq!(body["draft"]["repositoryNotificationsEnabled"], false);
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/items/{draft_item_id}/draft"),
+        Some(&member_cookie),
+        json!({
+            "title": "Stale draft title",
+            "body": null,
+            "expectedUpdatedAt": original_updated_at.to_rfc3339(),
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["error"]["code"], "validation_failed");
+
+    let current_updated_at = body["error"]["message"].clone();
+    assert!(current_updated_at
+        .as_str()
+        .expect("error message")
+        .contains("changed since it was loaded"));
+
+    let refreshed_updated_at: chrono::DateTime<Utc> =
+        sqlx::query_scalar("SELECT updated_at FROM project_items WHERE id = $1")
+            .bind(draft_item_id)
+            .fetch_one(&pool)
+            .await
+            .expect("refreshed timestamp should read");
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/items/{draft_item_id}/comments"),
+        Some(&member_cookie),
+        json!({
+            "body": "Project-only comment",
+            "expectedUpdatedAt": refreshed_updated_at.to_rfc3339(),
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["comments"][0]["body"], "Project-only comment");
+    let comment_id = body["comments"][0]["id"]
+        .as_str()
+        .expect("comment id")
+        .to_owned();
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/items/{draft_item_id}/comments/{comment_id}"),
+        Some(&member_cookie),
+        json!({
+            "body": "Edited project-only comment",
+            "expectedUpdatedAt": refreshed_updated_at.to_rfc3339(),
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["comments"][0]["body"], "Edited project-only comment");
+
+    let (status, _, body) = delete_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/items/{draft_item_id}/comments/{comment_id}"),
+        Some(&member_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["comments"][0]["isDeleted"], true);
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/items/{draft_item_id}/draft"),
+        Some(&reader_cookie),
+        json!({ "title": "Reader edit", "body": null }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/items/{linked_item_id}/draft"),
+        Some(&member_cookie),
+        json!({ "title": "Wrong item type", "body": null }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+
+    let (status, _, body) = post_json(
+        app,
+        &format!("/api/projects/{project_id}/items/{archived_item_id}/comments"),
+        Some(&member_cookie),
+        json!({ "body": "Archived comment" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+
+    let event_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM project_item_events WHERE project_item_id = $1 AND event_type LIKE 'project.draft%'",
+    )
+    .bind(draft_item_id)
+    .fetch_one(&pool)
+    .await
+    .expect("event count should read");
+    assert_eq!(event_count, 4);
+    let notification_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM notifications WHERE subject_type = 'project_item' AND subject_id = $1",
+    )
+    .bind(draft_item_id)
+    .fetch_one(&pool)
+    .await
+    .expect("notification count should read");
+    assert_eq!(notification_count, 0);
+    let timeline_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM timeline_events WHERE metadata->>'projectItemId' = $1",
+    )
+    .bind(draft_item_id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("timeline count should read");
+    assert_eq!(timeline_count, 0);
+}
+
+#[tokio::test]
 async fn project_field_settings_returns_options_iterations_limits_and_guards() {
     let Some(pool) = database_pool().await else {
         eprintln!("skipping projects field settings scenario; set TEST_DATABASE_URL");

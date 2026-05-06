@@ -425,6 +425,22 @@ export type ProjectItemDetail = {
   unavailableReason: string | null;
 };
 
+export type ProjectDraftUpdateRequest = {
+  title: string;
+  body: string | null;
+  expectedUpdatedAt: string | null;
+};
+
+export type ProjectItemCommentCreateRequest = {
+  body: string;
+  expectedUpdatedAt: string | null;
+};
+
+export type ProjectItemCommentUpdateRequest = {
+  body: string;
+  expectedUpdatedAt: string | null;
+};
+
 export type ProjectArchivedItem = {
   item: ProjectWorkspaceItem;
   source: ProjectItemSourceSummary | null;
@@ -7444,6 +7460,22 @@ function projectItemDetailPath(projectId: string, itemId: string): string {
   return `/api/projects/${encodeURIComponent(projectId)}/items/${encodeURIComponent(itemId)}`;
 }
 
+function projectItemDraftPath(projectId: string, itemId: string): string {
+  return `${projectItemDetailPath(projectId, itemId)}/draft`;
+}
+
+function projectItemCommentsPath(projectId: string, itemId: string): string {
+  return `${projectItemDetailPath(projectId, itemId)}/comments`;
+}
+
+function projectItemCommentPath(
+  projectId: string,
+  itemId: string,
+  commentId: string,
+): string {
+  return `${projectItemCommentsPath(projectId, itemId)}/${encodeURIComponent(commentId)}`;
+}
+
 function projectArchivedItemsPath(
   projectId: string,
   query: ProjectArchivedItemsQuery = {},
@@ -8281,6 +8313,39 @@ async function mutateProjectWorkspaceFromCookie(
   return payload as ProjectWorkspace;
 }
 
+async function mutateProjectItemDetailFromCookie(
+  cookie: string | null | undefined,
+  path: string,
+  method: "POST" | "PATCH" | "DELETE",
+  fallbackCode: string,
+  fallbackMessage: string,
+  body?: unknown,
+): Promise<ProjectItemDetail> {
+  const response = await fetch(`${apiBaseUrl()}${path}`, {
+    method,
+    headers: {
+      ...(body == null ? {} : { "content-type": "application/json" }),
+      ...(cookie ? { cookie } : {}),
+    },
+    body: body == null ? undefined : JSON.stringify(body),
+    cache: "no-store",
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(envelope?.error.message ?? fallbackMessage, {
+      cause: {
+        error: envelope?.error ?? {
+          code: fallbackCode,
+          message: fallbackMessage,
+        },
+        status: envelope?.status ?? response.status,
+      } satisfies ApiErrorEnvelope,
+    });
+  }
+  return payload as ProjectItemDetail;
+}
+
 export function addProjectItemFromCookie(
   cookie: string | null | undefined,
   projectId: string,
@@ -8338,6 +8403,70 @@ export function removeProjectItemFromCookie(
     "DELETE",
     "project_item_remove_failed",
     "Project item could not be removed.",
+  );
+}
+
+export function updateProjectDraftItemFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  itemId: string,
+  request: ProjectDraftUpdateRequest,
+): Promise<ProjectItemDetail> {
+  return mutateProjectItemDetailFromCookie(
+    cookie,
+    projectItemDraftPath(projectId, itemId),
+    "PATCH",
+    "project_draft_update_failed",
+    "Draft project item could not be saved.",
+    request,
+  );
+}
+
+export function createProjectItemCommentFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  itemId: string,
+  request: ProjectItemCommentCreateRequest,
+): Promise<ProjectItemDetail> {
+  return mutateProjectItemDetailFromCookie(
+    cookie,
+    projectItemCommentsPath(projectId, itemId),
+    "POST",
+    "project_item_comment_failed",
+    "Project item comment could not be saved.",
+    request,
+  );
+}
+
+export function updateProjectItemCommentFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  itemId: string,
+  commentId: string,
+  request: ProjectItemCommentUpdateRequest,
+): Promise<ProjectItemDetail> {
+  return mutateProjectItemDetailFromCookie(
+    cookie,
+    projectItemCommentPath(projectId, itemId, commentId),
+    "PATCH",
+    "project_item_comment_failed",
+    "Project item comment could not be saved.",
+    request,
+  );
+}
+
+export function deleteProjectItemCommentFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  itemId: string,
+  commentId: string,
+): Promise<ProjectItemDetail> {
+  return mutateProjectItemDetailFromCookie(
+    cookie,
+    projectItemCommentPath(projectId, itemId, commentId),
+    "DELETE",
+    "project_item_comment_failed",
+    "Project item comment could not be deleted.",
   );
 }
 

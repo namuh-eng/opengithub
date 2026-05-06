@@ -13,20 +13,23 @@ use crate::{
     domain::projects::{
         add_project_item_for_actor, bulk_add_project_items_for_actor, copy_project_for_actor,
         create_project_field_for_actor, create_project_field_option_for_actor,
-        create_project_iteration_break_for_actor, create_project_iteration_for_actor,
-        delete_project_field_for_actor, delete_project_field_option_for_actor,
+        create_project_item_comment_for_actor, create_project_iteration_break_for_actor,
+        create_project_iteration_for_actor, delete_project_field_for_actor,
+        delete_project_field_option_for_actor, delete_project_item_comment_for_actor,
         delete_project_iteration_break_for_actor, organization_projects, project_field_settings,
         project_item_detail, project_items_archived, project_workspace,
         remove_project_item_for_actor, reorder_project_field_options_for_actor,
-        repository_projects, update_project_field_for_actor, update_project_field_option_for_actor,
+        repository_projects, update_project_draft_item_for_actor, update_project_field_for_actor,
+        update_project_field_option_for_actor, update_project_item_comment_for_actor,
         update_project_item_field_for_actor, update_project_item_position_for_actor,
         update_project_iteration_for_actor, update_project_iteration_settings_for_actor,
         update_project_roadmap_settings_for_actor, update_project_view_layout_for_actor,
         update_project_view_state_for_actor, user_projects, CopiedProject, CopyProjectRequest,
-        ProjectArchivedItem, ProjectFieldCreateRequest, ProjectFieldDeleteRequest,
-        ProjectFieldOptionCreateRequest, ProjectFieldOptionReorderRequest,
-        ProjectFieldOptionUpdateRequest, ProjectFieldSettings, ProjectFieldUpdateRequest,
-        ProjectItemAddRequest, ProjectItemDetail, ProjectItemFieldValueRequest,
+        ProjectArchivedItem, ProjectDraftUpdateRequest, ProjectFieldCreateRequest,
+        ProjectFieldDeleteRequest, ProjectFieldOptionCreateRequest,
+        ProjectFieldOptionReorderRequest, ProjectFieldOptionUpdateRequest, ProjectFieldSettings,
+        ProjectFieldUpdateRequest, ProjectItemAddRequest, ProjectItemCommentCreateRequest,
+        ProjectItemCommentUpdateRequest, ProjectItemDetail, ProjectItemFieldValueRequest,
         ProjectItemPositionRequest, ProjectItemsArchivedQuery, ProjectItemsBulkAddRequest,
         ProjectIterationBreakCreateRequest, ProjectIterationCreateRequest,
         ProjectIterationSettingsRequest, ProjectIterationUpdateRequest, ProjectList,
@@ -99,6 +102,18 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/projects/:project_id/items/:item_id/fields/:field_id",
             patch(update_project_item_field_route),
+        )
+        .route(
+            "/api/projects/:project_id/items/:item_id/draft",
+            patch(update_project_draft_item_route),
+        )
+        .route(
+            "/api/projects/:project_id/items/:item_id/comments",
+            post(create_project_item_comment_route),
+        )
+        .route(
+            "/api/projects/:project_id/items/:item_id/comments/:comment_id",
+            patch(update_project_item_comment_route).delete(delete_project_item_comment_route),
         )
         .route(
             "/api/projects/:project_id/items/archived",
@@ -632,6 +647,65 @@ async fn update_project_item_position_route(
             .await
             .map_err(map_projects_error)?;
     Ok(Json(workspace))
+}
+
+async fn update_project_draft_item_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project_id, item_id)): Path<(Uuid, Uuid)>,
+    Json(request): Json<ProjectDraftUpdateRequest>,
+) -> Result<Json<ProjectItemDetail>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let detail = update_project_draft_item_for_actor(pool, project_id, item_id, actor.id, request)
+        .await
+        .map_err(map_projects_error)?;
+    Ok(Json(detail))
+}
+
+async fn create_project_item_comment_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project_id, item_id)): Path<(Uuid, Uuid)>,
+    Json(request): Json<ProjectItemCommentCreateRequest>,
+) -> Result<Json<ProjectItemDetail>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let detail =
+        create_project_item_comment_for_actor(pool, project_id, item_id, actor.id, request)
+            .await
+            .map_err(map_projects_error)?;
+    Ok(Json(detail))
+}
+
+async fn update_project_item_comment_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project_id, item_id, comment_id)): Path<(Uuid, Uuid, Uuid)>,
+    Json(request): Json<ProjectItemCommentUpdateRequest>,
+) -> Result<Json<ProjectItemDetail>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let detail = update_project_item_comment_for_actor(
+        pool, project_id, item_id, comment_id, actor.id, request,
+    )
+    .await
+    .map_err(map_projects_error)?;
+    Ok(Json(detail))
+}
+
+async fn delete_project_item_comment_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project_id, item_id, comment_id)): Path<(Uuid, Uuid, Uuid)>,
+) -> Result<Json<ProjectItemDetail>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let detail =
+        delete_project_item_comment_for_actor(pool, project_id, item_id, comment_id, actor.id)
+            .await
+            .map_err(map_projects_error)?;
+    Ok(Json(detail))
 }
 
 async fn remove_project_item_route(

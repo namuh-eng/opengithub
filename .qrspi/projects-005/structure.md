@@ -40,7 +40,7 @@
 
 ## Phase 3: Draft Issue Editing and Comments - project-only drafts mutate without repository notifications
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make draft issue title/body edits and draft comments/activity real from the side panel. Draft changes update project-only data and item events while deliberately avoiding repository issue notifications until conversion.
 

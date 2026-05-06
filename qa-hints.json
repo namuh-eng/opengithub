@@ -7110,5 +7110,23 @@
       "Probe keyboard opening from table rows and board cards, mobile side-panel width/scrolling, long titles/body/comments, deleted comments, no dead controls, permission-disabled controls for read-only users, and Remove success/failure refresh behavior.",
       "Phase 3 still owns draft title/body editing and comments; Phase 4 draft conversion; Phase 5 archive/restore/remove lifecycle and linked sync; Phase 6 docs, screenshots, QA handoff, and build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-005",
+    "tests_written": [
+      "Completed Phase 3 Draft Issue Editing and Comments without marking projects-005 build_pass=true.",
+      "Added Rust PATCH /api/projects/{project_id}/items/{item_id}/draft, POST /api/projects/{project_id}/items/{item_id}/comments, PATCH /api/projects/{project_id}/items/{item_id}/comments/{comment_id}, and DELETE /api/projects/{project_id}/items/{item_id}/comments/{comment_id}.",
+      "Draft edits validate title/body bounds, project write permissions, draft-only item type, archived denial, stale expectedUpdatedAt conflicts, project_item_events, audit_events, and deliberately avoid repository timeline_events/notifications.",
+      "Added same-origin Next proxy routes and typed web/src/lib/api.ts helpers for draft update and project item comment create/update/delete while preserving Rust API/session authority.",
+      "Updated the Editorial item side panel with real draft title/body editing, project-only comment composer, comment edit/delete controls, pending state, success/error feedback, and refreshed server detail responses.",
+      "Extended projects_workspace_contract with a focused project_draft_editing_and_comments_are_project_only scenario and ProjectWorkspacePage Vitest coverage for draft save plus comment add/edit/delete payloads.",
+      "Verification passed: cargo fmt --all --check; cargo check -p opengithub-api --tests; focused DB-guarded Rust scenario compile/run; focused web TypeScript; focused Biome; focused project-workspace-page Vitest with 18 tests; full make check; full make test with Cargo tests plus 556 web tests; mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Focused Rust DB assertions self-skipped because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test failed with password authentication failed for user postgres; rerun project_draft_editing_and_comments_are_project_only against a clean migrated credentialed database.",
+      "Full make test-e2e ran 145 Playwright tests: 19 public/setup tests passed and 126 signed-session tests failed because dashboard_e2e_seed cannot authenticate to local Postgres as postgres. Rerun focused project item side-panel smoke against a credentialed TEST_DATABASE_URL to save ralph/screenshots/build/projects-005-phase3-draft-edit.jpg.",
+      "Probe concurrent draft edits, stale expectedUpdatedAt after comment changes, blank and oversized titles/comments, read-only and unauthenticated viewers, archived draft denial, linked issue/PR denial, deleted comment display, audit_events metadata, project_item_events ordering, and absence of repository timeline_events/notifications.",
+      "Phase 4 still owns draft conversion to repository issues; Phase 5 archive/restore/remove lifecycle and linked sync; Phase 6 docs, screenshots, QA handoff, and build_pass bookkeeping."
+    ]
   }
 ]

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { type FormEvent, Fragment, useMemo, useState } from "react";
 import type {
+  ProjectItemComment,
   ProjectItemDetail,
   ProjectWorkspace,
   ProjectWorkspaceBoardColumn,
@@ -1990,11 +1991,132 @@ function ProjectItemSidePanel({
   removing,
   returnHref,
 }: ProjectItemSidePanelProps) {
-  const item = detail.item;
-  const sourceHref = detail.source?.href ?? item.href;
-  const sourceLabel = detail.source
-    ? `${detail.source.repository.fullName} #${detail.source.number}`
+  const [currentDetail, setCurrentDetail] = useState(detail);
+  const [draftTitle, setDraftTitle] = useState(detail.item.title);
+  const [draftBody, setDraftBody] = useState(detail.item.body ?? "");
+  const [commentBody, setCommentBody] = useState("");
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentBody, setEditingCommentBody] = useState("");
+  const [draftSaving, setDraftSaving] = useState(false);
+  const [commentSaving, setCommentSaving] = useState<string | null>(null);
+  const [panelMessage, setPanelMessage] = useState<string | null>(null);
+  const [panelError, setPanelError] = useState<string | null>(null);
+  const item = currentDetail.item;
+  const sourceHref = currentDetail.source?.href ?? item.href;
+  const sourceLabel = currentDetail.source
+    ? `${currentDetail.source.repository.fullName} #${currentDetail.source.number}`
     : item.repository?.fullName;
+  const canEditDraft =
+    Boolean(currentDetail.draft?.editable) &&
+    currentDetail.viewerPermissions.canEdit;
+  const mutationBase = `/api/projects/${encodeURIComponent(currentDetail.project.id)}/items/${encodeURIComponent(item.id)}`;
+
+  async function submitDraftEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setDraftSaving(true);
+    setPanelError(null);
+    setPanelMessage(null);
+    const response = await fetch(`${mutationBase}/draft`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: draftTitle.trim(),
+        body: draftBody.trim() || null,
+        expectedUpdatedAt: item.updatedAt,
+      }),
+    }).catch(() => null);
+    setDraftSaving(false);
+    if (!response?.ok) {
+      const body = await response?.json().catch(() => null);
+      setPanelError(
+        body?.error?.message ?? "Draft project item could not be saved.",
+      );
+      return;
+    }
+    const updated = (await response.json()) as ProjectItemDetail;
+    setCurrentDetail(updated);
+    setDraftTitle(updated.item.title);
+    setDraftBody(updated.item.body ?? "");
+    setPanelMessage("Draft saved");
+  }
+
+  async function submitComment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setCommentSaving("new");
+    setPanelError(null);
+    setPanelMessage(null);
+    const response = await fetch(`${mutationBase}/comments`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        body: commentBody.trim(),
+        expectedUpdatedAt: item.updatedAt,
+      }),
+    }).catch(() => null);
+    setCommentSaving(null);
+    if (!response?.ok) {
+      const body = await response?.json().catch(() => null);
+      setPanelError(
+        body?.error?.message ?? "Project item comment could not be saved.",
+      );
+      return;
+    }
+    const updated = (await response.json()) as ProjectItemDetail;
+    setCurrentDetail(updated);
+    setCommentBody("");
+    setPanelMessage("Comment added");
+  }
+
+  async function submitCommentEdit(comment: ProjectItemComment) {
+    setCommentSaving(comment.id);
+    setPanelError(null);
+    setPanelMessage(null);
+    const response = await fetch(
+      `${mutationBase}/comments/${encodeURIComponent(comment.id)}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          body: editingCommentBody.trim(),
+          expectedUpdatedAt: item.updatedAt,
+        }),
+      },
+    ).catch(() => null);
+    setCommentSaving(null);
+    if (!response?.ok) {
+      const body = await response?.json().catch(() => null);
+      setPanelError(
+        body?.error?.message ?? "Project item comment could not be saved.",
+      );
+      return;
+    }
+    const updated = (await response.json()) as ProjectItemDetail;
+    setCurrentDetail(updated);
+    setEditingCommentId(null);
+    setEditingCommentBody("");
+    setPanelMessage("Comment saved");
+  }
+
+  async function deleteComment(comment: ProjectItemComment) {
+    setCommentSaving(comment.id);
+    setPanelError(null);
+    setPanelMessage(null);
+    const response = await fetch(
+      `${mutationBase}/comments/${encodeURIComponent(comment.id)}`,
+      { method: "DELETE" },
+    ).catch(() => null);
+    setCommentSaving(null);
+    if (!response?.ok) {
+      const body = await response?.json().catch(() => null);
+      setPanelError(
+        body?.error?.message ?? "Project item comment could not be deleted.",
+      );
+      return;
+    }
+    const updated = (await response.json()) as ProjectItemDetail;
+    setCurrentDetail(updated);
+    setPanelMessage("Comment deleted");
+  }
   return (
     <aside
       aria-label="Project item detail"
@@ -2012,7 +2134,7 @@ function ProjectItemSidePanel({
             {item.number ? (
               <span className="t-mono-sm">#{item.number}</span>
             ) : null}
-            {detail.archive.archived ? (
+            {currentDetail.archive.archived ? (
               <span className="chip warn">Archived</span>
             ) : null}
           </div>
@@ -2035,20 +2157,54 @@ function ProjectItemSidePanel({
         </Link>
       </div>
 
-      {detail.unavailableReason ? (
-        <p className="chip warn mb-4">{detail.unavailableReason}</p>
+      {currentDetail.unavailableReason ? (
+        <p className="chip warn mb-4">{currentDetail.unavailableReason}</p>
       ) : null}
+      {panelError ? <p className="chip err mb-4">{panelError}</p> : null}
+      {panelMessage ? <p className="chip ok mb-4">{panelMessage}</p> : null}
 
       <section className="mb-5">
         <div className="t-label mb-2">Description</div>
-        {item.body ? (
+        {currentDetail.draft ? (
+          <form
+            aria-label="Edit draft project item"
+            className="grid gap-3"
+            onSubmit={submitDraftEdit}
+          >
+            <label className="grid gap-1">
+              <span className="t-label">Title</span>
+              <input
+                className="input"
+                disabled={!canEditDraft || draftSaving}
+                onChange={(event) => setDraftTitle(event.target.value)}
+                value={draftTitle}
+              />
+            </label>
+            <label className="grid gap-1">
+              <span className="t-label">Body</span>
+              <textarea
+                className="input min-h-28"
+                disabled={!canEditDraft || draftSaving}
+                onChange={(event) => setDraftBody(event.target.value)}
+                value={draftBody}
+              />
+            </label>
+            <button
+              className="btn sm primary w-fit"
+              disabled={!canEditDraft || draftSaving || !draftTitle.trim()}
+              type="submit"
+            >
+              {draftSaving ? "Saving..." : "Save draft"}
+            </button>
+          </form>
+        ) : item.body ? (
           <p className="t-sm whitespace-pre-wrap">{item.body}</p>
         ) : (
           <p className="t-sm" style={{ color: "var(--ink-3)" }}>
             No description has been added.
           </p>
         )}
-        {detail.draft ? (
+        {currentDetail.draft ? (
           <p className="t-xs mt-2">
             Draft edits stay project-only until this item is converted to an
             issue.
@@ -2097,15 +2253,15 @@ function ProjectItemSidePanel({
       <section className="mb-5">
         <div className="mb-2 flex items-center justify-between gap-3">
           <div className="t-label">Comments</div>
-          <span className="t-xs t-num">{detail.comments.length}</span>
+          <span className="t-xs t-num">{currentDetail.comments.length}</span>
         </div>
         <div className="grid gap-2">
-          {detail.comments.length === 0 ? (
+          {currentDetail.comments.length === 0 ? (
             <p className="t-sm" style={{ color: "var(--ink-3)" }}>
               No project comments yet.
             </p>
           ) : (
-            detail.comments.map((comment) => (
+            currentDetail.comments.map((comment) => (
               <article className="card p-3" key={comment.id}>
                 <div className="mb-2 flex items-center gap-2">
                   <span className="av sm">
@@ -2116,27 +2272,111 @@ function ProjectItemSidePanel({
                   </span>
                   <span className="t-xs">{formatDate(comment.updatedAt)}</span>
                 </div>
-                <p className="t-sm whitespace-pre-wrap">
-                  {comment.isDeleted ? "Comment deleted" : comment.body}
-                </p>
+                {editingCommentId === comment.id && !comment.isDeleted ? (
+                  <div className="grid gap-2">
+                    <textarea
+                      aria-label={`Edit comment by ${comment.author.login}`}
+                      className="input min-h-24"
+                      disabled={commentSaving === comment.id}
+                      onChange={(event) =>
+                        setEditingCommentBody(event.target.value)
+                      }
+                      value={editingCommentBody}
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        className="btn sm primary"
+                        disabled={
+                          commentSaving === comment.id ||
+                          !editingCommentBody.trim()
+                        }
+                        onClick={() => submitCommentEdit(comment)}
+                        type="button"
+                      >
+                        {commentSaving === comment.id ? "Saving..." : "Save"}
+                      </button>
+                      <button
+                        className="btn sm"
+                        disabled={commentSaving === comment.id}
+                        onClick={() => {
+                          setEditingCommentId(null);
+                          setEditingCommentBody("");
+                        }}
+                        type="button"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="t-sm whitespace-pre-wrap">
+                    {comment.isDeleted ? "Comment deleted" : comment.body}
+                  </p>
+                )}
+                {!comment.isDeleted &&
+                currentDetail.viewerPermissions.canComment ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      className="btn sm"
+                      disabled={commentSaving === comment.id}
+                      onClick={() => {
+                        setEditingCommentId(comment.id);
+                        setEditingCommentBody(comment.body);
+                      }}
+                      type="button"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="btn sm"
+                      disabled={commentSaving === comment.id}
+                      onClick={() => deleteComment(comment)}
+                      type="button"
+                    >
+                      {commentSaving === comment.id ? "Deleting..." : "Delete"}
+                    </button>
+                  </div>
+                ) : null}
               </article>
             ))
           )}
         </div>
+        {currentDetail.viewerPermissions.canComment ? (
+          <form
+            aria-label="Add project item comment"
+            className="mt-3 grid gap-2"
+            onSubmit={submitComment}
+          >
+            <textarea
+              className="input min-h-24"
+              disabled={commentSaving === "new"}
+              onChange={(event) => setCommentBody(event.target.value)}
+              placeholder="Add a project-only comment"
+              value={commentBody}
+            />
+            <button
+              className="btn sm primary w-fit"
+              disabled={commentSaving === "new" || !commentBody.trim()}
+              type="submit"
+            >
+              {commentSaving === "new" ? "Adding..." : "Add comment"}
+            </button>
+          </form>
+        ) : null}
       </section>
 
       <section className="mb-5">
         <div className="mb-2 flex items-center justify-between gap-3">
           <div className="t-label">Activity</div>
-          <span className="t-xs t-num">{detail.activity.length}</span>
+          <span className="t-xs t-num">{currentDetail.activity.length}</span>
         </div>
         <div className="grid gap-2">
-          {detail.activity.length === 0 ? (
+          {currentDetail.activity.length === 0 ? (
             <p className="t-sm" style={{ color: "var(--ink-3)" }}>
               Activity will appear as the item changes.
             </p>
           ) : (
-            detail.activity.map((event) => (
+            currentDetail.activity.map((event) => (
               <div className="list-row py-2" key={event.id}>
                 <span className="t-sm">
                   {event.eventType.replaceAll("_", " ")}
@@ -2158,7 +2398,7 @@ function ProjectItemSidePanel({
           className="btn sm primary"
           disabled
           title={
-            detail.viewerPermissions.canConvert
+            currentDetail.viewerPermissions.canConvert
               ? "Draft conversion is implemented in the next phase."
               : "Only editable draft items can be converted."
           }
@@ -2170,7 +2410,7 @@ function ProjectItemSidePanel({
           className="btn sm"
           disabled
           title={
-            detail.viewerPermissions.canArchive
+            currentDetail.viewerPermissions.canArchive
               ? "Archiving is implemented in the lifecycle phase."
               : "This item cannot be archived by the current viewer."
           }
@@ -2180,10 +2420,10 @@ function ProjectItemSidePanel({
         </button>
         <button
           className="btn sm"
-          disabled={removing || !detail.viewerPermissions.canRemove}
+          disabled={removing || !currentDetail.viewerPermissions.canRemove}
           onClick={() => onRemove(item)}
           title={
-            detail.viewerPermissions.canRemove
+            currentDetail.viewerPermissions.canRemove
               ? "Remove this item from the project"
               : "This item cannot be removed by the current viewer."
           }

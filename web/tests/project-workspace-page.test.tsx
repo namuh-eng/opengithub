@@ -431,7 +431,7 @@ describe("ProjectWorkspacePage", () => {
     ).toBeInTheDocument();
     expect(within(panel).getByText("Project-only draft")).toBeInTheDocument();
     expect(
-      within(panel).getByText("Write the rollout note."),
+      within(panel).getByDisplayValue("Write the rollout note."),
     ).toBeInTheDocument();
     expect(
       within(panel).getByText("Keep this scoped to the launch board."),
@@ -457,6 +457,169 @@ describe("ProjectWorkspacePage", () => {
     expect(assign).toHaveBeenCalledWith(
       "/orgs/namuh/projects/12/views/1?q=is%3Aopen&sort=manual&group=Status",
     );
+  });
+
+  it("edits draft body and project-only comments through real item routes", async () => {
+    const updatedDraft = itemDetail({
+      item: {
+        ...itemDetail().item,
+        title: "Edited draft title",
+        body: "Edited draft body",
+        updatedAt: "2026-05-04T02:00:00Z",
+      },
+      activity: [
+        ...itemDetail().activity,
+        {
+          id: "event-2",
+          eventType: "project.draft.update",
+          actor: { id: "user-1", login: "mona", avatarUrl: null },
+          metadata: {},
+          createdAt: "2026-05-04T02:00:00Z",
+        },
+      ],
+    });
+    const addedComment = itemDetail({
+      ...updatedDraft,
+      comments: [
+        ...updatedDraft.comments,
+        {
+          id: "comment-2",
+          author: { id: "user-1", login: "mona", avatarUrl: null },
+          body: "Fresh project-only comment",
+          isDeleted: false,
+          createdAt: "2026-05-04T03:00:00Z",
+          updatedAt: "2026-05-04T03:00:00Z",
+        },
+      ],
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => updatedDraft })
+      .mockResolvedValueOnce({ ok: true, json: async () => addedComment })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          itemDetail({
+            ...addedComment,
+            comments: addedComment.comments.map((comment) =>
+              comment.id === "comment-2"
+                ? { ...comment, body: "Edited project-only comment" }
+                : comment,
+            ),
+          }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          itemDetail({
+            ...addedComment,
+            comments: addedComment.comments.map((comment) =>
+              comment.id === "comment-2"
+                ? { ...comment, isDeleted: true, body: "[deleted]" }
+                : comment,
+            ),
+          }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProjectWorkspacePage
+        initialItemDetail={itemDetail()}
+        owner="namuh"
+        scope="organization"
+        viewNumber={1}
+        workspace={workspace()}
+      />,
+    );
+
+    const panel = screen.getByRole("complementary", {
+      name: "Project item detail",
+    });
+    fireEvent.change(within(panel).getByLabelText("Title"), {
+      target: { value: "Edited draft title" },
+    });
+    fireEvent.change(within(panel).getByLabelText("Body"), {
+      target: { value: "Edited draft body" },
+    });
+    fireEvent.submit(
+      within(panel).getByRole("form", { name: "Edit draft project item" }),
+    );
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/projects/project-1/items/item-2/draft",
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            title: "Edited draft title",
+            body: "Edited draft body",
+            expectedUpdatedAt: "2026-05-04T00:00:00Z",
+          }),
+        },
+      ),
+    );
+    expect(within(panel).getByText("Draft saved")).toBeInTheDocument();
+
+    fireEvent.change(
+      within(panel).getByPlaceholderText("Add a project-only comment"),
+      { target: { value: "Fresh project-only comment" } },
+    );
+    fireEvent.submit(
+      within(panel).getByRole("form", { name: "Add project item comment" }),
+    );
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        "/api/projects/project-1/items/item-2/comments",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            body: "Fresh project-only comment",
+            expectedUpdatedAt: "2026-05-04T02:00:00Z",
+          }),
+        },
+      ),
+    );
+    expect(
+      await within(panel).findByText("Fresh project-only comment"),
+    ).toBeInTheDocument();
+
+    const editButtons = within(panel).getAllByRole("button", { name: "Edit" });
+    const lastEditButton = editButtons[editButtons.length - 1];
+    expect(lastEditButton).toBeDefined();
+    fireEvent.click(lastEditButton);
+    fireEvent.change(within(panel).getByLabelText("Edit comment by mona"), {
+      target: { value: "Edited project-only comment" },
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        "/api/projects/project-1/items/item-2/comments/comment-2",
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            body: "Edited project-only comment",
+            expectedUpdatedAt: "2026-05-04T02:00:00Z",
+          }),
+        },
+      ),
+    );
+
+    const deleteButtons = within(panel).getAllByRole("button", {
+      name: "Delete",
+    });
+    const lastDeleteButton = deleteButtons[deleteButtons.length - 1];
+    expect(lastDeleteButton).toBeDefined();
+    fireEvent.click(lastDeleteButton);
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        "/api/projects/project-1/items/item-2/comments/comment-2",
+        { method: "DELETE" },
+      ),
+    );
+    expect(within(panel).getAllByText("Comment deleted")).toHaveLength(2);
   });
 
   it("shows a side panel error when direct item detail loading fails", () => {
