@@ -1616,6 +1616,127 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "projects-insights-read",
+    method: "GET",
+    path: "/api/projects/{project_id}/insights?chart=burn-up&range=1m&filter=is%3Aopen&table=true",
+    title: "Read Project Insights charts",
+    description:
+      "Returns the Projects v2 Insights contract for default Burn up charts, custom chart navigation, filter/range exploration, accessible chart data rows, latest status, share metadata, and cache snapshot evidence.",
+    auth: "Signed opengithub session cookie when required by project visibility; private projects require project read access",
+    response: `{
+  "project": { "id": "project_01", "number": 12, "title": "Roadmap" },
+  "navigation": {
+    "returnHref": "/orgs/acme/projects/12/views/1",
+    "insightsHref": "/orgs/acme/projects/12/insights",
+    "selectedItem": "insights"
+  },
+  "selectedChart": {
+    "id": "burn-up",
+    "title": "Burn up",
+    "chartType": "burn_up",
+    "shareHref": "/orgs/acme/projects/12/insights?chart=burn-up&range=1m",
+    "sharedWithViewers": true,
+    "configuration": { "table": true }
+  },
+  "matchingItemCount": 24,
+  "series": [{ "id": "completed", "name": "Completed", "points": [] }],
+  "dataRows": [{ "itemId": "item_01", "title": "Ship chart sharing" }],
+  "cache": { "cacheKey": "project_01:burn-up:1m", "version": 3, "stale": false }
+}`,
+    notes: [
+      "Supported range values are 2w, 1m, 3m, max, and custom; custom requires start and end dates and rejects excessive windows.",
+      "Supported filter tokens are bounded Projects item qualifiers such as is:open, is:closed, type:issue, type:pull_request, and type:draft_issue; unsupported tokens return invalid_filter.",
+      "table=true returns the same permission-filtered chart data as accessible rows so browser users can switch from the chart region to a data table.",
+      "Private linked repository items are omitted when the project viewer cannot read the backing repository.",
+      "Cache metadata comes from project_chart_series_cache snapshots and is refreshed when Insights recomputes a chart response.",
+      "Readers can view shared project charts and status context but cannot mutate private charts or create/edit/delete chart configuration.",
+    ],
+  },
+  {
+    id: "projects-insights-chart-create",
+    method: "POST",
+    path: "/api/projects/{project_id}/charts",
+    title: "Create Project Insights chart",
+    description:
+      "Creates a custom Project Insights chart visible either to the creator or to all project viewers.",
+    auth: "Signed opengithub session cookie with project write/admin access",
+    request: `{
+  "title": "Open bugs by team",
+  "description": "Tracks unresolved bugs by team.",
+  "chartType": "bar",
+  "filter": "is:open type:issue",
+  "xFieldId": "field_status",
+  "yFieldId": "",
+  "groupFieldId": "field_team",
+  "visibility": "project"
+}`,
+    response: `{
+  "selectedChart": {
+    "id": "chart_01",
+    "title": "Open bugs by team",
+    "visibility": "project",
+    "shareHref": "/orgs/acme/projects/12/insights?chart=chart_01&range=1m"
+  },
+  "customCharts": [{ "id": "chart_01", "title": "Open bugs by team" }]
+}`,
+    notes: [
+      "Chart title, type, filter, field ids, and visibility are validated before insert; duplicate titles return conflict.",
+      "visibility=project generates a stable share slug and allows project viewers to open the shared chart through the Insights read endpoint.",
+      "Successful creates write project_chart_revisions, invalidate or refresh project_chart_series_cache, and append audit_events.",
+    ],
+  },
+  {
+    id: "projects-insights-chart-update",
+    method: "PATCH",
+    path: "/api/projects/{project_id}/charts/{chart_id}",
+    title: "Update Project Insights chart",
+    description:
+      "Updates a custom Project Insights chart configuration and returns the refreshed Insights contract.",
+    auth: "Signed opengithub session cookie with project write/admin access",
+    request: `{
+  "title": "Closed issue trend",
+  "description": "Tracks completed work.",
+  "chartType": "line",
+  "filter": "is:closed",
+  "visibility": "project",
+  "expectedUpdatedAt": "2026-05-06T10:40:00Z"
+}`,
+    response: `{
+  "selectedChart": {
+    "id": "chart_01",
+    "title": "Closed issue trend",
+    "chartType": "line",
+    "sharedWithViewers": true
+  }
+}`,
+    notes: [
+      "expectedUpdatedAt protects concurrent chart edits; stale saves return conflict without overwriting newer chart configuration.",
+      "Default charts such as burn-up are not mutable through this endpoint.",
+      "Successful updates write a new project_chart_revisions row, refresh cache snapshot metadata, and append audit_events.",
+    ],
+  },
+  {
+    id: "projects-insights-chart-delete",
+    method: "DELETE",
+    path: "/api/projects/{project_id}/charts/{chart_id}",
+    title: "Delete Project Insights chart",
+    description:
+      "Deletes a custom Project Insights chart and returns the default Insights chart response.",
+    auth: "Signed opengithub session cookie with project write/admin access",
+    request: `{
+  "expectedUpdatedAt": "2026-05-06T10:40:00Z"
+}`,
+    response: `{
+  "selectedChart": { "id": "burn-up", "title": "Burn up" },
+  "customCharts": []
+}`,
+    notes: [
+      "Default charts cannot be deleted; private chart ids that the actor cannot edit return not_found or forbidden without leaking chart configuration.",
+      "Deletes remove the chart row and cascade revisions/cache rows while preserving project audit history.",
+      "The refreshed response keeps the user in the same project/range/filter context where possible.",
+    ],
+  },
+  {
     id: "organization-team-create",
     method: "POST",
     path: "/api/orgs/{org}/teams",

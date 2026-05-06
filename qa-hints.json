@@ -7482,5 +7482,21 @@
       "Probe project-list status/Insights links on user, organization, repository, closed, template, mobile, and filtered list surfaces.",
       "Phase 6 still owns API docs, final signed-in browser/E2E evidence, QA handoff consolidation, and projects-008 build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-008",
+    "tests_written": [
+      "Completed Phase 6 API docs, browser smoke coverage, QA handoff, and build-pass bookkeeping for projects-008.",
+      "Added /docs/api coverage for GET /api/projects/{project_id}/insights, default Burn up charts, range/filter/custom-range/table query behavior, chart cache snapshots, private linked repository filtering, custom chart create/edit/delete, sharing, permissions, stale conflicts, revisions, and audit side effects.",
+      "Added final Playwright smoke coverage in web/tests/e2e/projects-insights.spec.ts for signed-in org Project Insights, default chart rendering, filter and range URL state, custom range form, data-table toggle, custom chart create/edit/delete or read-only state, share feedback, no dead controls, desktop/mobile screenshots, and bounded overflow.",
+      "Updated prd.json and .qrspi/projects-008/structure.md to mark the build feature and all structure phases complete while leaving qa_pass=false.",
+      "Final verification for this phase includes focused API docs Vitest, ProjectInsightsPage Vitest, TypeScript, Biome, JSON validation, make check, make test, and the mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Run web/tests/e2e/projects-insights.spec.ts against a clean migrated credentialed TEST_DATABASE_URL; local Postgres on localhost:55432 has repeatedly rejected the available postgres credentials, so final signed-in E2E may skip or block until credentials are fixed.",
+      "Probe large projects with thousands of items, empty projects, projects with no completed dates, sparse date windows, very long chart titles/descriptions, multi-token and unusual filter syntax, unsupported qualifiers, and mobile chart/table accessibility.",
+      "Probe concurrent chart edits and expectedUpdatedAt conflicts, duplicate chart titles, deleted field references, stale cache refreshes after item/status changes, private repository item filtering, reader/admin role drift, shared chart privacy for outsiders, and audit/revision/cache rows.",
+      "Probe project-list status and Insights links across user, organization, repository-linked, closed, template, filtered, and mobile list surfaces."
+    ]
   }
 ]

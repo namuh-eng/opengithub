@@ -855,6 +855,56 @@ describe("ApiDocsPage", () => {
     ).toBeVisible();
     expect(
       screen.getByText(
+        "/api/projects/{project_id}/insights?chart=burn-up&range=1m&filter=is%3Aopen&table=true",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Read Project Insights charts",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/default Burn up charts, custom chart navigation/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Supported range values are 2w, 1m, 3m, max/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/unsupported tokens return invalid_filter/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/project_chart_series_cache snapshots/),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText("/api/projects/{project_id}/charts")[0],
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Create Project Insights chart",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/visibility=project generates a stable share slug/),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText("/api/projects/{project_id}/charts/{chart_id}")[0],
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Update Project Insights chart",
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/expectedUpdatedAt protects concurrent chart edits/),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "Delete Project Insights chart",
+      }),
+    ).toBeVisible();
+    expect(screen.getByText(/Default charts cannot be deleted/)).toBeVisible();
+    expect(
+      screen.getByText(
         "/api/repos/{owner}/{repo}/network/dependencies?q=sqlx&ecosystem=cargo&relationship=direct",
       ),
     ).toBeVisible();

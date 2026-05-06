@@ -90,7 +90,7 @@
 
 ## Phase 6: API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `projects-008` only after Insights reads, Editorial chart UI, filter/range/table exploration, custom chart mutations, sharing/status integration, docs, screenshots, and QA handoff are verified. Do not implement repository Insights, project exports, billing, full analytics dashboards, Highcharts as a dependency unless explicitly installed and justified, or GitHub visual styling as part of this feature.
 
