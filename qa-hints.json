@@ -7299,5 +7299,22 @@
       "Probe user-owned projects, org-owned projects with owner/admin/member/base permission combinations, public projects for anonymous viewers, private linked repositories with and without repository permissions, team grant inheritance, deleted/closed metadata, template state without a project_templates row, and policy-disabled Projects copy.",
       "Phase 2 still owns the Editorial General settings UI; Phase 3 mutations; Phase 4 Access settings; Phase 5 Danger Zone lifecycle; Phase 6 docs, final browser evidence, QA handoff, and build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-007",
+    "tests_written": [
+      "Completed Phase 2 Editorial General Settings UI without marking projects-007 build_pass=true.",
+      "Added user and organization project settings routes backed by the Phase 1 signed-cookie settings read helpers.",
+      "Added ProjectSettingsPage with Editorial settings shell, General/Access/Fields/Workflows/Templates/Danger navigation, metadata form, README editor, visibility selector, default repository selector, latest status card, status update draft panel, policy lock copy, repository summary, template summary, and permission-disabled states.",
+      "Added project settings navigation href builders for General, Access, Templates, and Danger Zone while reusing existing Fields, Workflows, and workspace route helpers.",
+      "Added focused ProjectSettingsPage Vitest coverage for org/user rendering, concrete settings nav links, metadata defaults, policy-disabled visibility, repository defaults, status controls, read-only states, no placeholder links, and Editorial banned-value guardrails.",
+      "Browser smoke passed through the real Next route against a local API-compatible stub: loaded /orgs/namuh/projects/12/settings, edited metadata/README/status draft fields, navigated to Fields and back, checked no href=\"#\" links, checked no horizontal overflow, and saved ralph/screenshots/build/projects-007-phase2-general-settings.jpg.",
+      "Verification passed: focused ProjectSettingsPage Vitest; web TypeScript; focused Biome; full make check; full make test with Cargo tests plus 569 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Run the Phase 2 settings browser smoke against a clean migrated credentialed TEST_DATABASE_URL when available; this iteration used a local API-compatible stub because local Postgres on localhost:55432 has repeatedly rejected the configured postgres password.",
+      "Probe user-owned projects, org-owned projects under owner/admin/member/base permission combinations, public anonymous reads, private repository link filtering, locked visibility policy copy, closed project disabled status controls, long README/status Markdown wrapping, and mobile settings layout.",
+      "Phase 3 still owns real metadata/README/visibility/default repository/repository link/status/template mutations; Phase 4 Access settings; Phase 5 Danger Zone lifecycle; Phase 6 docs, final screenshots, QA handoff, and build_pass bookkeeping."
+    ]
   }
 ]

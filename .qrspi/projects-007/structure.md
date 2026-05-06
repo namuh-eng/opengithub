@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial General Settings UI - metadata, README, visibility, default repository, and status panels render with real forms
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Build `/orgs/{org}/projects/{number}/settings` and user-project equivalents on the Editorial settings shell using the Phase 1 read contract. The page shows General, Access, Fields, Workflows, Templates, and Danger Zone navigation, with concrete forms for title, short description, README Markdown, visibility, default repository, and status update drafting.
 

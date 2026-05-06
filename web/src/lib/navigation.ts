@@ -86,6 +86,59 @@ export function organizationProjectWorkspaceHref(
   return `/orgs/${encodeURIComponent(org)}/projects/${projectNumber}/views/${viewNumber}${projectWorkspaceQueryString(query)}`;
 }
 
+export function userProjectSettingsHref(owner: string, projectNumber: number) {
+  return `/${encodeURIComponent(owner)}/projects/${projectNumber}/settings`;
+}
+
+export function organizationProjectSettingsHref(
+  org: string,
+  projectNumber: number,
+) {
+  return `/orgs/${encodeURIComponent(org)}/projects/${projectNumber}/settings`;
+}
+
+export function userProjectAccessSettingsHref(
+  owner: string,
+  projectNumber: number,
+) {
+  return `/${encodeURIComponent(owner)}/projects/${projectNumber}/settings/access`;
+}
+
+export function organizationProjectAccessSettingsHref(
+  org: string,
+  projectNumber: number,
+) {
+  return `/orgs/${encodeURIComponent(org)}/projects/${projectNumber}/settings/access`;
+}
+
+export function userProjectTemplateSettingsHref(
+  owner: string,
+  projectNumber: number,
+) {
+  return `/${encodeURIComponent(owner)}/projects/${projectNumber}/settings/templates`;
+}
+
+export function organizationProjectTemplateSettingsHref(
+  org: string,
+  projectNumber: number,
+) {
+  return `/orgs/${encodeURIComponent(org)}/projects/${projectNumber}/settings/templates`;
+}
+
+export function userProjectDangerSettingsHref(
+  owner: string,
+  projectNumber: number,
+) {
+  return `/${encodeURIComponent(owner)}/projects/${projectNumber}/settings/danger`;
+}
+
+export function organizationProjectDangerSettingsHref(
+  org: string,
+  projectNumber: number,
+) {
+  return `/orgs/${encodeURIComponent(org)}/projects/${projectNumber}/settings/danger`;
+}
+
 export function userProjectFieldSettingsHref(
   owner: string,
   projectNumber: number,
