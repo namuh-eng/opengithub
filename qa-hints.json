@@ -7639,5 +7639,22 @@
       "Inspect the actual local bare {owner}-{repo}.wiki.git repository contents after create/update saves and verify DB rollback if Git commit publishing fails because of disk or permission errors.",
       "Probe concurrent browser edit conflicts, title/slug normalization with nested paths and punctuation, duplicate rename races, _Sidebar/_Footer special page saves, unsafe Markdown and image URLs, very large pages, keyboard-only editor traversal, mobile wrapping, disabled wiki behavior, and private repository permission leakage."
     ]
+  },
+  {
+    "feature_id": "wiki-003",
+    "tests_written": [
+      "Completed Phase 1 History Read Contract and Editorial History Page without marking wiki-003 build_pass=true.",
+      "Added Rust history read contract for /api/repos/{owner}/{repo}/wiki/_history and page-scoped /api/repos/{owner}/{repo}/wiki/{slug}/_history with bounded page/pageSize, private/disabled/missing-page handling, author metadata, short SHA links, and older/newer pagination.",
+      "Added typed Next fetch helpers, server-session wrapper, navigation helpers, /{owner}/{repo}/wiki/_history route, page-scoped history routing, and RepositoryWikiHistoryPage with Editorial revision rows, accessible checkboxes, concrete SHA/page/pagination links, and disabled compare affordance for Phase 3.",
+      "Added focused RepositoryWikiHistoryPage Vitest coverage for revision metadata, two-row selection, disabled/enabled Compare Revisions state, concrete links, empty/unavailable states, no href=\"#\", no inert button type regressions, and banned visual values.",
+      "Extended repository_wiki_contract with all-page and page-scoped history assertions; local DB row assertions self-skipped because TEST_DATABASE_URL postgres credentials are still rejected, but the contract compiled and ran under the existing guard.",
+      "Browser smoke passed against an isolated Next production server on 3025 and API-compatible stub on 3026: loaded /namuh-eng/opengithub/wiki/Home/_history, verified revision rows, SHA link, two checkbox selection enabling Compare Revisions, Older pagination link, no href=\"#\", and saved ralph/screenshots/build/wiki-003-phase1-history-list.jpg.",
+      "Verification passed: focused Rust compile/contract guard, focused Biome, focused Vitest, web TypeScript, next build, full make check, full make test with Cargo tests plus 599 web tests, and mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Run the history API and browser smoke against a clean migrated credentialed TEST_DATABASE_URL; local localhost:55432 rejected the available postgres credentials, so DB assertions self-skipped and browser smoke used a local API-compatible stub.",
+      "Probe large wiki histories, pagination boundaries, histories across multiple pages, page-scoped missing/private/disabled states, unusual nested slugs, missing authors, duplicated or missing commit OIDs, and relative-time rendering across time zones.",
+      "Phases 2-5 still own revision snapshot rendering, two-revision compare, permissioned revert commits, API docs, final signed-in E2E, QA handoff consolidation, and wiki-003 build_pass bookkeeping."
+    ]
   }
 ]

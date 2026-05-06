@@ -228,7 +228,7 @@ async fn repository_wiki_read_contract_returns_pages_markdown_clone_and_states()
     .fetch_one(&pool)
     .await
     .expect("wiki repository should insert");
-    insert_wiki_page(
+    let home_page_id = insert_wiki_page(
         &pool,
         wiki_repository_id,
         &owner,
@@ -242,6 +242,22 @@ async fn repository_wiki_read_contract_returns_pages_markdown_clone_and_states()
         },
     )
     .await;
+    let older_home_revision_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO wiki_page_revisions (
+            page_id, author_user_id, commit_oid, message, markdown, content_sha, created_at
+        )
+        VALUES ($1, $2, $3, 'Draft original wiki home', '# Home\n\nOriginal content.', $4, now() - interval '1 day')
+        RETURNING id
+        "#,
+    )
+    .bind(home_page_id)
+    .bind(owner.id)
+    .bind(format!("wiki{}", Uuid::new_v4().simple()))
+    .bind(wiki_content_sha("# Home\n\nOriginal content."))
+    .fetch_one(&pool)
+    .await
+    .expect("older wiki revision should insert");
     insert_wiki_page(
         &pool,
         wiki_repository_id,
@@ -327,6 +343,42 @@ async fn repository_wiki_read_contract_returns_pages_markdown_clone_and_states()
     );
     assert_eq!(owner_body["pages"][1]["active"], true);
     assert_eq!(owner_body["page"]["outline"][1]["text"], "Troubleshooting");
+
+    let history_uri = format!(
+        "/api/repos/{}/{}/wiki/_history?pageSize=1",
+        owner_login, public_repo.name
+    );
+    let (history_status, _, history_body) =
+        get_json(app.clone(), &history_uri, Some(&owner_cookie)).await;
+    assert_eq!(history_status, StatusCode::OK);
+    assert_eq!(history_body["scope"]["kind"], "all_pages");
+    assert_eq!(history_body["pagination"]["pageSize"], 1);
+    assert_eq!(history_body["pagination"]["hasOlder"], true);
+    assert!(history_body["pagination"]["olderHref"]
+        .as_str()
+        .unwrap()
+        .contains("page=2"));
+    assert_eq!(history_body["revisions"].as_array().unwrap().len(), 1);
+    assert!(history_body["revisions"][0]["revisionHref"]
+        .as_str()
+        .unwrap()
+        .contains("/wiki/"));
+    assert!(!history_body.to_string().contains("google-client-secret"));
+
+    let page_history_uri = format!(
+        "/api/repos/{}/{}/wiki/Home/_history?pageSize=10",
+        owner_login, public_repo.name
+    );
+    let (page_history_status, _, page_history_body) =
+        get_json(app.clone(), &page_history_uri, Some(&owner_cookie)).await;
+    assert_eq!(page_history_status, StatusCode::OK);
+    assert_eq!(page_history_body["scope"]["kind"], "page");
+    assert_eq!(page_history_body["scope"]["page"]["title"], "Home");
+    assert!(page_history_body["revisions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|revision| revision["id"] == older_home_revision_id.to_string()));
 
     let nested_missing_uri = format!(
         "/api/repos/{}/{}/wiki/Docs/Unknown%20Page",

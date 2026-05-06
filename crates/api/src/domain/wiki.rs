@@ -245,6 +245,67 @@ pub struct WikiGitCommitSummary {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiHistoryView {
+    pub repository: WikiRepositorySummary,
+    pub viewer: WikiViewer,
+    pub scope: WikiHistoryScope,
+    pub revisions: Vec<WikiHistoryRevisionRow>,
+    pub pagination: WikiHistoryPagination,
+    pub links: WikiHistoryLinks,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiHistoryScope {
+    pub kind: WikiHistoryScopeKind,
+    pub page: Option<WikiPageSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WikiHistoryScopeKind {
+    AllPages,
+    Page,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiHistoryRevisionRow {
+    pub id: Uuid,
+    pub page_id: Uuid,
+    pub page_title: String,
+    pub page_slug: String,
+    pub page_href: String,
+    pub author: Option<WikiAuthor>,
+    pub message: String,
+    pub commit_oid: Option<String>,
+    pub short_oid: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub href: String,
+    pub revision_href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiHistoryPagination {
+    pub page: i64,
+    pub page_size: i64,
+    pub has_newer: bool,
+    pub has_older: bool,
+    pub newer_href: Option<String>,
+    pub older_href: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiHistoryLinks {
+    pub home_href: String,
+    pub pages_href: String,
+    pub history_href: String,
+}
+
 pub async fn repository_wiki_for_actor_by_owner_name(
     pool: &PgPool,
     actor_user_id: Option<Uuid>,
@@ -365,6 +426,194 @@ pub async fn repository_wiki_for_actor_by_owner_name(
         footer,
         clone,
         links,
+    }))
+}
+
+pub async fn repository_wiki_history_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Option<Uuid>,
+    owner_login: &str,
+    name: &str,
+    slug: Option<&str>,
+    page: i64,
+    page_size: i64,
+) -> Result<Option<WikiHistoryView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    let can_read = repository_can_read(pool, &repository, actor_user_id).await?;
+    if !can_read {
+        return Ok(None);
+    }
+    let permission = viewer_permission(pool, &repository, actor_user_id).await?;
+    let can_edit_wiki = match actor_user_id {
+        Some(user_id) => can_write_repository(pool, &repository, user_id).await?,
+        None => false,
+    };
+    let repository_summary = WikiRepositorySummary {
+        id: repository.id,
+        owner_login: repository.owner_login.clone(),
+        name: repository.name.clone(),
+        visibility: repository.visibility.as_str().to_owned(),
+        default_branch: repository.default_branch.clone(),
+        wiki_enabled: true,
+    };
+    let viewer = WikiViewer {
+        permission,
+        can_read: true,
+        can_edit_wiki,
+    };
+
+    if !repository_wiki_enabled(pool, repository.id).await? {
+        return Err(RepositoryError::InvalidSecurityPolicy(
+            "Wiki is disabled for this repository.".to_owned(),
+        ));
+    }
+    let Some(wiki_repository_id) = wiki_repository_id(pool, repository.id).await? else {
+        return Ok(Some(WikiHistoryView {
+            repository: repository_summary,
+            viewer,
+            scope: WikiHistoryScope {
+                kind: WikiHistoryScopeKind::AllPages,
+                page: None,
+            },
+            revisions: Vec::new(),
+            pagination: WikiHistoryPagination {
+                page,
+                page_size,
+                has_newer: page > 1,
+                has_older: false,
+                newer_href: (page > 1)
+                    .then(|| wiki_history_href(&repository, None, page - 1, page_size)),
+                older_href: None,
+            },
+            links: WikiHistoryLinks {
+                home_href: wiki_home_href(&repository),
+                pages_href: format!("{}/_pages", wiki_home_href(&repository)),
+                history_href: wiki_history_href(&repository, None, 1, page_size),
+            },
+        }));
+    };
+
+    let scoped_page = match slug {
+        Some(slug) => {
+            let Some(row) =
+                wiki_page_summary_by_slug(pool, &repository, wiki_repository_id, slug).await?
+            else {
+                return Err(RepositoryError::InvalidSecurityPolicy(
+                    "Wiki page was not found.".to_owned(),
+                ));
+            };
+            Some(row)
+        }
+        None => None,
+    };
+    let offset = (page - 1) * page_size;
+    let mut query = String::from(
+        r#"
+        SELECT wiki_page_revisions.id AS revision_id,
+               wiki_page_revisions.page_id,
+               wiki_pages.title AS page_title,
+               wiki_pages.slug AS page_slug,
+               wiki_page_revisions.message,
+               wiki_page_revisions.commit_oid,
+               wiki_page_revisions.created_at,
+               users.id AS author_id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS author_login,
+               users.display_name AS author_display_name,
+               users.avatar_url AS author_avatar_url
+        FROM wiki_page_revisions
+        JOIN wiki_pages ON wiki_pages.id = wiki_page_revisions.page_id
+        LEFT JOIN users ON users.id = wiki_page_revisions.author_user_id
+        WHERE wiki_pages.wiki_repository_id = $1
+          AND wiki_pages.is_sidebar = false
+          AND wiki_pages.is_footer = false
+        "#,
+    );
+    let revision_page_filter = scoped_page.is_some();
+    if revision_page_filter {
+        query.push_str(" AND wiki_pages.id = $2");
+    }
+    query.push_str(if revision_page_filter {
+        r#"
+            ORDER BY wiki_page_revisions.created_at DESC, wiki_page_revisions.id DESC
+            LIMIT $3 OFFSET $4
+            "#
+    } else {
+        r#"
+            ORDER BY wiki_page_revisions.created_at DESC, wiki_page_revisions.id DESC
+            LIMIT $2 OFFSET $3
+            "#
+    });
+
+    let limit = page_size + 1;
+    let mut sql = sqlx::query(&query).bind(wiki_repository_id);
+    if let Some(scoped_page) = &scoped_page {
+        sql = sql.bind(scoped_page.id);
+    }
+    let rows = sql
+        .bind(limit)
+        .bind(offset)
+        .fetch_all(pool)
+        .await
+        .map_err(RepositoryError::from)?;
+    let has_older = rows.len() as i64 > page_size;
+    let revisions = rows
+        .into_iter()
+        .take(page_size as usize)
+        .map(|row| {
+            let page_slug: String = row.get("page_slug");
+            let commit_oid: Option<String> = row.get("commit_oid");
+            let href = wiki_revision_history_href(&repository, &page_slug, commit_oid.as_deref());
+            WikiHistoryRevisionRow {
+                id: row.get("revision_id"),
+                page_id: row.get("page_id"),
+                page_title: row.get("page_title"),
+                page_href: wiki_page_href(&repository, &page_slug),
+                revision_href: href.clone(),
+                page_slug,
+                author: author_from_row(&row),
+                message: row.get("message"),
+                short_oid: commit_oid
+                    .as_ref()
+                    .map(|oid| oid.chars().take(7).collect::<String>()),
+                commit_oid,
+                created_at: row.get("created_at"),
+                href,
+            }
+        })
+        .collect::<Vec<_>>();
+    let scope_slug = scoped_page.as_ref().map(|page| page.slug.clone());
+
+    Ok(Some(WikiHistoryView {
+        repository: repository_summary,
+        viewer,
+        scope: WikiHistoryScope {
+            kind: if scoped_page.is_some() {
+                WikiHistoryScopeKind::Page
+            } else {
+                WikiHistoryScopeKind::AllPages
+            },
+            page: scoped_page,
+        },
+        revisions,
+        pagination: WikiHistoryPagination {
+            page,
+            page_size,
+            has_newer: page > 1,
+            has_older,
+            newer_href: (page > 1).then(|| {
+                wiki_history_href(&repository, scope_slug.as_deref(), page - 1, page_size)
+            }),
+            older_href: has_older.then(|| {
+                wiki_history_href(&repository, scope_slug.as_deref(), page + 1, page_size)
+            }),
+        },
+        links: WikiHistoryLinks {
+            home_href: wiki_home_href(&repository),
+            pages_href: format!("{}/_pages", wiki_home_href(&repository)),
+            history_href: wiki_history_href(&repository, scope_slug.as_deref(), 1, page_size),
+        },
     }))
 }
 
@@ -928,6 +1177,51 @@ async fn wiki_page_summaries(
         .collect())
 }
 
+async fn wiki_page_summary_by_slug(
+    pool: &PgPool,
+    repository: &Repository,
+    wiki_repository_id: Uuid,
+    slug: &str,
+) -> Result<Option<WikiPageSummary>, RepositoryError> {
+    let row = sqlx::query(
+        r#"
+        SELECT wiki_pages.id,
+               wiki_pages.title,
+               wiki_pages.slug,
+               wiki_pages.updated_at,
+               EXISTS (
+                   SELECT 1
+                   FROM wiki_page_toc_cache
+                   WHERE wiki_page_toc_cache.page_id = wiki_pages.id
+               ) AS has_outline
+        FROM wiki_pages
+        WHERE wiki_pages.wiki_repository_id = $1
+          AND lower(wiki_pages.slug) = lower($2)
+          AND wiki_pages.is_sidebar = false
+          AND wiki_pages.is_footer = false
+        LIMIT 1
+        "#,
+    )
+    .bind(wiki_repository_id)
+    .bind(normalize_slug(slug))
+    .fetch_optional(pool)
+    .await
+    .map_err(RepositoryError::from)?;
+
+    Ok(row.map(|row| {
+        let slug: String = row.get("slug");
+        WikiPageSummary {
+            id: row.get("id"),
+            title: row.get("title"),
+            href: wiki_page_href(repository, &slug),
+            active: true,
+            slug,
+            has_outline: row.get("has_outline"),
+            updated_at: row.get("updated_at"),
+        }
+    }))
+}
+
 async fn wiki_page(
     pool: &PgPool,
     repository: &Repository,
@@ -1155,6 +1449,19 @@ fn revision_from_row(
     }
 }
 
+fn author_from_row(row: &sqlx::postgres::PgRow) -> Option<WikiAuthor> {
+    row.get::<Option<Uuid>, _>("author_id").map(|id| {
+        let login: String = row.get("author_login");
+        WikiAuthor {
+            id,
+            href: format!("/{}", percent_encode_segment(&login)),
+            login,
+            display_name: row.get("author_display_name"),
+            avatar_url: row.get("author_avatar_url"),
+        }
+    })
+}
+
 fn wiki_heading_outline(html: &str) -> Vec<WikiHeading> {
     Regex::new(r#"<h([1-6]) id="([^"]+)">(.*?)</h[1-6]>"#)
         .expect("wiki heading outline regex")
@@ -1225,6 +1532,42 @@ fn wiki_page_href(repository: &Repository, slug: &str) -> String {
         "{}/{}",
         wiki_home_href(repository),
         percent_encode_path(slug)
+    )
+}
+
+fn wiki_history_href(
+    repository: &Repository,
+    slug: Option<&str>,
+    page: i64,
+    page_size: i64,
+) -> String {
+    let base = slug
+        .map(|slug| format!("{}/_history", wiki_page_href(repository, slug)))
+        .unwrap_or_else(|| format!("{}/_history", wiki_home_href(repository)));
+    let mut params = Vec::new();
+    if page > 1 {
+        params.push(format!("page={page}"));
+    }
+    if page_size != 30 {
+        params.push(format!("pageSize={page_size}"));
+    }
+    if params.is_empty() {
+        base
+    } else {
+        format!("{base}?{}", params.join("&"))
+    }
+}
+
+fn wiki_revision_history_href(
+    repository: &Repository,
+    slug: &str,
+    commit_oid: Option<&str>,
+) -> String {
+    let revision = commit_oid.unwrap_or("unknown");
+    format!(
+        "{}/_history/{}",
+        wiki_page_href(repository, slug),
+        percent_encode_segment(revision)
     )
 }
 

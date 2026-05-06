@@ -10,7 +10,7 @@
 
 ## Phase 1: History Read Contract and Editorial History Page - revisions are browsable
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add a screen-ready history API and render `/{owner}/{repo}/wiki/_history` plus page-scoped history routes. Users should see revision rows with author, relative time, commit message, short SHA links, selectable checkboxes, and older/newer pagination without enabling compare or revert yet.
 

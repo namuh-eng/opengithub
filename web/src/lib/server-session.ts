@@ -98,6 +98,7 @@ import {
   getRepositoryWebhookSettingsFromCookie,
   getRepositoryWikiEditFromCookie,
   getRepositoryWikiFromCookie,
+  getRepositoryWikiHistoryFromCookie,
   getRepositoryWikiPagesFromCookie,
   getSearchSuggestionsFromCookie,
   getSessionFromHeaders,
@@ -864,6 +865,24 @@ export async function getRepositoryWikiPages(owner: string, repo: string) {
     requestHeaders.get("cookie"),
     owner,
     repo,
+  );
+}
+
+export async function getRepositoryWikiHistory(
+  owner: string,
+  repo: string,
+  slug?: string | null,
+  page?: number | null,
+  pageSize?: number | null,
+) {
+  const requestHeaders = await headers();
+  return getRepositoryWikiHistoryFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    slug,
+    page,
+    pageSize,
   );
 }
 

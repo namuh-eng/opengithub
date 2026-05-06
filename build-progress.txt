@@ -1,3 +1,14 @@
+2026-05-06 - wiki-003 phase 1 history read contract and Editorial history page
+
+- Completed Phase 1 from `.qrspi/wiki-003/structure.md`: wiki history is now browsable through an API-backed Editorial page without marking `wiki-003.build_pass=true`; Phases 2-5 remain.
+- Added `GET /api/repos/{owner}/{repo}/wiki/_history` and page-scoped `/api/repos/{owner}/{repo}/wiki/{slug}/_history` handling with bounded pagination, repository-safe auth/privacy behavior, disabled/missing-page errors, author metadata, short SHA links, page links, and older/newer URLs.
+- Added typed Next helpers, server-session wrapper, navigation helpers, `/wiki/_history` and page-scoped history routing, and `RepositoryWikiHistoryPage` with accessible revision checkboxes, author/time/message/SHA rows, page chips, concrete pagination, and a disabled Phase 3 compare affordance that enables after two selections.
+- Extended focused Rust wiki contract coverage for all-page and page-scoped history. The contract compiled and ran, but DB assertions self-skipped because local `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test` still rejects the available `postgres` credentials.
+- Added focused Vitest coverage for history rows, links, checkbox accessibility, compare selection state, empty/unavailable states, no placeholder hrefs, and Editorial banned-value guardrails.
+- Browser smoke passed against an isolated Next production server on port 3025 and API-compatible stub on port 3026: loaded `/namuh-eng/opengithub/wiki/Home/_history`, selected two revisions, verified Compare Revisions enabled, verified SHA/Older links, confirmed no `href="#"`, and saved `ralph/screenshots/build/wiki-003-phase1-history-list.jpg`.
+- Verification passed: focused Biome; focused `repository-wiki-history-page` Vitest with 2 tests; web TypeScript; `cargo fmt --all`; `cargo check -p opengithub-api --tests`; focused `repository_wiki_contract` under DB guard; `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 599 web tests; Next production build; mandatory Editorial banned-value scan returned zero matches.
+- `prd.json` remains `build_pass:false` because revision snapshots, compare, revert, and final docs/E2E/build-pass bookkeeping remain. Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-06 - wiki-003 structure planning
 
 - Determined `wiki-003` is the first `build_pass:false` PRD entry and it requires structure planning before implementation.

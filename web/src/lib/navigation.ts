@@ -1043,6 +1043,44 @@ export function repositoryWikiEditHref(
   return repositoryWikiHref(owner, repo, `${slug}/_edit`);
 }
 
+export function repositoryWikiHistoryHref(
+  owner: string,
+  repo: string,
+  slug?: string | null,
+  options: { page?: number | null; pageSize?: number | null } = {},
+) {
+  const params = new URLSearchParams();
+  if (options.page && options.page > 1) {
+    params.set("page", String(options.page));
+  }
+  if (options.pageSize && options.pageSize !== 30) {
+    params.set("pageSize", String(options.pageSize));
+  }
+  const query = params.toString();
+  return `${repositoryWikiHref(owner, repo, slug ? `${slug}/_history` : "_history")}${query ? `?${query}` : ""}`;
+}
+
+export function repositoryWikiRevisionHref(
+  owner: string,
+  repo: string,
+  slug: string,
+  revision: string,
+) {
+  return repositoryWikiHref(owner, repo, `${slug}/_history/${revision}`);
+}
+
+export function repositoryWikiCompareHref(
+  owner: string,
+  repo: string,
+  base: string,
+  head: string,
+  slug?: string | null,
+) {
+  const params = new URLSearchParams({ base, head });
+  if (slug?.trim()) params.set("page", slug.trim());
+  return `${repositoryWikiHref(owner, repo, "_compare")}?${params.toString()}`;
+}
+
 export function repositoryContributorsHref(
   owner: string,
   repo: string,

@@ -4145,6 +4145,54 @@ export type RepositoryWikiGitCommitSummary = {
   createdAt: string;
 };
 
+export type RepositoryWikiHistoryView = {
+  repository: RepositoryWikiRepository;
+  viewer: RepositoryWikiViewer;
+  scope: RepositoryWikiHistoryScope;
+  revisions: RepositoryWikiHistoryRevision[];
+  pagination: RepositoryWikiHistoryPagination;
+  links: RepositoryWikiHistoryLinks;
+};
+
+export type RepositoryWikiHistoryScope = {
+  kind: "all_pages" | "page";
+  page: RepositoryWikiPageSummary | null;
+};
+
+export type RepositoryWikiHistoryRevision = {
+  id: string;
+  pageId: string;
+  pageTitle: string;
+  pageSlug: string;
+  pageHref: string;
+  author: RepositoryWikiAuthor | null;
+  message: string;
+  commitOid: string | null;
+  shortOid: string | null;
+  createdAt: string;
+  href: string;
+  revisionHref: string;
+};
+
+export type RepositoryWikiHistoryPagination = {
+  page: number;
+  pageSize: number;
+  hasNewer: boolean;
+  hasOlder: boolean;
+  newerHref: string | null;
+  olderHref: string | null;
+};
+
+export type RepositoryWikiHistoryLinks = {
+  homeHref: string;
+  pagesHref: string;
+  historyHref: string;
+};
+
+export type RepositoryWikiHistoryFetchResult =
+  | { ok: true; history: RepositoryWikiHistoryView }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type RepositorySecurityAdvisoriesFetchResult =
   | { ok: true; advisories: RepositorySecurityAdvisoriesView }
   | { ok: false; status: number; code: string | null; message: string };
@@ -14394,6 +14442,64 @@ export async function getRepositoryWikiFromCookie(
   return {
     ok: true,
     wiki: (await response.json()) as RepositoryWikiView,
+  };
+}
+
+export async function getRepositoryWikiHistoryFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  slug?: string | null,
+  page?: number | null,
+  pageSize?: number | null,
+): Promise<RepositoryWikiHistoryFetchResult> {
+  const encodedSlug = slug
+    ? `/${slug
+        .split("/")
+        .filter(Boolean)
+        .map((segment) => encodeURIComponent(segment))
+        .join("/")}`
+    : "";
+  const params = new URLSearchParams();
+  if (page && page > 1) params.set("page", String(page));
+  if (pageSize && pageSize !== 30) params.set("pageSize", String(pageSize));
+  const query = params.toString();
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/wiki${encodedSlug}/_history${query ? `?${query}` : ""}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository wiki history is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Repository wiki history is unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    history: (await response.json()) as RepositoryWikiHistoryView,
   };
 }
 

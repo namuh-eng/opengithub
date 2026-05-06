@@ -177,6 +177,7 @@ use crate::{
     domain::wiki::{
         create_repository_wiki_page_by_owner_name, preview_repository_wiki_page_by_owner_name,
         repository_wiki_edit_for_actor_by_owner_name, repository_wiki_for_actor_by_owner_name,
+        repository_wiki_history_for_actor_by_owner_name,
         repository_wiki_pages_for_actor_by_owner_name, update_repository_wiki_page_by_owner_name,
         WikiPagePreviewRequest, WikiPageSaveRequest,
     },
@@ -214,6 +215,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/:owner/:repo/network", get(network))
         .route("/:owner/:repo/wiki", get(wiki_home))
+        .route("/:owner/:repo/wiki/_history", get(wiki_history))
         .route("/:owner/:repo/wiki/_pages", get(wiki_pages))
         .route("/:owner/:repo/wiki/pages", post(create_wiki_page))
         .route("/:owner/:repo/wiki/preview", post(preview_wiki_page))
@@ -894,12 +896,84 @@ async fn wiki_home(
     Ok(Json(json!(wiki)))
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WikiHistoryQuery {
+    page: Option<i64>,
+    page_size: Option<i64>,
+}
+
+fn wiki_history_bounds(query: &WikiHistoryQuery) -> (i64, i64) {
+    (
+        query.page.unwrap_or(1).clamp(1, 1_000),
+        query.page_size.unwrap_or(30).clamp(1, 100),
+    )
+}
+
+async fn wiki_history(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<WikiHistoryQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let (page, page_size) = wiki_history_bounds(&query);
+    let history = repository_wiki_history_for_actor_by_owner_name(
+        pool,
+        actor.map(|user| user.id),
+        &owner,
+        &repo,
+        None,
+        page,
+        page_size,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository wiki was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(history)))
+}
+
 async fn wiki_page(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path((owner, repo, slug)): Path<(String, String, String)>,
+    Query(query): Query<WikiHistoryQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    if slug == "_history" || slug.ends_with("/_history") {
+        let history_slug = slug
+            .strip_suffix("/_history")
+            .filter(|value| !value.is_empty());
+        let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+        let (page, page_size) = wiki_history_bounds(&query);
+        let history = repository_wiki_history_for_actor_by_owner_name(
+            pool,
+            actor.map(|user| user.id),
+            &owner,
+            &repo,
+            history_slug,
+            page,
+            page_size,
+        )
+        .await
+        .map_err(map_repository_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "repository wiki was not found".to_owned(),
+            )
+        })?;
+        return Ok(Json(json!(history)));
+    }
     if let Some(edit_slug) = slug.strip_suffix("/edit") {
         let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
         let edit = repository_wiki_edit_for_actor_by_owner_name(
