@@ -41,6 +41,7 @@ import {
   getRepositoryActionsDashboardFromCookie,
   getRepositoryActionsJobLogDetailFromCookie,
   getRepositoryActionsRunDetailFromCookie,
+  getRepositoryActionsRunnerSettingsFromCookie,
   getRepositoryActionsSecretsSettingsFromCookie,
   getRepositoryActionsWorkflowDashboardFromCookie,
   getRepositoryBlameFromCookie,
@@ -1438,6 +1439,18 @@ export async function getRepositoryPullRequests(
     owner,
     repo,
     query,
+  );
+}
+
+export async function getRepositoryActionsRunnerSettings(
+  owner: string,
+  repo: string,
+) {
+  const requestHeaders = await headers();
+  return getRepositoryActionsRunnerSettingsFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
   );
 }
 

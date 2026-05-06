@@ -849,6 +849,86 @@ pub struct CreateWorkflowStep {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsRunner {
+    pub id: Uuid,
+    pub name: String,
+    pub labels: Vec<String>,
+    pub status: String,
+    pub last_heartbeat: Option<DateTime<Utc>>,
+    pub busy_since: Option<DateTime<Utc>>,
+    pub current_job: Option<ActionsRunnerJob>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsRunnerJob {
+    pub run_id: Uuid,
+    pub job_id: Uuid,
+    pub job_name: String,
+    pub run_number: i64,
+    pub workflow_name: String,
+    pub started_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsRunnerQueue {
+    pub queued_jobs: i64,
+    pub busy_runners: i64,
+    pub online_runners: i64,
+    pub offline_runners: i64,
+    pub concurrency_limit: i32,
+    pub cancel_in_progress: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryActionsRunnerSettings {
+    pub repository: ActionsDashboardRepository,
+    pub viewer_permission: Option<String>,
+    pub can_manage_runners: bool,
+    pub runners: Vec<ActionsRunner>,
+    pub queue: ActionsRunnerQueue,
+    pub setup: ActionsRunnerSetup,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsRunnerSetup {
+    pub registration_token: Option<String>,
+    pub docker_command: Option<String>,
+    pub expires_in_minutes: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateActionsRunner {
+    pub name: String,
+    pub labels: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateActionsRunnerSettings {
+    pub concurrency_limit: i32,
+    pub cancel_in_progress: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunnerHeartbeat {
+    pub runner_id: Uuid,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunnerScheduleResult {
+    pub assigned: Vec<ActionsRunnerJob>,
+    pub queued_jobs: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreatePackage {
     pub repository_id: Uuid,
     pub actor_user_id: Uuid,
@@ -3274,6 +3354,450 @@ pub async fn workflow_job_log_download_for_viewer(
         .collect::<Vec<_>>()
         .join("\n");
     Ok((format!("{}.log", safe_filename(&log.job.name)), body))
+}
+
+pub async fn actions_runner_settings_for_viewer(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<RepositoryActionsRunnerSettings, AutomationError> {
+    let repository =
+        require_repository(pool, repository_id, actor_user_id, RepositoryRole::Admin).await?;
+    ensure_runner_settings(pool, repository_id, actor_user_id).await?;
+    mark_timed_out_runners(pool, repository_id).await?;
+    let viewer_permission = viewer_permission(pool, &repository, Some(actor_user_id)).await?;
+    let runners = actions_runners(pool, repository_id).await?;
+    let queue = actions_runner_queue(pool, repository_id).await?;
+    let token = format!("ogr_{}", Uuid::new_v4().simple());
+
+    Ok(RepositoryActionsRunnerSettings {
+        repository: ActionsDashboardRepository {
+            id: repository.id,
+            owner_login: repository.owner_login.clone(),
+            name: repository.name.clone(),
+            visibility: repository.visibility.clone(),
+            default_branch: repository.default_branch.clone(),
+        },
+        viewer_permission,
+        can_manage_runners: true,
+        runners,
+        queue,
+        setup: ActionsRunnerSetup {
+            registration_token: Some(token.clone()),
+            docker_command: Some(format!(
+                "docker run --rm -e OPENGITHUB_RUNNER_TOKEN={} opengithub/runner:latest --repo {}/{}",
+                token, repository.owner_login, repository.name
+            )),
+            expires_in_minutes: 60,
+        },
+    })
+}
+
+pub async fn create_actions_runner(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Uuid,
+    input: CreateActionsRunner,
+) -> Result<RepositoryActionsRunnerSettings, AutomationError> {
+    require_repository(pool, repository_id, actor_user_id, RepositoryRole::Admin).await?;
+    let name = input.name.trim();
+    let labels = normalize_runner_labels(input.labels);
+    if name.is_empty() || labels.is_empty() {
+        return Err(AutomationError::InvalidWorkflowDispatch(
+            "runner name and at least one label are required".to_owned(),
+        ));
+    }
+    let token = format!("ogr_{}", Uuid::new_v4().simple());
+    sqlx::query(
+        r#"
+        INSERT INTO actions_runners (repository_id, name, labels, status, registration_token, created_by_user_id)
+        VALUES ($1, $2, $3, 'offline', $4, $5)
+        "#,
+    )
+    .bind(repository_id)
+    .bind(name)
+    .bind(json!(labels))
+    .bind(token)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
+
+    actions_runner_settings_for_viewer(pool, repository_id, actor_user_id).await
+}
+
+pub async fn update_actions_runner_settings(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Uuid,
+    input: UpdateActionsRunnerSettings,
+) -> Result<RepositoryActionsRunnerSettings, AutomationError> {
+    require_repository(pool, repository_id, actor_user_id, RepositoryRole::Admin).await?;
+    if !(1..=64).contains(&input.concurrency_limit) {
+        return Err(AutomationError::InvalidWorkflowDispatch(
+            "concurrency limit must be between 1 and 64".to_owned(),
+        ));
+    }
+    sqlx::query(
+        r#"
+        INSERT INTO actions_runner_settings
+            (repository_id, concurrency_limit, cancel_in_progress, updated_by_user_id)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (repository_id) DO UPDATE
+        SET concurrency_limit = EXCLUDED.concurrency_limit,
+            cancel_in_progress = EXCLUDED.cancel_in_progress,
+            updated_by_user_id = EXCLUDED.updated_by_user_id
+        "#,
+    )
+    .bind(repository_id)
+    .bind(input.concurrency_limit)
+    .bind(input.cancel_in_progress)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
+
+    actions_runner_settings_for_viewer(pool, repository_id, actor_user_id).await
+}
+
+pub async fn record_runner_heartbeat(
+    pool: &PgPool,
+    repository_id: Uuid,
+    input: RunnerHeartbeat,
+) -> Result<ActionsRunner, AutomationError> {
+    let status = match input.status.as_str() {
+        "online" | "busy" | "offline" => input.status,
+        other => {
+            return Err(AutomationError::InvalidWorkflowDispatch(format!(
+                "unsupported runner status `{other}`"
+            )))
+        }
+    };
+    let updated = sqlx::query_scalar::<_, bool>(
+        r#"
+        UPDATE actions_runners
+        SET status = $3,
+            last_heartbeat = CASE WHEN $3 = 'offline' THEN last_heartbeat ELSE now() END,
+            busy_since = CASE WHEN $3 = 'busy' THEN COALESCE(busy_since, now()) ELSE NULL END
+        WHERE repository_id = $1 AND id = $2
+        RETURNING true
+        "#,
+    )
+    .bind(repository_id)
+    .bind(input.runner_id)
+    .bind(&status)
+    .fetch_optional(pool)
+    .await?
+    .unwrap_or(false);
+    if !updated {
+        return Err(AutomationError::WorkflowJobNotFound);
+    }
+    actions_runners(pool, repository_id)
+        .await?
+        .into_iter()
+        .find(|runner| runner.id == input.runner_id)
+        .ok_or(AutomationError::WorkflowJobNotFound)
+}
+
+pub async fn schedule_queued_action_jobs(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<RunnerScheduleResult, AutomationError> {
+    require_repository(pool, repository_id, actor_user_id, RepositoryRole::Admin).await?;
+    ensure_runner_settings(pool, repository_id, actor_user_id).await?;
+    mark_timed_out_runners(pool, repository_id).await?;
+    let queue = actions_runner_queue(pool, repository_id).await?;
+    let available_slots = (queue.concurrency_limit as i64 - queue.busy_runners).max(0);
+    if available_slots == 0 {
+        return Ok(RunnerScheduleResult {
+            assigned: Vec::new(),
+            queued_jobs: queue.queued_jobs,
+        });
+    }
+
+    let jobs = sqlx::query(
+        r#"
+        SELECT workflow_jobs.id AS job_id, workflow_jobs.run_id, workflow_jobs.name AS job_name,
+               workflow_jobs.runner_label, workflow_runs.run_number, actions_workflows.name AS workflow_name
+        FROM workflow_jobs
+        JOIN workflow_runs ON workflow_runs.id = workflow_jobs.run_id
+        JOIN actions_workflows ON actions_workflows.id = workflow_runs.workflow_id
+        WHERE workflow_runs.repository_id = $1
+          AND workflow_jobs.status = 'queued'
+        ORDER BY workflow_jobs.created_at
+        LIMIT $2
+        "#,
+    )
+    .bind(repository_id)
+    .bind(available_slots)
+    .fetch_all(pool)
+    .await?;
+
+    let mut assigned = Vec::new();
+    for job in jobs {
+        let runner = find_available_runner_for_label(
+            pool,
+            repository_id,
+            job.get::<Option<String>, _>("runner_label"),
+        )
+        .await?;
+        let Some(runner_id) = runner else { continue };
+        let job_id: Uuid = job.get("job_id");
+        let run_id: Uuid = job.get("run_id");
+        let job_name: String = job.get("job_name");
+        let row = sqlx::query(
+            r#"
+            WITH updated_job AS (
+                UPDATE workflow_jobs
+                SET status = 'in_progress', runner_id = $1, assigned_at = now(), started_at = COALESCE(started_at, now())
+                WHERE id = $2 AND status = 'queued'
+                RETURNING id
+            ), updated_run AS (
+                UPDATE workflow_runs
+                SET status = 'in_progress', started_at = COALESCE(started_at, now())
+                WHERE id = $3 AND status = 'queued'
+                RETURNING id
+            ), updated_runner AS (
+                UPDATE actions_runners
+                SET status = 'busy', busy_since = COALESCE(busy_since, now()), last_heartbeat = COALESCE(last_heartbeat, now())
+                WHERE id = $1
+                RETURNING id
+            )
+            INSERT INTO workflow_job_assignments (run_id, job_id, job_name, runner_id)
+            SELECT $3, $2, $4, $1
+            WHERE EXISTS (SELECT 1 FROM updated_job)
+            ON CONFLICT (job_id) DO NOTHING
+            RETURNING started_at
+            "#,
+        )
+        .bind(runner_id)
+        .bind(job_id)
+        .bind(run_id)
+        .bind(&job_name)
+        .fetch_optional(pool)
+        .await?;
+        if let Some(row) = row {
+            assigned.push(ActionsRunnerJob {
+                run_id,
+                job_id,
+                job_name,
+                run_number: job.get("run_number"),
+                workflow_name: job.get("workflow_name"),
+                started_at: row.get("started_at"),
+            });
+        }
+    }
+    let queued_jobs = actions_runner_queue(pool, repository_id).await?.queued_jobs;
+    Ok(RunnerScheduleResult {
+        assigned,
+        queued_jobs,
+    })
+}
+
+async fn ensure_runner_settings(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<(), AutomationError> {
+    sqlx::query(
+        r#"
+        INSERT INTO actions_runner_settings (repository_id, updated_by_user_id)
+        VALUES ($1, $2)
+        ON CONFLICT (repository_id) DO NOTHING
+        "#,
+    )
+    .bind(repository_id)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn mark_timed_out_runners(pool: &PgPool, repository_id: Uuid) -> Result<(), AutomationError> {
+    sqlx::query(
+        r#"
+        UPDATE actions_runners
+        SET status = 'offline', busy_since = NULL
+        WHERE repository_id = $1
+          AND status IN ('online', 'busy')
+          AND last_heartbeat IS NOT NULL
+          AND last_heartbeat < now() - interval '5 minutes'
+        "#,
+    )
+    .bind(repository_id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        UPDATE workflow_jobs
+        SET status = 'completed',
+            conclusion = 'timed_out',
+            completed_at = COALESCE(completed_at, now())
+        WHERE runner_id IN (
+            SELECT id FROM actions_runners WHERE repository_id = $1 AND status = 'offline'
+        )
+          AND status = 'in_progress'
+          AND assigned_at < now() - interval '5 minutes'
+        "#,
+    )
+    .bind(repository_id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        UPDATE workflow_job_assignments
+        SET status = 'timed_out'
+        WHERE runner_id IN (
+            SELECT id FROM actions_runners WHERE repository_id = $1 AND status = 'offline'
+        )
+          AND status = 'in_progress'
+          AND started_at < now() - interval '5 minutes'
+        "#,
+    )
+    .bind(repository_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn actions_runners(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<Vec<ActionsRunner>, AutomationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT actions_runners.id, actions_runners.name, actions_runners.labels,
+               actions_runners.status, actions_runners.last_heartbeat,
+               actions_runners.busy_since, actions_runners.created_at,
+               actions_runners.updated_at,
+               workflow_job_assignments.run_id, workflow_job_assignments.job_id,
+               workflow_job_assignments.job_name, workflow_job_assignments.started_at,
+               workflow_runs.run_number, actions_workflows.name AS workflow_name
+        FROM actions_runners
+        LEFT JOIN workflow_job_assignments
+          ON workflow_job_assignments.runner_id = actions_runners.id
+         AND workflow_job_assignments.status = 'in_progress'
+        LEFT JOIN workflow_runs ON workflow_runs.id = workflow_job_assignments.run_id
+        LEFT JOIN actions_workflows ON actions_workflows.id = workflow_runs.workflow_id
+        WHERE actions_runners.repository_id = $1
+        ORDER BY actions_runners.created_at DESC
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let labels_value: Value = row.get("labels");
+            let labels = labels_value
+                .as_array()
+                .map(|values| {
+                    values
+                        .iter()
+                        .filter_map(|value| value.as_str().map(ToOwned::to_owned))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let current_job = row
+                .get::<Option<Uuid>, _>("job_id")
+                .map(|job_id| ActionsRunnerJob {
+                    run_id: row.get("run_id"),
+                    job_id,
+                    job_name: row.get("job_name"),
+                    run_number: row.get("run_number"),
+                    workflow_name: row.get("workflow_name"),
+                    started_at: row.get("started_at"),
+                });
+            ActionsRunner {
+                id: row.get("id"),
+                name: row.get("name"),
+                labels,
+                status: row.get("status"),
+                last_heartbeat: row.get("last_heartbeat"),
+                busy_since: row.get("busy_since"),
+                current_job,
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+            }
+        })
+        .collect())
+}
+
+async fn actions_runner_queue(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<ActionsRunnerQueue, AutomationError> {
+    let row = sqlx::query(
+        r#"
+        SELECT
+            (SELECT count(*) FROM workflow_jobs
+             JOIN workflow_runs ON workflow_runs.id = workflow_jobs.run_id
+             WHERE workflow_runs.repository_id = $1 AND workflow_jobs.status = 'queued')::bigint AS queued_jobs,
+            (SELECT count(*) FROM actions_runners WHERE repository_id = $1 AND status = 'busy')::bigint AS busy_runners,
+            (SELECT count(*) FROM actions_runners WHERE repository_id = $1 AND status IN ('online', 'busy'))::bigint AS online_runners,
+            (SELECT count(*) FROM actions_runners WHERE repository_id = $1 AND status = 'offline')::bigint AS offline_runners,
+            actions_runner_settings.concurrency_limit,
+            actions_runner_settings.cancel_in_progress
+        FROM actions_runner_settings
+        WHERE repository_id = $1
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(ActionsRunnerQueue {
+        queued_jobs: row.get("queued_jobs"),
+        busy_runners: row.get("busy_runners"),
+        online_runners: row.get("online_runners"),
+        offline_runners: row.get("offline_runners"),
+        concurrency_limit: row.get("concurrency_limit"),
+        cancel_in_progress: row.get("cancel_in_progress"),
+    })
+}
+
+async fn find_available_runner_for_label(
+    pool: &PgPool,
+    repository_id: Uuid,
+    runner_label: Option<String>,
+) -> Result<Option<Uuid>, AutomationError> {
+    let labels = normalize_runner_labels(vec![
+        "self-hosted".to_owned(),
+        runner_label.unwrap_or_else(|| "ubuntu-latest".to_owned()),
+    ]);
+    let row = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        SELECT id
+        FROM actions_runners
+        WHERE repository_id = $1
+          AND status = 'online'
+          AND labels ?& $2
+        ORDER BY last_heartbeat DESC NULLS LAST, created_at
+        LIMIT 1
+        "#,
+    )
+    .bind(repository_id)
+    .bind(&labels)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row)
+}
+
+fn normalize_runner_labels(labels: Vec<String>) -> Vec<String> {
+    let mut normalized = labels
+        .into_iter()
+        .flat_map(|label| {
+            label
+                .split(',')
+                .map(|part| part.trim().to_ascii_lowercase())
+                .collect::<Vec<_>>()
+        })
+        .filter(|label| !label.is_empty())
+        .collect::<Vec<_>>();
+    normalized.sort();
+    normalized.dedup();
+    normalized
 }
 
 pub async fn workflow_run_log_archive_for_viewer(

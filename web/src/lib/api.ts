@@ -6869,6 +6869,75 @@ export type RepositoryActionsRunDetail = {
   actionState: ActionsRunActionState;
 };
 
+export type ActionsRunnerJob = {
+  runId: string;
+  jobId: string;
+  jobName: string;
+  runNumber: number;
+  workflowName: string;
+  startedAt: string;
+};
+
+export type ActionsRunner = {
+  id: string;
+  name: string;
+  labels: string[];
+  status: "online" | "offline" | "busy" | string;
+  lastHeartbeat: string | null;
+  busySince: string | null;
+  currentJob: ActionsRunnerJob | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ActionsRunnerQueue = {
+  queuedJobs: number;
+  busyRunners: number;
+  onlineRunners: number;
+  offlineRunners: number;
+  concurrencyLimit: number;
+  cancelInProgress: boolean;
+};
+
+export type ActionsRunnerSetup = {
+  registrationToken: string | null;
+  dockerCommand: string | null;
+  expiresInMinutes: number;
+};
+
+export type RepositoryActionsRunnerSettings = {
+  repository: {
+    id: string;
+    ownerLogin: string;
+    name: string;
+    visibility: RepositoryVisibility;
+    defaultBranch: string;
+  };
+  viewerPermission: string | null;
+  canManageRunners: boolean;
+  runners: ActionsRunner[];
+  queue: ActionsRunnerQueue;
+  setup: ActionsRunnerSetup;
+};
+
+export type RepositoryActionsRunnerSettingsFetchResult =
+  | { ok: true; settings: RepositoryActionsRunnerSettings }
+  | {
+      ok: false;
+      status: number;
+      code: string | null;
+      message: string;
+    };
+
+export type RepositoryActionsRunnerMutation =
+  | { action: "create-runner"; name: string; labels: string[] }
+  | {
+      action: "update-settings";
+      concurrencyLimit: number;
+      cancelInProgress: boolean;
+    }
+  | { action: "schedule-jobs" };
+
 export type DashboardTopRepository = {
   ownerLogin: string;
   name: string;
@@ -16616,6 +16685,98 @@ export async function getRepositoryActionsSecretsSettingsFromCookie(
     ok: true,
     settings: (await response.json()) as RepositoryActionsSecretsSettings,
   };
+}
+
+export async function getRepositoryActionsRunnerSettingsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+): Promise<RepositoryActionsRunnerSettingsFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/actions/runners`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository Actions runners are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    return repositorySettingsErrorResult(
+      response,
+      "Repository Actions runners are unavailable right now.",
+    );
+  }
+
+  return {
+    ok: true,
+    settings: (await response.json()) as RepositoryActionsRunnerSettings,
+  };
+}
+
+export async function mutateRepositoryActionsRunnerSettingsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  mutation: RepositoryActionsRunnerMutation,
+): Promise<
+  | RepositoryActionsRunnerSettings
+  | { assigned: ActionsRunnerJob[]; queuedJobs: number }
+> {
+  const base = `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/settings/actions/runners`;
+  const request =
+    mutation.action === "create-runner"
+      ? {
+          body: JSON.stringify({
+            name: mutation.name,
+            labels: mutation.labels,
+          }),
+          method: "POST",
+          url: base,
+        }
+      : mutation.action === "update-settings"
+        ? {
+            body: JSON.stringify({
+              concurrencyLimit: mutation.concurrencyLimit,
+              cancelInProgress: mutation.cancelInProgress,
+            }),
+            method: "PATCH",
+            url: base,
+          }
+        : { body: "{}", method: "POST", url: `${base}/schedule` };
+  const response = await fetch(request.url, {
+    method: request.method,
+    headers: {
+      "content-type": "application/json",
+      ...(cookie ? { cookie } : {}),
+    },
+    body: request.body,
+    cache: "no-store",
+  });
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error("Repository Actions runner update failed.", {
+      cause: (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "repository_actions_runners_failed",
+          message: "Repository Actions runner update failed.",
+        },
+        status: response.status,
+      },
+    });
+  }
+  return body as
+    | RepositoryActionsRunnerSettings
+    | { assigned: ActionsRunnerJob[]; queuedJobs: number };
 }
 
 export async function getRepositoryPagesSettingsFromCookie(

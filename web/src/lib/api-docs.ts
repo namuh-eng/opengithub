@@ -7904,6 +7904,80 @@ run: #42
     notes: ["The browser treats telemetry failures as non-fatal."],
   },
   {
+    id: "actions-runners-settings",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/settings/actions/runners",
+    title: "Read Actions runner pool",
+    description:
+      "Returns the admin-only repository runner pool contract: runner health, labels, queue depth, concurrency policy, and a bounded setup command for registering self-hosted runners.",
+    auth: "Signed opengithub session cookie with admin access",
+    response: `{
+  "runners": [
+    {
+      "id": "runner_01",
+      "name": "linux-build-1",
+      "labels": ["self-hosted", "ubuntu-latest"],
+      "status": "busy",
+      "lastHeartbeat": "2026-05-07T00:03:00Z",
+      "currentJob": { "jobName": "build", "runNumber": 42 }
+    }
+  ],
+  "queue": {
+    "queuedJobs": 3,
+    "onlineRunners": 2,
+    "busyRunners": 1,
+    "offlineRunners": 1,
+    "concurrencyLimit": 4,
+    "cancelInProgress": false
+  }
+}`,
+    notes: [
+      "Runners with stale heartbeats are marked offline and stale in-progress assignments are timed out before the response is returned.",
+      "Only repository admins receive registration tokens and scheduling controls.",
+    ],
+  },
+  {
+    id: "actions-runners-create",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/settings/actions/runners",
+    title: "Register Actions runner",
+    description:
+      "Registers a repository-scoped self-hosted runner with normalized labels and returns fresh runner settings.",
+    auth: "Signed opengithub session cookie with admin access",
+    request: `{
+  "name": "linux-build-1",
+  "labels": ["self-hosted", "ubuntu-latest"]
+}`,
+    response: `{
+  "runners": [{ "name": "linux-build-1", "status": "offline" }],
+  "setup": { "registrationToken": "ogr_...", "expiresInMinutes": 60 }
+}`,
+    notes: [
+      "Duplicate runner names return a conflict envelope.",
+      "Blank names or empty label sets return validation_failed without leaking stack traces.",
+    ],
+  },
+  {
+    id: "actions-runners-schedule",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/settings/actions/runners/schedule",
+    title: "Assign queued Actions jobs",
+    description:
+      "Schedules queued workflow jobs onto online runners whose labels satisfy each job's runs-on label while respecting repository concurrency limits.",
+    auth: "Signed opengithub session cookie with admin access",
+    response: `{
+  "assigned": [
+    { "jobName": "build", "workflowName": "CI", "runNumber": 42 }
+  ],
+  "queuedJobs": 0
+}`,
+    notes: [
+      "Assigned jobs are moved to in_progress, workflow runs are started, runner status changes to busy, and workflow_job_assignments stores durable audit data.",
+      "POST /settings/actions/runners/heartbeat lets a runner report online, busy, or offline health without exposing internal session state.",
+      "PATCH /settings/actions/runners updates concurrencyLimit and cancelInProgress policy.",
+    ],
+  },
+  {
     id: "packages",
     method: "POST",
     path: "/api/repos/{owner}/{repo}/packages",

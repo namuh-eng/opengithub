@@ -19,18 +19,20 @@ use crate::{
     domain::{
         actions::{
             actions_dashboard_for_viewer, actions_job_log_detail_for_viewer,
-            actions_run_detail_for_viewer, actions_workflow_detail_for_viewer, cancel_workflow_run,
+            actions_run_detail_for_viewer, actions_runner_settings_for_viewer,
+            actions_workflow_detail_for_viewer, cancel_workflow_run, create_actions_runner,
             create_workflow, create_workflow_run, delete_workflow_run_logs, dispatch_workflow_run,
             get_workflow_for_actor, get_workflow_run_for_actor, list_workflow_runs, list_workflows,
-            record_actions_recent_view, repository_for_actor_by_name,
-            repository_for_optional_actor_by_name, rerun_workflow_run, transition_workflow_run,
-            update_actions_log_preferences_for_viewer, workflow_artifact_download_for_viewer,
+            record_actions_recent_view, record_runner_heartbeat, repository_for_actor_by_name,
+            repository_for_optional_actor_by_name, rerun_workflow_run, schedule_queued_action_jobs,
+            transition_workflow_run, update_actions_log_preferences_for_viewer,
+            update_actions_runner_settings, workflow_artifact_download_for_viewer,
             workflow_job_log_download_for_viewer, workflow_job_logs_for_viewer,
             workflow_run_log_archive_for_viewer, ActionsDashboardQuery, ActionsJobLogDetailQuery,
-            ActionsWorkflowDetailQuery, AutomationError, CreateWorkflow, CreateWorkflowRun,
-            DispatchWorkflowRun, MutateWorkflowRun, RecordActionsRecentView, RerunWorkflowRun,
-            RunConclusion, RunStatus, TransitionRun, UpdateActionsLogPreferences,
-            WorkflowRunRerunMode,
+            ActionsWorkflowDetailQuery, AutomationError, CreateActionsRunner, CreateWorkflow,
+            CreateWorkflowRun, DispatchWorkflowRun, MutateWorkflowRun, RecordActionsRecentView,
+            RerunWorkflowRun, RunConclusion, RunStatus, RunnerHeartbeat, TransitionRun,
+            UpdateActionsLogPreferences, UpdateActionsRunnerSettings, WorkflowRunRerunMode,
         },
         permissions::RepositoryRole,
     },
@@ -110,6 +112,20 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/repos/:owner/:repo/actions/recent-view",
             axum::routing::post(record_recent_view_route),
+        )
+        .route(
+            "/api/repos/:owner/:repo/settings/actions/runners",
+            get(actions_runner_settings_route)
+                .post(create_actions_runner_route)
+                .patch(update_actions_runner_settings_route),
+        )
+        .route(
+            "/api/repos/:owner/:repo/settings/actions/runners/heartbeat",
+            post(actions_runner_heartbeat_route),
+        )
+        .route(
+            "/api/repos/:owner/:repo/settings/actions/runners/schedule",
+            post(schedule_actions_jobs_route),
         )
         .route(
             "/api/repos/:owner/:repo/actions/runs/:run_id",
@@ -226,6 +242,27 @@ struct UpdateWorkflowRunRequest {
     conclusion: Option<RunConclusion>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateRunnerRequest {
+    name: String,
+    labels: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateRunnerSettingsRequest {
+    concurrency_limit: i32,
+    cancel_in_progress: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RunnerHeartbeatRequest {
+    runner_id: Uuid,
+    status: String,
+}
+
 async fn actions_dashboard_route(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -262,6 +299,114 @@ async fn actions_dashboard_route(
     .map_err(map_automation_error)?;
 
     Ok(Json(json!(dashboard)))
+}
+
+async fn actions_runner_settings_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id =
+        repository_for_actor_by_name(pool, &owner, &repo, actor.0.id, RepositoryRole::Admin)
+            .await
+            .map_err(map_automation_error)?;
+    let settings = actions_runner_settings_for_viewer(pool, repository_id, actor.0.id)
+        .await
+        .map_err(map_automation_error)?;
+    Ok(Json(json!(settings)))
+}
+
+async fn create_actions_runner_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<CreateRunnerRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id =
+        repository_for_actor_by_name(pool, &owner, &repo, actor.0.id, RepositoryRole::Admin)
+            .await
+            .map_err(map_automation_error)?;
+    let settings = create_actions_runner(
+        pool,
+        repository_id,
+        actor.0.id,
+        CreateActionsRunner {
+            name: request.name,
+            labels: request.labels,
+        },
+    )
+    .await
+    .map_err(map_automation_error)?;
+    Ok(Json(json!(settings)))
+}
+
+async fn update_actions_runner_settings_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<UpdateRunnerSettingsRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id =
+        repository_for_actor_by_name(pool, &owner, &repo, actor.0.id, RepositoryRole::Admin)
+            .await
+            .map_err(map_automation_error)?;
+    let settings = update_actions_runner_settings(
+        pool,
+        repository_id,
+        actor.0.id,
+        UpdateActionsRunnerSettings {
+            concurrency_limit: request.concurrency_limit,
+            cancel_in_progress: request.cancel_in_progress,
+        },
+    )
+    .await
+    .map_err(map_automation_error)?;
+    Ok(Json(json!(settings)))
+}
+
+async fn actions_runner_heartbeat_route(
+    State(state): State<AppState>,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<RunnerHeartbeatRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository = repository_for_optional_actor_by_name(pool, &owner, &repo, None)
+        .await
+        .map_err(map_automation_error)?;
+    let runner = record_runner_heartbeat(
+        pool,
+        repository.id,
+        RunnerHeartbeat {
+            runner_id: request.runner_id,
+            status: request.status,
+        },
+    )
+    .await
+    .map_err(map_automation_error)?;
+    Ok(Json(json!(runner)))
+}
+
+async fn schedule_actions_jobs_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id =
+        repository_for_actor_by_name(pool, &owner, &repo, actor.0.id, RepositoryRole::Admin)
+            .await
+            .map_err(map_automation_error)?;
+    let result = schedule_queued_action_jobs(pool, repository_id, actor.0.id)
+        .await
+        .map_err(map_automation_error)?;
+    Ok(Json(json!(result)))
 }
 
 async fn actions_workflow_detail_route(

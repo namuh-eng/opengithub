@@ -1479,6 +1479,15 @@ describe("ApiDocsPage", () => {
       screen.getByText("/api/repos/{owner}/{repo}/actions/recent-view"),
     ).toBeVisible();
     expect(
+      screen.getAllByText(
+        "/api/repos/{owner}/{repo}/settings/actions/runners",
+      )[0],
+    ).toBeVisible();
+    expect(screen.getByText(/Assign queued Actions jobs/)).toBeVisible();
+    expect(
+      screen.getByText(/workflow_job_assignments stores durable audit data/),
+    ).toBeVisible();
+    expect(
       screen.getByText("/api/repos/{owner}/{repo}/packages"),
     ).toBeVisible();
     expect(
