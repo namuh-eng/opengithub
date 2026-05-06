@@ -442,6 +442,72 @@ async fn run_detail_returns_attempts_jobs_annotations_artifacts_and_action_state
         .as_str()
         .expect("download url")
         .contains(artifact_id));
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+    let upload_uri = format!("/_apis/pipelines/workflows/{}/artifacts", run.id);
+    let (upload_status, upload_body) = post_json(
+        app.clone(),
+        &upload_uri,
+        Some(&owner_cookie),
+        json!({
+            "name": "coverage-report",
+            "sizeBytes": 4096,
+            "digest": "sha256:def456",
+            "retentionDays": 14
+        }),
+    )
+    .await;
+    assert_eq!(upload_status, StatusCode::OK);
+    assert_eq!(upload_body["name"], "coverage-report");
+    assert_eq!(upload_body["retentionDays"], 14);
+    assert_eq!(upload_body["downloadAvailable"], true);
+
+    let delete_artifact_uri = format!(
+        "/api/repos/{}/{}/actions/artifacts/{}",
+        owner.email,
+        repo_name,
+        upload_body["id"].as_str().expect("uploaded artifact id")
+    );
+    let (delete_artifact_status, delete_artifact_body) =
+        delete_json(app.clone(), &delete_artifact_uri, Some(&owner_cookie)).await;
+    assert_eq!(delete_artifact_status, StatusCode::OK);
+    assert_eq!(delete_artifact_body["downloadAvailable"], false);
+
+    let cache_uri = format!("/_apis/artifactcache/cache/{}/{}", owner.email, repo_name);
+    let (cache_status, cache_body) = post_json(
+        app.clone(),
+        &cache_uri,
+        Some(&owner_cookie),
+        json!({
+            "key": "node-linux-lock",
+            "version": "v1-main",
+            "sizeBytes": 2097152,
+            "scope": "refs/heads/main"
+        }),
+    )
+    .await;
+    assert_eq!(cache_status, StatusCode::OK);
+    assert_eq!(cache_body["key"], "node-linux-lock");
+    assert_eq!(cache_body["sizeBytes"], 2_097_152);
+
+    let list_cache_uri = format!("/api/repos/{}/{}/actions/caches", owner.email, repo_name);
+    let (list_cache_status, list_cache_body) = get_json(app.clone(), &list_cache_uri, None).await;
+    assert_eq!(list_cache_status, StatusCode::OK);
+    assert_eq!(list_cache_body["caches"]["total"], 1);
+    assert_eq!(list_cache_body["totalSizeBytes"], 2_097_152);
+    assert_eq!(list_cache_body["limitBytes"], 10_737_418_240_i64);
+    assert_eq!(list_cache_body["canDelete"], false);
+
+    let delete_cache_uri = format!(
+        "/api/repos/{}/{}/actions/caches/{}",
+        owner.email,
+        repo_name,
+        cache_body["id"].as_str().expect("cache id")
+    );
+    let (delete_cache_status, delete_cache_body) =
+        delete_json(app, &delete_cache_uri, Some(&owner_cookie)).await;
+    assert_eq!(delete_cache_status, StatusCode::OK);
+    assert_eq!(delete_cache_body["key"], "node-linux-lock");
 }
 
 #[tokio::test]

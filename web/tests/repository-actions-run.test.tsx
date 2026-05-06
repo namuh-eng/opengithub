@@ -243,8 +243,10 @@ function runDetail(
         name: "playwright-report",
         digest: "sha256:abc123",
         sizeBytes: 2048,
+        retentionDays: 14,
         expiredAt: null,
         downloadAvailable: true,
+        deleteAvailable: true,
         createdAt: "2026-05-01T00:06:00Z",
         updatedAt: "2026-05-01T00:06:00Z",
       },
@@ -337,6 +339,7 @@ describe("RepositoryActionsRunPage", () => {
     expect(screen.getByText("playwright-report")).toBeVisible();
     expect(screen.getByText("sha256:abc123")).toBeVisible();
     expect(screen.getByText("2.0 KB")).toBeVisible();
+    expect(screen.getByText("14 days")).toBeVisible();
   });
 
   it("focuses selected job details and shows deleted log state", () => {
@@ -441,6 +444,18 @@ describe("RepositoryActionsRunPage", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "/mona/octo-app/actions/artifacts/artifact-1/download?metadata=1",
       { cache: "no-store" },
+    );
+
+    const deleteButtons = screen.getAllByRole("button", { name: "Delete" });
+    const artifactDelete = deleteButtons.at(-1);
+    expect(artifactDelete).toBeDefined();
+    fireEvent.click(artifactDelete as HTMLElement);
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Artifact deleted.",
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/mona/octo-app/actions/artifacts/artifact-1/download",
+      { cache: "no-store", method: "DELETE" },
     );
   });
 
@@ -580,8 +595,10 @@ describe("RepositoryActionsRunPage", () => {
               name: "coverage",
               digest: "sha256:expired",
               sizeBytes: 512,
+              retentionDays: 1,
               expiredAt: "2026-05-01T00:16:00Z",
               downloadAvailable: false,
+              deleteAvailable: false,
               createdAt: "2026-05-01T00:06:00Z",
               updatedAt: "2026-05-01T00:06:00Z",
             },

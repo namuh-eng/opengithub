@@ -8,6 +8,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::json;
+use sqlx::Row;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -18,23 +19,26 @@ use crate::{
     auth::extractor::AuthenticatedUser,
     domain::{
         actions::{
-            actions_dashboard_for_viewer, actions_job_log_detail_for_viewer,
-            actions_run_detail_for_viewer, actions_runner_settings_for_viewer,
-            actions_workflow_detail_for_viewer, append_workflow_job_log_chunk, cancel_workflow_run,
-            create_actions_runner, create_workflow, create_workflow_run, delete_workflow_run_logs,
-            dispatch_workflow_run, get_workflow_for_actor, get_workflow_run_for_actor,
-            list_workflow_runs, list_workflows, record_actions_recent_view,
-            record_runner_heartbeat, repository_for_actor_by_name,
-            repository_for_optional_actor_by_name, rerun_workflow_run, schedule_queued_action_jobs,
-            transition_workflow_run, update_actions_log_preferences_for_viewer,
-            update_actions_runner_settings, workflow_artifact_download_for_viewer,
+            actions_dashboard_for_viewer, actions_dependency_caches_for_viewer,
+            actions_job_log_detail_for_viewer, actions_run_detail_for_viewer,
+            actions_runner_settings_for_viewer, actions_workflow_detail_for_viewer,
+            append_workflow_job_log_chunk, cancel_workflow_run, create_actions_runner,
+            create_workflow, create_workflow_run, delete_actions_cache_for_actor,
+            delete_workflow_artifact_for_actor, delete_workflow_run_logs, dispatch_workflow_run,
+            get_workflow_for_actor, get_workflow_run_for_actor, list_workflow_runs, list_workflows,
+            record_actions_recent_view, record_runner_heartbeat, repository_for_actor_by_name,
+            repository_for_optional_actor_by_name, rerun_workflow_run,
+            reserve_actions_cache_for_actor, schedule_queued_action_jobs, transition_workflow_run,
+            update_actions_log_preferences_for_viewer, update_actions_runner_settings,
+            upload_workflow_artifact_for_actor, workflow_artifact_download_for_viewer,
             workflow_job_log_download_for_viewer, workflow_job_log_stream_for_viewer,
             workflow_job_logs_for_viewer, workflow_run_log_archive_for_viewer,
-            ActionsDashboardQuery, ActionsJobLogDetailQuery, ActionsWorkflowDetailQuery,
-            AppendWorkflowJobLogChunk, AutomationError, CreateActionsRunner, CreateWorkflow,
-            CreateWorkflowRun, DispatchWorkflowRun, MutateWorkflowRun, RecordActionsRecentView,
-            RerunWorkflowRun, RunConclusion, RunStatus, RunnerHeartbeat, TransitionRun,
-            UpdateActionsLogPreferences, UpdateActionsRunnerSettings, WorkflowRunRerunMode,
+            ActionsArtifactUpload, ActionsCacheReserve, ActionsDashboardQuery,
+            ActionsJobLogDetailQuery, ActionsWorkflowDetailQuery, AppendWorkflowJobLogChunk,
+            AutomationError, CreateActionsRunner, CreateWorkflow, CreateWorkflowRun,
+            DispatchWorkflowRun, MutateWorkflowRun, RecordActionsRecentView, RerunWorkflowRun,
+            RunConclusion, RunStatus, RunnerHeartbeat, TransitionRun, UpdateActionsLogPreferences,
+            UpdateActionsRunnerSettings, WorkflowRunRerunMode,
         },
         permissions::RepositoryRole,
     },
@@ -118,6 +122,30 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/repos/:owner/:repo/actions/artifacts/:artifact_id/download",
             get(download_workflow_artifact_route),
+        )
+        .route(
+            "/api/repos/:owner/:repo/actions/artifacts/:artifact_id",
+            delete(delete_workflow_artifact_route),
+        )
+        .route(
+            "/api/repos/:owner/:repo/actions/caches",
+            get(actions_dependency_caches_route).post(reserve_actions_cache_route),
+        )
+        .route(
+            "/api/repos/:owner/:repo/actions/caches/:cache_id",
+            delete(delete_actions_cache_route),
+        )
+        .route(
+            "/_apis/pipelines/workflows/:run_id/artifacts",
+            post(upload_workflow_artifact_route),
+        )
+        .route(
+            "/_apis/artifactcache/cache/:owner/:repo",
+            get(actions_dependency_caches_route).post(reserve_actions_cache_route),
+        )
+        .route(
+            "/_apis/artifactcache/cache/:owner/:repo/:cache_id",
+            delete(delete_actions_cache_route),
         )
         .route(
             "/api/repos/:owner/:repo/actions/recent-view",
@@ -1123,6 +1151,109 @@ async fn download_workflow_artifact_route(
     Ok(Json(json!(download)))
 }
 
+async fn upload_workflow_artifact_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(run_id): Path<Uuid>,
+    RestJson(request): RestJson<ActionsArtifactUpload>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id = sqlx::query("SELECT repository_id FROM workflow_runs WHERE id = $1")
+        .bind(run_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|_| database_unavailable())?
+        .map(|row| row.get::<Uuid, _>("repository_id"))
+        .ok_or_else(|| map_automation_error(AutomationError::WorkflowRunNotFound))?;
+    let artifact =
+        upload_workflow_artifact_for_actor(pool, repository_id, run_id, actor.0.id, request)
+            .await
+            .map_err(map_automation_error)?;
+    Ok(Json(json!(artifact)))
+}
+
+async fn delete_workflow_artifact_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, artifact_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id =
+        repository_for_actor_by_name(pool, &owner, &repo, actor.0.id, RepositoryRole::Write)
+            .await
+            .map_err(map_automation_error)?;
+    let artifact = delete_workflow_artifact_for_actor(pool, repository_id, actor.0.id, artifact_id)
+        .await
+        .map_err(map_automation_error)?;
+    Ok(Json(json!(artifact)))
+}
+
+async fn actions_dependency_caches_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<ListQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let pagination = normalize_pagination(query.page, query.page_size);
+    let repository = repository_for_optional_actor_by_name(
+        pool,
+        &owner,
+        &repo,
+        actor.as_ref().map(|user| user.id),
+    )
+    .await
+    .map_err(map_automation_error)?;
+    let caches = actions_dependency_caches_for_viewer(
+        pool,
+        repository.id,
+        actor.as_ref().map(|user| user.id),
+        pagination.page,
+        pagination.page_size,
+    )
+    .await
+    .map_err(map_automation_error)?;
+    Ok(Json(json!(caches)))
+}
+
+async fn reserve_actions_cache_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<ActionsCacheReserve>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id =
+        repository_for_actor_by_name(pool, &owner, &repo, actor.0.id, RepositoryRole::Write)
+            .await
+            .map_err(map_automation_error)?;
+    let cache = reserve_actions_cache_for_actor(pool, repository_id, actor.0.id, request)
+        .await
+        .map_err(map_automation_error)?;
+    Ok(Json(json!(cache)))
+}
+
+async fn delete_actions_cache_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, cache_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id =
+        repository_for_actor_by_name(pool, &owner, &repo, actor.0.id, RepositoryRole::Write)
+            .await
+            .map_err(map_automation_error)?;
+    let cache = delete_actions_cache_for_actor(pool, repository_id, actor.0.id, cache_id)
+        .await
+        .map_err(map_automation_error)?;
+    Ok(Json(json!(cache)))
+}
+
 async fn update_workflow_run_route(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1164,6 +1295,7 @@ pub(crate) fn map_automation_error(error: AutomationError) -> (StatusCode, Json<
         | AutomationError::WorkflowRunNotFound
         | AutomationError::WorkflowJobNotFound
         | AutomationError::WorkflowArtifactNotFound
+        | AutomationError::WorkflowCacheNotFound
         | AutomationError::PackageNotFound => {
             error_response(StatusCode::NOT_FOUND, "not_found", error.to_string())
         }
@@ -1175,6 +1307,7 @@ pub(crate) fn map_automation_error(error: AutomationError) -> (StatusCode, Json<
         | AutomationError::InvalidRunConclusion(_)
         | AutomationError::InvalidPackageType(_)
         | AutomationError::InvalidActionsFilter(_)
+        | AutomationError::InvalidActionsStorage(_)
         | AutomationError::WorkflowDispatchDisabled(_)
         | AutomationError::InvalidWorkflowDispatch(_) => error_response(
             StatusCode::UNPROCESSABLE_ENTITY,

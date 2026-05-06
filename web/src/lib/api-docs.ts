@@ -7853,6 +7853,56 @@ data: {"nextCursor":121,"finalizedAt":null}`,
     ],
   },
   {
+    id: "actions-artifacts-caches",
+    method: "POST",
+    path: "/_apis/pipelines/workflows/{run_id}/artifacts",
+    title: "Upload workflow artifact",
+    description:
+      "Registers a workflow artifact uploaded by a runner, records retention and storage metadata, and makes it available in the run detail artifact panel.",
+    auth: "Signed opengithub session cookie with write access to the run repository",
+    request: `{
+  "name": "playwright-report",
+  "sizeBytes": 2048,
+  "digest": "sha256:abc123",
+  "retentionDays": 14
+}`,
+    response: `{
+  "id": "artifact_01",
+  "name": "playwright-report",
+  "sizeBytes": 2048,
+  "retentionDays": 14,
+  "downloadAvailable": true
+}`,
+    notes: [
+      "Artifact bytes live behind the configured S3-compatible storage key; viewer APIs expose download metadata, not raw storage credentials.",
+      "DELETE /api/repos/{owner}/{repo}/actions/artifacts/{artifact_id} marks an artifact deleted for writers.",
+    ],
+  },
+  {
+    id: "actions-cache-api",
+    method: "GET",
+    path: "/_apis/artifactcache/cache/{owner}/{repo}",
+    title: "Manage Actions dependency caches",
+    description:
+      "Lists, reserves, refreshes, and deletes dependency cache metadata for actions/cache-compatible workflow jobs and the repository cache table.",
+    auth: "Optional signed session for listing public caches; write access for reserve/delete",
+    request: `{
+  "key": "node-linux-lock",
+  "version": "v1-main",
+  "sizeBytes": 2097152,
+  "scope": "refs/heads/main"
+}`,
+    response: `{
+  "caches": [{ "key": "node-linux-lock", "version": "v1-main", "sizeBytes": 2097152 }],
+  "totalSizeBytes": 2097152,
+  "limitBytes": 10737418240
+}`,
+    notes: [
+      "The server applies repository-local LRU eviction after the active cache set exceeds 10 GB.",
+      "The Editorial cache page uses /api/repos/{owner}/{repo}/actions/caches and proxies deletes through the same Rust API.",
+    ],
+  },
+  {
     id: "actions-log-preferences",
     method: "PATCH",
     path: "/api/repos/{owner}/{repo}/actions/log-preferences",

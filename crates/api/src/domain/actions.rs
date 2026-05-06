@@ -379,10 +379,58 @@ pub struct ActionsRunArtifact {
     pub name: String,
     pub digest: Option<String>,
     pub size_bytes: i64,
+    pub retention_days: i32,
     pub expired_at: Option<DateTime<Utc>>,
     pub download_available: bool,
+    pub delete_available: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsArtifactUpload {
+    pub name: String,
+    pub size_bytes: i64,
+    pub digest: Option<String>,
+    pub storage_key: Option<String>,
+    pub retention_days: Option<i32>,
+    pub content_type: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsDependencyCache {
+    pub id: Uuid,
+    pub repository_id: Uuid,
+    pub key: String,
+    pub version: String,
+    pub scope: String,
+    pub size_bytes: i64,
+    pub last_used_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsDependencyCaches {
+    pub repository: ActionsDashboardRepository,
+    pub viewer_permission: Option<String>,
+    pub caches: ListEnvelope<ActionsDependencyCache>,
+    pub total_size_bytes: i64,
+    pub limit_bytes: i64,
+    pub can_delete: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionsCacheReserve {
+    pub key: String,
+    pub version: String,
+    pub size_bytes: i64,
+    pub scope: Option<String>,
+    pub storage_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -996,6 +1044,10 @@ pub enum AutomationError {
     WorkflowArtifactNotFound,
     #[error("workflow artifact download is unavailable")]
     WorkflowArtifactUnavailable,
+    #[error("workflow cache was not found")]
+    WorkflowCacheNotFound,
+    #[error("invalid actions storage request: {0}")]
+    InvalidActionsStorage(String),
     #[error("package was not found")]
     PackageNotFound,
     #[error("invalid workflow state `{0}`")]
@@ -3243,9 +3295,10 @@ async fn actions_run_artifacts(
 ) -> Result<Vec<ActionsRunArtifact>, AutomationError> {
     let rows = sqlx::query(
         r#"
-        SELECT id, name, digest, size_bytes, storage_key, expired_at, created_at, updated_at
+        SELECT id, name, digest, size_bytes, storage_key, retention_days, expired_at,
+               deleted_at, created_at, updated_at
         FROM workflow_artifacts
-        WHERE run_id = $1
+        WHERE run_id = $1 AND deleted_at IS NULL
         ORDER BY lower(name)
         "#,
     )
@@ -3259,14 +3312,18 @@ async fn actions_run_artifacts(
         .map(|row| {
             let storage_key: Option<String> = row.get("storage_key");
             let expired_at: Option<DateTime<Utc>> = row.get("expired_at");
+            let deleted_at: Option<DateTime<Utc>> = row.get("deleted_at");
             ActionsRunArtifact {
                 id: row.get("id"),
                 name: row.get("name"),
                 digest: row.get("digest"),
                 size_bytes: row.get("size_bytes"),
+                retention_days: row.get("retention_days"),
                 expired_at,
                 download_available: storage_key.is_some()
+                    && deleted_at.is_none()
                     && expired_at.map(|value| value > now).unwrap_or(true),
+                delete_available: deleted_at.is_none(),
                 created_at: row.get("created_at"),
                 updated_at: row.get("updated_at"),
             }
@@ -4166,6 +4223,340 @@ pub async fn workflow_artifact_download_for_viewer(
         storage_key: storage_key.unwrap_or_default(),
         expires_at: Utc::now() + chrono::Duration::minutes(10),
     })
+}
+
+pub async fn upload_workflow_artifact_for_actor(
+    pool: &PgPool,
+    repository_id: Uuid,
+    run_id: Uuid,
+    actor_user_id: Uuid,
+    request: ActionsArtifactUpload,
+) -> Result<ActionsRunArtifact, AutomationError> {
+    require_repository_role(pool, repository_id, actor_user_id, RepositoryRole::Write).await?;
+    let run_exists = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM workflow_runs WHERE id = $1 AND repository_id = $2",
+    )
+    .bind(run_id)
+    .bind(repository_id)
+    .fetch_one(pool)
+    .await?;
+    if run_exists == 0 {
+        return Err(AutomationError::WorkflowRunNotFound);
+    }
+
+    let name = non_blank(request.name, "artifact name")?;
+    let retention_days = request.retention_days.unwrap_or(90).clamp(1, 90);
+    if request.size_bytes < 0 {
+        return Err(AutomationError::InvalidActionsStorage(
+            "artifact size must be non-negative".to_owned(),
+        ));
+    }
+    let storage_key = request.storage_key.unwrap_or_else(|| {
+        format!(
+            "actions/artifacts/{}/{}/{}.zip",
+            repository_id,
+            run_id,
+            safe_filename(&name)
+        )
+    });
+    let content_type = request
+        .content_type
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "application/zip".to_owned());
+    let expired_at = Utc::now() + chrono::Duration::days(i64::from(retention_days));
+
+    let row = sqlx::query(
+        r#"
+        INSERT INTO workflow_artifacts (
+            run_id, name, digest, size_bytes, storage_key, content_type, retention_days, expired_at, deleted_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL)
+        ON CONFLICT (run_id, lower(name))
+        DO UPDATE SET digest = EXCLUDED.digest,
+                      size_bytes = EXCLUDED.size_bytes,
+                      storage_key = EXCLUDED.storage_key,
+                      content_type = EXCLUDED.content_type,
+                      retention_days = EXCLUDED.retention_days,
+                      expired_at = EXCLUDED.expired_at,
+                      deleted_at = NULL
+        RETURNING id, name, digest, size_bytes, retention_days, expired_at, created_at, updated_at
+        "#,
+    )
+    .bind(run_id)
+    .bind(&name)
+    .bind(request.digest)
+    .bind(request.size_bytes)
+    .bind(storage_key)
+    .bind(content_type)
+    .bind(retention_days)
+    .bind(expired_at)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(ActionsRunArtifact {
+        id: row.get("id"),
+        name: row.get("name"),
+        digest: row.get("digest"),
+        size_bytes: row.get("size_bytes"),
+        retention_days: row.get("retention_days"),
+        expired_at: row.get("expired_at"),
+        download_available: true,
+        delete_available: true,
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    })
+}
+
+pub async fn delete_workflow_artifact_for_actor(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Uuid,
+    artifact_id: Uuid,
+) -> Result<ActionsRunArtifact, AutomationError> {
+    require_repository_role(pool, repository_id, actor_user_id, RepositoryRole::Write).await?;
+    let row = sqlx::query(
+        r#"
+        UPDATE workflow_artifacts
+        SET deleted_at = now()
+        FROM workflow_runs
+        WHERE workflow_artifacts.run_id = workflow_runs.id
+          AND workflow_runs.repository_id = $1
+          AND workflow_artifacts.id = $2
+          AND workflow_artifacts.deleted_at IS NULL
+        RETURNING workflow_artifacts.id, workflow_artifacts.name, workflow_artifacts.digest,
+                  workflow_artifacts.size_bytes, workflow_artifacts.retention_days,
+                  workflow_artifacts.expired_at, workflow_artifacts.created_at,
+                  workflow_artifacts.updated_at
+        "#,
+    )
+    .bind(repository_id)
+    .bind(artifact_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(AutomationError::WorkflowArtifactNotFound)?;
+
+    Ok(ActionsRunArtifact {
+        id: row.get("id"),
+        name: row.get("name"),
+        digest: row.get("digest"),
+        size_bytes: row.get("size_bytes"),
+        retention_days: row.get("retention_days"),
+        expired_at: row.get("expired_at"),
+        download_available: false,
+        delete_available: false,
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    })
+}
+
+pub async fn actions_dependency_caches_for_viewer(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Option<Uuid>,
+    page: i64,
+    page_size: i64,
+) -> Result<ActionsDependencyCaches, AutomationError> {
+    let repository = require_repository_read_for_viewer(pool, repository_id, actor_user_id).await?;
+    let total = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM workflow_dependency_caches WHERE repository_id = $1 AND deleted_at IS NULL",
+    )
+    .bind(repository_id)
+    .fetch_one(pool)
+    .await?;
+    let total_size_bytes = sqlx::query_scalar::<_, i64>(
+        "SELECT COALESCE(sum(size_bytes), 0) FROM workflow_dependency_caches WHERE repository_id = $1 AND deleted_at IS NULL",
+    )
+    .bind(repository_id)
+    .fetch_one(pool)
+    .await?;
+    let rows = sqlx::query(
+        r#"
+        SELECT id, repository_id, cache_key, version, scope, size_bytes, last_used_at, created_at, updated_at
+        FROM workflow_dependency_caches
+        WHERE repository_id = $1 AND deleted_at IS NULL
+        ORDER BY last_used_at DESC, cache_key ASC
+        LIMIT $2 OFFSET $3
+        "#,
+    )
+    .bind(repository_id)
+    .bind(page_size)
+    .bind((page - 1) * page_size)
+    .fetch_all(pool)
+    .await?;
+    let can_delete = match actor_user_id {
+        Some(user_id) => repository_permission_for_user(pool, repository_id, user_id)
+            .await
+            .map_err(map_repository_error)?
+            .map(|permission| permission.role.can_write())
+            .unwrap_or(false),
+        None => false,
+    };
+
+    Ok(ActionsDependencyCaches {
+        repository: ActionsDashboardRepository {
+            id: repository.id,
+            owner_login: repository.owner_login.clone(),
+            name: repository.name.clone(),
+            visibility: repository.visibility.clone(),
+            default_branch: repository.default_branch.clone(),
+        },
+        viewer_permission: viewer_permission(pool, &repository, actor_user_id).await?,
+        caches: ListEnvelope {
+            items: rows
+                .into_iter()
+                .map(|row| ActionsDependencyCache {
+                    id: row.get("id"),
+                    repository_id: row.get("repository_id"),
+                    key: row.get("cache_key"),
+                    version: row.get("version"),
+                    scope: row.get("scope"),
+                    size_bytes: row.get("size_bytes"),
+                    last_used_at: row.get("last_used_at"),
+                    created_at: row.get("created_at"),
+                    updated_at: row.get("updated_at"),
+                })
+                .collect(),
+            total,
+            page,
+            page_size,
+        },
+        total_size_bytes,
+        limit_bytes: 10 * 1024 * 1024 * 1024,
+        can_delete,
+    })
+}
+
+pub async fn reserve_actions_cache_for_actor(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Uuid,
+    request: ActionsCacheReserve,
+) -> Result<ActionsDependencyCache, AutomationError> {
+    require_repository_role(pool, repository_id, actor_user_id, RepositoryRole::Write).await?;
+    let key = non_blank(request.key, "cache key")?;
+    let version = non_blank(request.version, "cache version")?;
+    if request.size_bytes < 0 {
+        return Err(AutomationError::InvalidActionsStorage(
+            "cache size must be non-negative".to_owned(),
+        ));
+    }
+    let scope = request
+        .scope
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "refs/heads/main".to_owned());
+    let storage_key = request.storage_key.unwrap_or_else(|| {
+        format!(
+            "actions/caches/{}/{}/{}",
+            repository_id,
+            safe_filename(&key),
+            safe_filename(&version)
+        )
+    });
+    let row = sqlx::query(
+        r#"
+        INSERT INTO workflow_dependency_caches (
+            repository_id, cache_key, version, scope, storage_key, size_bytes, last_used_at, deleted_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, now(), NULL)
+        ON CONFLICT (repository_id, cache_key, version)
+        WHERE deleted_at IS NULL
+        DO UPDATE SET scope = EXCLUDED.scope,
+                      storage_key = EXCLUDED.storage_key,
+                      size_bytes = EXCLUDED.size_bytes,
+                      last_used_at = now()
+        RETURNING id, repository_id, cache_key, version, scope, size_bytes, last_used_at, created_at, updated_at
+        "#,
+    )
+    .bind(repository_id)
+    .bind(&key)
+    .bind(&version)
+    .bind(&scope)
+    .bind(storage_key)
+    .bind(request.size_bytes)
+    .fetch_one(pool)
+    .await?;
+
+    evict_actions_caches_to_limit(pool, repository_id, 10 * 1024 * 1024 * 1024).await?;
+
+    Ok(ActionsDependencyCache {
+        id: row.get("id"),
+        repository_id: row.get("repository_id"),
+        key: row.get("cache_key"),
+        version: row.get("version"),
+        scope: row.get("scope"),
+        size_bytes: row.get("size_bytes"),
+        last_used_at: row.get("last_used_at"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    })
+}
+
+pub async fn delete_actions_cache_for_actor(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Uuid,
+    cache_id: Uuid,
+) -> Result<ActionsDependencyCache, AutomationError> {
+    require_repository_role(pool, repository_id, actor_user_id, RepositoryRole::Write).await?;
+    let row = sqlx::query(
+        r#"
+        UPDATE workflow_dependency_caches
+        SET deleted_at = now()
+        WHERE repository_id = $1 AND id = $2 AND deleted_at IS NULL
+        RETURNING id, repository_id, cache_key, version, scope, size_bytes, last_used_at, created_at, updated_at
+        "#,
+    )
+    .bind(repository_id)
+    .bind(cache_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(AutomationError::WorkflowCacheNotFound)?;
+    Ok(ActionsDependencyCache {
+        id: row.get("id"),
+        repository_id: row.get("repository_id"),
+        key: row.get("cache_key"),
+        version: row.get("version"),
+        scope: row.get("scope"),
+        size_bytes: row.get("size_bytes"),
+        last_used_at: row.get("last_used_at"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    })
+}
+
+async fn evict_actions_caches_to_limit(
+    pool: &PgPool,
+    repository_id: Uuid,
+    limit_bytes: i64,
+) -> Result<(), AutomationError> {
+    sqlx::query(
+        r#"
+        WITH ranked AS (
+            SELECT id,
+                   sum(size_bytes) OVER (ORDER BY last_used_at DESC, created_at DESC) AS running_size
+            FROM workflow_dependency_caches
+            WHERE repository_id = $1 AND deleted_at IS NULL
+        )
+        UPDATE workflow_dependency_caches
+        SET deleted_at = now()
+        WHERE id IN (SELECT id FROM ranked WHERE running_size > $2)
+        "#,
+    )
+    .bind(repository_id)
+    .bind(limit_bytes)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+fn non_blank(value: String, label: &str) -> Result<String, AutomationError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(AutomationError::InvalidActionsStorage(format!(
+            "{label} cannot be blank"
+        )));
+    }
+    Ok(trimmed.to_owned())
 }
 
 async fn workflow_job_for_repository(

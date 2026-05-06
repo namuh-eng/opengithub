@@ -6713,10 +6713,39 @@ export type ActionsRunArtifact = {
   name: string;
   digest: string | null;
   sizeBytes: number;
+  retentionDays: number;
   expiredAt: string | null;
   downloadAvailable: boolean;
+  deleteAvailable: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ActionsDependencyCache = {
+  id: string;
+  repositoryId: string;
+  key: string;
+  version: string;
+  scope: string;
+  sizeBytes: number;
+  lastUsedAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RepositoryActionsCaches = {
+  repository: {
+    id: string;
+    ownerLogin: string;
+    name: string;
+    visibility: RepositoryVisibility;
+    defaultBranch: string;
+  };
+  viewerPermission: string | null;
+  caches: ListEnvelope<ActionsDependencyCache>;
+  totalSizeBytes: number;
+  limitBytes: number;
+  canDelete: boolean;
 };
 
 export type ActionsJobLogLine = {
@@ -12614,6 +12643,24 @@ export function repositoryActionsRunDetailPath(
   )}/actions/runs/${encodeURIComponent(runId)}/detail`;
 }
 
+export function repositoryActionsCachesPath(
+  owner: string,
+  repo: string,
+  query: { page?: number | null; pageSize?: number | null } = {},
+): string {
+  const params = new URLSearchParams();
+  if (query.page) {
+    params.set("page", String(query.page));
+  }
+  if (query.pageSize) {
+    params.set("pageSize", String(query.pageSize));
+  }
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
+    repo,
+  )}/actions/caches${suffix}`;
+}
+
 export function repositoryActionsJobLogDetailPath(
   owner: string,
   repo: string,
@@ -12647,6 +12694,47 @@ export function repositoryActionsJobLogDetailPath(
   )}/detail`;
   const queryString = params.toString();
   return queryString ? `${path}?${queryString}` : path;
+}
+
+export async function getRepositoryActionsCachesFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  query: { page?: number | null; pageSize?: number | null } = {},
+): Promise<RepositoryActionsCaches | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}${repositoryActionsCachesPath(owner, repo, query)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Actions caches are temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "actions_caches_failed",
+          message: "Actions caches could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as RepositoryActionsCaches;
 }
 
 export async function getRepositoryActionsDashboardFromCookie(

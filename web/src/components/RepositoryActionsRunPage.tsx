@@ -170,6 +170,9 @@ export function RepositoryActionsRunPage({
   );
   const [jobLogMessage, setJobLogMessage] = useState("");
   const [artifactMessage, setArtifactMessage] = useState("");
+  const [pendingArtifactId, setPendingArtifactId] = useState<string | null>(
+    null,
+  );
   const [actionMessage, setActionMessage] = useState("");
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [confirmDeleteLogs, setConfirmDeleteLogs] = useState(false);
@@ -255,6 +258,37 @@ export function RepositoryActionsRunPage({
           ? error.message
           : "Artifact download is unavailable.",
       );
+    }
+  }
+
+  async function deleteArtifact(artifactId: string) {
+    setPendingArtifactId(artifactId);
+    setArtifactMessage("");
+    try {
+      const response = await fetch(artifactDownloadPath(basePath, artifactId), {
+        method: "DELETE",
+        cache: "no-store",
+      });
+      const body = (await response
+        .json()
+        .catch(() => null)) as ApiErrorEnvelope | null;
+      if (!response.ok || (body && "error" in body)) {
+        throw new Error(
+          body && "error" in body
+            ? body.error.message
+            : "Artifact could not be deleted.",
+        );
+      }
+      setArtifactMessage("Artifact deleted.");
+      router.refresh();
+    } catch (error) {
+      setArtifactMessage(
+        error instanceof Error
+          ? error.message
+          : "Artifact could not be deleted.",
+      );
+    } finally {
+      setPendingArtifactId(null);
     }
   }
 
@@ -666,7 +700,9 @@ export function RepositoryActionsRunPage({
             <ArtifactsTable
               detail={detail}
               message={artifactMessage}
+              onDelete={deleteArtifact}
               onCopyDownload={copyArtifactDownload}
+              pendingArtifactId={pendingArtifactId}
             />
             <RunMetadata detail={detail} />
           </main>
@@ -886,11 +922,15 @@ function AnnotationsList({ detail }: { detail: RepositoryActionsRunDetail }) {
 function ArtifactsTable({
   detail,
   message,
+  onDelete,
   onCopyDownload,
+  pendingArtifactId,
 }: {
   detail: RepositoryActionsRunDetail;
   message: string;
+  onDelete: (artifactId: string) => void;
   onCopyDownload: (artifactId: string) => void;
+  pendingArtifactId: string | null;
 }) {
   return (
     <section className="card overflow-hidden">
@@ -909,6 +949,7 @@ function ArtifactsTable({
                 <th className="px-5 py-3 font-medium">Name</th>
                 <th className="px-5 py-3 font-medium">Digest</th>
                 <th className="px-5 py-3 font-medium">Size</th>
+                <th className="px-5 py-3 font-medium">Retention</th>
                 <th className="px-5 py-3 font-medium">State</th>
                 <th className="px-5 py-3 font-medium">Actions</th>
               </tr>
@@ -928,6 +969,9 @@ function ArtifactsTable({
                   </td>
                   <td className="px-5 py-3 t-num">
                     {bytesLabel(artifact.sizeBytes)}
+                  </td>
+                  <td className="px-5 py-3 t-num">
+                    {artifact.retentionDays} days
                   </td>
                   <td className="px-5 py-3">
                     <span
@@ -962,6 +1006,19 @@ function ArtifactsTable({
                         type="button"
                       >
                         Copy URL
+                      </button>
+                      <button
+                        className="btn sm"
+                        disabled={
+                          !artifact.deleteAvailable ||
+                          pendingArtifactId === artifact.id
+                        }
+                        onClick={() => onDelete(artifact.id)}
+                        type="button"
+                      >
+                        {pendingArtifactId === artifact.id
+                          ? "Deleting"
+                          : "Delete"}
                       </button>
                     </div>
                   </td>

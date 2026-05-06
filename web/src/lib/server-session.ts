@@ -38,6 +38,7 @@ import {
   getPublicUserProfileFromCookie,
   getPullRequestCompareFromCookie,
   getRepositoryAccessSettingsFromCookie,
+  getRepositoryActionsCachesFromCookie,
   getRepositoryActionsDashboardFromCookie,
   getRepositoryActionsJobLogDetailFromCookie,
   getRepositoryActionsRunDetailFromCookie,
@@ -1495,6 +1496,20 @@ export async function getRepositoryActionsRunDetail(
     owner,
     repo,
     runId,
+  );
+}
+
+export async function getRepositoryActionsCaches(
+  owner: string,
+  repo: string,
+  query: { page?: number | null; pageSize?: number | null } = {},
+) {
+  const requestHeaders = await headers();
+  return getRepositoryActionsCachesFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    query,
   );
 }
 
