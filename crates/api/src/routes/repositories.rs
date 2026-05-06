@@ -174,7 +174,12 @@ use crate::{
         repository_webhook_settings_for_actor_by_owner_name,
         update_repository_webhook_by_owner_name, WebhookError, WebhookMutation,
     },
-    domain::wiki::repository_wiki_for_actor_by_owner_name,
+    domain::wiki::{
+        create_repository_wiki_page_by_owner_name, preview_repository_wiki_page_by_owner_name,
+        repository_wiki_edit_for_actor_by_owner_name, repository_wiki_for_actor_by_owner_name,
+        repository_wiki_pages_for_actor_by_owner_name, update_repository_wiki_page_by_owner_name,
+        WikiPagePreviewRequest, WikiPageSaveRequest,
+    },
     AppState,
 };
 
@@ -209,7 +214,13 @@ pub fn router() -> Router<AppState> {
         )
         .route("/:owner/:repo/network", get(network))
         .route("/:owner/:repo/wiki", get(wiki_home))
-        .route("/:owner/:repo/wiki/*slug", get(wiki_page))
+        .route("/:owner/:repo/wiki/_pages", get(wiki_pages))
+        .route("/:owner/:repo/wiki/pages", post(create_wiki_page))
+        .route("/:owner/:repo/wiki/preview", post(preview_wiki_page))
+        .route(
+            "/:owner/:repo/wiki/*slug",
+            get(wiki_page).patch(update_wiki_page),
+        )
         .route(
             "/:owner/:repo/discussions",
             get(discussions).post(create_discussion),
@@ -889,6 +900,26 @@ async fn wiki_page(
     Path((owner, repo, slug)): Path<(String, String, String)>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    if let Some(edit_slug) = slug.strip_suffix("/edit") {
+        let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+        let edit = repository_wiki_edit_for_actor_by_owner_name(
+            pool,
+            actor.0.id,
+            &owner,
+            &repo,
+            edit_slug.trim_end_matches('/'),
+        )
+        .await
+        .map_err(map_repository_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "repository wiki was not found".to_owned(),
+            )
+        })?;
+        return Ok(Json(json!(edit)));
+    }
     let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
     let wiki = repository_wiki_for_actor_by_owner_name(
         pool,
@@ -909,6 +940,95 @@ async fn wiki_page(
     })?;
 
     Ok(Json(json!(wiki)))
+}
+
+async fn wiki_pages(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pages = repository_wiki_pages_for_actor_by_owner_name(pool, actor.0.id, &owner, &repo)
+        .await
+        .map_err(map_repository_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "repository wiki was not found".to_owned(),
+            )
+        })?;
+
+    Ok(Json(json!(pages)))
+}
+
+async fn preview_wiki_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Json(request): Json<WikiPagePreviewRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let preview =
+        preview_repository_wiki_page_by_owner_name(pool, actor.0.id, &owner, &repo, request)
+            .await
+            .map_err(map_repository_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository wiki was not found".to_owned(),
+                )
+            })?;
+
+    Ok(Json(json!(preview)))
+}
+
+async fn create_wiki_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Json(request): Json<WikiPageSaveRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let page = create_repository_wiki_page_by_owner_name(pool, actor.0.id, &owner, &repo, request)
+        .await
+        .map_err(map_repository_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "repository wiki was not found".to_owned(),
+            )
+        })?;
+
+    Ok((StatusCode::CREATED, Json(json!(page))))
+}
+
+async fn update_wiki_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, slug)): Path<(String, String, String)>,
+    Json(request): Json<WikiPageSaveRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let page =
+        update_repository_wiki_page_by_owner_name(pool, actor.0.id, &owner, &repo, &slug, request)
+            .await
+            .map_err(map_repository_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository wiki was not found".to_owned(),
+                )
+            })?;
+
+    Ok(Json(json!(page)))
 }
 
 async fn contents(

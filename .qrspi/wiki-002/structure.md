@@ -10,7 +10,7 @@
 
 ## Phase 1: Wiki Write Contract and Local Git Publisher - create/edit/save works through Rust
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the backend mutation contract for creating and editing wiki pages, including validation, permissions, revision rows, rendered cache invalidation, audit/activity events, and a local bare wiki repository commit path. This phase should be API-first and independently testable without replacing the reader UI.
 

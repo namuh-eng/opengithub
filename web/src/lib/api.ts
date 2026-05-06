@@ -4080,6 +4080,71 @@ export type RepositoryWikiFetchResult =
   | { ok: true; wiki: RepositoryWikiView }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type RepositoryWikiPagesIndex = {
+  repository: RepositoryWikiRepository;
+  viewer: RepositoryWikiViewer;
+  pages: RepositoryWikiPageSummary[];
+  links: RepositoryWikiLinks;
+};
+
+export type RepositoryWikiEditView = {
+  repository: RepositoryWikiRepository;
+  viewer: RepositoryWikiViewer;
+  page: RepositoryWikiEditablePage;
+  supportedFormats: RepositoryWikiMarkupFormat[];
+};
+
+export type RepositoryWikiEditablePage = {
+  id: string;
+  title: string;
+  slug: string;
+  path: string;
+  markdown: string;
+  latestRevisionId: string;
+  editMode: "markdown";
+};
+
+export type RepositoryWikiMarkupFormat = {
+  mode: "markdown";
+  label: string;
+  extension: string;
+};
+
+export type RepositoryWikiSaveRequest = {
+  title: string;
+  markdown: string;
+  message: string;
+  editMode?: "markdown";
+  expectedRevisionId?: string | null;
+};
+
+export type RepositoryWikiPreviewRequest = {
+  markdown: string;
+  editMode?: "markdown";
+};
+
+export type RepositoryWikiPreviewResult = {
+  html: string;
+  contentSha: string;
+  outline: RepositoryWikiHeading[];
+};
+
+export type RepositoryWikiMutationResult = {
+  page: RepositoryWikiPage;
+  gitCommit: RepositoryWikiGitCommitSummary;
+  redirectHref: string;
+};
+
+export type RepositoryWikiGitCommitSummary = {
+  id: string;
+  oid: string;
+  shortOid: string;
+  branch: string;
+  message: string;
+  storagePath: string;
+  createdAt: string;
+};
+
 export type RepositorySecurityAdvisoriesFetchResult =
   | { ok: true; advisories: RepositorySecurityAdvisoriesView }
   | { ok: false; status: number; code: string | null; message: string };
@@ -14330,6 +14395,156 @@ export async function getRepositoryWikiFromCookie(
     ok: true,
     wiki: (await response.json()) as RepositoryWikiView,
   };
+}
+
+export async function getRepositoryWikiPagesFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+): Promise<RepositoryWikiPagesIndex> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/wiki/_pages`,
+    {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+  if (!response.ok) {
+    const envelope = ((await response.json().catch(() => null)) ??
+      null) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Repository wiki pages failed to load.",
+      {
+        cause: envelope,
+      },
+    );
+  }
+  return (await response.json()) as RepositoryWikiPagesIndex;
+}
+
+export async function getRepositoryWikiEditFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  slug: string,
+): Promise<RepositoryWikiEditView> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/wiki/${encodeURIComponent(slug)}/edit`,
+    {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+  if (!response.ok) {
+    const envelope = ((await response.json().catch(() => null)) ??
+      null) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Repository wiki editor failed to load.",
+      {
+        cause: envelope,
+      },
+    );
+  }
+  return (await response.json()) as RepositoryWikiEditView;
+}
+
+export async function previewRepositoryWikiFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  request: RepositoryWikiPreviewRequest,
+): Promise<RepositoryWikiPreviewResult> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/wiki/preview`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  if (!response.ok) {
+    const envelope = ((await response.json().catch(() => null)) ??
+      null) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Repository wiki preview failed.",
+      {
+        cause: envelope,
+      },
+    );
+  }
+  return (await response.json()) as RepositoryWikiPreviewResult;
+}
+
+export async function createRepositoryWikiPageFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  request: RepositoryWikiSaveRequest,
+): Promise<RepositoryWikiMutationResult> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/wiki/pages`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  if (!response.ok) {
+    const envelope = ((await response.json().catch(() => null)) ??
+      null) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Repository wiki page save failed.",
+      {
+        cause: envelope,
+      },
+    );
+  }
+  return (await response.json()) as RepositoryWikiMutationResult;
+}
+
+export async function updateRepositoryWikiPageFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  slug: string,
+  request: RepositoryWikiSaveRequest,
+): Promise<RepositoryWikiMutationResult> {
+  const encodedSlug = slug
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/wiki/${encodedSlug}`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  if (!response.ok) {
+    const envelope = ((await response.json().catch(() => null)) ??
+      null) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Repository wiki page save failed.",
+      {
+        cause: envelope,
+      },
+    );
+  }
+  return (await response.json()) as RepositoryWikiMutationResult;
 }
 
 export async function mutateRepositorySecurityPolicyFromCookie(
