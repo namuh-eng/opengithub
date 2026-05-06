@@ -1327,6 +1327,91 @@ async fn project_workflow_settings_seed_defaults_and_filter_targets() {
     .fetch_one(&pool)
     .await
     .expect("workflow should exist");
+    let todo_option: Uuid = sqlx::query_scalar(
+        "SELECT id FROM project_field_options WHERE project_field_id = $1 AND name = 'Todo'",
+    )
+    .bind(status_field)
+    .fetch_one(&pool)
+    .await
+    .expect("todo option should exist");
+    let workflow_updated_at: chrono::DateTime<chrono::Utc> =
+        sqlx::query_scalar("SELECT updated_at FROM project_workflows WHERE id = $1")
+            .bind(workflow_id)
+            .fetch_one(&pool)
+            .await
+            .expect("workflow timestamp should load");
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/workflows/{workflow_id}"),
+        Some(&writer_cookie),
+        json!({
+            "enabled": true,
+            "condition": "state:closed label:ready",
+            "statusFieldId": status_field,
+            "statusOptionId": todo_option,
+            "repositoryTargetIds": [repo.id],
+            "archiveAfterDays": 30,
+            "closeOnStatus": true,
+            "expectedUpdatedAt": workflow_updated_at,
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["workflows"][0]["configuration"]["condition"],
+        "state:closed label:ready"
+    );
+    assert_eq!(
+        body["workflows"][0]["configuration"]["target"]["optionId"],
+        todo_option.to_string()
+    );
+    assert_eq!(
+        body["workflows"][0]["configuration"]["archiveAfterDays"],
+        30
+    );
+    assert_eq!(body["workflows"][0]["configuration"]["closeOnStatus"], true);
+    assert_eq!(
+        body["workflows"][0]["repositoryTargetIds"][0],
+        repo.id.to_string()
+    );
+    assert_eq!(body["workflows"][0]["source"], "ui");
+    assert_eq!(body["recentLogs"][0]["source"], "ui");
+    assert_eq!(body["recentLogs"][0]["status"], "success");
+
+    let audit_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM audit_events WHERE event_type = 'project.workflow.update' AND target_id = $1",
+    )
+    .bind(workflow_id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("audit count should load");
+    assert_eq!(audit_count, 1);
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/workflows/{workflow_id}"),
+        Some(&reader_cookie),
+        json!({ "enabled": false }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/workflows/{workflow_id}"),
+        Some(&writer_cookie),
+        json!({
+            "enabled": false,
+            "expectedUpdatedAt": workflow_updated_at,
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert!(body["error"]["message"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("changed since it was loaded"));
+
     sqlx::query(
         r#"
         INSERT INTO workflow_execution_logs

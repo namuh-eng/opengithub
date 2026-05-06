@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   ProjectWorkflowDefinition,
   ProjectWorkflowSettings,
+  ProjectWorkflowUpdateRequest,
 } from "@/lib/api";
 import {
   organizationProjectFieldSettingsHref,
@@ -93,6 +94,7 @@ export function ProjectWorkflowSettingsPage({
   owner,
   selectedWorkflowId,
 }: ProjectWorkflowSettingsPageProps) {
+  const [currentSettings, setCurrentSettings] = useState(settings);
   const initialWorkflow = useMemo(
     () =>
       settings.workflows.find(
@@ -103,13 +105,100 @@ export function ProjectWorkflowSettingsPage({
   const [openWorkflowId, setOpenWorkflowId] = useState<string | null>(
     initialWorkflow?.id ?? null,
   );
+  const [formState, setFormState] = useState<ProjectWorkflowUpdateRequest>({});
+  const [saveState, setSaveState] = useState<{
+    status: "idle" | "saving" | "saved" | "error";
+    message: string | null;
+  }>({ status: "idle", message: null });
+  useEffect(() => setCurrentSettings(settings), [settings]);
   const openWorkflow =
-    settings.workflows.find((workflow) => workflow.id === openWorkflowId) ??
-    null;
-  const canManage = settings.viewerPermissions.canManageWorkflows;
+    currentSettings.workflows.find(
+      (workflow) => workflow.id === openWorkflowId,
+    ) ?? null;
+  const canManage = currentSettings.viewerPermissions.canManageWorkflows;
   const fieldsById = new Map(
-    settings.eligibleFields.map((field) => [field.id, field]),
+    currentSettings.eligibleFields.map((field) => [field.id, field]),
   );
+  const selectedFieldId =
+    formState.statusFieldId ??
+    (typeof openWorkflow?.configuration.target === "object" &&
+    openWorkflow.configuration.target &&
+    "fieldId" in openWorkflow.configuration.target &&
+    typeof openWorkflow.configuration.target.fieldId === "string"
+      ? openWorkflow.configuration.target.fieldId
+      : "");
+  const selectedField = currentSettings.eligibleFields.find(
+    (field) => field.id === selectedFieldId,
+  );
+  const selectedOptionId =
+    formState.statusOptionId ??
+    (typeof openWorkflow?.configuration.target === "object" &&
+    openWorkflow.configuration.target &&
+    "optionId" in openWorkflow.configuration.target &&
+    typeof openWorkflow.configuration.target.optionId === "string"
+      ? openWorkflow.configuration.target.optionId
+      : "");
+  const selectedRepositoryIds =
+    formState.repositoryTargetIds ?? openWorkflow?.repositoryTargetIds ?? [];
+  const condition =
+    formState.condition ??
+    (typeof openWorkflow?.configuration.condition === "string"
+      ? openWorkflow.configuration.condition
+      : "");
+  const archiveAfterDays =
+    formState.archiveAfterDays ??
+    (typeof openWorkflow?.configuration.archiveAfterDays === "number"
+      ? openWorkflow.configuration.archiveAfterDays
+      : null);
+  const closeOnStatus =
+    formState.closeOnStatus ??
+    (typeof openWorkflow?.configuration.closeOnStatus === "boolean"
+      ? openWorkflow.configuration.closeOnStatus
+      : false);
+
+  function openEditor(workflowId: string) {
+    setOpenWorkflowId(workflowId);
+    setFormState({});
+    setSaveState({ status: "idle", message: null });
+  }
+
+  async function saveWorkflow(enabled?: boolean) {
+    if (!openWorkflow || !canManage || saveState.status === "saving") return;
+    setSaveState({ status: "saving", message: null });
+    const request: ProjectWorkflowUpdateRequest = {
+      ...formState,
+      enabled,
+      condition,
+      repositoryTargetIds: selectedRepositoryIds,
+      archiveAfterDays,
+      closeOnStatus,
+      expectedUpdatedAt: openWorkflow.updatedAt,
+    };
+    if (selectedFieldId && selectedOptionId) {
+      request.statusFieldId = selectedFieldId;
+      request.statusOptionId = selectedOptionId;
+    }
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(currentSettings.project.id)}/workflows/${encodeURIComponent(openWorkflow.id)}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(request),
+      },
+    );
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      setSaveState({
+        status: "error",
+        message:
+          payload?.error?.message ?? "Project workflow could not be saved.",
+      });
+      return;
+    }
+    setCurrentSettings(payload as ProjectWorkflowSettings);
+    setFormState({});
+    setSaveState({ status: "saved", message: "Workflow configuration saved." });
+  }
 
   return (
     <main
@@ -121,12 +210,14 @@ export function ProjectWorkflowSettingsPage({
       >
         <Link
           className="chip soft"
-          href={workspaceHref(scope, owner, settings.project.number)}
+          href={workspaceHref(scope, owner, currentSettings.project.number)}
         >
           Back to project
         </Link>
         <span className="chip active">Settings</span>
-        <span className="t-xs t-mono-sm">#{settings.project.number}</span>
+        <span className="t-xs t-mono-sm">
+          #{currentSettings.project.number}
+        </span>
       </div>
 
       <div
@@ -136,7 +227,7 @@ export function ProjectWorkflowSettingsPage({
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="t-label">Project workflows</div>
           <h1 className="t-h1" style={{ marginTop: 6 }}>
-            {settings.project.title}
+            {currentSettings.project.title}
           </h1>
           <p
             className="t-sm"
@@ -151,7 +242,7 @@ export function ProjectWorkflowSettingsPage({
         </span>
       </div>
 
-      {settings.unavailableReason ? (
+      {currentSettings.unavailableReason ? (
         <div
           className="card"
           role="alert"
@@ -159,7 +250,7 @@ export function ProjectWorkflowSettingsPage({
         >
           <div className="t-label">Unavailable</div>
           <p className="t-sm" style={{ marginTop: 6, color: "var(--ink-3)" }}>
-            {settings.unavailableReason}
+            {currentSettings.unavailableReason}
           </p>
         </div>
       ) : null}
@@ -198,11 +289,15 @@ export function ProjectWorkflowSettingsPage({
                 }
                 href={
                   item.key === "fields"
-                    ? fieldSettingsHref(scope, owner, settings.project.number)
+                    ? fieldSettingsHref(
+                        scope,
+                        owner,
+                        currentSettings.project.number,
+                      )
                     : workflowSettingsHref(
                         scope,
                         owner,
-                        settings.project.number,
+                        currentSettings.project.number,
                       )
                 }
                 key={item.key}
@@ -241,19 +336,20 @@ export function ProjectWorkflowSettingsPage({
                   style={{ color: "var(--ink-3)", marginTop: 4 }}
                 >
                   {
-                    settings.workflows.filter((workflow) => workflow.enabled)
-                      .length
+                    currentSettings.workflows.filter(
+                      (workflow) => workflow.enabled,
+                    ).length
                   }{" "}
-                  enabled · {settings.automationActor}
+                  enabled · {currentSettings.automationActor}
                 </div>
               </div>
               <span className="chip soft">
-                {settings.repositoryTargets.length} repositories
+                {currentSettings.repositoryTargets.length} repositories
               </span>
             </div>
 
-            {settings.workflows.length > 0 ? (
-              settings.workflows.map((workflow) => (
+            {currentSettings.workflows.length > 0 ? (
+              currentSettings.workflows.map((workflow) => (
                 <article
                   className="list-row"
                   key={workflow.id}
@@ -270,10 +366,10 @@ export function ProjectWorkflowSettingsPage({
                         href={workflowSettingsHref(
                           scope,
                           owner,
-                          settings.project.number,
+                          currentSettings.project.number,
                           workflow.id,
                         )}
-                        onClick={() => setOpenWorkflowId(workflow.id)}
+                        onClick={() => openEditor(workflow.id)}
                         style={{
                           color: "var(--ink-1)",
                           fontWeight: 600,
@@ -325,7 +421,7 @@ export function ProjectWorkflowSettingsPage({
                   >
                     <button
                       className="btn sm"
-                      onClick={() => setOpenWorkflowId(workflow.id)}
+                      onClick={() => openEditor(workflow.id)}
                       type="button"
                     >
                       Edit
@@ -333,7 +429,7 @@ export function ProjectWorkflowSettingsPage({
                     <button
                       className={workflow.enabled ? "btn sm" : "btn sm primary"}
                       disabled={!canManage}
-                      onClick={() => setOpenWorkflowId(workflow.id)}
+                      onClick={() => openEditor(workflow.id)}
                       type="button"
                     >
                       {workflow.enabled ? "Review" : "Turn on"}
@@ -366,9 +462,8 @@ export function ProjectWorkflowSettingsPage({
                   className="t-sm"
                   style={{ color: "var(--ink-3)", marginTop: 8 }}
                 >
-                  Rule editing persists in the next implementation phase. This
-                  panel is route-backed now so every card has a concrete edit
-                  target.
+                  Configure the condition, target status, repositories, and
+                  lifecycle behavior that this built-in workflow should use.
                 </p>
                 <div style={{ marginTop: 18 }}>
                   <label className="t-label" htmlFor="workflow-trigger">
@@ -383,25 +478,73 @@ export function ProjectWorkflowSettingsPage({
                   />
                 </div>
                 <div style={{ marginTop: 16 }}>
+                  <label className="t-label" htmlFor="workflow-condition">
+                    Condition
+                  </label>
+                  <input
+                    className="input"
+                    disabled={!canManage}
+                    id="workflow-condition"
+                    onChange={(event) =>
+                      setFormState((current) => ({
+                        ...current,
+                        condition: event.target.value,
+                      }))
+                    }
+                    placeholder="state:closed label:ready"
+                    style={{ display: "block", marginTop: 8, width: "100%" }}
+                    value={condition}
+                  />
+                </div>
+                <div style={{ marginTop: 16 }}>
                   <label className="t-label" htmlFor="workflow-field">
                     Target field
                   </label>
                   <select
                     className="input"
-                    disabled
+                    disabled={!canManage}
                     id="workflow-field"
-                    style={{ display: "block", marginTop: 8, width: "100%" }}
-                    value={
-                      typeof openWorkflow.configuration.statusFieldId ===
-                      "string"
-                        ? openWorkflow.configuration.statusFieldId
-                        : ""
+                    onChange={(event) =>
+                      setFormState((current) => ({
+                        ...current,
+                        statusFieldId: event.target.value || null,
+                        statusOptionId: null,
+                      }))
                     }
+                    style={{ display: "block", marginTop: 8, width: "100%" }}
+                    value={selectedFieldId}
                   >
                     <option value="">No field selected</option>
-                    {settings.eligibleFields.map((field) => (
-                      <option key={field.id} value={field.id}>
-                        {field.name}
+                    {currentSettings.eligibleFields
+                      .filter((field) => field.supportsStatusTarget)
+                      .map((field) => (
+                        <option key={field.id} value={field.id}>
+                          {field.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                <div style={{ marginTop: 16 }}>
+                  <label className="t-label" htmlFor="workflow-option">
+                    Target value
+                  </label>
+                  <select
+                    className="input"
+                    disabled={!canManage || !selectedField}
+                    id="workflow-option"
+                    onChange={(event) =>
+                      setFormState((current) => ({
+                        ...current,
+                        statusOptionId: event.target.value || null,
+                      }))
+                    }
+                    style={{ display: "block", marginTop: 8, width: "100%" }}
+                    value={selectedOptionId}
+                  >
+                    <option value="">No value selected</option>
+                    {selectedField?.options.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.name}
                       </option>
                     ))}
                   </select>
@@ -428,33 +571,94 @@ export function ProjectWorkflowSettingsPage({
                 </div>
                 <div style={{ marginTop: 16 }}>
                   <div className="t-label">Repository targets</div>
-                  <div style={{ marginTop: 8 }}>
-                    {openWorkflow.repositoryTargetIds.length > 0 ? (
-                      openWorkflow.repositoryTargetIds.map((targetId) => {
-                        const target = settings.repositoryTargets.find(
-                          (repository) => repository.id === targetId,
-                        );
-                        return (
-                          <span
-                            className="chip soft"
-                            key={targetId}
-                            style={{ margin: "0 6px 6px 0" }}
-                          >
-                            {target?.fullName ?? targetId}
-                          </span>
-                        );
-                      })
+                  <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                    {currentSettings.repositoryTargets.length > 0 ? (
+                      currentSettings.repositoryTargets.map((target) => (
+                        <label className="chip soft" key={target.id}>
+                          <input
+                            checked={selectedRepositoryIds.includes(target.id)}
+                            disabled={!canManage}
+                            onChange={(event) =>
+                              setFormState((current) => {
+                                const previous =
+                                  current.repositoryTargetIds ??
+                                  openWorkflow.repositoryTargetIds;
+                                return {
+                                  ...current,
+                                  repositoryTargetIds: event.target.checked
+                                    ? [...previous, target.id]
+                                    : previous.filter((id) => id !== target.id),
+                                };
+                              })
+                            }
+                            style={{ marginRight: 6 }}
+                            type="checkbox"
+                          />
+                          {target.fullName}
+                        </label>
+                      ))
                     ) : (
                       <span className="t-xs">All visible project items.</span>
                     )}
                   </div>
                 </div>
+                <div style={{ marginTop: 16 }}>
+                  <label className="t-label" htmlFor="workflow-archive-days">
+                    Archive criteria
+                  </label>
+                  <input
+                    className="input"
+                    disabled={!canManage}
+                    id="workflow-archive-days"
+                    min={1}
+                    max={365}
+                    onChange={(event) =>
+                      setFormState((current) => ({
+                        ...current,
+                        archiveAfterDays: event.target.value
+                          ? Number(event.target.value)
+                          : null,
+                      }))
+                    }
+                    style={{ display: "block", marginTop: 8, width: "100%" }}
+                    type="number"
+                    value={archiveAfterDays ?? ""}
+                  />
+                </div>
+                <label className="chip soft" style={{ marginTop: 14 }}>
+                  <input
+                    checked={closeOnStatus}
+                    disabled={!canManage}
+                    onChange={(event) =>
+                      setFormState((current) => ({
+                        ...current,
+                        closeOnStatus: event.target.checked,
+                      }))
+                    }
+                    style={{ marginRight: 6 }}
+                    type="checkbox"
+                  />
+                  Close linked issue or pull request when status matches
+                </label>
                 <div
                   className="row"
                   style={{ gap: 8, marginTop: 20, flexWrap: "wrap" }}
                 >
-                  <button className="btn primary" disabled type="button">
-                    Save workflow
+                  <button
+                    className="btn primary"
+                    disabled={!canManage || saveState.status === "saving"}
+                    onClick={() => saveWorkflow(openWorkflow.enabled)}
+                    type="button"
+                  >
+                    {saveState.status === "saving" ? "Saving" : "Save workflow"}
+                  </button>
+                  <button
+                    className="btn accent"
+                    disabled={!canManage || saveState.status === "saving"}
+                    onClick={() => saveWorkflow(!openWorkflow.enabled)}
+                    type="button"
+                  >
+                    {openWorkflow.enabled ? "Turn off" : "Save and turn on"}
                   </button>
                   <button
                     className="btn"
@@ -465,6 +669,21 @@ export function ProjectWorkflowSettingsPage({
                     Close
                   </button>
                 </div>
+                {saveState.message ? (
+                  <p
+                    className="t-xs"
+                    role={saveState.status === "error" ? "alert" : "status"}
+                    style={{
+                      color:
+                        saveState.status === "error"
+                          ? "var(--err)"
+                          : "var(--ink-3)",
+                      marginTop: 10,
+                    }}
+                  >
+                    {saveState.message}
+                  </p>
+                ) : null}
                 {!canManage ? (
                   <p className="t-xs" style={{ marginTop: 10 }}>
                     You can inspect this workflow, but project write access is
@@ -472,7 +691,8 @@ export function ProjectWorkflowSettingsPage({
                   </p>
                 ) : (
                   <p className="t-xs" style={{ marginTop: 10 }}>
-                    Save is disabled until workflow mutations are added.
+                    Saved workflows write an activity log and audit event before
+                    later phases execute item automation.
                   </p>
                 )}
               </>
@@ -486,12 +706,12 @@ export function ProjectWorkflowSettingsPage({
                   className="t-sm"
                   style={{ color: "var(--ink-3)", marginTop: 8 }}
                 >
-                  Runs are attributed to {settings.automationActor} and keep
-                  repository permissions intact.
+                  Runs are attributed to {currentSettings.automationActor} and
+                  keep repository permissions intact.
                 </p>
                 <div style={{ marginTop: 14 }}>
-                  {settings.recentLogs.length > 0 ? (
-                    settings.recentLogs.slice(0, 6).map((log) => (
+                  {currentSettings.recentLogs.length > 0 ? (
+                    currentSettings.recentLogs.slice(0, 6).map((log) => (
                       <div
                         className="list-row"
                         key={log.id}

@@ -26,19 +26,20 @@ use crate::{
         update_project_item_comment_for_actor, update_project_item_field_for_actor,
         update_project_item_position_for_actor, update_project_iteration_for_actor,
         update_project_iteration_settings_for_actor, update_project_roadmap_settings_for_actor,
-        update_project_view_layout_for_actor, update_project_view_state_for_actor, user_projects,
-        CopiedProject, CopyProjectRequest, ProjectArchivedItem, ProjectConversionTargets,
-        ProjectDraftConvertRequest, ProjectDraftUpdateRequest, ProjectFieldCreateRequest,
-        ProjectFieldDeleteRequest, ProjectFieldOptionCreateRequest,
-        ProjectFieldOptionReorderRequest, ProjectFieldOptionUpdateRequest, ProjectFieldSettings,
-        ProjectFieldUpdateRequest, ProjectItemAddRequest, ProjectItemCommentCreateRequest,
-        ProjectItemCommentUpdateRequest, ProjectItemDetail, ProjectItemFieldValueRequest,
-        ProjectItemPositionRequest, ProjectItemsArchivedQuery, ProjectItemsBulkAddRequest,
-        ProjectIterationBreakCreateRequest, ProjectIterationCreateRequest,
-        ProjectIterationSettingsRequest, ProjectIterationUpdateRequest, ProjectList,
-        ProjectListQuery, ProjectRoadmapSettingsRequest, ProjectViewLayoutRequest,
-        ProjectViewStateRequest, ProjectWorkflowSettings, ProjectWorkspace, ProjectWorkspaceQuery,
-        ProjectsError,
+        update_project_view_layout_for_actor, update_project_view_state_for_actor,
+        update_project_workflow_for_actor, user_projects, CopiedProject, CopyProjectRequest,
+        ProjectArchivedItem, ProjectConversionTargets, ProjectDraftConvertRequest,
+        ProjectDraftUpdateRequest, ProjectFieldCreateRequest, ProjectFieldDeleteRequest,
+        ProjectFieldOptionCreateRequest, ProjectFieldOptionReorderRequest,
+        ProjectFieldOptionUpdateRequest, ProjectFieldSettings, ProjectFieldUpdateRequest,
+        ProjectItemAddRequest, ProjectItemCommentCreateRequest, ProjectItemCommentUpdateRequest,
+        ProjectItemDetail, ProjectItemFieldValueRequest, ProjectItemPositionRequest,
+        ProjectItemsArchivedQuery, ProjectItemsBulkAddRequest, ProjectIterationBreakCreateRequest,
+        ProjectIterationCreateRequest, ProjectIterationSettingsRequest,
+        ProjectIterationUpdateRequest, ProjectList, ProjectListQuery,
+        ProjectRoadmapSettingsRequest, ProjectViewLayoutRequest, ProjectViewStateRequest,
+        ProjectWorkflowSettings, ProjectWorkflowUpdateRequest, ProjectWorkspace,
+        ProjectWorkspaceQuery, ProjectsError,
     },
     AppState,
 };
@@ -58,6 +59,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/projects/:project_id/workflows",
             get(project_workflow_settings_route),
+        )
+        .route(
+            "/api/projects/:project_id/workflows/:workflow_id",
+            patch(update_project_workflow_route),
         )
         .route(
             "/api/projects/:project_id/fields/:field_id",
@@ -388,6 +393,21 @@ async fn project_workflow_settings_route(
     let settings = project_workflow_settings(pool, project_id, actor.as_ref().map(|user| user.id))
         .await
         .map_err(map_projects_error)?;
+    Ok(Json(settings))
+}
+
+async fn update_project_workflow_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project_id, workflow_id)): Path<(Uuid, Uuid)>,
+    Json(request): Json<ProjectWorkflowUpdateRequest>,
+) -> Result<Json<ProjectWorkflowSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let settings =
+        update_project_workflow_for_actor(pool, project_id, workflow_id, actor.id, request)
+            .await
+            .map_err(map_projects_error)?;
     Ok(Json(settings))
 }
 

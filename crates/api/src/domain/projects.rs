@@ -475,6 +475,19 @@ pub struct ProjectWorkflowSettingsPermissions {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct ProjectWorkflowUpdateRequest {
+    pub enabled: Option<bool>,
+    pub condition: Option<String>,
+    pub status_field_id: Option<Uuid>,
+    pub status_option_id: Option<Uuid>,
+    pub repository_target_ids: Option<Vec<Uuid>>,
+    pub archive_after_days: Option<i64>,
+    pub close_on_status: Option<bool>,
+    pub expected_updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectWorkspace {
     pub project: ProjectWorkspaceProject,
     pub selected_view: ProjectWorkspaceView,
@@ -1428,6 +1441,252 @@ pub async fn project_workflow_settings(
         automation_actor: "@opengithub-project-automation".to_owned(),
         unavailable_reason: None,
     })
+}
+
+pub async fn update_project_workflow_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    workflow_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectWorkflowUpdateRequest,
+) -> Result<ProjectWorkflowSettings, ProjectsError> {
+    let project = workspace_project_row(pool, project_id, Some(actor_user_id)).await?;
+    let can_manage = project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role);
+    if !can_manage {
+        return Err(ProjectsError::Forbidden);
+    }
+
+    let workflow = sqlx::query(
+        r#"
+        SELECT id, workflow_key, trigger_event, configuration, updated_at
+        FROM project_workflows
+        WHERE project_id = $1 AND id = $2
+        "#,
+    )
+    .bind(project_id)
+    .bind(workflow_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ProjectsError::NotFound)?;
+
+    let workflow_key: String = workflow.get("workflow_key");
+    let trigger_event: String = workflow.get("trigger_event");
+    let current_configuration: Value = workflow.get("configuration");
+    let updated_at: DateTime<Utc> = workflow.get("updated_at");
+    if let Some(expected) = request.expected_updated_at {
+        if updated_at != expected {
+            return Err(ProjectsError::Validation(
+                "Project workflow changed since it was loaded. Refresh before saving.".to_owned(),
+            ));
+        }
+    }
+
+    let condition = request
+        .condition
+        .as_deref()
+        .unwrap_or_else(|| {
+            current_configuration
+                .get("condition")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+        })
+        .trim()
+        .chars()
+        .take(240)
+        .collect::<String>();
+    if request
+        .condition
+        .as_ref()
+        .is_some_and(|value| value.len() > 240)
+    {
+        return Err(ProjectsError::Validation(
+            "Workflow condition must be 240 characters or fewer.".to_owned(),
+        ));
+    }
+
+    let mut target = current_configuration
+        .get("target")
+        .cloned()
+        .unwrap_or(Value::Null);
+    if let Some(field_id) = request.status_field_id {
+        let option_id = request.status_option_id.ok_or_else(|| {
+            ProjectsError::Validation("A target status option is required.".to_owned())
+        })?;
+        validate_project_workflow_status_target(pool, project_id, field_id, option_id).await?;
+        target = json!({ "fieldId": field_id, "optionId": option_id });
+    }
+
+    let archive_after_days = request.archive_after_days.or_else(|| {
+        current_configuration
+            .get("archiveAfterDays")
+            .and_then(Value::as_i64)
+    });
+    if let Some(days) = archive_after_days {
+        if !(1..=365).contains(&days) {
+            return Err(ProjectsError::Validation(
+                "Archive criteria must be between 1 and 365 days.".to_owned(),
+            ));
+        }
+    }
+
+    let close_on_status = request.close_on_status.or_else(|| {
+        current_configuration
+            .get("closeOnStatus")
+            .and_then(Value::as_bool)
+    });
+
+    if let Some(repository_ids) = &request.repository_target_ids {
+        if repository_ids.len() > 50 {
+            return Err(ProjectsError::Validation(
+                "Workflow repository target selection is limited to 50 repositories.".to_owned(),
+            ));
+        }
+        for repository_id in repository_ids {
+            let linked = sqlx::query_scalar::<_, i64>(
+                r#"
+                SELECT COUNT(*)
+                FROM (
+                  SELECT default_repository_id AS repository_id
+                  FROM projects
+                  WHERE id = $1 AND default_repository_id IS NOT NULL
+                  UNION
+                  SELECT repository_id
+                  FROM project_repositories
+                  WHERE project_id = $1
+                ) linked
+                WHERE repository_id = $2
+                "#,
+            )
+            .bind(project_id)
+            .bind(repository_id)
+            .fetch_one(pool)
+            .await?;
+            if linked == 0 {
+                return Err(ProjectsError::Validation(
+                    "Workflow repository targets must be linked to this project.".to_owned(),
+                ));
+            }
+            let permission =
+                repository_permission_for_user(pool, *repository_id, actor_user_id).await?;
+            if !permission
+                .as_ref()
+                .is_some_and(|permission| permission.role.can_write())
+            {
+                return Err(ProjectsError::Validation(
+                    "Workflow repository targets require repository write access.".to_owned(),
+                ));
+            }
+        }
+    }
+
+    let configuration = json!({
+        "condition": condition,
+        "target": target,
+        "archiveAfterDays": archive_after_days,
+        "closeOnStatus": close_on_status.unwrap_or(false),
+    });
+
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        r#"
+        UPDATE project_workflows
+        SET enabled = COALESCE($3, enabled),
+            configuration = $4,
+            source = 'ui',
+            actor_label = '@opengithub-project-automation',
+            last_run_at = now(),
+            last_run_status = 'success',
+            last_run_message = 'Workflow configuration saved.',
+            updated_at = now()
+        WHERE project_id = $1 AND id = $2
+        "#,
+    )
+    .bind(project_id)
+    .bind(workflow_id)
+    .bind(request.enabled)
+    .bind(&configuration)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        r#"
+        UPDATE project_workflow_rules
+        SET configuration = $2, updated_at = now()
+        WHERE project_workflow_id = $1 AND rule_type = 'default_condition'
+        "#,
+    )
+    .bind(workflow_id)
+    .bind(json!({
+        "condition": configuration.get("condition").cloned().unwrap_or(Value::Null),
+        "target": configuration.get("target").cloned().unwrap_or(Value::Null),
+        "archiveAfterDays": configuration.get("archiveAfterDays").cloned().unwrap_or(Value::Null),
+        "closeOnStatus": configuration.get("closeOnStatus").cloned().unwrap_or(Value::Null),
+    }))
+    .execute(&mut *tx)
+    .await?;
+
+    if let Some(repository_ids) = request.repository_target_ids {
+        sqlx::query(
+            "DELETE FROM project_workflow_repository_targets WHERE project_workflow_id = $1",
+        )
+        .bind(workflow_id)
+        .execute(&mut *tx)
+        .await?;
+        for repository_id in repository_ids {
+            sqlx::query(
+                r#"
+                INSERT INTO project_workflow_repository_targets (project_workflow_id, repository_id)
+                VALUES ($1, $2)
+                ON CONFLICT DO NOTHING
+                "#,
+            )
+            .bind(workflow_id)
+            .bind(repository_id)
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO workflow_execution_logs
+          (project_id, project_workflow_id, actor_user_id, source, event_type, status, message, metadata)
+        VALUES ($1, $2, $3, 'ui', $4, 'success', 'Workflow configuration saved.', $5)
+        "#,
+    )
+    .bind(project_id)
+    .bind(workflow_id)
+    .bind(actor_user_id)
+    .bind(&trigger_event)
+    .bind(json!({
+        "workflowKey": workflow_key,
+        "enabled": request.enabled,
+        "configuration": configuration,
+    }))
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, 'project.workflow.update', 'project_workflow', $2, $3)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(workflow_id.to_string())
+    .bind(json!({
+        "projectId": project_id,
+        "workflowKey": workflow_key,
+        "enabled": request.enabled,
+    }))
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+    project_workflow_settings(pool, project_id, Some(actor_user_id)).await
 }
 
 pub async fn create_project_field_for_actor(
@@ -4463,6 +4722,38 @@ async fn project_workflow_repository_targets(
         }
     }
     Ok(targets)
+}
+
+async fn validate_project_workflow_status_target(
+    pool: &PgPool,
+    project_id: Uuid,
+    field_id: Uuid,
+    option_id: Uuid,
+) -> Result<(), ProjectsError> {
+    let valid = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT COUNT(*)
+        FROM project_fields
+        JOIN project_field_options
+          ON project_field_options.project_field_id = project_fields.id
+         AND project_field_options.id = $3
+        WHERE project_fields.project_id = $1
+          AND project_fields.id = $2
+          AND project_fields.deleted_at IS NULL
+          AND project_fields.field_type IN ('status', 'single_select')
+        "#,
+    )
+    .bind(project_id)
+    .bind(field_id)
+    .bind(option_id)
+    .fetch_one(pool)
+    .await?;
+    if valid == 0 {
+        return Err(ProjectsError::Validation(
+            "Workflow target must use an eligible status field and option.".to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 async fn project_workflow_execution_logs(

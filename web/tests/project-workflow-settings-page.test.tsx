@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectWorkflowSettingsPage } from "@/components/ProjectWorkflowSettingsPage";
 import type { ProjectWorkflowSettings } from "@/lib/api";
 
@@ -125,6 +125,10 @@ function settings(
 }
 
 describe("ProjectWorkflowSettingsPage", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("renders the organization workflow settings shell with concrete navigation", () => {
     render(
       <ProjectWorkflowSettingsPage
@@ -184,7 +188,7 @@ describe("ProjectWorkflowSettingsPage", () => {
     expect(screen.getByText("namuh/opengithub")).toBeInTheDocument();
   });
 
-  it("opens an edit panel without submitting fake mutations", () => {
+  it("opens an edit panel with persisted mutation controls", () => {
     render(
       <ProjectWorkflowSettingsPage
         owner="namuh"
@@ -199,13 +203,87 @@ describe("ProjectWorkflowSettingsPage", () => {
       screen.getByRole("heading", { name: "Auto-archive completed items" }),
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Event")).toHaveValue("Schedule");
+    expect(screen.getByRole("button", { name: "Save workflow" })).toBeEnabled();
     expect(
-      screen.getByRole("button", { name: "Save workflow" }),
-    ).toBeDisabled();
-    expect(
-      screen.getByText("Save is disabled until workflow mutations are added."),
+      screen.getByText(
+        "Saved workflows write an activity log and audit event before later phases execute item automation.",
+      ),
     ).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "#" })).not.toBeInTheDocument();
+  });
+
+  it("submits workflow configuration updates through the project proxy", async () => {
+    const updated = settings({
+      workflows: [
+        {
+          ...settings().workflows[0],
+          enabled: false,
+          configuration: {
+            condition: "state:closed label:ready",
+            target: { fieldId: "field-status", optionId: "option-done" },
+            archiveAfterDays: 30,
+            closeOnStatus: true,
+          },
+          repositoryTargetIds: ["repo-1"],
+          source: "ui",
+          lastRunMessage: "Workflow configuration saved.",
+        },
+      ],
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => updated,
+    } as Response);
+
+    render(
+      <ProjectWorkflowSettingsPage
+        owner="namuh"
+        scope="organization"
+        selectedWorkflowId="workflow-closed"
+        settings={settings()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Condition"), {
+      target: { value: "state:closed label:ready" },
+    });
+    fireEvent.change(screen.getByLabelText("Target field"), {
+      target: { value: "field-status" },
+    });
+    fireEvent.change(screen.getByLabelText("Target value"), {
+      target: { value: "option-done" },
+    });
+    fireEvent.change(screen.getByLabelText("Archive criteria"), {
+      target: { value: "30" },
+    });
+    fireEvent.click(
+      screen.getByLabelText(
+        "Close linked issue or pull request when status matches",
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Turn off" }));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/projects/project-1/workflows/workflow-closed",
+      expect.objectContaining({
+        method: "PATCH",
+        body: expect.any(String),
+      }),
+    );
+    const requestBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(requestBody).toMatchObject({
+      condition: "state:closed label:ready",
+      statusFieldId: "field-status",
+      statusOptionId: "option-done",
+      archiveAfterDays: 30,
+      closeOnStatus: true,
+      enabled: false,
+      repositoryTargetIds: ["repo-1"],
+      expectedUpdatedAt: "2026-05-06T10:15:00Z",
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Workflow configuration saved.",
+    );
   });
 
   it("disables turn-on controls for read-only viewers with explanatory copy", () => {

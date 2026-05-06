@@ -7213,5 +7213,22 @@
       "Probe read-only users, unauthenticated users, hidden private repository targets, missing Status/Done eligible fields, empty recent logs, very long workflow names/descriptions, mobile settings grid fit, and query-state opening for ?workflow=<id>.",
       "Phase 3 still owns real enable/disable and rule mutation persistence; Phase 4 item-state automation engine; Phase 5 Actions/GraphQL-style hooks; Phase 6 docs, final screenshots, QA handoff, and build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-006",
+    "tests_written": [
+      "Completed Phase 3 Workflow Configuration Mutations without marking projects-006 build_pass=true.",
+      "Added Rust PATCH /api/projects/{project_id}/workflows/{workflow_id} with project write checks, stale expectedUpdatedAt validation, eligible status field/option validation, repository target link and write-permission validation, condition bounds, archive criteria bounds, close-on-status persistence, workflow_execution_logs, and audit_events.",
+      "Added a same-origin Next proxy at /api/projects/{projectId}/workflows/{workflowId} plus typed ProjectWorkflowUpdateRequest/updateProjectWorkflowFromCookie helpers that preserve Rust API/session authority.",
+      "Wired ProjectWorkflowSettingsPage edit panels to real condition, target field/value, repository selector, archive criteria, close-on-status, Save, and Turn on/off submissions with pending, success, and error state.",
+      "Extended projects_workspace_contract coverage for workflow update persistence, source/log/audit evidence, read-only denial, and stale update rejection.",
+      "Extended ProjectWorkflowSettingsPage Vitest coverage for real mutation payloads and success feedback while preserving Editorial guardrails."
+    ],
+    "needs_deeper_qa": [
+      "Focused Rust DB assertions self-skipped because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test failed with password authentication failed for user postgres; rerun project_workflow_settings_seed_defaults_and_filter_targets against a clean migrated credentialed database.",
+      "make test-e2e was attempted with TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test and DB_SSL=false, but it produced no output for about one minute while Playwright/API/Next children were active and was terminated. Rerun a focused workflow edit smoke against a credentialed migrated database and save ralph/screenshots/build/projects-006-phase3-workflow-edit.jpg.",
+      "Probe concurrent saves/stale timestamps, invalid status field and option IDs, repository targets where the project is linked but the actor lacks repository write access, empty repository target selections, archiveAfterDays boundaries 1 and 365, long filter conditions, read-only users, and UI error copy.",
+      "Phase 4 still owns the item-state automation engine; Phase 5 Actions/GraphQL-style hooks; Phase 6 docs, final screenshots, QA handoff, and build_pass bookkeeping."
+    ]
   }
 ]

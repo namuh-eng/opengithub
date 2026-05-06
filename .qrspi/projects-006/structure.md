@@ -41,7 +41,7 @@
 
 ## Phase 3: Workflow Configuration Mutations - toggles and rule editors persist
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make workflow enable/disable, condition/filter edits, target status value selection, repository auto-add selectors, archive criteria, and close-on-status behavior real. Authorized users can save and turn on workflows; read-only viewers see disabled controls.
 

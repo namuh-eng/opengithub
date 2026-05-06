@@ -665,6 +665,17 @@ export type ProjectWorkflowSettingsFetchResult =
   | { ok: true; settings: ProjectWorkflowSettings }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type ProjectWorkflowUpdateRequest = {
+  enabled?: boolean;
+  condition?: string;
+  statusFieldId?: string | null;
+  statusOptionId?: string | null;
+  repositoryTargetIds?: string[];
+  archiveAfterDays?: number | null;
+  closeOnStatus?: boolean;
+  expectedUpdatedAt?: string | null;
+};
+
 export type ProjectFieldCreateRequest = {
   name: string;
   fieldType: "single_select" | "iteration" | "date" | "text" | "number";
@@ -7948,6 +7959,43 @@ export async function getProjectWorkflowSettingsFromCookie(
     ok: true,
     settings: (await response.json()) as ProjectWorkflowSettings,
   };
+}
+
+export async function updateProjectWorkflowFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  workflowId: string,
+  request: ProjectWorkflowUpdateRequest,
+): Promise<ProjectWorkflowSettings> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/projects/${encodeURIComponent(projectId)}/workflows/${encodeURIComponent(workflowId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Project workflow could not be saved.",
+      {
+        cause: {
+          error: envelope?.error ?? {
+            code: "project_workflow_update_failed",
+            message: "Project workflow could not be saved.",
+          },
+          status: envelope?.status ?? response.status,
+        } satisfies ApiErrorEnvelope,
+      },
+    );
+  }
+  return payload as ProjectWorkflowSettings;
 }
 
 async function getProjectWorkspaceByNumberFromCookie(
