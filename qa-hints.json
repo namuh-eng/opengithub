@@ -7163,5 +7163,20 @@
       "Probe stale archive/restore clicks, large archived lists with q/itemType/page filters, read-only archive/restore denials, restored item placement in table/board/roadmap views, remove versus archive semantics, linked issue/PR title/state/label sync races, audit_events, project_item_events ordering, and mobile side-panel/archive page scrolling.",
       "Phase 6 still owns API docs, final browser evidence, QA handoff, and projects-005 build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-005",
+    "tests_written": [
+      "Completed Phase 6 API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping and marked projects-005 build_pass=true.",
+      "Documented Projects item detail, archived item list, draft edit, project-only comments, conversion targets, draft convert-to-issue, archive, restore, and remove/link-sync side effects in /docs/api.",
+      "Added web/tests/e2e/projects-items-side-panel.spec.ts covering signed-in row/card panel open, draft title/body edit, project-only comment, convert-to-issue dialog, linked issue refresh, archive, archived list restore, remove confirmation, no dead controls, desktop/mobile screenshots, and bounded overflow when a credentialed seeded database is available.",
+      "Extended API docs Vitest assertions for all projects-005 item lifecycle endpoints and behavior notes."
+    ],
+    "needs_deeper_qa": [
+      "Rerun web/tests/e2e/projects-items-side-panel.spec.ts against a clean migrated credentialed TEST_DATABASE_URL to capture final screenshots if local Postgres on localhost:55432 is still rejecting the available postgres credentials.",
+      "Probe concurrent draft edits and comment edits, duplicate conversion submits, private repository conversion target filtering, invalid labels/assignees/milestones, stale archive/restore, large archived lists, linked issue and pull request sync races, notification fanout, audit rows, and project_item_events ordering.",
+      "Verify read-only, unauthenticated, and project-reader-without-private-repo-access viewers see disabled controls or not_found responses without source title leaks.",
+      "Manually inspect mobile side-panel and archive page scrolling with very long titles, body text, comments, labels, and field values."
+    ]
   }
 ]

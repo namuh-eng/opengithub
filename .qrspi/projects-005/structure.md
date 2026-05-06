@@ -91,7 +91,7 @@
 
 ## Phase 6: API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `projects-005` only after item detail reads, side-panel UI, draft editing/comments, draft conversion, archive/restore/remove, linked sync, docs, screenshots, and QA handoff are verified. Do not implement Projects workflow automation, insights charts, access settings, exports, GraphQL automation hooks, or GitHub visual styling as part of this feature.
 

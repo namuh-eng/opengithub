@@ -780,6 +780,218 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "projects-item-detail",
+    method: "GET",
+    path: "/api/projects/{project_id}/items/{item_id}",
+    title: "Read Project item detail",
+    description:
+      "Returns the side-panel contract for a draft, linked issue, or linked pull request Project item, including source metadata, draft body, comments, activity, field values, archive state, and viewer actions.",
+    auth: "Signed opengithub session cookie when required by project visibility; hidden linked repositories require repository read access",
+    response: `{
+  "project": { "id": "project_01", "number": 1, "title": "Release tracking" },
+  "item": {
+    "id": "item_01",
+    "itemType": "draft_issue",
+    "title": "Write upgrade notes",
+    "body": "Project-only planning notes.",
+    "href": "/orgs/acme-labs/projects/1/items/item_01",
+    "fieldValues": [{ "fieldId": "field_status", "displayValue": "Ready" }]
+  },
+  "source": null,
+  "draft": { "editable": true, "updatedAt": "2026-05-06T10:20:00Z" },
+  "comments": [{ "id": "comment_01", "body": "Keep project-only until conversion." }],
+  "activity": [{ "id": "event_01", "eventType": "draft_created" }],
+  "archive": { "archived": false, "archivedAt": null, "restoredAt": null },
+  "viewerPermissions": {
+    "canEdit": true,
+    "canComment": true,
+    "canConvert": true,
+    "canArchive": true,
+    "canRestore": false,
+    "canRemove": true
+  }
+}`,
+    notes: [
+      "Private linked issue and pull request details return not_found to project readers who cannot read the backing repository, without leaking the source title.",
+      "Draft comments and activity are project-only until conversion and do not create repository notifications.",
+      "The browser uses viewerPermissions to render real enabled controls or explicit disabled controls without placeholder actions.",
+    ],
+  },
+  {
+    id: "projects-archived-items",
+    method: "GET",
+    path: "/api/projects/{project_id}/items/archived?itemType=draft_issue&page=1&pageSize=30",
+    title: "List archived Project items",
+    description:
+      "Returns archived Project items for the archive page with filters, pagination, source summaries, archived actor metadata, and restore capability flags.",
+    auth: "Signed opengithub session cookie with project read access",
+    response: `{
+  "items": [
+    {
+      "item": { "id": "item_01", "itemType": "draft_issue", "title": "Write upgrade notes" },
+      "archivedAt": "2026-05-06T10:30:00Z",
+      "archivedBy": { "login": "mona" },
+      "source": null,
+      "viewerPermissions": { "canRestore": true, "canRemove": true }
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "pageSize": 30
+}`,
+    notes: [
+      "Archived list filters support draft_issue, issue, and pull_request item types while preserving private linked repository filtering.",
+      "Restored items are removed from the archived response and return to the end of the active project ordering.",
+      "The archive page uses this endpoint for desktop and mobile smoke coverage of restore controls.",
+    ],
+  },
+  {
+    id: "projects-draft-update",
+    method: "PATCH",
+    path: "/api/projects/{project_id}/items/{item_id}/draft",
+    title: "Update Project draft item",
+    description:
+      "Updates a project-only draft issue title and body from the item side panel without notifying repository subscribers.",
+    auth: "Signed opengithub session cookie with project write/admin access",
+    request: `{
+  "title": "Write upgrade notes",
+  "body": "Project-only planning notes.",
+  "expectedUpdatedAt": "2026-05-06T10:20:00Z"
+}`,
+    response: `{
+  "item": { "id": "item_01", "title": "Write upgrade notes", "body": "Project-only planning notes." },
+  "activity": [{ "eventType": "project.draft.update" }]
+}`,
+    notes: [
+      "Only draft items can be edited through this route; linked issues and pull requests return validation_failed and must be edited through their repository routes.",
+      "Archived items reject draft edits, stale expectedUpdatedAt values return conflict, and successful saves write project_item_events plus audit_events.",
+      "Mention text in draft bodies is not fanned out to repository notifications before conversion.",
+    ],
+  },
+  {
+    id: "projects-item-comments",
+    method: "POST",
+    path: "/api/projects/{project_id}/items/{item_id}/comments",
+    title: "Create Project item comment",
+    description:
+      "Adds a project-only side-panel comment. Existing comments use PATCH and DELETE on /api/projects/{project_id}/items/{item_id}/comments/{comment_id}.",
+    auth: "Signed opengithub session cookie with project write/admin access",
+    request: `{
+  "body": "Coordinate in the project before opening the issue.",
+  "expectedUpdatedAt": "2026-05-06T10:20:00Z"
+}`,
+    response: `{
+  "comments": [
+    { "id": "comment_02", "body": "Coordinate in the project before opening the issue." }
+  ],
+  "activity": [{ "eventType": "project.comment.create" }]
+}`,
+    notes: [
+      "PATCH comment writes preserve project-only scope; DELETE marks the comment deleted without removing linked repository content.",
+      "Comment create, update, and delete reject archived items and read-only viewers.",
+      "Project item comment mutations write project_item_events and audit_events but do not create repository timeline events.",
+    ],
+  },
+  {
+    id: "projects-conversion-targets",
+    method: "GET",
+    path: "/api/projects/{project_id}/conversion-targets",
+    title: "List Project draft conversion targets",
+    description:
+      "Returns repositories, labels, assignees, and milestones that the signed-in viewer can use when converting a draft Project item to an issue.",
+    auth: "Signed opengithub session cookie with project write access and backing repository write access",
+    response: `{
+  "repositories": [
+    {
+      "id": "repo_01",
+      "fullName": "acme-labs/platform",
+      "labels": [{ "id": "label_bug", "name": "bug" }],
+      "assignees": [{ "id": "user_01", "login": "mona" }],
+      "milestones": [{ "id": "milestone_01", "title": "May" }]
+    }
+  ]
+}`,
+    notes: [
+      "Private repositories are omitted unless the viewer can write issues in that repository.",
+      "The response is intentionally bounded to conversion metadata so the browser does not need a fake repository picker.",
+      "Empty repository arrays render a disabled conversion form with explanatory copy.",
+    ],
+  },
+  {
+    id: "projects-draft-convert",
+    method: "POST",
+    path: "/api/projects/{project_id}/items/{item_id}/convert-to-issue",
+    title: "Convert Project draft to issue",
+    description:
+      "Converts a draft Project item into a repository issue, retains project field values, and refreshes the item side panel as a normal linked issue.",
+    auth: "Signed opengithub session cookie with project write access and selected repository issue write access",
+    request: `{
+  "repositoryId": "repo_01",
+  "labelIds": ["label_bug"],
+  "assigneeUserIds": ["user_01"],
+  "milestoneId": "milestone_01",
+  "expectedUpdatedAt": "2026-05-06T10:20:00Z"
+}`,
+    response: `{
+  "item": {
+    "id": "item_01",
+    "itemType": "issue",
+    "number": 42,
+    "href": "/acme-labs/platform/issues/42"
+  },
+  "source": { "type": "issue", "number": 42, "repository": { "fullName": "acme-labs/platform" } }
+}`,
+    notes: [
+      "Conversion validates repository, label, assignee, and milestone ownership before allocating an issue number.",
+      "Duplicate submits are idempotent for already-converted items and return the linked issue state instead of creating another issue.",
+      "Successful conversion writes issue timeline events, project_item_events, audit_events, and assignee notifications.",
+    ],
+  },
+  {
+    id: "projects-item-archive",
+    method: "PATCH",
+    path: "/api/projects/{project_id}/items/{item_id}/archive",
+    title: "Archive Project item",
+    description:
+      "Archives an active Project item so it disappears from table, board, and roadmap views while preserving history and linked repository content.",
+    auth: "Signed opengithub session cookie with project write/admin access",
+    response: `{
+  "item": { "id": "item_01", "title": "Write upgrade notes" },
+  "archive": {
+    "archived": true,
+    "archivedAt": "2026-05-06T10:30:00Z",
+    "archivedBy": { "login": "mona" }
+  }
+}`,
+    notes: [
+      "Archiving a linked issue or pull request never closes, deletes, or mutates the backing repository resource.",
+      "Archived items reject active-view field edits, draft edits, comments, conversion, and second archive requests.",
+      "Successful archive writes project_item_events and audit_events and the active workspace read no longer returns the item.",
+    ],
+  },
+  {
+    id: "projects-item-restore",
+    method: "PATCH",
+    path: "/api/projects/{project_id}/items/{item_id}/restore",
+    title: "Restore Project item",
+    description:
+      "Restores an archived Project item to the active workspace ordering and records restored actor metadata.",
+    auth: "Signed opengithub session cookie with project write/admin access",
+    response: `{
+  "item": { "id": "item_01", "title": "Write upgrade notes" },
+  "archive": {
+    "archived": false,
+    "restoredAt": "2026-05-06T10:35:00Z",
+    "restoredBy": { "login": "mona" }
+  }
+}`,
+    notes: [
+      "Restore places the item at the end of active manual ordering so table, board, and roadmap views can show it consistently.",
+      "Restoring preserves archived actor history while clearing stale removed-state metadata.",
+      "Successful restore writes project_item_events and audit_events and removes the row from archived list responses.",
+    ],
+  },
+  {
     id: "projects-field-settings-read",
     method: "GET",
     path: "/api/projects/{project_id}/settings/fields",

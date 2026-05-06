@@ -223,7 +223,7 @@ describe("ApiDocsPage", () => {
       ),
     ).toBeVisible();
     expect(
-      screen.getByText("/api/projects/{project_id}/items/{item_id}"),
+      screen.getAllByText("/api/projects/{project_id}/items/{item_id}")[0],
     ).toBeVisible();
     expect(
       screen.getAllByText("/api/projects/{project_id}/settings/fields")[0],
@@ -300,6 +300,41 @@ describe("ApiDocsPage", () => {
     ).toBeVisible();
     expect(
       screen.getByText(/Removal archives the project item relationship/),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Read Project item detail" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/projects/{project_id}/items/archived?itemType=draft_issue&page=1&pageSize=30",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/projects/{project_id}/items/{item_id}/draft"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/projects/{project_id}/items/{item_id}/comments"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/projects/{project_id}/conversion-targets"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/projects/{project_id}/items/{item_id}/convert-to-issue",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/projects/{project_id}/items/{item_id}/archive"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/projects/{project_id}/items/{item_id}/restore"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Draft comments and activity are project-only/),
+    ).toBeVisible();
+    expect(screen.getByText(/Duplicate submits are idempotent/)).toBeVisible();
+    expect(
+      screen.getByText(/active workspace read no longer returns the item/),
     ).toBeVisible();
     expect(
       screen.getByText(/Built-in fields are returned with editable=false/),
