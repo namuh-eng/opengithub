@@ -68,7 +68,7 @@ The collaboration foundation already has repository-scoped `labels`, `issue_labe
 
 ## Phase 4: Discussion Labels and Cross-Surface Consistency - discussions use the same label system
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Extend the same label application behavior to discussion sidebars and verify label deletion/editing remains consistent across issues, pull requests, and discussions.
 

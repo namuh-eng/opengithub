@@ -3509,6 +3509,12 @@ pub async fn update_repository_discussion_metadata_by_owner_name(
                 "at most 25 labels can be assigned to a discussion".to_owned(),
             ));
         }
+        let existing_label_ids: Vec<Uuid> = sqlx::query_scalar(
+            "SELECT label_id FROM discussion_labels WHERE discussion_id = $1 ORDER BY label_id",
+        )
+        .bind(discussion_id)
+        .fetch_all(pool)
+        .await?;
         for label_id in &label_ids {
             let exists: bool = sqlx::query_scalar(
                 "SELECT EXISTS(SELECT 1 FROM labels WHERE id = $1 AND repository_id = $2)",
@@ -3525,7 +3531,7 @@ pub async fn update_repository_discussion_metadata_by_owner_name(
             .bind(discussion_id)
             .execute(pool)
             .await?;
-        for label_id in label_ids {
+        for label_id in &label_ids {
             sqlx::query(
                 "INSERT INTO discussion_labels (discussion_id, label_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
             )
@@ -3534,15 +3540,40 @@ pub async fn update_repository_discussion_metadata_by_owner_name(
             .execute(pool)
             .await?;
         }
+        let added_label_ids: Vec<Uuid> = label_ids
+            .iter()
+            .copied()
+            .filter(|label_id| !existing_label_ids.contains(label_id))
+            .collect();
+        let removed_label_ids: Vec<Uuid> = existing_label_ids
+            .iter()
+            .copied()
+            .filter(|label_id| !label_ids.contains(label_id))
+            .collect();
+        let metadata = json!({
+            "repositoryId": repository.id,
+            "labelIds": label_ids,
+            "addedLabelIds": added_label_ids,
+            "removedLabelIds": removed_label_ids,
+        });
         sqlx::query(
             r#"
             INSERT INTO discussion_activity_events (discussion_id, actor_user_id, event_type, payload)
-            VALUES ($1, $2, 'labels_changed', '{}'::jsonb)
+            VALUES ($1, $2, 'labels_changed', $3::jsonb)
             "#,
         )
         .bind(discussion_id)
         .bind(actor_user_id)
+        .bind(metadata.to_string())
         .execute(pool)
+        .await?;
+        record_discussion_moderation_audit(
+            pool,
+            actor_user_id,
+            discussion_id,
+            "repository.discussion.labels.update",
+            metadata,
+        )
         .await?;
     }
 

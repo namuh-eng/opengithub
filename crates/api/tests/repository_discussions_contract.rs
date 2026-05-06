@@ -657,6 +657,34 @@ async fn repository_discussion_moderation_supports_pin_lock_state_and_category_c
     .fetch_one(&pool)
     .await
     .expect("discussion should insert");
+    let needs_docs_label_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO labels (repository_id, name, color, description)
+        VALUES ($1, 'needs-docs', 'b46838', 'Needs documentation')
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("needs docs label should insert");
+    let imports_label_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO labels (repository_id, name, color, description)
+        VALUES ($1, 'imports', '8b5cf6', 'Import workflows')
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .fetch_one(&pool)
+    .await
+    .expect("imports label should insert");
+    sqlx::query("INSERT INTO discussion_labels (discussion_id, label_id) VALUES ($1, $2)")
+        .bind(discussion_id)
+        .bind(needs_docs_label_id)
+        .execute(&pool)
+        .await
+        .expect("initial discussion label should insert");
 
     let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
     let owner_login = owner.username.as_deref().expect("owner username");
@@ -775,6 +803,72 @@ async fn repository_discussion_moderation_supports_pin_lock_state_and_category_c
     .expect("discussion category should load");
     assert_eq!(moved_category_id, ideas_id);
 
+    let (labels_status, labels_body) = patch_json(
+        app.clone(),
+        &format!("{base}/metadata"),
+        Some(&moderator_cookie),
+        json!({ "labelIds": [imports_label_id] }),
+    )
+    .await;
+    assert_eq!(labels_status, StatusCode::OK, "{labels_body}");
+    assert_eq!(labels_body["labels"][0]["name"], "imports");
+    assert_eq!(labels_body["sidebar"]["labelOptions"][0]["name"], "imports");
+    let active_label_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM discussion_labels WHERE discussion_id = $1 AND label_id = $2",
+    )
+    .bind(discussion_id)
+    .bind(imports_label_id)
+    .fetch_one(&pool)
+    .await
+    .expect("active label should count");
+    assert_eq!(active_label_count, 1);
+    let removed_label_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM discussion_labels WHERE discussion_id = $1 AND label_id = $2",
+    )
+    .bind(discussion_id)
+    .bind(needs_docs_label_id)
+    .fetch_one(&pool)
+    .await
+    .expect("removed label should count");
+    assert_eq!(removed_label_count, 0);
+    let label_event_payload: Value = sqlx::query_scalar(
+        r#"
+        SELECT payload
+        FROM discussion_activity_events
+        WHERE discussion_id = $1 AND event_type = 'labels_changed'
+        ORDER BY created_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(discussion_id)
+    .fetch_one(&pool)
+    .await
+    .expect("label event should load");
+    assert_eq!(label_event_payload["labelIds"], json!([imports_label_id]));
+    assert_eq!(
+        label_event_payload["removedLabelIds"],
+        json!([needs_docs_label_id])
+    );
+    let label_audit_metadata: Value = sqlx::query_scalar(
+        r#"
+        SELECT metadata
+        FROM audit_events
+        WHERE actor_user_id = $1
+          AND target_type = 'repository_discussion'
+          AND event_type = 'repository.discussion.labels.update'
+        ORDER BY created_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(moderator.id)
+    .fetch_one(&pool)
+    .await
+    .expect("label audit should load");
+    assert_eq!(
+        label_audit_metadata["addedLabelIds"],
+        json!([imports_label_id])
+    );
+
     let (unpin_status, unpin_body) = delete_json(
         app.clone(),
         &format!("{base}/pin"),
@@ -802,6 +896,7 @@ async fn repository_discussion_moderation_supports_pin_lock_state_and_category_c
               'repository.discussion.lock',
               'repository.discussion.unlock',
               'repository.discussion.close',
+              'repository.discussion.labels.update',
               'repository.discussion.unpin'
           )
         "#,
@@ -810,20 +905,20 @@ async fn repository_discussion_moderation_supports_pin_lock_state_and_category_c
     .fetch_one(&pool)
     .await
     .expect("audit rows should count");
-    assert_eq!(audit_count, 5);
+    assert_eq!(audit_count, 6);
     let event_count: i64 = sqlx::query_scalar(
         r#"
         SELECT COUNT(*)::bigint
         FROM discussion_activity_events
         WHERE discussion_id = $1
-          AND event_type IN ('pinned', 'locked', 'unlocked', 'closed', 'category_changed', 'unpinned')
+          AND event_type IN ('pinned', 'locked', 'unlocked', 'closed', 'category_changed', 'labels_changed', 'unpinned')
         "#,
     )
     .bind(discussion_id)
     .fetch_one(&pool)
     .await
     .expect("activity rows should count");
-    assert_eq!(event_count, 6);
+    assert_eq!(event_count, 7);
     let notification_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*)::bigint FROM notifications WHERE subject_type = 'discussion' AND subject_id = $1",
     )

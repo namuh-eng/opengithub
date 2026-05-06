@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useState, useTransition } from "react";
+import { LabelPicker } from "@/components/LabelPicker";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { RepositoryShell } from "@/components/RepositoryShell";
 import type {
@@ -16,6 +17,7 @@ import type {
   DiscussionReplyView,
   DiscussionSubscriptionState,
   DiscussionTransferTargetsView,
+  IssueListLabel,
   RepositoryDiscussionDetailView,
   RepositoryOverview,
 } from "@/lib/api";
@@ -1139,6 +1141,8 @@ function RepositoryDiscussionManagementPanel({
 
 function Sidebar({
   detail,
+  owner,
+  repo,
   subscription,
   transferTargets,
   onSubscription,
@@ -1152,6 +1156,8 @@ function Sidebar({
   onDelete,
 }: {
   detail: RepositoryDiscussionDetailView;
+  owner: string;
+  repo: string;
   subscription: DiscussionSubscriptionState;
   transferTargets: DiscussionTransferTargetsView | null;
   onSubscription: (subscribed: boolean) => void;
@@ -1168,7 +1174,7 @@ function Sidebar({
   onDelete: (confirmation: string, reason?: string) => void;
 }) {
   const canModerate = detail.viewer.authenticated && detail.viewer.canModerate;
-  const selectedLabelIds = new Set(detail.labels.map((label) => label.id));
+  const [labelPickerOpen, setLabelPickerOpen] = useState(false);
   const compatibleCategories = pollCompatibleCategories(
     detail,
     detail.sidebar.categoryOptions,
@@ -1249,12 +1255,50 @@ function Sidebar({
       </section>
       <section className="card p-4">
         <h2 className="t-label">Labels</h2>
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <span className="t-xs">Classify this discussion.</span>
+          {canModerate ? (
+            <button
+              aria-expanded={labelPickerOpen}
+              className="btn sm"
+              onClick={() => setLabelPickerOpen((open) => !open)}
+              type="button"
+            >
+              Edit
+            </button>
+          ) : null}
+        </div>
+        {labelPickerOpen ? (
+          <LabelPicker
+            labels={detail.sidebar.labelOptions}
+            onCancel={() => setLabelPickerOpen(false)}
+            onSave={(labels: IssueListLabel[]) => {
+              setLabelPickerOpen(false);
+              onMetadata({ labelIds: labels.map((label) => label.id) });
+            }}
+            selectedLabels={detail.labels}
+            title="Discussion label picker"
+          />
+        ) : null}
         <div className="mt-3 flex flex-wrap gap-2">
           {detail.labels.length ? (
             detail.labels.map((label) => (
-              <span className="chip soft" key={label.id}>
+              <Link
+                className="chip soft"
+                href={repositoryDiscussionsHref(owner, repo, {
+                  label: label.name,
+                  page: 1,
+                })}
+                key={label.id}
+                title={label.description ?? label.name}
+              >
+                <span
+                  aria-hidden="true"
+                  className="inline-block h-2 w-2 rounded-full"
+                  style={{ background: label.color }}
+                />
                 {label.name}
-              </span>
+              </Link>
             ))
           ) : (
             <span className="t-sm" style={{ color: "var(--ink-3)" }}>
@@ -1262,25 +1306,6 @@ function Sidebar({
             </span>
           )}
         </div>
-        {canModerate && detail.sidebar.labelOptions.length ? (
-          <div className="mt-3 grid gap-2">
-            {detail.sidebar.labelOptions.map((label) => (
-              <label className="flex items-center gap-2 t-sm" key={label.id}>
-                <input
-                  checked={selectedLabelIds.has(label.id)}
-                  onChange={() => {
-                    const next = new Set(selectedLabelIds);
-                    if (next.has(label.id)) next.delete(label.id);
-                    else next.add(label.id);
-                    onMetadata({ labelIds: [...next] });
-                  }}
-                  type="checkbox"
-                />
-                {label.name}
-              </label>
-            ))}
-          </div>
-        ) : null}
       </section>
       <section className="card p-4">
         <h2 className="t-label">Participants</h2>
@@ -1708,6 +1733,8 @@ export function RepositoryDiscussionDetailPage({
       </main>
       <Sidebar
         detail={currentDetail}
+        owner={owner}
+        repo={repo}
         onMetadata={updateMetadata}
         onDelete={deleteDiscussion}
         onLoadTransferTargets={loadTransferTargets}

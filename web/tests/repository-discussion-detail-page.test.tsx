@@ -322,6 +322,61 @@ describe("RepositoryDiscussionDetailPage", () => {
     expect(within(sidebar).getByText("Subscribed")).toBeVisible();
     expect(within(sidebar).getByText("Q&A")).toBeVisible();
     expect(within(sidebar).getAllByText("api").length).toBeGreaterThan(0);
+    expect(within(sidebar).getByRole("link", { name: /api/ })).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/discussions?label=api",
+    );
+  });
+
+  it("uses the shared picker to update discussion labels", async () => {
+    const updated = discussionDetail({
+      labels: [
+        ...discussionDetail().labels,
+        {
+          id: "label-2",
+          name: "imports",
+          color: "var(--accent)",
+          description: "Import workflows",
+          count: 1,
+        },
+      ],
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue(updated),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryDiscussionDetailPage
+        detail={discussionDetail()}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(
+      screen.getByRole("dialog", { name: "Discussion label picker" }),
+    ).toBeVisible();
+    fireEvent.change(screen.getByLabelText("Search labels"), {
+      target: { value: "imports" },
+    });
+    fireEvent.click(screen.getByLabelText(/imports/));
+    fireEvent.click(screen.getByRole("button", { name: "Save labels" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/namuh-eng/opengithub/discussions/42/metadata",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ labelIds: ["label-1", "label-2"] }),
+        }),
+      ),
+    );
+    expect(
+      await screen.findByText("Discussion metadata updated."),
+    ).toBeVisible();
+    expect(screen.getAllByText("imports").length).toBeGreaterThan(0);
   });
 
   it("submits poll votes and refreshes result bars", async () => {
@@ -503,7 +558,18 @@ describe("RepositoryDiscussionDetailPage", () => {
     expect(
       screen.getByRole("combobox", { name: "Moderation category" }),
     ).toBeVisible();
-    expect(screen.getByLabelText("imports")).toBeVisible();
+    const labelsSection = screen
+      .getByRole("heading", { name: "Labels" })
+      .closest("section");
+    expect(labelsSection).not.toBeNull();
+    fireEvent.click(
+      within(labelsSection as HTMLElement).getByRole("button", {
+        name: "Edit",
+      }),
+    );
+    expect(
+      within(labelsSection as HTMLElement).getByText("imports"),
+    ).toBeVisible();
   });
 
   it("submits pin, lock, close, and category moderation payloads", async () => {

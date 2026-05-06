@@ -7776,5 +7776,23 @@
       "Probe real Rust-backed issue and PR sidebars with multiple labels, empty-label saves, rapid Save/Cancel toggles, stale label deletion during picker use, cross-repository label IDs, reader/triage/write permission boundaries, notification fanout, timeline ordering, and mobile keyboard-only picker traversal.",
       "Phases 4-5 still own discussion label consistency, delete/edit propagation across all conversation surfaces, docs, signed-in E2E coverage, final QA handoff consolidation, and labels-001 build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "labels-001",
+    "tests_written": [
+      "Completed Phase 4 Discussion Labels and Cross-Surface Consistency without marking labels-001 build_pass=true.",
+      "Extended discussion metadata updates to compute added/removed label IDs, persist labels_changed discussion activity payloads, and write repository.discussion.labels.update audit rows while preserving repository label ownership validation.",
+      "Reused the shared Editorial LabelPicker in the discussion detail sidebar so discussion label edits now search, batch-select, cancel, and save through the existing thin metadata proxy instead of immediate checkbox mutations.",
+      "Converted discussion detail and list label chips into concrete discussion-filter links with color swatches, so label filtering is consistent with the discussion label filter menu.",
+      "Extended repository_discussions_contract to assert discussion label replace behavior, removed-label cascade from the join table, labels_changed payload metadata, and audit metadata when TEST_DATABASE_URL is healthy.",
+      "Extended focused Vitest coverage for discussion label picker payloads, label-filter hrefs, list chip updates, existing discussion detail moderation controls, no placeholder links, and Editorial guardrails.",
+      "Verification passed: cargo fmt --all --check, cargo check -p opengithub-api --tests, web TypeScript, focused Biome, focused repository discussion/detail Vitest with 18 tests, full make check, full make test with Cargo tests plus 611 web tests, and mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Run repository_discussions_contract and the discussion label browser flow against a clean migrated credentialed TEST_DATABASE_URL; local localhost:55432 still rejects the configured postgres credentials, so the DB-backed focused Rust scenario self-skipped and direct Playwright discussion smoke failed at dashboard_e2e_seed.",
+      "Probe real Rust-backed discussion sidebars with multiple labels, empty-label saves, rapid Save/Cancel toggles, stale label deletion during picker use, cross-repository label IDs, reader/triage/write permission boundaries, notification fanout, activity ordering, and keyboard-only picker traversal.",
+      "Probe cross-surface edit/delete propagation by renaming and deleting labels from /labels, then checking issue, pull request, and discussion chips/filter links update without deleting conversations.",
+      "Phase 5 still owns API docs, signed-in E2E coverage, final desktop/mobile screenshots, QA handoff consolidation, and labels-001 build_pass bookkeeping."
+    ]
   }
 ]

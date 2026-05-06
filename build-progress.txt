@@ -1,3 +1,14 @@
+2026-05-06 - labels-001 phase 4 discussion labels and cross-surface consistency
+
+- Completed Phase 4 from `.qrspi/labels-001/structure.md`: discussion sidebars now use the shared Editorial `LabelPicker`, discussion list/detail label chips link to concrete label-filtered discussion queries, and Rust discussion label metadata writes now persist added/removed label IDs in activity/audit evidence without marking `labels-001.build_pass=true`; Phase 5 remains.
+- Updated `update_repository_discussion_metadata_by_owner_name` to snapshot existing `discussion_labels`, validate requested labels still belong to the repository, replace join rows, emit `labels_changed` payloads with `labelIds`, `addedLabelIds`, and `removedLabelIds`, and write `repository.discussion.labels.update` audit rows.
+- Extended `RepositoryDiscussionDetailPage` and `RepositoryDiscussionsPage` so discussion labels match the issue/PR label picker pattern, include swatches, preserve no-dead-control behavior, and route label chips to `/discussions?label=...`.
+- Extended focused Rust and Vitest coverage for discussion label replacement, join-row removal, activity/audit metadata, picker search/select/save payloads, label-filter links, list chip rendering, and existing moderation controls.
+- Verification passed: `cargo fmt --all --check`; `cargo check -p opengithub-api --tests`; `cd web && npx tsc --noEmit --pretty false`; focused Biome; focused `repository-discussion-detail-page` and `repository-discussions-page` Vitest with 18 tests; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 611 web tests; mandatory Editorial banned-value scan returned zero matches.
+- Focused DB-backed `repository_discussions_contract` compiled and ran, but local Postgres rejected `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test` with password authentication failed for user `postgres`, so DB assertions self-skipped under the existing guard.
+- Direct Playwright discussion smoke was attempted with the signed-session/test DB environment and failed in `dashboard_e2e_seed` for the same local Postgres credential error before browser interaction; no Phase 4 screenshot was saved. Re-run browser smoke once a credentialed migrated test DB is available.
+- `prd.json` remains `build_pass:false` because Phase 5 docs/E2E/final QA/build-pass bookkeeping remains. Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-06 - wiki-003 phase 3 two-revision compare
 
 - Completed Phase 3 from `.qrspi/wiki-003/structure.md`: wiki history selections now navigate to a real Editorial compare page with structured Markdown diffs without marking `wiki-003.build_pass=true`; Phases 4-5 remain.

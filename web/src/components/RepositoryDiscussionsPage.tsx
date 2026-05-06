@@ -139,13 +139,23 @@ function DiscussionRowItem({
           <PollSummaryChip discussion={discussion} />
           <CategoryChip category={discussion.category} />
           {discussion.labels.map((label) => (
-            <span
+            <Link
               className="chip soft"
+              href={repositoryDiscussionsHref(owner, repo, {
+                ...discussions.filters,
+                label: label.name,
+                page: 1,
+              })}
               key={label.id}
               title={label.description ?? label.name}
             >
+              <span
+                aria-hidden="true"
+                className="inline-block h-2 w-2 rounded-full"
+                style={{ background: label.color }}
+              />
               {label.name}
-            </span>
+            </Link>
           ))}
         </div>
         <Link
