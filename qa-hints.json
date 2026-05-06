@@ -8047,5 +8047,23 @@
       "Probe real proxy headers in ECS/ALB/CloudFront so x-forwarded-for parsing records the client address rather than internal hops.",
       "Check mobile and keyboard-only behavior with many sessions, very long user agents, IPv6 addresses, expired sessions, revoked sessions, and attempts to revoke another user's session."
     ]
+  },
+  {
+    "feature_id": "security-003",
+    "tests_written": [
+      "Added Rust owner-only GET /api/settings/security-log with action filtering, 50-row pagination, immutable security_audit_events reads, and redacted IP/user-agent metadata mapping.",
+      "Added Rust GET /api/settings/security-log/export for CSV and JSON server-side downloads with Content-Disposition attachment headers that preserve the action filter.",
+      "Added the Editorial /settings/security-log page with settings navigation, action filter select, timestamp/action/IP/location/user-agent table, pagination controls, and CSV/JSON export links.",
+      "Added same-origin Next export proxy plus typed API/server-session helpers and /docs/api endpoint documentation.",
+      "Added focused Rust contract coverage for list/filter/export ownership boundaries and focused Vitest coverage for table rendering, filtered export links, pagination links, and no GitHub visual regressions.",
+      "Browser smoke passed on /settings/security-log against an API-compatible stub: filtered by session.revoke, verified CSV/JSON export links preserve the filter, verified attachment export response, checked zero dead links, checked no horizontal overflow, and saved ralph/screenshots/build/security-003-security-log.jpg.",
+      "Verification passed: cargo fmt --all --check, cargo check -p opengithub-api --tests, focused Rust account security contract, focused Vitest plus api-docs tests, web TypeScript, focused Biome, Next production build, full make check, full make test with Cargo tests plus 636 web tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Run full signed-session Playwright after the local TEST_DATABASE_URL path is healthy; bounded timeout 120 make test-e2e terminated with no Playwright detail in this pass.",
+      "Run the DB-backed account security log assertions against a credentialed migrated Postgres to verify real security_audit_events filtering/export rows beyond the guarded self-skip path.",
+      "Verify real production proxy headers so IP metadata from future sign-in/sign-out writers records the expected client address.",
+      "Probe many-event pagination, long user-agent truncation, IPv6 addresses, empty logs, unknown future action types, and export behavior while filtered on every supported action."
+    ]
   }
 ]

@@ -163,6 +163,43 @@ export type AccountSessionsFetchResult =
   | { ok: true; sessions: AccountSessions }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type AccountSecurityLogEvent = {
+  id: string;
+  action: string;
+  location: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+};
+
+export type AccountSecurityLog = {
+  events: AccountSecurityLogEvent[];
+  actions: string[];
+  filters: {
+    action: string | null;
+    page: number;
+    pageSize: number;
+  };
+  pagination: {
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+    hasPrevious: boolean;
+    hasNext: boolean;
+  };
+};
+
+export type AccountSecurityLogFetchResult =
+  | { ok: true; log: AccountSecurityLog }
+  | { ok: false; status: number; code: string | null; message: string };
+
+export type AccountSecurityLogQuery = {
+  action?: string | null;
+  page?: number | null;
+};
+
 export type ProjectListScopeSummary = {
   kind: "user" | "organization" | "repository" | string;
   login: string;
@@ -10645,6 +10682,57 @@ export async function getAccountSessionsFromCookie(
   return {
     ok: true,
     sessions: (await response.json()) as AccountSessions,
+  };
+}
+
+export async function getAccountSecurityLogFromCookie(
+  cookie: string | null | undefined,
+  query: AccountSecurityLogQuery = {},
+): Promise<AccountSecurityLogFetchResult> {
+  const params = new URLSearchParams();
+  if (query.action?.trim()) {
+    params.set("action", query.action.trim());
+  }
+  if (query.page && query.page > 1) {
+    params.set("page", String(query.page));
+  }
+  params.set("pageSize", "50");
+  const suffix = params.toString();
+
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/settings/security-log${suffix ? `?${suffix}` : ""}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Security log is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Security log is unavailable right now.";
+    try {
+      const body = (await response.json()) as ApiErrorEnvelope;
+      code = body.error.code ?? null;
+      message = body.error.message ?? message;
+    } catch {
+      // keep fallback
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    log: (await response.json()) as AccountSecurityLog,
   };
 }
 

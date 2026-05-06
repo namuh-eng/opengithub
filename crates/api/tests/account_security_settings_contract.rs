@@ -168,6 +168,94 @@ async fn active_sessions_list_revoke_and_sign_out_everywhere() {
     assert!(!audit_text.contains("test-session-secret"));
 }
 
+#[tokio::test]
+async fn security_log_lists_filters_and_exports_owner_events() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping account security log scenario; set TEST_DATABASE_URL");
+        return;
+    };
+    let config = app_config();
+    let user = create_user(&pool, "security-log-owner").await;
+    let other_user = create_user(&pool, "security-log-other").await;
+    let (_, cookie) = cookie_header(&pool, &config, &user).await;
+    sqlx::query(
+        r#"
+        INSERT INTO security_audit_events (actor_user_id, event_type, target_type, metadata, created_at)
+        VALUES
+          ($1, 'session.revoke', 'session', '{"ipAddress":"127.0.0.1","userAgent":"Chrome smoke"}'::jsonb, now() - interval '2 minutes'),
+          ($1, 'sign_in_method.unlink', 'oauth_account', '{"ipAddress":"10.1.2.3","userAgent":"Safari smoke"}'::jsonb, now() - interval '1 minute'),
+          ($2, 'session.revoke', 'session', '{"ipAddress":"203.0.113.10","userAgent":"Other account"}'::jsonb, now())
+        "#,
+    )
+    .bind(user.id)
+    .bind(other_user.id)
+    .execute(&pool)
+    .await
+    .expect("security events should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool), config);
+    let (status, _, body) = send_json(
+        app.clone(),
+        Method::GET,
+        "/api/settings/security-log?pageSize=50",
+        Some(&cookie),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["pagination"]["total"], 2);
+    assert_eq!(body["events"][0]["action"], "sign_in_method.unlink");
+    assert_eq!(body["events"][0]["location"], "Private network");
+    assert!(!body.to_string().contains("Other account"));
+    assert!(body["actions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|value| value == "session.revoke"));
+
+    let (status, _, filtered) = send_json(
+        app.clone(),
+        Method::GET,
+        "/api/settings/security-log?action=session.revoke",
+        Some(&cookie),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(filtered["pagination"]["total"], 1);
+    assert_eq!(filtered["events"][0]["action"], "session.revoke");
+
+    let (status, headers, csv) = send_text(
+        app.clone(),
+        Method::GET,
+        "/api/settings/security-log/export?format=csv&action=session.revoke",
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(headers
+        .get(header::CONTENT_DISPOSITION)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.contains("attachment")));
+    assert!(csv.starts_with("timestamp,action,ip,location,user_agent"));
+    assert!(csv.contains("session.revoke"));
+    assert!(!csv.contains("Other account"));
+
+    let (status, headers, json_export) = send_text(
+        app,
+        Method::GET,
+        "/api/settings/security-log/export?format=json",
+        Some(&cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("application/json")));
+    assert!(json_export.contains("sign_in_method.unlink"));
+}
+
 fn app_config() -> AppConfig {
     AppConfig {
         app_url: Url::parse("http://localhost:3015").expect("app URL"),
@@ -255,6 +343,29 @@ async fn send_json(
         .expect("body should read");
     let value = serde_json::from_slice(&bytes).expect("response should be JSON");
     (status, headers, value)
+}
+
+async fn send_text(
+    app: axum::Router,
+    method: Method,
+    uri: &str,
+    cookie: Option<&str>,
+) -> (StatusCode, HeaderMap, String) {
+    let mut builder = Request::builder().method(method).uri(uri);
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(builder.body(Body::empty()).expect("request should build"))
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let headers = response.headers().clone();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let text = String::from_utf8(bytes.to_vec()).expect("response should be UTF-8");
+    (status, headers, text)
 }
 
 #[tokio::test]

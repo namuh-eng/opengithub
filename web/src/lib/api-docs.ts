@@ -1991,6 +1991,49 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "account-security-log",
+    method: "GET",
+    path: "/api/settings/security-log?action=session.revoke&page=1&pageSize=50",
+    title: "Read account security log",
+    description:
+      "Returns the signed-in user's immutable security events with action filtering and 50-row pagination.",
+    auth: "Signed opengithub session cookie",
+    response: `{
+  "events": [
+    {
+      "id": "event_01",
+      "action": "session.revoke",
+      "ipAddress": "127.0.0.1",
+      "location": "Localhost",
+      "userAgent": "Chrome on macOS",
+      "createdAt": "2026-05-07T01:10:00Z"
+    }
+  ],
+  "actions": ["session.revoke", "sign_in_method.unlink"],
+  "pagination": { "total": 1, "page": 1, "pageSize": 50 }
+}`,
+    notes: [
+      "Only rows whose actor_user_id matches the current account are returned.",
+      "Rows are append-only in security_audit_events; this endpoint exposes read and export surfaces only.",
+      "Metadata is redacted by event writers; session secrets and OAuth provider subjects are not returned.",
+    ],
+  },
+  {
+    id: "account-security-log-export",
+    method: "GET",
+    path: "/api/settings/security-log/export?format=csv&action=session.revoke",
+    title: "Export account security log",
+    description:
+      "Streams the filtered security log as CSV or JSON with a download filename header.",
+    auth: "Signed opengithub session cookie",
+    response: "timestamp,action,ip,location,user_agent\\n...",
+    notes: [
+      "JSON exports return application/json; CSV exports return text/csv.",
+      "The action filter is preserved so exports match the visible table.",
+      "The export is generated server-side rather than as a browser data URL.",
+    ],
+  },
+  {
     id: "personal-access-token-create",
     method: "POST",
     path: "/api/settings/tokens",

@@ -13,11 +13,12 @@ use crate::{
     auth::{self, extractor::AuthenticatedUser, session},
     domain::{
         account_security::{
-            account_security_settings, create_account_security_sudo_grant,
-            require_account_security_sudo, revoke_account_session, sign_out_everywhere,
-            unlink_sign_in_method, update_current_session_metadata, AccountSecurityError,
-            AccountSecuritySettings, AccountSessions, RevokeAccountSessionResponse,
-            SignOutEverywhereResponse, UnlinkSignInMethodResponse,
+            account_security_log, account_security_log_export, account_security_settings,
+            create_account_security_sudo_grant, require_account_security_sudo,
+            revoke_account_session, sign_out_everywhere, unlink_sign_in_method,
+            update_current_session_metadata, AccountSecurityError, AccountSecurityLog,
+            AccountSecurityLogQuery, AccountSecuritySettings, AccountSessions,
+            RevokeAccountSessionResponse, SignOutEverywhereResponse, UnlinkSignInMethodResponse,
         },
         tokens::CreateSudoGrantRequest,
     },
@@ -27,6 +28,11 @@ use crate::{
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/settings/security", get(settings))
+        .route("/api/settings/security-log", get(security_log))
+        .route(
+            "/api/settings/security-log/export",
+            get(export_security_log),
+        )
         .route("/api/settings/security/sessions", get(sessions))
         .route(
             "/api/settings/security/sessions/sign-out-everywhere",
@@ -42,6 +48,73 @@ pub fn router() -> Router<AppState> {
             delete(unlink_method),
         )
         .route("/api/settings/security/google/link", get(link_google))
+}
+
+#[derive(Debug, Deserialize)]
+struct SecurityLogQuery {
+    action: Option<String>,
+    page: Option<i64>,
+    #[serde(rename = "pageSize")]
+    page_size: Option<i64>,
+}
+
+async fn security_log(
+    State(state): State<AppState>,
+    Query(query): Query<SecurityLogQuery>,
+    headers: HeaderMap,
+) -> Result<Json<AccountSecurityLog>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let response = account_security_log(
+        pool,
+        actor.id,
+        AccountSecurityLogQuery::normalized(query.action, query.page, query.page_size),
+    )
+    .await
+    .map_err(map_account_security_error)?;
+    Ok(Json(response))
+}
+
+#[derive(Debug, Deserialize)]
+struct SecurityLogExportQuery {
+    action: Option<String>,
+    format: Option<String>,
+}
+
+async fn export_security_log(
+    State(state): State<AppState>,
+    Query(query): Query<SecurityLogExportQuery>,
+    headers: HeaderMap,
+) -> Result<Response, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let format = query
+        .format
+        .as_deref()
+        .unwrap_or("csv")
+        .trim()
+        .to_ascii_lowercase();
+    let (body, content_type, filename) =
+        account_security_log_export(pool, actor.id, query.action, &format)
+            .await
+            .map_err(map_account_security_error)?;
+    let mut response = Response::new(axum::body::Body::from(body));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_str(&content_type)
+            .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
+    );
+    response.headers_mut().insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_str(&format!("attachment; filename=\"{filename}\"")).map_err(|_| {
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "security_log_export_failed",
+                "Security log export could not be prepared",
+            )
+        })?,
+    );
+    Ok(response)
 }
 
 async fn sessions(

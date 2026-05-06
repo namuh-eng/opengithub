@@ -1,11 +1,14 @@
 import { headers } from "next/headers";
 import {
+  type AccountSecurityLogFetchResult,
+  type AccountSecurityLogQuery,
   type AccountSecuritySettingsFetchResult,
   type AccountSessionsFetchResult,
   type CodeSearchQuery,
   type CollaborationSearchQuery,
   type DashboardSummaryQuery,
   type GlobalSearchQuery,
+  getAccountSecurityLogFromCookie,
   getAccountSecuritySettingsFromCookie,
   getAccountSessionsFromCookie,
   getAppShellContextFromCookie,
@@ -219,6 +222,13 @@ export async function getAccountSecuritySettings(): Promise<AccountSecuritySetti
 export async function getAccountSessions(): Promise<AccountSessionsFetchResult> {
   const requestHeaders = await headers();
   return getAccountSessionsFromCookie(requestHeaders.get("cookie"));
+}
+
+export async function getAccountSecurityLog(
+  query: AccountSecurityLogQuery = {},
+): Promise<AccountSecurityLogFetchResult> {
+  const requestHeaders = await headers();
+  return getAccountSecurityLogFromCookie(requestHeaders.get("cookie"), query);
 }
 
 export async function getPersonalProfileSettings() {

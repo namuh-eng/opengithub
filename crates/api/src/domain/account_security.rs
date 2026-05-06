@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use serde_json::Value;
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
@@ -104,6 +105,70 @@ pub struct SignOutEverywhereResponse {
     #[serde(rename = "revokedCount")]
     pub revoked_count: i64,
     pub sessions: AccountSessions,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AccountSecurityLog {
+    pub events: Vec<AccountSecurityLogEvent>,
+    pub actions: Vec<String>,
+    pub filters: AccountSecurityLogFilters,
+    pub pagination: AccountSecurityLogPagination,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AccountSecurityLogEvent {
+    pub id: Uuid,
+    pub action: String,
+    pub location: String,
+    #[serde(rename = "ipAddress")]
+    pub ip_address: Option<String>,
+    #[serde(rename = "userAgent")]
+    pub user_agent: Option<String>,
+    pub metadata: Value,
+    #[serde(rename = "createdAt")]
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AccountSecurityLogFilters {
+    pub action: Option<String>,
+    pub page: i64,
+    #[serde(rename = "pageSize")]
+    pub page_size: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AccountSecurityLogPagination {
+    pub total: i64,
+    pub page: i64,
+    #[serde(rename = "pageSize")]
+    pub page_size: i64,
+    #[serde(rename = "totalPages")]
+    pub total_pages: i64,
+    #[serde(rename = "hasPrevious")]
+    pub has_previous: bool,
+    #[serde(rename = "hasNext")]
+    pub has_next: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AccountSecurityLogQuery {
+    pub action: Option<String>,
+    pub page: i64,
+    pub page_size: i64,
+}
+
+impl AccountSecurityLogQuery {
+    pub fn normalized(action: Option<String>, page: Option<i64>, page_size: Option<i64>) -> Self {
+        let action = action
+            .map(|value| value.trim().to_owned())
+            .filter(|value| !value.is_empty() && value != "all");
+        Self {
+            action,
+            page: page.unwrap_or(1).clamp(1, 10_000),
+            page_size: page_size.unwrap_or(50).clamp(1, 50),
+        }
+    }
 }
 
 pub async fn account_security_settings(
@@ -233,6 +298,123 @@ pub async fn account_sessions(
         sessions,
         current_session_id: current_session_id.to_owned(),
     })
+}
+
+pub async fn account_security_log(
+    pool: &PgPool,
+    user_id: Uuid,
+    query: AccountSecurityLogQuery,
+) -> Result<AccountSecurityLog, AccountSecurityError> {
+    let actions: Vec<String> = sqlx::query_scalar(
+        r#"
+        SELECT DISTINCT event_type
+        FROM security_audit_events
+        WHERE actor_user_id = $1
+        ORDER BY event_type ASC
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await?;
+
+    let total: i64 = sqlx::query_scalar(
+        r#"
+        SELECT count(*)
+        FROM security_audit_events
+        WHERE actor_user_id = $1
+          AND ($2::text IS NULL OR event_type = $2)
+        "#,
+    )
+    .bind(user_id)
+    .bind(query.action.as_deref())
+    .fetch_one(pool)
+    .await?;
+
+    let offset = (query.page - 1) * query.page_size;
+    let rows = sqlx::query(
+        r#"
+        SELECT id, event_type, metadata, created_at,
+               metadata->>'ipAddress' AS metadata_ip,
+               metadata->>'userAgent' AS metadata_user_agent
+        FROM security_audit_events
+        WHERE actor_user_id = $1
+          AND ($2::text IS NULL OR event_type = $2)
+        ORDER BY created_at DESC, id DESC
+        LIMIT $3 OFFSET $4
+        "#,
+    )
+    .bind(user_id)
+    .bind(query.action.as_deref())
+    .bind(query.page_size)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+
+    let events = rows.into_iter().map(security_log_event_from_row).collect();
+    let total_pages = if total == 0 {
+        1
+    } else {
+        (total + query.page_size - 1) / query.page_size
+    };
+
+    Ok(AccountSecurityLog {
+        events,
+        actions,
+        filters: AccountSecurityLogFilters {
+            action: query.action,
+            page: query.page,
+            page_size: query.page_size,
+        },
+        pagination: AccountSecurityLogPagination {
+            total,
+            page: query.page,
+            page_size: query.page_size,
+            total_pages,
+            has_previous: query.page > 1,
+            has_next: query.page < total_pages,
+        },
+    })
+}
+
+pub async fn account_security_log_export(
+    pool: &PgPool,
+    user_id: Uuid,
+    action: Option<String>,
+    format: &str,
+) -> Result<(String, String, String), AccountSecurityError> {
+    let query = AccountSecurityLogQuery::normalized(action, Some(1), Some(50));
+    let rows = sqlx::query(
+        r#"
+        SELECT id, event_type, metadata, created_at,
+               metadata->>'ipAddress' AS metadata_ip,
+               metadata->>'userAgent' AS metadata_user_agent
+        FROM security_audit_events
+        WHERE actor_user_id = $1
+          AND ($2::text IS NULL OR event_type = $2)
+        ORDER BY created_at DESC, id DESC
+        "#,
+    )
+    .bind(user_id)
+    .bind(query.action.as_deref())
+    .fetch_all(pool)
+    .await?;
+    let events = rows
+        .into_iter()
+        .map(security_log_event_from_row)
+        .collect::<Vec<_>>();
+
+    match format {
+        "json" => Ok((
+            serde_json::to_string_pretty(&events).unwrap_or_else(|_| "[]".to_owned()),
+            "application/json; charset=utf-8".to_owned(),
+            "opengithub-security-log.json".to_owned(),
+        )),
+        _ => Ok((
+            security_events_to_csv(&events),
+            "text/csv; charset=utf-8".to_owned(),
+            "opengithub-security-log.csv".to_owned(),
+        )),
+    }
 }
 
 pub async fn revoke_account_session(
@@ -475,6 +657,62 @@ async fn record_session_audit(
     .execute(pool)
     .await?;
     Ok(())
+}
+
+fn security_log_event_from_row(row: sqlx::postgres::PgRow) -> AccountSecurityLogEvent {
+    let metadata: Value = row.get("metadata");
+    let ip_address = row.get::<Option<String>, _>("metadata_ip").or_else(|| {
+        metadata
+            .get("ipAddress")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+    });
+    let user_agent = row
+        .get::<Option<String>, _>("metadata_user_agent")
+        .or_else(|| {
+            metadata
+                .get("userAgent")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+        });
+    AccountSecurityLogEvent {
+        id: row.get("id"),
+        action: row.get("event_type"),
+        location: location_label(ip_address.as_deref()),
+        ip_address,
+        user_agent,
+        metadata,
+        created_at: row.get("created_at"),
+    }
+}
+
+fn security_events_to_csv(events: &[AccountSecurityLogEvent]) -> String {
+    let mut csv = String::from("timestamp,action,ip,location,user_agent\n");
+    for event in events {
+        let row = [
+            event.created_at.to_rfc3339(),
+            event.action.clone(),
+            event.ip_address.clone().unwrap_or_default(),
+            event.location.clone(),
+            event.user_agent.clone().unwrap_or_default(),
+        ];
+        csv.push_str(
+            &row.into_iter()
+                .map(csv_escape)
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+        csv.push('\n');
+    }
+    csv
+}
+
+fn csv_escape(value: String) -> String {
+    if value.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value
+    }
 }
 
 fn map_sudo_error(error: crate::domain::tokens::PersonalAccessTokenError) -> AccountSecurityError {

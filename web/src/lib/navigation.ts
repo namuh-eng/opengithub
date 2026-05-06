@@ -373,6 +373,14 @@ export const SETTINGS_NAV_ITEMS = [
     protected: true,
   },
   {
+    href: "/settings/security-log",
+    label: "Security log",
+    section: "security-log",
+    kind: "settings",
+    description: "Immutable account security events",
+    protected: true,
+  },
+  {
     href: "/settings/sessions",
     label: "Sessions",
     section: "sessions",
