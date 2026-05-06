@@ -67,7 +67,7 @@
 
 ## Phase 4: Permissioned Revert - revert creates a new wiki commit
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the mutation that restores older content from a compare view for users with wiki edit permission. Successful revert should create a new revision/git commit, record a revert event, invalidate rendered caches, write audit/activity/notification rows where enabled, and redirect to page history or latest page.
 

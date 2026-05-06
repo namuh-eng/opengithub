@@ -4135,6 +4135,20 @@ export type RepositoryWikiMutationResult = {
   redirectHref: string;
 };
 
+export type RepositoryWikiRevertRequest = {
+  pageSlug: string;
+  baseRevisionId: string;
+  expectedHeadRevisionId: string;
+};
+
+export type RepositoryWikiRevertResult = {
+  page: RepositoryWikiPage;
+  gitCommit: RepositoryWikiGitCommitSummary;
+  revertEventId: string;
+  restoredRevisionId: string;
+  redirectHref: string;
+};
+
 export type RepositoryWikiGitCommitSummary = {
   id: string;
   oid: string;
@@ -14845,6 +14859,37 @@ export async function updateRepositoryWikiPageFromCookie(
     );
   }
   return (await response.json()) as RepositoryWikiMutationResult;
+}
+
+export async function revertRepositoryWikiPageFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  request: RepositoryWikiRevertRequest,
+): Promise<RepositoryWikiRevertResult> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/wiki/reverts`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  if (!response.ok) {
+    const envelope = ((await response.json().catch(() => null)) ??
+      null) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Repository wiki revert failed.",
+      {
+        cause: envelope,
+      },
+    );
+  }
+  return (await response.json()) as RepositoryWikiRevertResult;
 }
 
 export async function mutateRepositorySecurityPolicyFromCookie(

@@ -1,7 +1,23 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RepositoryWikiComparePage } from "@/components/RepositoryWikiComparePage";
 import type { RepositoryOverview, RepositoryWikiCompareView } from "@/lib/api";
+
+const routerPush = vi.fn();
+const routerRefresh = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: routerPush,
+    refresh: routerRefresh,
+  }),
+}));
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  routerPush.mockReset();
+  routerRefresh.mockReset();
+});
 
 function repositoryOverview(): RepositoryOverview {
   return {
@@ -223,5 +239,87 @@ describe("RepositoryWikiComparePage", () => {
       screen.getByText("Wiki compare revisions must be different."),
     ).toBeVisible();
     expect(container.querySelectorAll('a[href="#"]')).toHaveLength(0);
+  });
+
+  it("shows a permissioned revert action and redirects after the mutation succeeds", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          redirectHref: "/namuh-eng/opengithub/wiki/Home/_history",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryWikiComparePage
+        compareResult={{ ok: true, compare: compareView() }}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Revert Changes" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/repos/namuh-eng/opengithub/wiki/reverts",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            pageSlug: "Home",
+            baseRevisionId: "rev-1",
+            expectedHeadRevisionId: "rev-2",
+          }),
+        }),
+      );
+      expect(routerPush).toHaveBeenCalledWith(
+        "/namuh-eng/opengithub/wiki/Home/_history",
+      );
+      expect(routerRefresh).toHaveBeenCalled();
+    });
+  });
+
+  it("hides revert controls for readers and surfaces mutation errors", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: { message: "Wiki head revision changed." },
+        }),
+        { status: 409, headers: { "content-type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { rerender } = render(
+      <RepositoryWikiComparePage
+        compareResult={{
+          ok: true,
+          compare: compareView({
+            viewer: {
+              permission: "read",
+              canRead: true,
+              canEditWiki: false,
+            },
+          }),
+        }}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Revert Changes" }),
+    ).not.toBeInTheDocument();
+
+    rerender(
+      <RepositoryWikiComparePage
+        compareResult={{ ok: true, compare: compareView() }}
+        repository={repositoryOverview()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Revert Changes" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Wiki head revision changed.",
+    );
   });
 });

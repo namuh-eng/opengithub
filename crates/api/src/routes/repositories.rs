@@ -181,7 +181,8 @@ use crate::{
         repository_wiki_history_for_actor_by_owner_name,
         repository_wiki_pages_for_actor_by_owner_name,
         repository_wiki_revision_for_actor_by_owner_name,
-        update_repository_wiki_page_by_owner_name, WikiPagePreviewRequest, WikiPageSaveRequest,
+        revert_repository_wiki_page_by_owner_name, update_repository_wiki_page_by_owner_name,
+        WikiPagePreviewRequest, WikiPageSaveRequest, WikiRevertRequest,
     },
     AppState,
 };
@@ -222,6 +223,7 @@ pub fn router() -> Router<AppState> {
         .route("/:owner/:repo/wiki/_pages", get(wiki_pages))
         .route("/:owner/:repo/wiki/pages", post(create_wiki_page))
         .route("/:owner/:repo/wiki/preview", post(preview_wiki_page))
+        .route("/:owner/:repo/wiki/reverts", post(revert_wiki_page))
         .route(
             "/:owner/:repo/wiki/*slug",
             get(wiki_page).patch(update_wiki_page),
@@ -1142,6 +1144,29 @@ async fn create_wiki_page(
         })?;
 
     Ok((StatusCode::CREATED, Json(json!(page))))
+}
+
+async fn revert_wiki_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Json(request): Json<WikiRevertRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let result =
+        revert_repository_wiki_page_by_owner_name(pool, actor.0.id, &owner, &repo, request)
+            .await
+            .map_err(map_repository_error)?
+            .ok_or_else(|| {
+                error_response(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "repository wiki was not found".to_owned(),
+                )
+            })?;
+
+    Ok(Json(json!(result)))
 }
 
 async fn update_wiki_page(

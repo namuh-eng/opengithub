@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { RepositoryShell } from "@/components/RepositoryShell";
 import type {
   RepositoryOverview,
@@ -36,6 +38,47 @@ function linePrefix(line: RepositoryWikiDiffLine) {
 }
 
 function CompareReader({ compare }: { compare: RepositoryWikiCompareView }) {
+  const router = useRouter();
+  const [isReverting, setIsReverting] = useState(false);
+  const [revertError, setRevertError] = useState<string | null>(null);
+
+  async function revertChanges() {
+    setIsReverting(true);
+    setRevertError(null);
+    try {
+      const response = await fetch(
+        `/api/repos/${encodeURIComponent(compare.repository.ownerLogin)}/${encodeURIComponent(compare.repository.name)}/wiki/reverts`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            pageSlug: compare.page.slug,
+            baseRevisionId: compare.base.id,
+            expectedHeadRevisionId: compare.head.id,
+          }),
+        },
+      );
+      const body = (await response.json().catch(() => null)) as {
+        redirectHref?: string;
+        error?: { message?: string };
+      } | null;
+      if (!response.ok) {
+        throw new Error(
+          body?.error?.message ?? "Repository wiki revert failed.",
+        );
+      }
+      router.push(body?.redirectHref ?? compare.links.historyHref);
+      router.refresh();
+    } catch (error) {
+      setRevertError(
+        error instanceof Error
+          ? error.message
+          : "Repository wiki revert failed.",
+      );
+      setIsReverting(false);
+    }
+  }
+
   return (
     <div className="grid gap-5">
       <section className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
@@ -75,8 +118,23 @@ function CompareReader({ compare }: { compare: RepositoryWikiCompareView }) {
           <Link className="btn sm" href={compare.links.pageHref}>
             Page
           </Link>
+          {compare.viewer.canEditWiki ? (
+            <button
+              className="btn accent sm"
+              disabled={isReverting}
+              onClick={revertChanges}
+              type="button"
+            >
+              {isReverting ? "Reverting..." : "Revert Changes"}
+            </button>
+          ) : null}
         </div>
       </section>
+      {revertError ? (
+        <p className="chip err" role="alert">
+          {revertError}
+        </p>
+      ) : null}
 
       <section className="card p-4" aria-label="Compare summary">
         <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr] md:items-center">

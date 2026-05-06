@@ -340,3 +340,154 @@ async fn repository_wiki_write_contract_creates_previews_updates_and_records_git
     .expect("audit count should query");
     assert_eq!(audit_count, 2);
 }
+
+#[tokio::test]
+async fn repository_wiki_revert_restores_base_revision_and_records_event() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping repository wiki revert scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let storage_dir =
+        std::env::temp_dir().join(format!("opengithub-wiki-revert-{}", Uuid::new_v4()));
+    std::env::set_var("OPENGITHUB_GIT_STORAGE_DIR", &storage_dir);
+    let config = app_config();
+    let owner = create_user(&pool, "wiki-reverter").await;
+    let reader = create_user(&pool, "wiki-revert-reader").await;
+    let owner_login = owner.username.clone().expect("owner username");
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let reader_cookie = cookie_header(&pool, &config, &reader).await;
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("wiki-revert-{}", Uuid::new_v4().simple()),
+            description: Some("Wiki revert repository".to_owned()),
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+
+    let create_uri = format!("/api/repos/{}/{}/wiki/pages", owner_login, repository.name);
+    let (status, create_body) = json_request(
+        app.clone(),
+        Method::POST,
+        &create_uri,
+        Some(&owner_cookie),
+        json!({
+            "title": "Rollback Guide",
+            "markdown": "# Rollback\n\nStable baseline.",
+            "message": "Create rollback guide",
+            "editMode": "markdown"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{create_body}");
+    let base_revision_id =
+        Uuid::parse_str(create_body["page"]["revision"]["id"].as_str().unwrap()).unwrap();
+
+    let update_uri = format!(
+        "/api/repos/{}/{}/wiki/Rollback%20Guide",
+        owner_login, repository.name
+    );
+    let (status, update_body) = json_request(
+        app.clone(),
+        Method::PATCH,
+        &update_uri,
+        Some(&owner_cookie),
+        json!({
+            "title": "Rollback Guide",
+            "markdown": "# Rollback\n\nBroken change.",
+            "message": "Break rollback guide",
+            "expectedRevisionId": base_revision_id
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{update_body}");
+    let head_revision_id =
+        Uuid::parse_str(update_body["page"]["revision"]["id"].as_str().unwrap()).unwrap();
+
+    let revert_uri = format!(
+        "/api/repos/{}/{}/wiki/reverts",
+        owner_login, repository.name
+    );
+    let (status, reader_body) = json_request(
+        app.clone(),
+        Method::POST,
+        &revert_uri,
+        Some(&reader_cookie),
+        json!({
+            "pageSlug": "Rollback Guide",
+            "baseRevisionId": base_revision_id,
+            "expectedHeadRevisionId": head_revision_id
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{reader_body}");
+
+    let (status, revert_body) = json_request(
+        app.clone(),
+        Method::POST,
+        &revert_uri,
+        Some(&owner_cookie),
+        json!({
+            "pageSlug": "Rollback Guide",
+            "baseRevisionId": base_revision_id,
+            "expectedHeadRevisionId": head_revision_id
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{revert_body}");
+    assert_eq!(
+        revert_body["page"]["markdown"],
+        "# Rollback\n\nStable baseline."
+    );
+    assert!(revert_body["gitCommit"]["message"]
+        .as_str()
+        .unwrap()
+        .starts_with("Revert wiki page to "));
+    assert!(revert_body["redirectHref"]
+        .as_str()
+        .unwrap()
+        .ends_with("/wiki/Rollback%20Guide/_history"));
+    let restored_revision_id =
+        Uuid::parse_str(revert_body["restoredRevisionId"].as_str().unwrap()).unwrap();
+    assert_ne!(restored_revision_id, base_revision_id);
+    assert_ne!(restored_revision_id, head_revision_id);
+
+    let event_count = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT count(*)
+        FROM wiki_revert_events
+        WHERE base_revision_id = $1
+          AND head_revision_id = $2
+          AND restored_revision_id = $3
+        "#,
+    )
+    .bind(base_revision_id)
+    .bind(head_revision_id)
+    .bind(restored_revision_id)
+    .fetch_one(&pool)
+    .await
+    .expect("revert event count should query");
+    assert_eq!(event_count, 1);
+
+    let (status, stale_body) = json_request(
+        app,
+        Method::POST,
+        &revert_uri,
+        Some(&owner_cookie),
+        json!({
+            "pageSlug": "Rollback Guide",
+            "baseRevisionId": base_revision_id,
+            "expectedHeadRevisionId": head_revision_id
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{stale_body}");
+    assert!(!stale_body.to_string().contains("google-client-secret"));
+}

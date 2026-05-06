@@ -235,6 +235,24 @@ pub struct WikiPageMutationResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct WikiRevertRequest {
+    pub page_slug: String,
+    pub base_revision_id: Uuid,
+    pub expected_head_revision_id: Uuid,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiRevertResult {
+    pub page: WikiPageView,
+    pub git_commit: WikiGitCommitSummary,
+    pub revert_event_id: Uuid,
+    pub restored_revision_id: Uuid,
+    pub redirect_href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct WikiGitCommitSummary {
     pub id: Uuid,
     pub oid: String,
@@ -1055,6 +1073,156 @@ pub async fn update_repository_wiki_page_by_owner_name(
     request: WikiPageSaveRequest,
 ) -> Result<Option<WikiPageMutationResult>, RepositoryError> {
     save_wiki_page(pool, actor_user_id, owner_login, name, Some(slug), request).await
+}
+
+pub async fn revert_repository_wiki_page_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    owner_login: &str,
+    name: &str,
+    request: WikiRevertRequest,
+) -> Result<Option<WikiRevertResult>, RepositoryError> {
+    let page_slug = normalize_slug(&request.page_slug);
+    if page_slug.is_empty() {
+        return Err(RepositoryError::InvalidSecurityPolicy(
+            "Wiki revert requires a page slug.".to_owned(),
+        ));
+    }
+    if request.base_revision_id == request.expected_head_revision_id {
+        return Err(RepositoryError::InvalidSecurityPolicy(
+            "Wiki revert revisions must be different.".to_owned(),
+        ));
+    }
+
+    let Some((repository, _repository_summary, _viewer, _links)) =
+        editable_wiki_context(pool, actor_user_id, owner_login, name).await?
+    else {
+        return Ok(None);
+    };
+    let wiki_repository_id = ensure_wiki_repository(pool, &repository).await?;
+    let rows = sqlx::query(
+        r#"
+        SELECT wiki_pages.id AS page_id,
+               wiki_pages.title,
+               wiki_pages.slug,
+               wiki_page_revisions.id AS revision_id,
+               wiki_page_revisions.commit_oid,
+               wiki_page_revisions.markdown
+        FROM wiki_page_revisions
+        JOIN wiki_pages ON wiki_pages.id = wiki_page_revisions.page_id
+        WHERE wiki_pages.wiki_repository_id = $1
+          AND lower(wiki_pages.slug) = lower($2)
+          AND wiki_page_revisions.id IN ($3, $4)
+        "#,
+    )
+    .bind(wiki_repository_id)
+    .bind(&page_slug)
+    .bind(request.base_revision_id)
+    .bind(request.expected_head_revision_id)
+    .fetch_all(pool)
+    .await?;
+
+    if rows.len() != 2 {
+        return Err(RepositoryError::InvalidSecurityPolicy(
+            "Wiki revert revisions must belong to the selected page.".to_owned(),
+        ));
+    }
+    let mut page_id = None;
+    let mut title = None;
+    let mut base_markdown = None;
+    let mut base_short_oid = None;
+    for row in rows {
+        let row_page_id: Uuid = row.get("page_id");
+        if page_id.is_some_and(|id| id != row_page_id) {
+            return Err(RepositoryError::InvalidSecurityPolicy(
+                "Wiki revert revisions must belong to the same page.".to_owned(),
+            ));
+        }
+        page_id = Some(row_page_id);
+        title = Some(row.get::<String, _>("title"));
+        let revision_id: Uuid = row.get("revision_id");
+        if revision_id == request.base_revision_id {
+            let commit_oid: Option<String> = row.get("commit_oid");
+            base_short_oid = Some(
+                commit_oid
+                    .as_deref()
+                    .map(|oid| oid.chars().take(7).collect::<String>())
+                    .unwrap_or_else(|| request.base_revision_id.to_string()[..8].to_owned()),
+            );
+            base_markdown = Some(row.get("markdown"));
+        }
+    }
+    let page_id = page_id.ok_or(RepositoryError::NotFound)?;
+    let title = title.ok_or(RepositoryError::NotFound)?;
+    let base_markdown = base_markdown.ok_or(RepositoryError::NotFound)?;
+    let base_short_oid = base_short_oid.ok_or(RepositoryError::NotFound)?;
+
+    let message = format!("Revert wiki page to {base_short_oid}");
+    let mutation = save_wiki_page(
+        pool,
+        actor_user_id,
+        owner_login,
+        name,
+        Some(&page_slug),
+        WikiPageSaveRequest {
+            title,
+            markdown: base_markdown,
+            message: message.clone(),
+            edit_mode: Some(MARKDOWN_MODE.to_owned()),
+            expected_revision_id: Some(request.expected_head_revision_id),
+        },
+    )
+    .await?
+    .ok_or(RepositoryError::NotFound)?;
+
+    let revert_event_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO wiki_revert_events (
+            repository_id, wiki_repository_id, page_id, actor_user_id,
+            base_revision_id, head_revision_id, restored_revision_id,
+            git_commit_id, message
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id
+        "#,
+    )
+    .bind(repository.id)
+    .bind(wiki_repository_id)
+    .bind(page_id)
+    .bind(actor_user_id)
+    .bind(request.base_revision_id)
+    .bind(request.expected_head_revision_id)
+    .bind(mutation.page.revision.id)
+    .bind(mutation.git_commit.id)
+    .bind(&message)
+    .fetch_one(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, 'repository.wiki_page.revert', 'wiki_page', $2, $3)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(page_id.to_string())
+    .bind(serde_json::json!({
+        "repositoryId": repository.id,
+        "baseRevisionId": request.base_revision_id,
+        "headRevisionId": request.expected_head_revision_id,
+        "restoredRevisionId": mutation.page.revision.id,
+        "commitOid": mutation.git_commit.oid
+    }))
+    .execute(pool)
+    .await?;
+
+    let restored_revision_id = mutation.page.revision.id;
+    Ok(Some(WikiRevertResult {
+        page: mutation.page,
+        git_commit: mutation.git_commit,
+        revert_event_id,
+        restored_revision_id,
+        redirect_href: wiki_history_href(&repository, Some(&page_slug), 1, 30),
+    }))
 }
 
 async fn repository_can_read(
