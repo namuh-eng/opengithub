@@ -1,3 +1,13 @@
+2026-05-07 - search-006 background indexing pipeline and admin status
+
+- Completed `search-006` as the first `build_pass:false` PRD feature: existing `search_documents` indexing remains the query source of truth, with a new `search_index_events` ledger and authenticated `/api/admin/search` observability surface.
+- Added migration `202605070001_search_index_pipeline` for `search_index_events`, including status/resource indexes and the standard `set_updated_at` trigger.
+- Added Rust search index status DTOs/functions, event recording, and `/api/admin/search`; existing issue/PR upsert paths now append completed index events through `upsert_search_document`, while repository commit/code snapshot indexing records `repo.push.commit.upsert` and `repo.push.code.reindex` events.
+- Added Editorial `/admin/search` page with status cards, recent events, document counts, stale repository links, error fallback, and no placeholder links or GitHub-style visual values. Added `/docs/api` documentation for the admin status endpoint.
+- Verification passed: `cargo fmt --all -- --check`; `cargo check -p opengithub-api --tests`; focused `cargo test -p opengithub-api --test search_global_contract admin_search_status_reports_documents_events_and_stale_repositories -- --nocapture` compiled and self-skipped DB assertions because no credentialed local `TEST_DATABASE_URL` was available; focused `cd web && npx vitest run tests/admin-search-index-page.test.tsx tests/api-docs.test.tsx`; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 629 web tests; mandatory Editorial banned-value scan returned zero matches.
+- Browser smoke passed with `make dev` and Playwright against `http://localhost:3015/admin/search`: rendered the graceful unauthenticated API-error state, confirmed heading `Index status unavailable`, confirmed zero `href="#"`, and saved `ralph/screenshots/build/search-006-admin-status.jpg`.
+- `prd.json` now has `search-006.build_pass=true`; `qa-hints.json` records DB/auth/pipeline retry follow-ups. Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-06 - milestones-001 phase 1 milestone API contract
 
 - Completed Phase 1 from `.qrspi/milestones-001/structure.md`: repository milestones now have a Rust-owned list/detail/lifecycle API contract without replacing the placeholder UI and without marking `milestones-001.build_pass=true`; Phases 2-5 remain.

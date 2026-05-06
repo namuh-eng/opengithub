@@ -14,8 +14,8 @@ use crate::{
     auth::extractor::AuthenticatedUser,
     domain::search::{
         create_saved_search, delete_saved_search, record_recent_search, search_code_results,
-        search_collaboration_results, search_documents, search_suggestions, CodeSearchQuery,
-        CodeSearchResponse, CollaborationSearchKind, CollaborationSearchQuery,
+        search_collaboration_results, search_documents, search_index_status, search_suggestions,
+        CodeSearchQuery, CodeSearchResponse, CollaborationSearchKind, CollaborationSearchQuery,
         CollaborationSearchResponse, CreateSavedSearchInput, SearchDocumentKind, SearchError,
         SearchQuery, SearchResult, SearchSuggestionQuery,
     },
@@ -34,6 +34,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/search/saved-searches", post(create_saved))
         .route("/api/search/saved-searches/:id", delete(delete_saved))
         .route("/api/search/recent", post(create_recent))
+        .route("/api/admin/search", get(admin_search_status))
 }
 
 #[derive(Debug, Deserialize)]
@@ -96,6 +97,17 @@ async fn suggestions(
     .map_err(map_search_error)?;
 
     Ok(Json(json!(dashboard)))
+}
+
+async fn admin_search_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let _actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let status = search_index_status(pool).await.map_err(map_search_error)?;
+
+    Ok(Json(json!(status)))
 }
 
 async fn search(
@@ -618,13 +630,14 @@ fn collaboration_kind_from_param(value: &str) -> Option<CollaborationSearchKind>
 
 fn map_search_error(error: SearchError) -> (StatusCode, Json<ErrorEnvelope>) {
     match error {
-        SearchError::QueryTooShort | SearchError::InvalidKind(_) | SearchError::Validation(_) => {
-            error_response(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "validation_failed",
-                error.to_string(),
-            )
-        }
+        SearchError::QueryTooShort
+        | SearchError::InvalidKind(_)
+        | SearchError::InvalidIndexStatus(_)
+        | SearchError::Validation(_) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            error.to_string(),
+        ),
         SearchError::DuplicateSavedSearchName => error_response(
             StatusCode::CONFLICT,
             "duplicate_saved_search",

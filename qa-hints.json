@@ -7955,6 +7955,24 @@
     ]
   },
   {
+    "feature_id": "search-006",
+    "tests_written": [
+      "Added migration 202605070001_search_index_pipeline for search_index_events with status/resource indexes and updated_at trigger.",
+      "Added Rust search index status contract and authenticated GET /api/admin/search endpoint reporting document counts, event counts, recent events, and repositories needing attention.",
+      "Hooked existing issue, pull request, commit, and code indexing paths into search_index_events while preserving search_documents as the query source of truth.",
+      "Added Editorial /admin/search status page using existing AppShell, tokens, chips, cards, and no placeholder links.",
+      "Updated /docs/api with the admin search index status endpoint.",
+      "Added focused Rust API contract coverage for /api/admin/search, focused Vitest coverage for the admin status page and API docs, and browser smoke screenshot at ralph/screenshots/build/search-006-admin-status.jpg.",
+      "Verification passed: cargo fmt --all --check, cargo check -p opengithub-api --tests, focused Vitest/admin docs tests, full make check, full make test with Cargo tests plus 629 web tests, Playwright browser smoke for /admin/search, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Run the DB-backed admin status scenario against a credentialed migrated TEST_DATABASE_URL; local localhost:55432 still causes guarded DB scenarios to self-skip.",
+      "Exercise the pipeline with real repository pushes, issue edits, PR edits, and failed event rows to confirm recentEvents and staleRepositories ordering under production-like data volume.",
+      "Verify /admin/search authorization policy with the final global-admin model once product-level staff/admin roles exist; this iteration requires an authenticated session but does not yet distinguish staff from normal users.",
+      "Add a later worker phase for queued reindex execution if product requirements require asynchronous retry beyond the current write-time event ledger."
+    ]
+  },
+  {
     "feature_id": "actions-009",
     "tests_written": [
       "Added migration 202605070004_actions_check_runs for durable check_runs and check_annotations linked to workflow runs/jobs and workflow annotations.",

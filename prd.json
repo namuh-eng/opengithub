@@ -2137,7 +2137,7 @@
       "infra-001",
       "repocode-002"
     ],
-    "build_pass": false
+    "build_pass": true
   },
   {
     "id": "search-007",

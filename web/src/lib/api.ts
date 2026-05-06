@@ -8427,6 +8427,45 @@ export type CollaborationSearchResult = {
   rank: number;
 };
 
+export type SearchIndexStatus = {
+  documents: {
+    kind: string;
+    total: number;
+    latestIndexedAt: string | null;
+  }[];
+  events: {
+    queued: number;
+    running: number;
+    completed: number;
+    failed: number;
+  };
+  recentEvents: {
+    id: string;
+    eventType: string;
+    repositoryId: string | null;
+    resourceKind: string;
+    resourceId: string;
+    status: string;
+    attempts: number;
+    lastError: string | null;
+    metadata: Record<string, unknown>;
+    completedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }[];
+  staleRepositories: {
+    repositoryId: string;
+    ownerLogin: string;
+    name: string;
+    visibility: RepositoryVisibility | string;
+    defaultBranch: string;
+    latestDocumentIndexedAt: string | null;
+    latestEventAt: string | null;
+    pendingEvents: number;
+    failedEvents: number;
+  }[];
+};
+
 const DEFAULT_API_URL = "http://localhost:3016";
 
 export function apiBaseUrl(): string {
@@ -12096,6 +12135,41 @@ export async function searchCollaborationFromCookie(
   }
 
   return body as CollaborationSearchResponse;
+}
+
+export async function getSearchIndexStatusFromCookie(
+  cookie: string | null | undefined,
+): Promise<SearchIndexStatus | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}/api/admin/search`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Search index status is temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "search_index_status_failed",
+          message: "Search index status could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as SearchIndexStatus;
 }
 
 export type DashboardSummaryQuery = {

@@ -3720,6 +3720,7 @@ pub(crate) fn search_error_to_collaboration(error: SearchError) -> Collaboration
         SearchError::Repository(_) => CollaborationError::RepositoryNotFound,
         SearchError::QueryTooShort
         | SearchError::InvalidKind(_)
+        | SearchError::InvalidIndexStatus(_)
         | SearchError::Validation(_)
         | SearchError::DuplicateSavedSearchName
         | SearchError::SavedSearchNotFound => CollaborationError::RepositoryAccessDenied,

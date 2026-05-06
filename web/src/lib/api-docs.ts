@@ -8742,6 +8742,30 @@ docker-content-digest: sha256:manifest...`,
     notes: ["Short or malformed queries return 422 validation errors."],
   },
   {
+    id: "admin-search-index",
+    method: "GET",
+    path: "/api/admin/search",
+    title: "Search index pipeline status",
+    description:
+      "Returns the admin observability contract for write-time search indexing events, document counts, and repositories needing attention.",
+    auth: "Signed opengithub session cookie",
+    response: `{
+  "documents": [
+    { "kind": "code", "total": 42, "latestIndexedAt": "2026-05-07T00:00:00Z" }
+  ],
+  "events": { "queued": 0, "running": 0, "completed": 12, "failed": 0 },
+  "recentEvents": [
+    { "eventType": "repo.push.code.reindex", "resourceKind": "code", "status": "completed" }
+  ],
+  "staleRepositories": []
+}`,
+    notes: [
+      "Issue, pull request, code, and commit index writers append search_index_events rows.",
+      "The admin page at /admin/search renders this response with Editorial status chips and no write-side JavaScript auth.",
+      "Failures use the standard code/message error envelope and do not expose database or session secrets.",
+    ],
+  },
+  {
     id: "search-rest-code",
     method: "GET",
     path: "/api/search/code?q=router+language:Rust&per_page=30",

@@ -11,7 +11,10 @@ use opengithub_api::{
         repositories::{
             create_repository, CreateRepository, RepositoryOwner, RepositoryVisibility,
         },
-        search::{upsert_search_document, SearchDocumentKind, UpsertSearchDocument},
+        search::{
+            record_search_index_event, upsert_search_document, SearchDocumentKind,
+            SearchIndexEventInput, UpsertSearchDocument,
+        },
     },
 };
 use serde_json::{json, Value};
@@ -34,6 +37,90 @@ async fn database_pool() -> Option<PgPool> {
         .ok()?;
     MIGRATOR.run(&pool).await.ok()?;
     Some(pool)
+}
+
+#[tokio::test]
+async fn admin_search_status_reports_documents_events_and_stale_repositories() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping search admin status scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "search-admin-owner").await;
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let marker = format!("admin{}", Uuid::new_v4().simple());
+    let repository = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("search-admin-{marker}"),
+            description: Some(format!("Search admin status {marker}")),
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+
+    upsert_search_document(
+        &pool,
+        owner.id,
+        UpsertSearchDocument {
+            repository_id: Some(repository.id),
+            owner_user_id: repository.owner_user_id,
+            owner_organization_id: repository.owner_organization_id,
+            kind: SearchDocumentKind::Issue,
+            resource_id: format!("{}:77", repository.id),
+            title: format!("Indexed issue {marker}"),
+            body: Some("Body indexed for admin status".to_owned()),
+            path: None,
+            language: None,
+            branch: None,
+            visibility: repository.visibility,
+            metadata: json!({ "number": 77 }),
+        },
+    )
+    .await
+    .expect("document should index");
+    record_search_index_event(
+        &pool,
+        SearchIndexEventInput {
+            event_type: "repo.push.code.reindex".to_owned(),
+            repository_id: Some(repository.id),
+            resource_kind: "code".to_owned(),
+            resource_id: format!("{}:main", repository.id),
+            status: "queued".to_owned(),
+            attempts: 1,
+            last_error: None,
+            metadata: json!({ "defaultBranch": "main" }),
+        },
+    )
+    .await
+    .expect("event should record");
+
+    let (status, headers, body) =
+        send_json(app.clone(), "/api/admin/search", Some(&owner_cookie)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_json(&headers);
+    assert!(body["documents"]
+        .as_array()
+        .expect("documents should be an array")
+        .iter()
+        .any(|item| item["kind"] == "issue" && item["total"].as_i64().unwrap_or(0) >= 1));
+    assert!(body["events"]["queued"].as_i64().unwrap_or(0) >= 1);
+    assert!(body["recentEvents"]
+        .as_array()
+        .expect("recent events should be an array")
+        .iter()
+        .any(|event| event["eventType"] == "repo.push.code.reindex"));
+    assert!(body["staleRepositories"]
+        .as_array()
+        .expect("stale repositories should be an array")
+        .iter()
+        .any(|repo| repo["repositoryId"] == repository.id.to_string()));
 }
 
 fn app_config() -> AppConfig {

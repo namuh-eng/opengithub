@@ -9,7 +9,7 @@ use crate::api_types::ListEnvelope;
 
 use super::repositories::{repository_permission_for_user, RepositoryVisibility};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum SearchDocumentKind {
     Repository,
@@ -73,6 +73,76 @@ pub struct SearchDocument {
     pub indexed_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchIndexStatus {
+    pub documents: Vec<SearchIndexDocumentCount>,
+    pub events: SearchIndexEventCounts,
+    pub recent_events: Vec<SearchIndexEvent>,
+    pub stale_repositories: Vec<SearchIndexRepositoryStatus>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchIndexDocumentCount {
+    pub kind: String,
+    pub total: i64,
+    pub latest_indexed_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchIndexEventCounts {
+    pub queued: i64,
+    pub running: i64,
+    pub completed: i64,
+    pub failed: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchIndexEvent {
+    pub id: Uuid,
+    pub event_type: String,
+    pub repository_id: Option<Uuid>,
+    pub resource_kind: String,
+    pub resource_id: String,
+    pub status: String,
+    pub attempts: i32,
+    pub last_error: Option<String>,
+    pub metadata: Value,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchIndexRepositoryStatus {
+    pub repository_id: Uuid,
+    pub owner_login: String,
+    pub name: String,
+    pub visibility: RepositoryVisibility,
+    pub default_branch: String,
+    pub latest_document_indexed_at: Option<DateTime<Utc>>,
+    pub latest_event_at: Option<DateTime<Utc>>,
+    pub pending_events: i64,
+    pub failed_events: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchIndexEventInput {
+    pub event_type: String,
+    pub repository_id: Option<Uuid>,
+    pub resource_kind: String,
+    pub resource_id: String,
+    pub status: String,
+    pub attempts: i32,
+    pub last_error: Option<String>,
+    pub metadata: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -516,10 +586,172 @@ pub enum SearchError {
     RepositoryAccessDenied,
     #[error("invalid search document kind `{0}`")]
     InvalidKind(String),
+    #[error("invalid search index event status `{0}`")]
+    InvalidIndexStatus(String),
     #[error(transparent)]
     Repository(#[from] super::repositories::RepositoryError),
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
+}
+
+pub async fn record_search_index_event(
+    pool: &PgPool,
+    input: SearchIndexEventInput,
+) -> Result<SearchIndexEvent, SearchError> {
+    if !matches!(
+        input.status.as_str(),
+        "queued" | "running" | "completed" | "failed"
+    ) {
+        return Err(SearchError::InvalidIndexStatus(input.status));
+    }
+
+    let completed_at = if input.status == "completed" {
+        Some(Utc::now())
+    } else {
+        None
+    };
+    let row = sqlx::query(
+        r#"
+        INSERT INTO search_index_events (
+            event_type, repository_id, resource_kind, resource_id, status,
+            attempts, last_error, metadata, completed_at
+        )
+        VALUES ($1, $2, $3, $4, $5, GREATEST($6, 1), $7, $8, $9)
+        RETURNING id, event_type, repository_id, resource_kind, resource_id, status,
+                  attempts, last_error, metadata, completed_at, created_at, updated_at
+        "#,
+    )
+    .bind(input.event_type.trim())
+    .bind(input.repository_id)
+    .bind(input.resource_kind.trim())
+    .bind(input.resource_id.trim())
+    .bind(&input.status)
+    .bind(input.attempts)
+    .bind(&input.last_error)
+    .bind(&input.metadata)
+    .bind(completed_at)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(search_index_event_from_row(row))
+}
+
+pub async fn search_index_status(pool: &PgPool) -> Result<SearchIndexStatus, SearchError> {
+    let document_rows = sqlx::query(
+        r#"
+        SELECT kind, count(*)::bigint AS total, max(indexed_at) AS latest_indexed_at
+        FROM search_documents
+        GROUP BY kind
+        ORDER BY kind ASC
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+    let documents = document_rows
+        .into_iter()
+        .map(|row| SearchIndexDocumentCount {
+            kind: row.get("kind"),
+            total: row.get("total"),
+            latest_indexed_at: row.get("latest_indexed_at"),
+        })
+        .collect();
+
+    let counts_row = sqlx::query(
+        r#"
+        SELECT count(*) FILTER (WHERE status = 'queued')::bigint AS queued,
+               count(*) FILTER (WHERE status = 'running')::bigint AS running,
+               count(*) FILTER (WHERE status = 'completed')::bigint AS completed,
+               count(*) FILTER (WHERE status = 'failed')::bigint AS failed
+        FROM search_index_events
+        "#,
+    )
+    .fetch_one(pool)
+    .await?;
+    let events = SearchIndexEventCounts {
+        queued: counts_row.get("queued"),
+        running: counts_row.get("running"),
+        completed: counts_row.get("completed"),
+        failed: counts_row.get("failed"),
+    };
+
+    let recent_events = sqlx::query(
+        r#"
+        SELECT id, event_type, repository_id, resource_kind, resource_id, status,
+               attempts, last_error, metadata, completed_at, created_at, updated_at
+        FROM search_index_events
+        ORDER BY created_at DESC
+        LIMIT 20
+        "#,
+    )
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(search_index_event_from_row)
+    .collect();
+
+    let stale_repositories = sqlx::query(
+        r#"
+        WITH document_state AS (
+            SELECT repository_id, max(indexed_at) AS latest_document_indexed_at
+            FROM search_documents
+            WHERE repository_id IS NOT NULL
+            GROUP BY repository_id
+        ),
+        event_state AS (
+            SELECT repository_id,
+                   max(created_at) AS latest_event_at,
+                   count(*) FILTER (WHERE status IN ('queued', 'running'))::bigint AS pending_events,
+                   count(*) FILTER (WHERE status = 'failed')::bigint AS failed_events
+            FROM search_index_events
+            WHERE repository_id IS NOT NULL
+            GROUP BY repository_id
+        )
+        SELECT repositories.id AS repository_id,
+               COALESCE(NULLIF(owner_user.username, ''), owner_user.email, owner_org.slug) AS owner_login,
+               repositories.name,
+               repositories.visibility,
+               repositories.default_branch,
+               document_state.latest_document_indexed_at,
+               event_state.latest_event_at,
+               COALESCE(event_state.pending_events, 0)::bigint AS pending_events,
+               COALESCE(event_state.failed_events, 0)::bigint AS failed_events
+        FROM repositories
+        LEFT JOIN users owner_user ON owner_user.id = repositories.owner_user_id
+        LEFT JOIN organizations owner_org ON owner_org.id = repositories.owner_organization_id
+        LEFT JOIN document_state ON document_state.repository_id = repositories.id
+        LEFT JOIN event_state ON event_state.repository_id = repositories.id
+        WHERE document_state.latest_document_indexed_at IS NULL
+           OR event_state.pending_events > 0
+           OR event_state.failed_events > 0
+        ORDER BY COALESCE(event_state.latest_event_at, repositories.updated_at) DESC
+        LIMIT 20
+        "#,
+    )
+    .fetch_all(pool)
+    .await?
+    .into_iter()
+    .map(|row| {
+        let visibility: String = row.get("visibility");
+        Ok(SearchIndexRepositoryStatus {
+            repository_id: row.get("repository_id"),
+            owner_login: row.get("owner_login"),
+            name: row.get("name"),
+            visibility: RepositoryVisibility::try_from(visibility.as_str())?,
+            default_branch: row.get("default_branch"),
+            latest_document_indexed_at: row.get("latest_document_indexed_at"),
+            latest_event_at: row.get("latest_event_at"),
+            pending_events: row.get("pending_events"),
+            failed_events: row.get("failed_events"),
+        })
+    })
+    .collect::<Result<Vec<_>, SearchError>>()?;
+
+    Ok(SearchIndexStatus {
+        documents,
+        events,
+        recent_events,
+        stale_repositories,
+    })
 }
 
 pub async fn upsert_search_document(
@@ -587,7 +819,45 @@ pub async fn upsert_search_document(
     .fetch_one(pool)
     .await?;
 
-    document_from_row(row)
+    let document = document_from_row(row)?;
+    let _ = record_search_index_event(
+        pool,
+        SearchIndexEventInput {
+            event_type: format!("{}.upsert", input.kind.as_str()),
+            repository_id: document.repository_id,
+            resource_kind: input.kind.as_str().to_owned(),
+            resource_id: document.resource_id.clone(),
+            status: "completed".to_owned(),
+            attempts: 1,
+            last_error: None,
+            metadata: serde_json::json!({
+                "documentId": document.id,
+                "visibility": document.visibility.as_str(),
+                "path": document.path,
+                "branch": document.branch,
+            }),
+        },
+    )
+    .await;
+
+    Ok(document)
+}
+
+fn search_index_event_from_row(row: sqlx::postgres::PgRow) -> SearchIndexEvent {
+    SearchIndexEvent {
+        id: row.get("id"),
+        event_type: row.get("event_type"),
+        repository_id: row.get("repository_id"),
+        resource_kind: row.get("resource_kind"),
+        resource_id: row.get("resource_id"),
+        status: row.get("status"),
+        attempts: row.get("attempts"),
+        last_error: row.get("last_error"),
+        metadata: row.get("metadata"),
+        completed_at: row.get("completed_at"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    }
 }
 
 pub async fn search_documents(

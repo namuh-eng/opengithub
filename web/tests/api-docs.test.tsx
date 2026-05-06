@@ -1890,6 +1890,8 @@ describe("ApiDocsPage", () => {
     expect(
       screen.getByText("/api/search?q=router&type=code&page=1&pageSize=30"),
     ).toBeVisible();
+    expect(screen.getByText("/api/admin/search")).toBeVisible();
+    expect(screen.getByText(/write-time search indexing events/)).toBeVisible();
     expect(
       screen.getByText("/api/search/suggestions?q=router&scope=all&limit=8"),
     ).toBeVisible();

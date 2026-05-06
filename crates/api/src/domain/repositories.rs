@@ -8,7 +8,11 @@ use uuid::Uuid;
 
 use crate::api_types::ListEnvelope;
 
-use super::{branch_policies::branch_pattern_matches, permissions::RepositoryRole};
+use super::{
+    branch_policies::branch_pattern_matches,
+    permissions::RepositoryRole,
+    search::{record_search_index_event, SearchIndexEventInput},
+};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -12874,6 +12878,24 @@ async fn upsert_repository_search_index(
     }))
     .execute(pool)
     .await?;
+    let _ = record_search_index_event(
+        pool,
+        SearchIndexEventInput {
+            event_type: "repo.push.commit.upsert".to_owned(),
+            repository_id: Some(repository.id),
+            resource_kind: "commit".to_owned(),
+            resource_id: commit.oid.clone(),
+            status: "completed".to_owned(),
+            attempts: 1,
+            last_error: None,
+            metadata: json!({
+                "ownerLogin": repository.owner_login,
+                "repositoryName": repository.name,
+                "defaultBranch": repository.default_branch,
+            }),
+        },
+    )
+    .await;
 
     sqlx::query(
         "DELETE FROM search_documents WHERE repository_id = $1 AND kind = 'code' AND branch = $2",
@@ -12951,6 +12973,26 @@ async fn upsert_repository_search_index(
         .execute(pool)
         .await?;
     }
+    let _ = record_search_index_event(
+        pool,
+        SearchIndexEventInput {
+            event_type: "repo.push.code.reindex".to_owned(),
+            repository_id: Some(repository.id),
+            resource_kind: "code".to_owned(),
+            resource_id: format!("{}:{}", repository.id, repository.default_branch),
+            status: "completed".to_owned(),
+            attempts: 1,
+            last_error: None,
+            metadata: json!({
+                "ownerLogin": repository.owner_login,
+                "repositoryName": repository.name,
+                "defaultBranch": repository.default_branch,
+                "indexedFileCount": files.len(),
+                "commitOid": commit.oid,
+            }),
+        },
+    )
+    .await;
 
     Ok(())
 }
