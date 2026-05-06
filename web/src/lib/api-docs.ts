@@ -7806,6 +7806,53 @@ Subject: [PATCH] Improve docs
     ],
   },
   {
+    id: "actions-job-log-stream",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/actions/jobs/{job_id}/logs/stream?after=120",
+    title: "Stream workflow job log lines",
+    description:
+      "Returns a text/event-stream replay window for lines appended after the supplied cursor, plus a cursor event for near-real-time browser refresh.",
+    auth: "Optional signed opengithub session cookie; private repositories require read access",
+    response: `event: line
+id: 121
+data: {"lineNumber":121,"content":"cargo test passed","anchor":"L121"}
+
+event: cursor
+data: {"nextCursor":121,"finalizedAt":null}`,
+    notes: [
+      "Line payloads are redacted with the same Actions secret masking used by detail and download endpoints.",
+      "The Next.js job log page opens this SSE endpoint for live runs and falls back to timed refresh when EventSource is unavailable.",
+    ],
+  },
+  {
+    id: "actions-job-log-chunks",
+    method: "POST",
+    path: "/api/internal/actions/jobs/{job_id}/logs/chunks",
+    title: "Append runner job log chunk",
+    description:
+      "Accepts stdout or stderr chunks from the assigned runner, appends normalized lines to the searchable log table, updates job_logs S3 metadata, and optionally finalizes the log.",
+    auth: "Assigned runner registration token via runnerToken or x-opengithub-runner-token",
+    request: `{
+  "runnerToken": "ogr_example",
+  "stepId": "step_01",
+  "content": "cargo test\\nfinished",
+  "finalize": true
+}`,
+    response: `{
+  "jobId": "job_01",
+  "runId": "run_01",
+  "s3Key": "actions/run_01/unit-web/log.txt",
+  "bytesWritten": 19,
+  "appendedLines": 2,
+  "nextCursor": 122,
+  "finalizedAt": "2026-05-07T00:00:00Z"
+}`,
+    notes: [
+      "Only the runner assigned to the job can append chunks; bad tokens return 403 without writing lines.",
+      "The S3 key follows actions/{run_id}/{job}/log.txt and is never exposed by viewer-facing detail responses.",
+    ],
+  },
+  {
     id: "actions-log-preferences",
     method: "PATCH",
     path: "/api/repos/{owner}/{repo}/actions/log-preferences",

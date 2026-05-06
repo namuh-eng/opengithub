@@ -419,7 +419,9 @@ describe("RepositoryActionsJobLogPage", () => {
     expect(pushMock).toHaveBeenCalledWith(
       "/mona/octo-app/actions/runs/run-1/jobs/job-1?q=error&match=1&timestamps=false&raw=true",
     );
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("button", { name: "Log options" }));
     fireEvent.click(
       screen.getByRole("menuitem", { name: "Copy job permalink" }),
     );

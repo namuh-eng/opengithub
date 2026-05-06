@@ -2078,7 +2078,7 @@
     "dependent_on": [
       "actions-006"
     ],
-    "build_pass": false
+    "build_pass": true
   },
   {
     "id": "actions-008",

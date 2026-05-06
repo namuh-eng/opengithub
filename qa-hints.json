@@ -7913,5 +7913,24 @@
       "Probe real runner scheduling with multiple queued jobs, mixed labels, no matching runners, concurrency limit exhaustion, stale heartbeat timeout, cancel-in-progress concurrency groups, duplicate runner names, private repository access, reader/write/admin permission boundaries, and archived repository denial.",
       "Probe the Settings > Actions runners page on mobile and keyboard-only flows, long runner names/labels, setup command overflow, repeated schedule clicks, error envelopes from every mutation, and no secret/token leakage beyond the bounded registration token display."
     ]
+  },
+  {
+    "feature_id": "actions-007",
+    "tests_written": [
+      "Added migration 202605070002_actions_live_job_logs for durable job_logs metadata with actions/{run_id}/{job}/log.txt S3-key semantics, bytes_written, and finalized_at.",
+      "Added POST /api/internal/actions/jobs/{job_id}/logs/chunks so the assigned runner can append normalized log lines, update job_logs metadata, set workflow_jobs.log_storage_key, finalize logs, complete the assignment, and release the runner.",
+      "Added GET /api/repos/{owner}/{repo}/actions/jobs/{job_id}/logs/stream returning text/event-stream line/cursor replay after a cursor with existing repository read permissions and secret redaction.",
+      "Added same-origin Next.js SSE proxy and wired the Editorial job log page to open EventSource for live logs with a timed-refresh fallback.",
+      "Extended /docs/api coverage for live log streaming and internal runner chunk ingestion.",
+      "Extended Rust job log contract coverage for bad runner token denial, append/finalize metadata, SSE replay, runner/assignment state, and storage-key persistence.",
+      "Ran focused frontend job log and API docs Vitest coverage, full make check, full make test, Editorial banned-value scan, and browser smoke screenshot ralph/screenshots/build/actions-007-live-job-logs.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Real S3 multipart upload/finalize is represented by durable job_logs metadata and key semantics in this iteration; verify actual AWS S3 object writes once the runner storage adapter is wired.",
+      "Run web/tests/e2e repository Actions log flows against a healthy migrated TEST_DATABASE_URL; local E2E remains blocked by postgres credential rejection in prior iterations.",
+      "Probe high-volume logs over 500 lines, concurrent chunk appends from a runner retry, partial trailing lines, very long stdout lines, gzip download parity, and deletion while SSE clients are connected.",
+      "Verify real runner process authentication uses registration tokens without leaking tokens in logs, screenshots, API responses, or browser state.",
+      "Check mobile and keyboard behavior while new lines arrive and while the selected search match scrolls."
+    ]
   }
 ]

@@ -922,6 +922,37 @@ pub struct RunnerHeartbeat {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppendWorkflowJobLogChunk {
+    pub job_id: Uuid,
+    pub runner_token: String,
+    pub step_id: Option<Uuid>,
+    pub content: String,
+    pub timestamp: Option<DateTime<Utc>>,
+    pub finalize: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowJobLogChunkResult {
+    pub job_id: Uuid,
+    pub run_id: Uuid,
+    pub s3_key: String,
+    pub bytes_written: i64,
+    pub appended_lines: i64,
+    pub next_cursor: Option<i32>,
+    pub finalized_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowJobLogStream {
+    pub job: ActionsJobLogJob,
+    pub lines: Vec<ActionsJobLogLine>,
+    pub next_cursor: Option<i32>,
+    pub finalized_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunnerScheduleResult {
     pub assigned: Vec<ActionsRunnerJob>,
@@ -2192,6 +2223,17 @@ pub async fn delete_workflow_run_logs(
     .await?;
     sqlx::query(
         r#"
+        UPDATE job_logs
+        SET bytes_written = 0,
+            finalized_at = COALESCE(finalized_at, now())
+        WHERE run_id = $1
+        "#,
+    )
+    .bind(input.run_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        r#"
         INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
         VALUES ($1, 'workflow_run.logs_deleted', 'workflow_run', $2, $3)
         "#,
@@ -3313,6 +3355,65 @@ pub async fn workflow_job_logs_for_viewer(
     })
 }
 
+pub async fn workflow_job_log_stream_for_viewer(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Option<Uuid>,
+    job_id: Uuid,
+    after: Option<i32>,
+) -> Result<WorkflowJobLogStream, AutomationError> {
+    require_repository_read_for_viewer(pool, repository_id, actor_user_id).await?;
+    let job = workflow_job_for_repository(pool, repository_id, job_id).await?;
+    if job.log_deleted_at.is_some() {
+        return Err(AutomationError::WorkflowLogsUnavailable);
+    }
+    let after = after.unwrap_or(0).max(0);
+    let rows = sqlx::query(
+        r#"
+        SELECT line_number, timestamp, content
+        FROM workflow_job_log_lines
+        WHERE job_id = $1 AND line_number > $2
+        ORDER BY line_number
+        LIMIT 500
+        "#,
+    )
+    .bind(job_id)
+    .bind(after)
+    .fetch_all(pool)
+    .await?;
+    let redaction_values = actions_secret_redaction_values(pool, repository_id).await?;
+    let lines = rows
+        .into_iter()
+        .map(|row| {
+            let line_number: i32 = row.get("line_number");
+            ActionsJobLogLine {
+                line_number,
+                timestamp: row.get("timestamp"),
+                content: mask_actions_secret_values(
+                    &row.get::<String, _>("content"),
+                    &redaction_values,
+                ),
+                anchor: format!("L{line_number}"),
+            }
+        })
+        .collect::<Vec<_>>();
+    let next_cursor = lines.last().map(|line| line.line_number).or(Some(after));
+    let finalized_at = sqlx::query_scalar::<_, Option<DateTime<Utc>>>(
+        "SELECT finalized_at FROM job_logs WHERE job_id = $1",
+    )
+    .bind(job_id)
+    .fetch_optional(pool)
+    .await?
+    .flatten();
+
+    Ok(WorkflowJobLogStream {
+        job,
+        lines,
+        next_cursor,
+        finalized_at,
+    })
+}
+
 pub async fn workflow_job_log_download_for_viewer(
     pool: &PgPool,
     repository_id: Uuid,
@@ -3495,6 +3596,168 @@ pub async fn record_runner_heartbeat(
         .into_iter()
         .find(|runner| runner.id == input.runner_id)
         .ok_or(AutomationError::WorkflowJobNotFound)
+}
+
+pub async fn append_workflow_job_log_chunk(
+    pool: &PgPool,
+    input: AppendWorkflowJobLogChunk,
+) -> Result<WorkflowJobLogChunkResult, AutomationError> {
+    let content = input.content.replace("\r\n", "\n").replace('\r', "\n");
+    if content.is_empty() && !input.finalize {
+        return Err(AutomationError::InvalidWorkflowDispatch(
+            "log chunk content is required unless finalizing".to_owned(),
+        ));
+    }
+    let job_row = sqlx::query(
+        r#"
+        SELECT workflow_jobs.id,
+               workflow_jobs.run_id,
+               workflow_jobs.name,
+               workflow_jobs.runner_id,
+               workflow_runs.repository_id,
+               actions_runners.registration_token
+        FROM workflow_jobs
+        JOIN workflow_runs ON workflow_runs.id = workflow_jobs.run_id
+        LEFT JOIN actions_runners ON actions_runners.id = workflow_jobs.runner_id
+        WHERE workflow_jobs.id = $1
+        "#,
+    )
+    .bind(input.job_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(AutomationError::WorkflowJobNotFound)?;
+    let runner_id: Option<Uuid> = job_row.get("runner_id");
+    let registration_token: Option<String> = job_row.get("registration_token");
+    if runner_id.is_none()
+        || registration_token.as_deref() != Some(input.runner_token.trim())
+        || input.runner_token.trim().is_empty()
+    {
+        return Err(AutomationError::RepositoryAccessDenied);
+    }
+    if let Some(step_id) = input.step_id {
+        let step_belongs = sqlx::query_scalar::<_, bool>(
+            "SELECT EXISTS(SELECT 1 FROM workflow_steps WHERE id = $1 AND job_id = $2)",
+        )
+        .bind(step_id)
+        .bind(input.job_id)
+        .fetch_one(pool)
+        .await?;
+        if !step_belongs {
+            return Err(AutomationError::WorkflowJobNotFound);
+        }
+    }
+
+    let run_id: Uuid = job_row.get("run_id");
+    let job_name: String = job_row.get("name");
+    let s3_key = format!("actions/{run_id}/{}/log.txt", safe_filename(&job_name));
+    let current_max = sqlx::query_scalar::<_, Option<i32>>(
+        "SELECT max(line_number) FROM workflow_job_log_lines WHERE job_id = $1",
+    )
+    .bind(input.job_id)
+    .fetch_one(pool)
+    .await?
+    .unwrap_or(0);
+    let lines = content
+        .lines()
+        .map(str::to_owned)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+    for (index, line) in lines.iter().enumerate() {
+        sqlx::query(
+            r#"
+            INSERT INTO workflow_job_log_lines (job_id, step_id, line_number, timestamp, content)
+            VALUES ($1, $2, $3, COALESCE($4, now()), $5)
+            ON CONFLICT (job_id, line_number) DO UPDATE
+            SET timestamp = EXCLUDED.timestamp,
+                content = EXCLUDED.content,
+                step_id = EXCLUDED.step_id
+            "#,
+        )
+        .bind(input.job_id)
+        .bind(input.step_id)
+        .bind(current_max + index as i32 + 1)
+        .bind(input.timestamp)
+        .bind(line)
+        .execute(pool)
+        .await?;
+    }
+    let byte_delta = content.len() as i64;
+    let metadata = sqlx::query(
+        r#"
+        INSERT INTO job_logs (job_id, run_id, job_name, s3_key, bytes_written, finalized_at)
+        VALUES ($1, $2, $3, $4, $5, CASE WHEN $6 THEN now() ELSE NULL END)
+        ON CONFLICT (job_id) DO UPDATE
+        SET job_name = EXCLUDED.job_name,
+            s3_key = EXCLUDED.s3_key,
+            bytes_written = job_logs.bytes_written + EXCLUDED.bytes_written,
+            finalized_at = CASE
+                WHEN $6 THEN COALESCE(job_logs.finalized_at, now())
+                ELSE job_logs.finalized_at
+            END
+        RETURNING bytes_written, finalized_at
+        "#,
+    )
+    .bind(input.job_id)
+    .bind(run_id)
+    .bind(&job_name)
+    .bind(&s3_key)
+    .bind(byte_delta)
+    .bind(input.finalize)
+    .fetch_one(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        UPDATE workflow_jobs
+        SET log_storage_key = $2,
+            log_deleted_at = NULL,
+            updated_at = now()
+        WHERE id = $1
+        "#,
+    )
+    .bind(input.job_id)
+    .bind(&s3_key)
+    .execute(pool)
+    .await?;
+    if input.finalize {
+        sqlx::query(
+            r#"
+            UPDATE workflow_job_assignments
+            SET status = CASE WHEN status = 'in_progress' THEN 'completed' ELSE status END
+            WHERE job_id = $1
+            "#,
+        )
+        .bind(input.job_id)
+        .execute(pool)
+        .await?;
+        if let Some(runner_id) = runner_id {
+            sqlx::query(
+                r#"
+                UPDATE actions_runners
+                SET status = 'online', busy_since = NULL, last_heartbeat = now()
+                WHERE id = $1 AND status = 'busy'
+                "#,
+            )
+            .bind(runner_id)
+            .execute(pool)
+            .await?;
+        }
+    }
+    let next_cursor = sqlx::query_scalar::<_, Option<i32>>(
+        "SELECT max(line_number) FROM workflow_job_log_lines WHERE job_id = $1",
+    )
+    .bind(input.job_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(WorkflowJobLogChunkResult {
+        job_id: input.job_id,
+        run_id,
+        s3_key,
+        bytes_written: metadata.get("bytes_written"),
+        appended_lines: lines.len() as i64,
+        next_cursor,
+        finalized_at: metadata.get("finalized_at"),
+    })
 }
 
 pub async fn schedule_queued_action_jobs(

@@ -139,6 +139,11 @@ export function RepositoryActionsJobLogPage({
   const [preferencesPending, setPreferencesPending] = useState(false);
   const [searchText, setSearchText] = useState(detail.search.query ?? "");
   const [copyMessage, setCopyMessage] = useState("");
+  const [streamMessage, setStreamMessage] = useState(
+    detail.logState.isLive && detail.logState.available
+      ? "Live stream connected"
+      : "",
+  );
   const selectedMatch = normalizeSelectedMatch(
     detail.search.selectedMatch,
     detail.search.totalMatches,
@@ -161,11 +166,37 @@ export function RepositoryActionsJobLogPage({
     if (!detail.logState.isLive || !detail.logState.available) {
       return;
     }
+    if (typeof window.EventSource === "function") {
+      const source = new window.EventSource(
+        `${basePath}/actions/jobs/${detail.job.id}/logs/stream?after=${
+          detail.logState.nextCursor ?? 0
+        }`,
+      );
+      source.addEventListener("line", () => {
+        setStreamMessage("New log lines received");
+        router.refresh();
+      });
+      source.addEventListener("cursor", () => {
+        setStreamMessage("Live stream connected");
+      });
+      source.onerror = () => {
+        setStreamMessage("Live stream reconnecting");
+        source.close();
+      };
+      return () => source.close();
+    }
     const timer = window.setInterval(() => {
       router.refresh();
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [detail.logState.available, detail.logState.isLive, router]);
+  }, [
+    basePath,
+    detail.job.id,
+    detail.logState.available,
+    detail.logState.isLive,
+    detail.logState.nextCursor,
+    router,
+  ]);
 
   useEffect(() => {
     if (!currentMatch || currentAnchorRef.current === currentMatch.anchor) {
@@ -269,6 +300,7 @@ export function RepositoryActionsJobLogPage({
         raw: merged.rawLogs,
       });
       setOptionMessage("Saved log options");
+      setOptionsOpen(false);
       router.push(href);
       router.refresh();
     } catch {
@@ -333,6 +365,15 @@ export function RepositoryActionsJobLogPage({
                       </>
                     ) : null}
                   </p>
+                  {streamMessage ? (
+                    <p
+                      className="t-xs mt-2"
+                      role="status"
+                      style={{ color: "var(--ink-3)" }}
+                    >
+                      {streamMessage}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -451,6 +492,11 @@ export function RepositoryActionsJobLogPage({
               )}
             </div>
           </div>
+          {optionMessage ? (
+            <p className="t-xs" role="status" style={{ color: "var(--ink-3)" }}>
+              {optionMessage}
+            </p>
+          ) : null}
         </header>
 
         <div className="grid grid-cols-[300px_minmax(0,1fr)] gap-6 max-lg:grid-cols-1">

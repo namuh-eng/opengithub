@@ -20,16 +20,18 @@ use crate::{
         actions::{
             actions_dashboard_for_viewer, actions_job_log_detail_for_viewer,
             actions_run_detail_for_viewer, actions_runner_settings_for_viewer,
-            actions_workflow_detail_for_viewer, cancel_workflow_run, create_actions_runner,
-            create_workflow, create_workflow_run, delete_workflow_run_logs, dispatch_workflow_run,
-            get_workflow_for_actor, get_workflow_run_for_actor, list_workflow_runs, list_workflows,
-            record_actions_recent_view, record_runner_heartbeat, repository_for_actor_by_name,
+            actions_workflow_detail_for_viewer, append_workflow_job_log_chunk, cancel_workflow_run,
+            create_actions_runner, create_workflow, create_workflow_run, delete_workflow_run_logs,
+            dispatch_workflow_run, get_workflow_for_actor, get_workflow_run_for_actor,
+            list_workflow_runs, list_workflows, record_actions_recent_view,
+            record_runner_heartbeat, repository_for_actor_by_name,
             repository_for_optional_actor_by_name, rerun_workflow_run, schedule_queued_action_jobs,
             transition_workflow_run, update_actions_log_preferences_for_viewer,
             update_actions_runner_settings, workflow_artifact_download_for_viewer,
-            workflow_job_log_download_for_viewer, workflow_job_logs_for_viewer,
-            workflow_run_log_archive_for_viewer, ActionsDashboardQuery, ActionsJobLogDetailQuery,
-            ActionsWorkflowDetailQuery, AutomationError, CreateActionsRunner, CreateWorkflow,
+            workflow_job_log_download_for_viewer, workflow_job_log_stream_for_viewer,
+            workflow_job_logs_for_viewer, workflow_run_log_archive_for_viewer,
+            ActionsDashboardQuery, ActionsJobLogDetailQuery, ActionsWorkflowDetailQuery,
+            AppendWorkflowJobLogChunk, AutomationError, CreateActionsRunner, CreateWorkflow,
             CreateWorkflowRun, DispatchWorkflowRun, MutateWorkflowRun, RecordActionsRecentView,
             RerunWorkflowRun, RunConclusion, RunStatus, RunnerHeartbeat, TransitionRun,
             UpdateActionsLogPreferences, UpdateActionsRunnerSettings, WorkflowRunRerunMode,
@@ -102,8 +104,16 @@ pub fn router() -> Router<AppState> {
             get(read_workflow_job_logs_route),
         )
         .route(
+            "/api/repos/:owner/:repo/actions/jobs/:job_id/logs/stream",
+            get(stream_workflow_job_logs_route),
+        )
+        .route(
             "/api/repos/:owner/:repo/actions/jobs/:job_id/logs/download",
             get(download_workflow_job_logs_route),
+        )
+        .route(
+            "/api/internal/actions/jobs/:job_id/logs/chunks",
+            post(append_workflow_job_log_chunk_route),
         )
         .route(
             "/api/repos/:owner/:repo/actions/artifacts/:artifact_id/download",
@@ -162,6 +172,12 @@ struct LogQuery {
     page: Option<i64>,
     #[serde(alias = "page_size")]
     page_size: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LogStreamQuery {
+    after: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -254,6 +270,16 @@ struct CreateRunnerRequest {
 struct UpdateRunnerSettingsRequest {
     concurrency_limit: i32,
     cancel_in_progress: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AppendLogChunkRequest {
+    runner_token: Option<String>,
+    step_id: Option<Uuid>,
+    content: String,
+    timestamp: Option<chrono::DateTime<chrono::Utc>>,
+    finalize: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -918,6 +944,86 @@ async fn read_workflow_job_logs_route(
     .map_err(map_automation_error)?;
 
     Ok(Json(json!(logs)))
+}
+
+async fn stream_workflow_job_logs_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, job_id)): Path<(String, String, Uuid)>,
+    Query(query): Query<LogStreamQuery>,
+) -> Result<Response<Body>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let repository = repository_for_optional_actor_by_name(
+        pool,
+        &owner,
+        &repo,
+        actor.as_ref().map(|user| user.id),
+    )
+    .await
+    .map_err(map_automation_error)?;
+    let stream = workflow_job_log_stream_for_viewer(
+        pool,
+        repository.id,
+        actor.as_ref().map(|user| user.id),
+        job_id,
+        query.after,
+    )
+    .await
+    .map_err(map_automation_error)?;
+    let mut body = String::new();
+    for line in stream.lines {
+        let payload = json!({
+            "lineNumber": line.line_number,
+            "timestamp": line.timestamp,
+            "content": line.content,
+            "anchor": line.anchor,
+        });
+        body.push_str("event: line\n");
+        body.push_str(&format!("id: {}\n", line.line_number));
+        body.push_str(&format!("data: {payload}\n\n"));
+    }
+    let cursor = stream.next_cursor.unwrap_or(0);
+    body.push_str("event: cursor\n");
+    body.push_str(&format!(
+        "data: {}\n\n",
+        json!({ "nextCursor": cursor, "finalizedAt": stream.finalized_at })
+    ));
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/event-stream; charset=utf-8")
+        .header(header::CACHE_CONTROL, "no-cache")
+        .body(Body::from(body))
+        .map_err(|_| database_unavailable())
+}
+
+async fn append_workflow_job_log_chunk_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(job_id): Path<Uuid>,
+    RestJson(request): RestJson<AppendLogChunkRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let header_token = headers
+        .get("x-opengithub-runner-token")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    let result = append_workflow_job_log_chunk(
+        pool,
+        AppendWorkflowJobLogChunk {
+            job_id,
+            runner_token: request.runner_token.or(header_token).unwrap_or_default(),
+            step_id: request.step_id,
+            content: request.content,
+            timestamp: request.timestamp,
+            finalize: request.finalize.unwrap_or(false),
+        },
+    )
+    .await
+    .map_err(map_automation_error)?;
+
+    Ok(Json(json!(result)))
 }
 
 async fn download_workflow_job_logs_route(

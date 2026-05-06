@@ -20,7 +20,7 @@ use opengithub_api::{
     },
 };
 use serde_json::{json, Value};
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use tower::ServiceExt;
 use url::Url;
 use uuid::Uuid;
@@ -133,6 +133,35 @@ async fn patch_json(
     (status, value)
 }
 
+async fn post_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method(Method::POST)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let request = builder
+        .body(Body::from(body.to_string()))
+        .expect("request should build");
+    let response = app.oneshot(request).await.expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = if bytes.is_empty() {
+        Value::Null
+    } else {
+        serde_json::from_slice(&bytes).expect("response should be json")
+    };
+    (status, value)
+}
+
 async fn get_text(app: axum::Router, uri: &str, cookie: Option<&str>) -> (StatusCode, String) {
     let mut builder = Request::builder().method(Method::GET).uri(uri);
     if let Some(cookie) = cookie {
@@ -146,6 +175,33 @@ async fn get_text(app: axum::Router, uri: &str, cookie: Option<&str>) -> (Status
         .expect("body should read");
     (
         status,
+        String::from_utf8(bytes.to_vec()).expect("body should be utf8"),
+    )
+}
+
+async fn get_text_with_content_type(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+) -> (StatusCode, Option<String>, String) {
+    let mut builder = Request::builder().method(Method::GET).uri(uri);
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let request = builder.body(Body::empty()).expect("request should build");
+    let response = app.oneshot(request).await.expect("request should run");
+    let status = response.status();
+    let content_type = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    (
+        status,
+        content_type,
         String::from_utf8(bytes.to_vec()).expect("body should be utf8"),
     )
 }
@@ -584,4 +640,176 @@ async fn job_log_detail_preserves_private_repository_permissions() {
     assert_eq!(owner_status, StatusCode::OK);
     assert_eq!(owner_body["viewerPermission"], "owner");
     assert_eq!(owner_body["logState"]["available"], true);
+}
+
+#[tokio::test]
+async fn assigned_runner_appends_finalizes_and_streams_job_logs() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping actions live job log scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "actions-live-log-owner").await;
+    let (repo_name, repository_id, run_id, job_id) = seed_run_with_job_logs(
+        &pool,
+        &owner,
+        RepositoryVisibility::Private,
+        "actions-live-log",
+    )
+    .await;
+    sqlx::query("DELETE FROM workflow_job_log_lines WHERE job_id = $1")
+        .bind(job_id)
+        .execute(&pool)
+        .await
+        .expect("seed log lines should clear for live append");
+    let runner_id = Uuid::new_v4();
+    let runner_token = format!("ogr_{}", Uuid::new_v4().simple());
+    sqlx::query(
+        r#"
+        INSERT INTO actions_runners (id, repository_id, name, labels, status, registration_token, created_by_user_id)
+        VALUES ($1, $2, 'linux-live-1', '["self-hosted","ubuntu-latest"]'::jsonb, 'busy', $3, $4)
+        "#,
+    )
+    .bind(runner_id)
+    .bind(repository_id)
+    .bind(&runner_token)
+    .bind(owner.id)
+    .execute(&pool)
+    .await
+    .expect("runner should create");
+    sqlx::query(
+        "UPDATE workflow_runs SET status = 'in_progress', conclusion = NULL, completed_at = NULL WHERE id = $1",
+    )
+    .bind(run_id)
+    .execute(&pool)
+    .await
+    .expect("run should be live");
+    sqlx::query(
+        r#"
+        UPDATE workflow_jobs
+        SET runner_id = $2, status = 'in_progress', conclusion = NULL, log_storage_key = NULL, log_deleted_at = NULL
+        WHERE id = $1
+        "#,
+    )
+    .bind(job_id)
+    .bind(runner_id)
+    .execute(&pool)
+    .await
+    .expect("job should assign to runner");
+    sqlx::query(
+        r#"
+        INSERT INTO workflow_job_assignments (run_id, job_id, job_name, runner_id)
+        VALUES ($1, $2, 'unit / web', $3)
+        "#,
+    )
+    .bind(run_id)
+    .bind(job_id)
+    .bind(runner_id)
+    .execute(&pool)
+    .await
+    .expect("assignment should persist");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let append_uri = format!("/api/internal/actions/jobs/{job_id}/logs/chunks");
+    let (bad_status, bad_body) = post_json(
+        app.clone(),
+        &append_uri,
+        None,
+        json!({
+            "runnerToken": "wrong-token",
+            "content": "this must not append"
+        }),
+    )
+    .await;
+    assert_eq!(bad_status, StatusCode::FORBIDDEN);
+    assert_eq!(bad_body["error"]["code"], "forbidden");
+
+    let (append_status, append_body) = post_json(
+        app.clone(),
+        &append_uri,
+        None,
+        json!({
+            "runnerToken": runner_token,
+            "content": "boot runner\nrun cargo test\nfinalize cache",
+            "finalize": true
+        }),
+    )
+    .await;
+    assert_eq!(append_status, StatusCode::OK);
+    assert_eq!(append_body["jobId"], job_id.to_string());
+    assert_eq!(append_body["runId"], run_id.to_string());
+    assert_eq!(append_body["appendedLines"], 3);
+    assert_eq!(append_body["nextCursor"], 3);
+    assert_eq!(
+        append_body["s3Key"],
+        format!("actions/{run_id}/unit-web/log.txt")
+    );
+    assert!(append_body["bytesWritten"].as_i64().expect("bytes") > 0);
+    assert_ne!(append_body["finalizedAt"], Value::Null);
+
+    let detail_uri = format!(
+        "/api/repos/{}/{}/actions/runs/{}/jobs/{}/detail",
+        owner.email, repo_name, run_id, job_id
+    );
+    let (detail_status, detail_body) =
+        get_json(app.clone(), &detail_uri, Some(&owner_cookie)).await;
+    assert_eq!(detail_status, StatusCode::OK);
+    assert_eq!(detail_body["logState"]["available"], true);
+    assert_eq!(detail_body["logState"]["isLive"], true);
+    assert_eq!(detail_body["logState"]["nextCursor"], 3);
+    assert_eq!(
+        detail_body["steps"][0]["lines"]["items"][1]["content"],
+        "run cargo test"
+    );
+
+    let stream_uri = format!(
+        "/api/repos/{}/{}/actions/jobs/{}/logs/stream?after=1",
+        owner.email, repo_name, job_id
+    );
+    let (stream_status, content_type, stream_body) =
+        get_text_with_content_type(app.clone(), &stream_uri, Some(&owner_cookie)).await;
+    assert_eq!(stream_status, StatusCode::OK);
+    assert!(content_type
+        .as_deref()
+        .unwrap_or_default()
+        .starts_with("text/event-stream"));
+    assert!(stream_body.contains("event: line"));
+    assert!(stream_body.contains("run cargo test"));
+    assert!(stream_body.contains("event: cursor"));
+
+    let row = sqlx::query(
+        r#"
+        SELECT job_logs.bytes_written,
+               job_logs.finalized_at,
+               job_logs.s3_key,
+               actions_runners.status AS runner_status,
+               workflow_job_assignments.status AS assignment_status,
+               workflow_jobs.log_storage_key
+        FROM job_logs
+        JOIN workflow_jobs ON workflow_jobs.id = job_logs.job_id
+        JOIN actions_runners ON actions_runners.id = workflow_jobs.runner_id
+        JOIN workflow_job_assignments ON workflow_job_assignments.job_id = workflow_jobs.id
+        WHERE job_logs.job_id = $1
+        "#,
+    )
+    .bind(job_id)
+    .fetch_one(&pool)
+    .await
+    .expect("job log metadata should persist");
+    assert_eq!(
+        row.get::<String, _>("s3_key"),
+        format!("actions/{run_id}/unit-web/log.txt")
+    );
+    assert_eq!(
+        row.get::<String, _>("log_storage_key"),
+        format!("actions/{run_id}/unit-web/log.txt")
+    );
+    assert!(row.get::<i64, _>("bytes_written") > 0);
+    assert!(row
+        .get::<Option<chrono::DateTime<Utc>>, _>("finalized_at")
+        .is_some());
+    assert_eq!(row.get::<String, _>("runner_status"), "online");
+    assert_eq!(row.get::<String, _>("assignment_status"), "completed");
 }
