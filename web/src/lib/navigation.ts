@@ -51,10 +51,14 @@ export type ProjectWorkspaceRouteQuery = {
   group?: string | null;
   slice?: string | null;
   page?: number | null;
+  view?: number | string | null;
 };
 
 function projectWorkspaceQueryString(query: ProjectWorkspaceRouteQuery = {}) {
   const params = new URLSearchParams();
+  if (query.view != null && String(query.view).trim()) {
+    params.set("view", String(query.view).trim());
+  }
   if (query.q?.trim()) params.set("q", query.q.trim());
   if (query.sort?.trim()) params.set("sort", query.sort.trim());
   if (query.group?.trim()) params.set("group", query.group.trim());
@@ -105,10 +109,30 @@ export function organizationProjectFieldSettingsHref(
 }
 
 export function projectItemHref(
-  item: { href: string | null },
-  fallbackWorkspaceHref: string,
+  scope: "user" | "organization",
+  owner: string,
+  projectNumber: number,
+  itemId: string,
+  query: ProjectWorkspaceRouteQuery = {},
 ) {
-  return item.href ?? fallbackWorkspaceHref;
+  const base =
+    scope === "organization"
+      ? `/orgs/${encodeURIComponent(owner)}/projects/${projectNumber}/items/${encodeURIComponent(itemId)}`
+      : `/${encodeURIComponent(owner)}/projects/${projectNumber}/items/${encodeURIComponent(itemId)}`;
+  return `${base}${projectWorkspaceQueryString(query)}`;
+}
+
+export function projectArchivedItemsHref(
+  scope: "user" | "organization",
+  owner: string,
+  projectNumber: number,
+  query: ProjectWorkspaceRouteQuery = {},
+) {
+  const base =
+    scope === "organization"
+      ? `/orgs/${encodeURIComponent(owner)}/projects/${projectNumber}/items/archived`
+      : `/${encodeURIComponent(owner)}/projects/${projectNumber}/items/archived`;
+  return `${base}${projectWorkspaceQueryString(query)}`;
 }
 
 export const GLOBAL_NAV_ITEMS = [

@@ -7,7 +7,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectWorkspacePage } from "@/components/ProjectWorkspacePage";
-import type { ProjectWorkspace } from "@/lib/api";
+import type { ProjectItemDetail, ProjectWorkspace } from "@/lib/api";
 
 function workspace(
   overrides: Partial<ProjectWorkspace> = {},
@@ -290,6 +290,61 @@ function workspace(
   };
 }
 
+function itemDetail(
+  overrides: Partial<ProjectItemDetail> = {},
+): ProjectItemDetail {
+  const baseWorkspace = workspace();
+  const item = baseWorkspace.items[1];
+  return {
+    project: baseWorkspace.project,
+    item,
+    source: null,
+    activity: [
+      {
+        id: "event-1",
+        eventType: "draft_created",
+        actor: { id: "user-1", login: "mona", avatarUrl: null },
+        metadata: {},
+        createdAt: "2026-05-04T00:00:00Z",
+      },
+    ],
+    comments: [
+      {
+        id: "comment-1",
+        author: { id: "user-1", login: "mona", avatarUrl: null },
+        body: "Keep this scoped to the launch board.",
+        isDeleted: false,
+        createdAt: "2026-05-04T01:00:00Z",
+        updatedAt: "2026-05-04T01:00:00Z",
+      },
+    ],
+    archive: {
+      archived: false,
+      archivedAt: null,
+      archivedBy: null,
+      restoredAt: null,
+      restoredBy: null,
+    },
+    draft: {
+      editable: true,
+      editVersion: "2026-05-04T00:00:00Z",
+      repositoryNotificationsEnabled: false,
+    },
+    viewerPermissions: {
+      authenticated: true,
+      viewerRole: "write",
+      canEdit: true,
+      canComment: true,
+      canConvert: true,
+      canArchive: true,
+      canRestore: false,
+      canRemove: true,
+    },
+    unavailableReason: null,
+    ...overrides,
+  };
+}
+
 describe("ProjectWorkspacePage", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -336,15 +391,94 @@ describe("ProjectWorkspacePage", () => {
     expect(screen.getAllByText("Backlog").length).toBeGreaterThan(0);
     expect(
       screen.getByRole("link", { name: "Wire the table shell" }),
-    ).toHaveAttribute("href", "/namuh/opengithub/issues/42");
+    ).toHaveAttribute(
+      "href",
+      "/orgs/namuh/projects/12/items/item-1?view=1&q=is%3Aopen&sort=manual&group=Status",
+    );
     expect(
       screen.getByRole("link", { name: "Draft launch notes" }),
     ).toHaveAttribute(
       "href",
-      "/orgs/namuh/projects/12/views/1?q=is%3Aopen&sort=manual&group=Status",
+      "/orgs/namuh/projects/12/items/item-2?view=1&q=is%3Aopen&sort=manual&group=Status",
     );
     expect(screen.getByText("frontend")).toHaveClass("chip", "soft");
     expect(screen.getByTitle("mona")).toHaveTextContent("M");
+  });
+
+  it("renders the route-backed item side panel with draft metadata and actions", async () => {
+    const assign = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => workspace(),
+    });
+    vi.stubGlobal("location", { assign });
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <ProjectWorkspacePage
+        initialItemDetail={itemDetail()}
+        owner="namuh"
+        scope="organization"
+        viewNumber={1}
+        workspace={workspace()}
+      />,
+    );
+
+    const panel = screen.getByRole("complementary", {
+      name: "Project item detail",
+    });
+    expect(
+      within(panel).getByRole("heading", { name: "Draft launch notes" }),
+    ).toBeInTheDocument();
+    expect(within(panel).getByText("Project-only draft")).toBeInTheDocument();
+    expect(
+      within(panel).getByText("Write the rollout note."),
+    ).toBeInTheDocument();
+    expect(
+      within(panel).getByText("Keep this scoped to the launch board."),
+    ).toBeInTheDocument();
+    expect(within(panel).getByText("draft created")).toBeInTheDocument();
+    expect(within(panel).getByRole("link", { name: "Close" })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/projects/12/views/1?q=is%3Aopen&sort=manual&group=Status",
+    );
+    expect(
+      within(panel).getByRole("button", { name: "Convert to issue" }),
+    ).toBeDisabled();
+    expect(
+      within(panel).getByRole("button", { name: "Archive" }),
+    ).toBeDisabled();
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Remove" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/projects/project-1/items/item-2",
+      { method: "DELETE" },
+    );
+    expect(assign).toHaveBeenCalledWith(
+      "/orgs/namuh/projects/12/views/1?q=is%3Aopen&sort=manual&group=Status",
+    );
+  });
+
+  it("shows a side panel error when direct item detail loading fails", () => {
+    render(
+      <ProjectWorkspacePage
+        initialItemError="Private linked item is hidden."
+        owner="namuh"
+        scope="organization"
+        viewNumber={1}
+        workspace={workspace()}
+      />,
+    );
+
+    const panel = screen.getByRole("complementary", {
+      name: "Project item detail",
+    });
+    expect(within(panel).getByText("This item cannot be opened.")).toHaveClass(
+      "t-h2",
+    );
+    expect(
+      within(panel).getByText("Private linked item is hidden."),
+    ).toHaveClass("t-sm");
   });
 
   it("keeps filters, slices, and field value chips URL-backed", () => {

@@ -7093,5 +7093,22 @@
       "Probe direct item detail reads for archived linked issues and pull requests, large archived lists, itemType/q pagination combinations, source sync metadata, archived/restored actor display, deleted draft comments, permission flags for read/write/admin users, and no-secret error envelopes.",
       "Phase 2 still owns Editorial side-panel UI; Phase 3 draft edits/comments; Phase 4 conversion to issues; Phase 5 archive/restore/remove; Phase 6 docs, screenshots, QA handoff, and build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-005",
+    "tests_written": [
+      "Completed Phase 2 Editorial Side Panel Shell without marking projects-005 build_pass=true.",
+      "Changed Projects table, board, and roadmap item links to route-backed project item URLs that preserve view/filter/sort/group state and open the side panel through server-rendered item routes.",
+      "Added user and organization direct item routes at /{owner}/projects/{number}/items/{itemId} and /orgs/{org}/projects/{number}/items/{itemId}; each loads the selected workspace plus GET /api/projects/{project_id}/items/{item_id} detail data through signed-cookie server helpers.",
+      "Added an Editorial side panel showing item type, source link or project-only draft state, draft body, field values, assignees, labels, comments, activity, close navigation, permission-disabled Convert/Archive controls, and a wired Remove action.",
+      "Extended ProjectWorkspacePage Vitest coverage for direct panel rendering, draft metadata, comments/activity, close navigation, permission-disabled future controls, wired remove, item-detail error panels, and route-backed row links.",
+      "Verification passed: focused web TypeScript, focused Biome, focused project-workspace-page Vitest with 17 tests, full make check, and full make test with Cargo tests plus 555 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Full make test-e2e was attempted with the signed-session/test DB environment but produced no output for about two minutes while Playwright/API/Next children were active, so it was terminated and child processes/ports were cleaned up. A direct dashboard_e2e_seed run confirmed local Postgres on localhost:55432 rejected the available postgres password. Rerun a focused item panel smoke against a clean migrated credentialed TEST_DATABASE_URL to save ralph/screenshots/build/projects-005-phase2-item-panel.jpg.",
+      "Probe direct user and organization item URLs for issue, pull request, draft, archived, missing, and private-linked-repository cases; verify close links preserve q/sort/group/slice/view state.",
+      "Probe keyboard opening from table rows and board cards, mobile side-panel width/scrolling, long titles/body/comments, deleted comments, no dead controls, permission-disabled controls for read-only users, and Remove success/failure refresh behavior.",
+      "Phase 3 still owns draft title/body editing and comments; Phase 4 draft conversion; Phase 5 archive/restore/remove lifecycle and linked sync; Phase 6 docs, screenshots, QA handoff, and build_pass bookkeeping."
+    ]
   }
 ]

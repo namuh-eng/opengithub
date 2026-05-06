@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { type FormEvent, Fragment, useMemo, useState } from "react";
 import type {
+  ProjectItemDetail,
   ProjectWorkspace,
   ProjectWorkspaceBoardColumn,
   ProjectWorkspaceField,
@@ -21,6 +22,8 @@ type ProjectWorkspacePageProps = {
   scope: "user" | "organization";
   owner: string;
   viewNumber: number;
+  initialItemDetail?: ProjectItemDetail | null;
+  initialItemError?: string | null;
 };
 
 type EditingCell = {
@@ -205,6 +208,8 @@ export function ProjectWorkspacePage({
   scope,
   owner,
   viewNumber,
+  initialItemDetail = null,
+  initialItemError = null,
 }: ProjectWorkspacePageProps) {
   const [query, setQuery] = useState(workspace.filters.query ?? "");
   const [configOpen, setConfigOpen] = useState(false);
@@ -303,6 +308,10 @@ export function ProjectWorkspacePage({
   const activeLayoutChoice = workspace.layoutChoices?.find(
     (choice) => choice.active,
   );
+  const itemPanelQuery = {
+    ...baseQuery,
+    view: viewNumber,
+  };
 
   function submitFilter(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1239,7 +1248,13 @@ export function ProjectWorkspacePage({
                             <div className="list-row px-4 py-3" key={item.id}>
                               <Link
                                 className="font-medium no-underline"
-                                href={projectItemHref(item, currentHref)}
+                                href={projectItemHref(
+                                  scope,
+                                  owner,
+                                  workspace.project.number,
+                                  item.id,
+                                  itemPanelQuery,
+                                )}
                               >
                                 {item.title}
                               </Link>
@@ -1481,8 +1496,11 @@ export function ProjectWorkspacePage({
                                         <Link
                                           className="min-w-0 flex-1 font-medium no-underline"
                                           href={projectItemHref(
-                                            item,
-                                            currentHref,
+                                            scope,
+                                            owner,
+                                            workspace.project.number,
+                                            item.id,
+                                            itemPanelQuery,
                                           )}
                                         >
                                           {item.title}
@@ -1693,7 +1711,13 @@ export function ProjectWorkspacePage({
                                 <div className="min-w-0">
                                   <Link
                                     className="font-medium no-underline"
-                                    href={projectItemHref(item, currentHref)}
+                                    href={projectItemHref(
+                                      scope,
+                                      owner,
+                                      workspace.project.number,
+                                      item.id,
+                                      itemPanelQuery,
+                                    )}
                                   >
                                     {item.title}
                                   </Link>
@@ -1935,7 +1959,268 @@ export function ProjectWorkspacePage({
           )}
         </section>
       </div>
+      {initialItemError ? (
+        <ProjectItemSidePanelError
+          message={initialItemError}
+          returnHref={currentHref}
+        />
+      ) : null}
+      {initialItemDetail ? (
+        <ProjectItemSidePanel
+          detail={initialItemDetail}
+          onRemove={removeItem}
+          removing={itemSaving}
+          returnHref={currentHref}
+        />
+      ) : null}
     </main>
+  );
+}
+
+type ProjectItemSidePanelProps = {
+  detail: ProjectItemDetail;
+  onRemove: (item: ProjectWorkspaceItem) => void;
+  removing: boolean;
+  returnHref: string;
+};
+
+function ProjectItemSidePanel({
+  detail,
+  onRemove,
+  removing,
+  returnHref,
+}: ProjectItemSidePanelProps) {
+  const item = detail.item;
+  const sourceHref = detail.source?.href ?? item.href;
+  const sourceLabel = detail.source
+    ? `${detail.source.repository.fullName} #${detail.source.number}`
+    : item.repository?.fullName;
+  return (
+    <aside
+      aria-label="Project item detail"
+      className="fixed inset-y-0 right-0 z-30 flex w-full max-w-[520px] flex-col overflow-y-auto border-l p-5 shadow-lg md:p-6"
+      style={{
+        background: "var(--surface)",
+        borderColor: "var(--line)",
+      }}
+    >
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="t-label mb-2 flex flex-wrap items-center gap-2">
+            <span className="chip soft t-mono-sm">{itemIcon(item)}</span>
+            <span>{itemTypeLabel(item)}</span>
+            {item.number ? (
+              <span className="t-mono-sm">#{item.number}</span>
+            ) : null}
+            {detail.archive.archived ? (
+              <span className="chip warn">Archived</span>
+            ) : null}
+          </div>
+          <h2 className="t-h2 break-words">{item.title}</h2>
+          {sourceHref && sourceLabel ? (
+            <Link
+              className="t-sm mt-2 inline-block no-underline"
+              href={sourceHref}
+            >
+              {sourceLabel}
+            </Link>
+          ) : (
+            <p className="t-sm mt-2" style={{ color: "var(--ink-3)" }}>
+              Project-only draft
+            </p>
+          )}
+        </div>
+        <Link className="btn sm" href={returnHref}>
+          Close
+        </Link>
+      </div>
+
+      {detail.unavailableReason ? (
+        <p className="chip warn mb-4">{detail.unavailableReason}</p>
+      ) : null}
+
+      <section className="mb-5">
+        <div className="t-label mb-2">Description</div>
+        {item.body ? (
+          <p className="t-sm whitespace-pre-wrap">{item.body}</p>
+        ) : (
+          <p className="t-sm" style={{ color: "var(--ink-3)" }}>
+            No description has been added.
+          </p>
+        )}
+        {detail.draft ? (
+          <p className="t-xs mt-2">
+            Draft edits stay project-only until this item is converted to an
+            issue.
+          </p>
+        ) : null}
+      </section>
+
+      <section className="mb-5 grid gap-3">
+        <div className="t-label">Fields</div>
+        {item.fieldValues.length === 0 ? (
+          <span className="chip soft w-fit">No project fields</span>
+        ) : (
+          item.fieldValues.map((value) => (
+            <div
+              className="flex items-center justify-between gap-3 rounded-[var(--radius)] px-3 py-2"
+              key={value.fieldId}
+              style={{ border: "1px solid var(--line-soft)" }}
+            >
+              <span className="t-mono-sm">{value.fieldId}</span>
+              <span className="t-sm text-right">{value.displayValue}</span>
+            </div>
+          ))
+        )}
+      </section>
+
+      <section className="mb-5 grid gap-3">
+        <div className="t-label">People and labels</div>
+        <div className="flex flex-wrap gap-2">
+          {item.assignees.length === 0 ? (
+            <span className="chip soft">No assignees</span>
+          ) : (
+            item.assignees.map((assignee) => (
+              <span className="chip soft" key={assignee.id}>
+                {assignee.login}
+              </span>
+            ))
+          )}
+          {item.labels.map((label) => (
+            <span className="chip soft" key={label.id}>
+              {label.name}
+            </span>
+          ))}
+        </div>
+      </section>
+
+      <section className="mb-5">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <div className="t-label">Comments</div>
+          <span className="t-xs t-num">{detail.comments.length}</span>
+        </div>
+        <div className="grid gap-2">
+          {detail.comments.length === 0 ? (
+            <p className="t-sm" style={{ color: "var(--ink-3)" }}>
+              No project comments yet.
+            </p>
+          ) : (
+            detail.comments.map((comment) => (
+              <article className="card p-3" key={comment.id}>
+                <div className="mb-2 flex items-center gap-2">
+                  <span className="av sm">
+                    {comment.author.login.slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="t-sm font-medium">
+                    {comment.author.login}
+                  </span>
+                  <span className="t-xs">{formatDate(comment.updatedAt)}</span>
+                </div>
+                <p className="t-sm whitespace-pre-wrap">
+                  {comment.isDeleted ? "Comment deleted" : comment.body}
+                </p>
+              </article>
+            ))
+          )}
+        </div>
+      </section>
+
+      <section className="mb-5">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <div className="t-label">Activity</div>
+          <span className="t-xs t-num">{detail.activity.length}</span>
+        </div>
+        <div className="grid gap-2">
+          {detail.activity.length === 0 ? (
+            <p className="t-sm" style={{ color: "var(--ink-3)" }}>
+              Activity will appear as the item changes.
+            </p>
+          ) : (
+            detail.activity.map((event) => (
+              <div className="list-row py-2" key={event.id}>
+                <span className="t-sm">
+                  {event.eventType.replaceAll("_", " ")}
+                </span>
+                <span className="t-xs ml-auto">
+                  {formatDate(event.createdAt)}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
+
+      <div
+        className="sticky bottom-0 mt-auto flex flex-wrap gap-2 border-t pt-4"
+        style={{ background: "var(--surface)", borderColor: "var(--line)" }}
+      >
+        <button
+          className="btn sm primary"
+          disabled
+          title={
+            detail.viewerPermissions.canConvert
+              ? "Draft conversion is implemented in the next phase."
+              : "Only editable draft items can be converted."
+          }
+          type="button"
+        >
+          Convert to issue
+        </button>
+        <button
+          className="btn sm"
+          disabled
+          title={
+            detail.viewerPermissions.canArchive
+              ? "Archiving is implemented in the lifecycle phase."
+              : "This item cannot be archived by the current viewer."
+          }
+          type="button"
+        >
+          Archive
+        </button>
+        <button
+          className="btn sm"
+          disabled={removing || !detail.viewerPermissions.canRemove}
+          onClick={() => onRemove(item)}
+          title={
+            detail.viewerPermissions.canRemove
+              ? "Remove this item from the project"
+              : "This item cannot be removed by the current viewer."
+          }
+          type="button"
+        >
+          {removing ? "Removing..." : "Remove"}
+        </button>
+        <Link className="btn sm" href={returnHref}>
+          Done
+        </Link>
+      </div>
+    </aside>
+  );
+}
+
+function ProjectItemSidePanelError({
+  message,
+  returnHref,
+}: {
+  message: string;
+  returnHref: string;
+}) {
+  return (
+    <aside
+      aria-label="Project item detail"
+      className="fixed inset-y-0 right-0 z-30 w-full max-w-[420px] border-l p-6 shadow-lg"
+      style={{ background: "var(--surface)", borderColor: "var(--line)" }}
+    >
+      <div className="t-label mb-2">Project item unavailable</div>
+      <h2 className="t-h2">This item cannot be opened.</h2>
+      <p className="t-sm mt-2" style={{ color: "var(--ink-3)" }}>
+        {message}
+      </p>
+      <Link className="btn sm mt-4" href={returnHref}>
+        Close
+      </Link>
+    </aside>
   );
 }
 

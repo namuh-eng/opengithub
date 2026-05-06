@@ -29,6 +29,7 @@ import {
   getPersonalProfileSettingsFromCookie,
   getProfileRepositoriesFromCookie,
   getProfileStarsFromCookie,
+  getProjectItemDetailFromCookie,
   getPublicOrganizationProfileFromCookie,
   getPublicUserProfileFromCookie,
   getPullRequestCompareFromCookie,
@@ -113,6 +114,7 @@ import {
   type PersonalAccessTokenNewContextFetchResult,
   type ProfileRepositoryListQuery,
   type ProjectFieldSettingsFetchResult,
+  type ProjectItemDetailFetchResult,
   type ProjectListFetchResult,
   type ProjectListQuery,
   type ProjectWorkspaceFetchResult,
@@ -317,6 +319,18 @@ export async function getOrganizationProjectWorkspace(
     org,
     projectNumber,
     query,
+  );
+}
+
+export async function getProjectItemDetail(
+  projectId: string,
+  itemId: string,
+): Promise<ProjectItemDetailFetchResult> {
+  const requestHeaders = await headers();
+  return getProjectItemDetailFromCookie(
+    requestHeaders.get("cookie"),
+    projectId,
+    itemId,
   );
 }
 

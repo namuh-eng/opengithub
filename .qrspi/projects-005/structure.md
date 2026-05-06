@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial Side Panel Shell - item rows open real detail panels
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make table, board, and roadmap item rows/cards open an Editorial side panel backed by Phase 1 data. The panel shows title, type icon, source repository/link, draft body, field editors in read-only mode where needed, activity/comments, and permission-aware actions without dead controls.
 
