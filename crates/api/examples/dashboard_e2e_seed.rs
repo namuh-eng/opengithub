@@ -20,6 +20,7 @@ use opengithub_api::{
             RepositorySnapshot, RepositorySnapshotFile, RepositoryVisibility,
         },
         search::{upsert_search_document, SearchDocumentKind, UpsertSearchDocument},
+        wiki::wiki_content_sha,
     },
 };
 use serde::Serialize;
@@ -48,6 +49,7 @@ struct SeedOutput {
     actions_job_log_href: String,
     organization_profile_href: String,
     organization_empty_teams_href: String,
+    repository_wiki_href: String,
 }
 
 fn seed_empty_dashboard() -> bool {
@@ -314,46 +316,48 @@ async fn main() -> anyhow::Result<()> {
         (String::new(), None, String::new())
     };
     let mut pull_request_merge_href = String::new();
-    let (first_repository_href, second_repository_href) = if seed_empty_dashboard() {
-        (String::new(), String::new())
-    } else {
-        let reviewer = upsert_user_by_email(
-            &pool,
-            &format!("reviewer-{suffix}@opengithub.local"),
-            Some("Review Author"),
-            None,
-        )
-        .await?;
+    let (first_repository_href, second_repository_href, repository_wiki_href) =
+        if seed_empty_dashboard() {
+            (String::new(), String::new(), String::new())
+        } else {
+            let reviewer = upsert_user_by_email(
+                &pool,
+                &format!("reviewer-{suffix}@opengithub.local"),
+                Some("Review Author"),
+                None,
+            )
+            .await?;
 
-        let first_repository_name = format!("alpha-{}", &suffix[..12]);
-        let second_repository_name = format!("infra-{}", &suffix[..12]);
-        let first_repository = create_repository(
-            &pool,
-            CreateRepository {
-                owner: RepositoryOwner::User { id: user.id },
-                name: first_repository_name.clone(),
-                description: Some("Repository collaboration workspace".to_owned()),
-                visibility: RepositoryVisibility::Public,
-                default_branch: None,
-                created_by_user_id: user.id,
-            },
-        )
-        .await?;
-        let second_repository = create_repository(
-            &pool,
-            CreateRepository {
-                owner: RepositoryOwner::User { id: user.id },
-                name: second_repository_name.clone(),
-                description: Some("Infrastructure automation".to_owned()),
-                visibility: RepositoryVisibility::Private,
-                default_branch: None,
-                created_by_user_id: user.id,
-            },
-        )
-        .await?;
+            let first_repository_name = format!("alpha-{}", &suffix[..12]);
+            let second_repository_name = format!("infra-{}", &suffix[..12]);
+            let first_repository = create_repository(
+                &pool,
+                CreateRepository {
+                    owner: RepositoryOwner::User { id: user.id },
+                    name: first_repository_name.clone(),
+                    description: Some("Repository collaboration workspace".to_owned()),
+                    visibility: RepositoryVisibility::Public,
+                    default_branch: None,
+                    created_by_user_id: user.id,
+                },
+            )
+            .await?;
+            seed_repository_wiki(&pool, first_repository.id, user.id).await?;
+            let second_repository = create_repository(
+                &pool,
+                CreateRepository {
+                    owner: RepositoryOwner::User { id: user.id },
+                    name: second_repository_name.clone(),
+                    description: Some("Infrastructure automation".to_owned()),
+                    visibility: RepositoryVisibility::Private,
+                    default_branch: None,
+                    created_by_user_id: user.id,
+                },
+            )
+            .await?;
 
-        sqlx::query(
-            r#"
+            sqlx::query(
+                r#"
             UPDATE users
             SET bio = $1,
                 company = $2,
@@ -362,16 +366,16 @@ async fn main() -> anyhow::Result<()> {
                 profile_visibility = 'public'
             WHERE id = $5
             "#,
-        )
-        .bind("Building calm developer tools at Namuh.")
-        .bind("Namuh")
-        .bind("San Francisco")
-        .bind("https://namuh.co")
-        .bind(user.id)
-        .execute(&pool)
-        .await?;
-        sqlx::query(
-            r#"
+            )
+            .bind("Building calm developer tools at Namuh.")
+            .bind("Namuh")
+            .bind("San Francisco")
+            .bind("https://namuh.co")
+            .bind(user.id)
+            .execute(&pool)
+            .await?;
+            sqlx::query(
+                r#"
             INSERT INTO user_profile_readmes (user_id, body, rendered_html, updated_by_user_id)
             VALUES ($1, $2, $3, $1)
             ON CONFLICT (user_id)
@@ -379,107 +383,107 @@ async fn main() -> anyhow::Result<()> {
                           rendered_html = EXCLUDED.rendered_html,
                           updated_by_user_id = EXCLUDED.updated_by_user_id
             "#,
-        )
-        .bind(user.id)
-        .bind("# Dashboard Tester\nSeeded profile overview for browser smoke.")
-        .bind("<h1>Dashboard Tester</h1><p>Seeded profile overview for browser smoke.</p>")
-        .execute(&pool)
-        .await?;
-        sqlx::query(
-            r#"
+            )
+            .bind(user.id)
+            .bind("# Dashboard Tester\nSeeded profile overview for browser smoke.")
+            .bind("<h1>Dashboard Tester</h1><p>Seeded profile overview for browser smoke.</p>")
+            .execute(&pool)
+            .await?;
+            sqlx::query(
+                r#"
             INSERT INTO profile_pins (user_id, repository_id, position)
             VALUES ($1, $2, 1)
             ON CONFLICT (user_id, repository_id)
             DO UPDATE SET position = EXCLUDED.position
             "#,
-        )
-        .bind(user.id)
-        .bind(first_repository.id)
-        .execute(&pool)
-        .await?;
-        sqlx::query(
-            r#"
+            )
+            .bind(user.id)
+            .bind(first_repository.id)
+            .execute(&pool)
+            .await?;
+            sqlx::query(
+                r#"
             INSERT INTO profile_contribution_days (user_id, day, contribution_count)
             VALUES ($1, CURRENT_DATE, 5)
             ON CONFLICT (user_id, day)
             DO UPDATE SET contribution_count = EXCLUDED.contribution_count
             "#,
-        )
-        .bind(user.id)
-        .execute(&pool)
-        .await?;
-        sqlx::query(
-            r#"
+            )
+            .bind(user.id)
+            .execute(&pool)
+            .await?;
+            sqlx::query(
+                r#"
             INSERT INTO profile_contribution_events
                 (user_id, repository_id, event_type, title, target_href)
             VALUES ($1, $2, 'push', 'Pushed seeded profile overview', $3)
             "#,
-        )
-        .bind(user.id)
-        .bind(first_repository.id)
-        .bind(format!(
-            "/{username}/{first_repository_name}/commit/profile"
-        ))
-        .execute(&pool)
-        .await?;
+            )
+            .bind(user.id)
+            .bind(first_repository.id)
+            .bind(format!(
+                "/{username}/{first_repository_name}/commit/profile"
+            ))
+            .execute(&pool)
+            .await?;
 
-        upsert_language(&pool, first_repository.id, "TypeScript", "#3178c6", 1200).await?;
-        upsert_language(&pool, second_repository.id, "Rust", "#dea584", 900).await?;
-        sqlx::query(
-            r#"
+            upsert_language(&pool, first_repository.id, "TypeScript", "#3178c6", 1200).await?;
+            upsert_language(&pool, second_repository.id, "Rust", "#dea584", 900).await?;
+            sqlx::query(
+                r#"
             INSERT INTO recent_repository_visits (user_id, repository_id, visited_at)
             VALUES ($1, $2, now())
             ON CONFLICT (user_id, repository_id)
             DO UPDATE SET visited_at = EXCLUDED.visited_at
             "#,
-        )
-        .bind(user.id)
-        .bind(second_repository.id)
-        .execute(&pool)
-        .await?;
-        sqlx::query(
-            r#"
+            )
+            .bind(user.id)
+            .bind(second_repository.id)
+            .execute(&pool)
+            .await?;
+            sqlx::query(
+                r#"
             INSERT INTO repository_permissions (repository_id, user_id, role, source)
             VALUES ($1, $2, $3, 'direct')
             ON CONFLICT (repository_id, user_id)
             DO UPDATE SET role = EXCLUDED.role
             "#,
-        )
-        .bind(first_repository.id)
-        .bind(reviewer.id)
-        .bind(RepositoryRole::Write.as_str())
-        .execute(&pool)
-        .await?;
-        if seed_issue_templates_enabled() {
-            seed_issue_templates(&pool, first_repository.id, user.id).await?;
-        }
-        let dashboard_commit = insert_commit(
-            &pool,
-            first_repository.id,
-            CreateCommit {
-                oid: format!("{}abcdef", &suffix[..16]),
-                author_user_id: Some(user.id),
-                committer_user_id: Some(user.id),
-                message: "Wire dashboard activity feed".to_owned(),
-                tree_oid: Some(format!("tree-dashboard-{}", &suffix[..12])),
-                parent_oids: vec![],
-                committed_at: Utc::now(),
-            },
-        )
-        .await?;
-        upsert_git_ref(
-            &pool,
-            first_repository.id,
-            "refs/heads/main",
-            "branch",
-            Some(dashboard_commit.id),
-        )
-        .await?;
-        for (path, content) in [
-            ("README.md", "# Dashboard workspace\n"),
-            ("docs/index.html", "<h1>Dashboard Pages</h1>\n"),
-        ] {
-            sqlx::query(
+            )
+            .bind(first_repository.id)
+            .bind(reviewer.id)
+            .bind(RepositoryRole::Write.as_str())
+            .execute(&pool)
+            .await?;
+            if seed_issue_templates_enabled() {
+                seed_issue_templates(&pool, first_repository.id, user.id).await?;
+            }
+            let dashboard_commit = insert_commit(
+                &pool,
+                first_repository.id,
+                CreateCommit {
+                    oid: format!("{}abcdef", &suffix[..16]),
+                    author_user_id: Some(user.id),
+                    committer_user_id: Some(user.id),
+                    message: "Wire dashboard activity feed".to_owned(),
+                    tree_oid: Some(format!("tree-dashboard-{}", &suffix[..12])),
+                    parent_oids: vec![],
+                    committed_at: Utc::now(),
+                },
+            )
+            .await?;
+            upsert_git_ref(
+                &pool,
+                first_repository.id,
+                "refs/heads/main",
+                "branch",
+                Some(dashboard_commit.id),
+            )
+            .await?;
+            for (path, content) in [
+                ("README.md", "# Dashboard workspace\n"),
+                ("docs/index.html", "<h1>Dashboard Pages</h1>\n"),
+            ] {
+                sqlx::query(
                 r#"
                 INSERT INTO repository_files (repository_id, commit_id, path, content, oid, byte_size)
                 VALUES ($1, $2, $3, $4, $5, $6)
@@ -498,129 +502,130 @@ async fn main() -> anyhow::Result<()> {
             .bind(content.len() as i64)
             .execute(&pool)
             .await?;
-        }
-        let dashboard_issue = create_issue(
-            &pool,
-            CreateIssue {
-                repository_id: first_repository.id,
-                actor_user_id: user.id,
-                title: "Fix dashboard setup workflow".to_owned(),
-                body: None,
-                template_id: None,
-                template_slug: None,
-                field_values: std::collections::HashMap::new(),
-                milestone_id: None,
-                label_ids: vec![],
-                assignee_user_ids: vec![user.id],
-                attachments: Vec::new(),
-            },
-        )
-        .await?;
-        create_notification(
-            &pool,
-            CreateNotification {
-                user_id: user.id,
-                repository_id: Some(first_repository.id),
-                subject_type: "issue".to_owned(),
-                subject_id: Some(dashboard_issue.id),
-                title: "Triage dashboard setup workflow".to_owned(),
-                reason: "mention".to_owned(),
-            },
-        )
-        .await?;
-        create_pull_request(
-            &pool,
-            CreatePullRequest {
-                repository_id: first_repository.id,
-                actor_user_id: reviewer.id,
-                title: "Add signed-in dashboard feed".to_owned(),
-                body: None,
-                head_ref: "dashboard-feed".to_owned(),
-                base_ref: "main".to_owned(),
-                head_repository_id: None,
-                is_draft: false,
-                label_ids: vec![],
-                milestone_id: None,
-                assignee_user_ids: vec![],
-                reviewer_user_ids: vec![],
-                template_slug: None,
-            },
-        )
-        .await?;
-        if seed_pull_request_merge() {
-            pull_request_merge_href =
-                seed_merge_ready_pull_request(&pool, user.id, &username, &suffix).await?;
-        }
+            }
+            let dashboard_issue = create_issue(
+                &pool,
+                CreateIssue {
+                    repository_id: first_repository.id,
+                    actor_user_id: user.id,
+                    title: "Fix dashboard setup workflow".to_owned(),
+                    body: None,
+                    template_id: None,
+                    template_slug: None,
+                    field_values: std::collections::HashMap::new(),
+                    milestone_id: None,
+                    label_ids: vec![],
+                    assignee_user_ids: vec![user.id],
+                    attachments: Vec::new(),
+                },
+            )
+            .await?;
+            create_notification(
+                &pool,
+                CreateNotification {
+                    user_id: user.id,
+                    repository_id: Some(first_repository.id),
+                    subject_type: "issue".to_owned(),
+                    subject_id: Some(dashboard_issue.id),
+                    title: "Triage dashboard setup workflow".to_owned(),
+                    reason: "mention".to_owned(),
+                },
+            )
+            .await?;
+            create_pull_request(
+                &pool,
+                CreatePullRequest {
+                    repository_id: first_repository.id,
+                    actor_user_id: reviewer.id,
+                    title: "Add signed-in dashboard feed".to_owned(),
+                    body: None,
+                    head_ref: "dashboard-feed".to_owned(),
+                    base_ref: "main".to_owned(),
+                    head_repository_id: None,
+                    is_draft: false,
+                    label_ids: vec![],
+                    milestone_id: None,
+                    assignee_user_ids: vec![],
+                    reviewer_user_ids: vec![],
+                    template_slug: None,
+                },
+            )
+            .await?;
+            if seed_pull_request_merge() {
+                pull_request_merge_href =
+                    seed_merge_ready_pull_request(&pool, user.id, &username, &suffix).await?;
+            }
 
-        sqlx::query(
-            r#"
+            sqlx::query(
+                r#"
             INSERT INTO user_follows (follower_user_id, followed_user_id)
             VALUES ($1, $2)
             ON CONFLICT DO NOTHING
             "#,
-        )
-        .bind(user.id)
-        .bind(reviewer.id)
-        .execute(&pool)
-        .await?;
-        sqlx::query(
-            r#"
+            )
+            .bind(user.id)
+            .bind(reviewer.id)
+            .execute(&pool)
+            .await?;
+            sqlx::query(
+                r#"
             INSERT INTO repository_watches (user_id, repository_id)
             VALUES ($1, $2)
             ON CONFLICT DO NOTHING
             "#,
-        )
-        .bind(user.id)
-        .bind(first_repository.id)
-        .execute(&pool)
-        .await?;
-        sqlx::query(
-            r#"
+            )
+            .bind(user.id)
+            .bind(first_repository.id)
+            .execute(&pool)
+            .await?;
+            sqlx::query(
+                r#"
             INSERT INTO repository_stars (user_id, repository_id)
             VALUES ($1, $2)
             ON CONFLICT DO NOTHING
             "#,
-        )
-        .bind(user.id)
-        .bind(second_repository.id)
-        .execute(&pool)
-        .await?;
-        seed_feed_event(
-            &pool,
-            user.id,
-            first_repository.id,
-            "push",
-            "Pushed dashboard activity feed",
-            format!(
-                "/{username}/{first_repository_name}/commit/{}",
-                &suffix[..12]
-            ),
-        )
-        .await?;
-        seed_feed_event(
-            &pool,
-            reviewer.id,
-            first_repository.id,
-            "help_wanted_pull_request",
-            "Asked for help reviewing dashboard feed",
-            format!("/{username}/{first_repository_name}/pull/1"),
-        )
-        .await?;
-        seed_feed_event(
-            &pool,
-            user.id,
-            second_repository.id,
-            "release",
-            "Published infrastructure preview",
-            format!("/{username}/{second_repository_name}/releases/tag/v0.1.0"),
-        )
-        .await?;
+            )
+            .bind(user.id)
+            .bind(second_repository.id)
+            .execute(&pool)
+            .await?;
+            seed_feed_event(
+                &pool,
+                user.id,
+                first_repository.id,
+                "push",
+                "Pushed dashboard activity feed",
+                format!(
+                    "/{username}/{first_repository_name}/commit/{}",
+                    &suffix[..12]
+                ),
+            )
+            .await?;
+            seed_feed_event(
+                &pool,
+                reviewer.id,
+                first_repository.id,
+                "help_wanted_pull_request",
+                "Asked for help reviewing dashboard feed",
+                format!("/{username}/{first_repository_name}/pull/1"),
+            )
+            .await?;
+            seed_feed_event(
+                &pool,
+                user.id,
+                second_repository.id,
+                "release",
+                "Published infrastructure preview",
+                format!("/{username}/{second_repository_name}/releases/tag/v0.1.0"),
+            )
+            .await?;
 
-        (
-            format!("/{username}/{first_repository_name}"),
-            format!("/{username}/{second_repository_name}"),
-        )
-    };
+            (
+                format!("/{username}/{first_repository_name}"),
+                format!("/{username}/{second_repository_name}"),
+                format!("/{username}/{first_repository_name}/wiki"),
+            )
+        };
 
     if let Some(marker) = search_e2e_marker() {
         seed_search_documents(&pool, user.id, &username, &marker).await?;
@@ -734,8 +739,130 @@ async fn main() -> anyhow::Result<()> {
         actions_job_log_href,
         organization_profile_href,
         organization_empty_teams_href,
+        repository_wiki_href,
     };
     println!("{}", serde_json::to_string(&output)?);
+    Ok(())
+}
+
+async fn seed_repository_wiki(
+    pool: &PgPool,
+    repository_id: Uuid,
+    author_user_id: Uuid,
+) -> anyhow::Result<()> {
+    let wiki_repository_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO wiki_repositories (repository_id)
+        VALUES ($1)
+        ON CONFLICT (repository_id)
+        DO UPDATE SET updated_at = now()
+        RETURNING id
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_one(pool)
+    .await?;
+
+    for (position, title, slug, markdown, is_sidebar, is_footer) in [
+        (
+            0,
+            "Home",
+            "Home",
+            "# Home\n\nWelcome to the seeded repository wiki.\n\n## Getting started\n\nUse the page list to open the architecture guide.",
+            false,
+            false,
+        ),
+        (
+            1,
+            "Architecture Guide",
+            "Architecture Guide",
+            "# Architecture Guide\n\nThe wiki reader is backed by Rust-rendered Markdown.\n\n## Services\n\nAPI, web, worker, and storage responsibilities stay separated.\n\n## Operations\n\nKeep deployments observable.",
+            false,
+            false,
+        ),
+        (
+            2,
+            "Runbook",
+            "Runbook",
+            "# Runbook\n\n## Rollback\n\nUse the deployment runbook.",
+            false,
+            false,
+        ),
+        (
+            3,
+            "_Sidebar",
+            "_sidebar",
+            "## Wiki links\n\n- [Architecture](Architecture%20Guide)\n- [Runbook](Runbook)",
+            true,
+            false,
+        ),
+        (
+            4,
+            "_Footer",
+            "_footer",
+            "Maintained by platform engineering.",
+            false,
+            true,
+        ),
+    ] {
+        let page_id: Uuid = sqlx::query_scalar(
+            r#"
+            INSERT INTO wiki_pages (
+                wiki_repository_id,
+                title,
+                slug,
+                path,
+                is_sidebar,
+                is_footer,
+                position
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (wiki_repository_id, lower(slug))
+            DO UPDATE SET title = EXCLUDED.title,
+                          path = EXCLUDED.path,
+                          is_sidebar = EXCLUDED.is_sidebar,
+                          is_footer = EXCLUDED.is_footer,
+                          position = EXCLUDED.position
+            RETURNING id
+            "#,
+        )
+        .bind(wiki_repository_id)
+        .bind(title)
+        .bind(slug)
+        .bind(format!("{slug}.md"))
+        .bind(is_sidebar)
+        .bind(is_footer)
+        .bind(position)
+        .fetch_one(pool)
+        .await?;
+        let revision_id: Uuid = sqlx::query_scalar(
+            r#"
+            INSERT INTO wiki_page_revisions (
+                page_id,
+                author_user_id,
+                commit_oid,
+                message,
+                markdown,
+                content_sha
+            )
+            VALUES ($1, $2, $3, 'Seed wiki page', $4, $5)
+            RETURNING id
+            "#,
+        )
+        .bind(page_id)
+        .bind(author_user_id)
+        .bind(format!("wiki{}", Uuid::new_v4().simple()))
+        .bind(markdown)
+        .bind(wiki_content_sha(markdown))
+        .fetch_one(pool)
+        .await?;
+        sqlx::query("UPDATE wiki_pages SET latest_revision_id = $1 WHERE id = $2")
+            .bind(revision_id)
+            .bind(page_id)
+            .execute(pool)
+            .await?;
+    }
+
     Ok(())
 }
 

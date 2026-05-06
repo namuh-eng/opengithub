@@ -358,6 +358,29 @@ describe("ApiDocsPage", () => {
     expect(
       screen.getAllByText("/api/projects/{project_id}/settings")[0],
     ).toBeVisible();
+    expect(screen.getByText("/api/repos/{owner}/{repo}/wiki")).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/wiki/{slug}"),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Read repository wiki Home" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Opening \/wiki resolves Home first/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Markdown HTML is rendered and sanitized by the Rust API/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /The browser lazy-loads TOC expansion through \/api\/repos\/\{owner\}\/\{repo\}\/wiki-toc\/\{slug\}/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/full wiki Git transport is intentionally outside/),
+    ).toBeVisible();
     expect(
       screen.getByText("/api/projects/{project_id}/settings/access"),
     ).toBeVisible();

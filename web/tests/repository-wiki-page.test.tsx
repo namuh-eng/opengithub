@@ -396,6 +396,34 @@ describe("RepositoryWikiPage", () => {
     );
   });
 
+  it("keeps long page lists bounded until Show more pages is activated", () => {
+    render(
+      <RepositoryWikiPage
+        repository={repositoryOverview()}
+        wikiResult={{
+          ok: true,
+          wiki: wikiView({
+            pages: Array.from({ length: 10 }, (_, index) => ({
+              id: `page-${index + 1}`,
+              title: index === 0 ? "Home" : `Guide ${index}`,
+              slug: index === 0 ? "Home" : `Guide ${index}`,
+              href: index === 0 ? "/wiki" : `/wiki/Guide%20${index}`,
+              active: index === 0,
+              hasOutline: index < 2,
+              updatedAt: "2026-05-05T00:00:00Z",
+            })),
+          }),
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "Guide 7" })).toBeVisible();
+    expect(screen.queryByRole("link", { name: "Guide 8" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show 2 more pages" }));
+    expect(screen.getByRole("link", { name: "Guide 8" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Guide 9" })).toBeVisible();
+  });
+
   it("keeps repository-safe fetch errors inside the repository shell", () => {
     render(
       <RepositoryWikiPage

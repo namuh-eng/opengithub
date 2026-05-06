@@ -2660,6 +2660,86 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-wiki-read",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/wiki",
+    title: "Read repository wiki Home",
+    description:
+      "Returns the repository wiki reader contract for the Home page or deterministic first page, including sanitized Markdown, revision metadata, page list, custom sidebar/footer blocks, viewer capabilities, and clone URL metadata.",
+    auth: "Anonymous for public repositories; signed opengithub session cookie with repository read access for private repositories",
+    response: `{
+  "repository": {
+    "ownerLogin": "mona",
+    "name": "octo-app",
+    "visibility": "public",
+    "wikiEnabled": true
+  },
+  "viewer": {
+    "permission": "read",
+    "canRead": true,
+    "canEditWiki": false
+  },
+  "state": { "kind": "ready", "message": "Wiki page is ready." },
+  "page": {
+    "title": "Home",
+    "slug": "Home",
+    "href": "/mona/octo-app/wiki",
+    "revision": {
+      "shortOid": "abc1234",
+      "message": "Publish wiki home",
+      "href": "/mona/octo-app/wiki/Home/_history/abcdef1234567890"
+    },
+    "html": "<h1 id=\\"home\\">Home</h1>",
+    "outline": [{ "id": "home", "level": 1, "text": "Home", "href": "#home" }]
+  },
+  "pages": [{ "title": "Home", "slug": "Home", "active": true, "hasOutline": true }],
+  "sidebar": null,
+  "footer": null,
+  "clone": { "httpsUrl": "https://opengithub.namuh.co/mona/octo-app.wiki.git" },
+  "links": { "homeHref": "/mona/octo-app/wiki", "newPageHref": null }
+}`,
+    notes: [
+      "Opening /wiki resolves Home first, then falls back to the first non-special page when Home is absent.",
+      "Disabled visible repositories return state.kind=disabled with page=null; empty visible wikis return state.kind=empty.",
+      "Private repositories never leak existence to unauthorized readers: anonymous callers receive 401 and unauthorized signed-in callers receive repository-safe not_found/forbidden envelopes according to the repository visibility contract.",
+      "Markdown HTML is rendered and sanitized by the Rust API. Script tags, unsafe links, session rows, OAuth secrets, storage paths, and stack traces are never included.",
+      "_Sidebar and _Footer pages are resolved as rendered blocks but are omitted from the normal page list.",
+    ],
+  },
+  {
+    id: "repo-wiki-page-read",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/wiki/{slug}",
+    title: "Read repository wiki page",
+    description:
+      "Returns the selected wiki slug with the same reader contract as Home, preserving active page state and outline data for page-list table-of-contents expansion.",
+    auth: "Anonymous for public repositories; signed opengithub session cookie with repository read access for private repositories",
+    response: `{
+  "state": { "kind": "ready", "message": "Wiki page is ready." },
+  "page": {
+    "title": "Architecture Guide",
+    "slug": "Architecture Guide",
+    "href": "/mona/octo-app/wiki/Architecture%20Guide",
+    "historyHref": "/mona/octo-app/wiki/Architecture%20Guide/_history",
+    "editHref": null,
+    "outline": [
+      { "id": "architecture-guide", "level": 1, "text": "Architecture Guide", "href": "#architecture-guide" },
+      { "id": "services", "level": 2, "text": "Services", "href": "#services" }
+    ]
+  },
+  "pages": [
+    { "title": "Home", "slug": "Home", "active": false, "hasOutline": true },
+    { "title": "Architecture Guide", "slug": "Architecture Guide", "active": true, "hasOutline": true }
+  ]
+}`,
+    notes: [
+      "Slugs may include spaces and nested path segments. Empty slugs and traversal-like segments are rejected by the same-origin TOC proxy before it forwards to Rust.",
+      "Unknown readable pages return state.kind=missing_page with page=null and a permissioned New Page link only when the viewer can edit the wiki.",
+      "The browser lazy-loads TOC expansion through /api/repos/{owner}/{repo}/wiki-toc/{slug}; that proxy returns only the selected page summary and outline from this Rust read contract.",
+      "Clone URL metadata is HTTPS-only and derived from the configured public app host; full wiki Git transport is intentionally outside wiki-001.",
+    ],
+  },
+  {
     id: "repo-access-read",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/settings/access",

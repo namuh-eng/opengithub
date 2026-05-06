@@ -67,7 +67,7 @@ Repository navigation already exposes a Wiki tab and repository General settings
 
 ## Phase 4: Wiki States, Docs, Browser Evidence, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `wiki-001` only after the read contract, Home reader, slug reader, TOC expansion, clone copy, disabled/private states, docs, screenshots, and QA handoff are complete. Do not expand into wiki editing, page history diffs, full Git smart HTTP wiki transport, search indexing, or wiki settings mutations beyond reading the existing `wiki_enabled` flag.
 

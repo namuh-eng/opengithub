@@ -100,8 +100,11 @@ export function WikiPageList({
   currentOutline,
 }: WikiPageListProps) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [showAllPages, setShowAllPages] = useState(false);
   const [tocBySlug, setTocBySlug] = useState<Record<string, TocState>>({});
   const labelPrefix = useId();
+  const visiblePages = showAllPages ? pages : pages.slice(0, 8);
+  const hiddenPageCount = Math.max(pages.length - visiblePages.length, 0);
 
   async function togglePage(page: RepositoryWikiPageSummary) {
     const willExpand = !expanded[page.slug];
@@ -154,7 +157,7 @@ export function WikiPageList({
 
   return (
     <nav aria-label="Wiki pages" className="mt-3 grid gap-1">
-      {pages.map((page) => {
+      {visiblePages.map((page) => {
         const panelId = `${labelPrefix}-${page.id}-toc`;
         const labelId = `${labelPrefix}-${page.id}-label`;
         const isExpanded = Boolean(expanded[page.slug]);
@@ -225,6 +228,15 @@ export function WikiPageList({
           </div>
         );
       })}
+      {hiddenPageCount > 0 ? (
+        <button
+          className="btn sm ghost mt-2 justify-self-start"
+          onClick={() => setShowAllPages(true)}
+          type="button"
+        >
+          Show {hiddenPageCount} more pages
+        </button>
+      ) : null}
     </nav>
   );
 }

@@ -7554,5 +7554,21 @@
       "Probe nested wiki paths, duplicate title/slug normalization, unknown page New Page CTA behavior, pages with no headings, lazy TOC API errors, keyboard traversal through page links and TOC buttons, private repository leakage, stale outline cache, unsafe links/images, and long Markdown/code/table wrapping.",
       "Phase 4 still owns API docs, final signed-in E2E, final QA handoff consolidation, and wiki-001 build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "wiki-001",
+    "tests_written": [
+      "Completed Phase 4 final docs, E2E coverage, QA handoff, and build-pass bookkeeping for wiki-001.",
+      "Added /docs/api coverage for repository Wiki Home and slug reads, Home fallback, missing/disabled/private states, sanitized Markdown, _Sidebar/_Footer resolution, TOC proxy behavior, clone URL semantics, and no-secret response boundaries.",
+      "Added final Playwright smoke coverage in web/tests/e2e/repository-wiki.spec.ts for signed-in Home read, slug navigation, TOC expansion, heading anchor navigation, clone copy feedback, desktop/mobile screenshots, no dead controls, and no horizontal overflow.",
+      "Extended dashboard_e2e_seed to create a seeded wiki with Home, Architecture Guide, Runbook, _Sidebar, and _Footer pages for real browser smoke against the Rust API.",
+      "Extended RepositoryWikiPage Vitest coverage for bounded long page lists and working Show more pages behavior.",
+      "Updated prd.json and .qrspi/wiki-001/structure.md to mark wiki-001 complete while leaving qa_pass=false."
+    ],
+    "needs_deeper_qa": [
+      "Run web/tests/e2e/repository-wiki.spec.ts against a clean migrated credentialed TEST_DATABASE_URL; the local localhost:55432 postgres credentials have repeatedly rejected the configured password in prior phases.",
+      "Probe real wiki Git remote availability and clone behavior; wiki-001 documents clone URL semantics but intentionally does not implement full wiki Git smart HTTP transport.",
+      "Probe very large Markdown pages, tables, code blocks, duplicate title/slug normalization, nested slugs with unusual characters, missing Home fallback, stale rendered Markdown/TOC cache refreshes, unsafe links/images, private repository leakage, sidebar/footer precedence, keyboard navigation, and mobile wrapping."
+    ]
   }
 ]
