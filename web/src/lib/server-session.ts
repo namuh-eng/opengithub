@@ -96,6 +96,7 @@ import {
   getRepositoryWebhookDeliveryDetailFromCookie,
   getRepositoryWebhookDetailFromCookie,
   getRepositoryWebhookSettingsFromCookie,
+  getRepositoryWikiFromCookie,
   getSearchSuggestionsFromCookie,
   getSessionFromHeaders,
   getUserPackageDetailFromCookie,
@@ -166,6 +167,7 @@ import {
   type RepositorySecurityOverviewFetchResult,
   type RepositorySecurityPolicyFetchResult,
   type RepositoryTrafficFetchResult,
+  type RepositoryWikiFetchResult,
   type SearchSuggestionsQuery,
   searchCodeFromCookie,
   searchCollaborationFromCookie,
@@ -837,6 +839,20 @@ export async function getRepositorySecurityPolicy(
     requestHeaders.get("cookie"),
     owner,
     repo,
+  );
+}
+
+export async function getRepositoryWiki(
+  owner: string,
+  repo: string,
+  slug?: string | null,
+): Promise<RepositoryWikiFetchResult> {
+  const requestHeaders = await headers();
+  return getRepositoryWikiFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    slug,
   );
 }
 

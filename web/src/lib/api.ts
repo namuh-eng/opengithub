@@ -3977,6 +3977,109 @@ export type RepositorySecurityPolicyFetchResult =
   | { ok: true; securityPolicy: RepositorySecurityPolicyView }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type RepositoryWikiView = {
+  repository: RepositoryWikiRepository;
+  viewer: RepositoryWikiViewer;
+  state: RepositoryWikiState;
+  page: RepositoryWikiPage | null;
+  pages: RepositoryWikiPageSummary[];
+  sidebar: RepositoryWikiRenderedBlock | null;
+  footer: RepositoryWikiRenderedBlock | null;
+  clone: RepositoryWikiCloneInfo;
+  links: RepositoryWikiLinks;
+};
+
+export type RepositoryWikiRepository = {
+  id: string;
+  ownerLogin: string;
+  name: string;
+  visibility: string;
+  defaultBranch: string;
+  wikiEnabled: boolean;
+};
+
+export type RepositoryWikiViewer = {
+  permission: string | null;
+  canRead: boolean;
+  canEditWiki: boolean;
+};
+
+export type RepositoryWikiState = {
+  kind: "ready" | "empty" | "disabled" | "missing_page";
+  message: string;
+};
+
+export type RepositoryWikiPage = {
+  id: string;
+  title: string;
+  slug: string;
+  path: string;
+  href: string;
+  revision: RepositoryWikiRevision;
+  markdown: string;
+  html: string;
+  contentSha: string;
+  outline: RepositoryWikiHeading[];
+  editHref: string | null;
+  historyHref: string;
+};
+
+export type RepositoryWikiPageSummary = {
+  id: string;
+  title: string;
+  slug: string;
+  href: string;
+  active: boolean;
+  hasOutline: boolean;
+  updatedAt: string | null;
+};
+
+export type RepositoryWikiRevision = {
+  id: string;
+  author: RepositoryWikiAuthor | null;
+  message: string;
+  commitOid: string | null;
+  shortOid: string | null;
+  createdAt: string;
+  href: string;
+};
+
+export type RepositoryWikiAuthor = {
+  id: string;
+  login: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  href: string;
+};
+
+export type RepositoryWikiHeading = {
+  id: string;
+  level: number;
+  text: string;
+  href: string;
+};
+
+export type RepositoryWikiRenderedBlock = {
+  title: string;
+  slug: string;
+  href: string;
+  html: string;
+  outline: RepositoryWikiHeading[];
+};
+
+export type RepositoryWikiCloneInfo = {
+  httpsUrl: string;
+};
+
+export type RepositoryWikiLinks = {
+  homeHref: string;
+  newPageHref: string | null;
+};
+
+export type RepositoryWikiFetchResult =
+  | { ok: true; wiki: RepositoryWikiView }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type RepositorySecurityAdvisoriesFetchResult =
   | { ok: true; advisories: RepositorySecurityAdvisoriesView }
   | { ok: false; status: number; code: string | null; message: string };
@@ -14174,6 +14277,58 @@ export async function getRepositorySecurityPolicyFromCookie(
   return {
     ok: true,
     securityPolicy: (await response.json()) as RepositorySecurityPolicyView,
+  };
+}
+
+export async function getRepositoryWikiFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  slug?: string | null,
+): Promise<RepositoryWikiFetchResult> {
+  const encodedSlug = slug
+    ? `/${slug
+        .split("/")
+        .filter(Boolean)
+        .map((segment) => encodeURIComponent(segment))
+        .join("/")}`
+    : "";
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/wiki${encodedSlug}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository wiki is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Repository wiki is unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    wiki: (await response.json()) as RepositoryWikiView,
   };
 }
 

@@ -174,6 +174,7 @@ use crate::{
         repository_webhook_settings_for_actor_by_owner_name,
         update_repository_webhook_by_owner_name, WebhookError, WebhookMutation,
     },
+    domain::wiki::repository_wiki_for_actor_by_owner_name,
     AppState,
 };
 
@@ -207,6 +208,8 @@ pub fn router() -> Router<AppState> {
             get(download_sbom_export),
         )
         .route("/:owner/:repo/network", get(network))
+        .route("/:owner/:repo/wiki", get(wiki_home))
+        .route("/:owner/:repo/wiki/*slug", get(wiki_page))
         .route(
             "/:owner/:repo/discussions",
             get(discussions).post(create_discussion),
@@ -850,6 +853,62 @@ async fn read(
     })?;
 
     Ok(Json(json!(repository)))
+}
+
+async fn wiki_home(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let wiki = repository_wiki_for_actor_by_owner_name(
+        pool,
+        actor.map(|user| user.id),
+        &owner,
+        &repo,
+        None,
+        &state.config.app_url,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository wiki was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(wiki)))
+}
+
+async fn wiki_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, slug)): Path<(String, String, String)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let wiki = repository_wiki_for_actor_by_owner_name(
+        pool,
+        actor.map(|user| user.id),
+        &owner,
+        &repo,
+        Some(&slug),
+        &state.config.app_url,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository wiki was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(wiki)))
 }
 
 async fn contents(

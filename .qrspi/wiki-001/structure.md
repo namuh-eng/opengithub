@@ -10,7 +10,7 @@ Repository navigation already exposes a Wiki tab and repository General settings
 
 ## Phase 1: Wiki Read Contract and Persistence - Home page data is screen-ready
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add repository wiki persistence and a read-only API contract that can render `/wiki` as Home or a disabled/private/not-found state. This phase should create the database/API foundation without replacing the frontend placeholder yet.
 

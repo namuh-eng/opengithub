@@ -7499,4 +7499,22 @@
       "Probe project-list status and Insights links across user, organization, repository-linked, closed, template, filtered, and mobile list surfaces."
     ]
   }
+,
+  {
+    "feature_id": "wiki-001",
+    "tests_written": [
+      "Completed Phase 1 Wiki Read Contract and Persistence without marking wiki-001 build_pass=true.",
+      "Added additive wiki persistence tables for wiki repositories, pages, latest revisions, and TOC cache while reusing rendered_markdown_cache for sanitized Markdown HTML.",
+      "Added Rust GET /api/repos/{owner}/{repo}/wiki and /api/repos/{owner}/{repo}/wiki/{slug} with public anonymous reads, private repository-safe 404s, disabled wiki state, Home fallback, slug lookup, sidebar/footer resolution, outline generation, clone URL metadata, and no-secret error envelopes.",
+      "Added typed Next.js API/server-session fetch contracts for repository wiki reads with signed-cookie forwarding and no JS-side auth.",
+      "Added focused repository_wiki_contract coverage for public Home reads, owner slug reads, sanitized Markdown, outline, sidebar/footer, clone URL, disabled state, private 404, JSON content type, and no OAuth/session secret leakage.",
+      "Verification passed: cargo fmt --all --check; cargo check -p opengithub-api --tests; focused repository_wiki_contract compiled and passed under the DB guard; web TypeScript; focused Biome; full make check; full make test with Cargo tests plus 584 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Run the focused wiki contract against a clean migrated credentialed TEST_DATABASE_URL; local Postgres on localhost:55432 rejected the configured postgres password, so DB assertions self-skipped under the existing guard.",
+      "Browser smoke and signed-in E2E are deferred to Phase 2/3 because Phase 1 is API-first and the structure marks browser smoke optional.",
+      "Probe Home fallback when no Home page exists, missing page state, sidebar/footer precedence when both flags and _Sidebar/_Footer slugs exist, duplicate slug normalization, nested wiki slugs, long Markdown/code/table rendering, unsafe links/images, stale rendered Markdown cache, and private repository leakage.",
+      "Phases 2-4 still own the Editorial UI, clone-copy interaction, slug route UI, lazy TOC expansion, API docs, final browser evidence, QA handoff consolidation, and wiki-001 build_pass bookkeeping."
+    ]
+  }
 ]

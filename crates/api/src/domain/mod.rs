@@ -30,3 +30,4 @@ pub mod search;
 pub mod signing_keys;
 pub mod tokens;
 pub mod webhooks;
+pub mod wiki;
