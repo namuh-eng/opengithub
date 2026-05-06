@@ -10,7 +10,7 @@ The collaboration foundation already has repository-scoped `milestones`, `issues
 
 ## Phase 1: Milestone Management API Contract - list/detail and lifecycle mutations work through Rust
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the Rust API contract for repository milestone list, detail, create, edit, close, reopen, and delete. Readers can list open/closed milestones and open details; writers can mutate milestone metadata and state. This phase should be API-first and independently testable without replacing the placeholder UI.
 

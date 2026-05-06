@@ -7269,6 +7269,97 @@ export type IssueListView = ListEnvelope<IssueListItem> & {
   preferences: IssueListPreferences;
 };
 
+export type MilestoneListState = "open" | "closed" | "all";
+
+export type MilestoneSort =
+  | "updated-desc"
+  | "due-desc"
+  | "due-asc"
+  | "complete-asc"
+  | "complete-desc"
+  | "alpha-asc"
+  | "alpha-desc"
+  | "issues-desc"
+  | "issues-asc";
+
+export type RepositoryMilestoneListQuery = {
+  state?: MilestoneListState;
+  sort?: MilestoneSort;
+  page?: number;
+  pageSize?: number;
+};
+
+export type MilestoneViewer = {
+  permission: string | null;
+  canEditMilestones: boolean;
+};
+
+export type MilestoneProgress = {
+  openCount: number;
+  closedCount: number;
+  totalCount: number;
+  percentComplete: number;
+};
+
+export type RepositoryMilestoneSummary = {
+  id: string;
+  title: string;
+  description: string | null;
+  state: IssueState;
+  dueOn: string | null;
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  progress: MilestoneProgress;
+  openIssuesHref: string;
+  closedIssuesHref: string;
+  href: string;
+};
+
+export type RepositoryMilestonesView =
+  ListEnvelope<RepositoryMilestoneSummary> & {
+    openCount: number;
+    closedCount: number;
+    filters: {
+      state: MilestoneListState;
+      sort: MilestoneSort;
+    };
+    viewer: MilestoneViewer;
+    repository: {
+      id: string;
+      ownerLogin: string;
+      name: string;
+      visibility: RepositoryVisibility;
+      isArchived: boolean;
+    };
+  };
+
+export type MilestoneIssueItem = {
+  id: string;
+  number: number;
+  title: string;
+  state: IssueState;
+  isPullRequest: boolean;
+  href: string;
+  commentCount: number;
+  labelNames: string[];
+  assigneeLogins: string[];
+  updatedAt: string;
+};
+
+export type RepositoryMilestoneDetail = RepositoryMilestoneSummary & {
+  descriptionHtml: string;
+  items: MilestoneIssueItem[];
+  viewer: MilestoneViewer;
+  repository: RepositoryMilestonesView["repository"];
+};
+
+export type RepositoryMilestoneMutation = {
+  title: string;
+  description?: string | null;
+  dueOn?: string | null;
+};
+
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
@@ -12042,6 +12133,237 @@ export async function getRepositoryIssuesFromCookie(
         "Restart the API server so the frontend receives issue filters and metadata.",
     },
   };
+}
+
+export function repositoryMilestonesPath(
+  owner: string,
+  repo: string,
+  query: RepositoryMilestoneListQuery = {},
+): string {
+  const params = new URLSearchParams();
+  if (query.state) {
+    params.set("state", query.state);
+  }
+  if (query.sort) {
+    params.set("sort", query.sort);
+  }
+  if (query.page && query.page > 1) {
+    params.set("page", String(query.page));
+  }
+  if (query.pageSize) {
+    params.set("pageSize", String(query.pageSize));
+  }
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/milestones${suffix}`;
+}
+
+export function repositoryMilestonePath(
+  owner: string,
+  repo: string,
+  milestoneId: string,
+): string {
+  return `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/milestones/${encodeURIComponent(milestoneId)}`;
+}
+
+export async function getRepositoryMilestonesFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  query: RepositoryMilestoneListQuery = {},
+): Promise<RepositoryMilestonesView | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}${repositoryMilestonesPath(owner, repo, query)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Milestones are temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "milestones_failed",
+          message: "Milestones could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as RepositoryMilestonesView;
+}
+
+export async function getRepositoryMilestoneFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  milestoneId: string,
+): Promise<RepositoryMilestoneDetail | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}${repositoryMilestonePath(owner, repo, milestoneId)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Milestone is temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "milestone_failed",
+          message: "Milestone could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as RepositoryMilestoneDetail;
+}
+
+async function mutateRepositoryMilestoneFromCookie(
+  cookie: string | null | undefined,
+  path: string,
+  method: "POST" | "PATCH" | "DELETE",
+  body?: unknown,
+): Promise<RepositoryMilestoneDetail | null> {
+  const response = await fetch(`${apiBaseUrl()}${path}`, {
+    method,
+    headers: {
+      ...(body === undefined ? {} : { "content-type": "application/json" }),
+      ...(cookie ? { cookie } : {}),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const envelope = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Milestone operation could not be completed",
+      { cause: envelope },
+    );
+  }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  return (await response.json()) as RepositoryMilestoneDetail;
+}
+
+export async function createRepositoryMilestoneFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  input: RepositoryMilestoneMutation,
+): Promise<RepositoryMilestoneDetail> {
+  const result = await mutateRepositoryMilestoneFromCookie(
+    cookie,
+    repositoryMilestonesPath(owner, repo),
+    "POST",
+    input,
+  );
+  if (!result) {
+    throw new Error("Milestone create returned no milestone");
+  }
+  return result;
+}
+
+export async function updateRepositoryMilestoneFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  milestoneId: string,
+  input: RepositoryMilestoneMutation,
+): Promise<RepositoryMilestoneDetail> {
+  const result = await mutateRepositoryMilestoneFromCookie(
+    cookie,
+    repositoryMilestonePath(owner, repo, milestoneId),
+    "PATCH",
+    input,
+  );
+  if (!result) {
+    throw new Error("Milestone update returned no milestone");
+  }
+  return result;
+}
+
+export async function closeRepositoryMilestoneFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  milestoneId: string,
+): Promise<RepositoryMilestoneDetail> {
+  const result = await mutateRepositoryMilestoneFromCookie(
+    cookie,
+    `${repositoryMilestonePath(owner, repo, milestoneId)}/close`,
+    "POST",
+    { state: "closed" },
+  );
+  if (!result) {
+    throw new Error("Milestone close returned no milestone");
+  }
+  return result;
+}
+
+export async function reopenRepositoryMilestoneFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  milestoneId: string,
+): Promise<RepositoryMilestoneDetail> {
+  const result = await mutateRepositoryMilestoneFromCookie(
+    cookie,
+    `${repositoryMilestonePath(owner, repo, milestoneId)}/reopen`,
+    "POST",
+    { state: "open" },
+  );
+  if (!result) {
+    throw new Error("Milestone reopen returned no milestone");
+  }
+  return result;
+}
+
+export async function deleteRepositoryMilestoneFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  milestoneId: string,
+): Promise<void> {
+  await mutateRepositoryMilestoneFromCookie(
+    cookie,
+    repositoryMilestonePath(owner, repo, milestoneId),
+    "DELETE",
+  );
 }
 
 export function repositoryPullRequestsPath(

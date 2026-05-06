@@ -12,6 +12,7 @@ pub mod identity;
 pub mod issues;
 pub mod labels;
 pub mod markdown;
+pub mod milestones;
 pub mod notifications;
 pub mod onboarding;
 pub mod organizations;

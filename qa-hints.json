@@ -7808,5 +7808,21 @@
       "Probe concurrent label edits/deletes, case-insensitive name collisions, arbitrary user label color contrast, long labels/descriptions, delete cascade across issue_labels, pull-request backing issue labels, and discussion_labels, notification fanout, private repository leakage, archived repository denial, and keyboard-only LabelPicker use.",
       "Probe stale UI after metadata changes across issue, pull request, and discussion detail pages, especially when a label is renamed or deleted while a picker is open."
     ]
+  },
+  {
+    "feature_id": "milestones-001",
+    "tests_written": [
+      "Completed Phase 1 Milestone Management API Contract without marking milestones-001 build_pass=true.",
+      "Added additive migration support for milestone_events, milestone_item_order, and milestone/query indexes.",
+      "Added Rust DTOs and domain functions for repository milestone list/detail/create/update/close/reopen/delete, including progress counts, rendered Markdown descriptions, permission metadata, audit rows, and association clearing on delete.",
+      "Registered /api/repos/{owner}/{repo}/milestones lifecycle routes and added typed Next.js cookie helpers for the API contract.",
+      "Added repository_milestones_contract coverage for list/detail/progress, Markdown rendering, lifecycle mutation, timeline/audit evidence, and issue/PR milestone clearing when TEST_DATABASE_URL is healthy.",
+      "Verification passed: focused milestone contract compiled and self-skipped DB assertions without TEST_DATABASE_URL, web TypeScript, focused Biome, cargo fmt, full make check, full make test with Cargo tests plus 611 web tests, and mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Run repository_milestones_contract against a clean migrated credentialed TEST_DATABASE_URL; the local environment did not expose usable TEST_DATABASE_URL during the focused run.",
+      "Probe private repository anonymous access, archived repository mutation denial, duplicate title collisions, very long descriptions, Markdown sanitization, due-date timezone display, association clearing for PR-backed issues, notification fanout, and audit/timeline ordering.",
+      "Phase 2 still owns the Editorial milestones list UI, browser smoke, and no-dead-control validation."
+    ]
   }
 ]

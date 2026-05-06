@@ -71,11 +71,19 @@ use crate::{
         TransferDiscussionRequest, UpdateDiscussionCategoryRequest,
         UpdateDiscussionCategorySectionRequest, UpdatePinnedDiscussionRequest,
     },
+    domain::issues::IssueState,
     domain::labels::{
         create_repository_label_by_owner_name, delete_repository_label_by_owner_name,
         repository_labels_for_actor_by_owner_name, update_repository_label_by_owner_name,
         LabelsError, RepositoryLabelDirection, RepositoryLabelMutationRequest, RepositoryLabelSort,
         RepositoryLabelsListQuery,
+    },
+    domain::milestones::{
+        create_repository_milestone_by_owner_name, delete_repository_milestone_by_owner_name,
+        repository_milestone_detail_for_actor_by_owner_name,
+        repository_milestones_for_actor_by_owner_name, update_repository_milestone_by_owner_name,
+        update_repository_milestone_state_by_owner_name, MilestoneListState, MilestoneSort,
+        MilestonesError, RepositoryMilestoneMutation, RepositoryMilestonesQuery,
     },
     domain::pages::{
         connect_repository_pages_actions_deployment_by_owner_name,
@@ -228,6 +236,24 @@ pub fn router() -> Router<AppState> {
         .route(
             "/:owner/:repo/labels/:label_id",
             patch(update_label).delete(delete_label),
+        )
+        .route(
+            "/:owner/:repo/milestones",
+            get(milestones).post(create_milestone),
+        )
+        .route(
+            "/:owner/:repo/milestones/:milestone_id",
+            get(milestone_detail)
+                .patch(update_milestone)
+                .delete(delete_milestone),
+        )
+        .route(
+            "/:owner/:repo/milestones/:milestone_id/close",
+            post(close_milestone),
+        )
+        .route(
+            "/:owner/:repo/milestones/:milestone_id/reopen",
+            post(reopen_milestone),
         )
         .route("/:owner/:repo/wiki/_compare", get(wiki_compare))
         .route("/:owner/:repo/wiki/_history", get(wiki_history))
@@ -968,6 +994,181 @@ async fn delete_label(
         .map_err(map_labels_error)?;
 
     Ok(Json(json!(result)))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MilestonesQuery {
+    state: Option<MilestoneListState>,
+    sort: Option<MilestoneSort>,
+    page: Option<i64>,
+    page_size: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MilestoneStateRequest {
+    state: Option<IssueState>,
+}
+
+async fn milestones(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<MilestonesQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let pagination = normalize_pagination(query.page, query.page_size);
+    let view = repository_milestones_for_actor_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        actor.map(|user| user.id),
+        RepositoryMilestonesQuery {
+            state: query.state.unwrap_or_default(),
+            sort: query.sort.unwrap_or_default(),
+        },
+        pagination.page,
+        pagination.page_size,
+    )
+    .await
+    .map_err(map_milestones_error)?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn milestone_detail(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, milestone_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let view = repository_milestone_detail_for_actor_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        milestone_id,
+        actor.map(|user| user.id),
+    )
+    .await
+    .map_err(map_milestones_error)?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn create_milestone(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    RestJson(request): RestJson<RepositoryMilestoneMutation>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let result =
+        create_repository_milestone_by_owner_name(pool, &owner, &repo, actor.0.id, request)
+            .await
+            .map_err(map_milestones_error)?;
+
+    Ok((StatusCode::CREATED, Json(json!(result))))
+}
+
+async fn update_milestone(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, milestone_id)): Path<(String, String, Uuid)>,
+    RestJson(request): RestJson<RepositoryMilestoneMutation>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let result = update_repository_milestone_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        milestone_id,
+        actor.0.id,
+        request,
+    )
+    .await
+    .map_err(map_milestones_error)?;
+
+    Ok(Json(json!(result)))
+}
+
+async fn close_milestone(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, milestone_id)): Path<(String, String, Uuid)>,
+    RestJson(request): RestJson<Option<MilestoneStateRequest>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let requested = request
+        .and_then(|value| value.state)
+        .unwrap_or(IssueState::Closed);
+    if requested != IssueState::Closed {
+        return Err(error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            "close endpoint requires closed state".to_owned(),
+        ));
+    }
+    let result = update_repository_milestone_state_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        milestone_id,
+        actor.0.id,
+        IssueState::Closed,
+    )
+    .await
+    .map_err(map_milestones_error)?;
+    Ok(Json(json!(result)))
+}
+
+async fn reopen_milestone(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, milestone_id)): Path<(String, String, Uuid)>,
+    RestJson(request): RestJson<Option<MilestoneStateRequest>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let requested = request
+        .and_then(|value| value.state)
+        .unwrap_or(IssueState::Open);
+    if requested != IssueState::Open {
+        return Err(error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            "reopen endpoint requires open state".to_owned(),
+        ));
+    }
+    let result = update_repository_milestone_state_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        milestone_id,
+        actor.0.id,
+        IssueState::Open,
+    )
+    .await
+    .map_err(map_milestones_error)?;
+    Ok(Json(json!(result)))
+}
+
+async fn delete_milestone(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, milestone_id)): Path<(String, String, Uuid)>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    delete_repository_milestone_by_owner_name(pool, &owner, &repo, milestone_id, actor.0.id)
+        .await
+        .map_err(map_milestones_error)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn wiki_home(
@@ -5469,6 +5670,30 @@ fn map_labels_error(error: LabelsError) -> (StatusCode, Json<ErrorEnvelope>) {
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal_error",
             "label operation failed".to_owned(),
+        ),
+    }
+}
+
+fn map_milestones_error(error: MilestonesError) -> (StatusCode, Json<ErrorEnvelope>) {
+    match error {
+        MilestonesError::RepositoryNotFound | MilestonesError::MilestoneNotFound => {
+            error_response(StatusCode::NOT_FOUND, "not_found", error.to_string())
+        }
+        MilestonesError::RepositoryAccessDenied => {
+            error_response(StatusCode::FORBIDDEN, "forbidden", error.to_string())
+        }
+        MilestonesError::ArchivedRepository | MilestonesError::Conflict => {
+            error_response(StatusCode::CONFLICT, "conflict", error.to_string())
+        }
+        MilestonesError::Validation(_) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            error.to_string(),
+        ),
+        MilestonesError::Sqlx(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "milestone operation failed".to_owned(),
         ),
     }
 }
