@@ -50,7 +50,7 @@ The collaboration foundation already has repository-scoped `milestones`, `issues
 
 ## Phase 3: Milestone Detail and Issue/PR Assignment - planning view scopes and mutates work
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add `/{owner}/{repo}/milestones/{milestone}` detail behavior and connect milestone assignment from issue and pull request sidebars. Users should inspect milestone work, create a prefilled issue, change item metadata, and see milestone progress update through Rust-owned contracts.
 

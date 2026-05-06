@@ -19,6 +19,7 @@ type IssueCreateFormProps = {
   initialBody?: string;
   defaultLabelIds?: string[];
   defaultAssigneeUserIds?: string[];
+  defaultMilestoneId?: string | null;
   templateId?: string | null;
   templateSlug?: string | null;
   templateName?: string | null;
@@ -139,6 +140,7 @@ export function IssueCreateForm({
   initialBody = "",
   defaultLabelIds = [],
   defaultAssigneeUserIds = [],
+  defaultMilestoneId = null,
   templateId = null,
   templateSlug = null,
   templateName = null,
@@ -316,6 +318,7 @@ export function IssueCreateForm({
         ...(formFields.length ? { fieldValues } : {}),
         labelIds: defaultLabelIds,
         assigneeUserIds: defaultAssigneeUserIds,
+        ...(defaultMilestoneId ? { milestoneId: defaultMilestoneId } : {}),
         ...(attachments.length
           ? { attachments: attachments.map(attachmentPayload) }
           : {}),

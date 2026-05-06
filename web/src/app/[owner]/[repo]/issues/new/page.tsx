@@ -12,7 +12,12 @@ import {
 
 type NewRepositoryIssuePageProps = {
   params: Promise<{ owner: string; repo: string }>;
-  searchParams: Promise<{ body?: string; template?: string; title?: string }>;
+  searchParams: Promise<{
+    body?: string;
+    milestone?: string;
+    template?: string;
+    title?: string;
+  }>;
 };
 
 export default async function NewRepositoryIssuePage({
@@ -34,6 +39,9 @@ export default async function NewRepositoryIssuePage({
   }
   if (query.body) {
     nextSearch.set("body", query.body);
+  }
+  if (query.milestone) {
+    nextSearch.set("milestone", query.milestone);
   }
   const nextPath = `${base}/issues/new${nextSearch.size ? `?${nextSearch.toString()}` : ""}`;
 
@@ -74,6 +82,7 @@ export default async function NewRepositoryIssuePage({
                 selectedTemplate?.defaultAssigneeUserIds ?? []
               }
               defaultLabelIds={selectedTemplate?.defaultLabelIds ?? []}
+              defaultMilestoneId={query.milestone ?? null}
               formFields={selectedTemplate?.formFields ?? []}
               initialBody={query.body ?? selectedTemplate?.body ?? ""}
               initialTitle={query.title ?? selectedTemplate?.titlePrefill ?? ""}

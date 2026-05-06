@@ -72,6 +72,7 @@ import {
   getRepositoryIssueTemplatesFromCookie,
   getRepositoryIssueTimelineFromCookie,
   getRepositoryLabelsFromCookie,
+  getRepositoryMilestoneFromCookie,
   getRepositoryMilestonesFromCookie,
   getRepositoryNetworkFromCookie,
   getRepositoryPagesSettingsFromCookie,
@@ -694,6 +695,20 @@ export async function getRepositoryMilestones(
     owner,
     repo,
     query,
+  );
+}
+
+export async function getRepositoryMilestone(
+  owner: string,
+  repo: string,
+  milestoneId: string,
+) {
+  const requestHeaders = await headers();
+  return getRepositoryMilestoneFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    milestoneId,
   );
 }
 

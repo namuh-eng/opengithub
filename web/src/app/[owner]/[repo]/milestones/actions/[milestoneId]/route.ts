@@ -1,8 +1,10 @@
 import { type NextRequest, NextResponse } from "next/server";
 import {
   type ApiErrorEnvelope,
+  closeRepositoryMilestoneFromCookie,
   deleteRepositoryMilestoneFromCookie,
   type RepositoryMilestoneMutation,
+  reopenRepositoryMilestoneFromCookie,
   updateRepositoryMilestoneFromCookie,
 } from "@/lib/api";
 
@@ -77,5 +79,50 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ ok: true });
   } catch (error) {
     return errorResponse(error, "Repository milestone could not be deleted.");
+  }
+}
+
+export async function POST(request: NextRequest, context: RouteContext) {
+  const { owner, repo, milestoneId } = await context.params;
+  const body = await request.json().catch(() => null);
+  const action =
+    typeof body === "object" &&
+    body !== null &&
+    typeof (body as { action?: unknown }).action === "string"
+      ? (body as { action: string }).action
+      : "";
+
+  try {
+    const result =
+      action === "close"
+        ? await closeRepositoryMilestoneFromCookie(
+            request.headers.get("cookie"),
+            decodeURIComponent(owner),
+            decodeURIComponent(repo),
+            decodeURIComponent(milestoneId),
+          )
+        : action === "reopen"
+          ? await reopenRepositoryMilestoneFromCookie(
+              request.headers.get("cookie"),
+              decodeURIComponent(owner),
+              decodeURIComponent(repo),
+              decodeURIComponent(milestoneId),
+            )
+          : null;
+    if (!result) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "validation_failed",
+            message: "Milestone action must be close or reopen.",
+          },
+          status: 422,
+        },
+        { status: 422 },
+      );
+    }
+    return NextResponse.json(result);
+  } catch (error) {
+    return errorResponse(error, "Repository milestone state could not change.");
   }
 }

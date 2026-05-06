@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { LabelPicker } from "@/components/LabelPicker";
 import { MarkdownBody } from "@/components/MarkdownBody";
+import { MilestonePicker } from "@/components/MilestonePicker";
 import { PullRequestTimeline } from "@/components/PullRequestTimeline";
 import { RepositoryShell } from "@/components/RepositoryShell";
 import { ThreadNotificationCard } from "@/components/ThreadNotificationCard";
@@ -1133,27 +1134,14 @@ export function RepositoryPullRequestDetailPage({
                 ) : null}
               </div>
               {openMetadataMenu === "milestone" ? (
-                <div className="card mb-3 p-2" role="menu">
-                  <button
-                    aria-pressed={pullRequest.milestone === null}
-                    className="btn ghost sm w-full justify-start"
-                    onClick={() => saveMetadata({ milestone: null })}
-                    type="button"
-                  >
-                    No milestone
-                  </button>
-                  {pullRequest.metadataOptions.milestones.map((milestone) => (
-                    <button
-                      aria-pressed={pullRequest.milestone?.id === milestone.id}
-                      className="btn ghost sm w-full justify-start"
-                      key={milestone.id}
-                      onClick={() => saveMetadata({ milestone })}
-                      type="button"
-                    >
-                      {milestone.title}
-                    </button>
-                  ))}
-                </div>
+                <MilestonePicker
+                  disabled={isMutating}
+                  milestones={pullRequest.metadataOptions.milestones}
+                  onCancel={() => setOpenMetadataMenu(null)}
+                  onSave={(milestone) => saveMetadata({ milestone })}
+                  selectedMilestone={pullRequest.milestone}
+                  title="Pull request milestone picker"
+                />
               ) : null}
               {pullRequest.milestone ? (
                 <span className="chip soft">{pullRequest.milestone.title}</span>

@@ -6,6 +6,7 @@ import { useState } from "react";
 import { IssueTimeline, ReactionToolbar } from "@/components/IssueTimeline";
 import { LabelPicker } from "@/components/LabelPicker";
 import { MarkdownBody } from "@/components/MarkdownBody";
+import { MilestonePicker } from "@/components/MilestonePicker";
 import { RepositoryShell } from "@/components/RepositoryShell";
 import { ThreadNotificationCard } from "@/components/ThreadNotificationCard";
 import type {
@@ -601,27 +602,14 @@ export function RepositoryIssueDetailPage({
                 ) : null}
               </div>
               {openMetadataMenu === "milestone" ? (
-                <div className="card mb-3 p-2" role="menu">
-                  <button
-                    aria-pressed={currentIssue.milestone === null}
-                    className="btn ghost sm w-full justify-start"
-                    onClick={() => void saveMetadata({ milestone: null })}
-                    type="button"
-                  >
-                    No milestone
-                  </button>
-                  {currentIssue.metadataOptions.milestones.map((milestone) => (
-                    <button
-                      aria-pressed={currentIssue.milestone?.id === milestone.id}
-                      className="btn ghost sm w-full justify-start"
-                      key={milestone.id}
-                      onClick={() => void saveMetadata({ milestone })}
-                      type="button"
-                    >
-                      {milestone.title}
-                    </button>
-                  ))}
-                </div>
+                <MilestonePicker
+                  disabled={isMutating}
+                  milestones={currentIssue.metadataOptions.milestones}
+                  onCancel={() => setOpenMetadataMenu(null)}
+                  onSave={(milestone) => void saveMetadata({ milestone })}
+                  selectedMilestone={currentIssue.milestone}
+                  title="Issue milestone picker"
+                />
               ) : null}
               {currentIssue.milestone ? (
                 <span className="chip soft">
