@@ -10,6 +10,7 @@ import type {
   RepositoryWikiRenderedBlock,
   RepositoryWikiView,
 } from "@/lib/api";
+import { repositoryWikiPagesHref } from "@/lib/navigation";
 
 type RepositoryWikiPageProps = {
   repository: RepositoryOverview;
@@ -179,6 +180,15 @@ function WikiReader({ wiki }: { wiki: RepositoryWikiView }) {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Link
+              className="btn sm"
+              href={repositoryWikiPagesHref(
+                wiki.repository.ownerLogin,
+                wiki.repository.name,
+              )}
+            >
+              Pages
+            </Link>
             {page.historyHref ? (
               <Link className="btn sm" href={page.historyHref}>
                 History

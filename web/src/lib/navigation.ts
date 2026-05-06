@@ -1027,6 +1027,22 @@ export function repositoryWikiHref(
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/wiki${encodedSlug}`;
 }
 
+export function repositoryWikiPagesHref(owner: string, repo: string) {
+  return repositoryWikiHref(owner, repo, "_pages");
+}
+
+export function repositoryWikiNewPageHref(owner: string, repo: string) {
+  return repositoryWikiHref(owner, repo, "_new");
+}
+
+export function repositoryWikiEditHref(
+  owner: string,
+  repo: string,
+  slug: string,
+) {
+  return repositoryWikiHref(owner, repo, `${slug}/_edit`);
+}
+
 export function repositoryContributorsHref(
   owner: string,
   repo: string,

@@ -7570,5 +7570,24 @@
       "Probe real wiki Git remote availability and clone behavior; wiki-001 documents clone URL semantics but intentionally does not implement full wiki Git smart HTTP transport.",
       "Probe very large Markdown pages, tables, code blocks, duplicate title/slug normalization, nested slugs with unusual characters, missing Home fallback, stale rendered Markdown/TOC cache refreshes, unsafe links/images, private repository leakage, sidebar/footer precedence, keyboard navigation, and mobile wrapping."
     ]
+  },
+  {
+    "feature_id": "wiki-002",
+    "tests_written": [
+      "Completed Phase 2 Pages Index and New Page Entry without marking wiki-002 build_pass=true.",
+      "Added route-backed /{owner}/{repo}/wiki/_pages and /{owner}/{repo}/wiki/_new behavior through the existing wiki catch-all route because App Router underscore folders are private.",
+      "Added RepositoryWikiPagesIndex with Editorial Pages heading, sorted document rows, rendered page links, editor links for writers, reader empty state, and no placeholder hrefs.",
+      "Added RepositoryWikiEditor for new-page drafts with title input, Markdown edit mode dropdown, Write/Preview tabs, image URL/alt insertion, commit-message input, Save Page action, and structured success/error feedback.",
+      "Added same-origin Next API proxies for wiki preview and create-page requests, forwarding signed cookies to the Rust API while keeping auth authoritative in Rust.",
+      "Added focused Vitest coverage for page sorting, permissioned New Page controls, reader empty state, image insertion, preview payloads, save payload/error handling, no inert buttons, and Editorial guardrails.",
+      "Browser smoke passed through the real Next route against a local API-compatible stub: loaded /namuh-eng/opengithub/wiki/_pages, opened a page row, loaded /namuh-eng/opengithub/wiki/_new, filled title/body/message, inserted an image Markdown reference, rendered Preview through the API proxy, verified no href=\"#\" links, verified no horizontal overflow, and saved ralph/screenshots/build/wiki-002-phase2-pages-new.jpg.",
+      "Verification passed: focused RepositoryWiki editing/reader Vitest with 10 tests; web TypeScript; focused Biome; full make check; full make test with Cargo tests plus 594 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Run signed-in make test-e2e after local TEST_DATABASE_URL credentials are healthy; this iteration attempted TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false timeout 120 make test-e2e and it remained blocked by the known local signed-in E2E database/dev-server issue.",
+      "Run browser smoke against a real migrated database with Phase 1 wiki write endpoints; this phase used a local API-compatible stub for repository, pages index, preview, and create-page routes.",
+      "Probe real create-page persistence, local bare wiki Git commit contents, failed Git commit rollback, permission leakage for readers, disabled wiki state, duplicate/invalid titles, nested slugs, very long titles/body content, image URL/alt edge cases, keyboard-only editor traversal, and mobile wrapping.",
+      "Phases 3-5 still own existing-page edit hydration/save, stale conflicts, markup/image publishing edge cases, API docs, final signed-in E2E, QA handoff consolidation, and wiki-002 build_pass bookkeeping."
+    ]
   }
 ]

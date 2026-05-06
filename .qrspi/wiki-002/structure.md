@@ -30,7 +30,7 @@
 
 ## Phase 2: Pages Index and New Page Entry - editors can discover and start pages
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Build `/{owner}/{repo}/wiki/_pages` and route the existing New Page affordance to a real empty editor. The pages index should be backed by the Phase 1 list contract and expose concrete links for page detail/edit creation without dead controls.
 
