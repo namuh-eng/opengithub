@@ -4934,3 +4934,9 @@
 - Verification passed: focused API docs Vitest, JSON validation for `prd.json` and `qa-hints.json`, full `make check`, full `make test`, and mandatory Editorial banned-value scan returned zero matches.
 - Final signed-in `make test-e2e` remains a QA handoff gap because the local test database credentials for `localhost:55432` are still unhealthy. Existing phase browser smokes saved evidence under `ralph/screenshots/build/projects-007-phase2-general-settings.jpg`, `projects-007-phase3-general-mutations.jpg`, `projects-007-phase4-access-settings.jpg`, and `projects-007-phase5-danger-zone.jpg`.
 - Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
+2026-05-06 - projects-008 structure outline
+
+- Created `.qrspi/projects-008/structure.md` for the first incomplete PRD feature, splitting Project Insights charts into six vertical phases: Insights read contract, Editorial Insights page, filters/ranges/custom range/data table, custom chart mutations, sharing/status integration, and final docs/browser/QA/build-pass bookkeeping.
+- No source implementation was started because `projects-008.needs_structure=true` and no structure outline existed at invocation start; the build-loop contract requires the outline first, then `<promise>NEXT</promise>`.
+- Verified `projects-008.build_pass=false`, `qa_pass=false`, and all structure phases remain unchecked for the next invocation. Existing Projects workspace/settings/workflows contracts and repository Insights chart patterns should be reused; do not introduce GitHub visual styling, repository Insights scope, project exports, billing, full analytics dashboards, or an uninstalled chart dependency as part of this feature.
