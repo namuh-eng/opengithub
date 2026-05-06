@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ProjectAccessSettingsPage } from "@/components/ProjectAccessSettingsPage";
 import { ProjectSettingsPage } from "@/components/ProjectSettingsPage";
 import type { ProjectSettings } from "@/lib/api";
 
@@ -159,7 +160,10 @@ describe("ProjectSettingsPage", () => {
       "href",
       "/orgs/namuh/projects/12/workflows",
     );
-    expect(screen.getByRole("button", { name: "Access" })).toBeDisabled();
+    expect(screen.getByRole("link", { name: "Access" })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/projects/12/settings/access",
+    );
     expect(screen.getByRole("button", { name: "Templates" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Danger Zone" })).toBeDisabled();
   });
@@ -390,5 +394,141 @@ describe("ProjectSettingsPage", () => {
         }),
       ),
     );
+  });
+
+  it("renders access settings and submits user, team, role, and remove mutations", async () => {
+    const base = settings({
+      teamGrants: [
+        {
+          id: "team-grant-1",
+          team: {
+            id: "team-1",
+            slug: "platform",
+            name: "Platform",
+            href: "/orgs/namuh/teams/platform",
+          },
+          role: "read",
+          memberCount: 4,
+          updatedAt: "2026-05-03T00:00:00Z",
+        },
+      ],
+      eligibleUsers: [{ id: "user-3", login: "lee", avatarUrl: null }],
+      eligibleTeams: [
+        {
+          id: "team-2",
+          slug: "docs",
+          name: "Docs",
+          href: "/orgs/namuh/teams/docs",
+        },
+      ],
+    });
+    const fetchMock = vi
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          settings({
+            ...base,
+            accessGrants: [
+              ...base.accessGrants,
+              {
+                id: "grant-2",
+                user: { id: "user-3", login: "lee", avatarUrl: null },
+                role: "read",
+                source: "direct",
+                inherited: false,
+                updatedAt: "2026-05-06T00:00:00Z",
+              },
+            ],
+          }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          settings({
+            ...base,
+            accessGrants: [{ ...base.accessGrants[0], role: "admin" }],
+          }),
+      } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => base } as Response);
+
+    render(
+      <ProjectAccessSettingsPage
+        owner="namuh"
+        scope="organization"
+        settings={base}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "General" })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/projects/12/settings",
+    );
+    expect(screen.getByText("Platform")).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText("Collaborator or team"), {
+      target: { value: "user:user-3" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add access" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/projects/project-1/access-grants",
+        expect.objectContaining({
+          body: expect.stringContaining('"targetType":"user"'),
+          method: "POST",
+        }),
+      ),
+    );
+    expect(await screen.findByText("Project access granted.")).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText("Role for mona"), {
+      target: { value: "admin" },
+    });
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/projects/project-1/access-grants/grant-1",
+        expect.objectContaining({
+          body: expect.stringContaining('"role":"admin"'),
+          method: "PATCH",
+        }),
+      ),
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]);
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/projects/project-1/access-grants/grant-1",
+        expect.objectContaining({ method: "DELETE" }),
+      ),
+    );
+  });
+
+  it("disables access controls for read-only project viewers", () => {
+    render(
+      <ProjectAccessSettingsPage
+        owner="namuh"
+        scope="organization"
+        settings={settings({
+          viewerPermissions: {
+            authenticated: true,
+            viewerRole: "read",
+            canEditGeneral: false,
+            canChangeVisibility: false,
+            canLinkRepositories: false,
+            canPublishStatus: false,
+            canManageTemplate: false,
+            canManageAccess: false,
+            canClose: false,
+            canReopen: false,
+            canDelete: false,
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Add access" })).toBeDisabled();
+    expect(screen.getByLabelText("Role for mona")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Remove" })).toBeDisabled();
+    expect(screen.getByText("Read-only")).toBeVisible();
   });
 });

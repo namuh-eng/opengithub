@@ -146,7 +146,7 @@ export function ProjectSettingsPage({
     disabled: boolean;
   }> = [
     { key: "general", label: "General", disabled: false },
-    { key: "access", label: "Access", disabled: true },
+    { key: "access", label: "Access", disabled: false },
     { key: "fields", label: "Fields", disabled: false },
     { key: "workflows", label: "Workflows", disabled: false },
     { key: "templates", label: "Templates", disabled: true },

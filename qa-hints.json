@@ -7335,5 +7335,24 @@
       "Probe concurrent metadata/template edits and stale expectedUpdatedAt conflicts, organization policy visibility locks, read-only/write/admin role boundaries, closed project mutation denial, invalid status date ranges, long README/status Markdown, duplicate repository linking, removing the current default repository, private repository write-denial, repository from another owner, README revision history, template copy-source behavior, and project audit rows.",
       "Phase 4 still owns Access settings; Phase 5 Danger Zone lifecycle; Phase 6 docs, final screenshots, QA handoff, and build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-007",
+    "tests_written": [
+      "Completed Phase 4 Access Settings without marking projects-007 build_pass=true.",
+      "Added Rust project access mutations for POST /api/projects/{project_id}/access-grants, PATCH /api/projects/{project_id}/access-grants/{grant_id}, and DELETE /api/projects/{project_id}/access-grants/{grant_id}.",
+      "Access helpers enforce project admin permissions, open-project state, role validation for read/write/admin, organization member and team ownership boundaries, stale expectedUpdatedAt conflicts, last-admin protection, refreshed settings responses, and project audit events.",
+      "Added same-origin Next proxy routes and typed web API helpers for adding user/team grants, changing roles, and removing grants.",
+      "Added user and organization /settings/access routes plus ProjectAccessSettingsPage with Editorial navigation, collaborator/team tables, role menus, add access form, inherited/base permission chips, read-only disabled states, and no placeholder links.",
+      "Focused ProjectSettingsPage Vitest coverage now asserts access route navigation, add access payloads, role update payloads, remove payloads, team rendering, and read-only disabled states.",
+      "Browser smoke passed through the real Next route against a local API-compatible stub on port 3016: loaded /orgs/namuh/projects/12/settings/access, added collaborator access, changed a role, removed a grant, checked no href=\"#\" links, checked no horizontal overflow, and saved ralph/screenshots/build/projects-007-phase4-access-settings.jpg.",
+      "Verification passed: cargo fmt --all; cargo check -p opengithub-api --tests; focused ProjectSettingsPage Vitest with 10 tests; web TypeScript; focused Biome; full make check; full make test with Cargo tests plus 573 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Run Phase 4 access browser smoke against a clean migrated credentialed TEST_DATABASE_URL when available; this iteration used a local API-compatible stub because local Postgres on localhost:55432 has repeatedly rejected the configured postgres password.",
+      "Full make test-e2e was attempted with TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test and DB_SSL=false but produced no output before the bounded 90 second timeout; rerun the signed-in Projects settings suite after fixing local test database credentials.",
+      "Probe adding organization members and non-members, granting teams from the owning org and foreign orgs, changing the last direct admin, removing inherited grants, organization base permission inheritance, closed project access denial, stale expectedUpdatedAt conflicts, project audit rows, large access lists, keyboard navigation in role menus, and mobile table wrapping.",
+      "Phase 5 still owns Danger Zone lifecycle; Phase 6 docs, final screenshots, QA handoff, and build_pass bookkeeping."
+    ]
   }
 ]

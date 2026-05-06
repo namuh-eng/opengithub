@@ -818,6 +818,49 @@ export type ProjectTemplateUpdateRequest = {
   expectedUpdatedAt?: string | null;
 };
 
+export type ProjectAccessRole = "read" | "write" | "admin";
+
+export type ProjectAccessGrantCreateRequest = {
+  targetType: "user" | "team";
+  targetId: string;
+  role: ProjectAccessRole;
+  expectedUpdatedAt?: string | null;
+};
+
+export type ProjectAccessGrantUpdateRequest = {
+  role: ProjectAccessRole;
+  expectedUpdatedAt?: string | null;
+};
+
+export type ProjectAccessGrantDeleteRequest = {
+  expectedUpdatedAt?: string | null;
+};
+
+export type ProjectAccessMutation =
+  | {
+      action: "add-user";
+      userId: string;
+      role: ProjectAccessRole;
+      expectedUpdatedAt?: string | null;
+    }
+  | {
+      action: "add-team";
+      teamId: string;
+      role: ProjectAccessRole;
+      expectedUpdatedAt?: string | null;
+    }
+  | {
+      action: "update-grant";
+      grantId: string;
+      role: ProjectAccessRole;
+      expectedUpdatedAt?: string | null;
+    }
+  | {
+      action: "remove-grant";
+      grantId: string;
+      expectedUpdatedAt?: string | null;
+    };
+
 export type ProjectFieldCreateRequest = {
   name: string;
   fieldType: "single_select" | "iteration" | "date" | "text" | "number";
@@ -8112,7 +8155,10 @@ async function mutateProjectSettingsFromCookie(
     | ProjectSettingsUpdateRequest
     | ProjectRepositoryLinkRequest
     | ProjectStatusUpdateRequest
-    | ProjectTemplateUpdateRequest,
+    | ProjectTemplateUpdateRequest
+    | ProjectAccessGrantCreateRequest
+    | ProjectAccessGrantUpdateRequest
+    | ProjectAccessGrantDeleteRequest,
   fallbackMessage: string,
 ): Promise<ProjectSettings> {
   const response = await fetch(`${apiBaseUrl()}${path}`, {
@@ -8209,6 +8255,62 @@ export function updateProjectTemplateFromCookie(
     "PATCH",
     request,
     "Project template settings could not be saved.",
+  );
+}
+
+export function mutateProjectAccessFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  mutation: ProjectAccessMutation,
+): Promise<ProjectSettings> {
+  const encodedProjectId = encodeURIComponent(projectId);
+  if (mutation.action === "add-user") {
+    return mutateProjectSettingsFromCookie(
+      cookie,
+      `/api/projects/${encodedProjectId}/access-grants`,
+      "POST",
+      {
+        targetType: "user",
+        targetId: mutation.userId,
+        role: mutation.role,
+        expectedUpdatedAt: mutation.expectedUpdatedAt,
+      },
+      "Project access could not be granted.",
+    );
+  }
+  if (mutation.action === "add-team") {
+    return mutateProjectSettingsFromCookie(
+      cookie,
+      `/api/projects/${encodedProjectId}/access-grants`,
+      "POST",
+      {
+        targetType: "team",
+        targetId: mutation.teamId,
+        role: mutation.role,
+        expectedUpdatedAt: mutation.expectedUpdatedAt,
+      },
+      "Project team access could not be granted.",
+    );
+  }
+  const encodedGrantId = encodeURIComponent(mutation.grantId);
+  if (mutation.action === "update-grant") {
+    return mutateProjectSettingsFromCookie(
+      cookie,
+      `/api/projects/${encodedProjectId}/access-grants/${encodedGrantId}`,
+      "PATCH",
+      {
+        role: mutation.role,
+        expectedUpdatedAt: mutation.expectedUpdatedAt,
+      },
+      "Project access role could not be changed.",
+    );
+  }
+  return mutateProjectSettingsFromCookie(
+    cookie,
+    `/api/projects/${encodedProjectId}/access-grants/${encodedGrantId}`,
+    "DELETE",
+    { expectedUpdatedAt: mutation.expectedUpdatedAt },
+    "Project access grant could not be removed.",
   );
 }
 

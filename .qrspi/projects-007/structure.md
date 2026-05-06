@@ -57,7 +57,7 @@
 
 ## Phase 4: Access Settings - users and teams receive project roles with policy boundaries
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the Access settings page and real grant mutations. Admins can list collaborators and teams, add users/teams, change roles, and remove grants while organization base permission and owner/admin protections remain intact.
 

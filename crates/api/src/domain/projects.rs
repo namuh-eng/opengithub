@@ -522,6 +522,28 @@ pub struct ProjectTemplateUpdateRequest {
     pub expected_updated_at: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectAccessGrantCreateRequest {
+    pub target_type: String,
+    pub target_id: Uuid,
+    pub role: String,
+    pub expected_updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectAccessGrantUpdateRequest {
+    pub role: String,
+    pub expected_updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectAccessGrantDeleteRequest {
+    pub expected_updated_at: Option<DateTime<Utc>>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectSettings {
@@ -2138,6 +2160,176 @@ pub async fn update_project_template_for_actor(
     )
     .await?;
     project_settings(pool, project_id, Some(actor_user_id)).await
+}
+
+pub async fn create_project_access_grant_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectAccessGrantCreateRequest,
+) -> Result<ProjectSettings, ProjectsError> {
+    ensure_can_manage_project_access(pool, project_id, actor_user_id, request.expected_updated_at)
+        .await?;
+    let role = normalize_project_access_role(&request.role)?;
+    match request.target_type.as_str() {
+        "user" => {
+            ensure_project_user_grant_allowed(pool, project_id, request.target_id).await?;
+            sqlx::query(
+                r#"
+                INSERT INTO project_permissions (project_id, user_id, role, source)
+                VALUES ($1, $2, $3, 'direct')
+                ON CONFLICT (project_id, user_id) DO UPDATE
+                SET role = EXCLUDED.role,
+                    source = 'direct',
+                    updated_at = now()
+                "#,
+            )
+            .bind(project_id)
+            .bind(request.target_id)
+            .bind(role)
+            .execute(pool)
+            .await?;
+            audit_project_settings_change(
+                pool,
+                actor_user_id,
+                "project.access.user.grant",
+                project_id,
+                json!({ "userId": request.target_id, "role": role }),
+            )
+            .await?;
+        }
+        "team" => {
+            ensure_project_team_grant_allowed(pool, project_id, request.target_id).await?;
+            sqlx::query(
+                r#"
+                INSERT INTO project_team_permissions (project_id, team_id, role, created_by_user_id)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (project_id, team_id) DO UPDATE
+                SET role = EXCLUDED.role,
+                    updated_at = now()
+                "#,
+            )
+            .bind(project_id)
+            .bind(request.target_id)
+            .bind(role)
+            .bind(actor_user_id)
+            .execute(pool)
+            .await?;
+            audit_project_settings_change(
+                pool,
+                actor_user_id,
+                "project.access.team.grant",
+                project_id,
+                json!({ "teamId": request.target_id, "role": role }),
+            )
+            .await?;
+        }
+        _ => {
+            return Err(ProjectsError::Validation(
+                "Project access targetType must be user or team.".to_owned(),
+            ));
+        }
+    }
+    project_settings(pool, project_id, Some(actor_user_id)).await
+}
+
+pub async fn update_project_access_grant_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    grant_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectAccessGrantUpdateRequest,
+) -> Result<ProjectSettings, ProjectsError> {
+    ensure_can_manage_project_access(pool, project_id, actor_user_id, request.expected_updated_at)
+        .await?;
+    let role = normalize_project_access_role(&request.role)?;
+    if let Some(user_id) = project_access_grant_user_id(pool, project_id, grant_id).await? {
+        if role != "admin" {
+            ensure_not_last_project_admin(pool, project_id, Some(grant_id)).await?;
+        }
+        sqlx::query(
+            "UPDATE project_permissions SET role = $3, source = 'direct', updated_at = now() WHERE project_id = $1 AND id = $2",
+        )
+        .bind(project_id)
+        .bind(grant_id)
+        .bind(role)
+        .execute(pool)
+        .await?;
+        audit_project_settings_change(
+            pool,
+            actor_user_id,
+            "project.access.user.update",
+            project_id,
+            json!({ "grantId": grant_id, "userId": user_id, "role": role }),
+        )
+        .await?;
+        return project_settings(pool, project_id, Some(actor_user_id)).await;
+    }
+    if let Some(team_id) = project_access_grant_team_id(pool, project_id, grant_id).await? {
+        sqlx::query(
+            "UPDATE project_team_permissions SET role = $3, updated_at = now() WHERE project_id = $1 AND id = $2",
+        )
+        .bind(project_id)
+        .bind(grant_id)
+        .bind(role)
+        .execute(pool)
+        .await?;
+        audit_project_settings_change(
+            pool,
+            actor_user_id,
+            "project.access.team.update",
+            project_id,
+            json!({ "grantId": grant_id, "teamId": team_id, "role": role }),
+        )
+        .await?;
+        return project_settings(pool, project_id, Some(actor_user_id)).await;
+    }
+    Err(ProjectsError::NotFound)
+}
+
+pub async fn delete_project_access_grant_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    grant_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectAccessGrantDeleteRequest,
+) -> Result<ProjectSettings, ProjectsError> {
+    ensure_can_manage_project_access(pool, project_id, actor_user_id, request.expected_updated_at)
+        .await?;
+    if let Some(user_id) = project_access_grant_user_id(pool, project_id, grant_id).await? {
+        ensure_not_last_project_admin(pool, project_id, Some(grant_id)).await?;
+        sqlx::query("DELETE FROM project_permissions WHERE project_id = $1 AND id = $2")
+            .bind(project_id)
+            .bind(grant_id)
+            .execute(pool)
+            .await?;
+        audit_project_settings_change(
+            pool,
+            actor_user_id,
+            "project.access.user.remove",
+            project_id,
+            json!({ "grantId": grant_id, "userId": user_id }),
+        )
+        .await?;
+        return project_settings(pool, project_id, Some(actor_user_id)).await;
+    }
+    if let Some(team_id) = project_access_grant_team_id(pool, project_id, grant_id).await? {
+        sqlx::query("DELETE FROM project_team_permissions WHERE project_id = $1 AND id = $2")
+            .bind(project_id)
+            .bind(grant_id)
+            .execute(pool)
+            .await?;
+        audit_project_settings_change(
+            pool,
+            actor_user_id,
+            "project.access.team.remove",
+            project_id,
+            json!({ "grantId": grant_id, "teamId": team_id }),
+        )
+        .await?;
+        return project_settings(pool, project_id, Some(actor_user_id)).await;
+    }
+    Err(ProjectsError::NotFound)
 }
 
 pub async fn update_project_workflow_for_actor(
@@ -5334,6 +5526,172 @@ async fn project_settings_eligible_teams(
             }
         })
         .collect())
+}
+
+fn normalize_project_access_role(role: &str) -> Result<&str, ProjectsError> {
+    match role {
+        "read" | "write" | "admin" => Ok(role),
+        _ => Err(ProjectsError::Validation(
+            "Project access role must be read, write, or admin.".to_owned(),
+        )),
+    }
+}
+
+async fn ensure_can_manage_project_access(
+    pool: &PgPool,
+    project_id: Uuid,
+    actor_user_id: Uuid,
+    expected_updated_at: Option<DateTime<Utc>>,
+) -> Result<(), ProjectsError> {
+    let project = visible_workspace_project(pool, project_id, Some(actor_user_id)).await?;
+    if project.state == "closed"
+        || !project
+            .viewer_role
+            .as_deref()
+            .is_some_and(|role| matches!(role, "owner" | "admin"))
+    {
+        return Err(ProjectsError::Forbidden);
+    }
+    if let Some(expected) = expected_updated_at {
+        let current = project_settings_general(pool, project_id).await?;
+        if current.updated_at != expected {
+            return Err(ProjectsError::Validation(
+                "Project settings changed since they were loaded. Refresh before changing access."
+                    .to_owned(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+async fn ensure_project_user_grant_allowed(
+    pool: &PgPool,
+    project_id: Uuid,
+    user_id: Uuid,
+) -> Result<(), ProjectsError> {
+    let exists = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS (
+          SELECT 1
+          FROM projects
+          WHERE projects.id = $1
+            AND projects.owner_user_id = $2
+          UNION
+          SELECT 1
+          FROM projects
+          JOIN organization_memberships
+            ON organization_memberships.organization_id = projects.owner_organization_id
+           AND organization_memberships.user_id = $2
+          WHERE projects.id = $1
+        )
+        "#,
+    )
+    .bind(project_id)
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+    if exists {
+        Ok(())
+    } else {
+        Err(ProjectsError::Validation(
+            "Project access can only be granted to the owner or organization members.".to_owned(),
+        ))
+    }
+}
+
+async fn ensure_project_team_grant_allowed(
+    pool: &PgPool,
+    project_id: Uuid,
+    team_id: Uuid,
+) -> Result<(), ProjectsError> {
+    let exists = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS (
+          SELECT 1
+          FROM projects
+          JOIN teams ON teams.organization_id = projects.owner_organization_id
+          WHERE projects.id = $1 AND teams.id = $2
+        )
+        "#,
+    )
+    .bind(project_id)
+    .bind(team_id)
+    .fetch_one(pool)
+    .await?;
+    if exists {
+        Ok(())
+    } else {
+        Err(ProjectsError::Validation(
+            "Project team grants must target a team in the owning organization.".to_owned(),
+        ))
+    }
+}
+
+async fn project_access_grant_user_id(
+    pool: &PgPool,
+    project_id: Uuid,
+    grant_id: Uuid,
+) -> Result<Option<Uuid>, ProjectsError> {
+    sqlx::query_scalar("SELECT user_id FROM project_permissions WHERE project_id = $1 AND id = $2")
+        .bind(project_id)
+        .bind(grant_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(ProjectsError::Sqlx)
+}
+
+async fn project_access_grant_team_id(
+    pool: &PgPool,
+    project_id: Uuid,
+    grant_id: Uuid,
+) -> Result<Option<Uuid>, ProjectsError> {
+    sqlx::query_scalar(
+        "SELECT team_id FROM project_team_permissions WHERE project_id = $1 AND id = $2",
+    )
+    .bind(project_id)
+    .bind(grant_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(ProjectsError::Sqlx)
+}
+
+async fn ensure_not_last_project_admin(
+    pool: &PgPool,
+    project_id: Uuid,
+    excluding_grant_id: Option<Uuid>,
+) -> Result<(), ProjectsError> {
+    let count = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT
+          (CASE WHEN projects.owner_user_id IS NOT NULL THEN 1 ELSE 0 END)
+          + COALESCE((
+              SELECT count(*)
+              FROM organization_memberships
+              WHERE organization_memberships.organization_id = projects.owner_organization_id
+                AND organization_memberships.role = 'owner'
+            ), 0)
+          + COALESCE((
+              SELECT count(*)
+              FROM project_permissions
+              WHERE project_permissions.project_id = projects.id
+                AND project_permissions.role = 'admin'
+                AND ($2::uuid IS NULL OR project_permissions.id <> $2)
+            ), 0)
+        FROM projects
+        WHERE projects.id = $1
+        "#,
+    )
+    .bind(project_id)
+    .bind(excluding_grant_id)
+    .fetch_one(pool)
+    .await?;
+    if count > 0 {
+        Ok(())
+    } else {
+        Err(ProjectsError::Validation(
+            "At least one project admin or owner must remain.".to_owned(),
+        ))
+    }
 }
 
 async fn project_settings_status_updates(
