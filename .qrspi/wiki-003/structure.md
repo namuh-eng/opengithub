@@ -30,7 +30,7 @@
 
 ## Phase 2: Revision Snapshot Read - old page content renders by SHA
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add revision detail routes so selecting a short SHA opens the wiki page as it existed at that commit. The snapshot should reuse the reader layout while making the historical state unmistakable and read-only.
 

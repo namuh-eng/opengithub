@@ -306,6 +306,35 @@ pub struct WikiHistoryLinks {
     pub history_href: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiRevisionView {
+    pub repository: WikiRepositorySummary,
+    pub viewer: WikiViewer,
+    pub page: WikiPageView,
+    pub revision_context: WikiRevisionContext,
+    pub pages: Vec<WikiPageSummary>,
+    pub links: WikiRevisionLinks,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiRevisionContext {
+    pub selected_revision: WikiRevisionSummary,
+    pub latest_href: String,
+    pub history_href: String,
+    pub previous_revision_href: Option<String>,
+    pub next_revision_href: Option<String>,
+    pub is_latest: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiRevisionLinks {
+    pub home_href: String,
+    pub pages_href: String,
+}
+
 pub async fn repository_wiki_for_actor_by_owner_name(
     pool: &PgPool,
     actor_user_id: Option<Uuid>,
@@ -613,6 +642,82 @@ pub async fn repository_wiki_history_for_actor_by_owner_name(
             home_href: wiki_home_href(&repository),
             pages_href: format!("{}/_pages", wiki_home_href(&repository)),
             history_href: wiki_history_href(&repository, scope_slug.as_deref(), 1, page_size),
+        },
+    }))
+}
+
+pub async fn repository_wiki_revision_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Option<Uuid>,
+    owner_login: &str,
+    name: &str,
+    slug: &str,
+    revision: &str,
+) -> Result<Option<WikiRevisionView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    let can_read = repository_can_read(pool, &repository, actor_user_id).await?;
+    if !can_read {
+        return Ok(None);
+    }
+    if !repository_wiki_enabled(pool, repository.id).await? {
+        return Err(RepositoryError::InvalidSecurityPolicy(
+            "Wiki is disabled for this repository.".to_owned(),
+        ));
+    }
+    let Some(wiki_repository_id) = wiki_repository_id(pool, repository.id).await? else {
+        return Err(RepositoryError::NotFound);
+    };
+    let Some(page_summary) =
+        wiki_page_summary_by_slug(pool, &repository, wiki_repository_id, slug).await?
+    else {
+        return Err(RepositoryError::NotFound);
+    };
+
+    let row = wiki_revision_page_row(pool, page_summary.id, revision).await?;
+    let page = wiki_page_from_row(pool, &repository, row, false).await?;
+    let pages = wiki_page_summaries(pool, wiki_repository_id, Some(&page.slug)).await?;
+    let permission = viewer_permission(pool, &repository, actor_user_id).await?;
+    let can_edit_wiki = match actor_user_id {
+        Some(user_id) => {
+            can_write_repository(pool, &repository, user_id).await? && !repository.is_archived
+        }
+        None => false,
+    };
+    let previous_revision_href =
+        adjacent_revision_href(pool, &repository, page.id, page.revision.created_at, false).await?;
+    let next_revision_href =
+        adjacent_revision_href(pool, &repository, page.id, page.revision.created_at, true).await?;
+    let is_latest = next_revision_href.is_none();
+
+    Ok(Some(WikiRevisionView {
+        repository: WikiRepositorySummary {
+            id: repository.id,
+            owner_login: repository.owner_login.clone(),
+            name: repository.name.clone(),
+            visibility: repository.visibility.as_str().to_owned(),
+            default_branch: repository.default_branch.clone(),
+            wiki_enabled: true,
+        },
+        viewer: WikiViewer {
+            permission,
+            can_read: true,
+            can_edit_wiki,
+        },
+        revision_context: WikiRevisionContext {
+            selected_revision: page.revision.clone(),
+            latest_href: page.href.clone(),
+            history_href: page.history_href.clone(),
+            previous_revision_href,
+            next_revision_href,
+            is_latest,
+        },
+        page,
+        pages,
+        links: WikiRevisionLinks {
+            home_href: wiki_home_href(&repository),
+            pages_href: format!("{}/_pages", wiki_home_href(&repository)),
         },
     }))
 }
@@ -1238,6 +1343,17 @@ async fn wiki_page(
     let Some(row) = row else {
         return Ok(None);
     };
+    wiki_page_from_row(pool, repository, row, can_edit)
+        .await
+        .map(Some)
+}
+
+async fn wiki_page_from_row(
+    pool: &PgPool,
+    repository: &Repository,
+    row: sqlx::postgres::PgRow,
+    can_edit: bool,
+) -> Result<WikiPageView, RepositoryError> {
     let page_id: Uuid = row.get("page_id");
     let title: String = row.get("title");
     let slug: String = row.get("slug");
@@ -1260,7 +1376,7 @@ async fn wiki_page(
     let outline = wiki_heading_outline(&rendered.html);
     cache_outline(pool, page_id, revision_id, &outline).await?;
 
-    Ok(Some(WikiPageView {
+    Ok(WikiPageView {
         id: page_id,
         title,
         slug: slug.clone(),
@@ -1273,6 +1389,73 @@ async fn wiki_page(
         outline,
         edit_href: can_edit.then(|| format!("{}/_edit", wiki_page_href(repository, &slug))),
         history_href: format!("{}/_history", wiki_page_href(repository, &slug)),
+    })
+}
+
+async fn wiki_revision_page_row(
+    pool: &PgPool,
+    page_id: Uuid,
+    revision: &str,
+) -> Result<sqlx::postgres::PgRow, RepositoryError> {
+    let revision = revision.trim();
+    if revision.is_empty() {
+        return Err(RepositoryError::NotFound);
+    }
+    if let Ok(revision_id) = Uuid::parse_str(revision) {
+        return sqlx::query(&revision_select_sql(
+            "WHERE wiki_pages.id = $1 AND wiki_page_revisions.id = $2",
+        ))
+        .bind(page_id)
+        .bind(revision_id)
+        .fetch_optional(pool)
+        .await?
+        .ok_or(RepositoryError::NotFound);
+    }
+
+    let rows = sqlx::query(&revision_select_sql(
+        "WHERE wiki_pages.id = $1 AND wiki_page_revisions.commit_oid ILIKE $2",
+    ))
+    .bind(page_id)
+    .bind(format!("{revision}%"))
+    .fetch_all(pool)
+    .await?;
+    match rows.len() {
+        1 => Ok(rows.into_iter().next().expect("one row")),
+        0 => Err(RepositoryError::NotFound),
+        _ => Err(RepositoryError::InvalidSecurityPolicy(
+            "Wiki revision reference is ambiguous.".to_owned(),
+        )),
+    }
+}
+
+async fn adjacent_revision_href(
+    pool: &PgPool,
+    repository: &Repository,
+    page_id: Uuid,
+    created_at: DateTime<Utc>,
+    newer: bool,
+) -> Result<Option<String>, RepositoryError> {
+    let comparator = if newer { ">" } else { "<" };
+    let ordering = if newer { "ASC" } else { "DESC" };
+    let row = sqlx::query(&format!(
+        r#"
+        SELECT wiki_pages.slug, wiki_page_revisions.commit_oid
+        FROM wiki_page_revisions
+        JOIN wiki_pages ON wiki_pages.id = wiki_page_revisions.page_id
+        WHERE wiki_page_revisions.page_id = $1
+          AND wiki_page_revisions.created_at {comparator} $2
+        ORDER BY wiki_page_revisions.created_at {ordering}, wiki_page_revisions.id {ordering}
+        LIMIT 1
+        "#
+    ))
+    .bind(page_id)
+    .bind(created_at)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|row| {
+        let slug: String = row.get("slug");
+        let commit_oid: Option<String> = row.get("commit_oid");
+        wiki_revision_history_href(repository, &slug, commit_oid.as_deref())
     }))
 }
 
@@ -1338,6 +1521,31 @@ fn page_select_sql(where_clause: &str) -> String {
           ON wiki_page_revisions.id = wiki_pages.latest_revision_id
         LEFT JOIN users ON users.id = wiki_page_revisions.author_user_id
         {where_clause}
+        "#
+    )
+}
+
+fn revision_select_sql(where_clause: &str) -> String {
+    format!(
+        r#"
+        SELECT wiki_pages.id AS page_id,
+               wiki_pages.title,
+               wiki_pages.slug,
+               wiki_pages.path,
+               wiki_page_revisions.id AS revision_id,
+               wiki_page_revisions.message,
+               wiki_page_revisions.commit_oid,
+               wiki_page_revisions.markdown,
+               wiki_page_revisions.created_at,
+               users.id AS author_id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS author_login,
+               users.display_name AS author_display_name,
+               users.avatar_url AS author_avatar_url
+        FROM wiki_page_revisions
+        JOIN wiki_pages ON wiki_pages.id = wiki_page_revisions.page_id
+        LEFT JOIN users ON users.id = wiki_page_revisions.author_user_id
+        {where_clause}
+        ORDER BY wiki_page_revisions.created_at DESC, wiki_page_revisions.id DESC
         "#
     )
 }

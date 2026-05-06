@@ -380,6 +380,49 @@ async fn repository_wiki_read_contract_returns_pages_markdown_clone_and_states()
         .iter()
         .any(|revision| revision["id"] == older_home_revision_id.to_string()));
 
+    let older_revision_uri = format!(
+        "/api/repos/{}/{}/wiki/Home/_history/{}",
+        owner_login, public_repo.name, older_home_revision_id
+    );
+    let (revision_status, _, revision_body) =
+        get_json(app.clone(), &older_revision_uri, Some(&owner_cookie)).await;
+    assert_eq!(revision_status, StatusCode::OK);
+    assert_eq!(revision_body["page"]["title"], "Home");
+    assert_eq!(
+        revision_body["revisionContext"]["selectedRevision"]["id"],
+        older_home_revision_id.to_string()
+    );
+    assert!(revision_body["page"]["html"]
+        .as_str()
+        .unwrap()
+        .contains("Original content"));
+    assert!(!revision_body["page"]["html"]
+        .as_str()
+        .unwrap()
+        .contains("Welcome to the"));
+    assert!(revision_body["page"]["editHref"].is_null());
+    assert_eq!(
+        revision_body["revisionContext"]["latestHref"],
+        format!("/{}/{}/wiki", owner_login, public_repo.name)
+    );
+    assert!(revision_body["revisionContext"]["nextRevisionHref"].is_string());
+    assert!(!revision_body.to_string().contains("google-client-secret"));
+
+    let short_revision = revision_body["page"]["revision"]["shortOid"]
+        .as_str()
+        .expect("short oid should exist");
+    let short_revision_uri = format!(
+        "/api/repos/{}/{}/wiki/Home/_history/{}",
+        owner_login, public_repo.name, short_revision
+    );
+    let (short_status, _, short_body) =
+        get_json(app.clone(), &short_revision_uri, Some(&owner_cookie)).await;
+    assert_eq!(short_status, StatusCode::OK);
+    assert_eq!(
+        short_body["revisionContext"]["selectedRevision"]["id"],
+        older_home_revision_id.to_string()
+    );
+
     let nested_missing_uri = format!(
         "/api/repos/{}/{}/wiki/Docs/Unknown%20Page",
         body["repository"]["ownerLogin"].as_str().unwrap(),

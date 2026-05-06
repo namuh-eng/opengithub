@@ -7656,5 +7656,23 @@
       "Probe large wiki histories, pagination boundaries, histories across multiple pages, page-scoped missing/private/disabled states, unusual nested slugs, missing authors, duplicated or missing commit OIDs, and relative-time rendering across time zones.",
       "Phases 2-5 still own revision snapshot rendering, two-revision compare, permissioned revert commits, API docs, final signed-in E2E, QA handoff consolidation, and wiki-003 build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "wiki-003",
+    "tests_written": [
+      "Completed Phase 2 Revision Snapshot Read without marking wiki-003 build_pass=true.",
+      "Added Rust revision snapshot contract for /api/repos/{owner}/{repo}/wiki/{slug}/_history/{revision}, resolving revision UUID, full commit OID, or unique short OID and returning sanitized historical Markdown instead of latest page content.",
+      "Added typed Next fetch helpers, server-session wrapper, catch-all route handling, and RepositoryWikiRevisionPage with read-only Editorial snapshot banner, commit metadata, Latest/History/Pages links, adjacent revision navigation, and active Wiki shell.",
+      "Extended repository_wiki_contract with historical content, no editHref, latest/history/next links, short-OID resolution, and no secret leakage assertions; local DB row assertions self-skipped because TEST_DATABASE_URL postgres credentials are still rejected, but the contract compiled and ran under the existing guard.",
+      "Added focused RepositoryWikiRevisionPage Vitest coverage for read-only snapshot rendering, concrete navigation, missing Edit control, unavailable state, no href=\"#\", and banned visual values.",
+      "Browser smoke passed through a clean local Next dev server on 3015 and API-compatible stub on 3016: loaded /namuh-eng/opengithub/wiki/Home/_history/abcdef1234567890, verified read-only banner, historical content, Latest/History/Next links, no href=\"#\", no horizontal overflow, and saved ralph/screenshots/build/wiki-003-phase2-revision-snapshot.jpg.",
+      "Verification passed: focused RepositoryWiki history/revision Vitest with 4 tests; web TypeScript; cargo fmt --all --check; cargo check -p opengithub-api --tests; focused repository_wiki_contract compiled and passed under the DB guard; full make check; full make test with Cargo tests plus 601 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Run revision snapshot API and browser smoke against a clean migrated credentialed TEST_DATABASE_URL; local localhost:55432 still rejects the configured postgres credentials, so DB assertions self-skipped and browser smoke used a local API-compatible stub.",
+      "Probe ambiguous short SHA collisions, unknown revision references, UUID-vs-OID resolution, disabled/private repository leakage, unsafe Markdown sanitization on old revisions, previous/next ordering around identical timestamps, nested slugs, missing commit OIDs, and mobile wrapping on long historical pages.",
+      "Bounded TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false timeout 120 make test-e2e terminated after 120 seconds with no Playwright detail; rerun signed-in E2E after the local test database/dev-server path is healthy.",
+      "Phases 3-5 still own two-revision compare, permissioned revert commits, API docs, final signed-in E2E, QA handoff consolidation, and wiki-003 build_pass bookkeeping."
+    ]
   }
 ]

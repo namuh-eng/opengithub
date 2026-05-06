@@ -100,6 +100,7 @@ import {
   getRepositoryWikiFromCookie,
   getRepositoryWikiHistoryFromCookie,
   getRepositoryWikiPagesFromCookie,
+  getRepositoryWikiRevisionFromCookie,
   getSearchSuggestionsFromCookie,
   getSessionFromHeaders,
   getUserPackageDetailFromCookie,
@@ -171,6 +172,7 @@ import {
   type RepositorySecurityPolicyFetchResult,
   type RepositoryTrafficFetchResult,
   type RepositoryWikiFetchResult,
+  type RepositoryWikiRevisionFetchResult,
   type SearchSuggestionsQuery,
   searchCodeFromCookie,
   searchCollaborationFromCookie,
@@ -883,6 +885,22 @@ export async function getRepositoryWikiHistory(
     slug,
     page,
     pageSize,
+  );
+}
+
+export async function getRepositoryWikiRevision(
+  owner: string,
+  repo: string,
+  slug: string,
+  revision: string,
+): Promise<RepositoryWikiRevisionFetchResult> {
+  const requestHeaders = await headers();
+  return getRepositoryWikiRevisionFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    slug,
+    revision,
   );
 }
 

@@ -5,12 +5,14 @@ import { RepositoryWikiEditor } from "@/components/RepositoryWikiEditor";
 import { RepositoryWikiHistoryPage } from "@/components/RepositoryWikiHistoryPage";
 import { RepositoryWikiPage as RepositoryWikiView } from "@/components/RepositoryWikiPage";
 import { RepositoryWikiPagesIndex } from "@/components/RepositoryWikiPagesIndex";
+import { RepositoryWikiRevisionPage } from "@/components/RepositoryWikiRevisionPage";
 import {
   getRepository,
   getRepositoryWiki,
   getRepositoryWikiEdit,
   getRepositoryWikiHistory,
   getRepositoryWikiPages,
+  getRepositoryWikiRevision,
   getSession,
 } from "@/lib/server-session";
 
@@ -97,6 +99,34 @@ export default async function RepositoryWikiSlugPage({
         <RepositoryWikiHistoryPage
           historyResult={historyResult}
           repository={repository}
+        />
+      </AppShell>
+    );
+  }
+
+  const revisionMarker = "/_history/";
+  if (wikiSlug.includes(revisionMarker)) {
+    const [revisionSlug, revisionRef] = wikiSlug.split(revisionMarker);
+    const revisionResult =
+      revisionSlug && revisionRef
+        ? await getRepositoryWikiRevision(
+            ownerLogin,
+            repositoryName,
+            revisionSlug,
+            revisionRef,
+          )
+        : {
+            ok: false as const,
+            status: 404,
+            code: "not_found",
+            message: "Repository wiki revision was not found.",
+          };
+
+    return (
+      <AppShell session={session}>
+        <RepositoryWikiRevisionPage
+          repository={repository}
+          revisionResult={revisionResult}
         />
       </AppShell>
     );

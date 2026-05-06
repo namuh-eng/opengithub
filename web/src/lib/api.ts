@@ -4193,6 +4193,33 @@ export type RepositoryWikiHistoryFetchResult =
   | { ok: true; history: RepositoryWikiHistoryView }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type RepositoryWikiRevisionView = {
+  repository: RepositoryWikiRepository;
+  viewer: RepositoryWikiViewer;
+  page: RepositoryWikiPage;
+  revisionContext: RepositoryWikiRevisionContext;
+  pages: RepositoryWikiPageSummary[];
+  links: RepositoryWikiRevisionLinks;
+};
+
+export type RepositoryWikiRevisionContext = {
+  selectedRevision: RepositoryWikiRevision;
+  latestHref: string;
+  historyHref: string;
+  previousRevisionHref: string | null;
+  nextRevisionHref: string | null;
+  isLatest: boolean;
+};
+
+export type RepositoryWikiRevisionLinks = {
+  homeHref: string;
+  pagesHref: string;
+};
+
+export type RepositoryWikiRevisionFetchResult =
+  | { ok: true; revision: RepositoryWikiRevisionView }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type RepositorySecurityAdvisoriesFetchResult =
   | { ok: true; advisories: RepositorySecurityAdvisoriesView }
   | { ok: false; status: number; code: string | null; message: string };
@@ -14500,6 +14527,57 @@ export async function getRepositoryWikiHistoryFromCookie(
   return {
     ok: true,
     history: (await response.json()) as RepositoryWikiHistoryView,
+  };
+}
+
+export async function getRepositoryWikiRevisionFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  slug: string,
+  revision: string,
+): Promise<RepositoryWikiRevisionFetchResult> {
+  const encodedSlug = slug
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/wiki/${encodedSlug}/_history/${encodeURIComponent(revision)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository wiki revision is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Repository wiki revision is unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    revision: (await response.json()) as RepositoryWikiRevisionView,
   };
 }
 

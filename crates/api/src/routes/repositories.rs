@@ -178,8 +178,9 @@ use crate::{
         create_repository_wiki_page_by_owner_name, preview_repository_wiki_page_by_owner_name,
         repository_wiki_edit_for_actor_by_owner_name, repository_wiki_for_actor_by_owner_name,
         repository_wiki_history_for_actor_by_owner_name,
-        repository_wiki_pages_for_actor_by_owner_name, update_repository_wiki_page_by_owner_name,
-        WikiPagePreviewRequest, WikiPageSaveRequest,
+        repository_wiki_pages_for_actor_by_owner_name,
+        repository_wiki_revision_for_actor_by_owner_name,
+        update_repository_wiki_page_by_owner_name, WikiPagePreviewRequest, WikiPageSaveRequest,
     },
     AppState,
 };
@@ -948,6 +949,27 @@ async fn wiki_page(
     Query(query): Query<WikiHistoryQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    if let Some((revision_slug, revision_ref)) = slug.rsplit_once("/_history/") {
+        let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+        let revision = repository_wiki_revision_for_actor_by_owner_name(
+            pool,
+            actor.map(|user| user.id),
+            &owner,
+            &repo,
+            revision_slug,
+            revision_ref,
+        )
+        .await
+        .map_err(map_repository_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "repository wiki revision was not found".to_owned(),
+            )
+        })?;
+        return Ok(Json(json!(revision)));
+    }
     if slug == "_history" || slug.ends_with("/_history") {
         let history_slug = slug
             .strip_suffix("/_history")
