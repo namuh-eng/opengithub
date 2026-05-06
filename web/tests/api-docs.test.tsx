@@ -1208,12 +1208,18 @@ describe("ApiDocsPage", () => {
     expect(screen.getByText(/Repeated toggles are idempotent/)).toBeVisible();
     expect(
       screen.getByText(
-        "/api/pulls?scope=review_requests&state=open&page=1&pageSize=30",
+        "/api/issues?scope=assigned&state=open&page=1&pageSize=30",
       ),
     ).toBeVisible();
     expect(
-      screen.getByText(/mentioned uses notification evidence/),
+      screen.getByText(/Pull-request backing issues are excluded/),
     ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/pulls?scope=review_requests&state=open&page=1&pageSize=30",
+      ),
+    ).toBeVisible();
+    expect(screen.getByText(/pull-request mentions/)).toBeVisible();
     expect(screen.getByText("/api/repos/{owner}/{repo}/pulls")).toBeVisible();
     expect(
       screen.getByText(

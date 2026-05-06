@@ -307,6 +307,132 @@ pub struct IssueListView {
     pub preferences: IssueListPreferences,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GlobalIssueScope {
+    #[default]
+    Created,
+    Assigned,
+    Mentioned,
+}
+
+impl GlobalIssueScope {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Created => "created",
+            Self::Assigned => "assigned",
+            Self::Mentioned => "mentioned",
+        }
+    }
+}
+
+impl TryFrom<&str> for GlobalIssueScope {
+    type Error = CollaborationError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "created" => Ok(Self::Created),
+            "assigned" => Ok(Self::Assigned),
+            "mentioned" => Ok(Self::Mentioned),
+            other => Err(CollaborationError::InvalidIssueFilter(format!(
+                "scope must be created, assigned, or mentioned; got {other}"
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct GlobalIssueListQuery {
+    pub scope: GlobalIssueScope,
+    pub query: Option<String>,
+    pub state: Option<IssueState>,
+    pub repository: Option<String>,
+    pub labels: Vec<String>,
+    pub milestone: Option<String>,
+    pub project: Option<String>,
+    pub sort: String,
+}
+
+impl Default for GlobalIssueListQuery {
+    fn default() -> Self {
+        Self {
+            scope: GlobalIssueScope::Created,
+            query: Some("is:issue state:open".to_owned()),
+            state: Some(IssueState::Open),
+            repository: None,
+            labels: Vec::new(),
+            milestone: None,
+            project: None,
+            sort: "updated-desc".to_owned(),
+        }
+    }
+}
+
+pub fn issue_sort_options() -> Vec<&'static str> {
+    vec![
+        "updated-desc",
+        "updated-asc",
+        "created-desc",
+        "created-asc",
+        "comments-desc",
+        "comments-asc",
+        "best-match",
+    ]
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GlobalIssueCounts {
+    pub created: i64,
+    pub assigned: i64,
+    pub mentioned: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GlobalIssueFilters {
+    pub scope: GlobalIssueScope,
+    pub query: String,
+    pub state: Option<IssueState>,
+    pub repository: Option<String>,
+    pub labels: Vec<String>,
+    pub milestone: Option<String>,
+    pub project: Option<String>,
+    pub sort: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GlobalIssueRepositoryOption {
+    pub id: Uuid,
+    pub owner_login: String,
+    pub name: String,
+    pub full_name: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GlobalIssueFilterOptions {
+    pub repositories: Vec<GlobalIssueRepositoryOption>,
+    pub labels: Vec<IssueListLabel>,
+    pub milestones: Vec<IssueListMilestone>,
+    pub projects: Vec<IssueListMetadataOption>,
+    pub sort_options: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GlobalIssueListView {
+    pub items: Vec<IssueListItem>,
+    pub total: i64,
+    pub page: i64,
+    pub page_size: i64,
+    pub counts: GlobalIssueCounts,
+    pub filters: GlobalIssueFilters,
+    pub filter_options: GlobalIssueFilterOptions,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct IssueListRepository {
@@ -1224,6 +1350,201 @@ pub async fn save_repository_issue_preferences(
     .await?;
 
     repository_issue_preferences_row(pool, repository_id, user_id).await
+}
+
+pub async fn global_issue_list_for_viewer(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    filters: GlobalIssueListQuery,
+    page: i64,
+    page_size: i64,
+) -> Result<GlobalIssueListView, CollaborationError> {
+    let page = page.max(1);
+    let page_size = page_size.clamp(1, 100);
+    let offset = (page - 1) * page_size;
+    let scope = filters.scope.as_str();
+    let state_filter = filters.state.as_ref().map(IssueState::as_str);
+    let text_filter = filters
+        .query
+        .as_deref()
+        .map(search_text_from_issue_query)
+        .filter(|value| !value.is_empty());
+
+    let total = count_global_issue_list_items(
+        pool,
+        actor_user_id,
+        scope,
+        state_filter,
+        text_filter.as_deref(),
+        &filters,
+    )
+    .await?;
+    let counts = GlobalIssueCounts {
+        created: count_global_issue_list_items(
+            pool,
+            actor_user_id,
+            "created",
+            state_filter,
+            text_filter.as_deref(),
+            &filters,
+        )
+        .await?,
+        assigned: count_global_issue_list_items(
+            pool,
+            actor_user_id,
+            "assigned",
+            state_filter,
+            text_filter.as_deref(),
+            &filters,
+        )
+        .await?,
+        mentioned: count_global_issue_list_items(
+            pool,
+            actor_user_id,
+            "mentioned",
+            state_filter,
+            text_filter.as_deref(),
+            &filters,
+        )
+        .await?,
+    };
+
+    let rows = sqlx::query(
+        r#"
+        SELECT issues.id, issues.repository_id, issues.number, issues.title, issues.body,
+               issues.state, issues.author_user_id, issues.milestone_id, issues.locked,
+               issues.closed_by_user_id, issues.closed_at, issues.created_at, issues.updated_at
+        FROM issues
+        JOIN repositories ON repositories.id = issues.repository_id
+        LEFT JOIN users owner_users ON owner_users.id = repositories.owner_user_id
+        LEFT JOIN organizations owner_orgs ON owner_orgs.id = repositories.owner_organization_id
+        WHERE (
+              repositories.visibility = 'public'
+              OR EXISTS (
+                  SELECT 1
+                  FROM repository_permissions
+                  WHERE repository_permissions.repository_id = repositories.id
+                    AND repository_permissions.user_id = $1
+                    AND repository_permissions.role IN ('owner', 'admin', 'maintain', 'write', 'triage', 'read')
+              )
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM pull_requests WHERE pull_requests.issue_id = issues.id
+          )
+          AND (
+              ($2 = 'created' AND issues.author_user_id = $1)
+              OR ($2 = 'assigned' AND EXISTS (
+                  SELECT 1 FROM issue_assignees
+                  WHERE issue_assignees.issue_id = issues.id
+                    AND issue_assignees.user_id = $1
+              ))
+              OR ($2 = 'mentioned' AND EXISTS (
+                  SELECT 1 FROM notifications
+                  WHERE notifications.subject_type = 'issue'
+                    AND notifications.subject_id = issues.id
+                    AND notifications.user_id = $1
+                    AND notifications.reason IN ('mention', 'team_mention')
+              ))
+          )
+          AND ($3::text IS NULL OR issues.state = $3)
+          AND (
+              $4::text IS NULL
+              OR issues.title ILIKE '%' || $4 || '%'
+              OR COALESCE(issues.body, '') ILIKE '%' || $4 || '%'
+              OR repositories.name ILIKE '%' || $4 || '%'
+              OR COALESCE(owner_users.username, owner_users.email, owner_orgs.slug) ILIKE '%' || $4 || '%'
+          )
+          AND (
+              $5::text IS NULL
+              OR lower(format('%s/%s', COALESCE(owner_users.username, owner_users.email, owner_orgs.slug), repositories.name)) = lower($5)
+              OR lower(repositories.name) = lower($5)
+          )
+          AND (
+              cardinality($6::text[]) = 0
+              OR NOT EXISTS (
+                  SELECT 1
+                  FROM unnest($6::text[]) wanted_label(name)
+                  WHERE NOT EXISTS (
+                      SELECT 1
+                      FROM issue_labels
+                      JOIN labels ON labels.id = issue_labels.label_id
+                      WHERE issue_labels.issue_id = issues.id
+                        AND lower(labels.name) = lower(wanted_label.name)
+                  )
+              )
+          )
+          AND (
+              $7::text IS NULL
+              OR EXISTS (
+                  SELECT 1 FROM milestones
+                  WHERE milestones.id = issues.milestone_id
+                    AND lower(milestones.title) = lower($7)
+              )
+          )
+          AND $8::text IS NULL
+        ORDER BY
+          CASE WHEN $9 = 'best-match' AND $4::text IS NOT NULL AND issues.title ILIKE '%' || $4 || '%' THEN 0 END ASC,
+          CASE WHEN $9 = 'best-match' AND $4::text IS NOT NULL AND COALESCE(issues.body, '') ILIKE '%' || $4 || '%' THEN 1 END ASC,
+          CASE WHEN $9 = 'best-match' THEN issues.updated_at END DESC,
+          CASE WHEN $9 = 'comments-desc' THEN (SELECT count(*) FROM comments WHERE comments.issue_id = issues.id) END DESC,
+          CASE WHEN $9 = 'comments-asc' THEN (SELECT count(*) FROM comments WHERE comments.issue_id = issues.id) END ASC,
+          CASE WHEN $9 = 'created-asc' THEN issues.created_at END ASC,
+          CASE WHEN $9 = 'created-desc' THEN issues.created_at END DESC,
+          CASE WHEN $9 = 'updated-desc' THEN issues.updated_at END DESC,
+          CASE WHEN $9 = 'updated-asc' THEN issues.updated_at END ASC,
+          issues.updated_at DESC,
+          issues.number DESC
+        LIMIT $10 OFFSET $11
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(scope)
+    .bind(state_filter)
+    .bind(text_filter.as_deref())
+    .bind(filters.repository.as_deref())
+    .bind(&filters.labels)
+    .bind(filters.milestone.as_deref())
+    .bind(filters.project.as_deref())
+    .bind(&filters.sort)
+    .bind(page_size)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+
+    let issues = rows
+        .into_iter()
+        .map(issue_from_row)
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(GlobalIssueListView {
+        items: global_issue_list_items(pool, issues).await?,
+        total,
+        page,
+        page_size,
+        counts,
+        filters: GlobalIssueFilters {
+            scope: filters.scope,
+            query: filters
+                .query
+                .unwrap_or_else(|| "is:issue state:open".to_owned()),
+            state: filters.state,
+            repository: filters.repository,
+            labels: filters.labels,
+            milestone: filters.milestone,
+            project: filters.project,
+            sort: filters.sort,
+        },
+        filter_options: GlobalIssueFilterOptions {
+            repositories: global_issue_repository_options(pool, actor_user_id, scope).await?,
+            labels: global_issue_label_options(pool, actor_user_id, scope).await?,
+            milestones: global_issue_milestone_options(pool, actor_user_id, scope).await?,
+            projects: Vec::new(),
+            sort_options: issue_sort_options()
+                .into_iter()
+                .map(ToOwned::to_owned)
+                .collect(),
+        },
+    })
 }
 
 pub async fn get_issue(
@@ -2910,6 +3231,302 @@ async fn count_issue_list_items(
     .fetch_one(pool)
     .await
     .map_err(CollaborationError::from)
+}
+
+async fn global_issue_list_items(
+    pool: &PgPool,
+    issues: Vec<Issue>,
+) -> Result<Vec<IssueListItem>, CollaborationError> {
+    let mut by_repository: HashMap<Uuid, Vec<Issue>> = HashMap::new();
+    let mut order = Vec::new();
+    for issue in issues {
+        if !by_repository.contains_key(&issue.repository_id) {
+            order.push(issue.repository_id);
+        }
+        by_repository
+            .entry(issue.repository_id)
+            .or_default()
+            .push(issue);
+    }
+
+    let mut grouped_items = HashMap::new();
+    for repository_id in &order {
+        let repository = get_repository(pool, *repository_id)
+            .await
+            .map_err(|error| match error {
+                super::repositories::RepositoryError::Sqlx(error) => {
+                    CollaborationError::Sqlx(error)
+                }
+                _ => CollaborationError::RepositoryNotFound,
+            })?
+            .ok_or(CollaborationError::RepositoryNotFound)?;
+        let issues = by_repository.remove(repository_id).unwrap_or_default();
+        grouped_items.insert(
+            *repository_id,
+            issue_list_items_for_issues(pool, &repository, issues).await?,
+        );
+    }
+
+    let mut items = Vec::new();
+    for repository_id in order {
+        items.extend(grouped_items.remove(&repository_id).unwrap_or_default());
+    }
+    Ok(items)
+}
+
+async fn count_global_issue_list_items(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    scope: &str,
+    state_filter: Option<&str>,
+    text_filter: Option<&str>,
+    filters: &GlobalIssueListQuery,
+) -> Result<i64, CollaborationError> {
+    Ok(sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT count(*)
+        FROM issues
+        JOIN repositories ON repositories.id = issues.repository_id
+        LEFT JOIN users owner_users ON owner_users.id = repositories.owner_user_id
+        LEFT JOIN organizations owner_orgs ON owner_orgs.id = repositories.owner_organization_id
+        WHERE (
+              repositories.visibility = 'public'
+              OR EXISTS (
+                  SELECT 1
+                  FROM repository_permissions
+                  WHERE repository_permissions.repository_id = repositories.id
+                    AND repository_permissions.user_id = $1
+                    AND repository_permissions.role IN ('owner', 'admin', 'maintain', 'write', 'triage', 'read')
+              )
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM pull_requests WHERE pull_requests.issue_id = issues.id
+          )
+          AND (
+              ($2 = 'created' AND issues.author_user_id = $1)
+              OR ($2 = 'assigned' AND EXISTS (
+                  SELECT 1 FROM issue_assignees
+                  WHERE issue_assignees.issue_id = issues.id
+                    AND issue_assignees.user_id = $1
+              ))
+              OR ($2 = 'mentioned' AND EXISTS (
+                  SELECT 1 FROM notifications
+                  WHERE notifications.subject_type = 'issue'
+                    AND notifications.subject_id = issues.id
+                    AND notifications.user_id = $1
+                    AND notifications.reason IN ('mention', 'team_mention')
+              ))
+          )
+          AND ($3::text IS NULL OR issues.state = $3)
+          AND (
+              $4::text IS NULL
+              OR issues.title ILIKE '%' || $4 || '%'
+              OR COALESCE(issues.body, '') ILIKE '%' || $4 || '%'
+              OR repositories.name ILIKE '%' || $4 || '%'
+              OR COALESCE(owner_users.username, owner_users.email, owner_orgs.slug) ILIKE '%' || $4 || '%'
+          )
+          AND (
+              $5::text IS NULL
+              OR lower(format('%s/%s', COALESCE(owner_users.username, owner_users.email, owner_orgs.slug), repositories.name)) = lower($5)
+              OR lower(repositories.name) = lower($5)
+          )
+          AND (
+              cardinality($6::text[]) = 0
+              OR NOT EXISTS (
+                  SELECT 1
+                  FROM unnest($6::text[]) wanted_label(name)
+                  WHERE NOT EXISTS (
+                      SELECT 1
+                      FROM issue_labels
+                      JOIN labels ON labels.id = issue_labels.label_id
+                      WHERE issue_labels.issue_id = issues.id
+                        AND lower(labels.name) = lower(wanted_label.name)
+                  )
+              )
+          )
+          AND (
+              $7::text IS NULL
+              OR EXISTS (
+                  SELECT 1 FROM milestones
+                  WHERE milestones.id = issues.milestone_id
+                    AND lower(milestones.title) = lower($7)
+              )
+          )
+          AND $8::text IS NULL
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(scope)
+    .bind(state_filter)
+    .bind(text_filter)
+    .bind(filters.repository.as_deref())
+    .bind(&filters.labels)
+    .bind(filters.milestone.as_deref())
+    .bind(filters.project.as_deref())
+    .fetch_one(pool)
+    .await?)
+}
+
+async fn global_issue_repository_options(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    scope: &str,
+) -> Result<Vec<GlobalIssueRepositoryOption>, CollaborationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT repositories.id,
+               COALESCE(owner_users.username, owner_users.email, owner_orgs.slug) AS owner_login,
+               repositories.name,
+               count(*) AS count
+        FROM issues
+        JOIN repositories ON repositories.id = issues.repository_id
+        LEFT JOIN users owner_users ON owner_users.id = repositories.owner_user_id
+        LEFT JOIN organizations owner_orgs ON owner_orgs.id = repositories.owner_organization_id
+        WHERE (
+              repositories.visibility = 'public'
+              OR EXISTS (
+                  SELECT 1 FROM repository_permissions
+                  WHERE repository_permissions.repository_id = repositories.id
+                    AND repository_permissions.user_id = $1
+                    AND repository_permissions.role IN ('owner', 'admin', 'maintain', 'write', 'triage', 'read')
+              )
+          )
+          AND NOT EXISTS (SELECT 1 FROM pull_requests WHERE pull_requests.issue_id = issues.id)
+          AND (
+              ($2 = 'created' AND issues.author_user_id = $1)
+              OR ($2 = 'assigned' AND EXISTS (
+                  SELECT 1 FROM issue_assignees WHERE issue_assignees.issue_id = issues.id AND issue_assignees.user_id = $1
+              ))
+              OR ($2 = 'mentioned' AND EXISTS (
+                  SELECT 1 FROM notifications WHERE notifications.subject_type = 'issue' AND notifications.subject_id = issues.id AND notifications.user_id = $1 AND notifications.reason IN ('mention', 'team_mention')
+              ))
+          )
+        GROUP BY repositories.id, owner_login, repositories.name
+        ORDER BY count(*) DESC, owner_login ASC, repositories.name ASC
+        LIMIT 50
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(scope)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let owner_login: String = row.get("owner_login");
+            let name: String = row.get("name");
+            GlobalIssueRepositoryOption {
+                id: row.get("id"),
+                full_name: format!("{owner_login}/{name}"),
+                owner_login,
+                name,
+                count: row.get("count"),
+            }
+        })
+        .collect())
+}
+
+async fn global_issue_label_options(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    scope: &str,
+) -> Result<Vec<IssueListLabel>, CollaborationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT labels.id, labels.name, labels.color, labels.description, count(*) AS uses
+        FROM issues
+        JOIN repositories ON repositories.id = issues.repository_id
+        JOIN issue_labels ON issue_labels.issue_id = issues.id
+        JOIN labels ON labels.id = issue_labels.label_id
+        WHERE (
+              repositories.visibility = 'public'
+              OR EXISTS (
+                  SELECT 1 FROM repository_permissions
+                  WHERE repository_permissions.repository_id = repositories.id
+                    AND repository_permissions.user_id = $1
+                    AND repository_permissions.role IN ('owner', 'admin', 'maintain', 'write', 'triage', 'read')
+              )
+          )
+          AND NOT EXISTS (SELECT 1 FROM pull_requests WHERE pull_requests.issue_id = issues.id)
+          AND (
+              ($2 = 'created' AND issues.author_user_id = $1)
+              OR ($2 = 'assigned' AND EXISTS (
+                  SELECT 1 FROM issue_assignees WHERE issue_assignees.issue_id = issues.id AND issue_assignees.user_id = $1
+              ))
+              OR ($2 = 'mentioned' AND EXISTS (
+                  SELECT 1 FROM notifications WHERE notifications.subject_type = 'issue' AND notifications.subject_id = issues.id AND notifications.user_id = $1 AND notifications.reason IN ('mention', 'team_mention')
+              ))
+          )
+        GROUP BY labels.id, labels.name, labels.color, labels.description
+        ORDER BY uses DESC, lower(labels.name) ASC
+        LIMIT 50
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(scope)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| IssueListLabel {
+            id: row.get("id"),
+            name: row.get("name"),
+            color: row.get("color"),
+            description: row.get("description"),
+        })
+        .collect())
+}
+
+async fn global_issue_milestone_options(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    scope: &str,
+) -> Result<Vec<IssueListMilestone>, CollaborationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT milestones.id, milestones.title, milestones.state, count(*) AS issue_count
+        FROM issues
+        JOIN repositories ON repositories.id = issues.repository_id
+        JOIN milestones ON milestones.id = issues.milestone_id
+        WHERE (
+              repositories.visibility = 'public'
+              OR EXISTS (
+                  SELECT 1 FROM repository_permissions
+                  WHERE repository_permissions.repository_id = repositories.id
+                    AND repository_permissions.user_id = $1
+                    AND repository_permissions.role IN ('owner', 'admin', 'maintain', 'write', 'triage', 'read')
+              )
+          )
+          AND NOT EXISTS (SELECT 1 FROM pull_requests WHERE pull_requests.issue_id = issues.id)
+          AND (
+              ($2 = 'created' AND issues.author_user_id = $1)
+              OR ($2 = 'assigned' AND EXISTS (
+                  SELECT 1 FROM issue_assignees WHERE issue_assignees.issue_id = issues.id AND issue_assignees.user_id = $1
+              ))
+              OR ($2 = 'mentioned' AND EXISTS (
+                  SELECT 1 FROM notifications WHERE notifications.subject_type = 'issue' AND notifications.subject_id = issues.id AND notifications.user_id = $1 AND notifications.reason IN ('mention', 'team_mention')
+              ))
+          )
+        GROUP BY milestones.id, milestones.title, milestones.state
+        ORDER BY issue_count DESC, lower(milestones.title) ASC
+        LIMIT 50
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(scope)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            let state: String = row.get("state");
+            Ok(IssueListMilestone {
+                id: row.get("id"),
+                title: row.get("title"),
+                state: IssueState::try_from(state.as_str())?,
+            })
+        })
+        .collect()
 }
 
 async fn issue_list_items_for_issues(

@@ -18,12 +18,13 @@ use crate::{
         identity::User,
         issues::{
             add_issue_comment, convert_issue_to_discussion, create_issue, get_issue,
-            issue_comment_timeline_item, issue_discussion_conversion_view, issue_timeline_view,
-            list_issue_templates_for_viewer, repository_issue_detail_view_for_viewer,
-            repository_issue_list_view_for_viewer, save_repository_issue_preferences,
-            toggle_issue_reaction, update_issue_metadata, update_issue_state,
-            update_issue_subscription, CollaborationError, ConvertIssueToDiscussion, CreateComment,
-            CreateIssue, CreateIssueAttachment, IssueListQuery, IssueState, ReactionContent,
+            global_issue_list_for_viewer, issue_comment_timeline_item,
+            issue_discussion_conversion_view, issue_timeline_view, list_issue_templates_for_viewer,
+            repository_issue_detail_view_for_viewer, repository_issue_list_view_for_viewer,
+            save_repository_issue_preferences, toggle_issue_reaction, update_issue_metadata,
+            update_issue_state, update_issue_subscription, CollaborationError,
+            ConvertIssueToDiscussion, CreateComment, CreateIssue, CreateIssueAttachment,
+            GlobalIssueListQuery, GlobalIssueScope, IssueListQuery, IssueState, ReactionContent,
             UpdateIssueMetadata, UpdateIssueState, UpdateIssueSubscription,
         },
         permissions::RepositoryRole,
@@ -35,6 +36,7 @@ use crate::{
 
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route("/api/issues", get(global_list))
         .route("/api/repos/:owner/:repo/issues", get(list).post(create))
         .route("/api/repos/:owner/:repo/issues/templates", get(templates))
         .route(
@@ -78,8 +80,11 @@ fn post_reaction_route() -> axum::routing::MethodRouter<AppState> {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ListQuery {
+    scope: Option<String>,
     state: Option<IssueState>,
     q: Option<String>,
+    repo: Option<String>,
+    repository: Option<String>,
     author: Option<String>,
     #[serde(alias = "excluded_author", alias = "excludedAuthor")]
     excluded_author: Option<String>,
@@ -172,6 +177,27 @@ struct ConvertIssueToDiscussionRequest {
     category_slug: String,
 }
 
+async fn global_list(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ListQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let pagination = normalize_pagination(query.page, query.page_size);
+    let envelope = global_issue_list_for_viewer(
+        pool,
+        actor.id,
+        global_issue_list_query(&query).map_err(map_collaboration_error)?,
+        pagination.page,
+        pagination.page_size,
+    )
+    .await
+    .map_err(map_collaboration_error)?;
+
+    Ok(Json(json!(envelope)))
+}
+
 async fn list(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -208,6 +234,76 @@ const ISSUE_SORTS: &[&str] = &[
     "comments-asc",
     "best-match",
 ];
+
+fn global_issue_list_query(query: &ListQuery) -> Result<GlobalIssueListQuery, CollaborationError> {
+    let q = query
+        .q
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("is:issue state:open");
+    validate_issue_query(q)?;
+
+    let raw_sort = query
+        .sort
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| qualifier_from_query(q, "sort:"))
+        .unwrap_or_else(|| "updated-desc".to_owned());
+    let normalized_sort = if ISSUE_SORTS.contains(&raw_sort.as_str()) {
+        raw_sort
+    } else {
+        return Err(CollaborationError::InvalidIssueFilter(format!(
+            "unsupported sort: {raw_sort}"
+        )));
+    };
+    if normalized_sort == "best-match" && issue_search_text_from_query(q).is_empty() {
+        return Err(CollaborationError::InvalidIssueFilter(
+            "best match sort requires a search term".to_owned(),
+        ));
+    }
+
+    let scope = query
+        .scope
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("created");
+    let scope = GlobalIssueScope::try_from(scope)?;
+    let repository = query
+        .repository
+        .as_deref()
+        .or(query.repo.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| qualifier_from_query(q, "repo:"));
+
+    Ok(GlobalIssueListQuery {
+        scope,
+        query: Some(q.chars().take(240).collect()),
+        state: query.state.clone().or_else(|| state_option_from_query(q)),
+        repository,
+        labels: labels_from_query(q, query.labels.as_deref()),
+        milestone: query
+            .milestone
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .or_else(|| qualifier_from_query(q, "milestone:")),
+        project: query
+            .project
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .or_else(|| qualifier_from_query(q, "project:")),
+        sort: normalized_sort,
+    })
+}
 
 fn issue_list_query(
     query: &ListQuery,
@@ -389,6 +485,35 @@ fn state_from_query(query: &str) -> IssueState {
         IssueState::Closed
     } else {
         IssueState::Open
+    }
+}
+
+fn issue_search_text_from_query(query: &str) -> String {
+    query
+        .split_whitespace()
+        .filter(|term| {
+            !matches!(
+                *term,
+                "is:issue" | "is:open" | "is:closed" | "state:open" | "state:closed"
+            ) && !term.contains(':')
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn state_option_from_query(query: &str) -> Option<IssueState> {
+    if query
+        .split_whitespace()
+        .any(|term| matches!(term, "state:closed" | "is:closed"))
+    {
+        Some(IssueState::Closed)
+    } else if query
+        .split_whitespace()
+        .any(|term| matches!(term, "state:open" | "is:open"))
+    {
+        Some(IssueState::Open)
+    } else {
+        None
     }
 }
 

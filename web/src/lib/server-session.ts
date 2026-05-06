@@ -7,6 +7,7 @@ import {
   type CodeSearchQuery,
   type CollaborationSearchQuery,
   type DashboardSummaryQuery,
+  type GlobalIssueListQuery,
   type GlobalPullRequestListQuery,
   type GlobalSearchQuery,
   getAccountSecurityLogFromCookie,
@@ -14,6 +15,7 @@ import {
   getAccountSessionsFromCookie,
   getAppShellContextFromCookie,
   getDashboardSummaryFromCookie,
+  getGlobalIssuesFromCookie,
   getGlobalPullRequestsFromCookie,
   getKeySettingsFromCookie,
   getNotificationDeliverySettingsFromCookie,
@@ -1470,6 +1472,11 @@ export async function getGlobalPullRequests(
 ) {
   const requestHeaders = await headers();
   return getGlobalPullRequestsFromCookie(requestHeaders.get("cookie"), query);
+}
+
+export async function getGlobalIssues(query: GlobalIssueListQuery = {}) {
+  const requestHeaders = await headers();
+  return getGlobalIssuesFromCookie(requestHeaders.get("cookie"), query);
 }
 
 export async function getRepositoryActionsRunnerSettings(

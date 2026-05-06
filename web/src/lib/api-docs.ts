@@ -7427,6 +7427,38 @@ mona,Mona Lisa,owner,public,organization,0,1,true,true`,
     notes: ["Caller-supplied user identifiers are ignored."],
   },
   {
+    id: "issues-global-list",
+    method: "GET",
+    path: "/api/issues?scope=assigned&state=open&page=1&pageSize=30",
+    title: "List global issues",
+    description:
+      "Lists issues that involve the signed-in user across every readable repository.",
+    auth: "Signed opengithub session cookie",
+    response: `{
+  "items": [
+    {
+      "repositoryOwner": "mona",
+      "repositoryName": "octo-app",
+      "number": 18,
+      "title": "Polish issue queue",
+      "state": "open",
+      "href": "/mona/octo-app/issues/18"
+    }
+  ],
+  "total": 1,
+  "counts": {
+    "created": 4,
+    "assigned": 2,
+    "mentioned": 1
+  }
+}`,
+    notes: [
+      "Supported scopes are created, assigned, and mentioned; mentioned uses notification evidence for issue mentions.",
+      "Pull-request backing issues are excluded so the global issue dashboard does not duplicate the global pull request queue.",
+      "Repository visibility is enforced before rows, repository filter options, labels, milestones, or project filters are returned.",
+    ],
+  },
+  {
     id: "pulls-global-list",
     method: "GET",
     path: "/api/pulls?scope=review_requests&state=open&page=1&pageSize=30",

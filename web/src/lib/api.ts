@@ -7440,6 +7440,49 @@ export type IssueListView = ListEnvelope<IssueListItem> & {
   preferences: IssueListPreferences;
 };
 
+export type GlobalIssueScope = "created" | "assigned" | "mentioned";
+
+export type GlobalIssueListQuery = {
+  scope?: GlobalIssueScope;
+  q?: string;
+  state?: IssueState;
+  repo?: string | null;
+  repository?: string | null;
+  labels?: string[];
+  milestone?: string | null;
+  project?: string | null;
+  sort?: IssueSort;
+  page?: number;
+  pageSize?: number;
+};
+
+export type GlobalIssueListView = ListEnvelope<IssueListItem> & {
+  counts: Record<GlobalIssueScope, number>;
+  filters: {
+    scope: GlobalIssueScope;
+    query: string;
+    state: IssueState | null;
+    repository: string | null;
+    labels: string[];
+    milestone: string | null;
+    project: string | null;
+    sort: IssueSort;
+  };
+  filterOptions: {
+    repositories: {
+      id: string;
+      ownerLogin: string;
+      name: string;
+      fullName: string;
+      count: number;
+    }[];
+    labels: IssueListLabel[];
+    milestones: IssueListMilestone[];
+    projects: IssueListMetadataOption[];
+    sortOptions: IssueSort[];
+  };
+};
+
 export type MilestoneListState = "open" | "closed" | "all";
 
 export type MilestoneSort =
@@ -12578,6 +12621,79 @@ export function repositoryIssuesPath(
   }
   const suffix = params.size ? `?${params.toString()}` : "";
   return `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues${suffix}`;
+}
+
+export function globalIssuesPath(query: GlobalIssueListQuery = {}): string {
+  const params = new URLSearchParams();
+  if (query.scope) {
+    params.set("scope", query.scope);
+  }
+  if (query.q?.trim()) {
+    params.set("q", query.q.trim());
+  }
+  if (query.state) {
+    params.set("state", query.state);
+  }
+  const repository = query.repository ?? query.repo;
+  if (repository?.trim()) {
+    params.set("repo", repository.trim());
+  }
+  if (query.labels?.length) {
+    params.set("labels", query.labels.join(","));
+  }
+  if (query.milestone?.trim()) {
+    params.set("milestone", query.milestone.trim());
+  }
+  if (query.project?.trim()) {
+    params.set("project", query.project.trim());
+  }
+  if (query.sort?.trim()) {
+    params.set("sort", query.sort.trim());
+  }
+  if (query.page && query.page > 1) {
+    params.set("page", String(query.page));
+  }
+  if (query.pageSize) {
+    params.set("pageSize", String(query.pageSize));
+  }
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return `/api/issues${suffix}`;
+}
+
+export async function getGlobalIssuesFromCookie(
+  cookie: string | null | undefined,
+  query: GlobalIssueListQuery = {},
+): Promise<GlobalIssueListView | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${globalIssuesPath(query)}`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Issues are temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "issues_failed",
+          message: "Issues could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as GlobalIssueListView;
 }
 
 export async function getRepositoryIssuesFromCookie(

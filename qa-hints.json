@@ -8084,5 +8084,24 @@
       "Check pagination and sort stability with many cross-repository PRs, duplicate repository names across owners, duplicate label names across repositories, and very long branch names/titles.",
       "Exercise keyboard and mobile behavior for filter selects, tab links, empty state, and signed-out redirect."
     ]
+  },
+  {
+    "feature_id": "globalissues-001",
+    "tests_written": [
+      "Added signed-in Rust GET /api/issues with created, assigned, and mentioned scopes across readable repositories while excluding PR-backed issues.",
+      "Global issue filtering supports state, repo, labels, milestone, project, q, sort, and pagination while reusing repository issue row metadata.",
+      "Replaced the /issues placeholder with an Editorial global issue dashboard: URL-backed tabs, filters, concrete issue/repository/comment links, empty state, and signed-out fallback behavior.",
+      "Added /docs/api coverage for the global issue API.",
+      "Added focused Vitest coverage for global issue tabs, filters, row links, assignee chips, and signed-out fallback.",
+      "Browser smoke used a clean Next dev server on :3025: /issues redirected through protected routing to /login?next=%2Fissues, rendered the sign-in page, had zero href=\"#\", had no horizontal overflow, and saved ralph/screenshots/build/globalissues-001-issues-smoke.jpg.",
+      "Verification passed: cargo check -p opengithub-api --tests, focused Vitest plus api-docs, web TypeScript, full make check, full make test with Cargo tests plus 640 web tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Run signed-session browser smoke after the local TEST_DATABASE_URL/session path is healthy to verify populated Created, Assigned, and Mentioned tabs against real DB rows.",
+      "Probe private repository leakage by mixing public, private-readable, and private-unreadable issues in every scope and filter option list.",
+      "Verify mention semantics against production notification writers; this implementation uses issue notifications with reason mention/team_mention because no dedicated issue_mentions table exists yet.",
+      "Check pagination and sort stability with many cross-repository issues, duplicate repository names across owners, duplicate label names across repositories, long issue titles, locked issues, and closed issues.",
+      "Exercise keyboard and mobile behavior for filter selects, tab links, empty state, and signed-out redirect."
+    ]
   }
 ]
