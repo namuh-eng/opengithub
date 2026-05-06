@@ -18,8 +18,9 @@ use crate::{
         create_project_iteration_break_for_actor, create_project_iteration_for_actor,
         delete_project_field_for_actor, delete_project_field_option_for_actor,
         delete_project_item_comment_for_actor, delete_project_iteration_break_for_actor,
-        organization_projects, project_conversion_targets_for_actor, project_field_settings,
-        project_item_detail, project_items_archived, project_workflow_settings, project_workspace,
+        invoke_project_automation_for_actor, organization_projects,
+        project_conversion_targets_for_actor, project_field_settings, project_item_detail,
+        project_items_archived, project_workflow_settings, project_workspace,
         remove_project_item_for_actor, reorder_project_field_options_for_actor,
         repository_projects, restore_project_item_for_actor, update_project_draft_item_for_actor,
         update_project_field_for_actor, update_project_field_option_for_actor,
@@ -28,7 +29,8 @@ use crate::{
         update_project_iteration_settings_for_actor, update_project_roadmap_settings_for_actor,
         update_project_view_layout_for_actor, update_project_view_state_for_actor,
         update_project_workflow_for_actor, user_projects, CopiedProject, CopyProjectRequest,
-        ProjectArchivedItem, ProjectConversionTargets, ProjectDraftConvertRequest,
+        ProjectArchivedItem, ProjectAutomationInvocationRequest,
+        ProjectAutomationInvocationResponse, ProjectConversionTargets, ProjectDraftConvertRequest,
         ProjectDraftUpdateRequest, ProjectFieldCreateRequest, ProjectFieldDeleteRequest,
         ProjectFieldOptionCreateRequest, ProjectFieldOptionReorderRequest,
         ProjectFieldOptionUpdateRequest, ProjectFieldSettings, ProjectFieldUpdateRequest,
@@ -63,6 +65,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/projects/:project_id/workflows/:workflow_id",
             patch(update_project_workflow_route),
+        )
+        .route(
+            "/api/projects/:project_id/automation/invocations",
+            post(invoke_project_automation_route),
         )
         .route(
             "/api/projects/:project_id/fields/:field_id",
@@ -409,6 +415,20 @@ async fn update_project_workflow_route(
             .await
             .map_err(map_projects_error)?;
     Ok(Json(settings))
+}
+
+async fn invoke_project_automation_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(project_id): Path<Uuid>,
+    Json(request): Json<ProjectAutomationInvocationRequest>,
+) -> Result<Json<ProjectAutomationInvocationResponse>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let response = invoke_project_automation_for_actor(pool, project_id, actor.id, request)
+        .await
+        .map_err(map_projects_error)?;
+    Ok(Json(response))
 }
 
 async fn create_project_field_route(

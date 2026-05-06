@@ -75,7 +75,7 @@
 
 ## Phase 5: Actions and GraphQL Automation Hooks - external triggers use the same engine
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Allow automation to be invoked from Actions workflow runs and GraphQL-style mutations without introducing a full GraphQL API. This phase exposes a bounded REST-equivalent internal contract that Actions can call, records `actions_workflow_runs` attribution where available, and proves the same permission and idempotency rules as Phase 4.
 

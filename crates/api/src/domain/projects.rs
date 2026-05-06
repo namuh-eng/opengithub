@@ -486,6 +486,47 @@ pub struct ProjectWorkflowUpdateRequest {
     pub expected_updated_at: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectAutomationInvocationRequest {
+    pub source: String,
+    pub item_id: Uuid,
+    pub workflow_id: Option<Uuid>,
+    pub workflow_key: Option<String>,
+    pub actions_workflow_run_id: Option<Uuid>,
+    pub idempotency_key: String,
+    pub field_updates: Vec<ProjectAutomationFieldUpdate>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectAutomationFieldUpdate {
+    pub field_id: Uuid,
+    pub value: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectAutomationInvocationResponse {
+    pub project_id: Uuid,
+    pub item_id: Uuid,
+    pub workflow_id: Option<Uuid>,
+    pub workflow_key: Option<String>,
+    pub source: String,
+    pub status: String,
+    pub message: String,
+    pub applied_updates: Vec<ProjectAutomationAppliedUpdate>,
+    pub idempotency_key: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectAutomationAppliedUpdate {
+    pub field_id: Uuid,
+    pub field_name: String,
+    pub value: Value,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectAutomationEvent {
     ItemAdded,
@@ -1746,6 +1787,218 @@ pub async fn run_project_item_automation(
         run_project_auto_archive(pool, item.project_id, input.actor_user_id).await?;
     }
     Ok(())
+}
+
+pub async fn invoke_project_automation_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectAutomationInvocationRequest,
+) -> Result<ProjectAutomationInvocationResponse, ProjectsError> {
+    let project = workspace_project_row(pool, project_id, Some(actor_user_id)).await?;
+    if !project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role)
+    {
+        return Err(ProjectsError::Forbidden);
+    }
+
+    let source = normalize_project_automation_source(&request.source)?;
+    let idempotency_key = normalize_project_automation_idempotency_key(&request.idempotency_key)?;
+    let workflow = resolve_project_invocation_workflow(
+        pool,
+        project_id,
+        request.workflow_id,
+        request.workflow_key.as_deref(),
+    )
+    .await?;
+    let item = project_invocation_item(pool, project_id, request.item_id).await?;
+
+    if workflow_log_exists(pool, project_id, &idempotency_key).await? {
+        return Ok(ProjectAutomationInvocationResponse {
+            project_id,
+            item_id: request.item_id,
+            workflow_id: workflow.as_ref().map(|workflow| workflow.id),
+            workflow_key: workflow
+                .as_ref()
+                .map(|workflow| workflow.workflow_key.clone()),
+            source,
+            status: "skipped".to_owned(),
+            message: "Automation invocation was already applied.".to_owned(),
+            applied_updates: Vec::new(),
+            idempotency_key,
+        });
+    }
+
+    if let Some(run_id) = request.actions_workflow_run_id {
+        validate_actions_workflow_run_for_invocation(pool, run_id, actor_user_id).await?;
+    }
+
+    if let Some(repository_id) = item.repository_id {
+        let permission = repository_permission_for_user(pool, repository_id, actor_user_id).await?;
+        if !permission
+            .as_ref()
+            .is_some_and(|permission| permission.role.can_write())
+        {
+            record_workflow_execution(
+                pool,
+                &WorkflowExecutionRecord {
+                    project_id,
+                    workflow_id: workflow.as_ref().map(|workflow| workflow.id),
+                    item_id: Some(request.item_id),
+                    actor_user_id: Some(actor_user_id),
+                    source: &source,
+                    event_type: "automation_invocation",
+                    status: "skipped",
+                    message: "Actor cannot update the linked repository item.",
+                    metadata: json!({
+                        "workflowKey": workflow.as_ref().map(|workflow| workflow.workflow_key.clone()),
+                        "idempotencyKey": idempotency_key,
+                        "repositoryId": repository_id,
+                        "source": source,
+                        "actionsWorkflowRunId": request.actions_workflow_run_id,
+                    }),
+                },
+            )
+            .await?;
+            return Ok(ProjectAutomationInvocationResponse {
+                project_id,
+                item_id: request.item_id,
+                workflow_id: workflow.as_ref().map(|workflow| workflow.id),
+                workflow_key: workflow
+                    .as_ref()
+                    .map(|workflow| workflow.workflow_key.clone()),
+                source,
+                status: "skipped".to_owned(),
+                message: "Actor cannot update the linked repository item.".to_owned(),
+                applied_updates: Vec::new(),
+                idempotency_key,
+            });
+        }
+    }
+
+    if request.field_updates.is_empty() || request.field_updates.len() > 10 {
+        return Err(ProjectsError::Validation(
+            "Automation invocations must include between 1 and 10 field updates.".to_owned(),
+        ));
+    }
+
+    let mut applied_updates = Vec::with_capacity(request.field_updates.len());
+    for update in &request.field_updates {
+        let field = project_invocation_field(pool, project_id, update.field_id).await?;
+        let value = normalize_project_automation_field_value(pool, &field, &update.value).await?;
+        sqlx::query(
+            r#"
+            INSERT INTO project_item_field_values (project_item_id, project_field_id, value, updated_by_user_id)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (project_item_id, project_field_id)
+            DO UPDATE SET value = EXCLUDED.value,
+                          updated_by_user_id = EXCLUDED.updated_by_user_id,
+                          updated_at = now()
+            "#,
+        )
+        .bind(request.item_id)
+        .bind(update.field_id)
+        .bind(&value)
+        .bind(actor_user_id)
+        .execute(pool)
+        .await?;
+        applied_updates.push(ProjectAutomationAppliedUpdate {
+            field_id: update.field_id,
+            field_name: field.name,
+            value,
+        });
+    }
+
+    record_project_item_event(
+        pool,
+        project_id,
+        request.item_id,
+        actor_user_id,
+        "project.workflow.invoke",
+        json!({
+            "workflowId": workflow.as_ref().map(|workflow| workflow.id),
+            "workflowKey": workflow.as_ref().map(|workflow| workflow.workflow_key.clone()),
+            "source": source,
+            "actionsWorkflowRunId": request.actions_workflow_run_id,
+            "fieldUpdates": applied_updates,
+            "actor": "@opengithub-project-automation",
+        }),
+    )
+    .await?;
+    record_workflow_execution(
+        pool,
+        &WorkflowExecutionRecord {
+            project_id,
+            workflow_id: workflow.as_ref().map(|workflow| workflow.id),
+            item_id: Some(request.item_id),
+            actor_user_id: Some(actor_user_id),
+            source: &source,
+            event_type: "automation_invocation",
+            status: "success",
+            message: "Automation invocation updated the project item.",
+            metadata: json!({
+                "workflowKey": workflow.as_ref().map(|workflow| workflow.workflow_key.clone()),
+                "idempotencyKey": idempotency_key,
+                "actionsWorkflowRunId": request.actions_workflow_run_id,
+                "source": source,
+                "fieldUpdates": applied_updates,
+                "itemType": item.item_type,
+            }),
+        },
+    )
+    .await?;
+    if let Some(workflow) = &workflow {
+        sqlx::query(
+            r#"
+            UPDATE project_workflows
+            SET last_run_at = now(),
+                last_run_status = 'success',
+                last_run_message = 'Automation invocation updated the project item.',
+                source = $2,
+                updated_at = now()
+            WHERE id = $1
+            "#,
+        )
+        .bind(workflow.id)
+        .bind(&source)
+        .execute(pool)
+        .await?;
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, 'project.workflow.invoke', 'project_item', $2, $3)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(request.item_id.to_string())
+    .bind(json!({
+        "projectId": project_id,
+        "workflowId": workflow.as_ref().map(|workflow| workflow.id),
+        "workflowKey": workflow.as_ref().map(|workflow| workflow.workflow_key.clone()),
+        "source": source,
+        "actionsWorkflowRunId": request.actions_workflow_run_id,
+        "fieldUpdates": applied_updates,
+    }))
+    .execute(pool)
+    .await?;
+
+    Ok(ProjectAutomationInvocationResponse {
+        project_id,
+        item_id: request.item_id,
+        workflow_id: workflow.as_ref().map(|workflow| workflow.id),
+        workflow_key: workflow
+            .as_ref()
+            .map(|workflow| workflow.workflow_key.clone()),
+        source,
+        status: "success".to_owned(),
+        message: "Automation invocation updated the project item.".to_owned(),
+        applied_updates,
+        idempotency_key,
+    })
 }
 
 pub async fn create_project_field_for_actor(
@@ -4543,6 +4796,224 @@ struct ProjectAutomationItem {
     repository_id: Uuid,
 }
 
+#[derive(Debug, Clone)]
+struct ProjectInvocationWorkflow {
+    id: Uuid,
+    workflow_key: String,
+}
+
+#[derive(Debug, Clone)]
+struct ProjectInvocationItem {
+    item_type: String,
+    repository_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone)]
+struct ProjectInvocationField {
+    id: Uuid,
+    name: String,
+    field_type: String,
+}
+
+fn normalize_project_automation_source(source: &str) -> Result<String, ProjectsError> {
+    let normalized = source.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "actions" | "graphql" => Ok(normalized),
+        _ => Err(ProjectsError::Validation(
+            "Automation invocation source must be actions or graphql.".to_owned(),
+        )),
+    }
+}
+
+fn normalize_project_automation_idempotency_key(value: &str) -> Result<String, ProjectsError> {
+    let normalized = value.trim();
+    if normalized.is_empty() || normalized.len() > 160 {
+        return Err(ProjectsError::Validation(
+            "Automation invocation idempotency key is required and must be 160 characters or fewer."
+                .to_owned(),
+        ));
+    }
+    Ok(normalized.to_owned())
+}
+
+async fn resolve_project_invocation_workflow(
+    pool: &PgPool,
+    project_id: Uuid,
+    workflow_id: Option<Uuid>,
+    workflow_key: Option<&str>,
+) -> Result<Option<ProjectInvocationWorkflow>, ProjectsError> {
+    if workflow_id.is_none() && workflow_key.is_none() {
+        return Ok(None);
+    }
+    let row = sqlx::query(
+        r#"
+        SELECT id, workflow_key
+        FROM project_workflows
+        WHERE project_id = $1
+          AND ($2::uuid IS NULL OR id = $2)
+          AND ($3::text IS NULL OR workflow_key = $3)
+        "#,
+    )
+    .bind(project_id)
+    .bind(workflow_id)
+    .bind(
+        workflow_key
+            .map(str::trim)
+            .filter(|value| !value.is_empty()),
+    )
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| {
+        ProjectsError::Validation("Automation invocation workflow was not found.".to_owned())
+    })?;
+    Ok(Some(ProjectInvocationWorkflow {
+        id: row.get("id"),
+        workflow_key: row.get("workflow_key"),
+    }))
+}
+
+async fn project_invocation_item(
+    pool: &PgPool,
+    project_id: Uuid,
+    item_id: Uuid,
+) -> Result<ProjectInvocationItem, ProjectsError> {
+    let row = sqlx::query(
+        r#"
+        SELECT project_items.item_type,
+               COALESCE(issues.repository_id, pull_issues.repository_id, pull_requests.base_repository_id) AS repository_id
+        FROM project_items
+        LEFT JOIN issues ON issues.id = project_items.issue_id
+        LEFT JOIN pull_requests ON pull_requests.id = project_items.pull_request_id
+        LEFT JOIN issues pull_issues ON pull_issues.id = pull_requests.issue_id
+        WHERE project_items.project_id = $1
+          AND project_items.id = $2
+          AND project_items.archived_at IS NULL
+        "#,
+    )
+    .bind(project_id)
+    .bind(item_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ProjectsError::NotFound)?;
+    Ok(ProjectInvocationItem {
+        item_type: row.get("item_type"),
+        repository_id: row.get("repository_id"),
+    })
+}
+
+async fn project_invocation_field(
+    pool: &PgPool,
+    project_id: Uuid,
+    field_id: Uuid,
+) -> Result<ProjectInvocationField, ProjectsError> {
+    let row = sqlx::query(
+        r#"
+        SELECT name, field_type
+        FROM project_fields
+        WHERE project_id = $1 AND id = $2 AND deleted_at IS NULL
+        "#,
+    )
+    .bind(project_id)
+    .bind(field_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| {
+        ProjectsError::Validation("Automation field update targets an unknown field.".to_owned())
+    })?;
+    Ok(ProjectInvocationField {
+        id: field_id,
+        name: row.get("name"),
+        field_type: row.get("field_type"),
+    })
+}
+
+async fn normalize_project_automation_field_value(
+    pool: &PgPool,
+    field: &ProjectInvocationField,
+    value: &Value,
+) -> Result<Value, ProjectsError> {
+    match field.field_type.as_str() {
+        "status" | "single_select" => {
+            let Some(option_name) = value
+                .as_str()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            else {
+                return Err(ProjectsError::Validation(
+                    "Single-select automation values must be option names.".to_owned(),
+                ));
+            };
+            let exists = sqlx::query_scalar::<_, bool>(
+                r#"
+                SELECT EXISTS (
+                  SELECT 1
+                  FROM project_field_options
+                  WHERE project_field_id = $1
+                    AND lower(name) = lower($2)
+                )
+                "#,
+            )
+            .bind(field.id)
+            .bind(option_name)
+            .fetch_one(pool)
+            .await?;
+            if !exists {
+                return Err(ProjectsError::Validation(
+                    "Single-select automation value must match an existing option.".to_owned(),
+                ));
+            }
+            Ok(json!(option_name))
+        }
+        "text" | "title" => {
+            let Some(text) = value.as_str() else {
+                return Err(ProjectsError::Validation(
+                    "Text automation values must be strings.".to_owned(),
+                ));
+            };
+            if text.len() > 1024 {
+                return Err(ProjectsError::Validation(
+                    "Text automation values must be 1024 characters or fewer.".to_owned(),
+                ));
+            }
+            Ok(json!(text.trim()))
+        }
+        "number" => {
+            if !value.is_number() {
+                return Err(ProjectsError::Validation(
+                    "Number automation values must be numeric.".to_owned(),
+                ));
+            }
+            Ok(value.clone())
+        }
+        _ => Ok(value.clone()),
+    }
+}
+
+async fn validate_actions_workflow_run_for_invocation(
+    pool: &PgPool,
+    run_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<(), ProjectsError> {
+    let repository_id =
+        sqlx::query_scalar::<_, Uuid>("SELECT repository_id FROM workflow_runs WHERE id = $1")
+            .bind(run_id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or_else(|| {
+                ProjectsError::Validation(
+                    "Actions workflow run attribution was not found.".to_owned(),
+                )
+            })?;
+    let permission = repository_permission_for_user(pool, repository_id, actor_user_id).await?;
+    if !permission
+        .as_ref()
+        .is_some_and(|permission| permission.role.can_write())
+    {
+        return Err(ProjectsError::Forbidden);
+    }
+    Ok(())
+}
+
 async fn project_automation_input_for_item(
     pool: &PgPool,
     item_id: Uuid,
@@ -4676,6 +5147,7 @@ async fn run_project_item_workflows(
                     workflow_id: Some(workflow_id),
                     item_id: Some(item.item_id),
                     actor_user_id: Some(input.actor_user_id),
+                    source: "system",
                     event_type: input.event.as_str(),
                     status: "skipped",
                     message: "Linked repository is outside this workflow target list.",
@@ -4697,6 +5169,7 @@ async fn run_project_item_workflows(
                     workflow_id: Some(workflow_id),
                     item_id: Some(item.item_id),
                     actor_user_id: Some(input.actor_user_id),
+                    source: "system",
                     event_type: input.event.as_str(),
                     status: "skipped",
                     message: "Workflow condition did not match this item event.",
@@ -4719,6 +5192,7 @@ async fn run_project_item_workflows(
                     workflow_id: Some(workflow_id),
                     item_id: Some(item.item_id),
                     actor_user_id: Some(input.actor_user_id),
+                    source: "system",
                     event_type: input.event.as_str(),
                     status: "skipped",
                     message: "Workflow has no eligible target field and option configured.",
@@ -4772,6 +5246,7 @@ async fn run_project_item_workflows(
                 workflow_id: Some(workflow_id),
                 item_id: Some(item.item_id),
                 actor_user_id: Some(input.actor_user_id),
+                source: "system",
                 event_type: input.event.as_str(),
                 status: "success",
                 message: "Project workflow updated the item.",
@@ -4957,6 +5432,7 @@ async fn run_project_auto_archive(
                     workflow_id: Some(workflow_id),
                     item_id: Some(item_id),
                     actor_user_id: Some(actor_user_id),
+                    source: "system",
                     event_type: "archive_completed",
                     status: "success",
                     message: "Project workflow archived a completed item.",
@@ -4977,6 +5453,7 @@ struct WorkflowExecutionRecord<'a> {
     workflow_id: Option<Uuid>,
     item_id: Option<Uuid>,
     actor_user_id: Option<Uuid>,
+    source: &'a str,
     event_type: &'a str,
     status: &'a str,
     message: &'a str,
@@ -4991,13 +5468,14 @@ async fn record_workflow_execution(
         r#"
         INSERT INTO workflow_execution_logs
           (project_id, project_workflow_id, project_item_id, actor_user_id, source, event_type, status, message, metadata)
-        VALUES ($1, $2, $3, $4, 'system', $5, $6, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         "#,
     )
     .bind(record.project_id)
     .bind(record.workflow_id)
     .bind(record.item_id)
     .bind(record.actor_user_id)
+    .bind(record.source)
     .bind(record.event_type)
     .bind(record.status)
     .bind(record.message)

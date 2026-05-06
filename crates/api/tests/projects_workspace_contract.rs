@@ -16,7 +16,7 @@ use opengithub_api::{
     },
 };
 use serde_json::{json, Value};
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use tower::ServiceExt;
 use url::Url;
 use uuid::Uuid;
@@ -1614,6 +1614,237 @@ async fn project_workflow_engine_moves_closed_issue_to_done_idempotently() {
     .await
     .expect("repeated workflow log count should load");
     assert_eq!(repeated_log_count, 1);
+}
+
+#[tokio::test]
+async fn project_automation_invocation_records_actions_and_graphql_attribution() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping projects automation invocation scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("workflowinvoke{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let writer = create_user(&pool, &format!("{marker}-writer")).await;
+    let writer_cookie = cookie_header(&pool, &config, &writer).await;
+
+    let repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("workflow-invoke-{}", Uuid::new_v4().simple()),
+            description: None,
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    grant_repository_permission(&pool, repo.id, writer.id, RepositoryRole::Write, "direct")
+        .await
+        .expect("writer repository permission should grant");
+
+    let project_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO projects
+          (owner_user_id, number, title, short_description, visibility, default_repository_id, created_by_user_id)
+        VALUES ($1, 83, 'Workflow invocation project', 'Actions and GraphQL hook contract', 'private', $2, $1)
+        RETURNING id
+        "#,
+    )
+    .bind(owner.id)
+    .bind(repo.id)
+    .fetch_one(&pool)
+    .await
+    .expect("project should insert");
+    sqlx::query(
+        "INSERT INTO project_permissions (project_id, user_id, role) VALUES ($1, $2, 'write')",
+    )
+    .bind(project_id)
+    .bind(writer.id)
+    .execute(&pool)
+    .await
+    .expect("project permission should insert");
+    let status_field: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_fields (project_id, name, field_type, position) VALUES ($1, 'Status', 'status', 1) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("status field should insert");
+    sqlx::query(
+        "INSERT INTO project_field_options (project_field_id, name, color, position) VALUES ($1, 'Done', 'green', 1)",
+    )
+    .bind(status_field)
+    .execute(&pool)
+    .await
+    .expect("done option should insert");
+    let item_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_items (project_id, item_type, title, position) VALUES ($1, 'draft_issue', 'Invoke automation', 1) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("project item should insert");
+    let actions_workflow_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO actions_workflows (repository_id, name, path, trigger_events)
+        VALUES ($1, 'Project automation', '.github/workflows/project.yml', ARRAY['workflow_dispatch'])
+        RETURNING id
+        "#,
+    )
+    .bind(repo.id)
+    .fetch_one(&pool)
+    .await
+    .expect("actions workflow should insert");
+    let actions_run_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO workflow_runs
+          (repository_id, workflow_id, actor_user_id, run_number, head_branch, head_sha, event)
+        VALUES ($1, $2, $3, 1, 'main', 'abc123', 'workflow_dispatch')
+        RETURNING id
+        "#,
+    )
+    .bind(repo.id)
+    .bind(actions_workflow_id)
+    .bind(writer.id)
+    .fetch_one(&pool)
+    .await
+    .expect("workflow run should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+    let (status, _, body) = get_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/workflows"),
+        Some(&writer_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let workflow_id = Uuid::parse_str(
+        body["workflows"][0]["id"]
+            .as_str()
+            .expect("workflow id should be present"),
+    )
+    .expect("workflow id should parse");
+
+    let idempotency_key = format!("actions:{}:{item_id}", actions_run_id);
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/automation/invocations"),
+        Some(&writer_cookie),
+        json!({
+            "source": "actions",
+            "itemId": item_id,
+            "workflowId": workflow_id,
+            "actionsWorkflowRunId": actions_run_id,
+            "idempotencyKey": idempotency_key,
+            "fieldUpdates": [{ "fieldId": status_field, "value": "Done" }]
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["source"], "actions");
+    assert_eq!(body["status"], "success");
+    assert_eq!(body["appliedUpdates"][0]["value"], "Done");
+
+    let status_value: Value = sqlx::query_scalar(
+        "SELECT value FROM project_item_field_values WHERE project_item_id = $1 AND project_field_id = $2",
+    )
+    .bind(item_id)
+    .bind(status_field)
+    .fetch_one(&pool)
+    .await
+    .expect("workflow field value should persist");
+    assert_eq!(status_value, json!("Done"));
+    let log = sqlx::query(
+        r#"
+        SELECT source, event_type, status, metadata
+        FROM workflow_execution_logs
+        WHERE project_id = $1 AND project_item_id = $2
+        ORDER BY created_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(project_id)
+    .bind(item_id)
+    .fetch_one(&pool)
+    .await
+    .expect("execution log should load");
+    assert_eq!(log.get::<String, _>("source"), "actions");
+    assert_eq!(log.get::<String, _>("event_type"), "automation_invocation");
+    assert_eq!(log.get::<String, _>("status"), "success");
+    let metadata: Value = log.get("metadata");
+    assert_eq!(metadata["idempotencyKey"], idempotency_key);
+    assert_eq!(metadata["actionsWorkflowRunId"], actions_run_id.to_string());
+
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/automation/invocations"),
+        Some(&writer_cookie),
+        json!({
+            "source": "actions",
+            "itemId": item_id,
+            "workflowId": workflow_id,
+            "actionsWorkflowRunId": actions_run_id,
+            "idempotencyKey": idempotency_key,
+            "fieldUpdates": [{ "fieldId": status_field, "value": "Done" }]
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["status"], "skipped");
+    let success_log_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_execution_logs WHERE project_id = $1 AND project_item_id = $2 AND source = 'actions' AND status = 'success'",
+    )
+    .bind(project_id)
+    .bind(item_id)
+    .fetch_one(&pool)
+    .await
+    .expect("success log count should load");
+    assert_eq!(success_log_count, 1);
+
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/automation/invocations"),
+        Some(&writer_cookie),
+        json!({
+            "source": "graphql",
+            "itemId": item_id,
+            "workflowKey": "item-added-default-status",
+            "idempotencyKey": format!("graphql:{item_id}"),
+            "fieldUpdates": [{ "fieldId": status_field, "value": "Done" }]
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["source"], "graphql");
+    assert_eq!(body["workflowKey"], "item-added-default-status");
+
+    let (status, _, body) = post_json(
+        app,
+        &format!("/api/projects/{project_id}/automation/invocations"),
+        Some(&writer_cookie),
+        json!({
+            "source": "email",
+            "itemId": item_id,
+            "idempotencyKey": "bad-source",
+            "fieldUpdates": [{ "fieldId": status_field, "value": "Done" }]
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["error"]["code"], "validation_failed");
+
+    let audit_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM audit_events WHERE event_type = 'project.workflow.invoke' AND target_id = $1",
+    )
+    .bind(item_id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("audit count should load");
+    assert_eq!(audit_count, 2);
 }
 
 #[tokio::test]

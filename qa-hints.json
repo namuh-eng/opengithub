@@ -7249,5 +7249,22 @@
       "Probe close-on-status permission denial from project field edits where the actor can write the project but lacks linked repository write access, plus audit/notification behavior for repository-visible versus project-local side effects.",
       "Phase 5 still owns Actions/GraphQL-style automation hooks; Phase 6 docs, final screenshots, QA handoff, and build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-006",
+    "tests_written": [
+      "Completed Phase 5 Actions and GraphQL Automation Hooks without marking projects-006 build_pass=true.",
+      "Added Rust POST /api/projects/{project_id}/automation/invocations for session or Bearer PAT authorized callers with project write access.",
+      "Added a bounded automation invocation domain helper for actions/graphql sources, workflow id/key attribution, optional actions_workflow_run_id validation, idempotency keys, project item field updates, project_item_events, workflow_execution_logs, project_workflows last-run metadata, and audit_events.",
+      "Automation invocations validate item/project membership, archived item exclusion, field ownership, single-select/status option values, Actions run repository write access, and linked repository write access before applying updates.",
+      "Added projects_workspace_contract coverage for Actions attribution, GraphQL-style workflow-key invocation, idempotent duplicate submit skipping, invalid source errors, persisted field values, execution-log metadata, and audit rows.",
+      "Verification passed: cargo fmt --all --check; cargo check -p opengithub-api --tests; focused DB-guarded Rust scenario compile/run; full make check; full make test with Cargo tests plus 563 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Focused Rust DB assertions self-skipped because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test failed with password authentication failed for user postgres; rerun project_automation_invocation_records_actions_and_graphql_attribution against a clean migrated credentialed database.",
+      "Browser smoke and make test-e2e were skipped because Phase 5 is backend/internal API only and did not change a browser-visible flow; final workflows browser evidence remains Phase 6.",
+      "Probe Bearer PAT calls with api:write/repo scopes, expired/revoked PATs, project writer without linked repository write access, missing or inaccessible actions_workflow_run_id, unknown workflow id/key, duplicate idempotency keys across sources, and invalid status option values.",
+      "Phase 6 still owns API docs, final signed-in browser smoke/screenshots, QA handoff, and projects-006 build_pass bookkeeping."
+    ]
   }
 ]
