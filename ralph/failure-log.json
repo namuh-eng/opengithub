@@ -3823,6 +3823,14 @@
       "exit_code": 0,
       "category": "compilation_failure",
       "attempt": 409
+    },
+    {
+      "timestamp": "2026-05-06T02:50:14.406895",
+      "phase": "build",
+      "feature": "build_cycle_2",
+      "exit_code": 0,
+      "category": "timeout",
+      "attempt": 11
     }
   ]
 }
