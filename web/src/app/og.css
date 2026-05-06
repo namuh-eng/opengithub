@@ -95,6 +95,41 @@ body.theme-dark {
   --code-del-strong: oklch(0.4 0.14 25);
 }
 
+body.theme-dark.theme-dimmed {
+  --bg: #1f211b;
+  --surface: #252820;
+  --surface-2: #2d3026;
+  --surface-3: #36392e;
+  --ink-1: #f1eadc;
+  --ink-2: #d8d0bf;
+  --ink-3: #aaa18e;
+  --ink-4: #756e5f;
+  --ink-5: #504a3e;
+  --line: #3c3a30;
+  --line-strong: #565144;
+  --line-soft: #312f27;
+  --accent: oklch(0.7 0.14 32);
+  --accent-soft: oklch(0.34 0.08 32);
+}
+
+body.theme-dark.theme-high-contrast {
+  --bg: #080706;
+  --surface: #11100d;
+  --surface-2: #1b1914;
+  --surface-3: #252219;
+  --ink-1: #fff8e8;
+  --ink-2: #f4ead2;
+  --ink-3: #d2c4a8;
+  --ink-4: #a69372;
+  --ink-5: #6f6049;
+  --line: #665941;
+  --line-strong: #9b875f;
+  --line-soft: #3b3326;
+  --accent: oklch(0.78 0.18 32);
+  --accent-hover: oklch(0.84 0.18 32);
+  --accent-soft: oklch(0.38 0.1 32);
+}
+
 body.density-compact {
   --header-h: 44px;
 }

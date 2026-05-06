@@ -34,6 +34,27 @@ body.og-app {
   letter-spacing: -0.005em;
 }
 
+html[data-font-size="small"] body.og-app,
+body.og-app.font-size-small {
+  font-size: 13px;
+}
+
+html[data-font-size="large"] body.og-app,
+body.og-app.font-size-large {
+  font-size: 15px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
 button,
 a {
   text-underline-offset: 2px;

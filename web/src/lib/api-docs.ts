@@ -1807,6 +1807,30 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "appearance-settings",
+    method: "PATCH",
+    path: "/api/user/settings/appearance",
+    title: "Read or update appearance settings",
+    description:
+      "Persists site-wide Editorial theme and text-scale preferences for the signed-in user.",
+    auth: "Signed opengithub session cookie",
+    request: `{
+  "theme": "dark_dimmed",
+  "fontSize": "large"
+}`,
+    response: `{
+  "userId": "user_01",
+  "theme": "dark_dimmed",
+  "fontSize": "large",
+  "updatedAt": "2026-05-07T00:00:00Z"
+}`,
+    notes: [
+      "Supported themes are light, dark, system, dark_dimmed, and dark_high_contrast.",
+      "The Next.js appearance action mirrors saved values into color_mode and font_size cookies for first paint.",
+      "The root layout exposes data-color-mode, data-light-theme, data-dark-theme, and data-font-size on html while keeping the locked Editorial token system.",
+    ],
+  },
+  {
     id: "personal-access-tokens-list",
     method: "GET",
     path: "/api/settings/tokens",

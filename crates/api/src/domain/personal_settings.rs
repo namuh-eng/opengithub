@@ -34,6 +34,86 @@ pub struct PersonalProfileSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct AppearanceSettings {
+    pub user_id: Uuid,
+    pub theme: AppearanceTheme,
+    pub font_size: AppearanceFontSize,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AppearanceTheme {
+    Light,
+    Dark,
+    System,
+    DarkDimmed,
+    DarkHighContrast,
+}
+
+impl AppearanceTheme {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Light => "light",
+            Self::Dark => "dark",
+            Self::System => "system",
+            Self::DarkDimmed => "dark_dimmed",
+            Self::DarkHighContrast => "dark_high_contrast",
+        }
+    }
+
+    fn from_str(value: &str) -> Result<Self, PersonalSettingsError> {
+        match value {
+            "light" => Ok(Self::Light),
+            "dark" => Ok(Self::Dark),
+            "system" => Ok(Self::System),
+            "dark_dimmed" => Ok(Self::DarkDimmed),
+            "dark_high_contrast" => Ok(Self::DarkHighContrast),
+            _ => Err(PersonalSettingsError::Validation(
+                "Theme must be light, dark, system, dark_dimmed, or dark_high_contrast".to_owned(),
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AppearanceFontSize {
+    Small,
+    Default,
+    Large,
+}
+
+impl AppearanceFontSize {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Small => "small",
+            Self::Default => "default",
+            Self::Large => "large",
+        }
+    }
+
+    fn from_str(value: &str) -> Result<Self, PersonalSettingsError> {
+        match value {
+            "small" => Ok(Self::Small),
+            "default" => Ok(Self::Default),
+            "large" => Ok(Self::Large),
+            _ => Err(PersonalSettingsError::Validation(
+                "Font size must be small, default, or large".to_owned(),
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateAppearanceSettings {
+    pub theme: Option<AppearanceTheme>,
+    pub font_size: Option<AppearanceFontSize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct UserEmailAddress {
     pub id: Uuid,
     pub email: String,
@@ -183,6 +263,51 @@ pub async fn personal_profile_settings(
     })
 }
 
+pub async fn appearance_settings(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<AppearanceSettings, PersonalSettingsError> {
+    ensure_appearance_settings(pool, user_id).await?;
+    load_appearance_settings(pool, user_id).await
+}
+
+pub async fn update_appearance_settings(
+    pool: &PgPool,
+    user_id: Uuid,
+    input: UpdateAppearanceSettings,
+) -> Result<AppearanceSettings, PersonalSettingsError> {
+    ensure_appearance_settings(pool, user_id).await?;
+    let theme = input.theme.map(AppearanceTheme::as_str);
+    let font_size = input.font_size.map(AppearanceFontSize::as_str);
+
+    sqlx::query(
+        r#"
+        UPDATE user_settings
+        SET theme = COALESCE($2, theme),
+            font_size = COALESCE($3, font_size)
+        WHERE user_id = $1
+        "#,
+    )
+    .bind(user_id)
+    .bind(theme)
+    .bind(font_size)
+    .execute(pool)
+    .await?;
+
+    let settings = load_appearance_settings(pool, user_id).await?;
+    audit(
+        pool,
+        user_id,
+        "appearance.update",
+        json!({
+            "theme": settings.theme.as_str(),
+            "fontSize": settings.font_size.as_str()
+        }),
+    )
+    .await?;
+    Ok(settings)
+}
+
 pub async fn update_personal_profile_settings(
     pool: &PgPool,
     user_id: Uuid,
@@ -267,6 +392,49 @@ pub async fn update_personal_profile_settings(
     )
     .await?;
     personal_profile_settings(pool, user_id).await
+}
+
+async fn ensure_appearance_settings(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<(), PersonalSettingsError> {
+    sqlx::query(
+        r#"
+        INSERT INTO user_settings (user_id)
+        VALUES ($1)
+        ON CONFLICT (user_id) DO NOTHING
+        "#,
+    )
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn load_appearance_settings(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<AppearanceSettings, PersonalSettingsError> {
+    let row = sqlx::query(
+        r#"
+        SELECT user_id, theme, font_size, updated_at
+        FROM user_settings
+        WHERE user_id = $1
+        "#,
+    )
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?;
+
+    let theme = AppearanceTheme::from_str(row.try_get::<String, _>("theme")?.as_str())?;
+    let font_size = AppearanceFontSize::from_str(row.try_get::<String, _>("font_size")?.as_str())?;
+
+    Ok(AppearanceSettings {
+        user_id: row.try_get("user_id")?,
+        theme,
+        font_size,
+        updated_at: row.try_get("updated_at")?,
+    })
 }
 
 pub async fn update_personal_avatar(

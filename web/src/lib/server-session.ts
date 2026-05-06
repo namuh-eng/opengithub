@@ -13,6 +13,7 @@ import {
   getAccountSecurityLogFromCookie,
   getAccountSecuritySettingsFromCookie,
   getAccountSessionsFromCookie,
+  getAppearanceSettingsFromCookie,
   getAppShellContextFromCookie,
   getDashboardSummaryFromCookie,
   getGlobalIssuesFromCookie,
@@ -238,6 +239,11 @@ export async function getAccountSecurityLog(
 export async function getPersonalProfileSettings() {
   const requestHeaders = await headers();
   return getPersonalProfileSettingsFromCookie(requestHeaders.get("cookie"));
+}
+
+export async function getAppearanceSettings() {
+  const requestHeaders = await headers();
+  return getAppearanceSettingsFromCookie(requestHeaders.get("cookie"));
 }
 
 export async function getNotificationFilterSettings() {

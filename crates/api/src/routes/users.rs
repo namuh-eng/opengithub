@@ -20,9 +20,10 @@ use crate::{
             PackageListError, PackageOwnerKind, PackageSettings, PackageSettingsMutation,
         },
         personal_settings::{
-            personal_profile_settings, update_personal_avatar, update_personal_profile_settings,
-            PersonalProfileSettings, PersonalSettingsError, UpdateAvatarInput,
-            UpdatePersonalProfileSettings,
+            appearance_settings, personal_profile_settings, update_appearance_settings,
+            update_personal_avatar, update_personal_profile_settings, AppearanceSettings,
+            PersonalProfileSettings, PersonalSettingsError, UpdateAppearanceSettings,
+            UpdateAvatarInput, UpdatePersonalProfileSettings,
         },
         profiles::{
             block_user, follow_user, profile_repositories, public_user_profile, report_user,
@@ -39,6 +40,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/user/settings/profile",
             get(personal_profile_settings_route).patch(update_personal_profile_settings_route),
+        )
+        .route(
+            "/api/user/settings/appearance",
+            get(appearance_settings_route).patch(update_appearance_settings_route),
         )
         .route(
             "/api/user/settings/profile/avatar",
@@ -191,6 +196,31 @@ async fn public_packages(
     .map_err(map_package_list_error)?;
 
     Ok(Json(packages))
+}
+
+async fn appearance_settings_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<AppearanceSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let user = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let settings = appearance_settings(pool, user.id)
+        .await
+        .map_err(map_personal_settings_error)?;
+    Ok(Json(settings))
+}
+
+async fn update_appearance_settings_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<UpdateAppearanceSettings>,
+) -> Result<Json<AppearanceSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let user = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let settings = update_appearance_settings(pool, user.id, input)
+        .await
+        .map_err(map_personal_settings_error)?;
+    Ok(Json(settings))
 }
 
 async fn public_package_detail(

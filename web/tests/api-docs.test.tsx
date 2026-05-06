@@ -33,6 +33,10 @@ describe("ApiDocsPage", () => {
     }
 
     expect(screen.getByText("/api/user")).toBeVisible();
+    expect(screen.getByText("/api/user/settings/appearance")).toBeVisible();
+    expect(
+      screen.getByText(/Supported themes are light, dark, system/),
+    ).toBeVisible();
     expect(
       screen.getByText(
         "/api/orgs/{org}/repositories?q=router&type=public&language=Rust&page=1&pageSize=30",
