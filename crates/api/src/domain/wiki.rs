@@ -11,6 +11,8 @@ use std::{
 use url::Url;
 use uuid::Uuid;
 
+const MARKDOWN_MODE: &str = "markdown";
+
 use super::{
     markdown::{render_markdown, RenderMarkdownInput},
     repositories::{
@@ -178,19 +180,13 @@ pub struct WikiEditablePage {
     pub path: String,
     pub markdown: String,
     pub latest_revision_id: Uuid,
-    pub edit_mode: WikiEditMode,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum WikiEditMode {
-    Markdown,
+    pub edit_mode: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SupportedMarkupFormat {
-    pub mode: WikiEditMode,
+    pub mode: String,
     pub label: String,
     pub extension: String,
 }
@@ -202,7 +198,7 @@ pub struct WikiPageSaveRequest {
     pub markdown: String,
     pub message: String,
     #[serde(default)]
-    pub edit_mode: Option<WikiEditMode>,
+    pub edit_mode: Option<String>,
     #[serde(default)]
     pub expected_revision_id: Option<Uuid>,
 }
@@ -212,7 +208,13 @@ pub struct WikiPageSaveRequest {
 pub struct WikiPagePreviewRequest {
     pub markdown: String,
     #[serde(default)]
-    pub edit_mode: Option<WikiEditMode>,
+    pub edit_mode: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WikiImageReference {
+    source_url: String,
+    alt_text: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -415,7 +417,7 @@ pub async fn repository_wiki_edit_for_actor_by_owner_name(
             path: row.get("path"),
             markdown: row.get("markdown"),
             latest_revision_id: row.get("revision_id"),
-            edit_mode: WikiEditMode::Markdown,
+            edit_mode: MARKDOWN_MODE.to_owned(),
         },
         supported_formats: supported_markup_formats(),
     }))
@@ -433,7 +435,7 @@ pub async fn preview_repository_wiki_page_by_owner_name(
     else {
         return Ok(None);
     };
-    validate_edit_mode(request.edit_mode.as_ref())?;
+    validate_edit_mode(request.edit_mode.as_deref())?;
     if request.markdown.trim().is_empty() {
         return Err(RepositoryError::InvalidSecurityPolicy(
             "wiki page body is required".to_owned(),
@@ -572,10 +574,11 @@ async fn save_wiki_page(
     else {
         return Ok(None);
     };
-    validate_edit_mode(request.edit_mode.as_ref())?;
+    validate_edit_mode(request.edit_mode.as_deref())?;
     let title = validate_title(&request.title)?;
     let slug = title_to_slug(&title)?;
     let markdown = validate_markdown(&request.markdown)?;
+    let image_references = extract_image_references(&markdown)?;
     let message = validate_commit_message(&request.message)?;
     let wiki_repository_id = ensure_wiki_repository(pool, &repository).await?;
     let default_branch: String =
@@ -625,6 +628,26 @@ async fn save_wiki_page(
         )
         .bind(wiki_repository_id)
         .bind(&slug)
+        .fetch_one(&mut *tx)
+        .await?;
+        if duplicate {
+            return Err(RepositoryError::SecurityPolicyConflict);
+        }
+    } else if let Some(row) = existing.as_ref() {
+        let page_id: Uuid = row.get("id");
+        let duplicate = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT 1 FROM wiki_pages
+                WHERE wiki_repository_id = $1
+                  AND lower(slug) = lower($2)
+                  AND id <> $3
+            )
+            "#,
+        )
+        .bind(wiki_repository_id)
+        .bind(&slug)
+        .bind(page_id)
         .fetch_one(&mut *tx)
         .await?;
         if duplicate {
@@ -695,6 +718,25 @@ async fn save_wiki_page(
         .bind(page_id)
         .execute(&mut *tx)
         .await?;
+    sqlx::query("DELETE FROM wiki_assets WHERE page_id = $1")
+        .bind(page_id)
+        .execute(&mut *tx)
+        .await?;
+    for image in &image_references {
+        sqlx::query(
+            r#"
+            INSERT INTO wiki_assets (wiki_repository_id, page_id, revision_id, source_url, alt_text, storage_kind)
+            VALUES ($1, $2, $3, $4, $5, 'remote_url')
+            "#,
+        )
+        .bind(wiki_repository_id)
+        .bind(page_id)
+        .bind(revision_id)
+        .bind(&image.source_url)
+        .bind(&image.alt_text)
+        .execute(&mut *tx)
+        .await?;
+    }
 
     let storage_path = publish_local_wiki_commit(
         &repository,
@@ -752,7 +794,12 @@ async fn save_wiki_page(
     )
     .bind(actor_user_id)
     .bind(page_id.to_string())
-    .bind(serde_json::json!({ "repositoryId": repository.id, "slug": page_slug, "commitOid": commit_oid }))
+    .bind(serde_json::json!({
+        "repositoryId": repository.id,
+        "slug": page_slug,
+        "commitOid": commit_oid,
+        "imageReferences": image_references.len()
+    }))
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
@@ -1211,15 +1258,19 @@ fn percent_encode_segment(value: &str) -> String {
 
 fn supported_markup_formats() -> Vec<SupportedMarkupFormat> {
     vec![SupportedMarkupFormat {
-        mode: WikiEditMode::Markdown,
+        mode: MARKDOWN_MODE.to_owned(),
         label: "Markdown".to_owned(),
         extension: ".md".to_owned(),
     }]
 }
 
-fn validate_edit_mode(mode: Option<&WikiEditMode>) -> Result<(), RepositoryError> {
-    match mode.unwrap_or(&WikiEditMode::Markdown) {
-        WikiEditMode::Markdown => Ok(()),
+fn validate_edit_mode(mode: Option<&str>) -> Result<(), RepositoryError> {
+    let mode = mode.unwrap_or(MARKDOWN_MODE).trim().to_ascii_lowercase();
+    match mode.as_str() {
+        MARKDOWN_MODE => Ok(()),
+        _ => Err(RepositoryError::InvalidSecurityPolicy(format!(
+            "wiki edit mode `{mode}` is not supported"
+        ))),
     }
 }
 
@@ -1261,6 +1312,47 @@ fn title_to_slug(title: &str) -> Result<String, RepositoryError> {
 
 fn wiki_path_from_slug(slug: &str) -> String {
     format!("{slug}.md")
+}
+
+fn extract_image_references(markdown: &str) -> Result<Vec<WikiImageReference>, RepositoryError> {
+    let image_regex = Regex::new(r#"!\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)"#)
+        .expect("wiki image reference regex");
+    let mut images = Vec::new();
+    for captures in image_regex.captures_iter(markdown) {
+        let alt_text = captures
+            .get(1)
+            .map(|value| value.as_str().trim().to_owned())
+            .unwrap_or_default();
+        let source_url = captures
+            .get(2)
+            .map(|value| value.as_str().trim().to_owned())
+            .unwrap_or_default();
+        if source_url.is_empty() {
+            continue;
+        }
+        if source_url.len() > 2048
+            || source_url.contains('\0')
+            || !(source_url.starts_with("https://")
+                || source_url.starts_with("http://")
+                || source_url.starts_with('/')
+                || source_url.starts_with("./")
+                || source_url.starts_with("../"))
+        {
+            return Err(RepositoryError::InvalidSecurityPolicy(
+                "wiki image URL is invalid".to_owned(),
+            ));
+        }
+        if alt_text.len() > 240 || alt_text.contains('\0') {
+            return Err(RepositoryError::InvalidSecurityPolicy(
+                "wiki image alt text is invalid".to_owned(),
+            ));
+        }
+        images.push(WikiImageReference {
+            source_url,
+            alt_text,
+        });
+    }
+    Ok(images)
 }
 
 fn validate_markdown(markdown: &str) -> Result<String, RepositoryError> {

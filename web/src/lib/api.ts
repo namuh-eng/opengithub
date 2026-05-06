@@ -4101,11 +4101,11 @@ export type RepositoryWikiEditablePage = {
   path: string;
   markdown: string;
   latestRevisionId: string;
-  editMode: "markdown";
+  editMode: string;
 };
 
 export type RepositoryWikiMarkupFormat = {
-  mode: "markdown";
+  mode: string;
   label: string;
   extension: string;
 };
@@ -4114,13 +4114,13 @@ export type RepositoryWikiSaveRequest = {
   title: string;
   markdown: string;
   message: string;
-  editMode?: "markdown";
+  editMode?: string;
   expectedRevisionId?: string | null;
 };
 
 export type RepositoryWikiPreviewRequest = {
   markdown: string;
-  editMode?: "markdown";
+  editMode?: string;
 };
 
 export type RepositoryWikiPreviewResult = {

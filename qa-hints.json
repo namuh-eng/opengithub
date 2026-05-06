@@ -7605,5 +7605,24 @@
       "Probe stale revision conflicts with two live editor sessions, failed local Git commit rollback, reader/disabled-wiki edit denial, private repository leakage, sidebar/footer edit links, nested slug edits, very long Markdown/code/table content, and keyboard-only Write/Preview/Save traversal.",
       "Phases 4-5 still own supported markup/image publishing edge cases, API docs, final signed-in E2E, QA handoff consolidation, and wiki-002 build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "wiki-002",
+    "tests_written": [
+      "Completed Phase 4 Markup Modes, Image References, and Publishing Edge Cases without marking wiki-002 build_pass=true.",
+      "Changed wiki edit/save requests to accept mode strings so unsupported modes return structured validation_failed errors instead of JSON extraction failures.",
+      "Added wiki_assets persistence for linked Markdown image references with source URL, alt text, revision, page, and remote_url storage kind.",
+      "Tightened duplicate slug handling for renamed pages so updates cannot collide with another page title/slug.",
+      "Extended repository_wiki_write_contract coverage for image reference persistence, unsupported edit mode validation, duplicate title conflicts, local Git commit metadata, preview no-persistence, stale conflicts, reader denial, and audit events.",
+      "Extended RepositoryWikiEditor Vitest coverage for unsupported markup validation preserving title/body drafts.",
+      "Browser smoke passed through the real Next route against a local API-compatible stub: loaded /namuh-eng/opengithub/wiki/Architecture%20Guide/_edit, inserted an image reference, rendered Preview, saved through PATCH, verified redirect to the rendered page with image/content visibility, verified no href=\"#\" links, verified no horizontal overflow, and saved ralph/screenshots/build/wiki-002-phase4-markup-images.jpg.",
+      "Verification passed: focused RepositoryWikiEditor Vitest with 7 tests; focused repository_wiki_write_contract compiled and passed under the DB guard; web TypeScript; focused Biome; cargo fmt --all --check; cargo check -p opengithub-api --tests; full make check; full make test with Cargo tests plus 597 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Run Phase 4 create/edit/save against a real migrated database with Phase 1 wiki write endpoints; local TEST_DATABASE_URL still rejects the configured postgres password, so focused DB assertions self-skipped under the existing guard.",
+      "Inspect the actual local bare wiki Git repository contents after saves and verify failed Git commit rollback under disk/permission errors.",
+      "Probe concurrent rename conflicts, _Sidebar/_Footer special-page saves, nested slug normalization, unsafe or relative image URLs, very large pages/images, keyboard-only toolbar/tab/save traversal, mobile wrapping, and private repository permission leakage.",
+      "Phase 5 still owns API docs, final signed-in E2E, QA handoff consolidation, and wiki-002 build_pass bookkeeping."
+    ]
   }
 ]

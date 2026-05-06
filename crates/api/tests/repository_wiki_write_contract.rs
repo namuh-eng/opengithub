@@ -14,7 +14,7 @@ use opengithub_api::{
     },
 };
 use serde_json::{json, Value};
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use tower::ServiceExt;
 use url::Url;
 use uuid::Uuid;
@@ -41,6 +41,7 @@ async fn database_pool() -> Option<PgPool> {
             r#"
             SELECT to_regclass('public.wiki_git_commits') IS NOT NULL
                AND to_regclass('public.repository_activity_events') IS NOT NULL
+               AND to_regclass('public.wiki_assets') IS NOT NULL
             "#,
         )
         .fetch_one(&pool)
@@ -177,7 +178,7 @@ async fn repository_wiki_write_contract_creates_previews_updates_and_records_git
         Some(&owner_cookie),
         json!({
             "title": "Operations Guide",
-            "markdown": "# Operations\n\nRun the deploy checklist.",
+            "markdown": "# Operations\n\nRun the deploy checklist.\n\n![Deploy map](https://images.opengithub.local/deploy.png)",
             "message": "Create operations guide",
             "editMode": "markdown"
         }),
@@ -203,6 +204,20 @@ async fn repository_wiki_write_contract_creates_previews_updates_and_records_git
     assert!(storage_dir
         .join(format!("{}-{}.wiki.git", owner_login, repository.name))
         .exists());
+    let asset_row = sqlx::query(
+        "SELECT source_url, alt_text, storage_kind FROM wiki_assets WHERE page_id = $1 AND revision_id = $2",
+    )
+    .bind(page_id)
+    .bind(revision_id)
+    .fetch_one(&pool)
+    .await
+    .expect("wiki image reference should persist");
+    assert_eq!(
+        asset_row.get::<String, _>("source_url"),
+        "https://images.opengithub.local/deploy.png"
+    );
+    assert_eq!(asset_row.get::<String, _>("alt_text"), "Deploy map");
+    assert_eq!(asset_row.get::<String, _>("storage_kind"), "remote_url");
 
     let preview_uri = format!(
         "/api/repos/{}/{}/wiki/preview",
@@ -264,6 +279,43 @@ async fn repository_wiki_write_contract_creates_previews_updates_and_records_git
     )
     .await;
     assert_eq!(status, StatusCode::CONFLICT, "{stale_body}");
+
+    let (status, unsupported_body) = json_request(
+        app.clone(),
+        Method::POST,
+        &preview_uri,
+        Some(&owner_cookie),
+        json!({
+            "markdown": "# Unsupported",
+            "editMode": "asciidoc"
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "{unsupported_body}"
+    );
+    assert_eq!(unsupported_body["error"]["code"], "validation_failed");
+    assert!(unsupported_body["error"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("not supported"));
+
+    let (status, duplicate_body) = json_request(
+        app.clone(),
+        Method::POST,
+        &create_uri,
+        Some(&owner_cookie),
+        json!({
+            "title": "Operations Guide",
+            "markdown": "# Duplicate",
+            "message": "Try duplicate title",
+            "editMode": "markdown"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{duplicate_body}");
 
     let (status, reader_body) = json_request(
         app,

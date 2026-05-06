@@ -453,4 +453,57 @@ describe("RepositoryWikiEditor", () => {
       "# Architecture Guide\n\nKeep this draft.",
     );
   });
+
+  it("keeps title and body drafts when markup validation fails", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      json: async () => ({
+        error: { message: "wiki edit mode `asciidoc` is not supported" },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryWikiEditor
+        pagesIndex={pagesIndex()}
+        repository={repositoryOverview()}
+        editView={editView({
+          supportedFormats: [
+            { mode: "markdown", label: "Markdown", extension: ".md" },
+            { mode: "asciidoc", label: "AsciiDoc", extension: ".adoc" },
+          ],
+        })}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Page title"), {
+      target: { value: "Architecture Guide Renamed" },
+    });
+    fireEvent.change(screen.getByLabelText("Edit mode"), {
+      target: { value: "asciidoc" },
+    });
+    fireEvent.change(screen.getByLabelText("Wiki page source"), {
+      target: { value: "= Architecture Guide\n\nUnsupported draft." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Page" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "wiki edit mode `asciidoc` is not supported",
+    );
+    expect(screen.getByLabelText("Page title")).toHaveValue(
+      "Architecture Guide Renamed",
+    );
+    expect(screen.getByLabelText("Wiki page source")).toHaveValue(
+      "= Architecture Guide\n\nUnsupported draft.",
+    );
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/repos/namuh-eng/opengithub/wiki/Architecture%20Guide",
+        expect.objectContaining({
+          method: "PATCH",
+          body: expect.stringContaining("asciidoc"),
+        }),
+      );
+    });
+  });
 });

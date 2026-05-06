@@ -68,7 +68,7 @@
 
 ## Phase 4: Markup Modes, Image References, and Publishing Edge Cases - validation matches product expectations
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Complete editor capability details: supported markup modes/extensions, URL-based image insert references, sidebar/footer creation, local Git default-branch publishing boundaries, duplicate/renamed slugs, and live page visibility only after a successful wiki commit.
 
