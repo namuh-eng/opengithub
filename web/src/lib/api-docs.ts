@@ -7427,6 +7427,38 @@ mona,Mona Lisa,owner,public,organization,0,1,true,true`,
     notes: ["Caller-supplied user identifiers are ignored."],
   },
   {
+    id: "pulls-global-list",
+    method: "GET",
+    path: "/api/pulls?scope=review_requests&state=open&page=1&pageSize=30",
+    title: "List global pull requests",
+    description:
+      "Lists pull requests that involve the signed-in user across every readable repository.",
+    auth: "Signed opengithub session cookie",
+    response: `{
+  "items": [
+    {
+      "repositoryOwner": "mona",
+      "repositoryName": "octo-app",
+      "number": 42,
+      "title": "Improve review queue",
+      "state": "open",
+      "href": "/mona/octo-app/pull/42"
+    }
+  ],
+  "total": 1,
+  "counts": {
+    "created": 4,
+    "assigned": 2,
+    "mentioned": 1,
+    "reviewRequests": 3
+  }
+}`,
+    notes: [
+      "Supported scopes are created, assigned, mentioned, and review_requests; mentioned uses notification evidence for pull-request mentions.",
+      "Repository visibility is enforced before rows, repository filter options, labels, or milestones are returned.",
+    ],
+  },
+  {
     id: "pulls-list",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/pulls?q=is:open&page=1&pageSize=30",

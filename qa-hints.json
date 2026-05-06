@@ -8065,5 +8065,24 @@
       "Verify real production proxy headers so IP metadata from future sign-in/sign-out writers records the expected client address.",
       "Probe many-event pagination, long user-agent truncation, IPv6 addresses, empty logs, unknown future action types, and export behavior while filtered on every supported action."
     ]
+  },
+  {
+    "feature_id": "globalpulls-001",
+    "tests_written": [
+      "Added signed-in Rust GET /api/pulls with created, assigned, mentioned, and review_requests scopes across readable repositories.",
+      "Global pull filtering supports state, repo, labels, milestone, q, sort, and pagination while reusing repository pull request row metadata.",
+      "Added the Editorial /pulls dashboard with URL-backed tabs, filters, concrete PR/repository/check/review/comment links, empty state, and signed-out fallback behavior.",
+      "Added /docs/api coverage for the global pull request API.",
+      "Added focused Vitest coverage for global pull tabs, filters, row links, and signed-out fallback.",
+      "Browser smoke used a clean Next dev server on :3025: /pulls redirected through protected routing to /login?next=%2Fpulls, rendered the sign-in page, had zero href=\"#\", and saved ralph/screenshots/build/globalpulls-001-pulls-smoke.jpg.",
+      "Verification passed: cargo fmt --all --check, cargo check -p opengithub-api --tests, web TypeScript, focused Biome, focused Vitest plus api-docs, full make check, full make test with Cargo tests plus 638 web tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Run signed-session browser smoke after the local TEST_DATABASE_URL/session path is healthy to verify the populated Created, Assigned, Mentioned, and Review requests tabs against real DB rows.",
+      "Probe private repository leakage by mixing public, private-readable, and private-unreadable PRs in every scope and filter option list.",
+      "Verify mention semantics against production notification writers; this implementation uses pull_request notifications with reason mention/team_mention because no dedicated pr_mentions table exists yet.",
+      "Check pagination and sort stability with many cross-repository PRs, duplicate repository names across owners, duplicate label names across repositories, and very long branch names/titles.",
+      "Exercise keyboard and mobile behavior for filter selects, tab links, empty state, and signed-out redirect."
+    ]
   }
 ]

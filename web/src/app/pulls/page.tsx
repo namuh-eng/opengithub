@@ -1,31 +1,54 @@
 import { AppShell } from "@/components/AppShell";
-import { getSessionAndShellContext } from "@/lib/server-session";
+import { GlobalPullsPage } from "@/components/GlobalPullsPage";
+import type {
+  GlobalPullRequestScope,
+  PullRequestSort,
+  PullRequestState,
+} from "@/lib/api";
+import {
+  getGlobalPullRequests,
+  getSessionAndShellContext,
+} from "@/lib/server-session";
 
-export default async function PullRequestsPage() {
-  const { session, shellContext } = await getSessionAndShellContext();
+type PullRequestsPageProps = {
+  searchParams: Promise<{
+    scope?: GlobalPullRequestScope;
+    q?: string;
+    state?: PullRequestState;
+    repo?: string;
+    labels?: string;
+    milestone?: string;
+    sort?: PullRequestSort;
+    page?: string;
+  }>;
+};
+
+export default async function PullRequestsPage({
+  searchParams,
+}: PullRequestsPageProps) {
+  const [query, { session, shellContext }] = await Promise.all([
+    searchParams,
+    getSessionAndShellContext(),
+  ]);
+  const page = Number.parseInt(query.page ?? "1", 10);
+  const pullQuery = {
+    scope: query.scope,
+    q: query.q,
+    state: query.state,
+    repo: query.repo,
+    labels: query.labels
+      ?.split(",")
+      .map((label) => label.trim())
+      .filter(Boolean),
+    milestone: query.milestone,
+    sort: query.sort,
+    page: Number.isFinite(page) ? page : 1,
+  };
+  const pulls = await getGlobalPullRequests(pullQuery);
 
   return (
     <AppShell session={session} shellContext={shellContext}>
-      <section className="mx-auto max-w-[1240px] px-6 py-8">
-        <div className="mb-6 flex items-end justify-between gap-4">
-          <div>
-            <p className="t-label" style={{ color: "var(--ink-3)" }}>
-              Review queue
-            </p>
-            <h1 className="t-h1">Pull requests</h1>
-          </div>
-          <a className="btn" href="/dashboard">
-            Dashboard
-          </a>
-        </div>
-        <div className="card p-6">
-          <p className="t-body" style={{ color: "var(--ink-2)" }}>
-            Pull request review lists will be wired to repository data in the
-            pull request feature set. This destination keeps the app shell
-            navigation concrete today.
-          </p>
-        </div>
-      </section>
+      <GlobalPullsPage pulls={pulls} />
     </AppShell>
   );
 }

@@ -7754,6 +7754,50 @@ export type PullRequestListView = ListEnvelope<PullRequestListItem> & {
   preferences: PullRequestListPreferences;
 };
 
+export type GlobalPullRequestScope =
+  | "created"
+  | "assigned"
+  | "mentioned"
+  | "review_requests";
+
+export type GlobalPullRequestListQuery = {
+  scope?: GlobalPullRequestScope | null;
+  q?: string | null;
+  state?: PullRequestState | null;
+  repo?: string | null;
+  repository?: string | null;
+  labels?: string[] | null;
+  milestone?: string | null;
+  sort?: PullRequestSort | null;
+  page?: number | null;
+  pageSize?: number | null;
+};
+
+export type GlobalPullRequestListView = ListEnvelope<PullRequestListItem> & {
+  counts: Record<GlobalPullRequestScope, number>;
+  filters: {
+    scope: GlobalPullRequestScope;
+    query: string;
+    state: PullRequestState | null;
+    repository: string | null;
+    labels: string[];
+    milestone: string | null;
+    sort: PullRequestSort;
+  };
+  filterOptions: {
+    repositories: {
+      id: string;
+      ownerLogin: string;
+      name: string;
+      fullName: string;
+      count: number;
+    }[];
+    labels: IssueListLabel[];
+    milestones: IssueListMilestone[];
+    sortOptions: PullRequestSort[];
+  };
+};
+
 export type PullRequestCompareStatus =
   | "same_ref"
   | "no_diff"
@@ -12894,6 +12938,78 @@ export function repositoryPullRequestsPath(
   }
   const suffix = params.size ? `?${params.toString()}` : "";
   return `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls${suffix}`;
+}
+
+export function globalPullRequestsPath(
+  query: GlobalPullRequestListQuery = {},
+): string {
+  const params = new URLSearchParams();
+  if (query.scope) {
+    params.set("scope", query.scope);
+  }
+  if (query.q?.trim()) {
+    params.set("q", query.q.trim());
+  }
+  if (query.state) {
+    params.set("state", query.state);
+  }
+  const repository = query.repository ?? query.repo;
+  if (repository?.trim()) {
+    params.set("repo", repository.trim());
+  }
+  if (query.labels?.length) {
+    params.set("labels", query.labels.join(","));
+  }
+  if (query.milestone?.trim()) {
+    params.set("milestone", query.milestone.trim());
+  }
+  if (query.sort?.trim()) {
+    params.set("sort", query.sort.trim());
+  }
+  if (query.page && query.page > 1) {
+    params.set("page", String(query.page));
+  }
+  if (query.pageSize) {
+    params.set("pageSize", String(query.pageSize));
+  }
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return `/api/pulls${suffix}`;
+}
+
+export async function getGlobalPullRequestsFromCookie(
+  cookie: string | null | undefined,
+  query: GlobalPullRequestListQuery = {},
+): Promise<GlobalPullRequestListView | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${globalPullRequestsPath(query)}`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Pull requests are temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "pulls_failed",
+          message: "Pull requests could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as GlobalPullRequestListView;
 }
 
 export async function getRepositoryPullRequestsFromCookie(

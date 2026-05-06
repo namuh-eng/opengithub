@@ -351,6 +351,119 @@ pub struct PullRequestListView {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GlobalPullRequestScope {
+    Created,
+    Assigned,
+    Mentioned,
+    ReviewRequests,
+}
+
+impl GlobalPullRequestScope {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Created => "created",
+            Self::Assigned => "assigned",
+            Self::Mentioned => "mentioned",
+            Self::ReviewRequests => "review_requests",
+        }
+    }
+}
+
+impl TryFrom<&str> for GlobalPullRequestScope {
+    type Error = CollaborationError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "created" => Ok(Self::Created),
+            "assigned" => Ok(Self::Assigned),
+            "mentioned" => Ok(Self::Mentioned),
+            "review_requests" | "review-requests" | "reviewRequests" => Ok(Self::ReviewRequests),
+            other => Err(CollaborationError::InvalidIssueFilter(format!(
+                "scope must be created, assigned, mentioned, or review_requests; got {other}"
+            ))),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct GlobalPullRequestListQuery {
+    pub scope: GlobalPullRequestScope,
+    pub query: Option<String>,
+    pub state: Option<PullRequestState>,
+    pub repository: Option<String>,
+    pub labels: Vec<String>,
+    pub milestone: Option<String>,
+    pub sort: String,
+}
+
+impl Default for GlobalPullRequestListQuery {
+    fn default() -> Self {
+        Self {
+            scope: GlobalPullRequestScope::Created,
+            query: Some("is:pr is:open".to_owned()),
+            state: Some(PullRequestState::Open),
+            repository: None,
+            labels: Vec::new(),
+            milestone: None,
+            sort: "updated-desc".to_owned(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GlobalPullRequestCounts {
+    pub created: i64,
+    pub assigned: i64,
+    pub mentioned: i64,
+    pub review_requests: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GlobalPullRequestFilters {
+    pub scope: GlobalPullRequestScope,
+    pub query: String,
+    pub state: Option<PullRequestState>,
+    pub repository: Option<String>,
+    pub labels: Vec<String>,
+    pub milestone: Option<String>,
+    pub sort: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GlobalPullRequestRepositoryOption {
+    pub id: Uuid,
+    pub owner_login: String,
+    pub name: String,
+    pub full_name: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GlobalPullRequestFilterOptions {
+    pub repositories: Vec<GlobalPullRequestRepositoryOption>,
+    pub labels: Vec<IssueListLabel>,
+    pub milestones: Vec<IssueListMilestone>,
+    pub sort_options: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct GlobalPullRequestListView {
+    pub items: Vec<PullRequestListItem>,
+    pub total: i64,
+    pub page: i64,
+    pub page_size: i64,
+    pub counts: GlobalPullRequestCounts,
+    pub filters: GlobalPullRequestFilters,
+    pub filter_options: GlobalPullRequestFilterOptions,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PullRequestDetailRepository {
     pub id: Uuid,
@@ -1662,6 +1775,220 @@ pub async fn repository_pull_request_list_view_for_viewer(
             default_branch: repository.default_branch,
         },
         preferences,
+    })
+}
+
+pub async fn global_pull_request_list_for_viewer(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    filters: GlobalPullRequestListQuery,
+    page: i64,
+    page_size: i64,
+) -> Result<GlobalPullRequestListView, CollaborationError> {
+    let page = page.max(1);
+    let page_size = page_size.clamp(1, 100);
+    let offset = (page - 1) * page_size;
+    let text_filter = filters
+        .query
+        .as_deref()
+        .map(search_text_from_pull_query)
+        .filter(|value| !value.is_empty());
+    let state_filter = filters.state.as_ref().map(PullRequestState::as_str);
+    let scope_filter = filters.scope.as_str();
+
+    let counts = GlobalPullRequestCounts {
+        created: count_global_pull_request_list_items(
+            pool,
+            actor_user_id,
+            "created",
+            state_filter,
+            text_filter.as_deref(),
+            &filters,
+        )
+        .await?,
+        assigned: count_global_pull_request_list_items(
+            pool,
+            actor_user_id,
+            "assigned",
+            state_filter,
+            text_filter.as_deref(),
+            &filters,
+        )
+        .await?,
+        mentioned: count_global_pull_request_list_items(
+            pool,
+            actor_user_id,
+            "mentioned",
+            state_filter,
+            text_filter.as_deref(),
+            &filters,
+        )
+        .await?,
+        review_requests: count_global_pull_request_list_items(
+            pool,
+            actor_user_id,
+            "review_requests",
+            state_filter,
+            text_filter.as_deref(),
+            &filters,
+        )
+        .await?,
+    };
+    let total = match filters.scope {
+        GlobalPullRequestScope::Created => counts.created,
+        GlobalPullRequestScope::Assigned => counts.assigned,
+        GlobalPullRequestScope::Mentioned => counts.mentioned,
+        GlobalPullRequestScope::ReviewRequests => counts.review_requests,
+    };
+
+    let rows = sqlx::query(
+        r#"
+        SELECT pull_requests.id, pull_requests.repository_id, pull_requests.issue_id,
+               pull_requests.number, pull_requests.title, pull_requests.body,
+               pull_requests.state, pull_requests.is_draft, pull_requests.author_user_id,
+               pull_requests.head_ref, pull_requests.base_ref,
+               pull_requests.head_repository_id, pull_requests.base_repository_id,
+               pull_requests.merge_commit_id, pull_requests.merged_by_user_id,
+               pull_requests.merged_at, pull_requests.closed_at,
+               pull_requests.created_at, pull_requests.updated_at
+        FROM pull_requests
+        JOIN issues ON issues.id = pull_requests.issue_id
+        JOIN repositories ON repositories.id = pull_requests.repository_id
+        LEFT JOIN users owner_users ON owner_users.id = repositories.owner_user_id
+        LEFT JOIN organizations owner_orgs ON owner_orgs.id = repositories.owner_organization_id
+        WHERE (
+              repositories.visibility = 'public'
+              OR EXISTS (
+                  SELECT 1
+                  FROM repository_permissions
+                  WHERE repository_permissions.repository_id = repositories.id
+                    AND repository_permissions.user_id = $1
+                    AND repository_permissions.role IN ('owner', 'admin', 'maintain', 'write', 'triage', 'read')
+              )
+          )
+          AND (
+              ($2 = 'created' AND pull_requests.author_user_id = $1)
+              OR ($2 = 'assigned' AND EXISTS (
+                  SELECT 1
+                  FROM issue_assignees
+                  WHERE issue_assignees.issue_id = pull_requests.issue_id
+                    AND issue_assignees.user_id = $1
+              ))
+              OR ($2 = 'mentioned' AND EXISTS (
+                  SELECT 1
+                  FROM notifications
+                  WHERE notifications.subject_type = 'pull_request'
+                    AND notifications.subject_id = pull_requests.id
+                    AND notifications.user_id = $1
+                    AND notifications.reason IN ('mention', 'team_mention')
+              ))
+              OR ($2 = 'review_requests' AND EXISTS (
+                  SELECT 1
+                  FROM pull_request_review_requests
+                  WHERE pull_request_review_requests.pull_request_id = pull_requests.id
+                    AND pull_request_review_requests.requested_user_id = $1
+              ))
+          )
+          AND ($3::text IS NULL OR pull_requests.state = $3)
+          AND (
+              $4::text IS NULL
+              OR pull_requests.title ILIKE '%' || $4 || '%'
+              OR COALESCE(pull_requests.body, '') ILIKE '%' || $4 || '%'
+              OR pull_requests.head_ref ILIKE '%' || $4 || '%'
+              OR pull_requests.base_ref ILIKE '%' || $4 || '%'
+              OR repositories.name ILIKE '%' || $4 || '%'
+              OR COALESCE(owner_users.username, owner_users.email, owner_orgs.slug) ILIKE '%' || $4 || '%'
+          )
+          AND (
+              $5::text IS NULL
+              OR lower(format('%s/%s', COALESCE(owner_users.username, owner_users.email, owner_orgs.slug), repositories.name)) = lower($5)
+              OR lower(repositories.name) = lower($5)
+          )
+          AND (
+              cardinality($6::text[]) = 0
+              OR NOT EXISTS (
+                  SELECT 1
+                  FROM unnest($6::text[]) wanted_label(name)
+                  WHERE NOT EXISTS (
+                      SELECT 1
+                      FROM issue_labels
+                      JOIN labels ON labels.id = issue_labels.label_id
+                      WHERE issue_labels.issue_id = issues.id
+                        AND lower(labels.name) = lower(wanted_label.name)
+                  )
+              )
+          )
+          AND (
+              $7::text IS NULL
+              OR EXISTS (
+                  SELECT 1
+                  FROM milestones
+                  WHERE milestones.id = issues.milestone_id
+                    AND lower(milestones.title) = lower($7)
+              )
+          )
+        ORDER BY
+          CASE WHEN $8 = 'best-match' THEN (
+              (CASE WHEN pull_requests.title ILIKE $4 || '%' THEN 12 ELSE 0 END)
+              + (CASE WHEN pull_requests.title ILIKE '%' || $4 || '%' THEN 8 ELSE 0 END)
+              + (CASE WHEN COALESCE(pull_requests.body, '') ILIKE '%' || $4 || '%' THEN 3 ELSE 0 END)
+              + (CASE WHEN repositories.name ILIKE '%' || $4 || '%' THEN 2 ELSE 0 END)
+          ) END DESC,
+          CASE WHEN $8 = 'created-asc' THEN pull_requests.created_at END ASC,
+          CASE WHEN $8 = 'created-desc' THEN pull_requests.created_at END DESC,
+          CASE WHEN $8 = 'updated-asc' THEN pull_requests.updated_at END ASC,
+          CASE WHEN $8 = 'updated-desc' THEN pull_requests.updated_at END DESC,
+          CASE WHEN $8 = 'comments-desc' THEN (
+              SELECT count(*) FROM comments WHERE comments.pull_request_id = pull_requests.id
+          ) END DESC,
+          CASE WHEN $8 = 'comments-asc' THEN (
+              SELECT count(*) FROM comments WHERE comments.pull_request_id = pull_requests.id
+          ) END ASC,
+          pull_requests.updated_at DESC,
+          pull_requests.number DESC
+        LIMIT $9 OFFSET $10
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(scope_filter)
+    .bind(state_filter)
+    .bind(text_filter.as_deref())
+    .bind(filters.repository.as_deref())
+    .bind(&filters.labels)
+    .bind(filters.milestone.as_deref())
+    .bind(&filters.sort)
+    .bind(page_size)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+
+    let pull_requests = rows
+        .into_iter()
+        .map(pull_request_from_row)
+        .collect::<Result<Vec<_>, _>>()?;
+    let items = global_pull_request_list_items(pool, pull_requests).await?;
+
+    Ok(GlobalPullRequestListView {
+        items,
+        total,
+        page,
+        page_size,
+        counts,
+        filters: GlobalPullRequestFilters {
+            scope: filters.scope,
+            query: filters.query.unwrap_or_else(|| "is:pr is:open".to_owned()),
+            state: filters.state,
+            repository: filters.repository,
+            labels: filters.labels,
+            milestone: filters.milestone,
+            sort: filters.sort,
+        },
+        filter_options: GlobalPullRequestFilterOptions {
+            repositories: global_pull_repository_options(pool, actor_user_id, scope_filter).await?,
+            labels: global_pull_label_options(pool, actor_user_id, scope_filter).await?,
+            milestones: global_pull_milestone_options(pool, actor_user_id, scope_filter).await?,
+            sort_options: pull_sort_options(),
+        },
     })
 }
 
@@ -5695,6 +6022,327 @@ async fn pull_request_create_options(
         )
         .await?,
     })
+}
+
+async fn global_pull_request_list_items(
+    pool: &PgPool,
+    pull_requests: Vec<PullRequest>,
+) -> Result<Vec<PullRequestListItem>, CollaborationError> {
+    let mut by_repository: HashMap<Uuid, Vec<PullRequest>> = HashMap::new();
+    let mut order = Vec::new();
+    for pull_request in pull_requests {
+        if !by_repository.contains_key(&pull_request.repository_id) {
+            order.push(pull_request.repository_id);
+        }
+        by_repository
+            .entry(pull_request.repository_id)
+            .or_default()
+            .push(pull_request);
+    }
+
+    let mut grouped_items = HashMap::new();
+    for repository_id in &order {
+        let repository = get_repository(pool, *repository_id)
+            .await
+            .map_err(|error| match error {
+                super::repositories::RepositoryError::Sqlx(error) => {
+                    CollaborationError::Sqlx(error)
+                }
+                _ => CollaborationError::RepositoryNotFound,
+            })?
+            .ok_or(CollaborationError::RepositoryNotFound)?;
+        let pulls = by_repository.remove(repository_id).unwrap_or_default();
+        grouped_items.insert(
+            *repository_id,
+            pull_request_list_items(pool, &repository, pulls).await?,
+        );
+    }
+
+    let mut items = Vec::new();
+    for repository_id in order {
+        items.extend(grouped_items.remove(&repository_id).unwrap_or_default());
+    }
+    Ok(items)
+}
+
+async fn count_global_pull_request_list_items(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    scope: &str,
+    state_filter: Option<&str>,
+    text_filter: Option<&str>,
+    filters: &GlobalPullRequestListQuery,
+) -> Result<i64, CollaborationError> {
+    Ok(sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT count(*)
+        FROM pull_requests
+        JOIN issues ON issues.id = pull_requests.issue_id
+        JOIN repositories ON repositories.id = pull_requests.repository_id
+        LEFT JOIN users owner_users ON owner_users.id = repositories.owner_user_id
+        LEFT JOIN organizations owner_orgs ON owner_orgs.id = repositories.owner_organization_id
+        WHERE (
+              repositories.visibility = 'public'
+              OR EXISTS (
+                  SELECT 1
+                  FROM repository_permissions
+                  WHERE repository_permissions.repository_id = repositories.id
+                    AND repository_permissions.user_id = $1
+                    AND repository_permissions.role IN ('owner', 'admin', 'maintain', 'write', 'triage', 'read')
+              )
+          )
+          AND (
+              ($2 = 'created' AND pull_requests.author_user_id = $1)
+              OR ($2 = 'assigned' AND EXISTS (
+                  SELECT 1
+                  FROM issue_assignees
+                  WHERE issue_assignees.issue_id = pull_requests.issue_id
+                    AND issue_assignees.user_id = $1
+              ))
+              OR ($2 = 'mentioned' AND EXISTS (
+                  SELECT 1
+                  FROM notifications
+                  WHERE notifications.subject_type = 'pull_request'
+                    AND notifications.subject_id = pull_requests.id
+                    AND notifications.user_id = $1
+                    AND notifications.reason IN ('mention', 'team_mention')
+              ))
+              OR ($2 = 'review_requests' AND EXISTS (
+                  SELECT 1
+                  FROM pull_request_review_requests
+                  WHERE pull_request_review_requests.pull_request_id = pull_requests.id
+                    AND pull_request_review_requests.requested_user_id = $1
+              ))
+          )
+          AND ($3::text IS NULL OR pull_requests.state = $3)
+          AND (
+              $4::text IS NULL
+              OR pull_requests.title ILIKE '%' || $4 || '%'
+              OR COALESCE(pull_requests.body, '') ILIKE '%' || $4 || '%'
+              OR pull_requests.head_ref ILIKE '%' || $4 || '%'
+              OR pull_requests.base_ref ILIKE '%' || $4 || '%'
+              OR repositories.name ILIKE '%' || $4 || '%'
+              OR COALESCE(owner_users.username, owner_users.email, owner_orgs.slug) ILIKE '%' || $4 || '%'
+          )
+          AND (
+              $5::text IS NULL
+              OR lower(format('%s/%s', COALESCE(owner_users.username, owner_users.email, owner_orgs.slug), repositories.name)) = lower($5)
+              OR lower(repositories.name) = lower($5)
+          )
+          AND (
+              cardinality($6::text[]) = 0
+              OR NOT EXISTS (
+                  SELECT 1
+                  FROM unnest($6::text[]) wanted_label(name)
+                  WHERE NOT EXISTS (
+                      SELECT 1
+                      FROM issue_labels
+                      JOIN labels ON labels.id = issue_labels.label_id
+                      WHERE issue_labels.issue_id = issues.id
+                        AND lower(labels.name) = lower(wanted_label.name)
+                  )
+              )
+          )
+          AND (
+              $7::text IS NULL
+              OR EXISTS (
+                  SELECT 1
+                  FROM milestones
+                  WHERE milestones.id = issues.milestone_id
+                    AND lower(milestones.title) = lower($7)
+              )
+          )
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(scope)
+    .bind(state_filter)
+    .bind(text_filter)
+    .bind(filters.repository.as_deref())
+    .bind(&filters.labels)
+    .bind(filters.milestone.as_deref())
+    .fetch_one(pool)
+    .await?)
+}
+
+async fn global_pull_repository_options(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    scope: &str,
+) -> Result<Vec<GlobalPullRequestRepositoryOption>, CollaborationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT repositories.id,
+               COALESCE(owner_users.username, owner_users.email, owner_orgs.slug) AS owner_login,
+               repositories.name,
+               count(*) AS count
+        FROM pull_requests
+        JOIN issues ON issues.id = pull_requests.issue_id
+        JOIN repositories ON repositories.id = pull_requests.repository_id
+        LEFT JOIN users owner_users ON owner_users.id = repositories.owner_user_id
+        LEFT JOIN organizations owner_orgs ON owner_orgs.id = repositories.owner_organization_id
+        WHERE (
+              repositories.visibility = 'public'
+              OR EXISTS (
+                  SELECT 1 FROM repository_permissions
+                  WHERE repository_permissions.repository_id = repositories.id
+                    AND repository_permissions.user_id = $1
+                    AND repository_permissions.role IN ('owner', 'admin', 'maintain', 'write', 'triage', 'read')
+              )
+          )
+          AND (
+              ($2 = 'created' AND pull_requests.author_user_id = $1)
+              OR ($2 = 'assigned' AND EXISTS (
+                  SELECT 1 FROM issue_assignees
+                  WHERE issue_assignees.issue_id = pull_requests.issue_id
+                    AND issue_assignees.user_id = $1
+              ))
+              OR ($2 = 'mentioned' AND EXISTS (
+                  SELECT 1 FROM notifications
+                  WHERE notifications.subject_type = 'pull_request'
+                    AND notifications.subject_id = pull_requests.id
+                    AND notifications.user_id = $1
+                    AND notifications.reason IN ('mention', 'team_mention')
+              ))
+              OR ($2 = 'review_requests' AND EXISTS (
+                  SELECT 1 FROM pull_request_review_requests
+                  WHERE pull_request_review_requests.pull_request_id = pull_requests.id
+                    AND pull_request_review_requests.requested_user_id = $1
+              ))
+          )
+        GROUP BY repositories.id, owner_login, repositories.name
+        ORDER BY count(*) DESC, owner_login ASC, repositories.name ASC
+        LIMIT 50
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(scope)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let owner_login: String = row.get("owner_login");
+            let name: String = row.get("name");
+            GlobalPullRequestRepositoryOption {
+                id: row.get("id"),
+                full_name: format!("{owner_login}/{name}"),
+                owner_login,
+                name,
+                count: row.get("count"),
+            }
+        })
+        .collect())
+}
+
+async fn global_pull_label_options(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    scope: &str,
+) -> Result<Vec<IssueListLabel>, CollaborationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT labels.id, labels.name, labels.color, labels.description, count(*) AS uses
+        FROM pull_requests
+        JOIN issues ON issues.id = pull_requests.issue_id
+        JOIN repositories ON repositories.id = pull_requests.repository_id
+        JOIN issue_labels ON issue_labels.issue_id = issues.id
+        JOIN labels ON labels.id = issue_labels.label_id
+        WHERE (
+              repositories.visibility = 'public'
+              OR EXISTS (
+                  SELECT 1 FROM repository_permissions
+                  WHERE repository_permissions.repository_id = repositories.id
+                    AND repository_permissions.user_id = $1
+                    AND repository_permissions.role IN ('owner', 'admin', 'maintain', 'write', 'triage', 'read')
+              )
+          )
+          AND (
+              ($2 = 'created' AND pull_requests.author_user_id = $1)
+              OR ($2 = 'assigned' AND EXISTS (
+                  SELECT 1 FROM issue_assignees WHERE issue_assignees.issue_id = pull_requests.issue_id AND issue_assignees.user_id = $1
+              ))
+              OR ($2 = 'mentioned' AND EXISTS (
+                  SELECT 1 FROM notifications WHERE notifications.subject_type = 'pull_request' AND notifications.subject_id = pull_requests.id AND notifications.user_id = $1 AND notifications.reason IN ('mention', 'team_mention')
+              ))
+              OR ($2 = 'review_requests' AND EXISTS (
+                  SELECT 1 FROM pull_request_review_requests WHERE pull_request_review_requests.pull_request_id = pull_requests.id AND pull_request_review_requests.requested_user_id = $1
+              ))
+          )
+        GROUP BY labels.id, labels.name, labels.color, labels.description
+        ORDER BY uses DESC, lower(labels.name) ASC
+        LIMIT 50
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(scope)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| IssueListLabel {
+            id: row.get("id"),
+            name: row.get("name"),
+            color: row.get("color"),
+            description: row.get("description"),
+        })
+        .collect())
+}
+
+async fn global_pull_milestone_options(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    scope: &str,
+) -> Result<Vec<IssueListMilestone>, CollaborationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT milestones.id, milestones.title, milestones.state, milestones.due_on,
+               count(*) AS pull_count
+        FROM pull_requests
+        JOIN issues ON issues.id = pull_requests.issue_id
+        JOIN repositories ON repositories.id = pull_requests.repository_id
+        JOIN milestones ON milestones.id = issues.milestone_id
+        WHERE (
+              repositories.visibility = 'public'
+              OR EXISTS (
+                  SELECT 1 FROM repository_permissions
+                  WHERE repository_permissions.repository_id = repositories.id
+                    AND repository_permissions.user_id = $1
+                    AND repository_permissions.role IN ('owner', 'admin', 'maintain', 'write', 'triage', 'read')
+              )
+          )
+          AND (
+              ($2 = 'created' AND pull_requests.author_user_id = $1)
+              OR ($2 = 'assigned' AND EXISTS (
+                  SELECT 1 FROM issue_assignees WHERE issue_assignees.issue_id = pull_requests.issue_id AND issue_assignees.user_id = $1
+              ))
+              OR ($2 = 'mentioned' AND EXISTS (
+                  SELECT 1 FROM notifications WHERE notifications.subject_type = 'pull_request' AND notifications.subject_id = pull_requests.id AND notifications.user_id = $1 AND notifications.reason IN ('mention', 'team_mention')
+              ))
+              OR ($2 = 'review_requests' AND EXISTS (
+                  SELECT 1 FROM pull_request_review_requests WHERE pull_request_review_requests.pull_request_id = pull_requests.id AND pull_request_review_requests.requested_user_id = $1
+              ))
+          )
+        GROUP BY milestones.id, milestones.title, milestones.state, milestones.due_on
+        ORDER BY pull_count DESC, lower(milestones.title) ASC
+        LIMIT 50
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(scope)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            let state: String = row.get("state");
+            Ok(IssueListMilestone {
+                id: row.get("id"),
+                title: row.get("title"),
+                state: IssueState::try_from(state.as_str())?,
+            })
+        })
+        .collect()
 }
 
 async fn pull_request_fork_options(

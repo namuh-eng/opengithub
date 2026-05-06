@@ -7,12 +7,14 @@ import {
   type CodeSearchQuery,
   type CollaborationSearchQuery,
   type DashboardSummaryQuery,
+  type GlobalPullRequestListQuery,
   type GlobalSearchQuery,
   getAccountSecurityLogFromCookie,
   getAccountSecuritySettingsFromCookie,
   getAccountSessionsFromCookie,
   getAppShellContextFromCookie,
   getDashboardSummaryFromCookie,
+  getGlobalPullRequestsFromCookie,
   getKeySettingsFromCookie,
   getNotificationDeliverySettingsFromCookie,
   getNotificationFilterSettingsFromCookie,
@@ -1461,6 +1463,13 @@ export async function getRepositoryPullRequests(
     repo,
     query,
   );
+}
+
+export async function getGlobalPullRequests(
+  query: GlobalPullRequestListQuery = {},
+) {
+  const requestHeaders = await headers();
+  return getGlobalPullRequestsFromCookie(requestHeaders.get("cookie"), query);
 }
 
 export async function getRepositoryActionsRunnerSettings(

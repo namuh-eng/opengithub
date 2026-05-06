@@ -25,17 +25,18 @@ use crate::{
             abandon_pull_request_review_draft, add_pull_request_comment,
             compare_pull_request_refs_for_viewer_with_head, create_pull_request,
             create_pull_request_review_draft_comment, delete_pull_request_review_draft_comment,
-            get_pull_request, merge_pull_request, pull_request_checks_view,
-            pull_request_comment_timeline_item, pull_request_detail_view_for_viewer,
-            pull_request_diff_review_for_viewer, pull_request_patch_for_viewer,
-            pull_request_plain_diff_for_viewer, pull_request_timeline_view, pull_sort_options,
-            repository_for_actor_by_name, repository_pull_request_list_view_for_viewer,
-            save_repository_pull_preferences, submit_pull_request_review,
-            update_pull_request_draft_state, update_pull_request_metadata,
-            update_pull_request_review_draft_comment, update_pull_request_review_requests,
-            update_pull_request_state, update_pull_request_subscription,
-            update_pull_request_viewed_file, ComparePullRequestRefsInput, CreatePullRequest,
-            CreatePullRequestReviewDraftComment, MergeMethod, MergePullRequestError,
+            get_pull_request, global_pull_request_list_for_viewer, merge_pull_request,
+            pull_request_checks_view, pull_request_comment_timeline_item,
+            pull_request_detail_view_for_viewer, pull_request_diff_review_for_viewer,
+            pull_request_patch_for_viewer, pull_request_plain_diff_for_viewer,
+            pull_request_timeline_view, pull_sort_options, repository_for_actor_by_name,
+            repository_pull_request_list_view_for_viewer, save_repository_pull_preferences,
+            submit_pull_request_review, update_pull_request_draft_state,
+            update_pull_request_metadata, update_pull_request_review_draft_comment,
+            update_pull_request_review_requests, update_pull_request_state,
+            update_pull_request_subscription, update_pull_request_viewed_file,
+            ComparePullRequestRefsInput, CreatePullRequest, CreatePullRequestReviewDraftComment,
+            GlobalPullRequestListQuery, GlobalPullRequestScope, MergeMethod, MergePullRequestError,
             MergePullRequestInput, PullRequestDiffReviewQuery, PullRequestListQuery,
             PullRequestState, SubmitPullRequestReview, UpdatePullRequestDraftState,
             UpdatePullRequestMetadata, UpdatePullRequestReviewDraftComment,
@@ -49,6 +50,7 @@ use crate::{
 
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route("/api/pulls", get(global_list))
         .route("/api/repos/:owner/:repo/pulls", get(list).post(create))
         .route("/api/repos/:owner/:repo/compare/*range", get(compare))
         .route(
@@ -115,8 +117,11 @@ pub fn router() -> Router<AppState> {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ListQuery {
+    scope: Option<String>,
     state: Option<PullRequestState>,
     q: Option<String>,
+    repo: Option<String>,
+    repository: Option<String>,
     author: Option<String>,
     labels: Option<String>,
     milestone: Option<String>,
@@ -286,6 +291,27 @@ async fn list(
         repository.id,
         actor.as_ref().map(|user| user.id),
         pull_list_query(&query, actor.as_ref()).map_err(map_collaboration_error)?,
+        pagination.page,
+        pagination.page_size,
+    )
+    .await
+    .map_err(map_collaboration_error)?;
+
+    Ok(Json(json!(envelope)))
+}
+
+async fn global_list(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ListQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let pagination = normalize_pagination(query.page, query.page_size);
+    let envelope = global_pull_request_list_for_viewer(
+        pool,
+        actor.id,
+        global_pull_list_query(&query).map_err(map_collaboration_error)?,
         pagination.page,
         pagination.page_size,
     )
@@ -781,6 +807,84 @@ fn pull_list_query(
     })
 }
 
+fn global_pull_list_query(
+    query: &ListQuery,
+) -> Result<GlobalPullRequestListQuery, crate::domain::issues::CollaborationError> {
+    let q = query
+        .q
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("is:pr is:open");
+    validate_pull_query(q)?;
+
+    let raw_sort = query
+        .sort
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| qualifier_from_query(q, "sort:"))
+        .unwrap_or_else(|| "updated-desc".to_owned());
+    let raw_order = query
+        .order
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| qualifier_from_query(q, "order:"));
+    let normalized_sort = normalize_pull_sort(&raw_sort, raw_order.as_deref())?;
+    if normalized_sort == "best-match" && search_text_from_pull_query(q).is_empty() {
+        return Err(
+            crate::domain::issues::CollaborationError::InvalidIssueFilter(
+                "best match sort requires a search term".to_owned(),
+            ),
+        );
+    }
+
+    let scope = query
+        .scope
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("created");
+    let scope = GlobalPullRequestScope::try_from(scope)?;
+    let repository = query
+        .repository
+        .as_deref()
+        .or(query.repo.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .or_else(|| qualifier_from_query(q, "repo:"));
+
+    Ok(GlobalPullRequestListQuery {
+        scope,
+        query: Some(q.chars().take(240).collect()),
+        state: query.state.clone().or_else(|| {
+            if q.contains("state:closed") || q.contains("is:closed") {
+                Some(PullRequestState::Closed)
+            } else if q.contains("state:merged") || q.contains("is:merged") {
+                Some(PullRequestState::Merged)
+            } else if q.contains("state:open") || q.contains("is:open") {
+                Some(PullRequestState::Open)
+            } else {
+                None
+            }
+        }),
+        repository,
+        labels: labels_from_query(q, query.labels.as_deref()),
+        milestone: query
+            .milestone
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .or_else(|| qualifier_from_query(q, "milestone:")),
+        sort: normalized_sort,
+    })
+}
+
 fn project_filter_from_query(
     query: &ListQuery,
     q: &str,
@@ -850,6 +954,7 @@ fn validate_pull_query(query: &str) -> Result<(), crate::domain::issues::Collabo
             "author:",
             "label:",
             "milestone:",
+            "repo:",
             "project:",
             "assignee:",
             "review:",
@@ -988,6 +1093,7 @@ fn search_text_from_pull_query(query: &str) -> String {
                 && !term.starts_with("author:")
                 && !term.starts_with("label:")
                 && !term.starts_with("milestone:")
+                && !term.starts_with("repo:")
                 && term != "no:milestone"
                 && !term.starts_with("assignee:")
                 && term != "no:assignee"
