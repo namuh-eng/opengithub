@@ -74,7 +74,7 @@
 
 ## Phase 5: Archive, Restore, Remove, and Linked Sync - item lifecycle stays consistent
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Complete item lifecycle controls. Archiving removes items from active table/board/roadmap views while preserving history; restore returns them; remove detaches safely; linked issue/PR metadata changes stay synchronized with project fields and side-panel reads.
 

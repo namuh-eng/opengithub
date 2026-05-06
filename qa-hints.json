@@ -7145,5 +7145,23 @@
       "Probe duplicate convert submits, stale expectedUpdatedAt conflicts, repositories linked by project_repositories versus default_repository_id, private repository target visibility, invalid label/assignee/milestone IDs, empty writable target lists, notification fanout, audit rows, and converted source link navigation.",
       "Phase 5 still owns archive/restore/remove lifecycle and linked issue/PR sync; Phase 6 still owns API docs, final browser evidence, QA handoff, and build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-005",
+    "tests_written": [
+      "Completed Phase 5 Archive, Restore, Remove, and Linked Sync without marking projects-005 build_pass=true.",
+      "Added Rust PATCH /api/projects/{project_id}/items/{item_id}/archive and PATCH /api/projects/{project_id}/items/{item_id}/restore with project write checks, archived/restored actor metadata, active-view hiding, restore placement, project_item_events, and audit_events.",
+      "Updated existing DELETE remove semantics to preserve archived_by_user_id/restored reset metadata while continuing to hide removed items from active views without deleting linked issues or pull requests.",
+      "Added same-origin Next proxy routes and typed web/src/lib/api.ts helpers for archive and restore while preserving Rust API/session authority.",
+      "Updated the Editorial item side panel with real Archive/Restore actions, lifecycle metadata, success/error feedback, and a concrete archived-items link; added user/org archived item pages with list rows and restore controls.",
+      "Extended projects_workspace_contract with archive/restore assertions and ProjectWorkspacePage Vitest coverage for archive payloads, restore state, archived-items navigation, and remove compatibility.",
+      "Verification passed: cargo fmt --all --check; cargo check -p opengithub-api --tests; focused DB-guarded Rust scenario compile/run; focused web TypeScript; focused Biome; focused project-workspace-page Vitest with 19 tests; full make check; full make test with Cargo tests plus 557 web tests; mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Focused Rust DB assertions self-skipped because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test failed with password authentication failed for user postgres; rerun project_item_detail_and_archived_list_enforce_visibility against a clean migrated credentialed database.",
+      "make test-e2e was attempted with TEST_DATABASE_URL/DATABASE_URL pointing at localhost:55432 but produced no output for 60 seconds while Playwright children were active, then was terminated. The dev API health endpoint also reported DATABASE_URL is not configured under plain make dev. Rerun focused browser smoke against a credentialed migrated test database and save ralph/screenshots/build/projects-005-phase5-archive-restore.jpg.",
+      "Probe stale archive/restore clicks, large archived lists with q/itemType/page filters, read-only archive/restore denials, restored item placement in table/board/roadmap views, remove versus archive semantics, linked issue/PR title/state/label sync races, audit_events, project_item_events ordering, and mobile side-panel/archive page scrolling.",
+      "Phase 6 still owns API docs, final browser evidence, QA handoff, and projects-005 build_pass bookkeeping."
+    ]
   }
 ]

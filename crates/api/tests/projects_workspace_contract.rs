@@ -723,6 +723,48 @@ async fn project_item_detail_and_archived_list_enforce_visibility() {
     assert_eq!(body["viewerPermissions"]["canConvert"], true);
     assert_eq!(body["archive"]["archived"], false);
 
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/items/{draft_item_id}/archive"),
+        Some(&member_cookie),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["archive"]["archived"], true);
+    assert_eq!(
+        body["archive"]["archivedBy"]["login"],
+        member.username.as_deref().expect("member login")
+    );
+    assert_eq!(body["viewerPermissions"]["canArchive"], false);
+    assert_eq!(body["viewerPermissions"]["canRestore"], true);
+    assert!(body["activity"]
+        .as_array()
+        .expect("activity")
+        .iter()
+        .any(|event| event["eventType"] == "project.item.archive"));
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/items/{draft_item_id}/restore"),
+        Some(&member_cookie),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["archive"]["archived"], false);
+    assert_eq!(
+        body["archive"]["restoredBy"]["login"],
+        member.username.as_deref().expect("member login")
+    );
+    assert_eq!(body["viewerPermissions"]["canArchive"], true);
+    assert_eq!(body["viewerPermissions"]["canRestore"], false);
+    assert!(body["activity"]
+        .as_array()
+        .expect("activity")
+        .iter()
+        .any(|event| event["eventType"] == "project.item.restore"));
+
     let (status, _, body) = get_json(
         app.clone(),
         &format!("/api/projects/{project_id}/items/{hidden_linked_item_id}"),

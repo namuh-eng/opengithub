@@ -15,6 +15,7 @@ import type {
 } from "@/lib/api";
 import {
   organizationProjectWorkspaceHref,
+  projectArchivedItemsHref,
   projectItemHref,
   userProjectWorkspaceHref,
 } from "@/lib/navigation";
@@ -1969,6 +1970,12 @@ export function ProjectWorkspacePage({
       ) : null}
       {initialItemDetail ? (
         <ProjectItemSidePanel
+          archivedHref={projectArchivedItemsHref(
+            scope,
+            owner,
+            workspace.project.number,
+            baseQuery,
+          )}
           detail={initialItemDetail}
           onRemove={removeItem}
           removing={itemSaving}
@@ -1980,6 +1987,7 @@ export function ProjectWorkspacePage({
 }
 
 type ProjectItemSidePanelProps = {
+  archivedHref: string;
   detail: ProjectItemDetail;
   onRemove: (item: ProjectWorkspaceItem) => void;
   removing: boolean;
@@ -1987,6 +1995,7 @@ type ProjectItemSidePanelProps = {
 };
 
 function ProjectItemSidePanel({
+  archivedHref,
   detail,
   onRemove,
   removing,
@@ -2000,6 +2009,7 @@ function ProjectItemSidePanel({
   const [editingCommentBody, setEditingCommentBody] = useState("");
   const [draftSaving, setDraftSaving] = useState(false);
   const [commentSaving, setCommentSaving] = useState<string | null>(null);
+  const [archiveSaving, setArchiveSaving] = useState(false);
   const [panelMessage, setPanelMessage] = useState<string | null>(null);
   const [panelError, setPanelError] = useState<string | null>(null);
   const [conversionTargets, setConversionTargets] =
@@ -2186,6 +2196,46 @@ function ProjectItemSidePanel({
     setCurrentDetail(updated);
     setConversionOpen(false);
     setPanelMessage("Draft converted to issue");
+  }
+
+  async function archiveItem() {
+    setArchiveSaving(true);
+    setPanelError(null);
+    setPanelMessage(null);
+    const response = await fetch(`${mutationBase}/archive`, {
+      method: "PATCH",
+    }).catch(() => null);
+    setArchiveSaving(false);
+    if (!response?.ok) {
+      const body = await response?.json().catch(() => null);
+      setPanelError(
+        body?.error?.message ?? "Project item could not be archived.",
+      );
+      return;
+    }
+    const updated = (await response.json()) as ProjectItemDetail;
+    setCurrentDetail(updated);
+    setPanelMessage("Item archived");
+  }
+
+  async function restoreItem() {
+    setArchiveSaving(true);
+    setPanelError(null);
+    setPanelMessage(null);
+    const response = await fetch(`${mutationBase}/restore`, {
+      method: "PATCH",
+    }).catch(() => null);
+    setArchiveSaving(false);
+    if (!response?.ok) {
+      const body = await response?.json().catch(() => null);
+      setPanelError(
+        body?.error?.message ?? "Project item could not be restored.",
+      );
+      return;
+    }
+    const updated = (await response.json()) as ProjectItemDetail;
+    setCurrentDetail(updated);
+    setPanelMessage("Item restored");
   }
 
   const selectedConversionRepository =
@@ -2608,6 +2658,37 @@ function ProjectItemSidePanel({
         </div>
       </section>
 
+      <section className="mb-5 grid gap-2">
+        <div className="t-label">Lifecycle</div>
+        {currentDetail.archive.archived ? (
+          <p className="t-sm" style={{ color: "var(--ink-3)" }}>
+            Archived{" "}
+            {formatDate(currentDetail.archive.archivedAt ?? item.updatedAt)}
+            {currentDetail.archive.archivedBy
+              ? ` by ${currentDetail.archive.archivedBy.login}`
+              : ""}
+            . Restore returns the item to active project views.
+          </p>
+        ) : currentDetail.archive.restoredAt ? (
+          <p className="t-sm" style={{ color: "var(--ink-3)" }}>
+            Restored{" "}
+            {formatDate(currentDetail.archive.restoredAt ?? item.updatedAt)}
+            {currentDetail.archive.restoredBy
+              ? ` by ${currentDetail.archive.restoredBy.login}`
+              : ""}
+            .
+          </p>
+        ) : (
+          <p className="t-sm" style={{ color: "var(--ink-3)" }}>
+            Archive hides this item from active views without deleting linked
+            issues or pull requests.
+          </p>
+        )}
+        <Link className="t-sm w-fit no-underline" href={archivedHref}>
+          View archived items
+        </Link>
+      </section>
+
       <div
         className="sticky bottom-0 mt-auto flex flex-wrap gap-2 border-t pt-4"
         style={{ background: "var(--surface)", borderColor: "var(--line)" }}
@@ -2629,18 +2710,39 @@ function ProjectItemSidePanel({
         >
           {conversionLoading ? "Loading..." : "Convert to issue"}
         </button>
-        <button
-          className="btn sm"
-          disabled
-          title={
-            currentDetail.viewerPermissions.canArchive
-              ? "Archiving is implemented in the lifecycle phase."
-              : "This item cannot be archived by the current viewer."
-          }
-          type="button"
-        >
-          Archive
-        </button>
+        {currentDetail.archive.archived ? (
+          <button
+            className="btn sm"
+            disabled={
+              archiveSaving || !currentDetail.viewerPermissions.canRestore
+            }
+            onClick={restoreItem}
+            title={
+              currentDetail.viewerPermissions.canRestore
+                ? "Restore this item to active project views"
+                : "This item cannot be restored by the current viewer."
+            }
+            type="button"
+          >
+            {archiveSaving ? "Restoring..." : "Restore"}
+          </button>
+        ) : (
+          <button
+            className="btn sm"
+            disabled={
+              archiveSaving || !currentDetail.viewerPermissions.canArchive
+            }
+            onClick={archiveItem}
+            title={
+              currentDetail.viewerPermissions.canArchive
+                ? "Archive this item without deleting its source"
+                : "This item cannot be archived by the current viewer."
+            }
+            type="button"
+          >
+            {archiveSaving ? "Archiving..." : "Archive"}
+          </button>
+        )}
         <button
           className="btn sm"
           disabled={removing || !currentDetail.viewerPermissions.canRemove}

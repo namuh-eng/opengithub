@@ -407,10 +407,24 @@ describe("ProjectWorkspacePage", () => {
 
   it("renders the route-backed item side panel with draft metadata and actions", async () => {
     const assign = vi.fn();
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => workspace(),
+    const archivedDetail = itemDetail({
+      archive: {
+        archived: true,
+        archivedAt: "2026-05-04T04:00:00Z",
+        archivedBy: { id: "user-1", login: "mona", avatarUrl: null },
+        restoredAt: null,
+        restoredBy: null,
+      },
+      viewerPermissions: {
+        ...itemDetail().viewerPermissions,
+        canArchive: false,
+        canRestore: true,
+      },
     });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => archivedDetail })
+      .mockResolvedValueOnce({ ok: true, json: async () => workspace() });
     vi.stubGlobal("location", { assign });
     vi.stubGlobal("fetch", fetchMock);
     render(
@@ -446,10 +460,27 @@ describe("ProjectWorkspacePage", () => {
     ).toBeEnabled();
     expect(
       within(panel).getByRole("button", { name: "Archive" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
+    expect(
+      within(panel).getByRole("link", { name: "View archived items" }),
+    ).toHaveAttribute(
+      "href",
+      "/orgs/namuh/projects/12/items/archived?q=is%3Aopen&sort=manual&group=Status",
+    );
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Archive" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/projects/project-1/items/item-2/archive",
+      { method: "PATCH" },
+    );
+    expect(within(panel).getByText("Item archived")).toBeInTheDocument();
+    expect(
+      within(panel).getByRole("button", { name: "Restore" }),
+    ).toBeEnabled();
 
     fireEvent.click(within(panel).getByRole("button", { name: "Remove" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/projects/project-1/items/item-2",
       { method: "DELETE" },

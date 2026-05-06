@@ -11,33 +11,33 @@ use crate::{
     api_types::{database_unavailable, error_response, ErrorEnvelope},
     auth::extractor::AuthenticatedUser,
     domain::projects::{
-        add_project_item_for_actor, bulk_add_project_items_for_actor,
-        convert_project_draft_to_issue_for_actor, copy_project_for_actor,
-        create_project_field_for_actor, create_project_field_option_for_actor,
-        create_project_item_comment_for_actor, create_project_iteration_break_for_actor,
-        create_project_iteration_for_actor, delete_project_field_for_actor,
-        delete_project_field_option_for_actor, delete_project_item_comment_for_actor,
-        delete_project_iteration_break_for_actor, organization_projects,
-        project_conversion_targets_for_actor, project_field_settings, project_item_detail,
-        project_items_archived, project_workspace, remove_project_item_for_actor,
-        reorder_project_field_options_for_actor, repository_projects,
-        update_project_draft_item_for_actor, update_project_field_for_actor,
-        update_project_field_option_for_actor, update_project_item_comment_for_actor,
-        update_project_item_field_for_actor, update_project_item_position_for_actor,
-        update_project_iteration_for_actor, update_project_iteration_settings_for_actor,
-        update_project_roadmap_settings_for_actor, update_project_view_layout_for_actor,
-        update_project_view_state_for_actor, user_projects, CopiedProject, CopyProjectRequest,
-        ProjectArchivedItem, ProjectConversionTargets, ProjectDraftConvertRequest,
-        ProjectDraftUpdateRequest, ProjectFieldCreateRequest, ProjectFieldDeleteRequest,
-        ProjectFieldOptionCreateRequest, ProjectFieldOptionReorderRequest,
-        ProjectFieldOptionUpdateRequest, ProjectFieldSettings, ProjectFieldUpdateRequest,
-        ProjectItemAddRequest, ProjectItemCommentCreateRequest, ProjectItemCommentUpdateRequest,
-        ProjectItemDetail, ProjectItemFieldValueRequest, ProjectItemPositionRequest,
-        ProjectItemsArchivedQuery, ProjectItemsBulkAddRequest, ProjectIterationBreakCreateRequest,
-        ProjectIterationCreateRequest, ProjectIterationSettingsRequest,
-        ProjectIterationUpdateRequest, ProjectList, ProjectListQuery,
-        ProjectRoadmapSettingsRequest, ProjectViewLayoutRequest, ProjectViewStateRequest,
-        ProjectWorkspace, ProjectWorkspaceQuery, ProjectsError,
+        add_project_item_for_actor, archive_project_item_for_actor,
+        bulk_add_project_items_for_actor, convert_project_draft_to_issue_for_actor,
+        copy_project_for_actor, create_project_field_for_actor,
+        create_project_field_option_for_actor, create_project_item_comment_for_actor,
+        create_project_iteration_break_for_actor, create_project_iteration_for_actor,
+        delete_project_field_for_actor, delete_project_field_option_for_actor,
+        delete_project_item_comment_for_actor, delete_project_iteration_break_for_actor,
+        organization_projects, project_conversion_targets_for_actor, project_field_settings,
+        project_item_detail, project_items_archived, project_workspace,
+        remove_project_item_for_actor, reorder_project_field_options_for_actor,
+        repository_projects, restore_project_item_for_actor, update_project_draft_item_for_actor,
+        update_project_field_for_actor, update_project_field_option_for_actor,
+        update_project_item_comment_for_actor, update_project_item_field_for_actor,
+        update_project_item_position_for_actor, update_project_iteration_for_actor,
+        update_project_iteration_settings_for_actor, update_project_roadmap_settings_for_actor,
+        update_project_view_layout_for_actor, update_project_view_state_for_actor, user_projects,
+        CopiedProject, CopyProjectRequest, ProjectArchivedItem, ProjectConversionTargets,
+        ProjectDraftConvertRequest, ProjectDraftUpdateRequest, ProjectFieldCreateRequest,
+        ProjectFieldDeleteRequest, ProjectFieldOptionCreateRequest,
+        ProjectFieldOptionReorderRequest, ProjectFieldOptionUpdateRequest, ProjectFieldSettings,
+        ProjectFieldUpdateRequest, ProjectItemAddRequest, ProjectItemCommentCreateRequest,
+        ProjectItemCommentUpdateRequest, ProjectItemDetail, ProjectItemFieldValueRequest,
+        ProjectItemPositionRequest, ProjectItemsArchivedQuery, ProjectItemsBulkAddRequest,
+        ProjectIterationBreakCreateRequest, ProjectIterationCreateRequest,
+        ProjectIterationSettingsRequest, ProjectIterationUpdateRequest, ProjectList,
+        ProjectListQuery, ProjectRoadmapSettingsRequest, ProjectViewLayoutRequest,
+        ProjectViewStateRequest, ProjectWorkspace, ProjectWorkspaceQuery, ProjectsError,
     },
     AppState,
 };
@@ -125,6 +125,14 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/projects/:project_id/items/:item_id/convert-to-issue",
             post(convert_project_draft_to_issue_route),
+        )
+        .route(
+            "/api/projects/:project_id/items/:item_id/archive",
+            patch(archive_project_item_route),
+        )
+        .route(
+            "/api/projects/:project_id/items/:item_id/restore",
+            patch(restore_project_item_route),
         )
         .route(
             "/api/projects/:project_id/items/archived",
@@ -744,6 +752,32 @@ async fn convert_project_draft_to_issue_route(
         convert_project_draft_to_issue_for_actor(pool, project_id, item_id, actor.id, request)
             .await
             .map_err(map_projects_error)?;
+    Ok(Json(detail))
+}
+
+async fn archive_project_item_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project_id, item_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<ProjectItemDetail>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let detail = archive_project_item_for_actor(pool, project_id, item_id, actor.id)
+        .await
+        .map_err(map_projects_error)?;
+    Ok(Json(detail))
+}
+
+async fn restore_project_item_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project_id, item_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<ProjectItemDetail>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let detail = restore_project_item_for_actor(pool, project_id, item_id, actor.id)
+        .await
+        .map_err(map_projects_error)?;
     Ok(Json(detail))
 }
 

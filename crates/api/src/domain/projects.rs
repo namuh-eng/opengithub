@@ -3078,10 +3078,21 @@ pub async fn remove_project_item_for_actor(
             "Project item is already removed".to_owned(),
         ));
     }
-    sqlx::query("UPDATE project_items SET archived_at = now(), updated_at = now() WHERE id = $1")
-        .bind(item_id)
-        .execute(pool)
-        .await?;
+    sqlx::query(
+        r#"
+        UPDATE project_items
+        SET archived_at = now(),
+            archived_by_user_id = $2,
+            restored_at = NULL,
+            restored_by_user_id = NULL,
+            updated_at = now()
+        WHERE id = $1
+        "#,
+    )
+    .bind(item_id)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
     record_project_item_event(
         pool,
         project_id,
@@ -3100,6 +3111,109 @@ pub async fn remove_project_item_for_actor(
     )
     .await?;
     project_workspace_after_item_mutation(pool, project_id, actor_user_id).await
+}
+
+pub async fn archive_project_item_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    item_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<ProjectItemDetail, ProjectsError> {
+    writable_workspace_project(pool, project_id, actor_user_id).await?;
+    let item = workspace_item_edit_target(pool, project_id, item_id).await?;
+    if item.archived_at.is_some() {
+        return Err(ProjectsError::Validation(
+            "Project item is already archived".to_owned(),
+        ));
+    }
+    sqlx::query(
+        r#"
+        UPDATE project_items
+        SET archived_at = now(),
+            archived_by_user_id = $2,
+            restored_at = NULL,
+            restored_by_user_id = NULL,
+            updated_at = now()
+        WHERE id = $1
+        "#,
+    )
+    .bind(item_id)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
+    record_project_item_event(
+        pool,
+        project_id,
+        item_id,
+        actor_user_id,
+        "project.item.archive",
+        json!({ "itemType": item.item_type }),
+    )
+    .await?;
+    record_project_audit(
+        pool,
+        actor_user_id,
+        "project.item.archive",
+        item_id,
+        json!({ "projectId": project_id }),
+    )
+    .await?;
+    project_item_detail(pool, project_id, item_id, Some(actor_user_id)).await
+}
+
+pub async fn restore_project_item_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    item_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<ProjectItemDetail, ProjectsError> {
+    writable_workspace_project(pool, project_id, actor_user_id).await?;
+    let item = workspace_item_edit_target(pool, project_id, item_id).await?;
+    if item.archived_at.is_none() {
+        return Err(ProjectsError::Validation(
+            "Project item is not archived".to_owned(),
+        ));
+    }
+    let next_position: f64 = sqlx::query_scalar(
+        "SELECT COALESCE(max(position)::float8, 0) + 1 FROM project_items WHERE project_id = $1 AND archived_at IS NULL",
+    )
+    .bind(project_id)
+    .fetch_one(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        UPDATE project_items
+        SET archived_at = NULL,
+            restored_at = now(),
+            restored_by_user_id = $2,
+            position = $3,
+            updated_at = now()
+        WHERE id = $1
+        "#,
+    )
+    .bind(item_id)
+    .bind(actor_user_id)
+    .bind(next_position)
+    .execute(pool)
+    .await?;
+    record_project_item_event(
+        pool,
+        project_id,
+        item_id,
+        actor_user_id,
+        "project.item.restore",
+        json!({ "itemType": item.item_type, "position": next_position.to_string() }),
+    )
+    .await?;
+    record_project_audit(
+        pool,
+        actor_user_id,
+        "project.item.restore",
+        item_id,
+        json!({ "projectId": project_id }),
+    )
+    .await?;
+    project_item_detail(pool, project_id, item_id, Some(actor_user_id)).await
 }
 
 pub async fn organization_projects(

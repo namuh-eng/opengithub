@@ -8449,6 +8449,34 @@ export function removeProjectItemFromCookie(
   );
 }
 
+export function archiveProjectItemFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  itemId: string,
+): Promise<ProjectItemDetail> {
+  return mutateProjectItemDetailFromCookie(
+    cookie,
+    `${projectItemDetailPath(projectId, itemId)}/archive`,
+    "PATCH",
+    "project_item_archive_failed",
+    "Project item could not be archived.",
+  );
+}
+
+export function restoreProjectItemFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  itemId: string,
+): Promise<ProjectItemDetail> {
+  return mutateProjectItemDetailFromCookie(
+    cookie,
+    `${projectItemDetailPath(projectId, itemId)}/restore`,
+    "PATCH",
+    "project_item_restore_failed",
+    "Project item could not be restored.",
+  );
+}
+
 export function updateProjectDraftItemFromCookie(
   cookie: string | null | undefined,
   projectId: string,
