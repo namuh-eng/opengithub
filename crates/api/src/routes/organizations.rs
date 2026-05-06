@@ -43,6 +43,14 @@ use crate::{
             PackageDetail, PackageDetailError, PackageDetailQuery, PackageDownloadMetadata,
             PackageListError, PackageOwnerKind, PackageSettings, PackageSettingsMutation,
         },
+        webhooks::{
+            create_organization_webhook_by_slug, delete_organization_webhook_by_slug,
+            organization_webhook_delivery_for_actor_by_slug,
+            organization_webhook_detail_for_actor_by_slug,
+            organization_webhook_settings_for_actor_by_slug, ping_organization_webhook_by_slug,
+            redeliver_organization_webhook_delivery_by_slug, update_organization_webhook_by_slug,
+            WebhookError, WebhookMutation,
+        },
     },
     AppState,
 };
@@ -109,6 +117,28 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/orgs/:org/packages/:package_type/:package_name/download",
             get(public_package_download_metadata),
+        )
+        .route(
+            "/api/orgs/:org/settings/hooks",
+            get(org_webhook_settings).post(create_org_webhook),
+        )
+        .route(
+            "/api/orgs/:org/settings/hooks/:hook_id",
+            get(org_webhook_detail)
+                .patch(update_org_webhook)
+                .delete(delete_org_webhook),
+        )
+        .route(
+            "/api/orgs/:org/settings/hooks/:hook_id/ping",
+            post(ping_org_webhook),
+        )
+        .route(
+            "/api/orgs/:org/settings/hooks/:hook_id/deliveries/:delivery_id",
+            get(org_webhook_delivery_detail),
+        )
+        .route(
+            "/api/orgs/:org/settings/hooks/:hook_id/deliveries/:delivery_id/redeliver",
+            post(redeliver_org_webhook_delivery),
         )
 }
 
@@ -562,6 +592,194 @@ async fn public_package_download_metadata(
     Ok(Json(metadata))
 }
 
+async fn org_webhook_settings(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(org): Path<String>,
+) -> Result<
+    Json<crate::domain::webhooks::OrganizationWebhookSettings>,
+    (StatusCode, Json<ErrorEnvelope>),
+> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = organization_webhook_settings_for_actor_by_slug(pool, actor.0.id, &org)
+        .await
+        .map_err(map_webhook_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "organization was not found",
+            )
+        })?;
+    Ok(Json(settings))
+}
+
+async fn org_webhook_detail(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((org, hook_id)): Path<(String, Uuid)>,
+) -> Result<Json<crate::domain::webhooks::RepositoryWebhookDetail>, (StatusCode, Json<ErrorEnvelope>)>
+{
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let detail = organization_webhook_detail_for_actor_by_slug(pool, actor.0.id, &org, hook_id)
+        .await
+        .map_err(map_webhook_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "organization was not found",
+            )
+        })?;
+    Ok(Json(detail))
+}
+
+async fn org_webhook_delivery_detail(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((org, hook_id, delivery_id)): Path<(String, Uuid, Uuid)>,
+) -> Result<Json<crate::domain::webhooks::WebhookDeliveryDetail>, (StatusCode, Json<ErrorEnvelope>)>
+{
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let detail = organization_webhook_delivery_for_actor_by_slug(
+        pool,
+        actor.0.id,
+        &org,
+        hook_id,
+        delivery_id,
+    )
+    .await
+    .map_err(map_webhook_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "organization was not found",
+        )
+    })?;
+    Ok(Json(detail))
+}
+
+async fn create_org_webhook(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(org): Path<String>,
+    RestJson(request): RestJson<WebhookMutation>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let (settings, delivery) = create_organization_webhook_by_slug(pool, actor.0.id, &org, request)
+        .await
+        .map_err(map_webhook_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "organization was not found",
+            )
+        })?;
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({ "settings": settings, "delivery": delivery })),
+    ))
+}
+
+async fn update_org_webhook(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((org, hook_id)): Path<(String, Uuid)>,
+    RestJson(request): RestJson<WebhookMutation>,
+) -> Result<
+    Json<crate::domain::webhooks::OrganizationWebhookSettings>,
+    (StatusCode, Json<ErrorEnvelope>),
+> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = update_organization_webhook_by_slug(pool, actor.0.id, &org, hook_id, request)
+        .await
+        .map_err(map_webhook_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "organization was not found",
+            )
+        })?;
+    Ok(Json(settings))
+}
+
+async fn delete_org_webhook(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((org, hook_id)): Path<(String, Uuid)>,
+) -> Result<
+    Json<crate::domain::webhooks::OrganizationWebhookSettings>,
+    (StatusCode, Json<ErrorEnvelope>),
+> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let settings = delete_organization_webhook_by_slug(pool, actor.0.id, &org, hook_id)
+        .await
+        .map_err(map_webhook_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "organization was not found",
+            )
+        })?;
+    Ok(Json(settings))
+}
+
+async fn ping_org_webhook(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((org, hook_id)): Path<(String, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let (settings, delivery) = ping_organization_webhook_by_slug(pool, actor.0.id, &org, hook_id)
+        .await
+        .map_err(map_webhook_error)?
+        .ok_or_else(|| {
+            error_response(
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "organization was not found",
+            )
+        })?;
+    Ok(Json(json!({ "settings": settings, "delivery": delivery })))
+}
+
+async fn redeliver_org_webhook_delivery(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((org, hook_id, delivery_id)): Path<(String, Uuid, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let (settings, delivery) = redeliver_organization_webhook_delivery_by_slug(
+        pool,
+        actor.0.id,
+        &org,
+        hook_id,
+        delivery_id,
+    )
+    .await
+    .map_err(map_webhook_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "organization was not found",
+        )
+    })?;
+    Ok(Json(json!({ "settings": settings, "delivery": delivery })))
+}
+
 async fn public_package_settings(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -693,6 +911,43 @@ fn map_package_list_error(error: PackageListError) -> (StatusCode, Json<ErrorEnv
             StatusCode::INTERNAL_SERVER_ERROR,
             "internal_error",
             "packages could not be loaded",
+        ),
+    }
+}
+
+fn map_webhook_error(error: WebhookError) -> (StatusCode, Json<ErrorEnvelope>) {
+    match error {
+        WebhookError::RepositoryNotFound | WebhookError::OrganizationNotFound => error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "webhook scope was not found",
+        ),
+        WebhookError::WebhookNotFound => {
+            error_response(StatusCode::NOT_FOUND, "not_found", "webhook was not found")
+        }
+        WebhookError::DeliveryNotFound => error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "webhook delivery was not found",
+        ),
+        WebhookError::RepositoryAccessDenied | WebhookError::OrganizationAccessDenied => {
+            error_response(
+                StatusCode::FORBIDDEN,
+                "forbidden",
+                "webhook settings require owner access",
+            )
+        }
+        WebhookError::InvalidWebhook(message) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_failed",
+            message,
+        ),
+        WebhookError::InvalidDeliveryStatus(_)
+        | WebhookError::DeliveryQueue(_)
+        | WebhookError::Sqlx(_) => error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "internal_error",
+            "webhook operation failed",
         ),
     }
 }

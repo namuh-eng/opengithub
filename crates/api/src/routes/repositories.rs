@@ -5731,11 +5731,12 @@ fn map_milestones_error(error: MilestonesError) -> (StatusCode, Json<ErrorEnvelo
 fn map_webhook_error(error: WebhookError) -> (StatusCode, Json<ErrorEnvelope>) {
     match error {
         WebhookError::RepositoryNotFound
+        | WebhookError::OrganizationNotFound
         | WebhookError::WebhookNotFound
         | WebhookError::DeliveryNotFound => {
             error_response(StatusCode::NOT_FOUND, "not_found", error.to_string())
         }
-        WebhookError::RepositoryAccessDenied => {
+        WebhookError::RepositoryAccessDenied | WebhookError::OrganizationAccessDenied => {
             error_response(StatusCode::FORBIDDEN, "forbidden", error.to_string())
         }
         WebhookError::InvalidWebhook(_)

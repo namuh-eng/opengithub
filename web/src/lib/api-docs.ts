@@ -3609,6 +3609,41 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "org-webhooks",
+    method: "GET",
+    path: "/api/orgs/{org}/settings/hooks",
+    title: "Manage organization webhooks",
+    description:
+      "Reads the owner-only organization webhook settings contract. Organization hooks share the repository hook schema and receive matching repository events from repositories owned by the organization.",
+    auth: "Signed opengithub session cookie with organization owner access",
+    request: `{
+  "payloadUrl": "https://receiver.example.com/hooks/org",
+  "contentType": "json",
+  "secret": "shown-only-on-submit",
+  "eventSelection": "selected",
+  "events": ["push", "workflow_run"],
+  "active": true
+}`,
+    response: `{
+  "organizationId": "org_01",
+  "slug": "namuh",
+  "viewerRole": "owner",
+  "hooks": [
+    {
+      "payloadUrl": "https://receiver.example.com/hooks/org",
+      "secretConfigured": true,
+      "latestDelivery": { "event": "ping", "status": "queued" }
+    }
+  ]
+}`,
+    notes: [
+      "POST creates a hook and queues ping; PATCH/DELETE use /api/orgs/{org}/settings/hooks/{hook_id}.",
+      "POST /api/orgs/{org}/settings/hooks/{hook_id}/ping queues a signed ping delivery.",
+      "GET /api/orgs/{org}/settings/hooks/{hook_id}/deliveries/{delivery_id} and the redeliver subroute mirror repository delivery detail behavior.",
+      "Organization admins and members receive 403; private organization outsiders receive not_found without endpoint metadata.",
+    ],
+  },
+  {
     id: "repo-actions-secrets-list",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/settings/secrets",

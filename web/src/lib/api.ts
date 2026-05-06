@@ -5516,6 +5516,16 @@ export type RepositoryWebhookSettings = {
   hooks: RepositoryWebhookSummary[];
 };
 
+export type OrganizationWebhookSettings = {
+  organizationId: string;
+  slug: string;
+  name: string;
+  viewerRole: string;
+  canEdit: boolean;
+  eventDefinitions: WebhookEventDefinition[];
+  hooks: RepositoryWebhookSummary[];
+};
+
 export type RepositoryWebhookDetail = {
   hook: RepositoryWebhookSummary;
   deliveries: WebhookDeliverySummary[];
@@ -5523,6 +5533,10 @@ export type RepositoryWebhookDetail = {
 
 export type RepositoryWebhookSettingsFetchResult =
   | { ok: true; settings: RepositoryWebhookSettings }
+  | { ok: false; status: number; code: string | null; message: string };
+
+export type OrganizationWebhookSettingsFetchResult =
+  | { ok: true; settings: OrganizationWebhookSettings }
   | { ok: false; status: number; code: string | null; message: string };
 
 export type RepositoryWebhookDetailFetchResult =
@@ -17428,6 +17442,41 @@ export async function getRepositoryWebhookSettingsFromCookie(
   };
 }
 
+export async function getOrganizationWebhookSettingsFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+): Promise<OrganizationWebhookSettingsFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/settings/hooks`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Organization webhook settings are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    return repositorySettingsErrorResult(
+      response,
+      "Organization webhook settings are unavailable right now.",
+    );
+  }
+
+  return {
+    ok: true,
+    settings: (await response.json()) as OrganizationWebhookSettings,
+  };
+}
+
 export async function getRepositoryActionsSecretsSettingsFromCookie(
   cookie: string | null | undefined,
   owner: string,
@@ -17771,6 +17820,42 @@ export async function getRepositoryWebhookDetailFromCookie(
   };
 }
 
+export async function getOrganizationWebhookDetailFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  hookId: string,
+): Promise<RepositoryWebhookDetailFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/settings/hooks/${encodeURIComponent(hookId)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Organization webhook detail is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    return repositorySettingsErrorResult(
+      response,
+      "Organization webhook detail is unavailable right now.",
+    );
+  }
+
+  return {
+    ok: true,
+    detail: (await response.json()) as RepositoryWebhookDetail,
+  };
+}
+
 export async function getRepositoryWebhookDeliveryDetailFromCookie(
   cookie: string | null | undefined,
   owner: string,
@@ -17800,6 +17885,43 @@ export async function getRepositoryWebhookDeliveryDetailFromCookie(
     return repositorySettingsErrorResult(
       response,
       "Repository webhook delivery is unavailable right now.",
+    );
+  }
+
+  return {
+    ok: true,
+    delivery: (await response.json()) as WebhookDeliveryDetail,
+  };
+}
+
+export async function getOrganizationWebhookDeliveryDetailFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  hookId: string,
+  deliveryId: string,
+): Promise<WebhookDeliveryDetailFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/settings/hooks/${encodeURIComponent(hookId)}/deliveries/${encodeURIComponent(deliveryId)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Organization webhook delivery is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    return repositorySettingsErrorResult(
+      response,
+      "Organization webhook delivery is unavailable right now.",
     );
   }
 
@@ -17861,6 +17983,64 @@ export async function mutateRepositoryWebhookSettingsFromCookie(
       .catch(() => null)) as ApiErrorEnvelope | null;
     throw new Error(
       envelope?.error.message ?? "Repository webhook update failed.",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as RepositoryWebhookMutationResult;
+}
+
+export async function mutateOrganizationWebhookSettingsFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  mutation: RepositoryWebhookMutation,
+): Promise<RepositoryWebhookMutationResult> {
+  const base = `${apiBaseUrl()}/api/orgs/${encodeURIComponent(org)}/settings/hooks`;
+  let path = base;
+  let method = "POST";
+  let body: unknown;
+
+  switch (mutation.action) {
+    case "create-webhook": {
+      const { action: _action, ...payload } = mutation;
+      body = payload;
+      break;
+    }
+    case "update-webhook": {
+      const { action: _action, hookId, ...payload } = mutation;
+      path = `${base}/${encodeURIComponent(hookId)}`;
+      method = "PATCH";
+      body = payload;
+      break;
+    }
+    case "delete-webhook":
+      path = `${base}/${encodeURIComponent(mutation.hookId)}`;
+      method = "DELETE";
+      break;
+    case "ping-webhook":
+      path = `${base}/${encodeURIComponent(mutation.hookId)}/ping`;
+      break;
+    case "redeliver-delivery":
+      path = `${base}/${encodeURIComponent(mutation.hookId)}/deliveries/${encodeURIComponent(mutation.deliveryId)}/redeliver`;
+      break;
+  }
+
+  const response = await fetch(path, {
+    method,
+    headers: {
+      ...(body ? { "content-type": "application/json" } : {}),
+      ...(cookie ? { cookie } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const envelope = (await response
+      .json()
+      .catch(() => null)) as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Organization webhook update failed.",
       { cause: envelope },
     );
   }

@@ -107,6 +107,18 @@ pub struct RepositoryWebhookSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct OrganizationWebhookSettings {
+    pub organization_id: Uuid,
+    pub slug: String,
+    pub name: String,
+    pub viewer_role: String,
+    pub can_edit: bool,
+    pub event_definitions: Vec<WebhookEventDefinition>,
+    pub hooks: Vec<RepositoryWebhookSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct WebhookEventDefinition {
     pub name: String,
     pub label: String,
@@ -273,6 +285,10 @@ pub enum WebhookError {
     RepositoryNotFound,
     #[error("user does not have repository admin access")]
     RepositoryAccessDenied,
+    #[error("organization was not found")]
+    OrganizationNotFound,
+    #[error("user does not have organization owner access")]
+    OrganizationAccessDenied,
     #[error("webhook was not found")]
     WebhookNotFound,
     #[error("webhook delivery was not found")]
@@ -285,6 +301,14 @@ pub enum WebhookError {
     DeliveryQueue(String),
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
+}
+
+#[derive(Debug, Clone)]
+struct OrganizationHookScope {
+    id: Uuid,
+    slug: String,
+    name: String,
+    viewer_role: String,
 }
 
 pub async fn enqueue_repository_webhook_event(
@@ -303,9 +327,16 @@ pub async fn enqueue_repository_webhook_event(
 
     let rows = sqlx::query(
         r#"
-        SELECT id
+        SELECT webhooks.id
         FROM webhooks
-        WHERE repository_id = $1
+        LEFT JOIN repositories ON repositories.id = $1
+        WHERE (
+             webhooks.repository_id = $1
+             OR (
+             webhooks.organization_id IS NOT NULL
+             AND webhooks.organization_id = repositories.owner_organization_id
+           )
+          )
           AND active = true
           AND (events @> ARRAY[$2]::text[] OR events @> ARRAY['*']::text[])
         ORDER BY created_at ASC
@@ -368,6 +399,124 @@ pub async fn repository_webhook_settings_for_actor_by_owner_name(
     };
     require_repository_admin(pool, &repository, actor_user_id).await?;
     repository_webhook_settings_for_repository(pool, &repository, actor_user_id).await
+}
+
+pub async fn organization_webhook_settings_for_actor_by_slug(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    slug: &str,
+) -> Result<Option<OrganizationWebhookSettings>, WebhookError> {
+    let Some(organization) = organization_hook_scope(pool, slug, actor_user_id).await? else {
+        return Ok(None);
+    };
+    organization_webhook_settings_for_scope(pool, &organization)
+        .await
+        .map(Some)
+}
+
+pub async fn organization_webhook_detail_for_actor_by_slug(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    slug: &str,
+    hook_id: Uuid,
+) -> Result<Option<RepositoryWebhookDetail>, WebhookError> {
+    let Some(organization) = organization_hook_scope(pool, slug, actor_user_id).await? else {
+        return Ok(None);
+    };
+    let Some(hook) = organization_webhook_summary(pool, organization.id, hook_id).await? else {
+        return Err(WebhookError::WebhookNotFound);
+    };
+    let deliveries = list_delivery_summaries(pool, hook_id, 30).await?;
+    Ok(Some(RepositoryWebhookDetail { hook, deliveries }))
+}
+
+pub async fn organization_webhook_delivery_for_actor_by_slug(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    slug: &str,
+    hook_id: Uuid,
+    delivery_id: Uuid,
+) -> Result<Option<WebhookDeliveryDetail>, WebhookError> {
+    let Some(organization) = organization_hook_scope(pool, slug, actor_user_id).await? else {
+        return Ok(None);
+    };
+    if organization_webhook_summary(pool, organization.id, hook_id)
+        .await?
+        .is_none()
+    {
+        return Err(WebhookError::WebhookNotFound);
+    }
+    delivery_detail(pool, hook_id, delivery_id)
+        .await?
+        .ok_or(WebhookError::DeliveryNotFound)
+        .map(Some)
+}
+
+pub async fn create_organization_webhook_by_slug(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    slug: &str,
+    mutation: WebhookMutation,
+) -> Result<Option<(OrganizationWebhookSettings, WebhookDeliverySummary)>, WebhookError> {
+    let Some(organization) = organization_hook_scope(pool, slug, actor_user_id).await? else {
+        return Ok(None);
+    };
+    let normalized = normalize_mutation(mutation, None)?;
+    let secret_hash = normalized.secret.as_deref().map(hash_secret);
+    let mut transaction = pool.begin().await?;
+    let hook_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO webhooks (
+            organization_id, url, secret_hash, events, active, created_by_user_id,
+            content_type, ssl_verify, event_selection, secret_configured, secret_updated_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CASE WHEN $10 THEN now() ELSE NULL END)
+        RETURNING id
+        "#,
+    )
+    .bind(organization.id)
+    .bind(&normalized.payload_url)
+    .bind(&secret_hash)
+    .bind(&normalized.events)
+    .bind(normalized.active)
+    .bind(actor_user_id)
+    .bind(normalized.content_type.as_str())
+    .bind(normalized.ssl_verify)
+    .bind(normalized.event_selection.as_str())
+    .bind(secret_hash.is_some())
+    .fetch_one(&mut *transaction)
+    .await?;
+    let delivery_id = insert_delivery_tx(
+        &mut transaction,
+        hook_id,
+        "ping",
+        json!({
+            "zen": "Keep it logically awesome.",
+            "hookId": hook_id,
+            "organization": { "id": organization.id, "login": organization.slug }
+        }),
+        None,
+    )
+    .await?;
+    insert_organization_webhook_audit_tx(
+        &mut transaction,
+        organization.id,
+        actor_user_id,
+        "organization.webhook.create",
+        audit_hook_state(
+            &normalized.payload_url,
+            &normalized.events,
+            normalized.active,
+            secret_hash.is_some(),
+        ),
+    )
+    .await?;
+    transaction.commit().await?;
+    let settings = organization_webhook_settings_for_scope(pool, &organization).await?;
+    let delivery = delivery_summary_by_id(pool, hook_id, delivery_id)
+        .await?
+        .ok_or(WebhookError::DeliveryNotFound)?;
+    Ok(Some((settings, delivery)))
 }
 
 pub async fn repository_webhook_detail_for_actor_by_owner_name(
@@ -586,6 +735,128 @@ pub async fn update_repository_webhook_by_owner_name(
     .await?;
     transaction.commit().await?;
     repository_webhook_settings_for_repository(pool, &repository, actor_user_id).await
+}
+
+pub async fn update_organization_webhook_by_slug(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    slug: &str,
+    hook_id: Uuid,
+    mutation: WebhookMutation,
+) -> Result<Option<OrganizationWebhookSettings>, WebhookError> {
+    let Some(organization) = organization_hook_scope(pool, slug, actor_user_id).await? else {
+        return Ok(None);
+    };
+    let before = organization_webhook_summary(pool, organization.id, hook_id)
+        .await?
+        .ok_or(WebhookError::WebhookNotFound)?;
+    let normalized = normalize_mutation(mutation, Some(&before))?;
+    let secret_hash = normalized.secret.as_deref().map(hash_secret);
+    let mut transaction = pool.begin().await?;
+    sqlx::query(
+        r#"
+        UPDATE webhooks
+        SET url = $3,
+            content_type = $4,
+            ssl_verify = $5,
+            event_selection = $6,
+            events = $7,
+            active = $8,
+            secret_hash = COALESCE($9, secret_hash),
+            secret_configured = CASE WHEN $9::text IS NULL THEN secret_configured ELSE true END,
+            secret_updated_at = CASE WHEN $9::text IS NULL THEN secret_updated_at ELSE now() END,
+            disabled_reason = CASE WHEN $8 THEN NULL ELSE COALESCE(disabled_reason, 'disabled by organization owner') END
+        WHERE organization_id = $1 AND id = $2
+        "#,
+    )
+    .bind(organization.id)
+    .bind(hook_id)
+    .bind(&normalized.payload_url)
+    .bind(normalized.content_type.as_str())
+    .bind(normalized.ssl_verify)
+    .bind(normalized.event_selection.as_str())
+    .bind(&normalized.events)
+    .bind(normalized.active)
+    .bind(&secret_hash)
+    .execute(&mut *transaction)
+    .await?;
+    insert_organization_webhook_audit_tx(
+        &mut transaction,
+        organization.id,
+        actor_user_id,
+        "organization.webhook.update",
+        audit_hook_state(
+            &normalized.payload_url,
+            &normalized.events,
+            normalized.active,
+            before.secret_configured || secret_hash.is_some(),
+        ),
+    )
+    .await?;
+    transaction.commit().await?;
+    organization_webhook_settings_for_scope(pool, &organization)
+        .await
+        .map(Some)
+}
+
+pub async fn delete_organization_webhook_by_slug(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    slug: &str,
+    hook_id: Uuid,
+) -> Result<Option<OrganizationWebhookSettings>, WebhookError> {
+    let Some(organization) = organization_hook_scope(pool, slug, actor_user_id).await? else {
+        return Ok(None);
+    };
+    organization_webhook_summary(pool, organization.id, hook_id)
+        .await?
+        .ok_or(WebhookError::WebhookNotFound)?;
+    let mut transaction = pool.begin().await?;
+    sqlx::query("DELETE FROM webhooks WHERE organization_id = $1 AND id = $2")
+        .bind(organization.id)
+        .bind(hook_id)
+        .execute(&mut *transaction)
+        .await?;
+    insert_organization_webhook_audit_tx(
+        &mut transaction,
+        organization.id,
+        actor_user_id,
+        "organization.webhook.delete",
+        json!({ "hookId": hook_id }),
+    )
+    .await?;
+    transaction.commit().await?;
+    organization_webhook_settings_for_scope(pool, &organization)
+        .await
+        .map(Some)
+}
+
+pub async fn ping_organization_webhook_by_slug(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    slug: &str,
+    hook_id: Uuid,
+) -> Result<Option<(OrganizationWebhookSettings, WebhookDeliverySummary)>, WebhookError> {
+    create_organization_hook_delivery_by_slug(pool, actor_user_id, slug, hook_id, "ping", None)
+        .await
+}
+
+pub async fn redeliver_organization_webhook_delivery_by_slug(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    slug: &str,
+    hook_id: Uuid,
+    delivery_id: Uuid,
+) -> Result<Option<(OrganizationWebhookSettings, WebhookDeliverySummary)>, WebhookError> {
+    create_organization_hook_delivery_by_slug(
+        pool,
+        actor_user_id,
+        slug,
+        hook_id,
+        "redelivery",
+        Some(delivery_id),
+    )
+    .await
 }
 
 pub async fn delete_repository_webhook_by_owner_name(
@@ -903,6 +1174,66 @@ async fn repository_permission_label(
         .unwrap_or_else(|| "admin".to_owned()))
 }
 
+async fn organization_hook_scope(
+    pool: &PgPool,
+    slug: &str,
+    actor_user_id: Uuid,
+) -> Result<Option<OrganizationHookScope>, WebhookError> {
+    let row = sqlx::query(
+        r#"
+        SELECT organizations.id,
+               organizations.slug,
+               organizations.display_name,
+               organizations.profile_visibility,
+               organization_memberships.role
+        FROM organizations
+        LEFT JOIN organization_memberships
+          ON organization_memberships.organization_id = organizations.id
+         AND organization_memberships.user_id = $2
+        WHERE lower(organizations.slug) = lower($1)
+        "#,
+    )
+    .bind(slug)
+    .bind(actor_user_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let visibility: String = row.get("profile_visibility");
+    let role: Option<String> = row.get("role");
+    if visibility == "private" && role.is_none() {
+        return Ok(None);
+    }
+    let Some(role) = role else {
+        return Err(WebhookError::OrganizationAccessDenied);
+    };
+    if role != "owner" {
+        return Err(WebhookError::OrganizationAccessDenied);
+    }
+    Ok(Some(OrganizationHookScope {
+        id: row.get("id"),
+        slug: row.get("slug"),
+        name: row.get("display_name"),
+        viewer_role: role,
+    }))
+}
+
+async fn organization_webhook_settings_for_scope(
+    pool: &PgPool,
+    organization: &OrganizationHookScope,
+) -> Result<OrganizationWebhookSettings, WebhookError> {
+    Ok(OrganizationWebhookSettings {
+        organization_id: organization.id,
+        slug: organization.slug.clone(),
+        name: organization.name.clone(),
+        viewer_role: organization.viewer_role.clone(),
+        can_edit: true,
+        event_definitions: webhook_event_definitions(),
+        hooks: list_organization_hook_summaries(pool, organization.id).await?,
+    })
+}
+
 fn webhook_event_definitions() -> Vec<WebhookEventDefinition> {
     [
         ("push", "Pushes", "Git branch and tag updates."),
@@ -1107,6 +1438,30 @@ async fn insert_webhook_audit_tx(
     Ok(())
 }
 
+async fn insert_organization_webhook_audit_tx(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    organization_id: Uuid,
+    actor_user_id: Uuid,
+    event_type: &str,
+    metadata: Value,
+) -> Result<(), WebhookError> {
+    sqlx::query(
+        r#"
+        INSERT INTO organization_audit_events (
+            organization_id, actor_user_id, event_type, metadata
+        )
+        VALUES ($1, $2, $3, $4)
+        "#,
+    )
+    .bind(organization_id)
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(metadata)
+    .execute(&mut **transaction)
+    .await?;
+    Ok(())
+}
+
 async fn insert_delivery_tx(
     transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     hook_id: Uuid,
@@ -1246,6 +1601,64 @@ async fn create_hook_delivery_by_owner_name(
     Ok(Some(WebhookPingResult { settings, delivery }))
 }
 
+async fn create_organization_hook_delivery_by_slug(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    slug: &str,
+    hook_id: Uuid,
+    event: &str,
+    redelivery_of_id: Option<Uuid>,
+) -> Result<Option<(OrganizationWebhookSettings, WebhookDeliverySummary)>, WebhookError> {
+    let Some(organization) = organization_hook_scope(pool, slug, actor_user_id).await? else {
+        return Ok(None);
+    };
+    if organization_webhook_summary(pool, organization.id, hook_id)
+        .await?
+        .is_none()
+    {
+        return Err(WebhookError::WebhookNotFound);
+    }
+    if let Some(original_id) = redelivery_of_id {
+        if delivery_summary_by_id(pool, hook_id, original_id)
+            .await?
+            .is_none()
+        {
+            return Err(WebhookError::DeliveryNotFound);
+        }
+    }
+    let mut transaction = pool.begin().await?;
+    let delivery_id = insert_delivery_tx(
+        &mut transaction,
+        hook_id,
+        event,
+        json!({
+            "hookId": hook_id,
+            "organization": { "id": organization.id, "login": organization.slug },
+            "redeliveryOfId": redelivery_of_id
+        }),
+        redelivery_of_id,
+    )
+    .await?;
+    insert_organization_webhook_audit_tx(
+        &mut transaction,
+        organization.id,
+        actor_user_id,
+        if redelivery_of_id.is_some() {
+            "organization.webhook.redeliver"
+        } else {
+            "organization.webhook.ping"
+        },
+        json!({ "hookId": hook_id, "deliveryId": delivery_id }),
+    )
+    .await?;
+    transaction.commit().await?;
+    let settings = organization_webhook_settings_for_scope(pool, &organization).await?;
+    let delivery = delivery_summary_by_id(pool, hook_id, delivery_id)
+        .await?
+        .ok_or(WebhookError::DeliveryNotFound)?;
+    Ok(Some((settings, delivery)))
+}
+
 async fn list_hook_summaries(
     pool: &PgPool,
     repository_id: Uuid,
@@ -1292,6 +1705,63 @@ async fn list_hook_summaries(
     .fetch_all(pool)
     .await?;
     rows.into_iter().map(hook_summary_from_row).collect()
+}
+
+async fn list_organization_hook_summaries(
+    pool: &PgPool,
+    organization_id: Uuid,
+) -> Result<Vec<RepositoryWebhookSummary>, WebhookError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            webhooks.id,
+            webhooks.url,
+            webhooks.content_type,
+            webhooks.ssl_verify,
+            webhooks.event_selection,
+            webhooks.events,
+            webhooks.active,
+            webhooks.disabled_reason,
+            webhooks.secret_configured,
+            webhooks.secret_updated_at,
+            webhooks.created_at,
+            webhooks.updated_at,
+            latest.id AS latest_delivery_id,
+            latest.delivery_guid AS latest_delivery_guid,
+            latest.event AS latest_event,
+            latest.status AS latest_status,
+            latest.attempt_count AS latest_attempt_count,
+            latest.response_status AS latest_response_status,
+            latest.duration_ms AS latest_duration_ms,
+            latest.redelivery_of_id AS latest_redelivery_of_id,
+            latest.delivered_at AS latest_delivered_at,
+            latest.created_at AS latest_created_at,
+            latest.updated_at AS latest_updated_at
+        FROM webhooks
+        LEFT JOIN LATERAL (
+            SELECT *
+            FROM webhook_deliveries
+            WHERE webhook_deliveries.webhook_id = webhooks.id
+            ORDER BY webhook_deliveries.created_at DESC
+            LIMIT 1
+        ) latest ON true
+        WHERE webhooks.organization_id = $1
+        ORDER BY webhooks.updated_at DESC
+        "#,
+    )
+    .bind(organization_id)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter().map(hook_summary_from_row).collect()
+}
+
+async fn organization_webhook_summary(
+    pool: &PgPool,
+    organization_id: Uuid,
+    hook_id: Uuid,
+) -> Result<Option<RepositoryWebhookSummary>, WebhookError> {
+    let rows = list_organization_hook_summaries(pool, organization_id).await?;
+    Ok(rows.into_iter().find(|hook| hook.id == hook_id))
 }
 
 async fn repository_webhook_summary(

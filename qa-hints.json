@@ -8122,5 +8122,24 @@
       "Verify first paint on real deployed browsers with existing color_mode/font_size cookies, system dark preference, and signed-out pages before hydration.",
       "Probe accessibility with keyboard-only radio navigation, high contrast contrast ratios across dense repository pages, reduced-motion behavior, mobile widths down to 360px, and cookie/account setting mismatch recovery."
     ]
+  },
+  {
+    "feature_id": "api-002",
+    "tests_written": [
+      "Extended webhook persistence from repository-only to exactly-one repository or organization scope with organization_id, owner-only org hook access, and organization audit rows.",
+      "Added organization webhook REST routes under /api/orgs/{org}/settings/hooks for list/create/detail/update/delete/ping/delivery/redeliver using the same validation, secret redaction, delivery summaries, and HMAC worker path as repository hooks.",
+      "Organization-owned repository events now enqueue both repository-level hooks and organization-level hooks subscribed to the event.",
+      "Added Editorial organization hooks pages at /organizations/{org}/settings/hooks and detail routes, reusing the webhook form/table/delivery UI with organization-scoped Next action forwarding.",
+      "Added /docs/api coverage for organization webhooks and focused Rust/Vitest coverage for org owner access, initial ping, redacted secrets, delivery detail, repository event fanout, API docs, and existing repository hook UI behavior.",
+      "Verification passed: cargo fmt --all --check, cargo check -p opengithub-api --tests, focused repository_webhook_settings_contract compiled and self-skipped DB assertions without TEST_DATABASE_URL, focused web TypeScript/Biome/Vitest, full make check, full make test with Cargo tests plus 643 web tests, and mandatory Editorial banned-value scan.",
+      "Browser smoke on /organizations/namuh/settings/hooks verified the protected redirect to /login?next=%2Forganizations%2Fnamuh%2Fsettings%2Fhooks, zero href=\"#\", and saved ralph/screenshots/build/api-002-org-hooks-smoke.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Run DB-backed organization webhook contract against a credentialed migrated Postgres; local TEST_DATABASE_URL was unavailable in the focused Rust contract and credentialed local DB has failed in prior runs.",
+      "Run signed-session browser smoke for organization owner create/edit/ping/redeliver/delete once Google OAuth/test DB are healthy; this pass could only verify the protected redirect state.",
+      "Run full make test-e2e after the local Playwright/DB setup is healthy; this pass was terminated after staying silent for roughly two minutes.",
+      "Probe event coverage for pull_request_review, issue_comment, check_run, workflow_run, release, package, and page_build across repository and organization hooks, including inactive hooks and everything mode.",
+      "Verify production receiver behavior through real HTTPS endpoints, HMAC signatures, retry backoff timing, timeout handling, body/header redaction, and oversized body storage keys."
+    ]
   }
 ]

@@ -15,10 +15,13 @@ import type {
 } from "@/lib/api";
 
 type RepositoryWebhookSettingsPageProps = {
+  basePath?: string;
   deliveryResult?: WebhookDeliveryDetailFetchResult | null;
   detailResult?: RepositoryWebhookDetailFetchResult | null;
   intent?: "delete" | "edit" | "new" | "ping" | "redeliver";
   repository: RepositoryOverview;
+  scopeLabel?: string;
+  scopeNoun?: "organization" | "repository";
   settingsResult: RepositoryWebhookSettingsFetchResult;
 };
 
@@ -116,11 +119,13 @@ function HeadersBlock({ label, value }: { label: string; value: unknown }) {
 }
 
 function WebhookSettingsUnavailable({
-  repository,
+  basePath,
   result,
+  scopeNoun = "repository",
 }: {
-  repository: RepositoryOverview;
+  basePath: string;
   result: Exclude<RepositoryWebhookSettingsFetchResult, { ok: true }>;
+  scopeNoun?: "organization" | "repository";
 }) {
   const isForbidden = result.status === 403;
   return (
@@ -135,15 +140,14 @@ function WebhookSettingsUnavailable({
       </h2>
       <p className="t-body mt-3" style={{ color: "var(--ink-2)" }}>
         {isForbidden
-          ? "Only repository admins can view webhook endpoints, secrets, and delivery history."
+          ? `Only ${scopeNoun} owners can view webhook endpoints, secrets, and delivery history.`
           : result.message}
       </p>
       <div className="mt-5 flex flex-wrap gap-2">
-        <Link
-          className="btn"
-          href={`/${repository.owner_login}/${repository.name}`}
-        >
-          Repository Code
+        <Link className="btn" href={basePath.replace(/\/settings\/hooks$/, "")}>
+          {scopeNoun === "organization"
+            ? "Organization profile"
+            : "Repository Code"}
         </Link>
         <Link className="btn" href="/dashboard">
           Dashboard
@@ -452,33 +456,32 @@ function ConfirmPanel({
 }
 
 function WebhookRows({
+  basePath,
   onDelete,
   onEdit,
   onPing,
-  repository,
+  scopeNoun = "repository",
   settings,
 }: {
+  basePath: string;
   onDelete: (hook: RepositoryWebhookDetail["hook"]) => void;
   onEdit: (hook: RepositoryWebhookDetail["hook"]) => void;
   onPing: (hook: RepositoryWebhookDetail["hook"]) => void;
-  repository: RepositoryOverview;
+  scopeNoun?: "organization" | "repository";
   settings: RepositoryWebhookSettings;
 }) {
   if (settings.hooks.length === 0) {
     return (
       <section className="card p-6">
         <span className="chip soft">No webhooks</span>
-        <h2 className="t-h2 mt-4">Receive repository events elsewhere</h2>
+        <h2 className="t-h2 mt-4">Receive {scopeNoun} events elsewhere</h2>
         <p className="t-body mt-3 max-w-2xl" style={{ color: "var(--ink-2)" }}>
           Webhooks send push, issue, pull request, release, workflow, package,
           and Pages events to your own HTTPS endpoint. Secrets are write-only
           and never returned by the API.
         </p>
         <div className="mt-5 flex flex-wrap gap-2">
-          <Link
-            className="btn primary"
-            href={`/${repository.owner_login}/${repository.name}/settings/hooks?new=webhook`}
-          >
+          <Link className="btn primary" href={`${basePath}?new=webhook`}>
             Add webhook
           </Link>
           <Link className="btn" href="/docs">
@@ -496,10 +499,7 @@ function WebhookRows({
           <p className="t-label">Configured endpoints</p>
           <h2 className="t-h2 mt-1">{settings.hooks.length} webhooks</h2>
         </div>
-        <Link
-          className="btn primary"
-          href={`/${repository.owner_login}/${repository.name}/settings/hooks?new=webhook`}
-        >
+        <Link className="btn primary" href={`${basePath}?new=webhook`}>
           Add webhook
         </Link>
       </div>
@@ -510,7 +510,7 @@ function WebhookRows({
               <div className="flex flex-wrap items-center gap-2">
                 <Link
                   className="t-mono-sm min-w-0 break-all font-semibold hover:underline"
-                  href={`/${repository.owner_login}/${repository.name}/settings/hooks/${hook.id}`}
+                  href={`${basePath}/${hook.id}`}
                 >
                   {hook.payloadUrl}
                 </Link>
@@ -572,10 +572,10 @@ function WebhookRows({
 }
 
 function DetailUnavailable({
-  repository,
+  basePath,
   result,
 }: {
-  repository: RepositoryOverview;
+  basePath: string;
   result: Exclude<RepositoryWebhookDetailFetchResult, { ok: true }>;
 }) {
   return (
@@ -585,10 +585,7 @@ function DetailUnavailable({
       <p className="t-body mt-3" style={{ color: "var(--ink-2)" }}>
         {result.message}
       </p>
-      <Link
-        className="btn mt-5"
-        href={`/${repository.owner_login}/${repository.name}/settings/hooks`}
-      >
+      <Link className="btn mt-5" href={basePath}>
         Back to webhooks
       </Link>
     </section>
@@ -596,14 +593,15 @@ function DetailUnavailable({
 }
 
 function WebhookDetail({
+  basePath,
   deliveryResult,
   detail,
   onEdit,
   onPing,
   onRedeliver,
-  repository,
   settings,
 }: {
+  basePath: string;
   deliveryResult?: WebhookDeliveryDetailFetchResult | null;
   detail: RepositoryWebhookDetail;
   onEdit: (hook: RepositoryWebhookDetail["hook"]) => void;
@@ -612,7 +610,6 @@ function WebhookDetail({
     hook: RepositoryWebhookDetail["hook"],
     delivery: WebhookDeliverySummary,
   ) => void;
-  repository: RepositoryOverview;
   settings: RepositoryWebhookSettings;
 }) {
   const { hook, deliveries } = detail;
@@ -628,10 +625,7 @@ function WebhookDetail({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link
-              className="btn"
-              href={`/${repository.owner_login}/${repository.name}/settings/hooks`}
-            >
+            <Link className="btn" href={basePath}>
               All webhooks
             </Link>
             <button className="btn" onClick={() => onEdit(hook)} type="button">
@@ -674,7 +668,7 @@ function WebhookDetail({
             {deliveries.map((delivery) => (
               <Link
                 className="list-row"
-                href={`/${repository.owner_login}/${repository.name}/settings/hooks/${hook.id}?delivery=${delivery.id}`}
+                href={`${basePath}/${hook.id}?delivery=${delivery.id}`}
                 key={delivery.id}
               >
                 <span className={statusChipClass(delivery.status)}>
@@ -760,44 +754,57 @@ function WebhookDetail({
 }
 
 export function RepositoryWebhookSettingsPage({
+  basePath: providedBasePath,
   deliveryResult = null,
   detailResult = null,
   intent,
   repository,
+  scopeLabel = "Repository webhooks",
+  scopeNoun = "repository",
   settingsResult,
 }: RepositoryWebhookSettingsPageProps) {
+  const basePath =
+    providedBasePath ??
+    `/${repository.owner_login}/${repository.name}/settings/hooks`;
   if (!settingsResult.ok) {
     return (
       <WebhookSettingsUnavailable
-        repository={repository}
+        basePath={basePath}
         result={settingsResult}
+        scopeNoun={scopeNoun}
       />
     );
   }
 
   return (
     <RepositoryWebhookSettingsContent
+      basePath={basePath}
       deliveryResult={deliveryResult}
       detailResult={detailResult}
       initialIntent={intent}
       initialSettings={settingsResult.settings}
-      repository={repository}
+      scopeLabel={scopeLabel}
+      scopeNoun={scopeNoun}
     />
   );
 }
 
 function RepositoryWebhookSettingsContent({
+  basePath,
   deliveryResult,
   detailResult,
   initialIntent,
   initialSettings,
-  repository,
+  scopeLabel,
+  scopeNoun,
 }: {
+  basePath: string;
   deliveryResult?: WebhookDeliveryDetailFetchResult | null;
   detailResult?: RepositoryWebhookDetailFetchResult | null;
   initialIntent?: "delete" | "edit" | "new" | "ping" | "redeliver";
   initialSettings: RepositoryWebhookSettings;
-  repository: RepositoryOverview;
+  scopeLabel: string;
+  scopeNoun: "organization" | "repository";
 }) {
   const [settings, setSettings] = useState(initialSettings);
   const detail = detailResult?.ok ? detailResult.detail : null;
@@ -830,7 +837,7 @@ function RepositoryWebhookSettingsContent({
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const actionUrl = `/${repository.owner_login}/${repository.name}/settings/hooks/actions`;
+  const actionUrl = `${basePath}/actions`;
   const router = useRouter();
   const currentDetail = useMemo(() => {
     if (!detail) return null;
@@ -883,9 +890,7 @@ function RepositoryWebhookSettingsContent({
       );
       const delivery = (body as { delivery?: WebhookDeliverySummary }).delivery;
       if (createdHook && delivery) {
-        router.push(
-          `/${repository.owner_login}/${repository.name}/settings/hooks/${createdHook.id}?delivery=${delivery.id}`,
-        );
+        router.push(`${basePath}/${createdHook.id}?delivery=${delivery.id}`);
       }
     }
   }
@@ -894,7 +899,7 @@ function RepositoryWebhookSettingsContent({
     <div className="grid gap-6">
       <section className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="t-label">Repository webhooks</p>
+          <p className="t-label">{scopeLabel}</p>
           <h2 className="t-h2 mt-1">
             {settings.ownerLogin}/{settings.name}
           </h2>
@@ -902,10 +907,7 @@ function RepositoryWebhookSettingsContent({
             Viewer: {settings.viewerPermission} · {settings.visibility}
           </p>
         </div>
-        <Link
-          className="btn primary"
-          href={`/${repository.owner_login}/${repository.name}/settings/hooks?new=webhook`}
-        >
+        <Link className="btn primary" href={`${basePath}?new=webhook`}>
           Add webhook
         </Link>
       </section>
@@ -986,9 +988,10 @@ function RepositoryWebhookSettingsContent({
       ) : null}
 
       {detailResult && !detailResult.ok ? (
-        <DetailUnavailable repository={repository} result={detailResult} />
+        <DetailUnavailable basePath={basePath} result={detailResult} />
       ) : currentDetail ? (
         <WebhookDetail
+          basePath={basePath}
           deliveryResult={deliveryResult}
           detail={currentDetail}
           onEdit={(hook) => {
@@ -1003,11 +1006,11 @@ function RepositoryWebhookSettingsContent({
             setConfirmation({ delivery, hook, kind: "redeliver" });
             setError(null);
           }}
-          repository={repository}
           settings={settings}
         />
       ) : (
         <WebhookRows
+          basePath={basePath}
           onDelete={(hook) => {
             setConfirmation({ hook, kind: "delete" });
             setError(null);
@@ -1020,7 +1023,7 @@ function RepositoryWebhookSettingsContent({
             setConfirmation({ hook, kind: "ping" });
             setError(null);
           }}
-          repository={repository}
+          scopeNoun={scopeNoun}
           settings={settings}
         />
       )}

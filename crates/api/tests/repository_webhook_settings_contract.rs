@@ -272,6 +272,137 @@ async fn repository_webhook_settings_cover_validation_redaction_delivery_and_aud
     assert!(!leaked_audit_secret);
 }
 
+#[tokio::test]
+async fn organization_webhook_settings_cover_owner_access_delivery_and_repository_events() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping organization webhook settings scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("orghooks{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let admin = create_user(&pool, &format!("{marker}-admin")).await;
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let admin_cookie = cookie_header(&pool, &config, &admin).await;
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+
+    let org_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO organizations (
+            slug, display_name, owner_user_id, contact_email, terms_of_service_type
+        )
+        VALUES ($1, $2, $3, $4, 'standard')
+        RETURNING id
+        "#,
+    )
+    .bind(&marker)
+    .bind(format!("{marker} organization"))
+    .bind(owner.id)
+    .bind(format!("{marker}@opengithub.local"))
+    .fetch_one(&pool)
+    .await
+    .expect("organization should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO organization_memberships (organization_id, user_id, role)
+        VALUES ($1, $2, 'owner'), ($1, $3, 'admin')
+        "#,
+    )
+    .bind(org_id)
+    .bind(owner.id)
+    .bind(admin.id)
+    .execute(&pool)
+    .await
+    .expect("memberships should insert");
+
+    let uri = format!("/api/orgs/{marker}/settings/hooks");
+    let (admin_status, _, admin_body) =
+        send_json(app.clone(), Method::GET, &uri, Some(&admin_cookie), None).await;
+    assert_eq!(admin_status, StatusCode::FORBIDDEN);
+    assert_eq!(admin_body["error"]["code"], "forbidden");
+
+    let (create_status, _, create_body) = send_json(
+        app.clone(),
+        Method::POST,
+        &uri,
+        Some(&owner_cookie),
+        Some(json!({
+            "payloadUrl": "https://receiver.opengithub.local/org-hook",
+            "contentType": "json",
+            "secret": "organization-secret",
+            "eventSelection": "selected",
+            "events": ["push", "workflow_run"],
+            "active": true
+        })),
+    )
+    .await;
+    assert_eq!(create_status, StatusCode::CREATED);
+    assert_eq!(create_body["settings"]["slug"], marker);
+    assert_eq!(create_body["settings"]["hooks"][0]["events"][0], "push");
+    assert_eq!(create_body["delivery"]["event"], "ping");
+    assert!(!create_body.to_string().contains("organization-secret"));
+    let hook_id = Uuid::parse_str(
+        create_body["settings"]["hooks"][0]["id"]
+            .as_str()
+            .expect("hook id should be returned"),
+    )
+    .expect("hook id should parse");
+    let ping_delivery_id = create_body["delivery"]["id"]
+        .as_str()
+        .expect("delivery id should exist")
+        .to_owned();
+
+    let repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::Organization { id: org_id },
+            name: format!("{marker}-repo"),
+            description: None,
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("organization repository should create");
+
+    let queued = opengithub_api::domain::webhooks::enqueue_repository_webhook_event(
+        &pool,
+        repo.id,
+        "push",
+        json!({ "ref": "refs/heads/main" }),
+    )
+    .await
+    .expect("organization hook should enqueue for repository push");
+    assert_eq!(queued.len(), 1);
+    assert_eq!(queued[0].webhook_id, hook_id);
+
+    let (detail_status, _, detail_body) = send_json(
+        app.clone(),
+        Method::GET,
+        &format!("{uri}/{hook_id}/deliveries/{ping_delivery_id}"),
+        Some(&owner_cookie),
+        None,
+    )
+    .await;
+    assert_eq!(detail_status, StatusCode::OK);
+    assert_eq!(detail_body["summary"]["event"], "ping");
+    assert!(detail_body["requestBodyExcerpt"]
+        .as_str()
+        .expect("request excerpt should exist")
+        .contains("organization"));
+
+    let audit_count = sqlx::query_scalar::<_, i64>(
+        "SELECT count(*) FROM organization_audit_events WHERE organization_id = $1 AND event_type = 'organization.webhook.create'",
+    )
+    .bind(org_id)
+    .fetch_one(&pool)
+    .await
+    .expect("organization audit should load");
+    assert_eq!(audit_count, 1);
+}
+
 fn app_config() -> AppConfig {
     AppConfig {
         app_url: Url::parse("http://localhost:3015").expect("app URL"),

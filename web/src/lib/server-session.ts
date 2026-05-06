@@ -37,6 +37,9 @@ import {
   getOrganizationRepositoriesFromCookie,
   getOrganizationTeamDetailFromCookie,
   getOrganizationTeamsFromCookie,
+  getOrganizationWebhookDeliveryDetailFromCookie,
+  getOrganizationWebhookDetailFromCookie,
+  getOrganizationWebhookSettingsFromCookie,
   getPersonalAccessTokenListFromCookie,
   getPersonalAccessTokenNewContextFromCookie,
   getPersonalProfileSettingsFromCookie,
@@ -136,6 +139,7 @@ import {
   type OrganizationProfileSettingsFetchResult,
   type OrganizationRepositoryListQuery,
   type OrganizationTeamsQuery,
+  type OrganizationWebhookSettingsFetchResult,
   type OwnerPackageListQuery,
   type PackageDetailFetchResult,
   type PackageSettingsFetchResult,
@@ -302,6 +306,42 @@ export async function getOrganizationProfileSettings(
   return getOrganizationProfileSettingsFromCookie(
     requestHeaders.get("cookie"),
     org,
+  );
+}
+
+export async function getOrganizationWebhookSettings(
+  org: string,
+): Promise<OrganizationWebhookSettingsFetchResult> {
+  const requestHeaders = await headers();
+  return getOrganizationWebhookSettingsFromCookie(
+    requestHeaders.get("cookie"),
+    org,
+  );
+}
+
+export async function getOrganizationWebhookDetail(
+  org: string,
+  hookId: string,
+) {
+  const requestHeaders = await headers();
+  return getOrganizationWebhookDetailFromCookie(
+    requestHeaders.get("cookie"),
+    org,
+    hookId,
+  );
+}
+
+export async function getOrganizationWebhookDeliveryDetail(
+  org: string,
+  hookId: string,
+  deliveryId: string,
+) {
+  const requestHeaders = await headers();
+  return getOrganizationWebhookDeliveryDetailFromCookie(
+    requestHeaders.get("cookie"),
+    org,
+    hookId,
+    deliveryId,
   );
 }
 

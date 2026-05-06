@@ -682,6 +682,11 @@ describe("ApiDocsPage", () => {
     expect(
       screen.getByText(/Oversized request and response bodies/),
     ).toBeVisible();
+    expect(screen.getByText("/api/orgs/{org}/settings/hooks")).toBeVisible();
+    expect(screen.getByText(/Manage organization webhooks/)).toBeVisible();
+    expect(
+      screen.getByText(/Organization admins and members receive 403/),
+    ).toBeVisible();
     expect(
       screen.getAllByText("/api/repos/{owner}/{repo}/settings/secrets")[0],
     ).toBeVisible();
