@@ -10,6 +10,7 @@ import { RepositoryWikiEditor } from "@/components/RepositoryWikiEditor";
 import { RepositoryWikiPagesIndex } from "@/components/RepositoryWikiPagesIndex";
 import type {
   RepositoryOverview,
+  RepositoryWikiEditView,
   RepositoryWikiPagesIndex as RepositoryWikiPagesIndexContract,
 } from "@/lib/api";
 
@@ -104,6 +105,37 @@ function pagesIndex(
       homeHref: "/namuh-eng/opengithub/wiki",
       newPageHref: "/namuh-eng/opengithub/wiki/_new",
     },
+    ...overrides,
+  };
+}
+
+function editView(overrides: Partial<RepositoryWikiEditView> = {}) {
+  return {
+    repository: {
+      id: "repo-1",
+      ownerLogin: "namuh-eng",
+      name: "opengithub",
+      visibility: "private",
+      defaultBranch: "main",
+      wikiEnabled: true,
+    },
+    viewer: {
+      permission: "admin",
+      canRead: true,
+      canEditWiki: true,
+    },
+    page: {
+      id: "page-a",
+      title: "Architecture Guide",
+      slug: "Architecture Guide",
+      path: "Architecture Guide.md",
+      markdown: "# Architecture Guide\n\nInitial services map.",
+      latestRevisionId: "revision-current-123456",
+      editMode: "markdown" as const,
+    },
+    supportedFormats: [
+      { mode: "markdown" as const, label: "Markdown", extension: ".md" },
+    ],
     ...overrides,
   };
 }
@@ -274,6 +306,151 @@ describe("RepositoryWikiEditor", () => {
     });
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Edit message is required.",
+    );
+  });
+
+  it("hydrates an existing page, previews unsaved Markdown, and patches with the latest revision guard", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          html: '<h1 id="architecture-guide">Architecture Guide</h1><p>Updated services map.</p>',
+          contentSha: "sha-preview",
+          outline: [
+            {
+              id: "architecture-guide",
+              level: 1,
+              text: "Architecture Guide",
+              href: "#architecture-guide",
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          redirectHref: "/namuh-eng/opengithub/wiki/Architecture%20Guide",
+          page: {
+            id: "page-a",
+            title: "Architecture Guide",
+            slug: "Architecture Guide",
+            path: "Architecture Guide.md",
+            href: "/namuh-eng/opengithub/wiki/Architecture%20Guide",
+            revision: {
+              id: "revision-next",
+              author: null,
+              message: "Refresh architecture wiki",
+              commitOid: "abcdef1234567890",
+              shortOid: "abcdef1",
+              createdAt: "2026-05-06T00:00:00Z",
+              href: "/namuh-eng/opengithub/wiki/Architecture%20Guide/_history/abcdef1",
+            },
+            markdown: "# Architecture Guide\n\nUpdated services map.",
+            html: "<p>Updated services map.</p>",
+            contentSha: "sha-next",
+            outline: [],
+            editHref: "/namuh-eng/opengithub/wiki/Architecture%20Guide/_edit",
+            historyHref:
+              "/namuh-eng/opengithub/wiki/Architecture%20Guide/_history",
+          },
+          gitCommit: {
+            id: "commit-1",
+            oid: "abcdef1234567890",
+            shortOid: "abcdef1",
+            branch: "main",
+            message: "Refresh architecture wiki",
+            storagePath: "/tmp/opengithub.wiki.git",
+            createdAt: "2026-05-06T00:00:00Z",
+          },
+        }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+    const assign = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { assign },
+    });
+
+    render(
+      <RepositoryWikiEditor
+        editView={editView()}
+        pagesIndex={pagesIndex()}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Edit Architecture Guide" }),
+    ).toBeVisible();
+    expect(screen.getByLabelText("Page title")).toHaveValue(
+      "Architecture Guide",
+    );
+    expect(screen.getByLabelText("Wiki page source")).toHaveValue(
+      "# Architecture Guide\n\nInitial services map.",
+    );
+
+    fireEvent.change(screen.getByLabelText("Wiki page source"), {
+      target: { value: "# Architecture Guide\n\nUpdated services map." },
+    });
+    fireEvent.change(screen.getByLabelText("Edit message"), {
+      target: { value: "Refresh architecture wiki" },
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/repos/namuh-eng/opengithub/wiki/preview",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining("Updated services map"),
+        }),
+      );
+    });
+    expect(await screen.findByText("Preview rendered.")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save Page" }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        "/api/repos/namuh-eng/opengithub/wiki/Architecture%20Guide",
+        expect.objectContaining({
+          method: "PATCH",
+          body: expect.stringContaining("revision-current-123456"),
+        }),
+      );
+    });
+    expect(assign).toHaveBeenCalledWith(
+      "/namuh-eng/opengithub/wiki/Architecture%20Guide",
+    );
+  });
+
+  it("surfaces stale revision conflicts without dropping the editor draft", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      json: async () => ({
+        error: { message: "Wiki page has changed since you opened it." },
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryWikiEditor
+        editView={editView()}
+        pagesIndex={pagesIndex()}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Wiki page source"), {
+      target: { value: "# Architecture Guide\n\nKeep this draft." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Page" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Wiki page has changed since you opened it.",
+    );
+    expect(screen.getByLabelText("Wiki page source")).toHaveValue(
+      "# Architecture Guide\n\nKeep this draft.",
     );
   });
 });

@@ -49,7 +49,7 @@
 
 ## Phase 3: Edit Existing Page and Preview - selected pages round-trip through the editor
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire selected page editing from the reader and pages index. Editors should open an existing page, preview unsaved Markdown, save with a commit message, and land back on the rendered page with refreshed content.
 

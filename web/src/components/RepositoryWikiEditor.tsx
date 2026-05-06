@@ -4,7 +4,9 @@ import { useMemo, useState } from "react";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import type {
   RepositoryOverview,
+  RepositoryWikiEditView,
   RepositoryWikiMarkupFormat,
+  RepositoryWikiMutationResult,
   RepositoryWikiPagesIndex,
   RepositoryWikiPreviewResult,
 } from "@/lib/api";
@@ -13,6 +15,7 @@ import { repositoryWikiHref } from "@/lib/navigation";
 type RepositoryWikiEditorProps = {
   repository: RepositoryOverview;
   pagesIndex: RepositoryWikiPagesIndex;
+  editView?: RepositoryWikiEditView | null;
 };
 
 type Tab = "write" | "preview";
@@ -53,15 +56,25 @@ function initialMarkdown() {
 }
 
 export function RepositoryWikiEditor({
+  editView,
   repository,
   pagesIndex,
 }: RepositoryWikiEditorProps) {
-  const formats = DEFAULT_FORMATS;
-  const [title, setTitle] = useState("");
-  const [markdown, setMarkdown] = useState(initialMarkdown);
-  const [message, setMessage] = useState("Create wiki page");
-  const [editMode, setEditMode] =
-    useState<RepositoryWikiMarkupFormat["mode"]>("markdown");
+  const formats =
+    editView && editView.supportedFormats.length > 0
+      ? editView.supportedFormats
+      : DEFAULT_FORMATS;
+  const editingPage = editView?.page ?? null;
+  const [title, setTitle] = useState(editingPage?.title ?? "");
+  const [markdown, setMarkdown] = useState(
+    editingPage?.markdown ?? initialMarkdown,
+  );
+  const [message, setMessage] = useState(
+    editingPage ? `Update ${editingPage.title}` : "Create wiki page",
+  );
+  const [editMode, setEditMode] = useState<RepositoryWikiMarkupFormat["mode"]>(
+    editingPage?.editMode ?? "markdown",
+  );
   const [tab, setTab] = useState<Tab>("write");
   const [preview, setPreview] = useState<RepositoryWikiPreviewResult | null>(
     null,
@@ -78,9 +91,13 @@ export function RepositoryWikiEditor({
   const owner = pagesIndex.repository.ownerLogin;
   const repo = pagesIndex.repository.name;
 
-  async function postJson<T>(url: string, body: unknown): Promise<T> {
+  async function requestJson<T>(
+    url: string,
+    method: "POST" | "PATCH",
+    body: unknown,
+  ): Promise<T> {
     const response = await fetch(url, {
-      method: "POST",
+      method,
       headers: {
         accept: "application/json",
         "content-type": "application/json",
@@ -104,8 +121,9 @@ export function RepositoryWikiEditor({
     setTab("preview");
     setStatus({ kind: "pending", message: "Rendering preview..." });
     try {
-      const result = await postJson<RepositoryWikiPreviewResult>(
+      const result = await requestJson<RepositoryWikiPreviewResult>(
         `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/wiki/preview`,
+        "POST",
         { markdown, editMode },
       );
       setPreview(result);
@@ -136,13 +154,22 @@ export function RepositoryWikiEditor({
   async function savePage() {
     setStatus({ kind: "pending", message: "Saving wiki page..." });
     try {
-      const result = await postJson<{ redirectHref: string }>(
-        `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/wiki/pages`,
+      const savePath = editingPage
+        ? `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/wiki/${editingPage.slug
+            .split("/")
+            .filter(Boolean)
+            .map((segment) => encodeURIComponent(segment))
+            .join("/")}`
+        : `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/wiki/pages`;
+      const result = await requestJson<RepositoryWikiMutationResult>(
+        savePath,
+        editingPage ? "PATCH" : "POST",
         {
           title,
           markdown,
           message,
           editMode,
+          expectedRevisionId: editingPage?.latestRevisionId ?? null,
         },
       );
       setStatus({ kind: "success", message: "Wiki page saved." });
@@ -164,7 +191,7 @@ export function RepositoryWikiEditor({
             Repository wiki
           </p>
           <h1 className="t-h1 mt-2" style={{ color: "var(--ink-1)" }}>
-            New Page
+            {editingPage ? `Edit ${editingPage.title}` : "New Page"}
           </h1>
           <p className="t-sm mt-3 max-w-2xl" style={{ color: "var(--ink-3)" }}>
             Draft a new page for{" "}
@@ -175,7 +202,18 @@ export function RepositoryWikiEditor({
               {owner}/{repo}
             </a>{" "}
             on <span className="t-mono-sm">{repository.default_branch}</span>.
-            Preview is rendered by the Rust API before the page is published.
+            {editingPage ? (
+              <>
+                {" "}
+                Saving includes the latest revision guard{" "}
+                <span className="t-mono-sm">
+                  {editingPage.latestRevisionId.slice(0, 8)}
+                </span>
+                .
+              </>
+            ) : (
+              " Preview is rendered by the Rust API before the page is published."
+            )}
           </p>
         </div>
         <a className="btn" href={repositoryWikiHref(owner, repo, "_pages")}>

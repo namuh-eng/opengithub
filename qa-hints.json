@@ -7589,5 +7589,21 @@
       "Probe real create-page persistence, local bare wiki Git commit contents, failed Git commit rollback, permission leakage for readers, disabled wiki state, duplicate/invalid titles, nested slugs, very long titles/body content, image URL/alt edge cases, keyboard-only editor traversal, and mobile wrapping.",
       "Phases 3-5 still own existing-page edit hydration/save, stale conflicts, markup/image publishing edge cases, API docs, final signed-in E2E, QA handoff consolidation, and wiki-002 build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "wiki-002",
+    "tests_written": [
+      "Completed Phase 3 Edit Existing Page and Preview without marking wiki-002 build_pass=true.",
+      "Kept public /{owner}/{repo}/wiki/{slug}/_edit links working by intercepting the wiki catch-all suffix and fetching the Rust edit contract server-side.",
+      "Extended RepositoryWikiEditor to hydrate existing title/body/mode/latest revision, preview unsaved Markdown through the Rust-backed same-origin proxy, PATCH saves with expectedRevisionId, surface validation/stale errors, preserve drafts after failed saves, and redirect to the returned rendered page href.",
+      "Added same-origin PATCH proxy at /api/repos/{owner}/{repo}/wiki/{slug} that forwards signed cookies to the Rust API and preserves structured errors.",
+      "Added focused Vitest coverage for existing edit hydration, preview payloads, PATCH save payloads, redirect behavior, stale conflict display, draft preservation, no placeholder links, and Editorial guardrails.",
+      "Browser smoke passed through the real Next route against a local API-compatible stub: loaded /namuh-eng/opengithub/wiki/Architecture%20Guide/_edit, changed body and commit message, rendered Preview, saved through PATCH, verified redirect to the rendered page with changed content, verified no href=\"#\" links, verified no horizontal overflow, and saved ralph/screenshots/build/wiki-002-phase3-edit-save.jpg."
+    ],
+    "needs_deeper_qa": [
+      "Run existing-page edit/save against a real migrated database with Phase 1 wiki write endpoints; this phase used a local API-compatible stub for repository, pages index, edit fetch, preview, update, and rendered-page routes.",
+      "Probe stale revision conflicts with two live editor sessions, failed local Git commit rollback, reader/disabled-wiki edit denial, private repository leakage, sidebar/footer edit links, nested slug edits, very long Markdown/code/table content, and keyboard-only Write/Preview/Save traversal.",
+      "Phases 4-5 still own supported markup/image publishing edge cases, API docs, final signed-in E2E, QA handoff consolidation, and wiki-002 build_pass bookkeeping."
+    ]
   }
 ]
