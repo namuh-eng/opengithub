@@ -19,7 +19,7 @@ use crate::{
         delete_project_field_for_actor, delete_project_field_option_for_actor,
         delete_project_item_comment_for_actor, delete_project_iteration_break_for_actor,
         organization_projects, project_conversion_targets_for_actor, project_field_settings,
-        project_item_detail, project_items_archived, project_workspace,
+        project_item_detail, project_items_archived, project_workflow_settings, project_workspace,
         remove_project_item_for_actor, reorder_project_field_options_for_actor,
         repository_projects, restore_project_item_for_actor, update_project_draft_item_for_actor,
         update_project_field_for_actor, update_project_field_option_for_actor,
@@ -37,7 +37,8 @@ use crate::{
         ProjectIterationBreakCreateRequest, ProjectIterationCreateRequest,
         ProjectIterationSettingsRequest, ProjectIterationUpdateRequest, ProjectList,
         ProjectListQuery, ProjectRoadmapSettingsRequest, ProjectViewLayoutRequest,
-        ProjectViewStateRequest, ProjectWorkspace, ProjectWorkspaceQuery, ProjectsError,
+        ProjectViewStateRequest, ProjectWorkflowSettings, ProjectWorkspace, ProjectWorkspaceQuery,
+        ProjectsError,
     },
     AppState,
 };
@@ -53,6 +54,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/projects/:project_id/settings/fields",
             get(project_field_settings_route).post(create_project_field_route),
+        )
+        .route(
+            "/api/projects/:project_id/workflows",
+            get(project_workflow_settings_route),
         )
         .route(
             "/api/projects/:project_id/fields/:field_id",
@@ -368,6 +373,19 @@ async fn project_field_settings_route(
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
     let settings = project_field_settings(pool, project_id, actor.map(|user| user.id))
+        .await
+        .map_err(map_projects_error)?;
+    Ok(Json(settings))
+}
+
+async fn project_workflow_settings_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(project_id): Path<Uuid>,
+) -> Result<Json<ProjectWorkflowSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let settings = project_workflow_settings(pool, project_id, actor.as_ref().map(|user| user.id))
         .await
         .map_err(map_projects_error)?;
     Ok(Json(settings))

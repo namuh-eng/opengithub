@@ -586,6 +586,85 @@ export type ProjectFieldSettingsFetchResult =
   | { ok: true; settings: ProjectFieldSettings }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type ProjectWorkflowRule = {
+  id: string;
+  ruleType: string;
+  configuration: Record<string, unknown>;
+  position: number;
+};
+
+export type ProjectWorkflowDefinition = {
+  id: string;
+  workflowKey: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  triggerEvent: string;
+  configuration: Record<string, unknown>;
+  rules: ProjectWorkflowRule[];
+  repositoryTargetIds: string[];
+  actorLabel: string;
+  source: "system" | "ui" | "actions" | "graphql" | string;
+  lastRunAt: string | null;
+  lastRunStatus: "success" | "skipped" | "failed" | string | null;
+  lastRunMessage: string | null;
+  updatedAt: string;
+};
+
+export type ProjectWorkflowEligibleField = {
+  id: string;
+  name: string;
+  fieldType: string;
+  options: ProjectFieldOption[];
+  supportsStatusTarget: boolean;
+  supportsArchiveCriteria: boolean;
+};
+
+export type ProjectWorkflowRepositoryTarget = {
+  id: string;
+  owner: string;
+  name: string;
+  fullName: string;
+  href: string;
+  visibility: string;
+  permission: string;
+};
+
+export type ProjectWorkflowExecutionLog = {
+  id: string;
+  workflowId: string | null;
+  workflowKey: string | null;
+  itemId: string | null;
+  actor: ProjectWorkspaceUser | null;
+  source: "system" | "ui" | "actions" | "graphql" | string;
+  eventType: string;
+  status: "success" | "skipped" | "failed" | string;
+  message: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+};
+
+export type ProjectWorkflowSettings = {
+  project: ProjectWorkspaceProject;
+  workflows: ProjectWorkflowDefinition[];
+  eligibleFields: ProjectWorkflowEligibleField[];
+  repositoryTargets: ProjectWorkflowRepositoryTarget[];
+  recentLogs: ProjectWorkflowExecutionLog[];
+  viewerPermissions: {
+    authenticated: boolean;
+    viewerRole: string | null;
+    canManageWorkflows: boolean;
+    canViewLogs: boolean;
+    canSelectRepositories: boolean;
+  };
+  automationActor: string;
+  unavailableReason: string | null;
+};
+
+export type ProjectWorkflowSettingsFetchResult =
+  | { ok: true; settings: ProjectWorkflowSettings }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type ProjectFieldCreateRequest = {
   name: string;
   fieldType: "single_select" | "iteration" | "date" | "text" | "number";
@@ -7491,6 +7570,10 @@ function projectFieldSettingsPath(projectId: string): string {
   return `/api/projects/${encodeURIComponent(projectId)}/settings/fields`;
 }
 
+function projectWorkflowSettingsPath(projectId: string): string {
+  return `/api/projects/${encodeURIComponent(projectId)}/workflows`;
+}
+
 function projectItemDetailPath(projectId: string, itemId: string): string {
   return `/api/projects/${encodeURIComponent(projectId)}/items/${encodeURIComponent(itemId)}`;
 }
@@ -7824,6 +7907,49 @@ export async function getProjectFieldSettingsFromCookie(
   };
 }
 
+export async function getProjectWorkflowSettingsFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+): Promise<ProjectWorkflowSettingsFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}${projectWorkflowSettingsPath(projectId)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Project workflows are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let body: ApiErrorEnvelope | null = null;
+    try {
+      body = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      body = null;
+    }
+    return {
+      ok: false,
+      status: body?.status ?? response.status,
+      code: body?.error.code ?? null,
+      message: body?.error.message ?? "Project workflows could not be loaded.",
+    };
+  }
+
+  return {
+    ok: true,
+    settings: (await response.json()) as ProjectWorkflowSettings,
+  };
+}
+
 async function getProjectWorkspaceByNumberFromCookie(
   cookie: string | null | undefined,
   listPath: string,
@@ -7907,6 +8033,47 @@ async function getProjectFieldSettingsByNumberFromCookie(
   return getProjectFieldSettingsFromCookie(cookie, project.id);
 }
 
+async function getProjectWorkflowSettingsByNumberFromCookie(
+  cookie: string | null | undefined,
+  listPath: string,
+  projectNumber: number,
+): Promise<ProjectWorkflowSettingsFetchResult> {
+  const openProjects = await getProjectListFromCookie(cookie, listPath, {
+    state: "open",
+    pageSize: 100,
+  });
+  const closedProjects =
+    openProjects.ok &&
+    openProjects.projects.items.some(
+      (project) => project.number === projectNumber,
+    )
+      ? null
+      : await getProjectListFromCookie(cookie, listPath, {
+          state: "closed",
+          pageSize: 100,
+        });
+  const candidates = [
+    ...(openProjects.ok ? openProjects.projects.items : []),
+    ...(closedProjects?.ok ? closedProjects.projects.items : []),
+  ];
+  const project = candidates.find((item) => item.number === projectNumber);
+
+  if (!project) {
+    const failure = !openProjects.ok ? openProjects : closedProjects;
+    return {
+      ok: false,
+      status: failure && !failure.ok ? failure.status : 404,
+      code: failure && !failure.ok ? failure.code : "not_found",
+      message:
+        failure && !failure.ok
+          ? failure.message
+          : "Project workflows could not be found.",
+    };
+  }
+
+  return getProjectWorkflowSettingsFromCookie(cookie, project.id);
+}
+
 export function getUserProjectWorkspaceFromCookie(
   cookie: string | null | undefined,
   username: string,
@@ -7933,6 +8100,18 @@ export function getUserProjectFieldSettingsFromCookie(
   );
 }
 
+export function getUserProjectWorkflowSettingsFromCookie(
+  cookie: string | null | undefined,
+  username: string,
+  projectNumber: number,
+): Promise<ProjectWorkflowSettingsFetchResult> {
+  return getProjectWorkflowSettingsByNumberFromCookie(
+    cookie,
+    `/api/users/${encodeURIComponent(username)}/projects`,
+    projectNumber,
+  );
+}
+
 export function getOrganizationProjectWorkspaceFromCookie(
   cookie: string | null | undefined,
   org: string,
@@ -7953,6 +8132,18 @@ export function getOrganizationProjectFieldSettingsFromCookie(
   projectNumber: number,
 ): Promise<ProjectFieldSettingsFetchResult> {
   return getProjectFieldSettingsByNumberFromCookie(
+    cookie,
+    `/api/orgs/${encodeURIComponent(org)}/projects`,
+    projectNumber,
+  );
+}
+
+export function getOrganizationProjectWorkflowSettingsFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  projectNumber: number,
+): Promise<ProjectWorkflowSettingsFetchResult> {
+  return getProjectWorkflowSettingsByNumberFromCookie(
     cookie,
     `/api/orgs/${encodeURIComponent(org)}/projects`,
     projectNumber,

@@ -7178,5 +7178,23 @@
       "Verify read-only, unauthenticated, and project-reader-without-private-repo-access viewers see disabled controls or not_found responses without source title leaks.",
       "Manually inspect mobile side-panel and archive page scrolling with very long titles, body text, comments, labels, and field values."
     ]
+  },
+  {
+    "feature_id": "projects-006",
+    "tests_written": [
+      "Completed Phase 1 Workflow Settings Read Contract without marking projects-006 build_pass=true.",
+      "Added additive workflow metadata migration for stable workflow keys, rules, repository targets, execution logs, actor attribution, last-run state, and indexes.",
+      "Added Rust GET /api/projects/{project_id}/workflows with on-demand default workflow seeding for closed issue/PR to Done, merged PR to Done, item-added default status, and auto-archive completed items.",
+      "Workflow settings responses include project metadata, workflow definitions, editable rules, eligible status/date fields, visible repository targets, recent execution logs, viewer capabilities, and @opengithub-project-automation attribution.",
+      "Added typed web/src/lib/api.ts workflow settings DTOs plus direct and owner/number cookie helpers for later user/org workflow pages.",
+      "Extended projects_workspace_contract with project_workflow_settings_seed_defaults_and_filter_targets covering enabled defaults, missing Done option fallback, private repository target filtering, read-only capabilities, execution log shape, and no-secret forbidden errors.",
+      "Verification passed: cargo fmt --all; cargo check -p opengithub-api --tests; focused DB-guarded Rust scenario compile/run; web TypeScript; focused Biome; full make check; full make test with Cargo tests plus 557 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Focused Rust DB assertions self-skipped because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test failed with password authentication failed for user postgres; rerun project_workflow_settings_seed_defaults_and_filter_targets against a clean migrated credentialed database.",
+      "Browser smoke was skipped because Phase 1 is API-first and .qrspi/projects-006/structure.md marks browser smoke optional for this phase.",
+      "Probe projects without a Status/Done option, projects with multiple eligible status fields, linked private repositories where the project reader lacks repository access, existing legacy project_workflows rows upgraded by migration, and execution log ordering/metadata redaction.",
+      "Phase 2 still owns the Editorial Workflows settings page; Phase 3 workflow mutations; Phase 4 item-state automation engine; Phase 5 Actions/GraphQL-style hooks; Phase 6 docs, browser evidence, QA handoff, and build_pass bookkeeping."
+    ]
   }
 ]

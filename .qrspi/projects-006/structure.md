@@ -6,7 +6,7 @@
 
 ## Phase 1: Workflow Settings Read Contract - default automation is inspectable
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the authenticated read contract for `/orgs/{org}/projects/{number}/workflows` and user-project equivalents. The response returns project metadata, default workflow definitions, current enablement, editable rule configuration, eligible status fields/options, repository choices for auto-add, recent execution logs, and viewer capabilities without adding mutation UI yet.
 

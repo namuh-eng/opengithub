@@ -384,6 +384,97 @@ pub struct ProjectFieldSettingsPermissions {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct ProjectWorkflowSettings {
+    pub project: ProjectWorkspaceProject,
+    pub workflows: Vec<ProjectWorkflowDefinition>,
+    pub eligible_fields: Vec<ProjectWorkflowEligibleField>,
+    pub repository_targets: Vec<ProjectWorkflowRepositoryTarget>,
+    pub recent_logs: Vec<ProjectWorkflowExecutionLog>,
+    pub viewer_permissions: ProjectWorkflowSettingsPermissions,
+    pub automation_actor: String,
+    pub unavailable_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkflowDefinition {
+    pub id: Uuid,
+    pub workflow_key: String,
+    pub name: String,
+    pub description: String,
+    pub enabled: bool,
+    pub trigger_event: String,
+    pub configuration: Value,
+    pub rules: Vec<ProjectWorkflowRule>,
+    pub repository_target_ids: Vec<Uuid>,
+    pub actor_label: String,
+    pub source: String,
+    pub last_run_at: Option<DateTime<Utc>>,
+    pub last_run_status: Option<String>,
+    pub last_run_message: Option<String>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkflowRule {
+    pub id: Uuid,
+    pub rule_type: String,
+    pub configuration: Value,
+    pub position: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkflowEligibleField {
+    pub id: Uuid,
+    pub name: String,
+    pub field_type: String,
+    pub options: Vec<ProjectFieldOption>,
+    pub supports_status_target: bool,
+    pub supports_archive_criteria: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkflowRepositoryTarget {
+    pub id: Uuid,
+    pub owner: String,
+    pub name: String,
+    pub full_name: String,
+    pub href: String,
+    pub visibility: String,
+    pub permission: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkflowExecutionLog {
+    pub id: Uuid,
+    pub workflow_id: Option<Uuid>,
+    pub workflow_key: Option<String>,
+    pub item_id: Option<Uuid>,
+    pub actor: Option<ProjectWorkspaceUser>,
+    pub source: String,
+    pub event_type: String,
+    pub status: String,
+    pub message: Option<String>,
+    pub metadata: Value,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectWorkflowSettingsPermissions {
+    pub authenticated: bool,
+    pub viewer_role: Option<String>,
+    pub can_manage_workflows: bool,
+    pub can_view_logs: bool,
+    pub can_select_repositories: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectWorkspace {
     pub project: ProjectWorkspaceProject,
     pub selected_view: ProjectWorkspaceView,
@@ -1301,6 +1392,40 @@ pub async fn project_field_settings(
             can_manage_options: can_manage,
             can_manage_iterations: can_manage,
         },
+        unavailable_reason: None,
+    })
+}
+
+pub async fn project_workflow_settings(
+    pool: &PgPool,
+    project_id: Uuid,
+    viewer_user_id: Option<Uuid>,
+) -> Result<ProjectWorkflowSettings, ProjectsError> {
+    let project = visible_workspace_project(pool, project_id, viewer_user_id).await?;
+    ensure_default_project_workflows(pool, project_id).await?;
+
+    let viewer_role = project.viewer_role.clone();
+    let can_manage = viewer_role.as_deref().is_some_and(can_write_project_role);
+    let workflows = project_workflow_definitions(pool, project_id).await?;
+    let eligible_fields = project_workflow_eligible_fields(pool, project_id).await?;
+    let repository_targets =
+        project_workflow_repository_targets(pool, project_id, viewer_user_id).await?;
+    let recent_logs = project_workflow_execution_logs(pool, project_id).await?;
+
+    Ok(ProjectWorkflowSettings {
+        project,
+        workflows,
+        eligible_fields,
+        repository_targets,
+        recent_logs,
+        viewer_permissions: ProjectWorkflowSettingsPermissions {
+            authenticated: viewer_user_id.is_some(),
+            viewer_role,
+            can_manage_workflows: can_manage,
+            can_view_logs: viewer_user_id.is_some(),
+            can_select_repositories: can_manage,
+        },
+        automation_actor: "@opengithub-project-automation".to_owned(),
         unavailable_reason: None,
     })
 }
@@ -3968,6 +4093,436 @@ async fn field_settings_breaks(
                     duration_days: i64::from(row.get::<i32, _>("duration_days")),
                 },
             )
+        })
+        .collect())
+}
+
+async fn ensure_default_project_workflows(
+    pool: &PgPool,
+    project_id: Uuid,
+) -> Result<(), ProjectsError> {
+    let status_target = default_done_status_target(pool, project_id).await?;
+    let defaults = [
+        (
+            "closed-item-to-done",
+            "Closed issue or pull request",
+            "Move closed issues and pull requests to Done.",
+            "item_closed",
+            json!({
+                "condition": "state:closed",
+                "target": status_target,
+            }),
+        ),
+        (
+            "merged-pr-to-done",
+            "Merged pull request",
+            "Move merged pull requests to Done.",
+            "pull_request_merged",
+            json!({
+                "condition": "is:merged",
+                "target": status_target,
+            }),
+        ),
+        (
+            "item-added-default-status",
+            "Item added to project",
+            "Set a default status when a matching issue or pull request is added.",
+            "item_added",
+            json!({
+                "condition": "",
+                "target": Value::Null,
+            }),
+        ),
+        (
+            "auto-archive-completed-items",
+            "Auto-archive completed items",
+            "Archive completed project items after a configured waiting period.",
+            "archive_completed",
+            json!({
+                "condition": "status:done",
+                "archiveAfterDays": 14,
+            }),
+        ),
+    ];
+
+    for (position, (key, name, description, event, configuration)) in
+        defaults.into_iter().enumerate()
+    {
+        let enabled = matches!(key, "closed-item-to-done" | "merged-pr-to-done");
+        let workflow_id: Uuid = sqlx::query_scalar(
+            r#"
+            INSERT INTO project_workflows
+              (project_id, workflow_key, name, description, enabled, trigger_event, configuration)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (project_id, workflow_key) DO UPDATE
+            SET description = EXCLUDED.description,
+                trigger_event = EXCLUDED.trigger_event,
+                configuration = CASE
+                    WHEN project_workflows.configuration = '{}'::jsonb THEN EXCLUDED.configuration
+                    ELSE project_workflows.configuration
+                END
+            RETURNING id
+            "#,
+        )
+        .bind(project_id)
+        .bind(key)
+        .bind(name)
+        .bind(description)
+        .bind(enabled)
+        .bind(event)
+        .bind(&configuration)
+        .fetch_one(pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO project_workflow_rules
+              (project_workflow_id, rule_type, configuration, position)
+            VALUES ($1, 'default_condition', $2, $3)
+            ON CONFLICT DO NOTHING
+            "#,
+        )
+        .bind(workflow_id)
+        .bind(json!({
+            "condition": configuration.get("condition").cloned().unwrap_or(Value::Null),
+            "target": configuration.get("target").cloned().unwrap_or(Value::Null),
+            "archiveAfterDays": configuration.get("archiveAfterDays").cloned().unwrap_or(Value::Null),
+        }))
+        .bind((position + 1) as i32)
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
+async fn default_done_status_target(
+    pool: &PgPool,
+    project_id: Uuid,
+) -> Result<Value, ProjectsError> {
+    let row = sqlx::query(
+        r#"
+        SELECT
+          project_fields.id AS field_id,
+          project_field_options.id AS option_id,
+          project_field_options.name AS option_name
+        FROM project_fields
+        LEFT JOIN project_field_options
+          ON project_field_options.project_field_id = project_fields.id
+         AND lower(project_field_options.name) = 'done'
+        WHERE project_fields.project_id = $1
+          AND project_fields.deleted_at IS NULL
+          AND project_fields.field_type IN ('status', 'single_select')
+        ORDER BY
+          CASE WHEN lower(project_fields.name) = 'status' THEN 0 ELSE 1 END,
+          project_fields.position
+        LIMIT 1
+        "#,
+    )
+    .bind(project_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map_or(Value::Null, |row| {
+        json!({
+            "fieldId": row.get::<Uuid, _>("field_id"),
+            "optionId": row.try_get::<Option<Uuid>, _>("option_id").ok().flatten(),
+            "optionName": row.try_get::<Option<String>, _>("option_name").ok().flatten(),
+            "missingOption": row
+                .try_get::<Option<Uuid>, _>("option_id")
+                .ok()
+                .flatten()
+                .is_none(),
+        })
+    }))
+}
+
+async fn project_workflow_definitions(
+    pool: &PgPool,
+    project_id: Uuid,
+) -> Result<Vec<ProjectWorkflowDefinition>, ProjectsError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, workflow_key, name, description, enabled, trigger_event,
+               configuration, actor_label, source, last_run_at,
+               last_run_status, last_run_message, updated_at
+        FROM project_workflows
+        WHERE project_id = $1
+        ORDER BY
+          CASE workflow_key
+            WHEN 'closed-item-to-done' THEN 1
+            WHEN 'merged-pr-to-done' THEN 2
+            WHEN 'item-added-default-status' THEN 3
+            WHEN 'auto-archive-completed-items' THEN 4
+            ELSE 100
+          END,
+          lower(name)
+        "#,
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+
+    let workflow_ids = rows
+        .iter()
+        .map(|row| row.get::<Uuid, _>("id"))
+        .collect::<Vec<_>>();
+    let rules = project_workflow_rules(pool, &workflow_ids).await?;
+    let targets = project_workflow_target_ids(pool, &workflow_ids).await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let id: Uuid = row.get("id");
+            ProjectWorkflowDefinition {
+                id,
+                workflow_key: row.get("workflow_key"),
+                name: row.get("name"),
+                description: row
+                    .try_get::<Option<String>, _>("description")
+                    .ok()
+                    .flatten()
+                    .unwrap_or_default(),
+                enabled: row.get("enabled"),
+                trigger_event: row.get("trigger_event"),
+                configuration: row.get("configuration"),
+                rules: rules
+                    .iter()
+                    .filter(|(workflow_id, _)| *workflow_id == id)
+                    .map(|(_, rule)| rule.clone())
+                    .collect(),
+                repository_target_ids: targets
+                    .iter()
+                    .filter(|(workflow_id, _)| *workflow_id == id)
+                    .map(|(_, repository_id)| *repository_id)
+                    .collect(),
+                actor_label: row.get("actor_label"),
+                source: row.get("source"),
+                last_run_at: row.get("last_run_at"),
+                last_run_status: row.get("last_run_status"),
+                last_run_message: row.get("last_run_message"),
+                updated_at: row.get("updated_at"),
+            }
+        })
+        .collect())
+}
+
+async fn project_workflow_rules(
+    pool: &PgPool,
+    workflow_ids: &[Uuid],
+) -> Result<Vec<(Uuid, ProjectWorkflowRule)>, ProjectsError> {
+    if workflow_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows = sqlx::query(
+        r#"
+        SELECT project_workflow_id, id, rule_type, configuration, position
+        FROM project_workflow_rules
+        WHERE project_workflow_id = ANY($1)
+        ORDER BY project_workflow_id, position, created_at
+        "#,
+    )
+    .bind(workflow_ids)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            (
+                row.get("project_workflow_id"),
+                ProjectWorkflowRule {
+                    id: row.get("id"),
+                    rule_type: row.get("rule_type"),
+                    configuration: row.get("configuration"),
+                    position: i64::from(row.get::<i32, _>("position")),
+                },
+            )
+        })
+        .collect())
+}
+
+async fn project_workflow_target_ids(
+    pool: &PgPool,
+    workflow_ids: &[Uuid],
+) -> Result<Vec<(Uuid, Uuid)>, ProjectsError> {
+    if workflow_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let rows = sqlx::query(
+        r#"
+        SELECT project_workflow_id, repository_id
+        FROM project_workflow_repository_targets
+        WHERE project_workflow_id = ANY($1)
+        ORDER BY created_at
+        "#,
+    )
+    .bind(workflow_ids)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| (row.get("project_workflow_id"), row.get("repository_id")))
+        .collect())
+}
+
+async fn project_workflow_eligible_fields(
+    pool: &PgPool,
+    project_id: Uuid,
+) -> Result<Vec<ProjectWorkflowEligibleField>, ProjectsError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, name, field_type
+        FROM project_fields
+        WHERE project_id = $1
+          AND deleted_at IS NULL
+          AND field_type IN ('status', 'single_select', 'date')
+        ORDER BY position, created_at
+        "#,
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+    let field_ids = rows
+        .iter()
+        .map(|row| row.get::<Uuid, _>("id"))
+        .collect::<Vec<_>>();
+    let options = field_settings_options(pool, &field_ids).await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let id: Uuid = row.get("id");
+            let field_type: String = row.get("field_type");
+            ProjectWorkflowEligibleField {
+                id,
+                name: row.get("name"),
+                field_type: field_type.clone(),
+                options: options
+                    .iter()
+                    .filter(|(field_id, _)| *field_id == id)
+                    .map(|(_, option)| option.clone())
+                    .collect(),
+                supports_status_target: matches!(field_type.as_str(), "status" | "single_select"),
+                supports_archive_criteria: true,
+            }
+        })
+        .collect())
+}
+
+async fn project_workflow_repository_targets(
+    pool: &PgPool,
+    project_id: Uuid,
+    viewer_user_id: Option<Uuid>,
+) -> Result<Vec<ProjectWorkflowRepositoryTarget>, ProjectsError> {
+    let Some(viewer_user_id) = viewer_user_id else {
+        return Ok(Vec::new());
+    };
+    let rows = sqlx::query(
+        r#"
+        SELECT DISTINCT
+          repositories.id,
+          repositories.name,
+          repositories.visibility,
+          COALESCE(NULLIF(owner_user.username, ''), owner_user.email, owner_org.slug) AS owner_login
+        FROM (
+          SELECT default_repository_id AS repository_id
+          FROM projects
+          WHERE id = $1 AND default_repository_id IS NOT NULL
+          UNION
+          SELECT repository_id
+          FROM project_repositories
+          WHERE project_id = $1
+        ) linked
+        JOIN repositories ON repositories.id = linked.repository_id
+        LEFT JOIN users owner_user ON owner_user.id = repositories.owner_user_id
+        LEFT JOIN organizations owner_org ON owner_org.id = repositories.owner_organization_id
+        ORDER BY owner_login, repositories.name
+        "#,
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut targets = Vec::new();
+    for row in rows {
+        let repository_id: Uuid = row.get("id");
+        let permission =
+            repository_permission_for_user(pool, repository_id, viewer_user_id).await?;
+        if let Some(permission) = permission {
+            let owner = row
+                .try_get::<Option<String>, _>("owner_login")?
+                .unwrap_or_else(|| "unknown".to_owned());
+            let name: String = row.get("name");
+            targets.push(ProjectWorkflowRepositoryTarget {
+                id: repository_id,
+                owner: owner.clone(),
+                name: name.clone(),
+                full_name: format!("{owner}/{name}"),
+                href: format!("/{owner}/{name}"),
+                visibility: row.get("visibility"),
+                permission: permission.role.as_str().to_owned(),
+            });
+        }
+    }
+    Ok(targets)
+}
+
+async fn project_workflow_execution_logs(
+    pool: &PgPool,
+    project_id: Uuid,
+) -> Result<Vec<ProjectWorkflowExecutionLog>, ProjectsError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT
+          workflow_execution_logs.id,
+          workflow_execution_logs.project_workflow_id,
+          project_workflows.workflow_key,
+          workflow_execution_logs.project_item_id,
+          workflow_execution_logs.source,
+          workflow_execution_logs.event_type,
+          workflow_execution_logs.status,
+          workflow_execution_logs.message,
+          workflow_execution_logs.metadata,
+          workflow_execution_logs.created_at,
+          users.id AS actor_id,
+          COALESCE(NULLIF(users.username, ''), users.email) AS actor_login,
+          users.avatar_url AS actor_avatar_url
+        FROM workflow_execution_logs
+        LEFT JOIN project_workflows
+          ON project_workflows.id = workflow_execution_logs.project_workflow_id
+        LEFT JOIN users ON users.id = workflow_execution_logs.actor_user_id
+        WHERE workflow_execution_logs.project_id = $1
+        ORDER BY workflow_execution_logs.created_at DESC
+        LIMIT 20
+        "#,
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let actor_id: Option<Uuid> = row.get("actor_id");
+            ProjectWorkflowExecutionLog {
+                id: row.get("id"),
+                workflow_id: row.get("project_workflow_id"),
+                workflow_key: row.get("workflow_key"),
+                item_id: row.get("project_item_id"),
+                actor: actor_id.map(|id| ProjectWorkspaceUser {
+                    id,
+                    login: row
+                        .try_get::<Option<String>, _>("actor_login")
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(|| "unknown".to_owned()),
+                    avatar_url: row.get("actor_avatar_url"),
+                }),
+                source: row.get("source"),
+                event_type: row.get("event_type"),
+                status: row.get("status"),
+                message: row.get("message"),
+                metadata: row.get("metadata"),
+                created_at: row.get("created_at"),
+            }
         })
         .collect())
 }

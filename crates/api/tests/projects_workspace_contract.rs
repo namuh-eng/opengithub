@@ -1218,6 +1218,166 @@ async fn project_draft_conversion_creates_linked_issue() {
 }
 
 #[tokio::test]
+async fn project_workflow_settings_seed_defaults_and_filter_targets() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping projects workflow settings scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("workflow{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let writer = create_user(&pool, &format!("{marker}-writer")).await;
+    let reader = create_user(&pool, &format!("{marker}-reader")).await;
+    let outsider = create_user(&pool, &format!("{marker}-outsider")).await;
+    let writer_cookie = cookie_header(&pool, &config, &writer).await;
+    let reader_cookie = cookie_header(&pool, &config, &reader).await;
+    let outsider_cookie = cookie_header(&pool, &config, &outsider).await;
+
+    let repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("workflow-source-{}", Uuid::new_v4().simple()),
+            description: None,
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    grant_repository_permission(&pool, repo.id, writer.id, RepositoryRole::Write, "direct")
+        .await
+        .expect("writer repository permission should grant");
+
+    let project_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO projects
+          (owner_user_id, number, title, short_description, visibility, default_repository_id, created_by_user_id)
+        VALUES ($1, 81, 'Workflow settings project', 'Automation read contract', 'private', $2, $1)
+        RETURNING id
+        "#,
+    )
+    .bind(owner.id)
+    .bind(repo.id)
+    .fetch_one(&pool)
+    .await
+    .expect("project should insert");
+    sqlx::query(
+        "INSERT INTO project_permissions (project_id, user_id, role) VALUES ($1, $2, 'write'), ($1, $3, 'read')",
+    )
+    .bind(project_id)
+    .bind(writer.id)
+    .bind(reader.id)
+    .execute(&pool)
+    .await
+    .expect("project permissions should insert");
+    let status_field: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_fields (project_id, name, field_type, position) VALUES ($1, 'Status', 'status', 1) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("status field should insert");
+    sqlx::query(
+        "INSERT INTO project_field_options (project_field_id, name, color, position) VALUES ($1, 'Todo', 'gray', 1)",
+    )
+    .bind(status_field)
+    .execute(&pool)
+    .await
+    .expect("status option should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+    let (status, _, body) = get_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/workflows"),
+        Some(&writer_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["project"]["title"], "Workflow settings project");
+    assert_eq!(body["automationActor"], "@opengithub-project-automation");
+    assert_eq!(body["workflows"].as_array().expect("workflows").len(), 4);
+    assert_eq!(body["workflows"][0]["workflowKey"], "closed-item-to-done");
+    assert_eq!(body["workflows"][0]["enabled"], true);
+    assert_eq!(body["workflows"][1]["workflowKey"], "merged-pr-to-done");
+    assert_eq!(body["workflows"][1]["enabled"], true);
+    assert_eq!(
+        body["workflows"][0]["configuration"]["target"]["fieldId"],
+        status_field.to_string()
+    );
+    assert_eq!(
+        body["workflows"][0]["configuration"]["target"]["missingOption"],
+        true
+    );
+    assert_eq!(body["eligibleFields"][0]["supportsStatusTarget"], true);
+    assert_eq!(body["eligibleFields"][0]["options"][0]["name"], "Todo");
+    assert_eq!(
+        body["repositoryTargets"][0]["fullName"],
+        format!("{}/{}", repo.owner_login, repo.name)
+    );
+    assert_eq!(body["repositoryTargets"][0]["permission"], "write");
+    assert_eq!(body["viewerPermissions"]["canManageWorkflows"], true);
+
+    let workflow_id: Uuid = sqlx::query_scalar(
+        "SELECT id FROM project_workflows WHERE project_id = $1 AND workflow_key = 'closed-item-to-done'",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("workflow should exist");
+    sqlx::query(
+        r#"
+        INSERT INTO workflow_execution_logs
+          (project_id, project_workflow_id, actor_user_id, source, event_type, status, message, metadata)
+        VALUES ($1, $2, $3, 'system', 'issue_closed', 'skipped', 'No Done option is configured.', $4)
+        "#,
+    )
+    .bind(project_id)
+    .bind(workflow_id)
+    .bind(writer.id)
+    .bind(json!({ "reason": "missing_done_option" }))
+    .execute(&pool)
+    .await
+    .expect("execution log should insert");
+
+    let (status, _, body) = get_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/workflows"),
+        Some(&writer_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["recentLogs"][0]["workflowKey"], "closed-item-to-done");
+    assert_eq!(
+        body["recentLogs"][0]["actor"]["login"],
+        writer.username.as_deref().unwrap_or(&writer.email)
+    );
+    assert_eq!(body["recentLogs"][0]["status"], "skipped");
+
+    let (status, _, body) = get_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/workflows"),
+        Some(&reader_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["viewerPermissions"]["canManageWorkflows"], false);
+    assert_eq!(body["repositoryTargets"].as_array().unwrap().len(), 0);
+
+    let (status, _, body) = get_json(
+        app,
+        &format!("/api/projects/{project_id}/workflows"),
+        Some(&outsider_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert_eq!(body["error"]["code"], "forbidden");
+    assert!(!body.to_string().contains("test-session-secret"));
+}
+
+#[tokio::test]
 async fn project_field_settings_returns_options_iterations_limits_and_guards() {
     let Some(pool) = database_pool().await else {
         eprintln!("skipping projects field settings scenario; set TEST_DATABASE_URL");
