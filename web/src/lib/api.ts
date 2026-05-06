@@ -458,6 +458,32 @@ export type ProjectFieldOptionCreateRequest = {
   description?: string | null;
 };
 
+export type ProjectIterationSettingsRequest = {
+  startDate: string;
+  duration: number;
+  durationUnit: "days" | "weeks";
+  generatedIterations?: number | null;
+  expectedUpdatedAt?: string | null;
+};
+
+export type ProjectIterationCreateRequest = {
+  name?: string | null;
+  startDate?: string | null;
+  durationDays?: number | null;
+};
+
+export type ProjectIterationUpdateRequest = {
+  name: string;
+  startDate: string;
+  durationDays: number;
+};
+
+export type ProjectIterationBreakCreateRequest = {
+  name?: string | null;
+  startDate: string;
+  durationDays?: number | null;
+};
+
 export type ProjectFieldOptionUpdateRequest = {
   name: string;
   color?: string | null;
@@ -7857,6 +7883,86 @@ export function deleteProjectFieldOptionFromCookie(
     "DELETE",
     "project_field_option_delete_failed",
     "Project field option could not be deleted.",
+  );
+}
+
+export function updateProjectIterationSettingsFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  fieldId: string,
+  request: ProjectIterationSettingsRequest,
+): Promise<ProjectFieldSettings> {
+  return mutateProjectFieldSettingsFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/fields/${encodeURIComponent(fieldId)}/iterations/settings`,
+    "PATCH",
+    "project_iteration_settings_failed",
+    "Project iteration settings could not be saved.",
+    request,
+  );
+}
+
+export function createProjectIterationFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  fieldId: string,
+  request: ProjectIterationCreateRequest,
+): Promise<ProjectFieldSettings> {
+  return mutateProjectFieldSettingsFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/fields/${encodeURIComponent(fieldId)}/iterations`,
+    "POST",
+    "project_iteration_create_failed",
+    "Project iteration could not be created.",
+    request,
+  );
+}
+
+export function updateProjectIterationFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  fieldId: string,
+  iterationId: string,
+  request: ProjectIterationUpdateRequest,
+): Promise<ProjectFieldSettings> {
+  return mutateProjectFieldSettingsFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/fields/${encodeURIComponent(fieldId)}/iterations/${encodeURIComponent(iterationId)}`,
+    "PATCH",
+    "project_iteration_update_failed",
+    "Project iteration could not be saved.",
+    request,
+  );
+}
+
+export function createProjectIterationBreakFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  fieldId: string,
+  request: ProjectIterationBreakCreateRequest,
+): Promise<ProjectFieldSettings> {
+  return mutateProjectFieldSettingsFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/fields/${encodeURIComponent(fieldId)}/iteration-breaks`,
+    "POST",
+    "project_iteration_break_create_failed",
+    "Project iteration break could not be created.",
+    request,
+  );
+}
+
+export function deleteProjectIterationBreakFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  fieldId: string,
+  breakId: string,
+): Promise<ProjectFieldSettings> {
+  return mutateProjectFieldSettingsFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/fields/${encodeURIComponent(fieldId)}/iteration-breaks/${encodeURIComponent(breakId)}`,
+    "DELETE",
+    "project_iteration_break_delete_failed",
+    "Project iteration break could not be deleted.",
   );
 }
 

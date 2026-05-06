@@ -198,12 +198,213 @@ describe("ProjectFieldSettingsPage", () => {
     expect(screen.getByRole("heading", { name: "Cycle" })).toBeInTheDocument();
     expect(screen.getByText("Sprint 1")).toBeInTheDocument();
     expect(screen.getByText("Planning break")).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Add iteration" }),
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Add iteration" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save schedule" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Insert break" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Rename" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Delete" })).toBeEnabled();
+  });
+
+  it("saves iteration settings, updates rows, inserts breaks, and removes breaks", async () => {
+    const withSchedule = settings({
+      fields: settings().fields.map((field) =>
+        field.id === "field-cycle"
+          ? {
+              ...field,
+              iterations: [
+                {
+                  id: "iteration-1",
+                  name: "Sprint 1",
+                  startDate: "2026-05-11",
+                  durationDays: 7,
+                  position: 1,
+                },
+              ],
+            }
+          : field,
+      ),
+    });
+    const withAddedIteration = settings({
+      fields: settings().fields.map((field) =>
+        field.id === "field-cycle"
+          ? {
+              ...field,
+              iterations: [
+                ...field.iterations,
+                {
+                  id: "iteration-2",
+                  name: "Iteration 2",
+                  startDate: "2026-06-01",
+                  durationDays: 14,
+                  position: 2,
+                },
+              ],
+            }
+          : field,
+      ),
+    });
+    const withRenamedIteration = settings({
+      fields: settings().fields.map((field) =>
+        field.id === "field-cycle"
+          ? {
+              ...field,
+              iterations: field.iterations.map((iteration) =>
+                iteration.id === "iteration-1"
+                  ? { ...iteration, name: "Sprint alpha" }
+                  : iteration,
+              ),
+            }
+          : field,
+      ),
+    });
+    const withBreak = settings({
+      fields: settings().fields.map((field) =>
+        field.id === "field-cycle"
+          ? {
+              ...field,
+              breaks: [
+                ...field.breaks,
+                {
+                  id: "break-2",
+                  name: "Holiday",
+                  startDate: "2026-06-01",
+                  durationDays: 1,
+                },
+              ],
+            }
+          : field,
+      ),
+    });
+    const withoutBreak = settings({
+      fields: settings().fields.map((field) =>
+        field.id === "field-cycle" ? { ...field, breaks: [] } : field,
+      ),
+    });
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(withSchedule), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(withAddedIteration), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(withRenamedIteration), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(withBreak), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(withoutBreak), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+    render(
+      <ProjectFieldSettingsPage
+        owner="namuh"
+        scope="organization"
+        selectedFieldId="field-cycle"
+        settings={settings()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Starts on"), {
+      target: { value: "2026-05-11" },
+    });
+    fireEvent.change(screen.getByLabelText("Duration"), {
+      target: { value: "1" },
+    });
+    fireEvent.change(screen.getByLabelText("Unit"), {
+      target: { value: "weeks" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save schedule" }));
+    await screen.findByText("Iteration schedule saved.");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/projects/project-1/fields/field-cycle/iterations/settings",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          startDate: "2026-05-11",
+          duration: 1,
+          durationUnit: "weeks",
+          generatedIterations: 3,
+          expectedUpdatedAt: "2026-05-04T00:00:00Z",
+        }),
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add iteration" }));
+    await screen.findByText("Iteration added.");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/projects/project-1/fields/field-cycle/iterations",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({}) }),
+    );
+
+    fireEvent.change(screen.getByLabelText("Sprint 1 iteration name"), {
+      target: { value: "Sprint alpha" },
+    });
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Save iteration" })[0],
+    );
+    await screen.findByText("Iteration saved.");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "/api/projects/project-1/fields/field-cycle/iterations/iteration-1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          name: "Sprint alpha",
+          startDate: "2026-05-04",
+          durationDays: 14,
+        }),
+      }),
+    );
+
+    fireEvent.change(screen.getByLabelText("Break name"), {
+      target: { value: "Holiday" },
+    });
+    fireEvent.change(screen.getByLabelText("Break start date"), {
+      target: { value: "2026-06-01" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Insert break" }));
+    await screen.findByText("Break inserted.");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "/api/projects/project-1/fields/field-cycle/iteration-breaks",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          name: "Holiday",
+          startDate: "2026-06-01",
+          durationDays: 1,
+        }),
+      }),
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Remove break" })[0]);
+    await screen.findByText("Break removed.");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "/api/projects/project-1/fields/field-cycle/iteration-breaks/break-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
   });
 
   it("creates a field through the same-origin project field API", async () => {

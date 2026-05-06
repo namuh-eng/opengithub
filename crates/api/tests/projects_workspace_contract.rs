@@ -1122,6 +1122,156 @@ async fn project_field_options_create_update_reorder_delete_and_sync_values() {
 }
 
 #[tokio::test]
+async fn project_iteration_settings_create_breaks_and_filter_tokens() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping projects iteration settings scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("fielditerations{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let reader = create_user(&pool, &format!("{marker}-reader")).await;
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let reader_cookie = cookie_header(&pool, &config, &reader).await;
+
+    let project_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO projects (owner_user_id, number, title, visibility, created_by_user_id)
+        VALUES ($1, 63, 'Iteration settings project', 'private', $1)
+        RETURNING id
+        "#,
+    )
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("project should insert");
+    sqlx::query(
+        "INSERT INTO project_permissions (project_id, user_id, role) VALUES ($1, $2, 'admin'), ($1, $3, 'read')",
+    )
+    .bind(project_id)
+    .bind(owner.id)
+    .bind(reader.id)
+    .execute(&pool)
+    .await
+    .expect("permissions should insert");
+    let iteration_field: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_fields (project_id, name, field_type, position, settings) VALUES ($1, 'Cycle', 'iteration', 1, '{\"duration\":2,\"durationUnit\":\"weeks\"}'::jsonb) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("iteration field should insert");
+    sqlx::query(
+        "INSERT INTO project_views (project_id, name, layout, position) VALUES ($1, 'Table', 'table', 1)",
+    )
+    .bind(project_id)
+    .execute(&pool)
+    .await
+    .expect("view should insert");
+    let item_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_items (project_id, item_type, title, position) VALUES ($1, 'draft_issue', 'Run iteration filter', 1) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("item should insert");
+    sqlx::query(
+        "INSERT INTO project_item_field_values (project_item_id, project_field_id, value, updated_by_user_id) VALUES ($1, $2, $3, $4)",
+    )
+    .bind(item_id)
+    .bind(iteration_field)
+    .bind(json!("2026-05-11"))
+    .bind(owner.id)
+    .execute(&pool)
+    .await
+    .expect("field value should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/fields/{iteration_field}/iterations/settings"),
+        Some(&owner_cookie),
+        json!({
+            "startDate": "2026-05-04",
+            "duration": 1,
+            "durationUnit": "weeks",
+            "generatedIterations": 3
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["fields"][0]["iterations"].as_array().unwrap().len(), 3);
+
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/fields/{iteration_field}/iterations"),
+        Some(&owner_cookie),
+        json!({ "name": "Iteration 4", "startDate": "2026-05-25", "durationDays": 7 }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let new_iteration_id = body["fields"][0]["iterations"][3]["id"]
+        .as_str()
+        .expect("new iteration id")
+        .to_owned();
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!(
+            "/api/projects/{project_id}/fields/{iteration_field}/iterations/{new_iteration_id}"
+        ),
+        Some(&owner_cookie),
+        json!({ "name": "Iteration four", "startDate": "2026-05-25", "durationDays": 7 }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body["fields"][0]["iterations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|iteration| iteration["name"] == "Iteration four"));
+
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/fields/{iteration_field}/iteration-breaks"),
+        Some(&owner_cookie),
+        json!({ "name": "Holiday", "startDate": "2026-06-01", "durationDays": 1 }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    let break_id = body["fields"][0]["breaks"][0]["id"]
+        .as_str()
+        .expect("break id")
+        .to_owned();
+    let (status, _, body) = delete_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/fields/{iteration_field}/iteration-breaks/{break_id}"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let (status, _, body) = get_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/workspace?q=cycle:2026-05-01..2026-05-31"),
+        Some(&owner_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["items"][0]["title"], "Run iteration filter");
+
+    let (status, _, body) = post_json(
+        app,
+        &format!("/api/projects/{project_id}/fields/{iteration_field}/iterations"),
+        Some(&reader_cookie),
+        json!({ "name": "Blocked" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+}
+
+#[tokio::test]
 async fn project_workspace_adds_reorders_and_removes_items() {
     let Some(pool) = database_pool().await else {
         eprintln!("skipping projects workspace scenario; set TEST_DATABASE_URL");

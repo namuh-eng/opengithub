@@ -7040,5 +7040,25 @@
       "Probe large option lists, max-option limit edges, duplicate names with case/whitespace differences, invalid colors, concurrent option rename/delete/reorder, stale UI after failed mutations, board views that use option columns, filters that reference renamed/deleted options, item value cleanup on delete, read-only users, built-in/non-single-select field denial, long option names/descriptions, keyboard-only row controls, and mobile text fit.",
       "Phase 5 still owns iteration schedules/breaks/filter tokens; Phase 6 still owns final API docs, screenshots, QA handoff, and build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-004",
+    "tests_written": [
+      "Completed Phase 5 Iteration Cycles, Breaks, and Filters without marking projects-004 build_pass=true.",
+      "Added signed-session Rust mutations for PATCH /api/projects/{project_id}/fields/{field_id}/iterations/settings, POST /api/projects/{project_id}/fields/{field_id}/iterations, PATCH /api/projects/{project_id}/fields/{field_id}/iterations/{iteration_id}, POST /api/projects/{project_id}/fields/{field_id}/iteration-breaks, and DELETE /api/projects/{project_id}/fields/{field_id}/iteration-breaks/{break_id}.",
+      "Iteration writes enforce project write/admin permission, iteration-field compatibility, duration/unit validation, stale expectedUpdatedAt protection, generated default cycles, non-overlap checks across iterations and breaks, field cache touches, view cache invalidation, and audit_events.",
+      "Iteration field creation now seeds three default cycles, and workspace filtering recognizes iteration/date-style tokens including @current, @previous, @next, comparisons, and date ranges.",
+      "Added same-origin Next proxies and typed api.ts helpers for iteration settings, iteration create/update, and break create/delete while preserving Rust API/session authority.",
+      "Wired ProjectFieldSettingsPage iteration controls to real API submissions: schedule start/duration/unit save, add iteration, inline iteration edit, insert break, remove break, pending/error/success states, and Editorial primitives only.",
+      "Extended focused Rust projects_workspace_contract coverage for schedule regeneration, add/update iteration, break create/delete, read-only denial, and range filter token behavior under the DB guard.",
+      "Extended focused Vitest coverage for iteration settings, add iteration, update iteration, insert break, remove break payloads, success feedback, and existing no-dead-link/editorial guardrails.",
+      "Verification passed: cargo fmt --all --check, cargo check -p opengithub-api --tests, focused projects_workspace_contract iteration test compile/run under DB guard, focused project-field-settings-page Vitest with 8 tests, focused Biome, web TypeScript, mandatory Editorial banned-value scan, full make check, and full make test with Cargo tests plus 553 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Focused Rust DB assertions self-skipped because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test failed with password authentication failed for user postgres; rerun projects_workspace_contract against a clean migrated credentialed database.",
+      "Full make test-e2e was attempted with the signed-session/test DB environment but produced no output for about two minutes while Playwright/API/Next children were active, so it was terminated and child processes were cleaned up. Run a focused iteration settings browser smoke against a clean migrated credentialed TEST_DATABASE_URL to save ralph/screenshots/build/projects-004-phase5-iteration-settings.jpg.",
+      "Probe timezone/date-boundary behavior for @current/@previous/@next, overlapping iteration and break ranges, stale schedule saves, concurrent iteration edits, generated cycle counts near the 100 limit, read-only users, non-iteration field denial, range/comparison filters in table/board/roadmap layouts, long iteration names, mobile date input fit, and audit/view-cache side effects.",
+      "Phase 6 still owns final API docs, screenshots, QA handoff, prd.json build_pass bookkeeping, and final browser smoke evidence."
+    ]
   }
 ]

@@ -141,6 +141,17 @@ export function ProjectFieldSettingsPage({
   const [optionDrafts, setOptionDrafts] = useState<
     Record<string, { name: string; color: string; description: string }>
   >({});
+  const [iterationStartDate, setIterationStartDate] = useState("");
+  const [iterationDuration, setIterationDuration] = useState(2);
+  const [iterationDurationUnit, setIterationDurationUnit] = useState<
+    "days" | "weeks"
+  >("weeks");
+  const [iterationDrafts, setIterationDrafts] = useState<
+    Record<string, { name: string; startDate: string; durationDays: number }>
+  >({});
+  const [breakName, setBreakName] = useState("Planning break");
+  const [breakStartDate, setBreakStartDate] = useState("");
+  const [breakDurationDays, setBreakDurationDays] = useState(1);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -174,6 +185,10 @@ export function ProjectFieldSettingsPage({
   const canManageSelectedOptions = Boolean(
     selectedField?.fieldType === "single_select" &&
       settings.viewerPermissions.canManageOptions,
+  );
+  const canManageSelectedIterations = Boolean(
+    selectedField?.fieldType === "iteration" &&
+      settings.viewerPermissions.canManageIterations,
   );
 
   async function submitFieldMutation(
@@ -369,6 +384,113 @@ export function ProjectFieldSettingsPage({
     );
     if (!payload) return;
     setNotice("Options reordered.");
+  }
+
+  async function saveIterationSettings() {
+    if (!selectedField) return;
+    const firstIteration = selectedField.iterations[0];
+    const payload = await submitFieldMutation(
+      "iteration-settings",
+      `/api/projects/${encodeURIComponent(settings.project.id)}/fields/${encodeURIComponent(selectedField.id)}/iterations/settings`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          startDate: iterationStartDate || firstIteration?.startDate,
+          duration: iterationDuration,
+          durationUnit: iterationDurationUnit,
+          generatedIterations: Math.max(selectedField.iterations.length, 3),
+          expectedUpdatedAt: selectedField.updatedAt,
+        }),
+      },
+    );
+    if (!payload) return;
+    setNotice("Iteration schedule saved.");
+  }
+
+  async function addIteration() {
+    if (!selectedField) return;
+    const payload = await submitFieldMutation(
+      "iteration-create",
+      `/api/projects/${encodeURIComponent(settings.project.id)}/fields/${encodeURIComponent(selectedField.id)}/iterations`,
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+      },
+    );
+    if (!payload) return;
+    setNotice("Iteration added.");
+  }
+
+  function iterationDraft(iteration: {
+    id: string;
+    name: string;
+    startDate: string;
+    durationDays: number;
+  }) {
+    return (
+      iterationDrafts[iteration.id] ?? {
+        name: iteration.name,
+        startDate: iteration.startDate,
+        durationDays: iteration.durationDays,
+      }
+    );
+  }
+
+  async function updateIteration(iteration: {
+    id: string;
+    name: string;
+    startDate: string;
+    durationDays: number;
+  }) {
+    if (!selectedField) return;
+    const draft = iterationDraft(iteration);
+    const payload = await submitFieldMutation(
+      `iteration-update-${iteration.id}`,
+      `/api/projects/${encodeURIComponent(settings.project.id)}/fields/${encodeURIComponent(selectedField.id)}/iterations/${encodeURIComponent(iteration.id)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(draft),
+      },
+    );
+    if (!payload) return;
+    setIterationDrafts((drafts) => {
+      const next = { ...drafts };
+      delete next[iteration.id];
+      return next;
+    });
+    setNotice("Iteration saved.");
+  }
+
+  async function addIterationBreak() {
+    if (!selectedField) return;
+    const payload = await submitFieldMutation(
+      "iteration-break-create",
+      `/api/projects/${encodeURIComponent(settings.project.id)}/fields/${encodeURIComponent(selectedField.id)}/iteration-breaks`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: breakName,
+          startDate: breakStartDate,
+          durationDays: breakDurationDays,
+        }),
+      },
+    );
+    if (!payload) return;
+    setBreakName("Planning break");
+    setBreakStartDate("");
+    setBreakDurationDays(1);
+    setNotice("Break inserted.");
+  }
+
+  async function deleteIterationBreak(fieldBreak: { id: string }) {
+    if (!selectedField) return;
+    const payload = await submitFieldMutation(
+      `iteration-break-delete-${fieldBreak.id}`,
+      `/api/projects/${encodeURIComponent(settings.project.id)}/fields/${encodeURIComponent(selectedField.id)}/iteration-breaks/${encodeURIComponent(fieldBreak.id)}`,
+      { method: "DELETE" },
+    );
+    if (!payload) return;
+    setNotice("Break removed.");
   }
 
   return (
@@ -915,9 +1037,113 @@ export function ProjectFieldSettingsPage({
                           Cycles and breaks are managed on this field.
                         </p>
                       </div>
-                      <button className="btn sm" disabled type="button">
+                      <button
+                        className="btn sm"
+                        disabled={
+                          !canManageSelectedIterations || pendingAction !== null
+                        }
+                        onClick={addIteration}
+                        type="button"
+                      >
                         Add iteration
                       </button>
+                    </div>
+                    <div
+                      className="card"
+                      style={{ padding: 12, marginTop: 12 }}
+                    >
+                      <div className="t-label">Schedule settings</div>
+                      <div
+                        className="row"
+                        style={{ gap: 10, marginTop: 10, flexWrap: "wrap" }}
+                      >
+                        <label
+                          className="t-xs"
+                          style={{ display: "grid", gap: 6 }}
+                        >
+                          Starts on
+                          <input
+                            className="input"
+                            disabled={
+                              !canManageSelectedIterations ||
+                              pendingAction !== null
+                            }
+                            onChange={(event) =>
+                              setIterationStartDate(event.target.value)
+                            }
+                            type="date"
+                            value={
+                              iterationStartDate ||
+                              selectedField.iterations[0]?.startDate ||
+                              ""
+                            }
+                          />
+                        </label>
+                        <label
+                          className="t-xs"
+                          style={{ display: "grid", gap: 6 }}
+                        >
+                          Duration
+                          <input
+                            className="input"
+                            disabled={
+                              !canManageSelectedIterations ||
+                              pendingAction !== null
+                            }
+                            min={1}
+                            onChange={(event) =>
+                              setIterationDuration(
+                                Number.parseInt(event.target.value, 10) || 1,
+                              )
+                            }
+                            type="number"
+                            value={iterationDuration}
+                          />
+                        </label>
+                        <label
+                          className="t-xs"
+                          style={{ display: "grid", gap: 6 }}
+                        >
+                          Unit
+                          <select
+                            className="input"
+                            disabled={
+                              !canManageSelectedIterations ||
+                              pendingAction !== null
+                            }
+                            onChange={(event) =>
+                              setIterationDurationUnit(
+                                event.target.value === "days"
+                                  ? "days"
+                                  : "weeks",
+                              )
+                            }
+                            value={iterationDurationUnit}
+                          >
+                            <option value="weeks">weeks</option>
+                            <option value="days">days</option>
+                          </select>
+                        </label>
+                        <button
+                          className="btn sm"
+                          disabled={
+                            !canManageSelectedIterations ||
+                            pendingAction !== null ||
+                            !(
+                              iterationStartDate ||
+                              selectedField.iterations[0]?.startDate
+                            )
+                          }
+                          onClick={saveIterationSettings}
+                          type="button"
+                        >
+                          Save schedule
+                        </button>
+                      </div>
+                      <p className="t-xs" style={{ marginTop: 10 }}>
+                        Relative filters support @current, @previous, @next,
+                        date comparisons, and ranges in workspace views.
+                      </p>
                     </div>
                     <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
                       {selectedField.iterations.map((iteration) => (
@@ -926,9 +1152,113 @@ export function ProjectFieldSettingsPage({
                           key={iteration.id}
                           style={{ padding: 12 }}
                         >
+                          {(() => {
+                            const draft = iterationDraft(iteration);
+                            return (
+                              <div
+                                className="row"
+                                style={{ gap: 10, flexWrap: "wrap" }}
+                              >
+                                <label
+                                  className="t-xs"
+                                  style={{ display: "grid", gap: 6, flex: 1 }}
+                                >
+                                  {iteration.name} name
+                                  <input
+                                    aria-label={`${iteration.name} iteration name`}
+                                    className="input"
+                                    disabled={
+                                      !canManageSelectedIterations ||
+                                      pendingAction !== null
+                                    }
+                                    onChange={(event) =>
+                                      setIterationDrafts((drafts) => ({
+                                        ...drafts,
+                                        [iteration.id]: {
+                                          ...draft,
+                                          name: event.target.value,
+                                        },
+                                      }))
+                                    }
+                                    value={draft.name}
+                                  />
+                                </label>
+                                <label
+                                  className="t-xs"
+                                  style={{ display: "grid", gap: 6 }}
+                                >
+                                  Start
+                                  <input
+                                    aria-label={`${iteration.name} start date`}
+                                    className="input"
+                                    disabled={
+                                      !canManageSelectedIterations ||
+                                      pendingAction !== null
+                                    }
+                                    onChange={(event) =>
+                                      setIterationDrafts((drafts) => ({
+                                        ...drafts,
+                                        [iteration.id]: {
+                                          ...draft,
+                                          startDate: event.target.value,
+                                        },
+                                      }))
+                                    }
+                                    type="date"
+                                    value={draft.startDate}
+                                  />
+                                </label>
+                                <label
+                                  className="t-xs"
+                                  style={{ display: "grid", gap: 6 }}
+                                >
+                                  Days
+                                  <input
+                                    aria-label={`${iteration.name} duration days`}
+                                    className="input"
+                                    disabled={
+                                      !canManageSelectedIterations ||
+                                      pendingAction !== null
+                                    }
+                                    min={1}
+                                    onChange={(event) =>
+                                      setIterationDrafts((drafts) => ({
+                                        ...drafts,
+                                        [iteration.id]: {
+                                          ...draft,
+                                          durationDays:
+                                            Number.parseInt(
+                                              event.target.value,
+                                              10,
+                                            ) || 1,
+                                        },
+                                      }))
+                                    }
+                                    type="number"
+                                    value={draft.durationDays}
+                                  />
+                                </label>
+                                <button
+                                  className="btn sm"
+                                  disabled={
+                                    !canManageSelectedIterations ||
+                                    pendingAction !== null
+                                  }
+                                  onClick={() => updateIteration(iteration)}
+                                  type="button"
+                                >
+                                  Save iteration
+                                </button>
+                              </div>
+                            );
+                          })()}
                           <div
                             className="row"
-                            style={{ justifyContent: "space-between", gap: 12 }}
+                            style={{
+                              justifyContent: "space-between",
+                              gap: 12,
+                              marginTop: 10,
+                            }}
                           >
                             <span className="t-sm" style={{ fontWeight: 600 }}>
                               {iteration.name}
@@ -942,6 +1272,68 @@ export function ProjectFieldSettingsPage({
                           </div>
                         </div>
                       ))}
+                      <div className="card" style={{ padding: 12 }}>
+                        <div className="t-label">Insert break</div>
+                        <div
+                          className="row"
+                          style={{ gap: 10, marginTop: 10, flexWrap: "wrap" }}
+                        >
+                          <input
+                            aria-label="Break name"
+                            className="input"
+                            disabled={
+                              !canManageSelectedIterations ||
+                              pendingAction !== null
+                            }
+                            onChange={(event) =>
+                              setBreakName(event.target.value)
+                            }
+                            placeholder="Planning break"
+                            value={breakName}
+                          />
+                          <input
+                            aria-label="Break start date"
+                            className="input"
+                            disabled={
+                              !canManageSelectedIterations ||
+                              pendingAction !== null
+                            }
+                            onChange={(event) =>
+                              setBreakStartDate(event.target.value)
+                            }
+                            type="date"
+                            value={breakStartDate}
+                          />
+                          <input
+                            aria-label="Break duration days"
+                            className="input"
+                            disabled={
+                              !canManageSelectedIterations ||
+                              pendingAction !== null
+                            }
+                            min={1}
+                            onChange={(event) =>
+                              setBreakDurationDays(
+                                Number.parseInt(event.target.value, 10) || 1,
+                              )
+                            }
+                            type="number"
+                            value={breakDurationDays}
+                          />
+                          <button
+                            className="btn sm"
+                            disabled={
+                              !canManageSelectedIterations ||
+                              pendingAction !== null ||
+                              !breakStartDate
+                            }
+                            onClick={addIterationBreak}
+                            type="button"
+                          >
+                            Insert break
+                          </button>
+                        </div>
+                      </div>
                       {selectedField.breaks.map((fieldBreak) => (
                         <div
                           className="card"
@@ -961,6 +1353,17 @@ export function ProjectFieldSettingsPage({
                             <span className="chip warn">
                               {fieldBreak.durationDays} day break
                             </span>
+                            <button
+                              className="btn sm"
+                              disabled={
+                                !canManageSelectedIterations ||
+                                pendingAction !== null
+                              }
+                              onClick={() => deleteIterationBreak(fieldBreak)}
+                              type="button"
+                            >
+                              Remove break
+                            </button>
                           </div>
                           <div className="t-xs" style={{ marginTop: 6 }}>
                             Starts {formatDate(fieldBreak.startDate)}

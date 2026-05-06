@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Duration, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{PgPool, Row};
@@ -222,6 +222,40 @@ pub struct ProjectFieldOptionUpdateRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ProjectFieldOptionReorderRequest {
     pub option_ids: Vec<Uuid>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectIterationSettingsRequest {
+    pub start_date: NaiveDate,
+    pub duration: i64,
+    pub duration_unit: String,
+    pub generated_iterations: Option<i64>,
+    pub expected_updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectIterationCreateRequest {
+    pub name: Option<String>,
+    pub start_date: Option<NaiveDate>,
+    pub duration_days: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectIterationUpdateRequest {
+    pub name: String,
+    pub start_date: NaiveDate,
+    pub duration_days: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectIterationBreakCreateRequest {
+    pub name: Option<String>,
+    pub start_date: NaiveDate,
+    pub duration_days: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1026,6 +1060,10 @@ pub async fn create_project_field_for_actor(
     .fetch_one(pool)
     .await?;
 
+    if field_type == "iteration" {
+        seed_default_project_iterations(pool, field_id, Utc::now().date_naive(), 14, 3).await?;
+    }
+
     invalidate_project_view_caches(pool, project_id).await?;
     sqlx::query(
         r#"
@@ -1475,6 +1513,266 @@ pub async fn delete_project_field_option_for_actor(
             "fieldName": field.name,
             "optionName": option.name,
             "removedValues": affected_item_ids.len(),
+        }),
+    )
+    .await?;
+    project_field_settings(pool, project_id, Some(actor_user_id)).await
+}
+
+pub async fn update_project_iteration_settings_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    field_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectIterationSettingsRequest,
+) -> Result<ProjectFieldSettings, ProjectsError> {
+    let field = iteration_admin_target(pool, project_id, field_id, actor_user_id).await?;
+    if let Some(expected) = request.expected_updated_at {
+        if field.updated_at != expected {
+            return Err(ProjectsError::Validation(
+                "Project field changed since it was loaded. Refresh before saving iterations."
+                    .to_owned(),
+            ));
+        }
+    }
+    let duration_days = normalize_iteration_duration(request.duration, &request.duration_unit)?;
+    let generated = request.generated_iterations.unwrap_or(3).clamp(1, 100);
+    sqlx::query("DELETE FROM project_iterations WHERE project_field_id = $1")
+        .bind(field_id)
+        .execute(pool)
+        .await?;
+    seed_default_project_iterations(pool, field_id, request.start_date, duration_days, generated)
+        .await?;
+    let settings = json!({
+        "startDate": request.start_date,
+        "duration": request.duration,
+        "durationUnit": request.duration_unit.trim().to_ascii_lowercase(),
+        "generatedIterations": generated,
+    });
+    sqlx::query(
+        "UPDATE project_fields SET settings = $3, cache_version = cache_version + 1, updated_at = now() WHERE project_id = $1 AND id = $2",
+    )
+    .bind(project_id)
+    .bind(field_id)
+    .bind(settings)
+    .execute(pool)
+    .await?;
+    invalidate_project_view_caches(pool, project_id).await?;
+    audit_project_iteration_change(
+        pool,
+        actor_user_id,
+        "project.iteration_settings.update",
+        field_id,
+        json!({
+            "projectId": project_id,
+            "fieldId": field_id,
+            "fieldName": field.name,
+            "startDate": request.start_date,
+            "durationDays": duration_days,
+            "generatedIterations": generated,
+        }),
+    )
+    .await?;
+    project_field_settings(pool, project_id, Some(actor_user_id)).await
+}
+
+pub async fn create_project_iteration_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    field_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectIterationCreateRequest,
+) -> Result<ProjectFieldSettings, ProjectsError> {
+    let field = iteration_admin_target(pool, project_id, field_id, actor_user_id).await?;
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM project_iterations WHERE project_field_id = $1",
+    )
+    .bind(field_id)
+    .fetch_one(pool)
+    .await?;
+    if count >= 100 {
+        return Err(ProjectsError::Validation(
+            "Project iteration limit has been reached for this field.".to_owned(),
+        ));
+    }
+    let duration_days = request.duration_days.unwrap_or_else(|| {
+        field
+            .settings
+            .get("duration")
+            .and_then(Value::as_i64)
+            .zip(field.settings.get("durationUnit").and_then(Value::as_str))
+            .and_then(|(duration, unit)| normalize_iteration_duration(duration, unit).ok())
+            .unwrap_or(14)
+    });
+    normalize_iteration_duration_days(duration_days)?;
+    let start_date = match request.start_date {
+        Some(date) => date,
+        None => next_iteration_start_date(pool, field_id, duration_days).await?,
+    };
+    let name = normalize_iteration_name(
+        request
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| format!("Iteration {}", count + 1)),
+    )?;
+    ensure_iteration_range_available(pool, field_id, None, start_date, duration_days).await?;
+    let position = next_iteration_position(pool, field_id).await?;
+    let iteration_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO project_iterations (project_field_id, name, start_date, duration_days, position)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id
+        "#,
+    )
+    .bind(field_id)
+    .bind(&name)
+    .bind(start_date)
+    .bind(duration_days as i32)
+    .bind(position as i32)
+    .fetch_one(pool)
+    .await?;
+    touch_project_field(pool, project_id, field_id).await?;
+    invalidate_project_view_caches(pool, project_id).await?;
+    audit_project_iteration_change(
+        pool,
+        actor_user_id,
+        "project.iteration.create",
+        iteration_id,
+        json!({
+            "projectId": project_id,
+            "fieldId": field_id,
+            "fieldName": field.name,
+            "iterationName": name,
+        }),
+    )
+    .await?;
+    project_field_settings(pool, project_id, Some(actor_user_id)).await
+}
+
+pub async fn update_project_iteration_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    field_id: Uuid,
+    iteration_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectIterationUpdateRequest,
+) -> Result<ProjectFieldSettings, ProjectsError> {
+    let field = iteration_admin_target(pool, project_id, field_id, actor_user_id).await?;
+    let name = normalize_iteration_name(request.name)?;
+    normalize_iteration_duration_days(request.duration_days)?;
+    ensure_iteration_exists(pool, field_id, iteration_id).await?;
+    ensure_iteration_range_available(
+        pool,
+        field_id,
+        Some(iteration_id),
+        request.start_date,
+        request.duration_days,
+    )
+    .await?;
+    sqlx::query(
+        "UPDATE project_iterations SET name = $3, start_date = $4, duration_days = $5 WHERE project_field_id = $1 AND id = $2",
+    )
+    .bind(field_id)
+    .bind(iteration_id)
+    .bind(&name)
+    .bind(request.start_date)
+    .bind(request.duration_days as i32)
+    .execute(pool)
+    .await?;
+    touch_project_field(pool, project_id, field_id).await?;
+    invalidate_project_view_caches(pool, project_id).await?;
+    audit_project_iteration_change(
+        pool,
+        actor_user_id,
+        "project.iteration.update",
+        iteration_id,
+        json!({
+            "projectId": project_id,
+            "fieldId": field_id,
+            "fieldName": field.name,
+            "iterationName": name,
+        }),
+    )
+    .await?;
+    project_field_settings(pool, project_id, Some(actor_user_id)).await
+}
+
+pub async fn create_project_iteration_break_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    field_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectIterationBreakCreateRequest,
+) -> Result<ProjectFieldSettings, ProjectsError> {
+    let field = iteration_admin_target(pool, project_id, field_id, actor_user_id).await?;
+    let duration_days = request.duration_days.unwrap_or(1);
+    normalize_iteration_duration_days(duration_days)?;
+    ensure_iteration_range_available(pool, field_id, None, request.start_date, duration_days)
+        .await?;
+    let name = normalize_iteration_name(request.name.unwrap_or_else(|| "Break".to_owned()))?;
+    let break_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO project_iteration_breaks (project_field_id, name, start_date, duration_days)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id
+        "#,
+    )
+    .bind(field_id)
+    .bind(&name)
+    .bind(request.start_date)
+    .bind(duration_days as i32)
+    .fetch_one(pool)
+    .await?;
+    touch_project_field(pool, project_id, field_id).await?;
+    invalidate_project_view_caches(pool, project_id).await?;
+    audit_project_iteration_change(
+        pool,
+        actor_user_id,
+        "project.iteration_break.create",
+        break_id,
+        json!({
+            "projectId": project_id,
+            "fieldId": field_id,
+            "fieldName": field.name,
+            "breakName": name,
+        }),
+    )
+    .await?;
+    project_field_settings(pool, project_id, Some(actor_user_id)).await
+}
+
+pub async fn delete_project_iteration_break_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    field_id: Uuid,
+    break_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<ProjectFieldSettings, ProjectsError> {
+    let field = iteration_admin_target(pool, project_id, field_id, actor_user_id).await?;
+    let deleted =
+        sqlx::query("DELETE FROM project_iteration_breaks WHERE project_field_id = $1 AND id = $2")
+            .bind(field_id)
+            .bind(break_id)
+            .execute(pool)
+            .await?
+            .rows_affected();
+    if deleted == 0 {
+        return Err(ProjectsError::NotFound);
+    }
+    touch_project_field(pool, project_id, field_id).await?;
+    invalidate_project_view_caches(pool, project_id).await?;
+    audit_project_iteration_change(
+        pool,
+        actor_user_id,
+        "project.iteration_break.delete",
+        break_id,
+        json!({
+            "projectId": project_id,
+            "fieldId": field_id,
+            "fieldName": field.name,
         }),
     )
     .await?;
@@ -2894,11 +3192,35 @@ async fn field_settings_breaks(
 struct ProjectFieldAdminTarget {
     name: String,
     field_type: String,
+    settings: Value,
     updated_at: DateTime<Utc>,
 }
 
 struct ProjectOptionAdminTarget {
     name: String,
+}
+
+async fn iteration_admin_target(
+    pool: &PgPool,
+    project_id: Uuid,
+    field_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<ProjectFieldAdminTarget, ProjectsError> {
+    let project = workspace_project_row(pool, project_id, Some(actor_user_id)).await?;
+    let can_manage = project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role);
+    if !can_manage {
+        return Err(ProjectsError::Forbidden);
+    }
+    let field = project_field_admin_target(pool, project_id, field_id).await?;
+    if field.field_type != "iteration" {
+        return Err(ProjectsError::Validation(
+            "Iterations can only be managed on iteration fields.".to_owned(),
+        ));
+    }
+    Ok(field)
 }
 
 async fn project_field_admin_target(
@@ -2908,7 +3230,7 @@ async fn project_field_admin_target(
 ) -> Result<ProjectFieldAdminTarget, ProjectsError> {
     let row = sqlx::query(
         r#"
-        SELECT name, field_type, updated_at
+        SELECT name, field_type, settings, updated_at
         FROM project_fields
         WHERE project_id = $1 AND id = $2 AND deleted_at IS NULL
         "#,
@@ -2923,6 +3245,7 @@ async fn project_field_admin_target(
     Ok(ProjectFieldAdminTarget {
         name: row.get("name"),
         field_type: row.get("field_type"),
+        settings: row.get("settings"),
         updated_at: row.get("updated_at"),
     })
 }
@@ -3035,12 +3358,173 @@ fn normalize_project_option_description(input: Option<&str>) -> Option<String> {
     })
 }
 
+fn normalize_iteration_duration(duration: i64, unit: &str) -> Result<i64, ProjectsError> {
+    let unit = unit.trim().to_ascii_lowercase();
+    let duration_days = match unit.as_str() {
+        "days" => duration,
+        "weeks" => duration * 7,
+        _ => {
+            return Err(ProjectsError::Validation(
+                "Iteration duration unit must be days or weeks.".to_owned(),
+            ));
+        }
+    };
+    normalize_iteration_duration_days(duration_days)?;
+    Ok(duration_days)
+}
+
+fn normalize_iteration_duration_days(duration_days: i64) -> Result<(), ProjectsError> {
+    if !(1..=365).contains(&duration_days) {
+        return Err(ProjectsError::Validation(
+            "Iteration duration must be between 1 and 365 days.".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn normalize_iteration_name(input: String) -> Result<String, ProjectsError> {
+    let name = input.trim().chars().take(80).collect::<String>();
+    if name.is_empty() {
+        return Err(ProjectsError::Validation(
+            "Iteration name is required.".to_owned(),
+        ));
+    }
+    Ok(name)
+}
+
 fn default_project_field_settings(field_type: &str) -> Value {
     match field_type {
         "iteration" => json!({ "durationUnit": "weeks", "duration": 2 }),
         "number" => json!({ "format": "number" }),
         _ => json!({}),
     }
+}
+
+async fn seed_default_project_iterations(
+    pool: &PgPool,
+    field_id: Uuid,
+    start_date: NaiveDate,
+    duration_days: i64,
+    count: i64,
+) -> Result<(), ProjectsError> {
+    normalize_iteration_duration_days(duration_days)?;
+    for index in 0..count {
+        let starts = start_date + Duration::days(duration_days * index);
+        sqlx::query(
+            r#"
+            INSERT INTO project_iterations (project_field_id, name, start_date, duration_days, position)
+            VALUES ($1, $2, $3, $4, $5)
+            "#,
+        )
+        .bind(field_id)
+        .bind(format!("Iteration {}", index + 1))
+        .bind(starts)
+        .bind(duration_days as i32)
+        .bind((index + 1) as i32)
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
+async fn next_iteration_position(pool: &PgPool, field_id: Uuid) -> Result<i64, ProjectsError> {
+    let position: Option<i32> = sqlx::query_scalar(
+        "SELECT max(position) FROM project_iterations WHERE project_field_id = $1",
+    )
+    .bind(field_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(i64::from(position.unwrap_or(0)) + 1)
+}
+
+async fn next_iteration_start_date(
+    pool: &PgPool,
+    field_id: Uuid,
+    duration_days: i64,
+) -> Result<NaiveDate, ProjectsError> {
+    let start: Option<NaiveDate> = sqlx::query_scalar(
+        "SELECT max(start_date + duration_days) FROM project_iterations WHERE project_field_id = $1",
+    )
+    .bind(field_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(start.unwrap_or_else(|| Utc::now().date_naive()) + Duration::days(duration_days))
+}
+
+async fn ensure_iteration_exists(
+    pool: &PgPool,
+    field_id: Uuid,
+    iteration_id: Uuid,
+) -> Result<(), ProjectsError> {
+    let exists: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM project_iterations WHERE project_field_id = $1 AND id = $2",
+    )
+    .bind(field_id)
+    .bind(iteration_id)
+    .fetch_optional(pool)
+    .await?;
+    if exists.is_none() {
+        return Err(ProjectsError::NotFound);
+    }
+    Ok(())
+}
+
+async fn ensure_iteration_range_available(
+    pool: &PgPool,
+    field_id: Uuid,
+    current_iteration_id: Option<Uuid>,
+    start_date: NaiveDate,
+    duration_days: i64,
+) -> Result<(), ProjectsError> {
+    normalize_iteration_duration_days(duration_days)?;
+    let end_date = start_date + Duration::days(duration_days);
+    let overlaps: i64 = sqlx::query_scalar(
+        r#"
+        SELECT count(*)::bigint
+        FROM (
+          SELECT id, start_date, duration_days FROM project_iterations WHERE project_field_id = $1
+          UNION ALL
+          SELECT id, start_date, duration_days FROM project_iteration_breaks WHERE project_field_id = $1
+        ) ranges
+        WHERE ($4::uuid IS NULL OR ranges.id <> $4)
+          AND ranges.start_date < $3
+          AND (ranges.start_date + ranges.duration_days) > $2
+        "#,
+    )
+    .bind(field_id)
+    .bind(start_date)
+    .bind(end_date)
+    .bind(current_iteration_id)
+    .fetch_one(pool)
+    .await?;
+    if overlaps > 0 {
+        return Err(ProjectsError::Validation(
+            "Iteration ranges and breaks cannot overlap.".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+async fn audit_project_iteration_change(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    event_type: &str,
+    target_id: Uuid,
+    metadata: Value,
+) -> Result<(), ProjectsError> {
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, $2, 'project_iteration', $3, $4)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(target_id.to_string())
+    .bind(metadata)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 async fn ensure_unique_project_field_name(
@@ -5049,7 +5533,8 @@ fn apply_workspace_filters(
                 "is:issue" => item.item_type == "issue",
                 "is:pr" => item.item_type == "pull_request",
                 other => {
-                    item.title.to_ascii_lowercase().contains(other)
+                    matches_workspace_field_filter(item, other)
+                        || item.title.to_ascii_lowercase().contains(other)
                         || item
                             .repository
                             .as_ref()
@@ -5061,6 +5546,58 @@ fn apply_workspace_filters(
                 }
             })
         });
+    }
+}
+
+fn matches_workspace_field_filter(item: &ProjectWorkspaceItem, token: &str) -> bool {
+    let Some((field_name, expected)) = token.split_once(':') else {
+        return false;
+    };
+    let field_name = field_name.to_ascii_lowercase();
+    let expected = expected.trim();
+    if expected.is_empty() {
+        return false;
+    }
+    item.field_values.iter().any(|value| {
+        value.display_value.to_ascii_lowercase().contains(expected)
+            || field_value_date_matches(&value.value, expected)
+            || (field_name == "iteration" && field_value_date_matches(&value.value, expected))
+    })
+}
+
+fn field_value_date_matches(value: &Value, expected: &str) -> bool {
+    let Some(date_text) = value.as_str() else {
+        return false;
+    };
+    let Ok(date) = NaiveDate::parse_from_str(date_text, "%Y-%m-%d") else {
+        return false;
+    };
+    let today = Utc::now().date_naive();
+    match expected {
+        "@current" => date <= today && today < date + Duration::days(14),
+        "@previous" => date < today,
+        "@next" => date > today,
+        _ if expected.contains("..") => {
+            let Some((start, end)) = expected.split_once("..") else {
+                return false;
+            };
+            let start = NaiveDate::parse_from_str(start, "%Y-%m-%d").ok();
+            let end = NaiveDate::parse_from_str(end, "%Y-%m-%d").ok();
+            start.is_some_and(|start| date >= start) && end.is_some_and(|end| date <= end)
+        }
+        _ if expected.starts_with(">=") => {
+            NaiveDate::parse_from_str(&expected[2..], "%Y-%m-%d").is_ok_and(|target| date >= target)
+        }
+        _ if expected.starts_with("<=") => {
+            NaiveDate::parse_from_str(&expected[2..], "%Y-%m-%d").is_ok_and(|target| date <= target)
+        }
+        _ if expected.starts_with('>') => {
+            NaiveDate::parse_from_str(&expected[1..], "%Y-%m-%d").is_ok_and(|target| date > target)
+        }
+        _ if expected.starts_with('<') => {
+            NaiveDate::parse_from_str(&expected[1..], "%Y-%m-%d").is_ok_and(|target| date < target)
+        }
+        _ => false,
     }
 }
 

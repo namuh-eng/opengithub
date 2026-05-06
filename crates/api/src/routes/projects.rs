@@ -13,17 +13,21 @@ use crate::{
     domain::projects::{
         add_project_item_for_actor, bulk_add_project_items_for_actor, copy_project_for_actor,
         create_project_field_for_actor, create_project_field_option_for_actor,
+        create_project_iteration_break_for_actor, create_project_iteration_for_actor,
         delete_project_field_for_actor, delete_project_field_option_for_actor,
-        organization_projects, project_field_settings, project_workspace,
-        remove_project_item_for_actor, reorder_project_field_options_for_actor,
+        delete_project_iteration_break_for_actor, organization_projects, project_field_settings,
+        project_workspace, remove_project_item_for_actor, reorder_project_field_options_for_actor,
         repository_projects, update_project_field_for_actor, update_project_field_option_for_actor,
         update_project_item_field_for_actor, update_project_item_position_for_actor,
+        update_project_iteration_for_actor, update_project_iteration_settings_for_actor,
         update_project_roadmap_settings_for_actor, update_project_view_layout_for_actor,
         update_project_view_state_for_actor, user_projects, CopiedProject, CopyProjectRequest,
         ProjectFieldCreateRequest, ProjectFieldDeleteRequest, ProjectFieldOptionCreateRequest,
         ProjectFieldOptionReorderRequest, ProjectFieldOptionUpdateRequest, ProjectFieldSettings,
         ProjectFieldUpdateRequest, ProjectItemAddRequest, ProjectItemFieldValueRequest,
-        ProjectItemPositionRequest, ProjectItemsBulkAddRequest, ProjectList, ProjectListQuery,
+        ProjectItemPositionRequest, ProjectItemsBulkAddRequest, ProjectIterationBreakCreateRequest,
+        ProjectIterationCreateRequest, ProjectIterationSettingsRequest,
+        ProjectIterationUpdateRequest, ProjectList, ProjectListQuery,
         ProjectRoadmapSettingsRequest, ProjectViewLayoutRequest, ProjectViewStateRequest,
         ProjectWorkspace, ProjectWorkspaceQuery, ProjectsError,
     },
@@ -57,6 +61,26 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/projects/:project_id/fields/:field_id/options/:option_id",
             patch(update_project_field_option_route).delete(delete_project_field_option_route),
+        )
+        .route(
+            "/api/projects/:project_id/fields/:field_id/iterations/settings",
+            patch(update_project_iteration_settings_route),
+        )
+        .route(
+            "/api/projects/:project_id/fields/:field_id/iterations",
+            post(create_project_iteration_route),
+        )
+        .route(
+            "/api/projects/:project_id/fields/:field_id/iterations/:iteration_id",
+            patch(update_project_iteration_route),
+        )
+        .route(
+            "/api/projects/:project_id/fields/:field_id/iteration-breaks",
+            post(create_project_iteration_break_route),
+        )
+        .route(
+            "/api/projects/:project_id/fields/:field_id/iteration-breaks/:break_id",
+            delete(delete_project_iteration_break_route),
         )
         .route(
             "/api/projects/:project_id/views/:view_id/state",
@@ -360,6 +384,86 @@ async fn delete_project_field_option_route(
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
     let settings =
         delete_project_field_option_for_actor(pool, project_id, field_id, option_id, actor.id)
+            .await
+            .map_err(map_projects_error)?;
+    Ok(Json(settings))
+}
+
+async fn update_project_iteration_settings_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project_id, field_id)): Path<(Uuid, Uuid)>,
+    Json(request): Json<ProjectIterationSettingsRequest>,
+) -> Result<Json<ProjectFieldSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let settings =
+        update_project_iteration_settings_for_actor(pool, project_id, field_id, actor.id, request)
+            .await
+            .map_err(map_projects_error)?;
+    Ok(Json(settings))
+}
+
+async fn create_project_iteration_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project_id, field_id)): Path<(Uuid, Uuid)>,
+    Json(request): Json<ProjectIterationCreateRequest>,
+) -> Result<(StatusCode, Json<ProjectFieldSettings>), (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let settings =
+        create_project_iteration_for_actor(pool, project_id, field_id, actor.id, request)
+            .await
+            .map_err(map_projects_error)?;
+    Ok((StatusCode::CREATED, Json(settings)))
+}
+
+async fn update_project_iteration_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project_id, field_id, iteration_id)): Path<(Uuid, Uuid, Uuid)>,
+    Json(request): Json<ProjectIterationUpdateRequest>,
+) -> Result<Json<ProjectFieldSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let settings = update_project_iteration_for_actor(
+        pool,
+        project_id,
+        field_id,
+        iteration_id,
+        actor.id,
+        request,
+    )
+    .await
+    .map_err(map_projects_error)?;
+    Ok(Json(settings))
+}
+
+async fn create_project_iteration_break_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project_id, field_id)): Path<(Uuid, Uuid)>,
+    Json(request): Json<ProjectIterationBreakCreateRequest>,
+) -> Result<(StatusCode, Json<ProjectFieldSettings>), (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let settings =
+        create_project_iteration_break_for_actor(pool, project_id, field_id, actor.id, request)
+            .await
+            .map_err(map_projects_error)?;
+    Ok((StatusCode::CREATED, Json(settings)))
+}
+
+async fn delete_project_iteration_break_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project_id, field_id, break_id)): Path<(Uuid, Uuid, Uuid)>,
+) -> Result<Json<ProjectFieldSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let settings =
+        delete_project_iteration_break_for_actor(pool, project_id, field_id, break_id, actor.id)
             .await
             .map_err(map_projects_error)?;
     Ok(Json(settings))

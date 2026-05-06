@@ -74,7 +74,7 @@
 
 ## Phase 5: Iteration Cycles, Breaks, and Filters - iteration fields manage real date ranges
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make iteration field settings real. Creating an iteration field seeds three default iterations; users can edit start date, duration, unit, generated future cycles, individual iteration names/date ranges, insert breaks, and use `@current`, `@previous`, `@next`, comparisons, and ranges in project filters.
 
