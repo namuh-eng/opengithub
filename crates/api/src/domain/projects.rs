@@ -156,6 +156,16 @@ pub struct ProjectItemsArchivedQuery<'a> {
     pub page_size: Option<i64>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ProjectInsightsQuery<'a> {
+    pub chart: Option<&'a str>,
+    pub range: Option<&'a str>,
+    pub start: Option<NaiveDate>,
+    pub end: Option<NaiveDate>,
+    pub filter: Option<&'a str>,
+    pub table: Option<bool>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectViewStateRequest {
@@ -1153,6 +1163,136 @@ pub struct ProjectArchivedItem {
     pub viewer_permissions: ProjectItemDetailPermissions,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectInsights {
+    pub project: ProjectWorkspaceProject,
+    pub navigation: ProjectInsightsNavigation,
+    pub selected_chart: ProjectInsightsChart,
+    pub default_charts: Vec<ProjectInsightsChartSummary>,
+    pub custom_charts: Vec<ProjectInsightsChartSummary>,
+    pub range: ProjectInsightsRange,
+    pub filter: ProjectInsightsFilter,
+    pub matching_item_count: i64,
+    pub series: Vec<ProjectInsightsSeries>,
+    pub data_rows: Vec<ProjectInsightsDataRow>,
+    pub latest_status: Option<ProjectStatusSummary>,
+    pub viewer_permissions: ProjectInsightsCapabilities,
+    pub cache: ProjectInsightsCacheState,
+    pub unavailable_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectInsightsNavigation {
+    pub return_href: String,
+    pub insights_href: String,
+    pub selected_item: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectInsightsChartSummary {
+    pub id: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub chart_type: String,
+    pub href: String,
+    pub visibility: String,
+    pub shared_with_viewers: bool,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectInsightsChart {
+    pub id: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub chart_type: String,
+    pub visibility: String,
+    pub is_default: bool,
+    pub href: String,
+    pub configuration: Value,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectInsightsRange {
+    pub key: String,
+    pub label: String,
+    pub start: NaiveDate,
+    pub end: NaiveDate,
+    pub options: Vec<ProjectInsightsRangeOption>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectInsightsRangeOption {
+    pub key: String,
+    pub label: String,
+    pub href: String,
+    pub active: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectInsightsFilter {
+    pub query: Option<String>,
+    pub tokens: Vec<String>,
+    pub unsupported_tokens: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectInsightsSeries {
+    pub id: String,
+    pub name: String,
+    pub color: String,
+    pub points: Vec<ProjectInsightsPoint>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectInsightsPoint {
+    pub date: NaiveDate,
+    pub value: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectInsightsDataRow {
+    pub item_id: Uuid,
+    pub item_type: String,
+    pub title: String,
+    pub state: Option<String>,
+    pub repository: Option<ProjectRepositoryScopeSummary>,
+    pub created_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectInsightsCapabilities {
+    pub authenticated: bool,
+    pub viewer_role: Option<String>,
+    pub can_view_insights: bool,
+    pub can_create_charts: bool,
+    pub can_edit_charts: bool,
+    pub can_delete_charts: bool,
+    pub can_share_charts: bool,
+    pub can_view_status: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectInsightsCacheState {
+    pub cache_key: String,
+    pub computed_at: DateTime<Utc>,
+    pub stale: bool,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CopyProjectRequest {
@@ -1665,6 +1805,71 @@ pub async fn project_items_archived(
         total,
         page: filters.page,
         page_size: filters.page_size,
+    })
+}
+
+pub async fn project_insights(
+    pool: &PgPool,
+    project_id: Uuid,
+    viewer_user_id: Option<Uuid>,
+    query: ProjectInsightsQuery<'_>,
+) -> Result<ProjectInsights, ProjectsError> {
+    let project = visible_workspace_project(pool, project_id, viewer_user_id).await?;
+    let range = normalize_insights_range(query)?;
+    let filter = normalize_insights_filter(query.filter);
+    let chart_id = query.chart.map(str::trim).filter(|value| !value.is_empty());
+    let (selected_chart, custom_charts) =
+        project_insights_charts(pool, &project, chart_id, &range, query).await?;
+    let mut rows = project_insights_rows(pool, project_id, viewer_user_id).await?;
+    apply_insights_filter(&mut rows, &filter);
+    let matching_item_count = rows.len() as i64;
+    let series = burn_up_series(&rows, range.start, range.end);
+    let latest_status = latest_project_status(pool, project_id).await?;
+    let can_write = project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role);
+    let computed_at = Utc::now();
+    let cache_key = format!(
+        "{}:{}:{}:{}",
+        selected_chart.id,
+        range.key,
+        range.start,
+        filter.query.as_deref().unwrap_or("")
+    );
+
+    Ok(ProjectInsights {
+        navigation: ProjectInsightsNavigation {
+            return_href: project.workspace_href.clone(),
+            insights_href: format!("{}/insights", project.workspace_href),
+            selected_item: "insights".to_owned(),
+        },
+        default_charts: vec![default_burn_up_summary(&project, &range, query)],
+        custom_charts,
+        selected_chart,
+        range,
+        filter,
+        matching_item_count,
+        series,
+        data_rows: rows,
+        latest_status,
+        viewer_permissions: ProjectInsightsCapabilities {
+            authenticated: viewer_user_id.is_some(),
+            viewer_role: project.viewer_role.clone(),
+            can_view_insights: true,
+            can_create_charts: can_write,
+            can_edit_charts: can_write,
+            can_delete_charts: can_write,
+            can_share_charts: can_write,
+            can_view_status: viewer_user_id.is_some() || project.visibility == "public",
+        },
+        cache: ProjectInsightsCacheState {
+            cache_key,
+            computed_at,
+            stale: false,
+        },
+        unavailable_reason: None,
+        project,
     })
 }
 
@@ -8848,6 +9053,415 @@ fn normalize_archived_item_filters(
         page: pagination.page,
         page_size: pagination.page_size,
     })
+}
+
+fn normalize_insights_range(
+    query: ProjectInsightsQuery<'_>,
+) -> Result<ProjectInsightsRange, ProjectsError> {
+    let today = Utc::now().date_naive();
+    let key = query.range.unwrap_or("1m").trim();
+    let (normalized_key, label, start, end) = match key {
+        "2w" | "2-weeks" => (
+            "2w".to_owned(),
+            "2 weeks".to_owned(),
+            today - Duration::days(13),
+            today,
+        ),
+        "3m" | "3-months" => (
+            "3m".to_owned(),
+            "3 months".to_owned(),
+            today - Duration::days(89),
+            today,
+        ),
+        "max" | "Max" => (
+            "max".to_owned(),
+            "Max".to_owned(),
+            today - Duration::days(179),
+            today,
+        ),
+        "custom" => {
+            let start = query.start.ok_or_else(|| {
+                ProjectsError::InvalidFilter("Custom Insights range requires start.".to_owned())
+            })?;
+            let end = query.end.ok_or_else(|| {
+                ProjectsError::InvalidFilter("Custom Insights range requires end.".to_owned())
+            })?;
+            if start > end {
+                return Err(ProjectsError::InvalidFilter(
+                    "Custom Insights range start must be before end.".to_owned(),
+                ));
+            }
+            if (end - start).num_days() > 366 {
+                return Err(ProjectsError::InvalidFilter(
+                    "Custom Insights range cannot exceed one year.".to_owned(),
+                ));
+            }
+            ("custom".to_owned(), "Custom".to_owned(), start, end)
+        }
+        "" | "1m" | "1-month" => (
+            "1m".to_owned(),
+            "1 month".to_owned(),
+            today - Duration::days(29),
+            today,
+        ),
+        _ => {
+            return Err(ProjectsError::InvalidFilter(
+                "Insights range must be 2w, 1m, 3m, max, or custom.".to_owned(),
+            ))
+        }
+    };
+    let options = [
+        ("2w", "2 weeks"),
+        ("1m", "1 month"),
+        ("3m", "3 months"),
+        ("max", "Max"),
+    ]
+    .into_iter()
+    .map(|(option_key, option_label)| ProjectInsightsRangeOption {
+        key: option_key.to_owned(),
+        label: option_label.to_owned(),
+        href: format!("?range={option_key}"),
+        active: normalized_key == option_key,
+    })
+    .collect();
+    Ok(ProjectInsightsRange {
+        key: normalized_key,
+        label,
+        start,
+        end,
+        options,
+    })
+}
+
+fn normalize_insights_filter(raw: Option<&str>) -> ProjectInsightsFilter {
+    let query = raw.map(str::trim).filter(|value| !value.is_empty());
+    let mut tokens = Vec::new();
+    let mut unsupported_tokens = Vec::new();
+    for token in query.unwrap_or("").split_whitespace() {
+        if matches!(
+            token,
+            "is:open" | "is:closed" | "type:issue" | "type:pull_request" | "type:draft"
+        ) {
+            tokens.push(token.to_owned());
+        } else {
+            unsupported_tokens.push(token.to_owned());
+        }
+    }
+    ProjectInsightsFilter {
+        query: query.map(ToOwned::to_owned),
+        tokens,
+        unsupported_tokens,
+    }
+}
+
+async fn project_insights_charts(
+    pool: &PgPool,
+    project: &ProjectWorkspaceProject,
+    selected_chart_id: Option<&str>,
+    range: &ProjectInsightsRange,
+    query: ProjectInsightsQuery<'_>,
+) -> Result<(ProjectInsightsChart, Vec<ProjectInsightsChartSummary>), ProjectsError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, title, description, chart_type, filter, visibility, updated_at
+        FROM project_charts
+        WHERE project_id = $1 AND visibility IN ('project', 'private')
+        ORDER BY updated_at DESC, title
+        "#,
+    )
+    .bind(project.id)
+    .fetch_all(pool)
+    .await?;
+    let custom_charts = rows
+        .iter()
+        .map(|row| {
+            let id: Uuid = row.get("id");
+            let visibility: String = row.get("visibility");
+            ProjectInsightsChartSummary {
+                id: id.to_string(),
+                title: row.get("title"),
+                description: row.get("description"),
+                chart_type: row.get("chart_type"),
+                href: format!(
+                    "{}/insights?chart={id}&range={}",
+                    project.workspace_href, range.key
+                ),
+                shared_with_viewers: visibility == "project",
+                visibility,
+                updated_at: row.get("updated_at"),
+            }
+        })
+        .collect::<Vec<_>>();
+    if let Some(selected_chart_id) = selected_chart_id {
+        if selected_chart_id != "burn-up" {
+            let chart_id = Uuid::parse_str(selected_chart_id).map_err(|_| {
+                ProjectsError::InvalidFilter(
+                    "Insights chart must be burn-up or a chart id.".to_owned(),
+                )
+            })?;
+            let row = rows
+                .into_iter()
+                .find(|row| row.get::<Uuid, _>("id") == chart_id)
+                .ok_or(ProjectsError::NotFound)?;
+            let id: Uuid = row.get("id");
+            return Ok((
+                ProjectInsightsChart {
+                    id: id.to_string(),
+                    title: row.get("title"),
+                    description: row.get("description"),
+                    chart_type: row.get("chart_type"),
+                    visibility: row.get("visibility"),
+                    is_default: false,
+                    href: format!(
+                        "{}/insights?chart={id}&range={}",
+                        project.workspace_href, range.key
+                    ),
+                    configuration: json!({
+                        "filter": row.get::<Option<String>, _>("filter"),
+                        "range": range.key,
+                        "table": query.table.unwrap_or(false)
+                    }),
+                    updated_at: row.get("updated_at"),
+                },
+                custom_charts,
+            ));
+        }
+    }
+    Ok((default_burn_up_chart(project, range, query), custom_charts))
+}
+
+fn default_burn_up_summary(
+    project: &ProjectWorkspaceProject,
+    range: &ProjectInsightsRange,
+    query: ProjectInsightsQuery<'_>,
+) -> ProjectInsightsChartSummary {
+    let chart = default_burn_up_chart(project, range, query);
+    ProjectInsightsChartSummary {
+        id: chart.id,
+        title: chart.title,
+        description: chart.description,
+        chart_type: chart.chart_type,
+        href: chart.href,
+        visibility: chart.visibility.clone(),
+        shared_with_viewers: true,
+        updated_at: chart.updated_at,
+    }
+}
+
+fn default_burn_up_chart(
+    project: &ProjectWorkspaceProject,
+    range: &ProjectInsightsRange,
+    query: ProjectInsightsQuery<'_>,
+) -> ProjectInsightsChart {
+    ProjectInsightsChart {
+        id: "burn-up".to_owned(),
+        title: "Burn up".to_owned(),
+        description: Some("Completed items against total project scope.".to_owned()),
+        chart_type: "burn_up".to_owned(),
+        visibility: "project".to_owned(),
+        is_default: true,
+        href: format!(
+            "{}/insights?chart=burn-up&range={}",
+            project.workspace_href, range.key
+        ),
+        configuration: json!({
+            "filter": query.filter,
+            "range": range.key,
+            "start": range.start,
+            "end": range.end,
+            "table": query.table.unwrap_or(false)
+        }),
+        updated_at: Utc::now(),
+    }
+}
+
+async fn project_insights_rows(
+    pool: &PgPool,
+    project_id: Uuid,
+    viewer_user_id: Option<Uuid>,
+) -> Result<Vec<ProjectInsightsDataRow>, ProjectsError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT
+          project_items.id, project_items.item_type, project_items.title AS draft_title,
+          project_items.created_at,
+          issues.title AS issue_title, issues.state AS issue_state,
+          issues.closed_at AS issue_closed_at,
+          pull_requests.title AS pull_title, pull_requests.state AS pull_state,
+          COALESCE(pull_requests.merged_at, pull_requests.closed_at) AS pull_completed_at,
+          COALESCE(issue_repositories.id, pull_repositories.id) AS repository_id,
+          COALESCE(
+            NULLIF(issue_owner_user.username, ''),
+            issue_owner_user.email,
+            issue_owner_org.slug,
+            NULLIF(pull_owner_user.username, ''),
+            pull_owner_user.email,
+            pull_owner_org.slug
+          ) AS repository_owner,
+          COALESCE(issue_repositories.name, pull_repositories.name) AS repository_name
+        FROM project_items
+        LEFT JOIN issues ON issues.id = project_items.issue_id
+        LEFT JOIN repositories issue_repositories ON issue_repositories.id = issues.repository_id
+        LEFT JOIN users issue_owner_user ON issue_owner_user.id = issue_repositories.owner_user_id
+        LEFT JOIN organizations issue_owner_org ON issue_owner_org.id = issue_repositories.owner_organization_id
+        LEFT JOIN pull_requests ON pull_requests.id = project_items.pull_request_id
+        LEFT JOIN repositories pull_repositories ON pull_repositories.id = pull_requests.repository_id
+        LEFT JOIN users pull_owner_user ON pull_owner_user.id = pull_repositories.owner_user_id
+        LEFT JOIN organizations pull_owner_org ON pull_owner_org.id = pull_repositories.owner_organization_id
+        WHERE project_items.project_id = $1
+          AND project_items.archived_at IS NULL
+          AND (
+            COALESCE(issue_repositories.id, pull_repositories.id) IS NULL
+            OR COALESCE(issue_repositories.visibility, pull_repositories.visibility) = 'public'
+            OR COALESCE(issue_repositories.owner_user_id, pull_repositories.owner_user_id) = $2
+            OR EXISTS (
+              SELECT 1 FROM repository_permissions
+              WHERE repository_permissions.repository_id = COALESCE(issue_repositories.id, pull_repositories.id)
+                AND repository_permissions.user_id = $2
+            )
+            OR EXISTS (
+              SELECT 1 FROM organization_memberships
+              WHERE organization_memberships.organization_id = COALESCE(issue_repositories.owner_organization_id, pull_repositories.owner_organization_id)
+                AND organization_memberships.user_id = $2
+            )
+          )
+        ORDER BY project_items.position, project_items.created_at
+        "#,
+    )
+    .bind(project_id)
+    .bind(viewer_user_id)
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            let item_type: String = row.get("item_type");
+            let state = match item_type.as_str() {
+                "issue" => row.get("issue_state"),
+                "pull_request" => row.get("pull_state"),
+                _ => None,
+            };
+            let completed_at = match item_type.as_str() {
+                "issue" => row.get("issue_closed_at"),
+                "pull_request" => row.get("pull_completed_at"),
+                _ => None,
+            };
+            let repository = row
+                .get::<Option<Uuid>, _>("repository_id")
+                .zip(row.get::<Option<String>, _>("repository_owner"))
+                .zip(row.get::<Option<String>, _>("repository_name"))
+                .map(|((id, owner), name)| ProjectRepositoryScopeSummary {
+                    id,
+                    owner: owner.clone(),
+                    name: name.clone(),
+                    full_name: format!("{owner}/{name}"),
+                    href: format!("/{owner}/{name}"),
+                });
+            Ok(ProjectInsightsDataRow {
+                item_id: row.get("id"),
+                item_type: item_type.clone(),
+                title: match item_type.as_str() {
+                    "issue" => row.get::<Option<String>, _>("issue_title"),
+                    "pull_request" => row.get::<Option<String>, _>("pull_title"),
+                    _ => row.get::<Option<String>, _>("draft_title"),
+                }
+                .unwrap_or_else(|| "Untitled item".to_owned()),
+                state,
+                repository,
+                created_at: row.get("created_at"),
+                completed_at,
+            })
+        })
+        .collect()
+}
+
+fn apply_insights_filter(rows: &mut Vec<ProjectInsightsDataRow>, filter: &ProjectInsightsFilter) {
+    for token in &filter.tokens {
+        match token.as_str() {
+            "is:open" => rows.retain(|row| row.state.as_deref().unwrap_or("open") == "open"),
+            "is:closed" => rows.retain(|row| {
+                matches!(row.state.as_deref(), Some("closed" | "merged"))
+                    || row.completed_at.is_some()
+            }),
+            "type:issue" => rows.retain(|row| row.item_type == "issue"),
+            "type:pull_request" => rows.retain(|row| row.item_type == "pull_request"),
+            "type:draft" => rows.retain(|row| row.item_type == "draft_issue"),
+            _ => {}
+        }
+    }
+}
+
+fn burn_up_series(
+    rows: &[ProjectInsightsDataRow],
+    start: NaiveDate,
+    end: NaiveDate,
+) -> Vec<ProjectInsightsSeries> {
+    let mut total_points = Vec::new();
+    let mut completed_points = Vec::new();
+    let mut cursor = start;
+    while cursor <= end {
+        let total = rows
+            .iter()
+            .filter(|row| row.created_at.date_naive() <= cursor)
+            .count() as i64;
+        let completed = rows
+            .iter()
+            .filter(|row| {
+                row.completed_at
+                    .is_some_and(|value| value.date_naive() <= cursor)
+            })
+            .count() as i64;
+        total_points.push(ProjectInsightsPoint {
+            date: cursor,
+            value: total,
+        });
+        completed_points.push(ProjectInsightsPoint {
+            date: cursor,
+            value: completed,
+        });
+        cursor += Duration::days(1);
+    }
+    vec![
+        ProjectInsightsSeries {
+            id: "completed".to_owned(),
+            name: "Completed".to_owned(),
+            color: "var(--ok)".to_owned(),
+            points: completed_points,
+        },
+        ProjectInsightsSeries {
+            id: "total".to_owned(),
+            name: "Total items".to_owned(),
+            color: "var(--accent)".to_owned(),
+            points: total_points,
+        },
+    ]
+}
+
+async fn latest_project_status(
+    pool: &PgPool,
+    project_id: Uuid,
+) -> Result<Option<ProjectStatusSummary>, ProjectsError> {
+    let row = sqlx::query(
+        r#"
+        SELECT status, body, created_at
+        FROM project_status_updates
+        WHERE project_id = $1
+        ORDER BY created_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(project_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|row| {
+        let status: String = row.get("status");
+        ProjectStatusSummary {
+            label: status_label(&status),
+            status,
+            body: row.get("body"),
+            created_at: row.get("created_at"),
+        }
+    }))
 }
 
 async fn project_items_for_detail(

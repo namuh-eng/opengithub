@@ -45,6 +45,227 @@ async fn database_pool() -> Option<PgPool> {
     Some(pool)
 }
 
+#[tokio::test]
+async fn project_insights_read_contract_filters_private_items_and_returns_burnup_data() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping project insights scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("insights{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let member = create_user(&pool, &format!("{marker}-member")).await;
+    let outsider = create_user(&pool, &format!("{marker}-outsider")).await;
+    let member_cookie = cookie_header(&pool, &config, &member).await;
+    let outsider_cookie = cookie_header(&pool, &config, &outsider).await;
+
+    let org = create_organization(
+        &pool,
+        CreateOrganization {
+            slug: marker.clone(),
+            display_name: "Insights Org".to_owned(),
+            description: None,
+            owner_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("organization should create");
+    sqlx::query(
+        "INSERT INTO organization_memberships (organization_id, user_id, role) VALUES ($1, $2, 'member')",
+    )
+    .bind(org.id)
+    .bind(member.id)
+    .execute(&pool)
+    .await
+    .expect("member should insert");
+
+    let public_repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::Organization { id: org.id },
+            name: format!("public-{}", Uuid::new_v4().simple()),
+            description: None,
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("public repository should create");
+    let private_repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::Organization { id: org.id },
+            name: format!("private-{}", Uuid::new_v4().simple()),
+            description: None,
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("private repository should create");
+    grant_repository_permission(
+        &pool,
+        private_repo.id,
+        member.id,
+        RepositoryRole::Read,
+        "direct",
+    )
+    .await
+    .expect("member repository permission should grant");
+
+    let project_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO projects (owner_organization_id, number, title, short_description, visibility, created_by_user_id)
+        VALUES ($1, 88, 'Insights launch board', 'Burn-up source data', 'public', $2)
+        RETURNING id
+        "#,
+    )
+    .bind(org.id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("project should insert");
+    sqlx::query(
+        "INSERT INTO project_permissions (project_id, user_id, role) VALUES ($1, $2, 'write')",
+    )
+    .bind(project_id)
+    .bind(member.id)
+    .execute(&pool)
+    .await
+    .expect("project permission should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO project_status_updates (project_id, author_user_id, status, body)
+        VALUES ($1, $2, 'at_risk', 'Scope grew after beta feedback')
+        "#,
+    )
+    .bind(project_id)
+    .bind(owner.id)
+    .execute(&pool)
+    .await
+    .expect("status update should insert");
+    let custom_chart_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO project_charts (project_id, owner_user_id, title, description, chart_type, filter, visibility)
+        VALUES ($1, $2, 'Closed issues by week', 'Shared chart summary', 'line', 'is:closed type:issue', 'project')
+        RETURNING id
+        "#,
+    )
+    .bind(project_id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("custom chart should insert");
+
+    sqlx::query(
+        r#"
+        INSERT INTO project_items (project_id, item_type, title, position, created_at)
+        VALUES ($1, 'draft_issue', 'Draft launch checklist', 1, now() - interval '8 days')
+        "#,
+    )
+    .bind(project_id)
+    .execute(&pool)
+    .await
+    .expect("draft item should insert");
+    let public_issue_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO issues (repository_id, number, title, body, state, author_user_id, closed_at, created_at)
+        VALUES ($1, 11, 'Ship public issue', 'Visible to everyone', 'closed', $2, now() - interval '2 days', now() - interval '7 days')
+        RETURNING id
+        "#,
+    )
+    .bind(public_repo.id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("public issue should insert");
+    let private_issue_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO issues (repository_id, number, title, body, state, author_user_id, created_at)
+        VALUES ($1, 12, 'Private security issue', 'Only repository readers should see this', 'open', $2, now() - interval '6 days')
+        RETURNING id
+        "#,
+    )
+    .bind(private_repo.id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("private issue should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO project_items (project_id, item_type, issue_id, position, created_at)
+        VALUES ($1, 'issue', $2, 2, now() - interval '7 days'),
+               ($1, 'issue', $3, 3, now() - interval '6 days')
+        "#,
+    )
+    .bind(project_id)
+    .bind(public_issue_id)
+    .bind(private_issue_id)
+    .execute(&pool)
+    .await
+    .expect("linked project items should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let (status, _, body) = get_json(
+        app.clone(),
+        &format!(
+            "/api/projects/{project_id}/insights?range=2w&filter=is:closed%20type:issue&table=true"
+        ),
+        Some(&member_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["project"]["title"], "Insights launch board");
+    assert_eq!(body["navigation"]["selectedItem"], "insights");
+    assert_eq!(body["selectedChart"]["id"], "burn-up");
+    assert_eq!(body["defaultCharts"][0]["title"], "Burn up");
+    assert_eq!(body["customCharts"][0]["id"], custom_chart_id.to_string());
+    assert_eq!(body["range"]["key"], "2w");
+    assert_eq!(
+        body["filter"]["tokens"].as_array().expect("tokens").len(),
+        2
+    );
+    assert_eq!(body["matchingItemCount"], 1);
+    assert_eq!(body["dataRows"][0]["title"], "Ship public issue");
+    assert_eq!(body["latestStatus"]["label"], "At risk");
+    assert_eq!(body["viewerPermissions"]["canCreateCharts"], true);
+    assert!(body["series"]
+        .as_array()
+        .expect("series")
+        .iter()
+        .any(|series| series["id"] == "completed"
+            && !series["points"].as_array().expect("points").is_empty()));
+
+    let (status, _, body) = get_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/insights?range=1m"),
+        Some(&outsider_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["viewerPermissions"]["canCreateCharts"], false);
+    assert_eq!(body["matchingItemCount"], 2);
+    assert!(!body["dataRows"]
+        .as_array()
+        .expect("rows")
+        .iter()
+        .any(|row| row["title"] == "Private security issue"));
+
+    let (status, _, body) = get_json(
+        app,
+        &format!(
+            "/api/projects/{project_id}/insights?range=custom&start=2026-04-01&end=2027-05-10"
+        ),
+        Some(&member_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "invalid_filter");
+}
+
 fn app_config() -> AppConfig {
     AppConfig {
         app_url: Url::parse("http://localhost:3015").expect("app URL"),

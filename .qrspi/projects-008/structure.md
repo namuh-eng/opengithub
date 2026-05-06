@@ -6,7 +6,7 @@
 
 ## Phase 1: Insights Read Contract - default burn-up and chart data are inspectable
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the authenticated Rust read contract for Project Insights. The response exposes project context, chart navigation, default Burn up chart, matching item count, range state, accessible data-table rows, custom chart summaries, latest project status, viewer capabilities, and privacy-filtered source items without mutation UI yet.
 

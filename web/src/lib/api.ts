@@ -506,6 +506,108 @@ export type ProjectArchivedItemsQuery = {
   pageSize?: number | null;
 };
 
+export type ProjectInsightsQuery = {
+  chart?: string | null;
+  range?: "2w" | "1m" | "3m" | "max" | "custom" | string | null;
+  start?: string | null;
+  end?: string | null;
+  filter?: string | null;
+  table?: boolean | null;
+};
+
+export type ProjectInsightsChartSummary = {
+  id: string;
+  title: string;
+  description: string | null;
+  chartType: string;
+  href: string;
+  visibility: string;
+  sharedWithViewers: boolean;
+  updatedAt: string;
+};
+
+export type ProjectInsightsChart = ProjectInsightsChartSummary & {
+  isDefault: boolean;
+  configuration: Record<string, unknown>;
+};
+
+export type ProjectInsightsRange = {
+  key: string;
+  label: string;
+  start: string;
+  end: string;
+  options: Array<{
+    key: string;
+    label: string;
+    href: string;
+    active: boolean;
+  }>;
+};
+
+export type ProjectInsightsFilter = {
+  query: string | null;
+  tokens: string[];
+  unsupportedTokens: string[];
+};
+
+export type ProjectInsightsSeries = {
+  id: string;
+  name: string;
+  color: string;
+  points: Array<{
+    date: string;
+    value: number;
+  }>;
+};
+
+export type ProjectInsightsDataRow = {
+  itemId: string;
+  itemType: string;
+  title: string;
+  state: string | null;
+  repository: ProjectRepositoryScopeSummary | null;
+  createdAt: string;
+  completedAt: string | null;
+};
+
+export type ProjectInsights = {
+  project: ProjectWorkspaceProject;
+  navigation: {
+    returnHref: string;
+    insightsHref: string;
+    selectedItem: string;
+  };
+  selectedChart: ProjectInsightsChart;
+  defaultCharts: ProjectInsightsChartSummary[];
+  customCharts: ProjectInsightsChartSummary[];
+  range: ProjectInsightsRange;
+  filter: ProjectInsightsFilter;
+  matchingItemCount: number;
+  series: ProjectInsightsSeries[];
+  dataRows: ProjectInsightsDataRow[];
+  latestStatus: ProjectStatusSummary | null;
+  viewerPermissions: {
+    authenticated: boolean;
+    viewerRole: string | null;
+    canViewInsights: boolean;
+    canCreateCharts: boolean;
+    canEditCharts: boolean;
+    canDeleteCharts: boolean;
+    canShareCharts: boolean;
+    canViewStatus: boolean;
+  };
+  cache: {
+    cacheKey: string;
+    computedAt: string;
+    stale: boolean;
+  };
+  unavailableReason: string | null;
+};
+
+export type ProjectInsightsFetchResult =
+  | { ok: true; insights: ProjectInsights }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type ProjectWorkspaceQuery = {
   view?: string | number | null;
   q?: string | null;
@@ -7785,6 +7887,33 @@ function projectWorkflowSettingsPath(projectId: string): string {
   return `/api/projects/${encodeURIComponent(projectId)}/workflows`;
 }
 
+function projectInsightsPath(
+  projectId: string,
+  query: ProjectInsightsQuery = {},
+): string {
+  const params = new URLSearchParams();
+  if (query.chart?.trim()) {
+    params.set("chart", query.chart.trim());
+  }
+  if (query.range?.trim()) {
+    params.set("range", query.range.trim());
+  }
+  if (query.start?.trim()) {
+    params.set("start", query.start.trim());
+  }
+  if (query.end?.trim()) {
+    params.set("end", query.end.trim());
+  }
+  if (query.filter?.trim()) {
+    params.set("filter", query.filter.trim());
+  }
+  if (query.table != null) {
+    params.set("table", String(query.table));
+  }
+  const suffix = params.toString();
+  return `/api/projects/${encodeURIComponent(projectId)}/insights${suffix ? `?${suffix}` : ""}`;
+}
+
 function projectItemDetailPath(projectId: string, itemId: string): string {
   return `/api/projects/${encodeURIComponent(projectId)}/items/${encodeURIComponent(itemId)}`;
 }
@@ -8155,6 +8284,50 @@ export async function getProjectSettingsFromCookie(
   return {
     ok: true,
     settings: (await response.json()) as ProjectSettings,
+  };
+}
+
+export async function getProjectInsightsFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  query: ProjectInsightsQuery = {},
+): Promise<ProjectInsightsFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}${projectInsightsPath(projectId, query)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Project Insights are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let body: ApiErrorEnvelope | null = null;
+    try {
+      body = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      body = null;
+    }
+    return {
+      ok: false,
+      status: body?.status ?? response.status,
+      code: body?.error.code ?? null,
+      message: body?.error.message ?? "Project Insights could not be loaded.",
+    };
+  }
+
+  return {
+    ok: true,
+    insights: (await response.json()) as ProjectInsights,
   };
 }
 
@@ -8635,6 +8808,48 @@ async function getProjectWorkflowSettingsByNumberFromCookie(
   return getProjectWorkflowSettingsFromCookie(cookie, project.id);
 }
 
+async function getProjectInsightsByNumberFromCookie(
+  cookie: string | null | undefined,
+  listPath: string,
+  projectNumber: number,
+  query: ProjectInsightsQuery = {},
+): Promise<ProjectInsightsFetchResult> {
+  const openProjects = await getProjectListFromCookie(cookie, listPath, {
+    state: "open",
+    pageSize: 100,
+  });
+  const closedProjects =
+    openProjects.ok &&
+    openProjects.projects.items.some(
+      (project) => project.number === projectNumber,
+    )
+      ? null
+      : await getProjectListFromCookie(cookie, listPath, {
+          state: "closed",
+          pageSize: 100,
+        });
+  const candidates = [
+    ...(openProjects.ok ? openProjects.projects.items : []),
+    ...(closedProjects?.ok ? closedProjects.projects.items : []),
+  ];
+  const project = candidates.find((item) => item.number === projectNumber);
+
+  if (!project) {
+    const failure = !openProjects.ok ? openProjects : closedProjects;
+    return {
+      ok: false,
+      status: failure && !failure.ok ? failure.status : 404,
+      code: failure && !failure.ok ? failure.code : "not_found",
+      message:
+        failure && !failure.ok
+          ? failure.message
+          : "Project Insights could not be found.",
+    };
+  }
+
+  return getProjectInsightsFromCookie(cookie, project.id, query);
+}
+
 export function getUserProjectWorkspaceFromCookie(
   cookie: string | null | undefined,
   username: string,
@@ -8685,6 +8900,20 @@ export function getUserProjectWorkflowSettingsFromCookie(
   );
 }
 
+export function getUserProjectInsightsFromCookie(
+  cookie: string | null | undefined,
+  username: string,
+  projectNumber: number,
+  query: ProjectInsightsQuery = {},
+): Promise<ProjectInsightsFetchResult> {
+  return getProjectInsightsByNumberFromCookie(
+    cookie,
+    `/api/users/${encodeURIComponent(username)}/projects`,
+    projectNumber,
+    query,
+  );
+}
+
 export function getOrganizationProjectWorkspaceFromCookie(
   cookie: string | null | undefined,
   org: string,
@@ -8732,6 +8961,20 @@ export function getOrganizationProjectWorkflowSettingsFromCookie(
     cookie,
     `/api/orgs/${encodeURIComponent(org)}/projects`,
     projectNumber,
+  );
+}
+
+export function getOrganizationProjectInsightsFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  projectNumber: number,
+  query: ProjectInsightsQuery = {},
+): Promise<ProjectInsightsFetchResult> {
+  return getProjectInsightsByNumberFromCookie(
+    cookie,
+    `/api/orgs/${encodeURIComponent(org)}/projects`,
+    projectNumber,
+    query,
   );
 }
 

@@ -22,9 +22,9 @@ use crate::{
         delete_project_for_actor, delete_project_item_comment_for_actor,
         delete_project_iteration_break_for_actor, invoke_project_automation_for_actor,
         link_project_repository_for_actor, organization_projects,
-        project_conversion_targets_for_actor, project_field_settings, project_item_detail,
-        project_items_archived, project_settings, project_workflow_settings, project_workspace,
-        remove_project_item_for_actor, reopen_project_for_actor,
+        project_conversion_targets_for_actor, project_field_settings, project_insights,
+        project_item_detail, project_items_archived, project_settings, project_workflow_settings,
+        project_workspace, remove_project_item_for_actor, reopen_project_for_actor,
         reorder_project_field_options_for_actor, repository_projects,
         restore_project_item_for_actor, unlink_project_repository_for_actor,
         update_project_access_grant_for_actor, update_project_draft_item_for_actor,
@@ -41,16 +41,16 @@ use crate::{
         ProjectDraftConvertRequest, ProjectDraftUpdateRequest, ProjectFieldCreateRequest,
         ProjectFieldDeleteRequest, ProjectFieldOptionCreateRequest,
         ProjectFieldOptionReorderRequest, ProjectFieldOptionUpdateRequest, ProjectFieldSettings,
-        ProjectFieldUpdateRequest, ProjectItemAddRequest, ProjectItemCommentCreateRequest,
-        ProjectItemCommentUpdateRequest, ProjectItemDetail, ProjectItemFieldValueRequest,
-        ProjectItemPositionRequest, ProjectItemsArchivedQuery, ProjectItemsBulkAddRequest,
-        ProjectIterationBreakCreateRequest, ProjectIterationCreateRequest,
-        ProjectIterationSettingsRequest, ProjectIterationUpdateRequest, ProjectLifecycleRequest,
-        ProjectList, ProjectListQuery, ProjectRepositoryLinkRequest, ProjectRoadmapSettingsRequest,
-        ProjectSettings, ProjectSettingsUpdateRequest, ProjectStatusUpdateRequest,
-        ProjectTemplateUpdateRequest, ProjectViewLayoutRequest, ProjectViewStateRequest,
-        ProjectWorkflowSettings, ProjectWorkflowUpdateRequest, ProjectWorkspace,
-        ProjectWorkspaceQuery, ProjectsError,
+        ProjectFieldUpdateRequest, ProjectInsights, ProjectInsightsQuery, ProjectItemAddRequest,
+        ProjectItemCommentCreateRequest, ProjectItemCommentUpdateRequest, ProjectItemDetail,
+        ProjectItemFieldValueRequest, ProjectItemPositionRequest, ProjectItemsArchivedQuery,
+        ProjectItemsBulkAddRequest, ProjectIterationBreakCreateRequest,
+        ProjectIterationCreateRequest, ProjectIterationSettingsRequest,
+        ProjectIterationUpdateRequest, ProjectLifecycleRequest, ProjectList, ProjectListQuery,
+        ProjectRepositoryLinkRequest, ProjectRoadmapSettingsRequest, ProjectSettings,
+        ProjectSettingsUpdateRequest, ProjectStatusUpdateRequest, ProjectTemplateUpdateRequest,
+        ProjectViewLayoutRequest, ProjectViewStateRequest, ProjectWorkflowSettings,
+        ProjectWorkflowUpdateRequest, ProjectWorkspace, ProjectWorkspaceQuery, ProjectsError,
     },
     AppState,
 };
@@ -62,6 +62,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/projects/:project_id/workspace",
             get(project_workspace_route),
+        )
+        .route(
+            "/api/projects/:project_id/insights",
+            get(project_insights_route),
         )
         .route(
             "/api/projects/:project_id/settings",
@@ -255,6 +259,17 @@ struct ProjectItemsArchivedRouteQuery {
     page_size: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectInsightsRouteQuery {
+    chart: Option<String>,
+    range: Option<String>,
+    start: Option<chrono::NaiveDate>,
+    end: Option<chrono::NaiveDate>,
+    filter: Option<String>,
+    table: Option<bool>,
+}
+
 impl ProjectWorkspaceRouteQuery {
     fn as_domain_query(&self) -> ProjectWorkspaceQuery<'_> {
         ProjectWorkspaceQuery {
@@ -276,6 +291,19 @@ impl ProjectItemsArchivedRouteQuery {
             query: self.q.as_deref(),
             page: self.page,
             page_size: self.page_size,
+        }
+    }
+}
+
+impl ProjectInsightsRouteQuery {
+    fn as_domain_query(&self) -> ProjectInsightsQuery<'_> {
+        ProjectInsightsQuery {
+            chart: self.chart.as_deref(),
+            range: self.range.as_deref(),
+            start: self.start,
+            end: self.end,
+            filter: self.filter.as_deref(),
+            table: self.table,
         }
     }
 }
@@ -382,6 +410,25 @@ async fn project_workspace_route(
     .await
     .map_err(map_projects_error)?;
     Ok(Json(workspace))
+}
+
+async fn project_insights_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(project_id): Path<Uuid>,
+    Query(query): Query<ProjectInsightsRouteQuery>,
+) -> Result<Json<ProjectInsights>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let insights = project_insights(
+        pool,
+        project_id,
+        actor.map(|user| user.id),
+        query.as_domain_query(),
+    )
+    .await
+    .map_err(map_projects_error)?;
+    Ok(Json(insights))
 }
 
 async fn project_item_detail_route(

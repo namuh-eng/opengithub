@@ -7389,5 +7389,22 @@
       "Probe long README/status Markdown, private repository links, organization policy visibility locks, default repository issue routing, duplicate repository links, and removing the active default repository.",
       "Probe large access lists, team membership drift, foreign-team denial, last-admin protection, read-only and writer denial boundaries, template copy behavior, close/reopen races, delete privacy for public/private projects, audit rows, keyboard operation, and mobile settings layout."
     ]
+  },
+  {
+    "feature_id": "projects-008",
+    "tests_written": [
+      "Completed Phase 1 Insights Read Contract without marking projects-008 build_pass=true.",
+      "Added additive project_charts, project_chart_revisions, and project_chart_series_cache schema plus indexes for chart lookup/cache and project item chart windows.",
+      "Added Rust GET /api/projects/{project_id}/insights with project context, default Burn up chart, custom chart summaries, range/filter state, matching item count, burn-up series, accessible data rows, latest status, viewer capabilities, and private repository item filtering.",
+      "Added typed web API DTOs plus signed-cookie user/org project-number Insights helpers.",
+      "Added focused Projects contract coverage for default burn-up data, filter tokens, custom chart summaries, status exposure, read-only capabilities, private item filtering, and invalid custom range errors.",
+      "Verification passed: cargo fmt --all; cargo check -p opengithub-api --tests; web TypeScript; focused Biome; focused Insights contract test compiled and passed under the DB guard; full make check; full make test with Cargo tests plus 574 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Rerun the focused Insights contract test against a clean migrated credentialed TEST_DATABASE_URL; local Postgres on localhost:55432 rejected the configured postgres password, so live DB assertions self-skipped.",
+      "Browser smoke was skipped for Phase 1 because this is API-first; Phase 2 owns the Editorial Insights page and screenshot evidence.",
+      "Probe large projects, empty/no-date projects, range boundary dates, unsupported filter tokens, private repository item filtering for anonymous/public viewers, custom chart visibility, stale cache metadata, status exposure, and series/data-table accessibility once the UI phase lands.",
+      "Phases 2-6 still own the Insights UI, filters/ranges/custom range/data table interactions, custom chart mutations, sharing/status integration, API docs, final browser evidence, QA handoff, and build_pass bookkeeping."
+    ]
   }
 ]
