@@ -2740,6 +2740,143 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-wiki-pages-index",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/wiki/_pages",
+    title: "List repository wiki pages",
+    description:
+      "Returns the editor-facing pages index with all non-special wiki pages, supported markup formats, viewer write capability, clone URL metadata, and concrete links for page detail, edit, and New Page routes.",
+    auth: "Signed opengithub session cookie with repository read access; write controls require repository write or admin permission",
+    response: `{
+  "repository": { "ownerLogin": "mona", "name": "octo-app", "wikiEnabled": true },
+  "viewer": { "permission": "write", "canEditWiki": true },
+  "pages": [
+    {
+      "id": "page_01",
+      "title": "Architecture Guide",
+      "slug": "Architecture Guide",
+      "href": "/mona/octo-app/wiki/Architecture%20Guide",
+      "editHref": "/mona/octo-app/wiki/Architecture%20Guide/_edit",
+      "updatedAt": "2026-05-06T00:00:00Z"
+    }
+  ],
+  "supportedMarkupFormats": [{ "mode": "markdown", "label": "Markdown", "extension": ".md" }]
+}`,
+    notes: [
+      "The browser sorts rows by title and hides _Sidebar/_Footer from the normal pages list while still allowing those special pages to be edited directly.",
+      "Readers receive the same list data without New Page or Edit affordances; mutation endpoints remain protected by Rust session and permission checks.",
+      "Disabled wikis and unauthorized private repositories return the standard repository-safe error envelope and do not expose storage paths or session metadata.",
+    ],
+  },
+  {
+    id: "repo-wiki-page-edit-read",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/wiki/{slug}/edit",
+    title: "Read repository wiki edit draft",
+    description:
+      "Returns the latest editable source for a selected wiki page, including title, slug, Markdown, latest revision id, edit mode, revision metadata, and save/preview links.",
+    auth: "Signed opengithub session cookie with repository write or admin permission",
+    response: `{
+  "page": {
+    "id": "page_01",
+    "title": "Architecture Guide",
+    "slug": "Architecture Guide",
+    "markdown": "# Architecture Guide\\n\\n## Services\\n",
+    "editMode": "markdown",
+    "latestRevisionId": "rev_01"
+  },
+  "supportedMarkupFormats": [{ "mode": "markdown", "label": "Markdown", "extension": ".md" }]
+}`,
+    notes: [
+      "Readers and anonymous callers cannot fetch editable source; private repository existence follows the same safe 401/403/404 boundaries as repository reads.",
+      "The latestRevisionId is required by PATCH for stale-edit conflict detection.",
+      "The response contains source Markdown only, never rendered cache storage paths, OAuth secrets, session rows, or local Git filesystem paths.",
+    ],
+  },
+  {
+    id: "repo-wiki-preview",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/wiki/preview",
+    title: "Preview repository wiki Markdown",
+    description:
+      "Renders a wiki draft through the Rust Markdown sanitizer without persisting a revision, cache row, image asset row, activity event, audit event, or local Git commit.",
+    auth: "Signed opengithub session cookie with repository write or admin permission",
+    request: `{
+  "markdown": "## Preview\\n\\n![Diagram](https://images.example/diagram.png)",
+  "editMode": "markdown"
+}`,
+    response: `{
+  "html": "<h2 id=\\"preview\\">Preview</h2><p><img src=\\"https://images.example/diagram.png\\" alt=\\"Diagram\\"></p>",
+  "outline": [{ "id": "preview", "level": 2, "text": "Preview", "href": "#preview" }]
+}`,
+    notes: [
+      "Only supported markup modes are accepted; unsupported modes return validation_failed with a stable 422 error envelope.",
+      "Preview output is sanitized by Rust and is the only HTML the browser renders; the client-side editor is not trusted as the sanitizer.",
+      "Preview does not write wiki_page_revisions, wiki_assets, repository_activity_events, audit_events, rendered_markdown_cache, or wiki_git_commits.",
+    ],
+  },
+  {
+    id: "repo-wiki-page-create",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/wiki/pages",
+    title: "Create repository wiki page",
+    description:
+      "Creates a wiki page from an editor draft, validates title/body/message/mode, appends a revision, records linked image references, refreshes rendered Markdown caches, writes audit/activity rows, commits to the local bare wiki repository, and returns the rendered page redirect.",
+    auth: "Signed opengithub session cookie with repository write or admin permission",
+    request: `{
+  "title": "Operations Guide",
+  "markdown": "# Operations\\n\\n![Deploy map](https://images.example/deploy.png)",
+  "message": "Create operations guide",
+  "editMode": "markdown"
+}`,
+    response: `{
+  "page": {
+    "title": "Operations Guide",
+    "slug": "Operations Guide",
+    "href": "/mona/octo-app/wiki/Operations%20Guide",
+    "revision": { "id": "rev_02", "shortOid": "f00ba47" }
+  },
+  "gitCommit": { "shortOid": "f00ba47", "branch": "master" },
+  "redirectHref": "/mona/octo-app/wiki/Operations%20Guide"
+}`,
+    notes: [
+      "Duplicate normalized slugs return conflict instead of overwriting another page.",
+      "Linked Markdown images are recorded in wiki_assets with storage_kind=remote_url; binary upload storage is intentionally outside this feature.",
+      "Successful saves write repository.wiki_page.save audit events and repository activity rows; failed local Git publishing aborts the live page update.",
+    ],
+  },
+  {
+    id: "repo-wiki-page-update",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/wiki/{slug}",
+    title: "Update repository wiki page",
+    description:
+      "Updates an existing wiki page through the same publishing path as create, including rename validation, expected revision conflict checks, image reference refresh, cache invalidation, audit/activity rows, and local bare Git commit metadata.",
+    auth: "Signed opengithub session cookie with repository write or admin permission",
+    request: `{
+  "title": "Architecture Guide",
+  "markdown": "# Architecture Guide\\n\\nUpdated services.",
+  "message": "Update architecture guide",
+  "editMode": "markdown",
+  "expectedRevisionId": "rev_01"
+}`,
+    response: `{
+  "page": {
+    "title": "Architecture Guide",
+    "slug": "Architecture Guide",
+    "href": "/mona/octo-app/wiki/Architecture%20Guide",
+    "revision": { "id": "rev_03", "shortOid": "c0ffee1" }
+  },
+  "gitCommit": { "shortOid": "c0ffee1", "branch": "master" },
+  "redirectHref": "/mona/octo-app/wiki/Architecture%20Guide"
+}`,
+    notes: [
+      "Stale expectedRevisionId values return 409 conflict so the browser can preserve the draft and ask the editor to refresh.",
+      "Renames are allowed only when the normalized target slug does not collide with another page; _Sidebar and _Footer keep their special rendering semantics.",
+      "Only commits that update the wiki default branch become live pages; the API does not expose local filesystem paths, credentials, or raw session data.",
+    ],
+  },
+  {
     id: "repo-access-read",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/settings/access",

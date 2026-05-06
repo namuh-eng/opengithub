@@ -7624,5 +7624,20 @@
       "Probe concurrent rename conflicts, _Sidebar/_Footer special-page saves, nested slug normalization, unsafe or relative image URLs, very large pages/images, keyboard-only toolbar/tab/save traversal, mobile wrapping, and private repository permission leakage.",
       "Phase 5 still owns API docs, final signed-in E2E, QA handoff consolidation, and wiki-002 build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "wiki-002",
+    "tests_written": [
+      "Completed Phase 5 final docs, E2E coverage, QA handoff, and build-pass bookkeeping for wiki-002.",
+      "Added /docs/api coverage for wiki pages index, edit-source fetch, preview, create, update, validation errors, stale revision conflicts, supported Markdown mode, local bare Git publishing semantics, audit/activity side effects, and linked image reference tracking.",
+      "Added signed-session Playwright coverage in web/tests/e2e/repository-wiki-editing.spec.ts for pages index, New Page, image insertion, Rust-rendered preview, save redirect, existing-page edit/save, direct API stale conflict handling, screenshots, no dead controls, and desktop/mobile no-overflow.",
+      "Retained focused Rust repository_wiki_write_contract coverage for create/edit/preview, reader denial, stale conflicts, unsupported markup, duplicate slugs, local Git commit metadata, wiki_assets persistence, audit events, and no secret leakage.",
+      "Updated prd.json and .qrspi/wiki-002/structure.md to mark wiki-002 complete while leaving qa_pass=false."
+    ],
+    "needs_deeper_qa": [
+      "Run web/tests/e2e/repository-wiki-editing.spec.ts against a clean migrated credentialed TEST_DATABASE_URL; prior local runs are blocked by the localhost:55432 postgres credential issue and the full make test-e2e wrapper stalls under that environment.",
+      "Inspect the actual local bare {owner}-{repo}.wiki.git repository contents after create/update saves and verify DB rollback if Git commit publishing fails because of disk or permission errors.",
+      "Probe concurrent browser edit conflicts, title/slug normalization with nested paths and punctuation, duplicate rename races, _Sidebar/_Footer special page saves, unsafe Markdown and image URLs, very large pages, keyboard-only editor traversal, mobile wrapping, disabled wiki behavior, and private repository permission leakage."
+    ]
   }
 ]

@@ -360,7 +360,7 @@ describe("ApiDocsPage", () => {
     ).toBeVisible();
     expect(screen.getByText("/api/repos/{owner}/{repo}/wiki")).toBeVisible();
     expect(
-      screen.getByText("/api/repos/{owner}/{repo}/wiki/{slug}"),
+      screen.getAllByText("/api/repos/{owner}/{repo}/wiki/{slug}")[0],
     ).toBeVisible();
     expect(
       screen.getByRole("heading", { name: "Read repository wiki Home" }),
@@ -380,6 +380,33 @@ describe("ApiDocsPage", () => {
     ).toBeVisible();
     expect(
       screen.getByText(/full wiki Git transport is intentionally outside/),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/wiki/_pages"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/wiki/{slug}/edit"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/wiki/preview"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/wiki/pages"),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Create repository wiki page" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Duplicate normalized slugs return conflict/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Linked Markdown images are recorded in wiki_assets/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Preview does not write wiki_page_revisions/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Stale expectedRevisionId values return 409 conflict/),
     ).toBeVisible();
     expect(
       screen.getByText("/api/projects/{project_id}/settings/access"),

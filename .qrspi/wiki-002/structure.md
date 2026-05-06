@@ -87,7 +87,7 @@
 
 ## Phase 5: Docs, E2E, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `wiki-002` only after pages index, create, edit, preview, save, local Git-backed publishing, markup validation, image reference tracking, docs, screenshots, and QA handoff are complete.
 
