@@ -87,6 +87,12 @@ export function RepositoryActionsRunnersPage({
   const [cancelInProgress, setCancelInProgress] = useState(
     settings?.queue.cancelInProgress ?? false,
   );
+  const [githubTokenPermission, setGithubTokenPermission] = useState(
+    settings?.workflowPermissions.githubTokenPermission ?? "read",
+  );
+  const [allowPullRequestApproval, setAllowPullRequestApproval] = useState(
+    settings?.workflowPermissions.allowPullRequestApproval ?? false,
+  );
   const [message, setMessage] = useState(
     settingsResult.ok ? "" : settingsResult.message,
   );
@@ -129,12 +135,14 @@ export function RepositoryActionsRunnersPage({
   async function saveSettings() {
     const payload = await postAction({
       action: "update-settings",
+      allowPullRequestApproval,
       cancelInProgress,
       concurrencyLimit,
+      githubTokenPermission,
     });
     if (payload?.queue) {
       setSettings(payload as RepositoryActionsRunnerSettings);
-      setMessage("Runner concurrency settings saved.");
+      setMessage("Actions workflow settings saved.");
     }
   }
 
@@ -291,6 +299,90 @@ export function RepositoryActionsRunnersPage({
             Save scheduling settings
           </button>
         </div>
+      </section>
+
+      <section className="card p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="t-label" style={{ color: "var(--ink-3)" }}>
+              Workflow permissions
+            </p>
+            <h2 className="t-h2 mt-2">GITHUB_TOKEN policy</h2>
+            <p
+              className="t-sm mt-2 max-w-2xl"
+              style={{ color: "var(--ink-2)" }}
+            >
+              New workflow runs mint an opengithub-owned token with these
+              repository scopes. Secrets remain masked and environment-scoped
+              values are held until protection rules approve the job.
+            </p>
+          </div>
+          <span className="chip soft">
+            {settings.workflowPermissions.githubTokenScopes.length} scopes
+          </span>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_1fr]">
+          <fieldset className="grid gap-3">
+            <legend className="t-label">Default token access</legend>
+            {[
+              ["read", "Read repository contents and metadata"],
+              [
+                "write",
+                "Read and write repository contents, checks, packages, issues, and pull requests",
+              ],
+            ].map(([value, label]) => (
+              <label className="flex items-start gap-3" key={value}>
+                <input
+                  checked={githubTokenPermission === value}
+                  name="github-token-permission"
+                  onChange={() => setGithubTokenPermission(value)}
+                  type="radio"
+                  value={value}
+                />
+                <span className="t-sm">{label}</span>
+              </label>
+            ))}
+            <label className="mt-2 flex items-start gap-3">
+              <input
+                checked={allowPullRequestApproval}
+                disabled={githubTokenPermission !== "write"}
+                onChange={(event) =>
+                  setAllowPullRequestApproval(event.target.checked)
+                }
+                type="checkbox"
+              />
+              <span className="t-sm">
+                Allow Actions to create and approve pull requests
+              </span>
+            </label>
+          </fieldset>
+
+          <div>
+            <p className="t-label">Minted scopes</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {settings.workflowPermissions.githubTokenScopes.map((scope) => (
+                <span className="chip soft t-mono-sm" key={scope}>
+                  {scope}
+                </span>
+              ))}
+            </div>
+            <p className="t-xs mt-4">
+              The Rust API persists this policy with runner settings and
+              includes it in the Actions settings contract used by job
+              provisioning.
+            </p>
+          </div>
+        </div>
+
+        <button
+          className="btn primary mt-5"
+          disabled={pending === "update-settings"}
+          onClick={saveSettings}
+          type="button"
+        >
+          Save workflow permissions
+        </button>
       </section>
     </div>
   );

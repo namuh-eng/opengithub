@@ -7972,5 +7972,25 @@
       "Probe real runner log command parsing for escaped workflow-command values, multiline annotations, duplicate chunks, secret redaction, and annotation counts after reruns.",
       "Verify PR Checks page mobile and keyboard-only behavior with many jobs, many annotations, long paths/messages, failed rerun authorization, private repository access, and reader/write permission boundaries."
     ]
+  },
+  {
+    "feature_id": "actions-010",
+    "tests_written": [
+      "Added migration 202605070005_actions_workflow_permissions for workflow_token_permission, allow_actions_approve_pull_requests, and repository environments/protection metadata.",
+      "Extended the Rust Actions runner settings contract with workflowPermissions, persisted GITHUB_TOKEN read/write policy, pull-request approval toggle, and derived token scopes.",
+      "Extended Actions secrets/variables creation to support repository and environment scopes while preserving encrypted write-only values and runtime environment approval blocking.",
+      "Updated the Editorial repository Actions settings UI with read/write workflow permission radios, an Actions PR approval toggle, minted scope chips, and working save flow.",
+      "Updated the Actions secrets UI so new secrets and variables can be created at repository or environment scope.",
+      "Extended API docs, typed Next API helpers, same-origin mutation proxy parsing, focused Rust contracts, and focused Vitest coverage.",
+      "Browser smoke passed on /mona/octo-app/settings/actions against a local API-compatible stub: changed token policy to write, enabled PR approval, saved settings, verified pull-requests:approve scope, assigned queued jobs, checked zero href=#, checked no horizontal overflow, and saved ralph/screenshots/build/actions-010-workflow-permissions.jpg.",
+      "Verification passed: cargo fmt --all, cargo fmt --all --check via make check, cargo check -p opengithub-api --tests, web TypeScript, focused Biome, focused Vitest, full make check, full make test with Cargo tests plus 627 web tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Run full signed-session Playwright after the local TEST_DATABASE_URL path is healthy; local DB-backed assertions self-skip because the test database credential path remains unavailable.",
+      "Verify real runner execution consumes the persisted workflowPermissions contract when minting GITHUB_TOKEN and denies writes when the repository policy is read-only.",
+      "Probe environment secret lifecycle with protected environments, reviewer approval, unapproved jobs, fork pull_request events, duplicate names across repository/environment scopes, and deletion/update ambiguity for same-name cross-scope entries.",
+      "Replace local envelope encryption with the production AWS KMS wrapping adapter before deployment and verify key rotation/audit behavior without leaking ciphertext, fingerprints, or plaintext.",
+      "Check mobile and keyboard-only behavior for the workflow permission radios, PR approval toggle, environment-scoped secret form, and long secret/environment names."
+    ]
   }
 ]

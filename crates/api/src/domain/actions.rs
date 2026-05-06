@@ -934,12 +934,21 @@ pub struct ActionsRunnerQueue {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ActionsWorkflowPermissions {
+    pub github_token_permission: String,
+    pub allow_pull_request_approval: bool,
+    pub github_token_scopes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RepositoryActionsRunnerSettings {
     pub repository: ActionsDashboardRepository,
     pub viewer_permission: Option<String>,
     pub can_manage_runners: bool,
     pub runners: Vec<ActionsRunner>,
     pub queue: ActionsRunnerQueue,
+    pub workflow_permissions: ActionsWorkflowPermissions,
     pub setup: ActionsRunnerSetup,
 }
 
@@ -961,6 +970,8 @@ pub struct CreateActionsRunner {
 pub struct UpdateActionsRunnerSettings {
     pub concurrency_limit: i32,
     pub cancel_in_progress: bool,
+    pub github_token_permission: String,
+    pub allow_pull_request_approval: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3526,6 +3537,7 @@ pub async fn actions_runner_settings_for_viewer(
     let viewer_permission = viewer_permission(pool, &repository, Some(actor_user_id)).await?;
     let runners = actions_runners(pool, repository_id).await?;
     let queue = actions_runner_queue(pool, repository_id).await?;
+    let workflow_permissions = actions_workflow_permissions(pool, repository_id).await?;
     let token = format!("ogr_{}", Uuid::new_v4().simple());
 
     Ok(RepositoryActionsRunnerSettings {
@@ -3540,6 +3552,7 @@ pub async fn actions_runner_settings_for_viewer(
         can_manage_runners: true,
         runners,
         queue,
+        workflow_permissions,
         setup: ActionsRunnerSetup {
             registration_token: Some(token.clone()),
             docker_command: Some(format!(
@@ -3595,20 +3608,30 @@ pub async fn update_actions_runner_settings(
             "concurrency limit must be between 1 and 64".to_owned(),
         ));
     }
+    let github_token_permission =
+        normalize_github_token_permission(&input.github_token_permission)?;
     sqlx::query(
         r#"
         INSERT INTO actions_runner_settings
-            (repository_id, concurrency_limit, cancel_in_progress, updated_by_user_id)
-        VALUES ($1, $2, $3, $4)
+            (
+                repository_id, concurrency_limit, cancel_in_progress,
+                workflow_token_permission, allow_actions_approve_pull_requests,
+                updated_by_user_id
+            )
+        VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (repository_id) DO UPDATE
         SET concurrency_limit = EXCLUDED.concurrency_limit,
             cancel_in_progress = EXCLUDED.cancel_in_progress,
+            workflow_token_permission = EXCLUDED.workflow_token_permission,
+            allow_actions_approve_pull_requests = EXCLUDED.allow_actions_approve_pull_requests,
             updated_by_user_id = EXCLUDED.updated_by_user_id
         "#,
     )
     .bind(repository_id)
     .bind(input.concurrency_limit)
     .bind(input.cancel_in_progress)
+    .bind(&github_token_permission)
+    .bind(input.allow_pull_request_approval)
     .bind(actor_user_id)
     .execute(pool)
     .await?;
@@ -4148,6 +4171,67 @@ async fn actions_runner_queue(
         concurrency_limit: row.get("concurrency_limit"),
         cancel_in_progress: row.get("cancel_in_progress"),
     })
+}
+
+async fn actions_workflow_permissions(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<ActionsWorkflowPermissions, AutomationError> {
+    let row = sqlx::query(
+        r#"
+        SELECT workflow_token_permission, allow_actions_approve_pull_requests
+        FROM actions_runner_settings
+        WHERE repository_id = $1
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_optional(pool)
+    .await?;
+    let permission = row
+        .as_ref()
+        .map(|row| row.get::<String, _>("workflow_token_permission"))
+        .unwrap_or_else(|| "read".to_owned());
+    let allow_pull_request_approval = row
+        .as_ref()
+        .map(|row| row.get::<bool, _>("allow_actions_approve_pull_requests"))
+        .unwrap_or(false);
+    Ok(ActionsWorkflowPermissions {
+        github_token_scopes: github_token_scopes(&permission, allow_pull_request_approval),
+        github_token_permission: permission,
+        allow_pull_request_approval,
+    })
+}
+
+fn normalize_github_token_permission(value: &str) -> Result<String, AutomationError> {
+    match value.trim() {
+        "read" | "read-only" => Ok("read".to_owned()),
+        "write" | "read-write" => Ok("write".to_owned()),
+        _ => Err(AutomationError::InvalidWorkflowDispatch(
+            "GITHUB_TOKEN permission must be read or write".to_owned(),
+        )),
+    }
+}
+
+fn github_token_scopes(permission: &str, allow_pull_request_approval: bool) -> Vec<String> {
+    let mut scopes = vec![
+        "contents:read".to_owned(),
+        "metadata:read".to_owned(),
+        "packages:read".to_owned(),
+    ];
+    if permission == "write" {
+        scopes.extend([
+            "actions:write".to_owned(),
+            "checks:write".to_owned(),
+            "contents:write".to_owned(),
+            "issues:write".to_owned(),
+            "packages:write".to_owned(),
+            "pull-requests:write".to_owned(),
+        ]);
+        if allow_pull_request_approval {
+            scopes.push("pull-requests:approve".to_owned());
+        }
+    }
+    scopes
 }
 
 async fn find_available_runner_for_label(

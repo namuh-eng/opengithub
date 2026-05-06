@@ -324,6 +324,8 @@ async fn actions_runtime_resolution_enforces_policy_and_masks_logs() {
         &repo.name,
         ActionsSecretMutation {
             name: Some("deploy_token".to_owned()),
+            scope_kind: None,
+            scope_name: None,
             value: "runtime-super-secret".to_owned(),
         },
     )
@@ -336,6 +338,8 @@ async fn actions_runtime_resolution_enforces_policy_and_masks_logs() {
         &repo.name,
         ActionsVariableMutation {
             name: Some("release_channel".to_owned()),
+            scope_kind: None,
+            scope_name: None,
             value: "stable".to_owned(),
         },
     )

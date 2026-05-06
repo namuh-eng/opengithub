@@ -258,6 +258,8 @@ describe("RepositoryActionsSecretsPage", () => {
         body: JSON.stringify({
           action: "create-secret",
           name: "new_deploy_key",
+          scopeKind: "repository",
+          scopeName: null,
           value: "super-secret-value",
         }),
         method: "POST",

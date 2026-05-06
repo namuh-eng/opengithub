@@ -177,8 +177,41 @@ async fn actions_runners_register_heartbeat_and_schedule_matching_jobs() {
         .as_str()
         .expect("token")
         .is_empty());
+    assert_eq!(
+        create_body["workflowPermissions"]["githubTokenPermission"],
+        "read"
+    );
     let runner_id = Uuid::parse_str(create_body["runners"][0]["id"].as_str().expect("runner id"))
         .expect("runner uuid");
+
+    let (settings_status, settings_body) = json_request(
+        app.clone(),
+        Method::PATCH,
+        &uri,
+        Some(&cookie),
+        json!({
+            "concurrencyLimit": 8,
+            "cancelInProgress": true,
+            "githubTokenPermission": "write",
+            "allowPullRequestApproval": true
+        }),
+    )
+    .await;
+    assert_eq!(settings_status, StatusCode::OK);
+    assert_eq!(settings_body["queue"]["concurrencyLimit"], 8);
+    assert_eq!(
+        settings_body["workflowPermissions"]["githubTokenPermission"],
+        "write"
+    );
+    assert_eq!(
+        settings_body["workflowPermissions"]["allowPullRequestApproval"],
+        true
+    );
+    assert!(settings_body["workflowPermissions"]["githubTokenScopes"]
+        .as_array()
+        .expect("scopes")
+        .iter()
+        .any(|scope| scope == "pull-requests:approve"));
 
     let heartbeat_uri = format!("{uri}/heartbeat");
     let (heartbeat_status, heartbeat_body) = json_request(

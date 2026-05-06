@@ -298,6 +298,8 @@ struct CreateRunnerRequest {
 struct UpdateRunnerSettingsRequest {
     concurrency_limit: i32,
     cancel_in_progress: bool,
+    github_token_permission: String,
+    allow_pull_request_approval: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -417,6 +419,8 @@ async fn update_actions_runner_settings_route(
         UpdateActionsRunnerSettings {
             concurrency_limit: request.concurrency_limit,
             cancel_in_progress: request.cancel_in_progress,
+            github_token_permission: request.github_token_permission,
+            allow_pull_request_approval: request.allow_pull_request_approval,
         },
     )
     .await

@@ -8070,11 +8070,17 @@ run: #42
     "offlineRunners": 1,
     "concurrencyLimit": 4,
     "cancelInProgress": false
+  },
+  "workflowPermissions": {
+    "githubTokenPermission": "read",
+    "allowPullRequestApproval": false,
+    "githubTokenScopes": ["contents:read", "metadata:read", "packages:read"]
   }
 }`,
     notes: [
       "Runners with stale heartbeats are marked offline and stale in-progress assignments are timed out before the response is returned.",
       "Only repository admins receive registration tokens and scheduling controls.",
+      "Workflow permission policy narrows the run-scoped GITHUB_TOKEN minted for each job; environment secrets remain blocked until protection rules approve release.",
     ],
   },
   {
@@ -8115,7 +8121,7 @@ run: #42
     notes: [
       "Assigned jobs are moved to in_progress, workflow runs are started, runner status changes to busy, and workflow_job_assignments stores durable audit data.",
       "POST /settings/actions/runners/heartbeat lets a runner report online, busy, or offline health without exposing internal session state.",
-      "PATCH /settings/actions/runners updates concurrencyLimit and cancelInProgress policy.",
+      "PATCH /settings/actions/runners updates concurrencyLimit, cancelInProgress, githubTokenPermission, and allowPullRequestApproval policy.",
     ],
   },
   {

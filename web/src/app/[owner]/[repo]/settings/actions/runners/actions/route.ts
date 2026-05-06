@@ -34,6 +34,9 @@ function parseMutation(input: unknown): RepositoryActionsRunnerMutation | null {
           action,
           cancelInProgress: body.cancelInProgress === true,
           concurrencyLimit,
+          githubTokenPermission:
+            body.githubTokenPermission === "write" ? "write" : "read",
+          allowPullRequestApproval: body.allowPullRequestApproval === true,
         }
       : null;
   }

@@ -111,6 +111,8 @@ pub struct ActionsSettingActor {
 pub struct ActionsSecretMutation {
     pub name: Option<String>,
     pub value: String,
+    pub scope_kind: Option<String>,
+    pub scope_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -118,6 +120,8 @@ pub struct ActionsSecretMutation {
 pub struct ActionsVariableMutation {
     pub name: Option<String>,
     pub value: String,
+    pub scope_kind: Option<String>,
+    pub scope_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -185,18 +189,25 @@ pub async fn create_repository_actions_secret_by_owner_name(
     require_repository_admin(pool, &repository, actor_user_id).await?;
     ensure_repository_mutable(&repository)?;
     let name = normalize_setting_name(mutation.name.as_deref())?;
+    let scope = normalize_setting_scope(
+        mutation.scope_kind.as_deref(),
+        mutation.scope_name.as_deref(),
+    )?;
+    ensure_secret_name_available(pool, repository.id, &name).await?;
     let envelope = encrypt_secret_value(&mutation.value)?;
     let mut transaction = pool.begin().await?;
     sqlx::query(
         r#"
         INSERT INTO actions_secrets (
-            repository_id, name, encrypted_value_ciphertext, encrypted_value_nonce,
+            repository_id, scope_kind, scope_name, name, encrypted_value_ciphertext, encrypted_value_nonce,
             value_fingerprint, created_by_user_id, updated_by_user_id
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $6)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
         "#,
     )
     .bind(repository.id)
+    .bind(&scope.kind)
+    .bind(&scope.name)
     .bind(&name)
     .bind(&envelope.ciphertext)
     .bind(&envelope.nonce)
@@ -212,7 +223,7 @@ pub async fn create_repository_actions_secret_by_owner_name(
         "repository.actions_secret.create",
         vec!["secret".to_owned()],
         json!(null),
-        json!({ "name": name, "scope": "repository", "secretConfigured": true }),
+        json!({ "name": name, "scope": scope.kind, "scopeName": scope.name, "secretConfigured": true }),
     )
     .await?;
     transaction.commit().await?;
@@ -252,7 +263,7 @@ pub async fn update_repository_actions_secret_by_owner_name(
             encrypted_value_nonce = $5,
             value_fingerprint = $6,
             updated_by_user_id = $7
-        WHERE repository_id = $1 AND scope_kind = 'repository' AND name = $2
+        WHERE repository_id = $1 AND name = $2
         "#,
     )
     .bind(repository.id)
@@ -300,7 +311,7 @@ pub async fn delete_repository_actions_secret_by_owner_name(
         .await?
         .ok_or(ActionsSecretsError::NotFound)?;
     let mut transaction = pool.begin().await?;
-    sqlx::query("DELETE FROM actions_secrets WHERE repository_id = $1 AND scope_kind = 'repository' AND name = $2")
+    sqlx::query("DELETE FROM actions_secrets WHERE repository_id = $1 AND name = $2")
         .bind(repository.id)
         .bind(&name)
         .execute(&mut *transaction)
@@ -333,14 +344,21 @@ pub async fn create_repository_actions_variable_by_owner_name(
     ensure_repository_mutable(&repository)?;
     let name = normalize_setting_name(mutation.name.as_deref())?;
     let value = normalize_variable_value(&mutation.value)?;
+    let scope = normalize_setting_scope(
+        mutation.scope_kind.as_deref(),
+        mutation.scope_name.as_deref(),
+    )?;
+    ensure_variable_name_available(pool, repository.id, &name).await?;
     let mut transaction = pool.begin().await?;
     sqlx::query(
         r#"
-        INSERT INTO actions_variables (repository_id, name, value, created_by_user_id, updated_by_user_id)
-        VALUES ($1, $2, $3, $4, $4)
+        INSERT INTO actions_variables (repository_id, scope_kind, scope_name, name, value, created_by_user_id, updated_by_user_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $6)
         "#,
     )
     .bind(repository.id)
+    .bind(&scope.kind)
+    .bind(&scope.name)
     .bind(&name)
     .bind(&value)
     .bind(actor_user_id)
@@ -354,7 +372,7 @@ pub async fn create_repository_actions_variable_by_owner_name(
         "repository.actions_variable.create",
         vec!["variable".to_owned()],
         json!(null),
-        json!({ "name": name, "scope": "repository", "valueLength": value.len() }),
+        json!({ "name": name, "scope": scope.kind, "scopeName": scope.name, "valueLength": value.len() }),
     )
     .await?;
     transaction.commit().await?;
@@ -390,7 +408,7 @@ pub async fn update_repository_actions_variable_by_owner_name(
         r#"
         UPDATE actions_variables
         SET name = $3, value = $4, updated_by_user_id = $5
-        WHERE repository_id = $1 AND scope_kind = 'repository' AND name = $2
+        WHERE repository_id = $1 AND name = $2
         "#,
     )
     .bind(repository.id)
@@ -436,7 +454,7 @@ pub async fn delete_repository_actions_variable_by_owner_name(
         .await?
         .ok_or(ActionsSecretsError::NotFound)?;
     let mut transaction = pool.begin().await?;
-    sqlx::query("DELETE FROM actions_variables WHERE repository_id = $1 AND scope_kind = 'repository' AND name = $2")
+    sqlx::query("DELETE FROM actions_variables WHERE repository_id = $1 AND name = $2")
         .bind(repository.id)
         .bind(&name)
         .execute(&mut *transaction)
@@ -662,8 +680,14 @@ async fn list_repository_secrets(
                COALESCE(users.display_name, users.email) AS actor_display_name
         FROM actions_secrets
         LEFT JOIN users ON users.id = actions_secrets.updated_by_user_id
-        WHERE actions_secrets.repository_id = $1 AND actions_secrets.scope_kind = 'repository'
-        ORDER BY actions_secrets.updated_at DESC, actions_secrets.name ASC
+        WHERE actions_secrets.repository_id = $1
+        ORDER BY CASE actions_secrets.scope_kind
+                   WHEN 'repository' THEN 1
+                   WHEN 'environment' THEN 2
+                   WHEN 'organization' THEN 3
+                   ELSE 4
+                 END,
+                 actions_secrets.updated_at DESC, actions_secrets.name ASC
         "#,
     )
     .bind(repository_id)
@@ -687,8 +711,14 @@ async fn list_repository_variables(
                COALESCE(users.display_name, users.email) AS actor_display_name
         FROM actions_variables
         LEFT JOIN users ON users.id = actions_variables.updated_by_user_id
-        WHERE actions_variables.repository_id = $1 AND actions_variables.scope_kind = 'repository'
-        ORDER BY actions_variables.updated_at DESC, actions_variables.name ASC
+        WHERE actions_variables.repository_id = $1
+        ORDER BY CASE actions_variables.scope_kind
+                   WHEN 'repository' THEN 1
+                   WHEN 'environment' THEN 2
+                   WHEN 'organization' THEN 3
+                   ELSE 4
+                 END,
+                 actions_variables.updated_at DESC, actions_variables.name ASC
         "#,
     )
     .bind(repository_id)
@@ -768,7 +798,7 @@ async fn secret_audit_state(
         r#"
         SELECT name, scope_kind, scope_name, storage_kind, visibility_policy, updated_at
         FROM actions_secrets
-        WHERE repository_id = $1 AND scope_kind = 'repository' AND name = $2
+        WHERE repository_id = $1 AND name = $2
         "#,
     )
     .bind(repository_id)
@@ -797,7 +827,7 @@ async fn variable_audit_state(
         r#"
         SELECT name, scope_kind, scope_name, visibility_policy, length(value) AS value_length, updated_at
         FROM actions_variables
-        WHERE repository_id = $1 AND scope_kind = 'repository' AND name = $2
+        WHERE repository_id = $1 AND name = $2
         "#,
     )
     .bind(repository_id)
@@ -855,6 +885,86 @@ fn normalize_variable_value(value: &str) -> Result<String, ActionsSecretsError> 
         ));
     }
     Ok(value.to_owned())
+}
+
+struct NormalizedSettingScope {
+    kind: String,
+    name: Option<String>,
+}
+
+fn normalize_setting_scope(
+    kind: Option<&str>,
+    name: Option<&str>,
+) -> Result<NormalizedSettingScope, ActionsSecretsError> {
+    let kind = kind
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("repository")
+        .to_ascii_lowercase();
+    if !matches!(kind.as_str(), "repository" | "environment") {
+        return Err(ActionsSecretsError::Invalid(
+            "scope kind must be repository or environment".to_owned(),
+        ));
+    }
+    let name = name
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    if kind == "repository" {
+        return Ok(NormalizedSettingScope { kind, name: None });
+    }
+    let Some(name) = name else {
+        return Err(ActionsSecretsError::Invalid(
+            "environment scope requires an environment name".to_owned(),
+        ));
+    };
+    if name.len() > 64 {
+        return Err(ActionsSecretsError::Invalid(
+            "environment name must be 64 characters or fewer".to_owned(),
+        ));
+    }
+    Ok(NormalizedSettingScope {
+        kind,
+        name: Some(name),
+    })
+}
+
+async fn ensure_secret_name_available(
+    pool: &PgPool,
+    repository_id: Uuid,
+    name: &str,
+) -> Result<(), ActionsSecretsError> {
+    let exists = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM actions_secrets WHERE repository_id = $1 AND name = $2)",
+    )
+    .bind(repository_id)
+    .bind(name)
+    .fetch_one(pool)
+    .await?;
+    if exists {
+        Err(ActionsSecretsError::Conflict)
+    } else {
+        Ok(())
+    }
+}
+
+async fn ensure_variable_name_available(
+    pool: &PgPool,
+    repository_id: Uuid,
+    name: &str,
+) -> Result<(), ActionsSecretsError> {
+    let exists = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM actions_variables WHERE repository_id = $1 AND name = $2)",
+    )
+    .bind(repository_id)
+    .bind(name)
+    .fetch_one(pool)
+    .await?;
+    if exists {
+        Err(ActionsSecretsError::Conflict)
+    } else {
+        Ok(())
+    }
 }
 
 fn encrypt_secret_value(value: &str) -> Result<SecretEnvelope, ActionsSecretsError> {

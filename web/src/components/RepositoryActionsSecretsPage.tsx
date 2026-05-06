@@ -23,6 +23,12 @@ type RepositoryActionsSecretsPageProps = {
 
 type MutationKind = "secret" | "variable";
 type FormMode = "create" | "update";
+type SettingMutationPayload = {
+  name: string;
+  scopeKind: "repository" | "environment";
+  scopeName: string | null;
+  value: string;
+};
 
 const namePattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -156,6 +162,8 @@ function StatusMessage({
 function SettingMutationForm({
   disabled,
   initialName = "",
+  initialScopeKind = "repository",
+  initialScopeName = "",
   initialValue = "",
   kind,
   mode,
@@ -164,13 +172,19 @@ function SettingMutationForm({
 }: {
   disabled: boolean;
   initialName?: string;
+  initialScopeKind?: "repository" | "environment";
+  initialScopeName?: string;
   initialValue?: string;
   kind: MutationKind;
   mode: FormMode;
   onCancel?: () => void;
-  onSubmit: (payload: { name: string; value: string }) => Promise<void>;
+  onSubmit: (payload: SettingMutationPayload) => Promise<void>;
 }) {
   const [name, setName] = useState(initialName);
+  const [scopeKind, setScopeKind] = useState<"repository" | "environment">(
+    initialScopeKind,
+  );
+  const [scopeName, setScopeName] = useState(initialScopeName);
   const [value, setValue] = useState(initialValue);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -198,12 +212,23 @@ function SettingMutationForm({
       );
       return;
     }
+    if (scopeKind === "environment" && !scopeName.trim()) {
+      setError("Environment scoped settings require an environment name.");
+      return;
+    }
     setSaving(true);
     try {
-      await onSubmit({ name: normalizedName, value: nextValue });
+      await onSubmit({
+        name: normalizedName,
+        scopeKind,
+        scopeName: scopeKind === "environment" ? scopeName.trim() : null,
+        value: nextValue,
+      });
       setSuccess(`${title} saved.`);
       if (mode === "create") {
         setName("");
+        setScopeKind("repository");
+        setScopeName("");
         setValue("");
       }
     } catch (formError) {
@@ -234,7 +259,7 @@ function SettingMutationForm({
           {kind === "secret" ? "Write-only" : "Visible to admins"}
         </span>
       </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,260px)_1fr]">
+      <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,220px)_minmax(0,220px)_1fr]">
         <label className="grid gap-1">
           <span className="t-label">Name</span>
           <input
@@ -245,6 +270,24 @@ function SettingMutationForm({
             placeholder={kind === "secret" ? "DEPLOY_KEY" : "PUBLIC_BASE_URL"}
             value={name}
           />
+        </label>
+        <label className="grid gap-1">
+          <span className="t-label">Scope</span>
+          <select
+            className="input"
+            disabled={disabled || saving || mode === "update"}
+            onChange={(event) =>
+              setScopeKind(
+                event.target.value === "environment"
+                  ? "environment"
+                  : "repository",
+              )
+            }
+            value={scopeKind}
+          >
+            <option value="repository">Repository</option>
+            <option value="environment">Environment</option>
+          </select>
         </label>
         <label className="grid gap-1">
           <span className="t-label">{valueLabel}</span>
@@ -263,6 +306,18 @@ function SettingMutationForm({
           />
         </label>
       </div>
+      {scopeKind === "environment" ? (
+        <label className="mt-3 grid gap-1 md:max-w-[220px]">
+          <span className="t-label">Environment</span>
+          <input
+            className="input"
+            disabled={disabled || saving || mode === "update"}
+            onChange={(event) => setScopeName(event.target.value)}
+            placeholder="production"
+            value={scopeName}
+          />
+        </label>
+      ) : null}
       <p className="t-xs mt-3">
         {kind === "secret"
           ? "Secret values are encrypted by the Rust API and never rendered back. Updating a secret always requires a fresh value."
@@ -387,7 +442,7 @@ function SecretRows({
   onEdit: (name: string) => void;
   onSave: (
     currentName: string,
-    payload: { name: string; value: string },
+    payload: SettingMutationPayload,
   ) => Promise<void>;
   setDeletingName: (name: string | null) => void;
   setEditingName: (name: string | null) => void;
@@ -425,6 +480,12 @@ function SecretRows({
                   <SettingMutationForm
                     disabled={!canEdit}
                     initialName={secret.name}
+                    initialScopeKind={
+                      secret.scope.kind === "environment"
+                        ? "environment"
+                        : "repository"
+                    }
+                    initialScopeName={secret.scope.name ?? ""}
                     kind="secret"
                     mode="update"
                     onCancel={() => setEditingName(null)}
@@ -519,7 +580,7 @@ function VariableRows({
   onEdit: (name: string) => void;
   onSave: (
     currentName: string,
-    payload: { name: string; value: string },
+    payload: SettingMutationPayload,
   ) => Promise<void>;
   setDeletingName: (name: string | null) => void;
   setEditingName: (name: string | null) => void;
@@ -569,6 +630,12 @@ function VariableRows({
                   <SettingMutationForm
                     disabled={!canEdit}
                     initialName={variable.name}
+                    initialScopeKind={
+                      variable.scope.kind === "environment"
+                        ? "environment"
+                        : "repository"
+                    }
+                    initialScopeName={variable.scope.name ?? ""}
                     initialValue={variable.value ?? ""}
                     kind="variable"
                     mode="update"

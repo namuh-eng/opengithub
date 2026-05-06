@@ -5632,11 +5632,15 @@ export type RepositoryPagesMutation =
 
 export type RepositoryActionsSecretMutationPayload = {
   name?: string;
+  scopeKind?: "repository" | "environment";
+  scopeName?: string | null;
   value: string;
 };
 
 export type RepositoryActionsVariableMutationPayload = {
   name?: string;
+  scopeKind?: "repository" | "environment";
+  scopeName?: string | null;
   value: string;
 };
 
@@ -6928,6 +6932,12 @@ export type ActionsRunnerQueue = {
   cancelInProgress: boolean;
 };
 
+export type ActionsWorkflowPermissions = {
+  githubTokenPermission: "read" | "write" | string;
+  allowPullRequestApproval: boolean;
+  githubTokenScopes: string[];
+};
+
 export type ActionsRunnerSetup = {
   registrationToken: string | null;
   dockerCommand: string | null;
@@ -6946,6 +6956,7 @@ export type RepositoryActionsRunnerSettings = {
   canManageRunners: boolean;
   runners: ActionsRunner[];
   queue: ActionsRunnerQueue;
+  workflowPermissions: ActionsWorkflowPermissions;
   setup: ActionsRunnerSetup;
 };
 
@@ -6964,6 +6975,8 @@ export type RepositoryActionsRunnerMutation =
       action: "update-settings";
       concurrencyLimit: number;
       cancelInProgress: boolean;
+      githubTokenPermission: string;
+      allowPullRequestApproval: boolean;
     }
   | { action: "schedule-jobs" };
 
@@ -16921,6 +16934,8 @@ export async function mutateRepositoryActionsRunnerSettingsFromCookie(
             body: JSON.stringify({
               concurrencyLimit: mutation.concurrencyLimit,
               cancelInProgress: mutation.cancelInProgress,
+              githubTokenPermission: mutation.githubTokenPermission,
+              allowPullRequestApproval: mutation.allowPullRequestApproval,
             }),
             method: "PATCH",
             url: base,

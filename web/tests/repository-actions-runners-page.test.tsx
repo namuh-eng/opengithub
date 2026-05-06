@@ -72,6 +72,11 @@ function settings(
       onlineRunners: 2,
       queuedJobs: 3,
     },
+    workflowPermissions: {
+      allowPullRequestApproval: false,
+      githubTokenPermission: "read",
+      githubTokenScopes: ["contents:read", "metadata:read", "packages:read"],
+    },
     repository: {
       defaultBranch: "main",
       id: "repo-1",
@@ -138,6 +143,11 @@ describe("RepositoryActionsRunnersPage", () => {
     expect(
       screen.getByRole("button", { name: "Save scheduling settings" }),
     ).toBeEnabled();
+    expect(screen.getByText("GITHUB_TOKEN policy")).toBeVisible();
+    expect(
+      screen.getByLabelText("Read repository contents and metadata"),
+    ).toBeChecked();
+    expect(screen.getByText("contents:read")).toBeVisible();
   });
 
   it("posts create, scheduling, and concurrency mutations through the concrete action route", async () => {
@@ -201,8 +211,38 @@ describe("RepositoryActionsRunnersPage", () => {
         expect.objectContaining({
           body: JSON.stringify({
             action: "update-settings",
+            allowPullRequestApproval: false,
             cancelInProgress: true,
             concurrencyLimit: 8,
+            githubTokenPermission: "read",
+          }),
+        }),
+      ),
+    );
+
+    fireEvent.click(
+      screen.getByLabelText(
+        "Read and write repository contents, checks, packages, issues, and pull requests",
+      ),
+    );
+    fireEvent.click(
+      screen.getByLabelText(
+        "Allow Actions to create and approve pull requests",
+      ),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save workflow permissions" }),
+    );
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/mona/octo-app/settings/actions/runners/actions",
+        expect.objectContaining({
+          body: JSON.stringify({
+            action: "update-settings",
+            allowPullRequestApproval: true,
+            cancelInProgress: true,
+            concurrencyLimit: 8,
+            githubTokenPermission: "write",
           }),
         }),
       ),
