@@ -1,3 +1,12 @@
+2026-05-06 - wiki-003 structure planning
+
+- Determined `wiki-003` is the first `build_pass:false` PRD entry and it requires structure planning before implementation.
+- Read the stack/design sources and Wiki context needed for this lane: `BUILD_GUIDE.md`, `build-spec.md`, `prd.json`, `web/AGENTS.md`, `.qrspi/wiki-001/structure.md`, `.qrspi/wiki-002/structure.md`, existing Wiki domain/routes/frontend references, `design/project/og-screens-2.jsx`, and the extracted GitHub wiki history doc.
+- Added `.qrspi/wiki-003/structure.md` with five vertical phases: history read contract and Editorial history page, revision snapshot reads, two-revision compare, permissioned revert, and final docs/E2E/QA/build-pass bookkeeping.
+- Did not change `prd.json`; `wiki-003.build_pass` remains `false` until all implementation phases pass verification.
+- Tests were not run because this iteration only created the required planning artifact. The mandatory Editorial banned-value scan passed with zero matches.
+- Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-06 - projects-004 structure outline
 
 - Determined `projects-004` is the first `build_pass:false` PRD entry and it requires structure planning before implementation.
