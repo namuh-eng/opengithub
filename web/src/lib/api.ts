@@ -676,6 +676,120 @@ export type ProjectWorkflowUpdateRequest = {
   expectedUpdatedAt?: string | null;
 };
 
+export type ProjectSettingsRepositoryLink = {
+  id: string;
+  repositoryId: string;
+  owner: string;
+  name: string;
+  fullName: string;
+  href: string;
+  visibility: string;
+  linkType: string;
+  isDefault: boolean;
+  viewerPermission: string | null;
+  linkedBy: ProjectWorkspaceUser | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProjectSettingsAccessGrant = {
+  id: string;
+  user: ProjectWorkspaceUser;
+  role: string;
+  source: string;
+  inherited: boolean;
+  updatedAt: string;
+};
+
+export type ProjectSettingsTeamOption = {
+  id: string;
+  slug: string;
+  name: string;
+  href: string;
+};
+
+export type ProjectSettingsTeamGrant = {
+  id: string;
+  team: ProjectSettingsTeamOption;
+  role: string;
+  memberCount: number;
+  updatedAt: string;
+};
+
+export type ProjectSettingsStatusUpdate = {
+  id: string;
+  status: string;
+  label: string;
+  body: string | null;
+  startDate: string | null;
+  targetDate: string | null;
+  author: ProjectWorkspaceUser | null;
+  createdAt: string;
+};
+
+export type ProjectSettings = {
+  project: ProjectWorkspaceProject;
+  general: {
+    title: string;
+    description: string | null;
+    readme: string | null;
+    visibility: string;
+    defaultRepositoryId: string | null;
+    createdBy: ProjectWorkspaceUser | null;
+    createdAt: string;
+    updatedAt: string;
+    readmeRevisionCount: number;
+  };
+  policy: {
+    ownerKind: string;
+    organizationId: string | null;
+    projectsEnabled: boolean;
+    basePermission: string | null;
+    visibilityChangesAllowed: boolean;
+    visibilityLockedReason: string | null;
+  };
+  repositories: ProjectSettingsRepositoryLink[];
+  accessGrants: ProjectSettingsAccessGrant[];
+  teamGrants: ProjectSettingsTeamGrant[];
+  eligibleUsers: ProjectWorkspaceUser[];
+  eligibleTeams: ProjectSettingsTeamOption[];
+  statusUpdates: ProjectSettingsStatusUpdate[];
+  template: {
+    isTemplate: boolean;
+    templateId: string | null;
+    title: string | null;
+    description: string | null;
+    isPublic: boolean;
+    createdAt: string | null;
+  };
+  dangerState: {
+    state: string;
+    closedAt: string | null;
+    closedBy: ProjectWorkspaceUser | null;
+    deletedAt: string | null;
+    deletedBy: ProjectWorkspaceUser | null;
+    deleteConfirmation: string;
+  };
+  viewerPermissions: {
+    authenticated: boolean;
+    viewerRole: string | null;
+    canEditGeneral: boolean;
+    canChangeVisibility: boolean;
+    canLinkRepositories: boolean;
+    canPublishStatus: boolean;
+    canManageTemplate: boolean;
+    canManageAccess: boolean;
+    canClose: boolean;
+    canReopen: boolean;
+    canDelete: boolean;
+  };
+  unavailableReason: string | null;
+};
+
+export type ProjectSettingsFetchResult =
+  | { ok: true; settings: ProjectSettings }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type ProjectFieldCreateRequest = {
   name: string;
   fieldType: "single_select" | "iteration" | "date" | "text" | "number";
@@ -7581,6 +7695,10 @@ function projectFieldSettingsPath(projectId: string): string {
   return `/api/projects/${encodeURIComponent(projectId)}/settings/fields`;
 }
 
+function projectSettingsPath(projectId: string): string {
+  return `/api/projects/${encodeURIComponent(projectId)}/settings`;
+}
+
 function projectWorkflowSettingsPath(projectId: string): string {
   return `/api/projects/${encodeURIComponent(projectId)}/workflows`;
 }
@@ -7918,6 +8036,46 @@ export async function getProjectFieldSettingsFromCookie(
   };
 }
 
+export async function getProjectSettingsFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+): Promise<ProjectSettingsFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${projectSettingsPath(projectId)}`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Project settings are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let body: ApiErrorEnvelope | null = null;
+    try {
+      body = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      body = null;
+    }
+    return {
+      ok: false,
+      status: body?.status ?? response.status,
+      code: body?.error.code ?? null,
+      message: body?.error.message ?? "Project settings could not be loaded.",
+    };
+  }
+
+  return {
+    ok: true,
+    settings: (await response.json()) as ProjectSettings,
+  };
+}
+
 export async function getProjectWorkflowSettingsFromCookie(
   cookie: string | null | undefined,
   projectId: string,
@@ -8081,6 +8239,47 @@ async function getProjectFieldSettingsByNumberFromCookie(
   return getProjectFieldSettingsFromCookie(cookie, project.id);
 }
 
+async function getProjectSettingsByNumberFromCookie(
+  cookie: string | null | undefined,
+  listPath: string,
+  projectNumber: number,
+): Promise<ProjectSettingsFetchResult> {
+  const openProjects = await getProjectListFromCookie(cookie, listPath, {
+    state: "open",
+    pageSize: 100,
+  });
+  const closedProjects =
+    openProjects.ok &&
+    openProjects.projects.items.some(
+      (project) => project.number === projectNumber,
+    )
+      ? null
+      : await getProjectListFromCookie(cookie, listPath, {
+          state: "closed",
+          pageSize: 100,
+        });
+  const candidates = [
+    ...(openProjects.ok ? openProjects.projects.items : []),
+    ...(closedProjects?.ok ? closedProjects.projects.items : []),
+  ];
+  const project = candidates.find((item) => item.number === projectNumber);
+
+  if (!project) {
+    const failure = !openProjects.ok ? openProjects : closedProjects;
+    return {
+      ok: false,
+      status: failure && !failure.ok ? failure.status : 404,
+      code: failure && !failure.ok ? failure.code : "not_found",
+      message:
+        failure && !failure.ok
+          ? failure.message
+          : "Project settings could not be found.",
+    };
+  }
+
+  return getProjectSettingsFromCookie(cookie, project.id);
+}
+
 async function getProjectWorkflowSettingsByNumberFromCookie(
   cookie: string | null | undefined,
   listPath: string,
@@ -8148,6 +8347,18 @@ export function getUserProjectFieldSettingsFromCookie(
   );
 }
 
+export function getUserProjectSettingsFromCookie(
+  cookie: string | null | undefined,
+  username: string,
+  projectNumber: number,
+): Promise<ProjectSettingsFetchResult> {
+  return getProjectSettingsByNumberFromCookie(
+    cookie,
+    `/api/users/${encodeURIComponent(username)}/projects`,
+    projectNumber,
+  );
+}
+
 export function getUserProjectWorkflowSettingsFromCookie(
   cookie: string | null | undefined,
   username: string,
@@ -8180,6 +8391,18 @@ export function getOrganizationProjectFieldSettingsFromCookie(
   projectNumber: number,
 ): Promise<ProjectFieldSettingsFetchResult> {
   return getProjectFieldSettingsByNumberFromCookie(
+    cookie,
+    `/api/orgs/${encodeURIComponent(org)}/projects`,
+    projectNumber,
+  );
+}
+
+export function getOrganizationProjectSettingsFromCookie(
+  cookie: string | null | undefined,
+  org: string,
+  projectNumber: number,
+): Promise<ProjectSettingsFetchResult> {
+  return getProjectSettingsByNumberFromCookie(
     cookie,
     `/api/orgs/${encodeURIComponent(org)}/projects`,
     projectNumber,

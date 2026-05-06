@@ -6,7 +6,7 @@
 
 ## Phase 1: Settings Read Contract - general settings, policy, access, repositories, templates, and danger state are inspectable
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the authenticated Rust read contract for project settings. The response covers project metadata, README/description, visibility and organization policy constraints, default and linked repositories, status update history, access grants, teams/users eligible for grants, template state, closed/deleted capabilities, viewer role, and audit-safe capability flags without mutation UI yet.
 

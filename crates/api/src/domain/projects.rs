@@ -488,6 +488,148 @@ pub struct ProjectWorkflowUpdateRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct ProjectSettings {
+    pub project: ProjectWorkspaceProject,
+    pub general: ProjectSettingsGeneral,
+    pub policy: ProjectSettingsPolicy,
+    pub repositories: Vec<ProjectSettingsRepositoryLink>,
+    pub access_grants: Vec<ProjectSettingsAccessGrant>,
+    pub team_grants: Vec<ProjectSettingsTeamGrant>,
+    pub eligible_users: Vec<ProjectWorkspaceUser>,
+    pub eligible_teams: Vec<ProjectSettingsTeamOption>,
+    pub status_updates: Vec<ProjectSettingsStatusUpdate>,
+    pub template: ProjectSettingsTemplate,
+    pub danger_state: ProjectSettingsDangerState,
+    pub viewer_permissions: ProjectSettingsPermissions,
+    pub unavailable_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSettingsGeneral {
+    pub title: String,
+    pub description: Option<String>,
+    pub readme: Option<String>,
+    pub visibility: String,
+    pub default_repository_id: Option<Uuid>,
+    pub created_by: Option<ProjectWorkspaceUser>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub readme_revision_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSettingsPolicy {
+    pub owner_kind: String,
+    pub organization_id: Option<Uuid>,
+    pub projects_enabled: bool,
+    pub base_permission: Option<String>,
+    pub visibility_changes_allowed: bool,
+    pub visibility_locked_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSettingsRepositoryLink {
+    pub id: Uuid,
+    pub repository_id: Uuid,
+    pub owner: String,
+    pub name: String,
+    pub full_name: String,
+    pub href: String,
+    pub visibility: String,
+    pub link_type: String,
+    pub is_default: bool,
+    pub viewer_permission: Option<String>,
+    pub linked_by: Option<ProjectWorkspaceUser>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSettingsAccessGrant {
+    pub id: Uuid,
+    pub user: ProjectWorkspaceUser,
+    pub role: String,
+    pub source: String,
+    pub inherited: bool,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSettingsTeamGrant {
+    pub id: Uuid,
+    pub team: ProjectSettingsTeamOption,
+    pub role: String,
+    pub member_count: i64,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSettingsTeamOption {
+    pub id: Uuid,
+    pub slug: String,
+    pub name: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSettingsStatusUpdate {
+    pub id: Uuid,
+    pub status: String,
+    pub label: String,
+    pub body: Option<String>,
+    pub start_date: Option<NaiveDate>,
+    pub target_date: Option<NaiveDate>,
+    pub author: Option<ProjectWorkspaceUser>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSettingsTemplate {
+    pub is_template: bool,
+    pub template_id: Option<Uuid>,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub is_public: bool,
+    pub created_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSettingsDangerState {
+    pub state: String,
+    pub closed_at: Option<DateTime<Utc>>,
+    pub closed_by: Option<ProjectWorkspaceUser>,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub deleted_by: Option<ProjectWorkspaceUser>,
+    pub delete_confirmation: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSettingsPermissions {
+    pub authenticated: bool,
+    pub viewer_role: Option<String>,
+    pub can_edit_general: bool,
+    pub can_change_visibility: bool,
+    pub can_link_repositories: bool,
+    pub can_publish_status: bool,
+    pub can_manage_template: bool,
+    pub can_manage_access: bool,
+    pub can_close: bool,
+    pub can_reopen: bool,
+    pub can_delete: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectAutomationInvocationRequest {
     pub source: String,
     pub item_id: Uuid,
@@ -1527,6 +1669,63 @@ pub async fn project_workflow_settings(
         },
         automation_actor: "@opengithub-project-automation".to_owned(),
         unavailable_reason: None,
+    })
+}
+
+pub async fn project_settings(
+    pool: &PgPool,
+    project_id: Uuid,
+    viewer_user_id: Option<Uuid>,
+) -> Result<ProjectSettings, ProjectsError> {
+    let project = visible_workspace_project(pool, project_id, viewer_user_id).await?;
+    let general = project_settings_general(pool, project_id).await?;
+    let policy = project_settings_policy(pool, project_id).await?;
+    let repositories = project_settings_repositories(pool, project_id, viewer_user_id).await?;
+    let access_grants = project_settings_access_grants(pool, project_id).await?;
+    let team_grants = project_settings_team_grants(pool, project_id).await?;
+    let eligible_users = project_settings_eligible_users(pool, project_id).await?;
+    let eligible_teams = project_settings_eligible_teams(pool, project_id).await?;
+    let status_updates = project_settings_status_updates(pool, project_id).await?;
+    let template = project_settings_template(pool, project_id, general.title.clone()).await?;
+    let danger_state = project_settings_danger_state(pool, project_id, &general.title).await?;
+
+    let viewer_role = project.viewer_role.clone();
+    let can_write = viewer_role.as_deref().is_some_and(can_write_project_role);
+    let can_admin = viewer_role
+        .as_deref()
+        .is_some_and(|role| matches!(role, "owner" | "admin"));
+    let visibility_changes_allowed = policy.visibility_changes_allowed;
+    let projects_enabled = policy.projects_enabled;
+    let closed = project.state == "closed";
+    let deleted = danger_state.deleted_at.is_some();
+
+    Ok(ProjectSettings {
+        project,
+        general,
+        policy,
+        repositories,
+        access_grants,
+        team_grants,
+        eligible_users,
+        eligible_teams,
+        status_updates,
+        template,
+        danger_state,
+        viewer_permissions: ProjectSettingsPermissions {
+            authenticated: viewer_user_id.is_some(),
+            viewer_role,
+            can_edit_general: can_write && !closed && !deleted,
+            can_change_visibility: can_admin && visibility_changes_allowed && !closed && !deleted,
+            can_link_repositories: can_write && !closed && !deleted,
+            can_publish_status: can_write && !deleted,
+            can_manage_template: can_admin && !closed && !deleted,
+            can_manage_access: can_admin && !closed && !deleted,
+            can_close: can_admin && !closed && !deleted,
+            can_reopen: can_admin && closed && !deleted,
+            can_delete: can_admin && !deleted,
+        },
+        unavailable_reason: (!projects_enabled)
+            .then_some("Organization policy has disabled Projects.".to_owned()),
     })
 }
 
@@ -4327,6 +4526,7 @@ async fn workspace_project_row(
         SELECT
           projects.id, projects.number, projects.title, projects.short_description,
           projects.state, projects.visibility,
+          projects.owner_user_id = $2 AS viewer_is_owner,
           COALESCE(NULLIF(owner_user.username, ''), owner_user.email, owner_org.slug) AS owner_login,
           project_permissions.role AS project_role,
           organization_memberships.role AS organization_role,
@@ -4370,12 +4570,516 @@ async fn workspace_project_row(
 }
 
 fn workspace_role_from_row(row: &sqlx::postgres::PgRow) -> Result<Option<String>, ProjectsError> {
+    let viewer_is_owner: bool = row.try_get("viewer_is_owner").unwrap_or(false);
+    if viewer_is_owner {
+        return Ok(Some("admin".to_owned()));
+    }
     let project_role: Option<String> = row.try_get("project_role")?;
     let org_role: Option<String> = row.try_get("organization_role")?;
     let org_base_role: Option<String> = row.try_get("organization_base_role")?;
     Ok(project_role
         .or(org_role)
         .or(org_base_role.filter(|role| role != "none")))
+}
+
+async fn project_settings_general(
+    pool: &PgPool,
+    project_id: Uuid,
+) -> Result<ProjectSettingsGeneral, ProjectsError> {
+    let row = sqlx::query(
+        r#"
+        SELECT projects.title,
+               projects.short_description,
+               projects.readme,
+               projects.visibility,
+               projects.default_repository_id,
+               projects.created_at,
+               projects.updated_at,
+               creator.id AS creator_id,
+               COALESCE(NULLIF(creator.username, ''), creator.email) AS creator_login,
+               creator.avatar_url AS creator_avatar_url,
+               COALESCE(readme_revisions.revision_count, 0) AS readme_revision_count
+        FROM projects
+        LEFT JOIN users creator ON creator.id = projects.created_by_user_id
+        LEFT JOIN (
+            SELECT project_id, count(*) AS revision_count
+            FROM project_readme_revisions
+            GROUP BY project_id
+        ) readme_revisions ON readme_revisions.project_id = projects.id
+        WHERE projects.id = $1
+        "#,
+    )
+    .bind(project_id)
+    .fetch_one(pool)
+    .await?;
+
+    let created_by = row
+        .try_get::<Option<Uuid>, _>("creator_id")?
+        .map(|id| ProjectWorkspaceUser {
+            id,
+            login: row
+                .try_get::<Option<String>, _>("creator_login")
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "unknown".to_owned()),
+            avatar_url: row.get("creator_avatar_url"),
+        });
+
+    Ok(ProjectSettingsGeneral {
+        title: row.get("title"),
+        description: row.get("short_description"),
+        readme: row.get("readme"),
+        visibility: row.get("visibility"),
+        default_repository_id: row.get("default_repository_id"),
+        created_by,
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+        readme_revision_count: row.get("readme_revision_count"),
+    })
+}
+
+async fn project_settings_policy(
+    pool: &PgPool,
+    project_id: Uuid,
+) -> Result<ProjectSettingsPolicy, ProjectsError> {
+    let row = sqlx::query(
+        r#"
+        SELECT projects.owner_organization_id,
+               COALESCE(organization_policy_settings.projects_enabled, true) AS projects_enabled,
+               organization_policy_settings.projects_base_permission,
+               COALESCE(organization_policy_settings.members_can_change_repository_visibility, true) AS visibility_changes_allowed
+        FROM projects
+        LEFT JOIN organization_policy_settings
+          ON organization_policy_settings.organization_id = projects.owner_organization_id
+        WHERE projects.id = $1
+        "#,
+    )
+    .bind(project_id)
+    .fetch_one(pool)
+    .await?;
+
+    let organization_id: Option<Uuid> = row.get("owner_organization_id");
+    let visibility_changes_allowed: bool = row.get("visibility_changes_allowed");
+    Ok(ProjectSettingsPolicy {
+        owner_kind: if organization_id.is_some() {
+            "organization".to_owned()
+        } else {
+            "user".to_owned()
+        },
+        organization_id,
+        projects_enabled: row.get("projects_enabled"),
+        base_permission: row.get("projects_base_permission"),
+        visibility_changes_allowed,
+        visibility_locked_reason: (!visibility_changes_allowed)
+            .then_some("Organization policy prevents project visibility changes.".to_owned()),
+    })
+}
+
+async fn project_settings_repositories(
+    pool: &PgPool,
+    project_id: Uuid,
+    viewer_user_id: Option<Uuid>,
+) -> Result<Vec<ProjectSettingsRepositoryLink>, ProjectsError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT project_repositories.id,
+               repositories.id AS repository_id,
+               repositories.name,
+               repositories.visibility,
+               COALESCE(NULLIF(owner_user.username, ''), owner_user.email, owner_org.slug) AS owner_login,
+               project_repositories.link_type,
+               projects.default_repository_id = repositories.id AS is_default,
+               project_repositories.created_at,
+               project_repositories.updated_at,
+               linked_by.id AS linked_by_id,
+               COALESCE(NULLIF(linked_by.username, ''), linked_by.email) AS linked_by_login,
+               linked_by.avatar_url AS linked_by_avatar_url
+        FROM (
+            SELECT id, project_id, repository_id, link_type, created_at, updated_at, linked_by_user_id
+            FROM project_repositories
+            WHERE project_id = $1
+            UNION
+            SELECT gen_random_uuid(), id, default_repository_id, 'default', created_at, updated_at, created_by_user_id
+            FROM projects
+            WHERE id = $1 AND default_repository_id IS NOT NULL
+        ) project_repositories
+        JOIN projects ON projects.id = project_repositories.project_id
+        JOIN repositories ON repositories.id = project_repositories.repository_id
+        LEFT JOIN users owner_user ON owner_user.id = repositories.owner_user_id
+        LEFT JOIN organizations owner_org ON owner_org.id = repositories.owner_organization_id
+        LEFT JOIN users linked_by ON linked_by.id = project_repositories.linked_by_user_id
+        ORDER BY is_default DESC, owner_login, repositories.name
+        "#,
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut links = Vec::new();
+    for row in rows {
+        let repository_id: Uuid = row.get("repository_id");
+        let visibility: String = row.get("visibility");
+        let viewer_permission = match viewer_user_id {
+            Some(user_id) => repository_permission_for_user(pool, repository_id, user_id)
+                .await?
+                .map(|permission| permission.role.as_str().to_owned()),
+            None => None,
+        };
+        if visibility != "public" && viewer_permission.is_none() {
+            continue;
+        }
+        let owner = row
+            .try_get::<Option<String>, _>("owner_login")?
+            .unwrap_or_else(|| "unknown".to_owned());
+        let name: String = row.get("name");
+        let linked_by =
+            row.try_get::<Option<Uuid>, _>("linked_by_id")?
+                .map(|id| ProjectWorkspaceUser {
+                    id,
+                    login: row
+                        .try_get::<Option<String>, _>("linked_by_login")
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(|| "unknown".to_owned()),
+                    avatar_url: row.get("linked_by_avatar_url"),
+                });
+        links.push(ProjectSettingsRepositoryLink {
+            id: row.get("id"),
+            repository_id,
+            owner: owner.clone(),
+            name: name.clone(),
+            full_name: format!("{owner}/{name}"),
+            href: format!("/{owner}/{name}"),
+            visibility,
+            link_type: row.get("link_type"),
+            is_default: row.get("is_default"),
+            viewer_permission,
+            linked_by,
+            created_at: row.get("created_at"),
+            updated_at: row.get("updated_at"),
+        });
+    }
+    Ok(links)
+}
+
+async fn project_settings_access_grants(
+    pool: &PgPool,
+    project_id: Uuid,
+) -> Result<Vec<ProjectSettingsAccessGrant>, ProjectsError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT project_permissions.id,
+               project_permissions.role,
+               project_permissions.source,
+               project_permissions.updated_at,
+               users.id AS user_id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS login,
+               users.avatar_url
+        FROM project_permissions
+        JOIN users ON users.id = project_permissions.user_id
+        WHERE project_permissions.project_id = $1
+        ORDER BY project_permissions.source, login
+        "#,
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let source: String = row.get("source");
+            ProjectSettingsAccessGrant {
+                id: row.get("id"),
+                user: ProjectWorkspaceUser {
+                    id: row.get("user_id"),
+                    login: row.get("login"),
+                    avatar_url: row.get("avatar_url"),
+                },
+                role: row.get("role"),
+                inherited: source != "direct",
+                source,
+                updated_at: row.get("updated_at"),
+            }
+        })
+        .collect())
+}
+
+async fn project_settings_team_grants(
+    pool: &PgPool,
+    project_id: Uuid,
+) -> Result<Vec<ProjectSettingsTeamGrant>, ProjectsError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT project_team_permissions.id,
+               project_team_permissions.role,
+               project_team_permissions.updated_at,
+               teams.id AS team_id,
+               teams.slug,
+               teams.name,
+               organizations.slug AS org_slug,
+               COALESCE(member_counts.member_count, 0) AS member_count
+        FROM project_team_permissions
+        JOIN teams ON teams.id = project_team_permissions.team_id
+        JOIN organizations ON organizations.id = teams.organization_id
+        LEFT JOIN (
+            SELECT team_id, count(*) AS member_count
+            FROM team_memberships
+            GROUP BY team_id
+        ) member_counts ON member_counts.team_id = teams.id
+        WHERE project_team_permissions.project_id = $1
+        ORDER BY teams.name
+        "#,
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let org_slug: String = row.get("org_slug");
+            let slug: String = row.get("slug");
+            ProjectSettingsTeamGrant {
+                id: row.get("id"),
+                team: ProjectSettingsTeamOption {
+                    id: row.get("team_id"),
+                    slug: slug.clone(),
+                    name: row.get("name"),
+                    href: format!("/orgs/{org_slug}/teams/{slug}"),
+                },
+                role: row.get("role"),
+                member_count: row.get("member_count"),
+                updated_at: row.get("updated_at"),
+            }
+        })
+        .collect())
+}
+
+async fn project_settings_eligible_users(
+    pool: &PgPool,
+    project_id: Uuid,
+) -> Result<Vec<ProjectWorkspaceUser>, ProjectsError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT DISTINCT users.id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS login,
+               users.avatar_url
+        FROM projects
+        JOIN users ON users.id = projects.owner_user_id
+        WHERE projects.id = $1
+        UNION
+        SELECT DISTINCT users.id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS login,
+               users.avatar_url
+        FROM projects
+        JOIN organization_memberships
+          ON organization_memberships.organization_id = projects.owner_organization_id
+        JOIN users ON users.id = organization_memberships.user_id
+        WHERE projects.id = $1
+        ORDER BY login
+        "#,
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| ProjectWorkspaceUser {
+            id: row.get("id"),
+            login: row.get("login"),
+            avatar_url: row.get("avatar_url"),
+        })
+        .collect())
+}
+
+async fn project_settings_eligible_teams(
+    pool: &PgPool,
+    project_id: Uuid,
+) -> Result<Vec<ProjectSettingsTeamOption>, ProjectsError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT teams.id, teams.slug, teams.name, organizations.slug AS org_slug
+        FROM projects
+        JOIN teams ON teams.organization_id = projects.owner_organization_id
+        JOIN organizations ON organizations.id = teams.organization_id
+        WHERE projects.id = $1
+        ORDER BY teams.name
+        "#,
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let org_slug: String = row.get("org_slug");
+            let slug: String = row.get("slug");
+            ProjectSettingsTeamOption {
+                id: row.get("id"),
+                slug: slug.clone(),
+                name: row.get("name"),
+                href: format!("/orgs/{org_slug}/teams/{slug}"),
+            }
+        })
+        .collect())
+}
+
+async fn project_settings_status_updates(
+    pool: &PgPool,
+    project_id: Uuid,
+) -> Result<Vec<ProjectSettingsStatusUpdate>, ProjectsError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT project_status_updates.id,
+               project_status_updates.status,
+               project_status_updates.body,
+               project_status_updates.start_date,
+               project_status_updates.target_date,
+               project_status_updates.created_at,
+               users.id AS author_id,
+               COALESCE(NULLIF(users.username, ''), users.email) AS author_login,
+               users.avatar_url AS author_avatar_url
+        FROM project_status_updates
+        LEFT JOIN users ON users.id = project_status_updates.author_user_id
+        WHERE project_status_updates.project_id = $1
+        ORDER BY project_status_updates.created_at DESC
+        LIMIT 10
+        "#,
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let status: String = row.get("status");
+            let author = row
+                .try_get::<Option<Uuid>, _>("author_id")
+                .ok()
+                .flatten()
+                .map(|id| ProjectWorkspaceUser {
+                    id,
+                    login: row
+                        .try_get::<Option<String>, _>("author_login")
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(|| "unknown".to_owned()),
+                    avatar_url: row.get("author_avatar_url"),
+                });
+            ProjectSettingsStatusUpdate {
+                id: row.get("id"),
+                label: status_label(&status),
+                status,
+                body: row.get("body"),
+                start_date: row.get("start_date"),
+                target_date: row.get("target_date"),
+                author,
+                created_at: row.get("created_at"),
+            }
+        })
+        .collect())
+}
+
+async fn project_settings_template(
+    pool: &PgPool,
+    project_id: Uuid,
+    fallback_title: String,
+) -> Result<ProjectSettingsTemplate, ProjectsError> {
+    let row = sqlx::query(
+        r#"
+        SELECT projects.is_template,
+               project_templates.id AS template_id,
+               project_templates.title,
+               project_templates.description,
+               project_templates.is_public,
+               project_templates.created_at
+        FROM projects
+        LEFT JOIN project_templates ON project_templates.project_id = projects.id
+        WHERE projects.id = $1
+        "#,
+    )
+    .bind(project_id)
+    .fetch_one(pool)
+    .await?;
+    let is_template: bool = row.get("is_template");
+    Ok(ProjectSettingsTemplate {
+        is_template,
+        template_id: row.get("template_id"),
+        title: row
+            .try_get::<Option<String>, _>("title")
+            .ok()
+            .flatten()
+            .or_else(|| is_template.then_some(fallback_title)),
+        description: row.get("description"),
+        is_public: row
+            .try_get::<Option<bool>, _>("is_public")
+            .ok()
+            .flatten()
+            .unwrap_or(false),
+        created_at: row.get("created_at"),
+    })
+}
+
+async fn project_settings_danger_state(
+    pool: &PgPool,
+    project_id: Uuid,
+    title: &str,
+) -> Result<ProjectSettingsDangerState, ProjectsError> {
+    let row = sqlx::query(
+        r#"
+        SELECT projects.state,
+               projects.closed_at,
+               projects.deleted_at,
+               closed_by.id AS closed_by_id,
+               COALESCE(NULLIF(closed_by.username, ''), closed_by.email) AS closed_by_login,
+               closed_by.avatar_url AS closed_by_avatar_url,
+               deleted_by.id AS deleted_by_id,
+               COALESCE(NULLIF(deleted_by.username, ''), deleted_by.email) AS deleted_by_login,
+               deleted_by.avatar_url AS deleted_by_avatar_url
+        FROM projects
+        LEFT JOIN users closed_by ON closed_by.id = projects.closed_by_user_id
+        LEFT JOIN users deleted_by ON deleted_by.id = projects.deleted_by_user_id
+        WHERE projects.id = $1
+        "#,
+    )
+    .bind(project_id)
+    .fetch_one(pool)
+    .await?;
+    let closed_by = row
+        .try_get::<Option<Uuid>, _>("closed_by_id")
+        .ok()
+        .flatten()
+        .map(|id| ProjectWorkspaceUser {
+            id,
+            login: row
+                .try_get::<Option<String>, _>("closed_by_login")
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "unknown".to_owned()),
+            avatar_url: row.get("closed_by_avatar_url"),
+        });
+    let deleted_by = row
+        .try_get::<Option<Uuid>, _>("deleted_by_id")
+        .ok()
+        .flatten()
+        .map(|id| ProjectWorkspaceUser {
+            id,
+            login: row
+                .try_get::<Option<String>, _>("deleted_by_login")
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "unknown".to_owned()),
+            avatar_url: row.get("deleted_by_avatar_url"),
+        });
+    Ok(ProjectSettingsDangerState {
+        state: row.get("state"),
+        closed_at: row.get("closed_at"),
+        closed_by,
+        deleted_at: row.get("deleted_at"),
+        deleted_by,
+        delete_confirmation: title.to_owned(),
+    })
 }
 
 async fn workspace_views(

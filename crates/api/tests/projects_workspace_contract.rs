@@ -1463,6 +1463,251 @@ async fn project_workflow_settings_seed_defaults_and_filter_targets() {
 }
 
 #[tokio::test]
+async fn project_settings_read_contract_filters_private_repositories_and_permissions() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping projects settings scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("settings{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let admin = create_user(&pool, &format!("{marker}-admin")).await;
+    let reader = create_user(&pool, &format!("{marker}-reader")).await;
+    let outsider = create_user(&pool, &format!("{marker}-outsider")).await;
+    let admin_cookie = cookie_header(&pool, &config, &admin).await;
+    let reader_cookie = cookie_header(&pool, &config, &reader).await;
+    let outsider_cookie = cookie_header(&pool, &config, &outsider).await;
+
+    let org = create_organization(
+        &pool,
+        CreateOrganization {
+            slug: marker.clone(),
+            display_name: "Project Settings Org".to_owned(),
+            description: None,
+            owner_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("organization should create");
+    sqlx::query(
+        "INSERT INTO organization_memberships (organization_id, user_id, role) VALUES ($1, $2, 'owner'), ($1, $3, 'member'), ($1, $4, 'member')",
+    )
+    .bind(org.id)
+    .bind(owner.id)
+    .bind(admin.id)
+    .bind(reader.id)
+    .execute(&pool)
+    .await
+    .expect("memberships should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO organization_policy_settings (
+          organization_id, projects_base_permission, projects_enabled, members_can_change_repository_visibility
+        )
+        VALUES ($1, 'read', false, false)
+        ON CONFLICT (organization_id)
+        DO UPDATE SET projects_base_permission = EXCLUDED.projects_base_permission,
+                      projects_enabled = EXCLUDED.projects_enabled,
+                      members_can_change_repository_visibility = EXCLUDED.members_can_change_repository_visibility
+        "#,
+    )
+    .bind(org.id)
+    .execute(&pool)
+    .await
+    .expect("policy should upsert");
+
+    let visible_repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::Organization { id: org.id },
+            name: format!("visible-{}", Uuid::new_v4().simple()),
+            description: None,
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("visible repository should create");
+    let hidden_repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::Organization { id: org.id },
+            name: format!("hidden-{}", Uuid::new_v4().simple()),
+            description: None,
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("hidden repository should create");
+    grant_repository_permission(
+        &pool,
+        visible_repo.id,
+        admin.id,
+        RepositoryRole::Write,
+        "direct",
+    )
+    .await
+    .expect("admin visible repository permission should grant");
+    grant_repository_permission(
+        &pool,
+        visible_repo.id,
+        reader.id,
+        RepositoryRole::Read,
+        "direct",
+    )
+    .await
+    .expect("reader visible repository permission should grant");
+
+    let project_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO projects (
+          owner_organization_id, number, title, short_description, readme, visibility,
+          default_repository_id, created_by_user_id
+        )
+        VALUES ($1, 91, 'Settings contract project', 'Settings read contract', '## Plan', 'private', $2, $3)
+        RETURNING id
+        "#,
+    )
+    .bind(org.id)
+    .bind(visible_repo.id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("project should insert");
+    sqlx::query(
+        "INSERT INTO project_permissions (project_id, user_id, role) VALUES ($1, $2, 'admin'), ($1, $3, 'read')",
+    )
+    .bind(project_id)
+    .bind(admin.id)
+    .bind(reader.id)
+    .execute(&pool)
+    .await
+    .expect("project permissions should insert");
+    sqlx::query(
+        "INSERT INTO project_repositories (project_id, repository_id, link_type, linked_by_user_id) VALUES ($1, $2, 'linked', $4), ($1, $3, 'linked', $4)",
+    )
+    .bind(project_id)
+    .bind(visible_repo.id)
+    .bind(hidden_repo.id)
+    .bind(owner.id)
+    .execute(&pool)
+    .await
+    .expect("repository links should insert");
+    sqlx::query(
+        "INSERT INTO project_status_updates (project_id, author_user_id, status, body, start_date, target_date) VALUES ($1, $2, 'at_risk', 'Blocked on review', '2026-05-01', '2026-05-31')",
+    )
+    .bind(project_id)
+    .bind(admin.id)
+    .execute(&pool)
+    .await
+    .expect("status update should insert");
+    sqlx::query(
+        "INSERT INTO project_readme_revisions (project_id, author_user_id, body) VALUES ($1, $2, 'Initial readme')",
+    )
+    .bind(project_id)
+    .bind(admin.id)
+    .execute(&pool)
+    .await
+    .expect("readme revision should insert");
+    let team_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO teams (organization_id, slug, name) VALUES ($1, 'planning', 'Planning') RETURNING id",
+    )
+    .bind(org.id)
+    .fetch_one(&pool)
+    .await
+    .expect("team should insert");
+    sqlx::query("INSERT INTO team_memberships (team_id, user_id) VALUES ($1, $2)")
+        .bind(team_id)
+        .bind(reader.id)
+        .execute(&pool)
+        .await
+        .expect("team membership should insert");
+    sqlx::query(
+        "INSERT INTO project_team_permissions (project_id, team_id, role, created_by_user_id) VALUES ($1, $2, 'write', $3)",
+    )
+    .bind(project_id)
+    .bind(team_id)
+    .bind(owner.id)
+    .execute(&pool)
+    .await
+    .expect("team permission should insert");
+    sqlx::query(
+        "INSERT INTO project_templates (project_id, title, description, is_public) VALUES ($1, 'Roadmap template', 'Copy this plan', true)",
+    )
+    .bind(project_id)
+    .execute(&pool)
+    .await
+    .expect("template should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+    let (status, _, body) = get_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/settings"),
+        Some(&admin_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["project"]["title"], "Settings contract project");
+    assert_eq!(body["general"]["readme"], "## Plan");
+    assert_eq!(body["general"]["readmeRevisionCount"], 1);
+    assert_eq!(body["policy"]["projectsEnabled"], false);
+    assert_eq!(body["policy"]["visibilityChangesAllowed"], false);
+    assert_eq!(body["viewerPermissions"]["canManageAccess"], true);
+    assert_eq!(body["viewerPermissions"]["canChangeVisibility"], false);
+    assert_eq!(
+        body["repositories"].as_array().expect("repositories").len(),
+        2
+    );
+    assert!(body["repositories"]
+        .as_array()
+        .expect("repositories")
+        .iter()
+        .all(|repo| repo["fullName"] != format!("{}/{}", marker, hidden_repo.name)));
+    assert_eq!(body["accessGrants"].as_array().expect("grants").len(), 2);
+    assert_eq!(body["teamGrants"][0]["team"]["slug"], "planning");
+    assert_eq!(body["teamGrants"][0]["memberCount"], 1);
+    assert_eq!(body["eligibleTeams"][0]["name"], "Planning");
+    assert_eq!(body["statusUpdates"][0]["label"], "At risk");
+    assert_eq!(body["template"]["title"], "Roadmap template");
+    assert_eq!(
+        body["dangerState"]["deleteConfirmation"],
+        "Settings contract project"
+    );
+
+    let (status, _, body) = get_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/settings"),
+        Some(&reader_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["viewerPermissions"]["canManageAccess"], false);
+    assert_eq!(body["viewerPermissions"]["canPublishStatus"], false);
+    assert_eq!(
+        body["repositories"].as_array().expect("repositories").len(),
+        2
+    );
+
+    let (status, _, body) = get_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/settings"),
+        Some(&outsider_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert_eq!(body["error"]["code"], "forbidden");
+
+    let (status, _, body) =
+        get_json(app, &format!("/api/projects/{project_id}/settings"), None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert_eq!(body["error"]["code"], "not_found");
+}
+
+#[tokio::test]
 async fn project_workflow_engine_moves_closed_issue_to_done_idempotently() {
     let Some(pool) = database_pool().await else {
         eprintln!("skipping projects workflow execution scenario; set TEST_DATABASE_URL");

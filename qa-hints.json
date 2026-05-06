@@ -7282,5 +7282,22 @@
       "Probe concurrent workflow edits and stale expectedUpdatedAt conflicts, stale enable/disable toggles, missing Done/status option fallback, private repository auto-add targets, project writer without linked repository write permission, close-on-status permission denial, duplicate built-in event idempotency, duplicate Actions/GraphQL idempotency keys, auto-archive age boundaries around 1/14/365 days, Actions run attribution, Bearer PAT authorization, revoked/expired PATs, audit rows, notification fanout, and mobile settings layout.",
       "Verify read-only and unauthenticated users see disabled or permission states without leaking private repository target names, execution log metadata, session rows, OAuth payloads, token hashes, storage keys, environment variables, or stack traces."
     ]
+  },
+  {
+    "feature_id": "projects-007",
+    "tests_written": [
+      "Completed Phase 1 Settings Read Contract without marking projects-007 build_pass=true.",
+      "Added additive project settings metadata for deleted/closed actors, repository link actors/updated_at, team grants, README revisions, status update indexes, and project settings audit lookup.",
+      "Added Rust GET /api/projects/{project_id}/settings returning general metadata, README, policy locks, visible repository links, user/team grants, eligible users/teams, status history, template state, danger state, and capability flags.",
+      "Added typed Next API DTOs and signed-cookie helpers for direct project IDs plus user/org project-number settings lookup.",
+      "Added projects_workspace_contract coverage for admin/read-only/outsider/anonymous settings reads, organization policy locks, visible private repository filtering, access grant shape, team grants, status update shape, template state, and danger confirmation.",
+      "Verification passed: cargo fmt --all --check; cargo check -p opengithub-api --tests; focused DB-guarded Rust settings scenario compile/run; web TypeScript; focused Biome for web API helpers; full make check; full make test with Cargo tests plus 563 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Focused Rust DB assertions self-skipped because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test failed with password authentication failed for user postgres; rerun project_settings_read_contract_filters_private_repositories_and_permissions against a clean migrated credentialed database.",
+      "Browser smoke and make test-e2e were skipped because Phase 1 is API-first and .qrspi/projects-007/structure.md marks browser smoke optional; Phase 2 owns the first visible General settings page smoke.",
+      "Probe user-owned projects, org-owned projects with owner/admin/member/base permission combinations, public projects for anonymous viewers, private linked repositories with and without repository permissions, team grant inheritance, deleted/closed metadata, template state without a project_templates row, and policy-disabled Projects copy.",
+      "Phase 2 still owns the Editorial General settings UI; Phase 3 mutations; Phase 4 Access settings; Phase 5 Danger Zone lifecycle; Phase 6 docs, final browser evidence, QA handoff, and build_pass bookkeeping."
+    ]
   }
 ]
