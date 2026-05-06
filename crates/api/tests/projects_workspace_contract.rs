@@ -984,6 +984,198 @@ async fn project_draft_editing_and_comments_are_project_only() {
 }
 
 #[tokio::test]
+async fn project_draft_conversion_creates_linked_issue() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping projects draft conversion scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("draftconvert{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let member = create_user(&pool, &format!("{marker}-member")).await;
+    let assignee = create_user(&pool, &format!("{marker}-assignee")).await;
+    let reader = create_user(&pool, &format!("{marker}-reader")).await;
+    let member_cookie = cookie_header(&pool, &config, &member).await;
+    let reader_cookie = cookie_header(&pool, &config, &reader).await;
+
+    let project_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO projects (owner_user_id, number, title, short_description, visibility, created_by_user_id)
+        VALUES ($1, 76, 'Draft convert project', 'Convert project drafts', 'private', $1)
+        RETURNING id
+        "#,
+    )
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("project should insert");
+    sqlx::query(
+        "INSERT INTO project_permissions (project_id, user_id, role) VALUES ($1, $2, 'write'), ($1, $3, 'read')",
+    )
+    .bind(project_id)
+    .bind(member.id)
+    .bind(reader.id)
+    .execute(&pool)
+    .await
+    .expect("project permissions should insert");
+
+    let repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("convert-{}", Uuid::new_v4().simple()),
+            description: None,
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    grant_repository_permission(&pool, repo.id, member.id, RepositoryRole::Write, "direct")
+        .await
+        .expect("member repository permission");
+    grant_repository_permission(&pool, repo.id, assignee.id, RepositoryRole::Read, "direct")
+        .await
+        .expect("assignee repository permission");
+    sqlx::query("UPDATE projects SET default_repository_id = $2 WHERE id = $1")
+        .bind(project_id)
+        .bind(repo.id)
+        .execute(&pool)
+        .await
+        .expect("project default repository");
+    sqlx::query(
+        "INSERT INTO project_repositories (project_id, repository_id, link_type) VALUES ($1, $2, 'default')",
+    )
+    .bind(project_id)
+    .bind(repo.id)
+    .execute(&pool)
+    .await
+    .expect("project repository link");
+    sqlx::query(
+        "INSERT INTO project_fields (project_id, name, field_type, position) VALUES ($1, 'Title', 'title', 1)",
+    )
+    .bind(project_id)
+    .execute(&pool)
+    .await
+    .expect("field should insert");
+    let label_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO labels (repository_id, name, color) VALUES ($1, 'frontend', 'c44d2d') RETURNING id",
+    )
+    .bind(repo.id)
+    .fetch_one(&pool)
+    .await
+    .expect("label should insert");
+    let milestone_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO milestones (repository_id, title, due_on, created_by_user_id) VALUES ($1, 'M1', now(), $2) RETURNING id",
+    )
+    .bind(repo.id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("milestone should insert");
+    let draft_item_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_items (project_id, item_type, title, body, position) VALUES ($1, 'draft_issue', 'Convert this draft', 'Draft issue body', 1) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("draft should insert");
+    let original_updated_at: chrono::DateTime<Utc> =
+        sqlx::query_scalar("SELECT updated_at FROM project_items WHERE id = $1")
+            .bind(draft_item_id)
+            .fetch_one(&pool)
+            .await
+            .expect("draft timestamp should read");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let (status, _, body) = get_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/conversion-targets"),
+        Some(&member_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["repositories"][0]["id"], repo.id.to_string());
+    assert_eq!(body["repositories"][0]["labels"][0]["name"], "frontend");
+
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/items/{draft_item_id}/convert-to-issue"),
+        Some(&member_cookie),
+        json!({
+            "repositoryId": repo.id,
+            "labelIds": [label_id],
+            "assigneeUserIds": [assignee.id],
+            "milestoneId": milestone_id,
+            "expectedUpdatedAt": original_updated_at.to_rfc3339(),
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["item"]["itemType"], "issue");
+    assert_eq!(body["item"]["title"], "Convert this draft");
+    assert_eq!(body["source"]["repository"]["id"], repo.id.to_string());
+    assert_eq!(body["source"]["number"], 1);
+    assert_eq!(body["viewerPermissions"]["canConvert"], false);
+
+    let issue_id: Uuid = sqlx::query_scalar(
+        "SELECT issue_id FROM project_items WHERE id = $1 AND item_type = 'issue'",
+    )
+    .bind(draft_item_id)
+    .fetch_one(&pool)
+    .await
+    .expect("converted issue id should read");
+    let label_count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM issue_labels WHERE issue_id = $1")
+            .bind(issue_id)
+            .fetch_one(&pool)
+            .await
+            .expect("label count");
+    assert_eq!(label_count, 1);
+    let assignee_count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM issue_assignees WHERE issue_id = $1")
+            .bind(issue_id)
+            .fetch_one(&pool)
+            .await
+            .expect("assignee count");
+    assert_eq!(assignee_count, 1);
+    let timeline_count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM timeline_events WHERE issue_id = $1")
+            .bind(issue_id)
+            .fetch_one(&pool)
+            .await
+            .expect("timeline count");
+    assert_eq!(timeline_count, 1);
+    let notification_count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM notifications WHERE subject_id = $1")
+            .bind(issue_id)
+            .fetch_one(&pool)
+            .await
+            .expect("notification count");
+    assert_eq!(notification_count, 1);
+
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/items/{draft_item_id}/convert-to-issue"),
+        Some(&member_cookie),
+        json!({ "repositoryId": repo.id }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["source"]["id"], issue_id.to_string());
+
+    let (status, _, body) = get_json(
+        app,
+        &format!("/api/projects/{project_id}/conversion-targets"),
+        Some(&reader_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+}
+
+#[tokio::test]
 async fn project_field_settings_returns_options_iterations_limits_and_guards() {
     let Some(pool) = database_pool().await else {
         eprintln!("skipping projects field settings scenario; set TEST_DATABASE_URL");

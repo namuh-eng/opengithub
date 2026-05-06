@@ -441,6 +441,41 @@ export type ProjectItemCommentUpdateRequest = {
   expectedUpdatedAt: string | null;
 };
 
+export type ProjectConversionMilestone = {
+  id: string;
+  title: string;
+  state: string;
+};
+
+export type ProjectConversionRepository = {
+  id: string;
+  owner: string;
+  name: string;
+  fullName: string;
+  href: string;
+  labels: ProjectWorkspaceLabel[];
+  assignees: ProjectWorkspaceUser[];
+  milestones: ProjectConversionMilestone[];
+};
+
+export type ProjectConversionTargets = {
+  project: ProjectWorkspaceProject;
+  repositories: ProjectConversionRepository[];
+  viewerPermissions: {
+    authenticated: boolean;
+    viewerRole: string | null;
+    canConvert: boolean;
+  };
+};
+
+export type ProjectDraftConvertRequest = {
+  repositoryId: string;
+  labelIds: string[];
+  assigneeUserIds: string[];
+  milestoneId: string | null;
+  expectedUpdatedAt: string | null;
+};
+
 export type ProjectArchivedItem = {
   item: ProjectWorkspaceItem;
   source: ProjectItemSourceSummary | null;
@@ -7464,6 +7499,14 @@ function projectItemDraftPath(projectId: string, itemId: string): string {
   return `${projectItemDetailPath(projectId, itemId)}/draft`;
 }
 
+function projectConversionTargetsPath(projectId: string): string {
+  return `/api/projects/${encodeURIComponent(projectId)}/conversion-targets`;
+}
+
+function projectItemConvertPath(projectId: string, itemId: string): string {
+  return `${projectItemDetailPath(projectId, itemId)}/convert-to-issue`;
+}
+
 function projectItemCommentsPath(projectId: string, itemId: string): string {
   return `${projectItemDetailPath(projectId, itemId)}/comments`;
 }
@@ -8418,6 +8461,53 @@ export function updateProjectDraftItemFromCookie(
     "PATCH",
     "project_draft_update_failed",
     "Draft project item could not be saved.",
+    request,
+  );
+}
+
+export async function getProjectConversionTargetsFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+): Promise<ProjectConversionTargets> {
+  const response = await fetch(
+    `${apiBaseUrl()}${projectConversionTargetsPath(projectId)}`,
+    {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ??
+        "Project conversion targets could not be loaded.",
+      {
+        cause: {
+          error: envelope?.error ?? {
+            code: "project_conversion_targets_failed",
+            message: "Project conversion targets could not be loaded.",
+          },
+          status: envelope?.status ?? response.status,
+        } satisfies ApiErrorEnvelope,
+      },
+    );
+  }
+  return payload as ProjectConversionTargets;
+}
+
+export function convertProjectDraftToIssueFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  itemId: string,
+  request: ProjectDraftConvertRequest,
+): Promise<ProjectItemDetail> {
+  return mutateProjectItemDetailFromCookie(
+    cookie,
+    projectItemConvertPath(projectId, itemId),
+    "POST",
+    "project_draft_convert_failed",
+    "Draft project item could not be converted.",
     request,
   );
 }

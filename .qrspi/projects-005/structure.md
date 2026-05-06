@@ -57,7 +57,7 @@
 
 ## Phase 4: Draft Conversion to Repository Issue - drafts become normal linked issues
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Convert a draft project item into a repository issue by choosing a readable/writable repository plus optional labels, assignees, milestone, and field defaults. After conversion, the project item points to the new issue and gains normal issue URL/timeline/notification behavior.
 

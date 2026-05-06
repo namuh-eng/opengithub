@@ -443,7 +443,7 @@ describe("ProjectWorkspacePage", () => {
     );
     expect(
       within(panel).getByRole("button", { name: "Convert to issue" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
     expect(
       within(panel).getByRole("button", { name: "Archive" }),
     ).toBeDisabled();
@@ -457,6 +457,128 @@ describe("ProjectWorkspacePage", () => {
     expect(assign).toHaveBeenCalledWith(
       "/orgs/namuh/projects/12/views/1?q=is%3Aopen&sort=manual&group=Status",
     );
+  });
+
+  it("converts a draft project item through real conversion target and mutation routes", async () => {
+    const convertedDetail = itemDetail({
+      item: {
+        ...itemDetail().item,
+        itemType: "issue",
+        number: 44,
+        href: "/namuh/opengithub/issues/44",
+        repository: {
+          id: "repo-1",
+          owner: "namuh",
+          name: "opengithub",
+          fullName: "namuh/opengithub",
+          href: "/namuh/opengithub",
+        },
+        title: "Draft launch notes",
+        body: "Write the rollout note.",
+      },
+      source: {
+        sourceType: "issue",
+        id: "issue-44",
+        number: 44,
+        title: "Draft launch notes",
+        state: "open",
+        href: "/namuh/opengithub/issues/44",
+        repository: {
+          id: "repo-1",
+          owner: "namuh",
+          name: "opengithub",
+          fullName: "namuh/opengithub",
+          href: "/namuh/opengithub",
+        },
+        updatedAt: "2026-05-04T04:00:00Z",
+        syncedAt: "2026-05-04T04:00:00Z",
+        syncVersion: 1,
+      },
+      draft: null,
+      viewerPermissions: {
+        ...itemDetail().viewerPermissions,
+        canConvert: false,
+      },
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          project: workspace().project,
+          repositories: [
+            {
+              id: "repo-1",
+              owner: "namuh",
+              name: "opengithub",
+              fullName: "namuh/opengithub",
+              href: "/namuh/opengithub",
+              labels: [{ id: "label-1", name: "frontend", color: "rust" }],
+              assignees: [{ id: "user-1", login: "mona", avatarUrl: null }],
+              milestones: [{ id: "mile-1", title: "M1", state: "open" }],
+            },
+          ],
+          viewerPermissions: {
+            authenticated: true,
+            viewerRole: "write",
+            canConvert: true,
+          },
+        }),
+      })
+      .mockResolvedValueOnce({ ok: true, json: async () => convertedDetail });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ProjectWorkspacePage
+        initialItemDetail={itemDetail()}
+        owner="namuh"
+        scope="organization"
+        viewNumber={1}
+        workspace={workspace()}
+      />,
+    );
+
+    const panel = screen.getByRole("complementary", {
+      name: "Project item detail",
+    });
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Convert to issue" }),
+    );
+    await screen.findByRole("form", { name: "Convert draft to issue" });
+    fireEvent.click(within(panel).getByLabelText("frontend"));
+    fireEvent.click(within(panel).getByLabelText("mona"));
+    fireEvent.change(within(panel).getByLabelText("Milestone"), {
+      target: { value: "mile-1" },
+    });
+    fireEvent.submit(
+      within(panel).getByRole("form", { name: "Convert draft to issue" }),
+    );
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        "/api/projects/project-1/items/item-2/convert-to-issue",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            repositoryId: "repo-1",
+            labelIds: ["label-1"],
+            assigneeUserIds: ["user-1"],
+            milestoneId: "mile-1",
+            expectedUpdatedAt: "2026-05-04T00:00:00Z",
+          }),
+        },
+      ),
+    );
+    expect(
+      within(panel).getByText("Draft converted to issue"),
+    ).toBeInTheDocument();
+    expect(
+      within(panel).getByRole("link", { name: "namuh/opengithub #44" }),
+    ).toHaveAttribute("href", "/namuh/opengithub/issues/44");
+    expect(
+      within(panel).getByRole("button", { name: "Convert to issue" }),
+    ).toBeDisabled();
   });
 
   it("edits draft body and project-only comments through real item routes", async () => {

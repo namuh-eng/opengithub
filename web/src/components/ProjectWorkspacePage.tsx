@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { type FormEvent, Fragment, useMemo, useState } from "react";
 import type {
+  ProjectConversionTargets,
   ProjectItemComment,
   ProjectItemDetail,
   ProjectWorkspace,
@@ -2001,6 +2002,17 @@ function ProjectItemSidePanel({
   const [commentSaving, setCommentSaving] = useState<string | null>(null);
   const [panelMessage, setPanelMessage] = useState<string | null>(null);
   const [panelError, setPanelError] = useState<string | null>(null);
+  const [conversionTargets, setConversionTargets] =
+    useState<ProjectConversionTargets | null>(null);
+  const [conversionOpen, setConversionOpen] = useState(false);
+  const [conversionLoading, setConversionLoading] = useState(false);
+  const [conversionSaving, setConversionSaving] = useState(false);
+  const [conversionRepositoryId, setConversionRepositoryId] = useState("");
+  const [conversionLabelIds, setConversionLabelIds] = useState<string[]>([]);
+  const [conversionAssigneeIds, setConversionAssigneeIds] = useState<string[]>(
+    [],
+  );
+  const [conversionMilestoneId, setConversionMilestoneId] = useState("");
   const item = currentDetail.item;
   const sourceHref = currentDetail.source?.href ?? item.href;
   const sourceLabel = currentDetail.source
@@ -2117,6 +2129,69 @@ function ProjectItemSidePanel({
     setCurrentDetail(updated);
     setPanelMessage("Comment deleted");
   }
+
+  async function openConversionDialog() {
+    setConversionOpen(true);
+    setPanelError(null);
+    setPanelMessage(null);
+    if (conversionTargets) return;
+    setConversionLoading(true);
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(currentDetail.project.id)}/conversion-targets`,
+    ).catch(() => null);
+    setConversionLoading(false);
+    if (!response?.ok) {
+      const body = await response?.json().catch(() => null);
+      setPanelError(
+        body?.error?.message ??
+          "Project conversion targets could not be loaded.",
+      );
+      setConversionOpen(false);
+      return;
+    }
+    const targets = (await response.json()) as ProjectConversionTargets;
+    setConversionTargets(targets);
+    const firstRepository = targets.repositories[0];
+    if (firstRepository) {
+      setConversionRepositoryId(firstRepository.id);
+    }
+  }
+
+  async function submitConversion(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!conversionRepositoryId) return;
+    setConversionSaving(true);
+    setPanelError(null);
+    setPanelMessage(null);
+    const response = await fetch(`${mutationBase}/convert-to-issue`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        repositoryId: conversionRepositoryId,
+        labelIds: conversionLabelIds,
+        assigneeUserIds: conversionAssigneeIds,
+        milestoneId: conversionMilestoneId || null,
+        expectedUpdatedAt: item.updatedAt,
+      }),
+    }).catch(() => null);
+    setConversionSaving(false);
+    if (!response?.ok) {
+      const body = await response?.json().catch(() => null);
+      setPanelError(
+        body?.error?.message ?? "Draft project item could not be converted.",
+      );
+      return;
+    }
+    const updated = (await response.json()) as ProjectItemDetail;
+    setCurrentDetail(updated);
+    setConversionOpen(false);
+    setPanelMessage("Draft converted to issue");
+  }
+
+  const selectedConversionRepository =
+    conversionTargets?.repositories.find(
+      (repository) => repository.id === conversionRepositoryId,
+    ) ?? conversionTargets?.repositories[0];
   return (
     <aside
       aria-label="Project item detail"
@@ -2211,6 +2286,149 @@ function ProjectItemSidePanel({
           </p>
         ) : null}
       </section>
+
+      {conversionOpen ? (
+        <section className="card mb-5 grid gap-3 p-3">
+          <div>
+            <div className="t-label mb-1">Convert to issue</div>
+            <p className="t-xs">
+              Choose a linked repository. Labels, assignees, and milestone are
+              applied to the new issue.
+            </p>
+          </div>
+          {conversionLoading ? (
+            <p className="chip soft w-fit">Loading repositories</p>
+          ) : (
+            <form
+              aria-label="Convert draft to issue"
+              className="grid gap-3"
+              onSubmit={submitConversion}
+            >
+              <label className="grid gap-1">
+                <span className="t-label">Repository</span>
+                <select
+                  className="input"
+                  disabled={conversionSaving}
+                  onChange={(event) => {
+                    setConversionRepositoryId(event.target.value);
+                    setConversionLabelIds([]);
+                    setConversionAssigneeIds([]);
+                    setConversionMilestoneId("");
+                  }}
+                  value={conversionRepositoryId}
+                >
+                  {(conversionTargets?.repositories ?? []).map((repository) => (
+                    <option key={repository.id} value={repository.id}>
+                      {repository.fullName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {selectedConversionRepository ? (
+                <>
+                  <fieldset className="grid gap-2">
+                    <legend className="t-label">Labels</legend>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedConversionRepository.labels.length === 0 ? (
+                        <span className="chip soft">No labels</span>
+                      ) : (
+                        selectedConversionRepository.labels.map((label) => (
+                          <label className="chip soft" key={label.id}>
+                            <input
+                              checked={conversionLabelIds.includes(label.id)}
+                              disabled={conversionSaving}
+                              onChange={(event) =>
+                                setConversionLabelIds((current) =>
+                                  event.target.checked
+                                    ? [...current, label.id]
+                                    : current.filter((id) => id !== label.id),
+                                )
+                              }
+                              type="checkbox"
+                            />{" "}
+                            {label.name}
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  </fieldset>
+                  <fieldset className="grid gap-2">
+                    <legend className="t-label">Assignees</legend>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedConversionRepository.assignees.length === 0 ? (
+                        <span className="chip soft">No assignees</span>
+                      ) : (
+                        selectedConversionRepository.assignees.map((user) => (
+                          <label className="chip soft" key={user.id}>
+                            <input
+                              checked={conversionAssigneeIds.includes(user.id)}
+                              disabled={conversionSaving}
+                              onChange={(event) =>
+                                setConversionAssigneeIds((current) =>
+                                  event.target.checked
+                                    ? [...current, user.id]
+                                    : current.filter((id) => id !== user.id),
+                                )
+                              }
+                              type="checkbox"
+                            />{" "}
+                            {user.login}
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  </fieldset>
+                  <label className="grid gap-1">
+                    <span className="t-label">Milestone</span>
+                    <select
+                      className="input"
+                      disabled={conversionSaving}
+                      onChange={(event) =>
+                        setConversionMilestoneId(event.target.value)
+                      }
+                      value={conversionMilestoneId}
+                    >
+                      <option value="">No milestone</option>
+                      {selectedConversionRepository.milestones.map(
+                        (milestone) => (
+                          <option key={milestone.id} value={milestone.id}>
+                            {milestone.title}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </label>
+                </>
+              ) : (
+                <p className="chip warn w-fit">
+                  No writable linked repositories are available.
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="btn sm primary"
+                  disabled={
+                    conversionSaving ||
+                    !conversionRepositoryId ||
+                    !selectedConversionRepository
+                  }
+                  type="submit"
+                >
+                  {conversionSaving ? "Converting..." : "Convert draft"}
+                </button>
+                <button
+                  className="btn sm"
+                  disabled={conversionSaving}
+                  onClick={() => setConversionOpen(false)}
+                  type="button"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+        </section>
+      ) : null}
 
       <section className="mb-5 grid gap-3">
         <div className="t-label">Fields</div>
@@ -2396,15 +2614,20 @@ function ProjectItemSidePanel({
       >
         <button
           className="btn sm primary"
-          disabled
+          disabled={
+            conversionLoading ||
+            conversionSaving ||
+            !currentDetail.viewerPermissions.canConvert
+          }
+          onClick={openConversionDialog}
           title={
             currentDetail.viewerPermissions.canConvert
-              ? "Draft conversion is implemented in the next phase."
+              ? "Convert this draft into a repository issue"
               : "Only editable draft items can be converted."
           }
           type="button"
         >
-          Convert to issue
+          {conversionLoading ? "Loading..." : "Convert to issue"}
         </button>
         <button
           className="btn sm"

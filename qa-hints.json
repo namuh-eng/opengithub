@@ -7128,5 +7128,22 @@
       "Probe concurrent draft edits, stale expectedUpdatedAt after comment changes, blank and oversized titles/comments, read-only and unauthenticated viewers, archived draft denial, linked issue/PR denial, deleted comment display, audit_events metadata, project_item_events ordering, and absence of repository timeline_events/notifications.",
       "Phase 4 still owns draft conversion to repository issues; Phase 5 archive/restore/remove lifecycle and linked sync; Phase 6 docs, screenshots, QA handoff, and build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-005",
+    "tests_written": [
+      "Completed Phase 4 Draft Conversion to Repository Issue without marking projects-005 build_pass=true.",
+      "Added Rust GET /api/projects/{project_id}/conversion-targets and POST /api/projects/{project_id}/items/{item_id}/convert-to-issue with project write checks, repository write checks, label/assignee/milestone validation, issue number allocation, draft body transfer, idempotent duplicate submit behavior, timeline_events, notifications, project_item_events, and audit_events.",
+      "Added same-origin Next proxy routes and typed web/src/lib/api.ts helpers for conversion targets and convert-to-issue while preserving Rust API/session authority.",
+      "Updated the Editorial item side panel with a real Convert to issue dialog, linked repository selector, label/assignee/milestone controls, validation feedback, pending states, and refreshed linked issue source state after conversion.",
+      "Extended projects_workspace_contract with project_draft_conversion_creates_linked_issue and ProjectWorkspacePage Vitest coverage for conversion target loading, selected labels/assignees/milestone payload, panel refresh, source URL update, and disabled non-draft conversion state.",
+      "Verification passed: cargo fmt --all; cargo check -p opengithub-api --tests; focused DB-guarded Rust scenario compile/run; focused web TypeScript; focused Biome; focused project-workspace-page Vitest with 19 tests; full make check; full make test with Cargo tests plus 557 web tests; mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Focused Rust DB assertions self-skipped because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test failed with password authentication failed for user postgres; rerun project_draft_conversion_creates_linked_issue against a clean migrated credentialed database.",
+      "Focused Playwright Projects workspace smoke was attempted with the same signed-session/test DB environment; setup passed, but dashboard_e2e_seed failed before page load with password authentication failed for user postgres, so no projects-005-phase4-draft-convert.jpg screenshot could be produced locally.",
+      "Probe duplicate convert submits, stale expectedUpdatedAt conflicts, repositories linked by project_repositories versus default_repository_id, private repository target visibility, invalid label/assignee/milestone IDs, empty writable target lists, notification fanout, audit rows, and converted source link navigation.",
+      "Phase 5 still owns archive/restore/remove lifecycle and linked issue/PR sync; Phase 6 still owns API docs, final browser evidence, QA handoff, and build_pass bookkeeping."
+    ]
   }
 ]

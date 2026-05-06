@@ -677,6 +677,55 @@ pub struct ProjectItemCommentUpdateRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct ProjectConversionTargets {
+    pub project: ProjectWorkspaceProject,
+    pub repositories: Vec<ProjectConversionRepository>,
+    pub viewer_permissions: ProjectConversionPermissions,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectConversionRepository {
+    pub id: Uuid,
+    pub owner: String,
+    pub name: String,
+    pub full_name: String,
+    pub href: String,
+    pub labels: Vec<ProjectWorkspaceLabel>,
+    pub assignees: Vec<ProjectWorkspaceUser>,
+    pub milestones: Vec<ProjectConversionMilestone>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectConversionMilestone {
+    pub id: Uuid,
+    pub title: String,
+    pub state: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectConversionPermissions {
+    pub authenticated: bool,
+    pub viewer_role: Option<String>,
+    pub can_convert: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectDraftConvertRequest {
+    pub repository_id: Uuid,
+    #[serde(default)]
+    pub label_ids: Vec<Uuid>,
+    #[serde(default)]
+    pub assignee_user_ids: Vec<Uuid>,
+    pub milestone_id: Option<Uuid>,
+    pub expected_updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct ProjectItemDetailPermissions {
     pub authenticated: bool,
     pub viewer_role: Option<String>,
@@ -2758,6 +2807,187 @@ pub async fn delete_project_item_comment_for_actor(
         "project.draft_comment.delete",
         comment_id,
         json!({ "projectId": project_id, "projectItemId": item_id }),
+    )
+    .await?;
+
+    project_item_detail(pool, project_id, item_id, Some(actor_user_id)).await
+}
+
+pub async fn project_conversion_targets_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<ProjectConversionTargets, ProjectsError> {
+    let project = writable_workspace_project(pool, project_id, actor_user_id).await?;
+    let repositories = writable_project_repositories(pool, project_id, actor_user_id).await?;
+    Ok(ProjectConversionTargets {
+        project: project.clone(),
+        repositories,
+        viewer_permissions: ProjectConversionPermissions {
+            authenticated: true,
+            viewer_role: project.viewer_role,
+            can_convert: true,
+        },
+    })
+}
+
+pub async fn convert_project_draft_to_issue_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    item_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectDraftConvertRequest,
+) -> Result<ProjectItemDetail, ProjectsError> {
+    writable_workspace_project(pool, project_id, actor_user_id).await?;
+    let item = workspace_item_edit_target(pool, project_id, item_id).await?;
+    if item.item_type != "draft_issue" {
+        if item.issue_id.is_some() {
+            return project_item_detail(pool, project_id, item_id, Some(actor_user_id)).await;
+        }
+        return Err(ProjectsError::Validation(
+            "Only draft project items can be converted to issues.".to_owned(),
+        ));
+    }
+    if item.archived_at.is_some() {
+        return Err(ProjectsError::Validation(
+            "Archived project items cannot be converted.".to_owned(),
+        ));
+    }
+    if let Some(expected) = request.expected_updated_at {
+        if item.updated_at != expected {
+            return Err(ProjectsError::Validation(
+                "Project item changed since it was loaded. Refresh before converting.".to_owned(),
+            ));
+        }
+    }
+    ensure_project_repository_write(pool, project_id, request.repository_id, actor_user_id).await?;
+    validate_conversion_labels(pool, request.repository_id, &request.label_ids).await?;
+    validate_conversion_assignees(pool, request.repository_id, &request.assignee_user_ids).await?;
+    validate_conversion_milestone(pool, request.repository_id, request.milestone_id).await?;
+
+    let draft = sqlx::query(
+        "SELECT title, body FROM project_items WHERE project_id = $1 AND id = $2 FOR UPDATE",
+    )
+    .bind(project_id)
+    .bind(item_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ProjectsError::NotFound)?;
+    let title = normalize_draft_title(&draft.get::<String, _>("title"))?;
+    let body = normalize_draft_body(draft.get::<Option<String>, _>("body").as_deref())?;
+    let issue_number = next_issue_number(pool, request.repository_id).await?;
+    let issue_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO issues (repository_id, number, title, body, author_user_id, milestone_id)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id
+        "#,
+    )
+    .bind(request.repository_id)
+    .bind(issue_number)
+    .bind(&title)
+    .bind(&body)
+    .bind(actor_user_id)
+    .bind(request.milestone_id)
+    .fetch_one(pool)
+    .await?;
+
+    for label_id in &request.label_ids {
+        sqlx::query(
+            "INSERT INTO issue_labels (issue_id, label_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+        )
+        .bind(issue_id)
+        .bind(label_id)
+        .execute(pool)
+        .await?;
+    }
+    for assignee_user_id in &request.assignee_user_ids {
+        sqlx::query(
+            r#"
+            INSERT INTO issue_assignees (issue_id, user_id, assigned_by_user_id)
+            VALUES ($1, $2, $3)
+            ON CONFLICT DO NOTHING
+            "#,
+        )
+        .bind(issue_id)
+        .bind(assignee_user_id)
+        .bind(actor_user_id)
+        .execute(pool)
+        .await?;
+    }
+
+    sqlx::query(
+        r#"
+        UPDATE project_items
+        SET item_type = 'issue',
+            issue_id = $3,
+            title = NULL,
+            body = NULL,
+            source_synced_at = now(),
+            source_sync_version = source_sync_version + 1,
+            updated_at = now()
+        WHERE project_id = $1 AND id = $2
+        "#,
+    )
+    .bind(project_id)
+    .bind(item_id)
+    .bind(issue_id)
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO timeline_events (repository_id, issue_id, actor_user_id, event_type, metadata)
+        VALUES ($1, $2, $3, 'converted_from_project_draft', $4)
+        "#,
+    )
+    .bind(request.repository_id)
+    .bind(issue_id)
+    .bind(actor_user_id)
+    .bind(json!({ "projectId": project_id, "projectItemId": item_id }))
+    .execute(pool)
+    .await?;
+    for assignee_user_id in &request.assignee_user_ids {
+        if *assignee_user_id == actor_user_id {
+            continue;
+        }
+        sqlx::query(
+            r#"
+            INSERT INTO notifications (user_id, repository_id, subject_type, subject_id, title, reason)
+            VALUES ($1, $2, 'issue', $3, $4, 'assigned')
+            ON CONFLICT DO NOTHING
+            "#,
+        )
+        .bind(assignee_user_id)
+        .bind(request.repository_id)
+        .bind(issue_id)
+        .bind(format!("You were assigned to {title}"))
+        .execute(pool)
+        .await?;
+    }
+    record_project_item_event(
+        pool,
+        project_id,
+        item_id,
+        actor_user_id,
+        "project.draft.convert_to_issue",
+        json!({
+            "issueId": issue_id,
+            "issueNumber": issue_number,
+            "repositoryId": request.repository_id,
+        }),
+    )
+    .await?;
+    record_project_audit(
+        pool,
+        actor_user_id,
+        "project.draft.convert_to_issue",
+        item_id,
+        json!({
+            "projectId": project_id,
+            "issueId": issue_id,
+            "repositoryId": request.repository_id,
+        }),
     )
     .await?;
 
@@ -5629,6 +5859,226 @@ async fn ensure_project_item_comment(
     .fetch_optional(pool)
     .await?;
     exists.map(|_| ()).ok_or(ProjectsError::NotFound)
+}
+
+async fn writable_project_repositories(
+    pool: &PgPool,
+    project_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<Vec<ProjectConversionRepository>, ProjectsError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT DISTINCT repositories.id,
+          COALESCE(NULLIF(owner_user.username, ''), owner_user.email, owner_org.slug) AS owner_login,
+          repositories.name
+        FROM repositories
+        LEFT JOIN users owner_user ON owner_user.id = repositories.owner_user_id
+        LEFT JOIN organizations owner_org ON owner_org.id = repositories.owner_organization_id
+        LEFT JOIN project_repositories ON project_repositories.repository_id = repositories.id
+        LEFT JOIN projects ON projects.default_repository_id = repositories.id
+        WHERE project_repositories.project_id = $1 OR projects.id = $1
+        ORDER BY owner_login, repositories.name
+        "#,
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+    let mut repositories = Vec::new();
+    for row in rows {
+        let repository_id: Uuid = row.get("id");
+        if !repository_permission_for_user(pool, repository_id, actor_user_id)
+            .await?
+            .is_some_and(|permission| permission.role.can_write())
+        {
+            continue;
+        }
+        let owner = row.get::<String, _>("owner_login");
+        let name = row.get::<String, _>("name");
+        repositories.push(ProjectConversionRepository {
+            id: repository_id,
+            owner: owner.clone(),
+            name: name.clone(),
+            full_name: format!("{owner}/{name}"),
+            href: format!("/{owner}/{name}"),
+            labels: conversion_labels(pool, repository_id).await?,
+            assignees: conversion_assignees(pool, repository_id).await?,
+            milestones: conversion_milestones(pool, repository_id).await?,
+        });
+    }
+    Ok(repositories)
+}
+
+async fn ensure_project_repository_write(
+    pool: &PgPool,
+    project_id: Uuid,
+    repository_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<(), ProjectsError> {
+    let linked: bool = sqlx::query_scalar(
+        r#"
+        SELECT EXISTS (
+          SELECT 1 FROM project_repositories
+          WHERE project_id = $1 AND repository_id = $2
+          UNION
+          SELECT 1 FROM projects
+          WHERE id = $1 AND default_repository_id = $2
+        )
+        "#,
+    )
+    .bind(project_id)
+    .bind(repository_id)
+    .fetch_one(pool)
+    .await?;
+    if !linked {
+        return Err(ProjectsError::Validation(
+            "Choose a repository linked to this project.".to_owned(),
+        ));
+    }
+    let permission = repository_permission_for_user(pool, repository_id, actor_user_id).await?;
+    if permission.is_some_and(|permission| permission.role.can_write()) {
+        Ok(())
+    } else {
+        Err(ProjectsError::Forbidden)
+    }
+}
+
+async fn conversion_labels(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<Vec<ProjectWorkspaceLabel>, ProjectsError> {
+    let rows =
+        sqlx::query("SELECT id, name, color FROM labels WHERE repository_id = $1 ORDER BY name")
+            .bind(repository_id)
+            .fetch_all(pool)
+            .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| ProjectWorkspaceLabel {
+            id: row.get("id"),
+            name: row.get("name"),
+            color: row.get("color"),
+        })
+        .collect())
+}
+
+async fn conversion_assignees(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<Vec<ProjectWorkspaceUser>, ProjectsError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT DISTINCT users.id, COALESCE(NULLIF(users.username, ''), users.email) AS login,
+          users.avatar_url
+        FROM users
+        JOIN repository_permissions ON repository_permissions.user_id = users.id
+        WHERE repository_permissions.repository_id = $1
+          AND repository_permissions.role IN ('write', 'maintain', 'admin')
+        ORDER BY login
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| ProjectWorkspaceUser {
+            id: row.get("id"),
+            login: row.get("login"),
+            avatar_url: row.get("avatar_url"),
+        })
+        .collect())
+}
+
+async fn conversion_milestones(
+    pool: &PgPool,
+    repository_id: Uuid,
+) -> Result<Vec<ProjectConversionMilestone>, ProjectsError> {
+    let rows = sqlx::query(
+        "SELECT id, title, state FROM milestones WHERE repository_id = $1 ORDER BY title",
+    )
+    .bind(repository_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| ProjectConversionMilestone {
+            id: row.get("id"),
+            title: row.get("title"),
+            state: row.get("state"),
+        })
+        .collect())
+}
+
+async fn validate_conversion_labels(
+    pool: &PgPool,
+    repository_id: Uuid,
+    label_ids: &[Uuid],
+) -> Result<(), ProjectsError> {
+    if label_ids.is_empty() {
+        return Ok(());
+    }
+    let count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM labels WHERE repository_id = $1 AND id = ANY($2)",
+    )
+    .bind(repository_id)
+    .bind(label_ids)
+    .fetch_one(pool)
+    .await?;
+    if count == label_ids.len() as i64 {
+        Ok(())
+    } else {
+        Err(ProjectsError::Validation(
+            "One or more labels are unavailable for the selected repository.".to_owned(),
+        ))
+    }
+}
+
+async fn validate_conversion_assignees(
+    pool: &PgPool,
+    repository_id: Uuid,
+    assignee_user_ids: &[Uuid],
+) -> Result<(), ProjectsError> {
+    for user_id in assignee_user_ids {
+        let permission = repository_permission_for_user(pool, repository_id, *user_id).await?;
+        if !permission.is_some_and(|permission| permission.role.can_read()) {
+            return Err(ProjectsError::Validation(
+                "One or more assignees cannot access the selected repository.".to_owned(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+async fn validate_conversion_milestone(
+    pool: &PgPool,
+    repository_id: Uuid,
+    milestone_id: Option<Uuid>,
+) -> Result<(), ProjectsError> {
+    let Some(milestone_id) = milestone_id else {
+        return Ok(());
+    };
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM milestones WHERE repository_id = $1 AND id = $2)",
+    )
+    .bind(repository_id)
+    .bind(milestone_id)
+    .fetch_one(pool)
+    .await?;
+    if exists {
+        Ok(())
+    } else {
+        Err(ProjectsError::Validation(
+            "Milestone is unavailable for the selected repository.".to_owned(),
+        ))
+    }
+}
+
+async fn next_issue_number(pool: &PgPool, repository_id: Uuid) -> Result<i64, ProjectsError> {
+    sqlx::query_scalar("SELECT COALESCE(max(number), 0) + 1 FROM issues WHERE repository_id = $1")
+        .bind(repository_id)
+        .fetch_one(pool)
+        .await
+        .map_err(ProjectsError::from)
 }
 
 async fn writable_workspace_project(
