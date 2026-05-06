@@ -7479,6 +7479,50 @@ mona,Mona Lisa,owner,public,organization,0,1,true,true`,
     ],
   },
   {
+    id: "pulls-checks",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/pulls/{number}/checks",
+    title: "Read pull request check runs",
+    description:
+      "Returns the PR Checks tab contract by syncing Actions jobs on the head SHA into durable check_runs rows, aggregating required-check state, and exposing per-step annotations.",
+    auth: "Public repositories are readable; private repositories require read permission",
+    response: `{
+  "summary": { "status": "completed", "conclusion": "failure", "totalCount": 2 },
+  "requiredStatusChecks": ["ci/test"],
+  "checkRuns": [
+    {
+      "id": "check_01",
+      "name": "ci/test",
+      "status": "completed",
+      "conclusion": "failure",
+      "required": true,
+      "annotations": [{ "path": "src/app.ts", "startLine": 12, "level": "failure" }]
+    }
+  ]
+}`,
+    notes: [
+      "Check summaries also feed pull request mergeability and commit status badges.",
+      "Workflow command annotations from job logs are stored as check annotations without leaking runner tokens or secrets.",
+    ],
+  },
+  {
+    id: "pulls-checks-rerun",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/pulls/{number}/checks/{check_run_id}/rerun",
+    title: "Re-run pull request check job",
+    description:
+      "Queues a single-job workflow re-run for a check run backed by an Actions job and returns the refreshed Actions run detail.",
+    auth: "Signed opengithub session cookie with write access",
+    response: `{
+  "run": { "status": "queued" },
+  "jobs": [{ "name": "ci/test", "status": "queued" }]
+}`,
+    notes: [
+      "The check run must belong to the addressed repository and pull request head SHA.",
+      "Reruns reuse the existing Actions attempt limit and audit event behavior.",
+    ],
+  },
+  {
     id: "pulls-raw-diff",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/pulls/{number}.diff",

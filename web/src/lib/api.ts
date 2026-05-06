@@ -7550,6 +7550,50 @@ export type PullRequestChecksSummary = {
   failedCount: number;
 };
 
+export type PullRequestChecksView = {
+  repository: PullRequestDetailView["repository"];
+  pullRequest: {
+    id: string;
+    number: number;
+    title: string;
+    state: PullRequestState;
+    headRef: string;
+    baseRef: string;
+    headSha: string | null;
+    href: string;
+  };
+  summary: PullRequestChecksSummary;
+  requiredStatusChecks: string[];
+  checkRuns: PullRequestCheckRun[];
+  canRerun: boolean;
+};
+
+export type PullRequestCheckRun = {
+  id: string;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  required: boolean;
+  startedAt: string | null;
+  completedAt: string | null;
+  outputTitle: string | null;
+  outputSummary: string | null;
+  annotationsCount: number;
+  detailsHref: string | null;
+  rerunHref: string | null;
+  annotations: PullRequestCheckAnnotation[];
+};
+
+export type PullRequestCheckAnnotation = {
+  id: string;
+  path: string | null;
+  startLine: number | null;
+  endLine: number | null;
+  level: string;
+  message: string;
+  createdAt: string;
+};
+
 export type PullRequestTaskProgress = {
   completed: number;
   total: number;
@@ -12962,6 +13006,47 @@ export async function getRepositoryPullRequestFromCookie(
   }
 
   return body as PullRequestDetailView;
+}
+
+export async function getRepositoryPullRequestChecksFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  number: number | string,
+): Promise<PullRequestChecksView | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}${repositoryPullRequestPath(owner, repo, number)}/checks`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      error: {
+        code: "network_error",
+        message: "Pull request checks are temporarily unavailable.",
+      },
+      status: 503,
+    };
+  }
+
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (body as ApiErrorEnvelope | null) ?? {
+        error: {
+          code: "pull_request_checks_failed",
+          message: "Pull request checks could not be loaded.",
+        },
+        status: response.status,
+      }
+    );
+  }
+
+  return body as PullRequestChecksView;
 }
 
 export async function getRepositoryPullRequestTimelineFromCookie(

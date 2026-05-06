@@ -7952,17 +7952,37 @@ async fn repository_commit_history(
                commits.author_user_id,
                commits.signature_fingerprint,
                commits.signature_summary,
-               COALESCE(statuses.status, workflow_statuses.status, 'pending') AS status,
-               COALESCE(statuses.conclusion, workflow_statuses.conclusion) AS conclusion,
-               COALESCE(statuses.total_count, workflow_statuses.total_count, 0)::bigint AS total_count,
-               COALESCE(statuses.completed_count, workflow_statuses.completed_count, 0)::bigint AS completed_count,
-               COALESCE(statuses.failed_count, workflow_statuses.failed_count, 0)::bigint AS failed_count,
+               COALESCE(statuses.status, check_statuses.status, workflow_statuses.status, 'pending') AS status,
+               COALESCE(statuses.conclusion, check_statuses.conclusion, workflow_statuses.conclusion) AS conclusion,
+               COALESCE(statuses.total_count, check_statuses.total_count, workflow_statuses.total_count, 0)::bigint AS total_count,
+               COALESCE(statuses.completed_count, check_statuses.completed_count, workflow_statuses.completed_count, 0)::bigint AS completed_count,
+               COALESCE(statuses.failed_count, check_statuses.failed_count, workflow_statuses.failed_count, 0)::bigint AS failed_count,
                COALESCE(pr_links.links, '[]'::jsonb) AS pull_requests
         FROM commits
         JOIN reachable ON reachable.id = commits.id
         LEFT JOIN repository_files ON repository_files.commit_id = commits.id
         LEFT JOIN users ON users.id = commits.author_user_id
         LEFT JOIN repository_commit_status_summaries statuses ON statuses.commit_id = commits.id
+        LEFT JOIN LATERAL (
+            SELECT CASE
+                    WHEN count(*) FILTER (WHERE check_runs.status IN ('queued', 'in_progress')) > 0 THEN 'running'
+                    WHEN count(*) = 0 THEN NULL
+                    ELSE 'completed'
+                   END AS status,
+                   CASE
+                    WHEN count(*) = 0 THEN NULL
+                    WHEN count(*) FILTER (WHERE check_runs.conclusion = 'failure') > 0 THEN 'failure'
+                    WHEN count(*) FILTER (WHERE check_runs.conclusion = 'cancelled') > 0 THEN 'cancelled'
+                    WHEN count(*) FILTER (WHERE check_runs.conclusion IN ('success', 'skipped', 'neutral')) = count(*) THEN 'success'
+                    ELSE NULL
+                   END AS conclusion,
+                   count(*)::bigint AS total_count,
+                   count(*) FILTER (WHERE check_runs.status = 'completed')::bigint AS completed_count,
+                   count(*) FILTER (WHERE check_runs.conclusion = 'failure')::bigint AS failed_count
+            FROM check_runs
+            WHERE check_runs.repository_id = commits.repository_id
+              AND check_runs.head_sha = commits.oid
+        ) check_statuses ON true
         LEFT JOIN LATERAL (
             SELECT CASE
                     WHEN count(*) FILTER (WHERE workflow_runs.status IN ('queued', 'in_progress')) > 0 THEN 'running'

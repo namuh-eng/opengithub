@@ -80,6 +80,7 @@ import {
   getRepositoryPagesSettingsFromCookie,
   getRepositoryPathFromCookie,
   getRepositoryProjectsFromCookie,
+  getRepositoryPullRequestChecksFromCookie,
   getRepositoryPullRequestFilesFromCookie,
   getRepositoryPullRequestFromCookie,
   getRepositoryPullRequestsFromCookie,
@@ -1545,6 +1546,20 @@ export async function getRepositoryPullRequest(
 ) {
   const requestHeaders = await headers();
   return getRepositoryPullRequestFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    number,
+  );
+}
+
+export async function getRepositoryPullRequestChecks(
+  owner: string,
+  repo: string,
+  number: number | string,
+) {
+  const requestHeaders = await headers();
+  return getRepositoryPullRequestChecksFromCookie(
     requestHeaders.get("cookie"),
     owner,
     repo,

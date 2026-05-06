@@ -7953,5 +7953,24 @@
       "Probe cache edge cases: cache key/version collisions, LRU eviction above 10GB, delete authorization, repeated delete, long keys/scopes, restore-key matching if added later, and concurrent reserve/delete races.",
       "Check mobile and keyboard-only cache table/delete flows plus artifact actions on runs with many artifacts and very long names/digests."
     ]
+  },
+  {
+    "feature_id": "actions-009",
+    "tests_written": [
+      "Added migration 202605070004_actions_check_runs for durable check_runs and check_annotations linked to workflow runs/jobs and workflow annotations.",
+      "Added Rust PR checks API at GET /api/repos/{owner}/{repo}/pulls/{number}/checks plus POST /checks/{check_run_id}/rerun, syncing Actions jobs by head SHA into check runs, aggregating pull_request_checks_summary for merge gates, and parsing ::error::/::warning::/::notice:: runner log commands into annotations.",
+      "Updated commit detail status aggregation to prefer durable check_runs for the commit SHA before falling back to workflow run summaries.",
+      "Added Editorial PR Checks tab at /{owner}/{repo}/pull/{number}/checks with required badges, conclusion chips, annotation expansion, View details links, and working Re-run job mutation through a same-origin Next route.",
+      "Extended /docs/api with pull request check-run read and rerun endpoint documentation.",
+      "Added focused Vitest coverage for check run rendering, annotations, concrete links, and rerun payloads.",
+      "Browser smoke passed on the real Next route with an API-compatible stub: loaded /mona/octo-app/pull/42/checks, toggled annotations, re-ran a job, checked zero href=#, checked no horizontal overflow, and saved ralph/screenshots/build/actions-009-pr-checks.jpg.",
+      "Verification passed: cargo fmt --all --check, cargo check -p opengithub-api --tests, web TypeScript, focused Biome, focused Vitest, full make check, full make test with Cargo tests plus 627 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Run full signed-session Playwright after the local TEST_DATABASE_URL path is healthy; bounded timeout 120 make test-e2e terminated with no Playwright detail, matching the known local DB/dev-server blocker.",
+      "Run a DB-backed Rust contract scenario for check run sync with queued/in_progress/completed jobs, failed/cancelled/neutral conclusions, required branch protection checks, and merge denial/allowance transitions.",
+      "Probe real runner log command parsing for escaped workflow-command values, multiline annotations, duplicate chunks, secret redaction, and annotation counts after reruns.",
+      "Verify PR Checks page mobile and keyboard-only behavior with many jobs, many annotations, long paths/messages, failed rerun authorization, private repository access, and reader/write permission boundaries."
+    ]
   }
 ]

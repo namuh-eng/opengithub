@@ -7,6 +7,7 @@ use axum::{
 };
 use serde::Deserialize;
 use serde_json::json;
+use sqlx::Row;
 use uuid::Uuid;
 
 use crate::{
@@ -16,6 +17,7 @@ use crate::{
     },
     auth::extractor::AuthenticatedUser,
     domain::{
+        actions::{rerun_workflow_run, RerunWorkflowRun, WorkflowRunRerunMode},
         identity::User,
         issues::CreateComment,
         permissions::RepositoryRole,
@@ -23,21 +25,21 @@ use crate::{
             abandon_pull_request_review_draft, add_pull_request_comment,
             compare_pull_request_refs_for_viewer_with_head, create_pull_request,
             create_pull_request_review_draft_comment, delete_pull_request_review_draft_comment,
-            get_pull_request, merge_pull_request, pull_request_comment_timeline_item,
-            pull_request_detail_view_for_viewer, pull_request_diff_review_for_viewer,
-            pull_request_patch_for_viewer, pull_request_plain_diff_for_viewer,
-            pull_request_timeline_view, pull_sort_options, repository_for_actor_by_name,
-            repository_pull_request_list_view_for_viewer, save_repository_pull_preferences,
-            submit_pull_request_review, update_pull_request_draft_state,
-            update_pull_request_metadata, update_pull_request_review_draft_comment,
-            update_pull_request_review_requests, update_pull_request_state,
-            update_pull_request_subscription, update_pull_request_viewed_file,
-            ComparePullRequestRefsInput, CreatePullRequest, CreatePullRequestReviewDraftComment,
-            MergeMethod, MergePullRequestError, MergePullRequestInput, PullRequestDiffReviewQuery,
-            PullRequestListQuery, PullRequestState, SubmitPullRequestReview,
-            UpdatePullRequestDraftState, UpdatePullRequestMetadata,
-            UpdatePullRequestReviewDraftComment, UpdatePullRequestReviewRequests,
-            UpdatePullRequestState, UpdatePullRequestSubscription,
+            get_pull_request, merge_pull_request, pull_request_checks_view,
+            pull_request_comment_timeline_item, pull_request_detail_view_for_viewer,
+            pull_request_diff_review_for_viewer, pull_request_patch_for_viewer,
+            pull_request_plain_diff_for_viewer, pull_request_timeline_view, pull_sort_options,
+            repository_for_actor_by_name, repository_pull_request_list_view_for_viewer,
+            save_repository_pull_preferences, submit_pull_request_review,
+            update_pull_request_draft_state, update_pull_request_metadata,
+            update_pull_request_review_draft_comment, update_pull_request_review_requests,
+            update_pull_request_state, update_pull_request_subscription,
+            update_pull_request_viewed_file, ComparePullRequestRefsInput, CreatePullRequest,
+            CreatePullRequestReviewDraftComment, MergeMethod, MergePullRequestError,
+            MergePullRequestInput, PullRequestDiffReviewQuery, PullRequestListQuery,
+            PullRequestState, SubmitPullRequestReview, UpdatePullRequestDraftState,
+            UpdatePullRequestMetadata, UpdatePullRequestReviewDraftComment,
+            UpdatePullRequestReviewRequests, UpdatePullRequestState, UpdatePullRequestSubscription,
         },
         repositories::{get_repository_by_owner_name, RepositoryError},
     },
@@ -101,6 +103,11 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/repos/:owner/:repo/pulls/:number/subscription",
             patch(update_subscription),
+        )
+        .route("/api/repos/:owner/:repo/pulls/:number/checks", get(checks))
+        .route(
+            "/api/repos/:owner/:repo/pulls/:number/checks/:check_run_id/rerun",
+            post(rerun_check),
         )
         .route("/api/repos/:owner/:repo/pulls/:number/merge", post(merge))
 }
@@ -1228,6 +1235,98 @@ async fn read(
         .header(header::CONTENT_TYPE, "application/json")
         .body(Body::from(json!(detail).to_string()))
         .map_err(|_| database_unavailable())
+}
+
+async fn checks(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, number)): Path<(String, String, i64)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let repository = get_repository_by_owner_name(pool, &owner, &repo)
+        .await
+        .map_err(repository_lookup_error)?
+        .ok_or_else(|| {
+            map_collaboration_error(crate::domain::issues::CollaborationError::RepositoryNotFound)
+        })?;
+    let view = pull_request_checks_view(
+        pool,
+        repository.id,
+        number,
+        actor.as_ref().map(|user| user.id),
+    )
+    .await
+    .map_err(map_collaboration_error)?;
+
+    Ok(Json(json!(view)))
+}
+
+async fn rerun_check(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, number, check_run_id)): Path<(String, String, i64, Uuid)>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let repository_id =
+        repository_for_actor_by_name(pool, &owner, &repo, actor.0.id, RepositoryRole::Write)
+            .await
+            .map_err(map_collaboration_error)?;
+    let _ = get_pull_request(pool, repository_id, number, actor.0.id)
+        .await
+        .map_err(map_collaboration_error)?;
+    let row = sqlx::query(
+        r#"
+        SELECT workflow_run_id, workflow_job_id
+        FROM check_runs
+        WHERE id = $1 AND repository_id = $2
+        "#,
+    )
+    .bind(check_run_id)
+    .bind(repository_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|error| {
+        map_collaboration_error(crate::domain::issues::CollaborationError::Sqlx(error))
+    })?
+    .ok_or_else(|| {
+        map_collaboration_error(crate::domain::issues::CollaborationError::IssueNotFound)
+    })?;
+    let run_id: Uuid = row
+        .get::<Option<Uuid>, _>("workflow_run_id")
+        .ok_or_else(|| {
+            map_collaboration_error(
+                crate::domain::issues::CollaborationError::InvalidIssueField {
+                    field_key: "check_run_id".to_owned(),
+                    message: "check run is not backed by an Actions job".to_owned(),
+                },
+            )
+        })?;
+    let job_id: Uuid = row
+        .get::<Option<Uuid>, _>("workflow_job_id")
+        .ok_or_else(|| {
+            map_collaboration_error(
+                crate::domain::issues::CollaborationError::InvalidIssueField {
+                    field_key: "check_run_id".to_owned(),
+                    message: "check run is not backed by an Actions job".to_owned(),
+                },
+            )
+        })?;
+    let detail = rerun_workflow_run(
+        pool,
+        RerunWorkflowRun {
+            repository_id,
+            run_id,
+            actor_user_id: actor.0.id,
+            mode: WorkflowRunRerunMode::Job,
+            job_id: Some(job_id),
+        },
+    )
+    .await
+    .map_err(crate::routes::actions::map_automation_error)?;
+
+    Ok(Json(json!(detail)))
 }
 
 async fn update_state(

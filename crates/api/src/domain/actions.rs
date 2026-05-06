@@ -3737,6 +3737,29 @@ pub async fn append_workflow_job_log_chunk(
         .bind(line)
         .execute(pool)
         .await?;
+        if let Some(command) = parse_workflow_annotation_command(line) {
+            sqlx::query(
+                r#"
+                INSERT INTO workflow_annotations (
+                    run_id, job_id, step_id, annotation_level, path, start_line, end_line,
+                    title, message, raw_details
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                "#,
+            )
+            .bind(run_id)
+            .bind(input.job_id)
+            .bind(input.step_id)
+            .bind(command.level)
+            .bind(command.path)
+            .bind(command.start_line)
+            .bind(command.end_line)
+            .bind(command.title)
+            .bind(command.message)
+            .bind(line)
+            .execute(pool)
+            .await?;
+        }
     }
     let byte_delta = content.len() as i64;
     let metadata = sqlx::query(
@@ -3814,6 +3837,56 @@ pub async fn append_workflow_job_log_chunk(
         appended_lines: lines.len() as i64,
         next_cursor,
         finalized_at: metadata.get("finalized_at"),
+    })
+}
+
+struct ParsedWorkflowAnnotation {
+    level: &'static str,
+    path: Option<String>,
+    start_line: Option<i32>,
+    end_line: Option<i32>,
+    title: Option<String>,
+    message: String,
+}
+
+fn parse_workflow_annotation_command(line: &str) -> Option<ParsedWorkflowAnnotation> {
+    let (kind, rest) = line.strip_prefix("::")?.split_once("::")?;
+    let level = if kind.starts_with("error") {
+        "failure"
+    } else if kind.starts_with("warning") {
+        "warning"
+    } else if kind.starts_with("notice") {
+        "notice"
+    } else {
+        return None;
+    };
+    let (metadata, message) = kind
+        .split_once(' ')
+        .map(|(_, metadata)| (metadata, rest))
+        .unwrap_or(("", rest));
+    let mut path = None;
+    let mut start_line = None;
+    let mut end_line = None;
+    let mut title = None;
+    for part in metadata.split(',').filter(|part| !part.is_empty()) {
+        let Some((key, value)) = part.split_once('=') else {
+            continue;
+        };
+        match key {
+            "file" => path = Some(value.to_owned()),
+            "line" => start_line = value.parse::<i32>().ok(),
+            "endLine" => end_line = value.parse::<i32>().ok(),
+            "title" => title = Some(value.to_owned()),
+            _ => {}
+        }
+    }
+    Some(ParsedWorkflowAnnotation {
+        level,
+        path,
+        start_line,
+        end_line,
+        title,
+        message: message.to_owned(),
     })
 }
 

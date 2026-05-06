@@ -176,6 +176,60 @@ pub struct PullRequestChecksSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct PullRequestChecksView {
+    pub repository: PullRequestDetailRepository,
+    pub pull_request: PullRequestChecksPullRequest,
+    pub summary: PullRequestChecksSummary,
+    pub required_status_checks: Vec<String>,
+    pub check_runs: Vec<PullRequestCheckRun>,
+    pub can_rerun: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestChecksPullRequest {
+    pub id: Uuid,
+    pub number: i64,
+    pub title: String,
+    pub state: PullRequestState,
+    pub head_ref: String,
+    pub base_ref: String,
+    pub head_sha: Option<String>,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestCheckRun {
+    pub id: Uuid,
+    pub name: String,
+    pub status: String,
+    pub conclusion: Option<String>,
+    pub required: bool,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub output_title: Option<String>,
+    pub output_summary: Option<String>,
+    pub annotations_count: i64,
+    pub details_href: Option<String>,
+    pub rerun_href: Option<String>,
+    pub annotations: Vec<PullRequestCheckAnnotation>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PullRequestCheckAnnotation {
+    pub id: Uuid,
+    pub path: Option<String>,
+    pub start_line: Option<i32>,
+    pub end_line: Option<i32>,
+    pub level: String,
+    pub message: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct PullRequestTaskProgress {
     pub completed: i64,
     pub total: i64,
@@ -5879,6 +5933,7 @@ async fn pull_request_mergeability(
         None => false,
     };
     let stats = pull_request_detail_stats(pool, pull_request.id, 0).await?;
+    sync_check_runs_for_pull_request(pool, pull_request).await?;
     let checks = pull_check_summaries(pool, &[pull_request.id])
         .await?
         .remove(&pull_request.id)
@@ -6531,6 +6586,369 @@ async fn pull_check_summaries(
             )
         })
         .collect())
+}
+
+pub async fn pull_request_checks_view(
+    pool: &PgPool,
+    repository_id: Uuid,
+    number: i64,
+    actor_user_id: Option<Uuid>,
+) -> Result<PullRequestChecksView, CollaborationError> {
+    let pull_request = pull_request_by_repository_number(pool, repository_id, number).await?;
+    sync_check_runs_for_pull_request(pool, &pull_request).await?;
+    let detail =
+        pull_request_detail_view_for_viewer(pool, repository_id, number, actor_user_id).await?;
+    let required_status_checks = detail
+        .mergeability
+        .branch_protection
+        .required_status_checks
+        .clone();
+    let check_runs = pull_request_check_runs(
+        pool,
+        repository_id,
+        &detail.repository.owner_login,
+        &detail.repository.name,
+        &pull_request,
+        &required_status_checks,
+        actor_user_id.is_some(),
+    )
+    .await?;
+
+    Ok(PullRequestChecksView {
+        repository: detail.repository,
+        pull_request: PullRequestChecksPullRequest {
+            id: detail.id,
+            number: detail.number,
+            title: detail.title,
+            state: detail.state,
+            head_ref: detail.head_ref,
+            base_ref: detail.base_ref,
+            head_sha: pull_request_head_sha(pool, &pull_request).await?,
+            href: detail.href,
+        },
+        summary: detail.checks,
+        required_status_checks,
+        check_runs,
+        can_rerun: actor_user_id.is_some(),
+    })
+}
+
+pub async fn sync_check_runs_for_pull_request(
+    pool: &PgPool,
+    pull_request: &PullRequest,
+) -> Result<(), CollaborationError> {
+    let Some(head_sha) = pull_request_head_sha(pool, pull_request).await? else {
+        return Ok(());
+    };
+    sync_check_runs_for_head_sha(pool, pull_request.repository_id, &head_sha).await?;
+    let summary =
+        check_run_summary_for_head_sha(pool, pull_request.repository_id, &head_sha).await?;
+    sqlx::query(
+        r#"
+        INSERT INTO pull_request_checks_summary (
+            pull_request_id, status, conclusion, total_count, completed_count, failed_count
+        )
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (pull_request_id) DO UPDATE
+        SET status = EXCLUDED.status,
+            conclusion = EXCLUDED.conclusion,
+            total_count = EXCLUDED.total_count,
+            completed_count = EXCLUDED.completed_count,
+            failed_count = EXCLUDED.failed_count,
+            updated_at = now()
+        "#,
+    )
+    .bind(pull_request.id)
+    .bind(&summary.status)
+    .bind(&summary.conclusion)
+    .bind(summary.total_count)
+    .bind(summary.completed_count)
+    .bind(summary.failed_count)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn sync_check_runs_for_head_sha(
+    pool: &PgPool,
+    repository_id: Uuid,
+    head_sha: &str,
+) -> Result<(), CollaborationError> {
+    sqlx::query(
+        r#"
+        INSERT INTO check_runs (
+            repository_id, workflow_run_id, workflow_job_id, head_sha, name, status, conclusion,
+            started_at, completed_at, output_title, output_summary, annotations_count
+        )
+        SELECT workflow_runs.repository_id,
+               workflow_runs.id,
+               workflow_jobs.id,
+               workflow_runs.head_sha,
+               workflow_jobs.name,
+               CASE
+                WHEN workflow_jobs.status = 'completed' THEN 'completed'
+                WHEN workflow_jobs.status IN ('in_progress', 'cancelled') THEN 'in_progress'
+                ELSE 'queued'
+               END,
+               CASE
+                WHEN workflow_jobs.status = 'cancelled' THEN 'cancelled'
+                ELSE workflow_jobs.conclusion
+               END,
+               workflow_jobs.started_at,
+               workflow_jobs.completed_at,
+               workflow_jobs.name,
+               CASE
+                WHEN workflow_jobs.conclusion = 'failure' THEN 'Job failed. Review annotations and logs.'
+                WHEN workflow_jobs.conclusion = 'success' THEN 'Job completed successfully.'
+                ELSE NULL
+               END,
+               COALESCE(annotation_counts.count, 0)
+        FROM workflow_jobs
+        JOIN workflow_runs ON workflow_runs.id = workflow_jobs.run_id
+        LEFT JOIN LATERAL (
+            SELECT count(*)::bigint AS count
+            FROM workflow_annotations
+            WHERE workflow_annotations.job_id = workflow_jobs.id
+        ) annotation_counts ON true
+        WHERE workflow_runs.repository_id = $1
+          AND workflow_runs.head_sha = $2
+        ON CONFLICT (repository_id, workflow_job_id) WHERE workflow_job_id IS NOT NULL
+        DO UPDATE SET status = EXCLUDED.status,
+            conclusion = EXCLUDED.conclusion,
+            started_at = EXCLUDED.started_at,
+            completed_at = EXCLUDED.completed_at,
+            output_title = EXCLUDED.output_title,
+            output_summary = EXCLUDED.output_summary,
+            annotations_count = EXCLUDED.annotations_count
+        "#,
+    )
+    .bind(repository_id)
+    .bind(head_sha)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"
+        INSERT INTO check_annotations (
+            check_run_id, workflow_annotation_id, path, start_line, end_line, level, message, created_at
+        )
+        SELECT check_runs.id,
+               workflow_annotations.id,
+               workflow_annotations.path,
+               workflow_annotations.start_line,
+               workflow_annotations.end_line,
+               workflow_annotations.annotation_level,
+               workflow_annotations.message,
+               workflow_annotations.created_at
+        FROM check_runs
+        JOIN workflow_annotations ON workflow_annotations.job_id = check_runs.workflow_job_id
+        WHERE check_runs.repository_id = $1
+          AND check_runs.head_sha = $2
+        ON CONFLICT (check_run_id, workflow_annotation_id) WHERE workflow_annotation_id IS NOT NULL
+        DO UPDATE SET path = EXCLUDED.path,
+            start_line = EXCLUDED.start_line,
+            end_line = EXCLUDED.end_line,
+            level = EXCLUDED.level,
+            message = EXCLUDED.message
+        "#,
+    )
+    .bind(repository_id)
+    .bind(head_sha)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn pull_request_check_runs(
+    pool: &PgPool,
+    repository_id: Uuid,
+    owner: &str,
+    repo: &str,
+    pull_request: &PullRequest,
+    required: &[String],
+    can_rerun: bool,
+) -> Result<Vec<PullRequestCheckRun>, CollaborationError> {
+    let Some(head_sha) = pull_request_head_sha(pool, pull_request).await? else {
+        return Ok(Vec::new());
+    };
+    let rows = sqlx::query(
+        r#"
+        SELECT id, workflow_run_id, workflow_job_id, name, status, conclusion, started_at,
+               completed_at, output_title, output_summary, annotations_count
+        FROM check_runs
+        WHERE repository_id = $1 AND head_sha = $2
+        ORDER BY CASE status WHEN 'in_progress' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END,
+                 lower(name)
+        "#,
+    )
+    .bind(repository_id)
+    .bind(&head_sha)
+    .fetch_all(pool)
+    .await?;
+    let check_run_ids = rows.iter().map(|row| row.get("id")).collect::<Vec<Uuid>>();
+    let mut annotations_by_check = check_annotations_by_check_run(pool, &check_run_ids).await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let id: Uuid = row.get("id");
+            let run_id: Option<Uuid> = row.get("workflow_run_id");
+            let job_id: Option<Uuid> = row.get("workflow_job_id");
+            PullRequestCheckRun {
+                id,
+                name: row.get("name"),
+                status: row.get("status"),
+                conclusion: row.get("conclusion"),
+                required: required
+                    .iter()
+                    .any(|check| check == row.get::<String, _>("name").as_str()),
+                started_at: row.get("started_at"),
+                completed_at: row.get("completed_at"),
+                output_title: row.get("output_title"),
+                output_summary: row.get("output_summary"),
+                annotations_count: row.get("annotations_count"),
+                details_href: match (run_id, job_id) {
+                    (Some(_), Some(job_id)) => Some(format!(
+                        "/{owner}/{repo}/actions/runs/{}/jobs/{job_id}",
+                        run_id.unwrap()
+                    )),
+                    _ => None,
+                },
+                rerun_href: if can_rerun {
+                    Some(format!(
+                        "/{owner}/{repo}/pull/{}/checks/{id}/rerun",
+                        pull_request.number
+                    ))
+                } else {
+                    None
+                },
+                annotations: annotations_by_check.remove(&id).unwrap_or_default(),
+            }
+        })
+        .collect())
+}
+
+async fn check_annotations_by_check_run(
+    pool: &PgPool,
+    check_run_ids: &[Uuid],
+) -> Result<HashMap<Uuid, Vec<PullRequestCheckAnnotation>>, CollaborationError> {
+    if check_run_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let rows = sqlx::query(
+        r#"
+        SELECT check_run_id, id, path, start_line, end_line, level, message, created_at
+        FROM check_annotations
+        WHERE check_run_id = ANY($1)
+        ORDER BY created_at, path, start_line
+        "#,
+    )
+    .bind(check_run_ids)
+    .fetch_all(pool)
+    .await?;
+    let mut grouped: HashMap<Uuid, Vec<PullRequestCheckAnnotation>> = HashMap::new();
+    for row in rows {
+        grouped
+            .entry(row.get("check_run_id"))
+            .or_default()
+            .push(PullRequestCheckAnnotation {
+                id: row.get("id"),
+                path: row.get("path"),
+                start_line: row.get("start_line"),
+                end_line: row.get("end_line"),
+                level: row.get("level"),
+                message: row.get("message"),
+                created_at: row.get("created_at"),
+            });
+    }
+    Ok(grouped)
+}
+
+async fn check_run_summary_for_head_sha(
+    pool: &PgPool,
+    repository_id: Uuid,
+    head_sha: &str,
+) -> Result<PullRequestChecksSummary, CollaborationError> {
+    let row = sqlx::query(
+        r#"
+        SELECT CASE
+                WHEN count(*) FILTER (WHERE status IN ('queued', 'in_progress')) > 0 THEN 'running'
+                WHEN count(*) = 0 THEN 'pending'
+                ELSE 'completed'
+               END AS status,
+               CASE
+                WHEN count(*) = 0 THEN NULL
+                WHEN count(*) FILTER (WHERE conclusion = 'failure') > 0 THEN 'failure'
+                WHEN count(*) FILTER (WHERE conclusion = 'cancelled') > 0 THEN 'cancelled'
+                WHEN count(*) FILTER (WHERE conclusion IN ('success', 'skipped', 'neutral')) = count(*) THEN 'success'
+                ELSE NULL
+               END AS conclusion,
+               count(*)::bigint AS total_count,
+               count(*) FILTER (WHERE status = 'completed')::bigint AS completed_count,
+               count(*) FILTER (WHERE conclusion = 'failure')::bigint AS failed_count
+        FROM check_runs
+        WHERE repository_id = $1 AND head_sha = $2
+        "#,
+    )
+    .bind(repository_id)
+    .bind(head_sha)
+    .fetch_one(pool)
+    .await?;
+    Ok(PullRequestChecksSummary {
+        status: row.get("status"),
+        conclusion: row.get("conclusion"),
+        total_count: row.get("total_count"),
+        completed_count: row.get("completed_count"),
+        failed_count: row.get("failed_count"),
+    })
+}
+
+async fn pull_request_head_sha(
+    pool: &PgPool,
+    pull_request: &PullRequest,
+) -> Result<Option<String>, CollaborationError> {
+    let row = sqlx::query(
+        r#"
+        SELECT COALESCE(head_commit.oid, ref_commit.oid) AS head_sha
+        FROM pull_requests
+        LEFT JOIN LATERAL (
+            SELECT commits.oid
+            FROM pull_request_commits
+            JOIN commits ON commits.id = pull_request_commits.commit_id
+            WHERE pull_request_commits.pull_request_id = pull_requests.id
+            ORDER BY commits.committed_at DESC
+            LIMIT 1
+        ) head_commit ON true
+        LEFT JOIN repository_git_refs ON repository_git_refs.repository_id = pull_requests.repository_id
+             AND repository_git_refs.name = ('refs/heads/' || pull_requests.head_ref)
+        LEFT JOIN commits ref_commit ON ref_commit.id = repository_git_refs.target_commit_id
+        WHERE pull_requests.id = $1
+        "#,
+    )
+    .bind(pull_request.id)
+    .fetch_one(pool)
+    .await?;
+    Ok(row.get("head_sha"))
+}
+
+async fn pull_request_by_repository_number(
+    pool: &PgPool,
+    repository_id: Uuid,
+    number: i64,
+) -> Result<PullRequest, CollaborationError> {
+    let row = sqlx::query(
+        r#"
+        SELECT id, repository_id, issue_id, number, title, body, state, author_user_id,
+               head_ref, base_ref, head_repository_id, base_repository_id, merge_commit_id,
+               merged_by_user_id, merged_at, closed_at, created_at, updated_at, is_draft
+        FROM pull_requests
+        WHERE repository_id = $1 AND number = $2
+        "#,
+    )
+    .bind(repository_id)
+    .bind(number)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(CollaborationError::PullRequestNotFound)?;
+    pull_request_from_row(row)
 }
 
 async fn pull_task_progress(
