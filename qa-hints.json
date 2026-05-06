@@ -7266,5 +7266,21 @@
       "Probe Bearer PAT calls with api:write/repo scopes, expired/revoked PATs, project writer without linked repository write access, missing or inaccessible actions_workflow_run_id, unknown workflow id/key, duplicate idempotency keys across sources, and invalid status option values.",
       "Phase 6 still owns API docs, final signed-in browser smoke/screenshots, QA handoff, and projects-006 build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-006",
+    "tests_written": [
+      "Completed Phase 6 API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping; projects-006.build_pass is now true and qa_pass remains false.",
+      "Added /docs/api coverage for GET /api/projects/{project_id}/workflows, PATCH /api/projects/{project_id}/workflows/{workflow_id}, and POST /api/projects/{project_id}/automation/invocations.",
+      "Documented default workflow seeding, condition/filter syntax, status field and option validation, repository target permission filtering, archive criteria, close-on-status, Actions/GraphQL attribution, idempotency, audit events, workflow_execution_logs, project_item_events, and standard error behavior.",
+      "Added web/tests/e2e/projects-workflows.spec.ts for the final signed-in browser smoke covering default workflow cards, edit panel, condition save, repository selector, archive criteria, activity log, no dead controls, desktop/mobile screenshots, and bounded overflow when seeded database credentials are available.",
+      "Extended api-docs Vitest coverage for the Projects workflow and automation endpoint docs.",
+      "Verification passed: JSON validation for prd.json and qa-hints.json; focused api-docs Vitest; focused Biome for docs/tests; web TypeScript; full make check; full make test; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Full make test-e2e was attempted with TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test and DB_SSL=false but is blocked by the known local Postgres authentication failure for user postgres; rerun web/tests/e2e/projects-workflows.spec.ts against a clean migrated credentialed TEST_DATABASE_URL to save final projects-006 screenshots.",
+      "Probe concurrent workflow edits and stale expectedUpdatedAt conflicts, stale enable/disable toggles, missing Done/status option fallback, private repository auto-add targets, project writer without linked repository write permission, close-on-status permission denial, duplicate built-in event idempotency, duplicate Actions/GraphQL idempotency keys, auto-archive age boundaries around 1/14/365 days, Actions run attribution, Bearer PAT authorization, revoked/expired PATs, audit rows, notification fanout, and mobile settings layout.",
+      "Verify read-only and unauthenticated users see disabled or permission states without leaking private repository target names, execution log metadata, session rows, OAuth payloads, token hashes, storage keys, environment variables, or stack traces."
+    ]
   }
 ]

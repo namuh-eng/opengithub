@@ -1201,6 +1201,129 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "projects-workflow-settings-read",
+    method: "GET",
+    path: "/api/projects/{project_id}/workflows",
+    title: "Read Project workflow settings",
+    description:
+      "Returns the built-in Projects workflow settings contract used by the Workflows settings page, including default workflow cards, eligible status fields, repository targets, recent automation logs, and viewer capabilities.",
+    auth: "Signed opengithub session cookie when required by project visibility; private projects require project read access",
+    response: `{
+  "project": { "id": "project_01", "number": 1, "title": "Release tracking" },
+  "automationActor": "@opengithub-project-automation",
+  "workflows": [
+    {
+      "id": "workflow_01",
+      "workflowKey": "closed_item_to_done",
+      "name": "Set status to Done when closed",
+      "enabled": true,
+      "triggerEvent": "issue_closed",
+      "configuration": {
+        "target": { "fieldId": "field_status", "optionId": "option_done" },
+        "condition": "state:closed"
+      },
+      "repositoryTargetIds": ["repo_01"],
+      "lastRunStatus": "success"
+    }
+  ],
+  "eligibleFields": [
+    {
+      "id": "field_status",
+      "name": "Status",
+      "supportsStatusTarget": true,
+      "supportsArchiveCriteria": true,
+      "options": [{ "id": "option_done", "name": "Done", "color": "green" }]
+    }
+  ],
+  "repositoryTargets": [
+    { "id": "repo_01", "fullName": "acme-labs/platform", "permission": "write" }
+  ],
+  "recentLogs": [
+    { "workflowKey": "closed_item_to_done", "source": "system", "status": "success" }
+  ],
+  "viewerPermissions": { "canManageWorkflows": true, "canViewLogs": true }
+}`,
+    notes: [
+      "Default workflow rows are seeded on first read for closed issue/PR to Done, merged PR to Done, item-added default status, and auto-archive completed items.",
+      "Repository targets are filtered by repository permission, so private repositories are omitted from readers who can inspect the project but cannot access that repository.",
+      "Missing Status or Done fields are represented through eligibleFields and unavailable workflow configuration rather than browser-only assumptions.",
+      "User and organization workflow settings pages resolve project numbers before calling this project-id endpoint.",
+    ],
+  },
+  {
+    id: "projects-workflow-update",
+    method: "PATCH",
+    path: "/api/projects/{project_id}/workflows/{workflow_id}",
+    title: "Update Project workflow",
+    description:
+      "Persists built-in Project workflow enablement, condition filters, target status selection, repository auto-add targets, archive criteria, and close-on-status behavior.",
+    auth: "Signed opengithub session cookie with project write/admin access; selected repository targets require repository write access",
+    request: `{
+  "enabled": true,
+  "condition": "state:closed label:ready",
+  "statusFieldId": "field_status",
+  "statusOptionId": "option_done",
+  "repositoryTargetIds": ["repo_01"],
+  "archiveAfterDays": 14,
+  "closeOnStatus": false,
+  "expectedUpdatedAt": "2026-05-06T10:40:00Z"
+}`,
+    response: `{
+  "workflows": [
+    {
+      "id": "workflow_01",
+      "enabled": true,
+      "source": "ui",
+      "lastRunMessage": "Workflow configuration saved."
+    }
+  ],
+  "recentLogs": [
+    { "workflowKey": "closed_item_to_done", "source": "ui", "status": "success" }
+  ]
+}`,
+    notes: [
+      "expectedUpdatedAt protects concurrent workflow edits; stale saves return conflict without overwriting newer configuration.",
+      "Status field and option ids must belong to the same project and support status targeting; invalid ids return validation_failed.",
+      "Repository target ids must be linked to the project and writable by the actor because later auto-add and close-on-status side effects touch repository resources.",
+      "Successful saves write workflow_execution_logs and audit_events before later item-state automation runs.",
+    ],
+  },
+  {
+    id: "projects-automation-invocation",
+    method: "POST",
+    path: "/api/projects/{project_id}/automation/invocations",
+    title: "Invoke Project automation",
+    description:
+      "Applies a bounded Actions or GraphQL-style Project automation invocation through the same workflow engine used by built-in item-state events.",
+    auth: "Signed opengithub session cookie or Bearer personal access token with project write access",
+    request: `{
+  "source": "actions",
+  "itemId": "item_01",
+  "workflowKey": "closed_item_to_done",
+  "actionsWorkflowRunId": "run_01",
+  "idempotencyKey": "run_01:item_01:status",
+  "fieldUpdates": [
+    { "fieldId": "field_status", "value": { "kind": "single_select", "optionId": "option_done" } }
+  ]
+}`,
+    response: `{
+  "projectId": "project_01",
+  "itemId": "item_01",
+  "workflowKey": "closed_item_to_done",
+  "source": "actions",
+  "status": "success",
+  "message": "Applied 1 project automation update.",
+  "appliedUpdates": [{ "fieldId": "field_status", "displayValue": "Done" }],
+  "idempotencyKey": "run_01:item_01:status"
+}`,
+    notes: [
+      "Supported source values are actions and graphql; ui and system are reserved for first-party workflow settings and built-in event execution.",
+      "Duplicate idempotency keys return a skipped response and do not write a second success log or duplicate field value event.",
+      "Actions run attribution requires write access to the run's repository, and linked issue or pull request updates require backing repository write access.",
+      "Successful invocations update project_item_field_values, project_item_events, workflow_execution_logs, project_workflows last-run metadata, and audit_events.",
+    ],
+  },
+  {
     id: "organization-team-create",
     method: "POST",
     path: "/api/orgs/{org}/teams",

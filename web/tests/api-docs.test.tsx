@@ -356,6 +356,27 @@ describe("ApiDocsPage", () => {
       screen.getByText(/Workspace filters understand iteration values/),
     ).toBeVisible();
     expect(
+      screen.getByText("/api/projects/{project_id}/workflows"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/projects/{project_id}/workflows/{workflow_id}"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/projects/{project_id}/automation/invocations"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Default workflow rows are seeded on first read/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/expectedUpdatedAt protects concurrent workflow edits/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Supported source values are actions and graphql/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Duplicate idempotency keys return a skipped response/),
+    ).toBeVisible();
+    expect(
       screen.getByText(
         "/api/orgs/{org}/teams?q=platform&visibility=all&page=1&pageSize=30",
       ),

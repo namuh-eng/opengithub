@@ -92,7 +92,7 @@
 
 ## Phase 6: API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `projects-006` only after workflow settings reads, Editorial settings UI, workflow configuration mutations, built-in automation execution, Actions/GraphQL hook invocation, docs, screenshots, and QA handoff are verified. Do not implement project insights, exports, full GraphQL schema/query execution, custom workflow languages, scheduled background runners beyond auto-archive criteria, repository Actions YAML authoring, access settings, or GitHub visual styling as part of this feature.
 
