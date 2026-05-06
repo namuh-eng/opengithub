@@ -140,6 +140,29 @@ export type AccountSecuritySettingsFetchResult =
   | { ok: true; settings: AccountSecuritySettings }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type AccountSessionSummary = {
+  id: string;
+  device: string;
+  browser: string;
+  location: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  signedInAt: string;
+  lastActiveAt: string;
+  expiresAt: string;
+  isCurrent: boolean;
+};
+
+export type AccountSessions = {
+  sessions: AccountSessionSummary[];
+  activeCount: number;
+  currentSessionId: string;
+};
+
+export type AccountSessionsFetchResult =
+  | { ok: true; sessions: AccountSessions }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type ProjectListScopeSummary = {
   kind: "user" | "organization" | "repository" | string;
   login: string;
@@ -10585,6 +10608,110 @@ export async function getAccountSecuritySettingsFromCookie(
   return {
     ok: true,
     settings: (await response.json()) as AccountSecuritySettings,
+  };
+}
+
+export async function getAccountSessionsFromCookie(
+  cookie: string | null | undefined,
+): Promise<AccountSessionsFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}/api/settings/security/sessions`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Active sessions are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Active sessions are unavailable right now.";
+    try {
+      const body = (await response.json()) as ApiErrorEnvelope;
+      code = body.error.code ?? null;
+      message = body.error.message ?? message;
+    } catch {
+      // keep fallback
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    sessions: (await response.json()) as AccountSessions,
+  };
+}
+
+export async function revokeAccountSessionFromCookie(
+  cookie: string | null | undefined,
+  sessionId: string,
+): Promise<{ revokedId: string; sessions: AccountSessions }> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/settings/security/sessions/${encodeURIComponent(
+      sessionId,
+    )}`,
+    {
+      method: "DELETE",
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    let envelope: ApiErrorEnvelope | null = null;
+    try {
+      envelope = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      envelope = null;
+    }
+    throw new Error(
+      envelope?.error.message ?? "Session could not be revoked.",
+      {
+        cause: envelope,
+      },
+    );
+  }
+
+  return (await response.json()) as {
+    revokedId: string;
+    sessions: AccountSessions;
+  };
+}
+
+export async function signOutEverywhereFromCookie(
+  cookie: string | null | undefined,
+): Promise<{ revokedCount: number; sessions: AccountSessions }> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/settings/security/sessions/sign-out-everywhere`,
+    {
+      method: "POST",
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    let envelope: ApiErrorEnvelope | null = null;
+    try {
+      envelope = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      envelope = null;
+    }
+    throw new Error(
+      envelope?.error.message ?? "Other sessions could not be signed out.",
+      { cause: envelope },
+    );
+  }
+
+  return (await response.json()) as {
+    revokedCount: number;
+    sessions: AccountSessions;
   };
 }
 

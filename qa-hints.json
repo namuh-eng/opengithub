@@ -8029,5 +8029,23 @@
       "Probe very large repositories beyond the current 100-item page fetch; the UI scores the fetched cached list locally, so a later backend/page-size contract may be needed for huge path lists.",
       "Verify keyboard-only behavior on mobile/desktop with long paths, duplicate filenames in different folders, refs containing slashes, binary files, and private repository permission boundaries."
     ]
+  },
+  {
+    "feature_id": "security-002",
+    "tests_written": [
+      "Added migration 202605070006_account_session_management to extend sessions with user_agent, ip_inet, last_active_at, and active-session indexes.",
+      "Added Rust API endpoints for GET /api/settings/security/sessions, DELETE /api/settings/security/sessions/{session_id}, and POST /api/settings/security/sessions/sign-out-everywhere with current-session protection, per-user ownership checks, metadata refresh, and security audit rows.",
+      "Replaced the Sessions placeholder and added the PRD path /settings/security/sessions with an Editorial active sessions page showing parsed device/browser, IP-derived location text, signed-in and last-active timestamps, current badge, per-row Revoke, and Sign out everywhere.",
+      "Added same-origin Next session action proxy plus typed API/server-session helpers.",
+      "Added focused Rust contract coverage for list/revoke/sign-out-everywhere and focused Vitest coverage for active session rendering plus revoke/sign-out interactions.",
+      "Browser smoke passed on /settings/sessions against an API-compatible stub: current revoke disabled, sign-out-everywhere worked, individual revoke worked, zero href=\"#\", no horizontal overflow, and screenshot saved at ralph/screenshots/build/security-002-active-sessions.jpg.",
+      "Verification passed: cargo fmt --all --check, cargo check -p opengithub-api --tests, focused Rust account security contract, focused Vitest, web TypeScript, focused Biome, Next production build, full make check, full make test with Cargo tests plus 634 web tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Run full signed-session Playwright after the local TEST_DATABASE_URL path is healthy; bounded timeout 120 make test-e2e terminated with no Playwright detail.",
+      "Run the DB-backed account session contract against a credentialed migrated Postgres to verify inet storage, audit rows, and session revocation behavior beyond the guarded self-skip path.",
+      "Probe real proxy headers in ECS/ALB/CloudFront so x-forwarded-for parsing records the client address rather than internal hops.",
+      "Check mobile and keyboard-only behavior with many sessions, very long user agents, IPv6 addresses, expired sessions, revoked sessions, and attempts to revoke another user's session."
+    ]
   }
 ]

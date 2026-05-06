@@ -40,8 +40,132 @@ async fn database_pool() -> Option<PgPool> {
         .execute(&pool)
         .await
         .ok()?;
+        sqlx::raw_sql(include_str!(
+            "../migrations/202605070006_account_session_management.up.sql"
+        ))
+        .execute(&pool)
+        .await
+        .ok()?;
     }
     Some(pool)
+}
+
+#[tokio::test]
+async fn active_sessions_list_revoke_and_sign_out_everywhere() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping account sessions scenario; set TEST_DATABASE_URL");
+        return;
+    };
+    let config = app_config();
+    let user = create_user(&pool, "session-owner").await;
+    let (current_session_id, cookie) = cookie_header(&pool, &config, &user).await;
+    let other_session_id = Uuid::new_v4().to_string();
+    let third_session_id = Uuid::new_v4().to_string();
+    let expires_at = Utc::now() + Duration::hours(1);
+    identity::upsert_session(
+        &pool,
+        &other_session_id,
+        Some(user.id),
+        json!({ "provider": "google" }),
+        expires_at,
+    )
+    .await
+    .expect("other session should persist");
+    identity::upsert_session(
+        &pool,
+        &third_session_id,
+        Some(user.id),
+        json!({ "provider": "google" }),
+        expires_at,
+    )
+    .await
+    .expect("third session should persist");
+    sqlx::query(
+        r#"
+        UPDATE sessions
+        SET user_agent = CASE id
+              WHEN $2 THEN 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/124.0 Safari/537.36'
+              ELSE 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1'
+            END,
+            ip_inet = CASE id WHEN $2 THEN '127.0.0.1'::inet ELSE '10.1.2.3'::inet END
+        WHERE user_id = $1
+        "#,
+    )
+    .bind(user.id)
+    .bind(&current_session_id)
+    .execute(&pool)
+    .await
+    .expect("session metadata should update");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let (status, _, body) = send_json(
+        app.clone(),
+        Method::GET,
+        "/api/settings/security/sessions",
+        Some(&cookie),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["activeCount"], 3);
+    assert_eq!(body["currentSessionId"], current_session_id);
+    assert_eq!(body["sessions"][0]["isCurrent"], true);
+    assert_eq!(body["sessions"][0]["device"], "Mac · Chrome");
+    assert_eq!(body["sessions"][0]["location"], "Localhost");
+
+    let (status, _, body) = send_json(
+        app.clone(),
+        Method::DELETE,
+        &format!("/api/settings/security/sessions/{current_session_id}"),
+        Some(&cookie),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_eq!(body["error"]["code"], "sign_in_method_forbidden");
+
+    let (status, _, body) = send_json(
+        app.clone(),
+        Method::DELETE,
+        &format!("/api/settings/security/sessions/{other_session_id}"),
+        Some(&cookie),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["revokedId"], other_session_id);
+    assert_eq!(body["sessions"]["activeCount"], 2);
+
+    let (status, _, body) = send_json(
+        app,
+        Method::POST,
+        "/api/settings/security/sessions/sign-out-everywhere",
+        Some(&cookie),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["revokedCount"], 1);
+    assert_eq!(body["sessions"]["activeCount"], 1);
+    assert_eq!(body["sessions"]["sessions"][0]["id"], current_session_id);
+
+    let remaining_active: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM sessions WHERE user_id = $1 AND revoked_at IS NULL",
+    )
+    .bind(user.id)
+    .fetch_one(&pool)
+    .await
+    .expect("active count should load");
+    assert_eq!(remaining_active, 1);
+
+    let audit_text: String =
+        sqlx::query_scalar("SELECT COALESCE(string_agg(metadata::text, ' '), '') FROM security_audit_events WHERE actor_user_id = $1 AND event_type LIKE 'session.%'")
+            .bind(user.id)
+            .fetch_one(&pool)
+            .await
+            .expect("audit rows should load");
+    assert!(audit_text.contains(&other_session_id));
+    assert!(!audit_text.contains("test-session-secret"));
 }
 
 fn app_config() -> AppConfig {

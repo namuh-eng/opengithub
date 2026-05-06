@@ -14,8 +14,10 @@ use crate::{
     domain::{
         account_security::{
             account_security_settings, create_account_security_sudo_grant,
-            require_account_security_sudo, unlink_sign_in_method, AccountSecurityError,
-            AccountSecuritySettings, UnlinkSignInMethodResponse,
+            require_account_security_sudo, revoke_account_session, sign_out_everywhere,
+            unlink_sign_in_method, update_current_session_metadata, AccountSecurityError,
+            AccountSecuritySettings, AccountSessions, RevokeAccountSessionResponse,
+            SignOutEverywhereResponse, UnlinkSignInMethodResponse,
         },
         tokens::CreateSudoGrantRequest,
     },
@@ -25,12 +27,70 @@ use crate::{
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/settings/security", get(settings))
+        .route("/api/settings/security/sessions", get(sessions))
+        .route(
+            "/api/settings/security/sessions/sign-out-everywhere",
+            post(sign_out_elsewhere),
+        )
+        .route(
+            "/api/settings/security/sessions/:session_id",
+            delete(revoke_session),
+        )
         .route("/api/settings/security/sudo", post(create_sudo))
         .route(
             "/api/settings/security/sign-in-methods/:account_id",
             delete(unlink_method),
         )
         .route("/api/settings/security/google/link", get(link_google))
+}
+
+async fn sessions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<AccountSessions>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let session_id = current_session_id(&state, &headers)?;
+    update_current_session_metadata(
+        pool,
+        actor.id,
+        &session_id,
+        header_str(&headers, header::USER_AGENT.as_str()),
+        client_ip(&headers).as_deref(),
+    )
+    .await
+    .map_err(map_account_security_error)?;
+    let response = crate::domain::account_security::account_sessions(pool, actor.id, &session_id)
+        .await
+        .map_err(map_account_security_error)?;
+    Ok(Json(response))
+}
+
+async fn revoke_session(
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<RevokeAccountSessionResponse>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let current_session_id = current_session_id(&state, &headers)?;
+    let response = revoke_account_session(pool, actor.id, &current_session_id, &session_id)
+        .await
+        .map_err(map_account_security_error)?;
+    Ok(Json(response))
+}
+
+async fn sign_out_elsewhere(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<SignOutEverywhereResponse>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let current_session_id = current_session_id(&state, &headers)?;
+    let response = sign_out_everywhere(pool, actor.id, &current_session_id)
+        .await
+        .map_err(map_account_security_error)?;
+    Ok(Json(response))
 }
 
 #[derive(Debug, Deserialize)]
@@ -143,6 +203,11 @@ fn map_account_security_error(error: AccountSecurityError) -> (StatusCode, Json<
             "sign_in_method_forbidden",
             "The selected sign-in method is not available",
         ),
+        AccountSecurityError::SessionNotFound => error_response(
+            StatusCode::NOT_FOUND,
+            "session_not_found",
+            "The selected session is not available",
+        ),
         AccountSecurityError::Sqlx(error) => {
             tracing::warn!(%error, "account security operation failed");
             database_unavailable()
@@ -156,4 +221,26 @@ fn unauthorized_for_security_settings() -> (StatusCode, Json<ErrorEnvelope>) {
         "not_authenticated",
         "No active session is available",
     )
+}
+
+fn current_session_id(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<String, (StatusCode, Json<ErrorEnvelope>)> {
+    session::session_id_from_headers(&state.config, headers)
+        .map_err(|_| unauthorized_for_security_settings())?
+        .ok_or_else(unauthorized_for_security_settings)
+}
+
+fn header_str<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
+    headers.get(name).and_then(|value| value.to_str().ok())
+}
+
+fn client_ip(headers: &HeaderMap) -> Option<String> {
+    header_str(headers, "x-forwarded-for")
+        .and_then(|value| value.split(',').next())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| header_str(headers, "x-real-ip"))
+        .map(str::to_owned)
 }

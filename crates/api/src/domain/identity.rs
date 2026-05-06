@@ -237,14 +237,15 @@ pub async fn upsert_session(
 ) -> Result<SessionRecord, sqlx::Error> {
     let row = sqlx::query(
         r#"
-        INSERT INTO sessions (id, user_id, data, expires_at)
-        VALUES ($1, $2, $3, $4)
+        INSERT INTO sessions (id, user_id, data, expires_at, last_active_at)
+        VALUES ($1, $2, $3, $4, now())
         ON CONFLICT (id)
         DO UPDATE SET
             user_id = EXCLUDED.user_id,
             data = EXCLUDED.data,
             expires_at = EXCLUDED.expires_at,
             last_seen_at = now(),
+            last_active_at = now(),
             revoked_at = NULL
         RETURNING id, user_id, data, expires_at, created_at, updated_at, last_seen_at, revoked_at
         "#,
@@ -283,6 +284,22 @@ pub async fn get_user_by_active_session(
     pool: &PgPool,
     session_id: &str,
 ) -> Result<Option<User>, sqlx::Error> {
+    let row = sqlx::query(
+        r#"
+        UPDATE sessions
+        SET last_seen_at = now(), last_active_at = now()
+        WHERE id = $1
+          AND revoked_at IS NULL
+          AND expires_at > now()
+        "#,
+    )
+    .bind(session_id)
+    .execute(pool)
+    .await?;
+    if row.rows_affected() == 0 {
+        return Ok(None);
+    }
+
     let row = sqlx::query(
         r#"
         SELECT users.id, users.username, users.email, users.display_name, users.avatar_url,

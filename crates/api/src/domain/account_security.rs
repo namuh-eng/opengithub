@@ -16,6 +16,8 @@ pub enum AccountSecurityError {
     LastIdentity,
     #[error("identity is not available")]
     Forbidden,
+    #[error("session is not available")]
+    SessionNotFound,
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
 }
@@ -59,6 +61,49 @@ pub struct UnlinkSignInMethodResponse {
     #[serde(rename = "removedId")]
     pub removed_id: Uuid,
     pub settings: AccountSecuritySettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AccountSessions {
+    pub sessions: Vec<AccountSessionSummary>,
+    #[serde(rename = "activeCount")]
+    pub active_count: i64,
+    #[serde(rename = "currentSessionId")]
+    pub current_session_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AccountSessionSummary {
+    pub id: String,
+    pub device: String,
+    pub browser: String,
+    pub location: String,
+    #[serde(rename = "ipAddress")]
+    pub ip_address: Option<String>,
+    #[serde(rename = "userAgent")]
+    pub user_agent: Option<String>,
+    #[serde(rename = "signedInAt")]
+    pub signed_in_at: DateTime<Utc>,
+    #[serde(rename = "lastActiveAt")]
+    pub last_active_at: DateTime<Utc>,
+    #[serde(rename = "expiresAt")]
+    pub expires_at: DateTime<Utc>,
+    #[serde(rename = "isCurrent")]
+    pub is_current: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RevokeAccountSessionResponse {
+    #[serde(rename = "revokedId")]
+    pub revoked_id: String,
+    pub sessions: AccountSessions,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SignOutEverywhereResponse {
+    #[serde(rename = "revokedCount")]
+    pub revoked_count: i64,
+    pub sessions: AccountSessions,
 }
 
 pub async fn account_security_settings(
@@ -113,6 +158,147 @@ pub async fn account_security_settings(
             reason: "Two-factor authentication is planned after Google-only auth hardening."
                 .to_owned(),
         },
+    })
+}
+
+pub async fn update_current_session_metadata(
+    pool: &PgPool,
+    user_id: Uuid,
+    session_id: &str,
+    user_agent: Option<&str>,
+    ip_address: Option<&str>,
+) -> Result<(), AccountSecurityError> {
+    sqlx::query(
+        r#"
+        UPDATE sessions
+        SET user_agent = COALESCE($3, user_agent),
+            ip_inet = COALESCE(NULLIF($4, '')::inet, ip_inet),
+            last_active_at = now(),
+            last_seen_at = now()
+        WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL AND expires_at > now()
+        "#,
+    )
+    .bind(session_id)
+    .bind(user_id)
+    .bind(user_agent.filter(|value| !value.trim().is_empty()))
+    .bind(ip_address.filter(|value| !value.trim().is_empty()))
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn account_sessions(
+    pool: &PgPool,
+    user_id: Uuid,
+    current_session_id: &str,
+) -> Result<AccountSessions, AccountSecurityError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT id, user_agent, ip_inet::text AS ip_address, created_at,
+               COALESCE(last_active_at, last_seen_at) AS last_active_at, expires_at
+        FROM sessions
+        WHERE user_id = $1
+          AND revoked_at IS NULL
+          AND expires_at > now()
+        ORDER BY (id = $2) DESC, COALESCE(last_active_at, last_seen_at) DESC, created_at DESC
+        "#,
+    )
+    .bind(user_id)
+    .bind(current_session_id)
+    .fetch_all(pool)
+    .await?;
+
+    let sessions = rows
+        .into_iter()
+        .map(|row| {
+            let user_agent: Option<String> = row.get("user_agent");
+            let ip_address: Option<String> = row.get("ip_address");
+            AccountSessionSummary {
+                id: row.get("id"),
+                device: device_label(user_agent.as_deref()),
+                browser: browser_label(user_agent.as_deref()),
+                location: location_label(ip_address.as_deref()),
+                ip_address,
+                user_agent,
+                signed_in_at: row.get("created_at"),
+                last_active_at: row.get("last_active_at"),
+                expires_at: row.get("expires_at"),
+                is_current: row.get::<String, _>("id") == current_session_id,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    Ok(AccountSessions {
+        active_count: sessions.len() as i64,
+        sessions,
+        current_session_id: current_session_id.to_owned(),
+    })
+}
+
+pub async fn revoke_account_session(
+    pool: &PgPool,
+    user_id: Uuid,
+    current_session_id: &str,
+    target_session_id: &str,
+) -> Result<RevokeAccountSessionResponse, AccountSecurityError> {
+    if target_session_id == current_session_id {
+        return Err(AccountSecurityError::Forbidden);
+    }
+    let result = sqlx::query(
+        r#"
+        UPDATE sessions
+        SET revoked_at = now()
+        WHERE id = $1
+          AND user_id = $2
+          AND revoked_at IS NULL
+          AND expires_at > now()
+        "#,
+    )
+    .bind(target_session_id)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+    if result.rows_affected() == 0 {
+        return Err(AccountSecurityError::SessionNotFound);
+    }
+    record_session_audit(pool, user_id, "session.revoke", target_session_id, None).await?;
+    Ok(RevokeAccountSessionResponse {
+        revoked_id: target_session_id.to_owned(),
+        sessions: account_sessions(pool, user_id, current_session_id).await?,
+    })
+}
+
+pub async fn sign_out_everywhere(
+    pool: &PgPool,
+    user_id: Uuid,
+    current_session_id: &str,
+) -> Result<SignOutEverywhereResponse, AccountSecurityError> {
+    let result = sqlx::query(
+        r#"
+        UPDATE sessions
+        SET revoked_at = now()
+        WHERE user_id = $1
+          AND id <> $2
+          AND revoked_at IS NULL
+          AND expires_at > now()
+        "#,
+    )
+    .bind(user_id)
+    .bind(current_session_id)
+    .execute(pool)
+    .await?;
+    let revoked_count = result.rows_affected() as i64;
+    record_session_audit(
+        pool,
+        user_id,
+        "session.sign_out_everywhere",
+        current_session_id,
+        Some(revoked_count),
+    )
+    .await?;
+    Ok(SignOutEverywhereResponse {
+        revoked_count,
+        sessions: account_sessions(pool, user_id, current_session_id).await?,
     })
 }
 
@@ -214,6 +400,81 @@ fn provider_label(provider: String) -> String {
         "google" => "Google".to_owned(),
         other => other.to_owned(),
     }
+}
+
+fn browser_label(user_agent: Option<&str>) -> String {
+    let ua = user_agent.unwrap_or_default();
+    if ua.contains("Edg/") {
+        "Edge".to_owned()
+    } else if ua.contains("Chrome/") || ua.contains("CriOS/") {
+        "Chrome".to_owned()
+    } else if ua.contains("Firefox/") || ua.contains("FxiOS/") {
+        "Firefox".to_owned()
+    } else if ua.contains("Safari/") {
+        "Safari".to_owned()
+    } else if ua.trim().is_empty() {
+        "Unknown browser".to_owned()
+    } else {
+        "Browser".to_owned()
+    }
+}
+
+fn device_label(user_agent: Option<&str>) -> String {
+    let ua = user_agent.unwrap_or_default();
+    let family = if ua.contains("iPhone") {
+        "iPhone"
+    } else if ua.contains("iPad") {
+        "iPad"
+    } else if ua.contains("Android") {
+        "Android"
+    } else if ua.contains("Mac OS X") || ua.contains("Macintosh") {
+        "Mac"
+    } else if ua.contains("Windows") {
+        "Windows PC"
+    } else if ua.contains("Linux") {
+        "Linux"
+    } else if ua.trim().is_empty() {
+        "Unknown device"
+    } else {
+        "Device"
+    };
+    format!("{family} · {}", browser_label(user_agent))
+}
+
+fn location_label(ip_address: Option<&str>) -> String {
+    match ip_address {
+        Some("127.0.0.1") | Some("::1") => "Localhost".to_owned(),
+        Some(value) if value.starts_with("10.") || value.starts_with("192.168.") => {
+            "Private network".to_owned()
+        }
+        Some(value) if value.starts_with("172.") => "Private network".to_owned(),
+        Some(_) => "Approximate location unavailable".to_owned(),
+        None => "Unknown location".to_owned(),
+    }
+}
+
+async fn record_session_audit(
+    pool: &PgPool,
+    user_id: Uuid,
+    event_type: &str,
+    target_session_id: &str,
+    revoked_count: Option<i64>,
+) -> Result<(), AccountSecurityError> {
+    sqlx::query(
+        r#"
+        INSERT INTO security_audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, $2, 'session', NULL, $3)
+        "#,
+    )
+    .bind(user_id)
+    .bind(event_type)
+    .bind(json!({
+        "sessionId": target_session_id,
+        "revokedCount": revoked_count,
+    }))
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 fn map_sudo_error(error: crate::domain::tokens::PersonalAccessTokenError) -> AccountSecurityError {

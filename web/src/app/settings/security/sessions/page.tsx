@@ -5,7 +5,7 @@ import {
   getSessionAndShellContext,
 } from "@/lib/server-session";
 
-export default async function SessionSettingsPage() {
+export default async function SecuritySessionSettingsPage() {
   const [{ session, shellContext }, sessionsResult] = await Promise.all([
     getSessionAndShellContext(),
     getAccountSessions(),
@@ -13,7 +13,7 @@ export default async function SessionSettingsPage() {
 
   return (
     <SettingsShell
-      activeSection="sessions"
+      activeSection="security"
       eyebrow="Personal settings"
       session={session}
       shellContext={shellContext}
