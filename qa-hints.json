@@ -7060,5 +7060,21 @@
       "Probe timezone/date-boundary behavior for @current/@previous/@next, overlapping iteration and break ranges, stale schedule saves, concurrent iteration edits, generated cycle counts near the 100 limit, read-only users, non-iteration field denial, range/comparison filters in table/board/roadmap layouts, long iteration names, mobile date input fit, and audit/view-cache side effects.",
       "Phase 6 still owns final API docs, screenshots, QA handoff, prd.json build_pass bookkeeping, and final browser smoke evidence."
     ]
+  },
+  {
+    "feature_id": "projects-004",
+    "tests_written": [
+      "Completed Phase 6 API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping for Projects v2 custom fields and iterations.",
+      "Documented GET /api/projects/{project_id}/settings/fields, POST /api/projects/{project_id}/settings/fields, PATCH/DELETE /api/projects/{project_id}/fields/{field_id}, option create/update/reorder/delete, iteration settings, iteration create/update, and iteration break create/delete behavior in /docs/api.",
+      "Extended API docs Vitest coverage for field settings read metadata, built-in read-only fields, default iteration seeding, field delete side effects, option reorder, and iteration filter token documentation.",
+      "Added web/tests/e2e/projects-field-settings.spec.ts for final signed-in browser smoke covering field create/rename/delete confirmation, single-select option add/edit/reorder, iteration schedule save, break insertion, workspace filter reflection, screenshots, mobile, no dead controls, and bounded horizontal overflow.",
+      "Verification passed for JSON validation, focused api-docs Vitest, focused Biome on touched docs/tests, web TypeScript, full make check, full make test, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Run the final Projects field settings Playwright smoke against a clean migrated credentialed TEST_DATABASE_URL; the current local Postgres on localhost:55432 has repeatedly rejected the available postgres password in signed-session E2E seed helpers.",
+      "Capture final screenshots for field list, create dialog, single-select option rows, iteration schedule, delete confirmation, filter reflection, permission-disabled state, and mobile under ralph/screenshots/build/.",
+      "Probe large option lists, many field rows, concurrent field deletes/renames, stale expectedUpdatedAt conflicts, stale option reorders, item value cleanup after field/option delete, hidden private linked repositories, timezone/date-boundary iteration filters, overlapping breaks, generated cycle limits, read-only permissions, audit_events, project_item_events, and project view/filter cache invalidation.",
+      "Project workflow automation, access settings, exports, insights charts, formulas, full pointer drag-and-drop option reordering, and GitHub/Primer styling remain out of scope for projects-004 and should not appear as live unsupported controls."
+    ]
   }
 ]

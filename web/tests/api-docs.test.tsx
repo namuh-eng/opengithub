@@ -226,6 +226,32 @@ describe("ApiDocsPage", () => {
       screen.getByText("/api/projects/{project_id}/items/{item_id}"),
     ).toBeVisible();
     expect(
+      screen.getAllByText("/api/projects/{project_id}/settings/fields")[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/projects/{project_id}/fields/{field_id}"),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(
+        "/api/projects/{project_id}/fields/{field_id}/options",
+      )[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/projects/{project_id}/fields/{field_id}/options/reorder",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/projects/{project_id}/fields/{field_id}/iterations/settings",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/projects/{project_id}/fields/{field_id}/iteration-breaks",
+      ),
+    ).toBeVisible();
+    expect(
       screen.getByText(/Supported sort values are recently_updated/),
     ).toBeVisible();
     expect(
@@ -274,6 +300,25 @@ describe("ApiDocsPage", () => {
     ).toBeVisible();
     expect(
       screen.getByText(/Removal archives the project item relationship/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Built-in fields are returned with editable=false/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Creating an iteration field seeds three default cycles/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(/DELETE \/api\/projects\/\{project_id\}\/fields/)[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /PATCH \/api\/projects\/\{project_id\}\/fields\/\{field_id\}\/options\/reorder/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Workspace filters understand iteration values/),
     ).toBeVisible();
     expect(
       screen.getByText(

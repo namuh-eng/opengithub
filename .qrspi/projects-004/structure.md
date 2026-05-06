@@ -91,7 +91,7 @@
 
 ## Phase 6: API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `projects-004` only after field settings reads, field lifecycle mutations, single-select option administration, iteration schedules/breaks, filter integration, docs, screenshots, and QA handoff are verified. Do not implement project workflow automation, access settings, exports, insights charts, formulas, full drag-and-drop option reordering, or GitHub visual styling as part of this feature.
 

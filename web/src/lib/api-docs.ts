@@ -780,6 +780,215 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "projects-field-settings-read",
+    method: "GET",
+    path: "/api/projects/{project_id}/settings/fields",
+    title: "Read Project field settings",
+    description:
+      "Returns the Projects v2 field administration contract used by the settings Fields page, including built-in fields, custom fields, single-select options, iteration cycles, breaks, field limits, usage counts, and viewer capabilities.",
+    auth: "Signed opengithub session cookie when required by project visibility; private projects require project read access",
+    response: `{
+  "project": { "id": "project_01", "number": 1, "title": "Release tracking" },
+  "fields": [
+    { "id": "field_title", "name": "Title", "fieldType": "title", "builtIn": true, "editable": false },
+    {
+      "id": "field_status",
+      "name": "Status",
+      "fieldType": "single_select",
+      "builtIn": false,
+      "options": [{ "id": "option_ready", "name": "Ready", "color": "green", "position": 1 }]
+    },
+    {
+      "id": "field_cycle",
+      "name": "Cycle",
+      "fieldType": "iteration",
+      "iterations": [{ "id": "iteration_01", "name": "Sprint 1", "startDate": "2026-05-04", "durationDays": 14 }],
+      "breaks": [{ "id": "break_01", "name": "Planning break", "startDate": "2026-05-18", "durationDays": 2 }]
+    }
+  ],
+  "limits": { "maxFields": 50, "remainingFields": 12, "maxOptionsPerField": 50, "maxIterationsPerField": 100 },
+  "viewerPermissions": { "canCreateFields": true, "canManageOptions": true, "canManageIterations": true }
+}`,
+    notes: [
+      "Built-in fields are returned with editable=false and deletable=false so the browser can render honest disabled controls.",
+      "Private linked issue and pull request counts are not exposed to viewers who can read the project but cannot read the backing repository.",
+      "Field settings reads use the standard not_found, forbidden, and validation_failed envelopes without session secrets or SQL details.",
+      "User and organization project settings pages resolve project numbers before calling this project-id endpoint.",
+    ],
+  },
+  {
+    id: "projects-field-lifecycle",
+    method: "POST",
+    path: "/api/projects/{project_id}/settings/fields",
+    title: "Create Project field",
+    description:
+      "Creates a custom date, text, number, single-select, or iteration field from the Projects settings page.",
+    auth: "Signed opengithub session cookie with project write/admin access",
+    request: `{
+  "name": "Target date",
+  "fieldType": "date"
+}`,
+    response: `{
+  "fields": [
+    { "id": "field_target", "name": "Target date", "fieldType": "date", "builtIn": false }
+  ],
+  "limits": { "remainingFields": 11 }
+}`,
+    notes: [
+      "Supported fieldType values are single_select, iteration, date, text, and number; invalid or blank names return validation_failed.",
+      "Field names are normalized for uniqueness within the project, so case-only and whitespace-only duplicates return conflict.",
+      "Creating an iteration field seeds three default cycles using the iteration settings defaults.",
+      "Successful creates append audit_events, increment the project field cache version, and invalidate project view/filter caches.",
+    ],
+  },
+  {
+    id: "projects-field-update-delete",
+    method: "PATCH",
+    path: "/api/projects/{project_id}/fields/{field_id}",
+    title: "Rename Project field",
+    description:
+      "Renames a custom Projects field with stale-update protection. The same resource supports DELETE for confirmed field deletion.",
+    auth: "Signed opengithub session cookie with project write/admin access",
+    request: `{
+  "name": "Launch target",
+  "expectedUpdatedAt": "2026-05-06T10:10:00Z"
+}`,
+    response: `{
+  "fields": [
+    { "id": "field_target", "name": "Launch target", "cacheVersion": 3 }
+  ]
+}`,
+    notes: [
+      "Built-in fields cannot be renamed or deleted; custom field writes require expectedUpdatedAt when stale protection is available.",
+      "DELETE /api/projects/{project_id}/fields/{field_id} removes the custom field and its project_item_field_values but never deletes linked issues or pull requests.",
+      "Deletes write project.field.delete audit events, project item events for cleaned values, and view/filter cache invalidation evidence.",
+      "Stale timestamps return conflict so the browser can ask users to refresh before overwriting newer field settings.",
+    ],
+  },
+  {
+    id: "projects-field-options",
+    method: "POST",
+    path: "/api/projects/{project_id}/fields/{field_id}/options",
+    title: "Create Project field option",
+    description:
+      "Adds a single-select option. Existing options can be edited, reordered, or deleted through the sibling option routes.",
+    auth: "Signed opengithub session cookie with project write/admin access",
+    request: `{
+  "name": "Ready",
+  "color": "green",
+  "description": "Prepared for review"
+}`,
+    response: `{
+  "fields": [
+    {
+      "id": "field_status",
+      "options": [
+        { "id": "option_ready", "name": "Ready", "color": "green", "position": 1 }
+      ]
+    }
+  ]
+}`,
+    notes: [
+      "Only single-select and status-compatible fields accept options; date, text, number, and iteration fields return validation_failed.",
+      "PATCH /api/projects/{project_id}/fields/{field_id}/options/{option_id} renames, recolors, and updates the description while syncing matching project_item_field_values and board column settings.",
+      "PATCH /api/projects/{project_id}/fields/{field_id}/options/reorder accepts an ordered optionIds array and persists positions without drag-only assumptions.",
+      "DELETE /api/projects/{project_id}/fields/{field_id}/options/{option_id} removes matching item field values and board columns without deleting linked issues or pull requests.",
+      "Option writes validate color tokens, duplicate names, max-option limits, permissions, audit_events, and project view/filter cache invalidation.",
+    ],
+  },
+  {
+    id: "projects-field-options-reorder",
+    method: "PATCH",
+    path: "/api/projects/{project_id}/fields/{field_id}/options/reorder",
+    title: "Reorder Project field options",
+    description:
+      "Persists a full ordered list of single-select option ids after keyboard-safe Up and Down controls reorder options in field settings.",
+    auth: "Signed opengithub session cookie with project write/admin access",
+    request: `{
+  "optionIds": ["option_ready", "option_review", "option_done"]
+}`,
+    response: `{
+  "fields": [
+    {
+      "id": "field_status",
+      "options": [
+        { "id": "option_ready", "position": 1 },
+        { "id": "option_review", "position": 2 },
+        { "id": "option_done", "position": 3 }
+      ]
+    }
+  ]
+}`,
+    notes: [
+      "The submitted optionIds array must contain exactly the active options for that field; missing, duplicate, or foreign ids return validation_failed.",
+      "Reordering touches the field cache version, writes project.field_option.reorder audit evidence, and invalidates project view/filter caches.",
+      "This endpoint deliberately supports button-driven reorder controls; full pointer drag-and-drop is not required for projects-004.",
+    ],
+  },
+  {
+    id: "projects-field-iterations",
+    method: "PATCH",
+    path: "/api/projects/{project_id}/fields/{field_id}/iterations/settings",
+    title: "Update Project iteration settings",
+    description:
+      "Regenerates iteration cycles for an iteration field, and pairs with iteration and break endpoints for manual schedule administration.",
+    auth: "Signed opengithub session cookie with project write/admin access",
+    request: `{
+  "startDate": "2026-05-04",
+  "duration": 2,
+  "durationUnit": "weeks",
+  "generatedIterations": 6,
+  "expectedUpdatedAt": "2026-05-06T10:20:00Z"
+}`,
+    response: `{
+  "fields": [
+    {
+      "id": "field_cycle",
+      "iterations": [
+        { "id": "iteration_01", "name": "Iteration 1", "startDate": "2026-05-04", "durationDays": 14 }
+      ],
+      "breaks": []
+    }
+  ]
+}`,
+    notes: [
+      "Iteration settings writes are accepted only for iteration fields; duration can be expressed in days or weeks and generatedIterations is bounded by the field limit.",
+      "POST /api/projects/{project_id}/fields/{field_id}/iterations appends a future cycle; PATCH /api/projects/{project_id}/fields/{field_id}/iterations/{iteration_id} edits a single cycle name, start date, and duration.",
+      "POST /api/projects/{project_id}/fields/{field_id}/iteration-breaks inserts a non-overlapping break; DELETE /api/projects/{project_id}/fields/{field_id}/iteration-breaks/{break_id} removes it.",
+      "Iteration ranges and breaks reject overlaps, stale schedule saves return conflict, and successful writes append audit_events plus view/filter cache invalidation.",
+      "Workspace filters understand iteration values with @current, @previous, @next, comparison operators, and date ranges.",
+    ],
+  },
+  {
+    id: "projects-field-iteration-break-create",
+    method: "POST",
+    path: "/api/projects/{project_id}/fields/{field_id}/iteration-breaks",
+    title: "Create Project iteration break",
+    description:
+      "Inserts a non-overlapping break into an iteration field schedule from the field settings page.",
+    auth: "Signed opengithub session cookie with project write/admin access",
+    request: `{
+  "name": "Planning break",
+  "startDate": "2026-06-15",
+  "durationDays": 2
+}`,
+    response: `{
+  "fields": [
+    {
+      "id": "field_cycle",
+      "breaks": [
+        { "id": "break_01", "name": "Planning break", "startDate": "2026-06-15", "durationDays": 2 }
+      ]
+    }
+  ]
+}`,
+    notes: [
+      "Breaks are valid only for iteration fields, must have positive duration, and cannot overlap existing iterations or breaks.",
+      "DELETE /api/projects/{project_id}/fields/{field_id}/iteration-breaks/{break_id} removes a break without changing linked issues or pull requests.",
+      "Break create and delete writes audit_events, touches the field cache version, and invalidates project view/filter caches.",
+    ],
+  },
+  {
     id: "organization-team-create",
     method: "POST",
     path: "/api/orgs/{org}/teams",
