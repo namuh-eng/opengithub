@@ -624,6 +624,18 @@ async fn pull_request_detail_contract_returns_screen_ready_metadata() {
             .any(|item| item["eventType"] == "review_requested"),
         "review request changes should append a timeline event"
     );
+    assert!(
+        timeline_after_body
+            .as_array()
+            .expect("timeline after interactions should be an array")
+            .iter()
+            .any(|item| {
+                item["eventType"] == "metadata_changed"
+                    && item["metadata"]["labelIds"] == json!([bug.id])
+                    && item["metadata"]["assigneeUserIds"] == json!([outsider.id])
+            }),
+        "pull request label changes should append exact metadata"
+    );
 
     let private_repo_name = format!("private-detail-{}", Uuid::new_v4().simple());
     let private_repository = create_repository(

@@ -49,7 +49,7 @@ The collaboration foundation already has repository-scoped `labels`, `issue_labe
 
 ## Phase 3: Label Application From Issue and PR Sidebars - metadata controls mutate labels
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire label apply/dismiss behavior into existing issue and pull request metadata sidebars. Triage-capable users should open a label picker, search/select labels, save changes through Rust, and see timeline/notification side effects reflected in the detail views.
 

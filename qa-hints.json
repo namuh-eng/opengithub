@@ -7759,5 +7759,22 @@
       "Probe arbitrary user-label color contrast, very long names/descriptions on mobile, rapid search/sort changes, sort-menu keyboard behavior, delete cancellation, stale UI after concurrent edits/deletes, and count-link query correctness for labels containing spaces or punctuation.",
       "Phases 3-5 still own issue/PR sidebar label application, discussion consistency, docs, signed-in E2E coverage, final QA handoff consolidation, and labels-001 build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "labels-001",
+    "tests_written": [
+      "Completed Phase 3 Label Application From Issue and PR Sidebars without marking labels-001 build_pass=true.",
+      "Added a reusable Editorial LabelPicker with search, color swatches, descriptions, checkbox selection, selected count, Save labels, and Cancel so issue and pull request sidebars batch label edits instead of mutating on every click.",
+      "Wired RepositoryIssueDetailPage and RepositoryPullRequestDetailPage label sidebars to the picker while preserving the existing same-origin metadata proxy payload shape: labelIds, assigneeUserIds, and milestoneId.",
+      "Extended focused frontend coverage for issue label search/select/save payloads and existing PR metadata coverage; focused RepositoryIssueDetailPage and RepositoryPullRequestDetailPage tests passed with 21 tests.",
+      "Extended Rust issue and pull request contract tests to assert metadata_changed timeline entries carry exact labelIds and assigneeUserIds; the DB-backed scenarios compiled and ran under the existing TEST_DATABASE_URL guard.",
+      "Browser smoke passed through real Next routes on :3015 with a local API-compatible Rust stub on :3016: opened /mona/octo-app/issues/42 and /mona/octo-app/pull/42, searched labels, selected docs, saved each metadata form, verified success messages, checked no href=\"#\", checked no horizontal overflow, and saved ralph/screenshots/build/labels-001-phase3-issue-pr-application.jpg.",
+      "Verification passed: focused Rust metadata contracts, focused Vitest, focused Biome, web TypeScript, full make check, full make test with Cargo tests plus 610 web tests, and browser smoke."
+    ],
+    "needs_deeper_qa": [
+      "Run the issue/PR label metadata contracts against a clean migrated credentialed TEST_DATABASE_URL; local localhost:55432 still rejects the configured postgres credentials, so DB assertions self-skipped after compiling.",
+      "Probe real Rust-backed issue and PR sidebars with multiple labels, empty-label saves, rapid Save/Cancel toggles, stale label deletion during picker use, cross-repository label IDs, reader/triage/write permission boundaries, notification fanout, timeline ordering, and mobile keyboard-only picker traversal.",
+      "Phases 4-5 still own discussion label consistency, delete/edit propagation across all conversation surfaces, docs, signed-in E2E coverage, final QA handoff consolidation, and labels-001 build_pass bookkeeping."
+    ]
   }
 ]

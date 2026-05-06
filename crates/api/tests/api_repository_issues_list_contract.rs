@@ -702,6 +702,14 @@ async fn issue_detail_contract_returns_public_read_model_and_redacts_private_acc
     assert!(timeline_items
         .iter()
         .any(|item| item["eventType"] == "metadata_changed"));
+    let metadata_item = timeline_items
+        .iter()
+        .find(|item| {
+            item["eventType"] == "metadata_changed"
+                && item["metadata"]["labelIds"] == json!([documentation.id])
+        })
+        .expect("label metadata change should append exact label ids");
+    assert_eq!(metadata_item["metadata"]["assigneeUserIds"], json!([]));
     let comment_item = timeline_items
         .iter()
         .find(|item| item["eventType"] == "commented")

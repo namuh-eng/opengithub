@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { IssueTimeline, ReactionToolbar } from "@/components/IssueTimeline";
+import { LabelPicker } from "@/components/LabelPicker";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { RepositoryShell } from "@/components/RepositoryShell";
 import { ThreadNotificationCard } from "@/components/ThreadNotificationCard";
@@ -169,11 +170,7 @@ export function RepositoryIssueDetailPage({
     }
   }
 
-  function toggleLabel(label: IssueListLabel) {
-    const selectedIds = currentIssue.labels.map((item) => item.id);
-    const labels = optionSelected(label.id, selectedIds)
-      ? currentIssue.labels.filter((item) => item.id !== label.id)
-      : [...currentIssue.labels, label];
+  function saveLabels(labels: IssueListLabel[]) {
     void saveMetadata({ labels });
   }
 
@@ -551,29 +548,14 @@ export function RepositoryIssueDetailPage({
                 ) : null}
               </div>
               {openMetadataMenu === "labels" ? (
-                <div className="card mb-3 p-2" role="menu">
-                  {currentIssue.metadataOptions.labels.map((label) => {
-                    const selected = currentIssue.labels.some(
-                      (item) => item.id === label.id,
-                    );
-                    return (
-                      <button
-                        aria-pressed={selected}
-                        className="btn ghost sm w-full justify-start"
-                        key={label.id}
-                        onClick={() => toggleLabel(label)}
-                        type="button"
-                      >
-                        <span
-                          aria-hidden="true"
-                          className="inline-block h-2 w-2 rounded-full"
-                          style={{ background: label.color }}
-                        />
-                        {selected ? "Remove" : "Add"} {label.name}
-                      </button>
-                    );
-                  })}
-                </div>
+                <LabelPicker
+                  disabled={isMutating}
+                  labels={currentIssue.metadataOptions.labels}
+                  onCancel={() => setOpenMetadataMenu(null)}
+                  onSave={saveLabels}
+                  selectedLabels={currentIssue.labels}
+                  title="Issue label picker"
+                />
               ) : null}
               {currentIssue.labels.length ? (
                 <div className="flex flex-wrap gap-2">

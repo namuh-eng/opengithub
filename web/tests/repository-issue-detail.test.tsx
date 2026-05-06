@@ -394,7 +394,11 @@ describe("RepositoryIssueDetailPage", () => {
         name: "Edit",
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Add enhancement" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Search labels" }), {
+      target: { value: "enhance" },
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: /enhancement/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Save labels" }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(

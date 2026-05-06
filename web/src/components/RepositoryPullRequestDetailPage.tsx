@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { LabelPicker } from "@/components/LabelPicker";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { PullRequestTimeline } from "@/components/PullRequestTimeline";
 import { RepositoryShell } from "@/components/RepositoryShell";
@@ -391,11 +392,7 @@ export function RepositoryPullRequestDetailPage({
     saveMetadata({ assignees });
   }
 
-  function toggleLabel(label: IssueListLabel) {
-    const selectedIds = currentPullRequest.labels.map((item) => item.id);
-    const labels = optionSelected(label.id, selectedIds)
-      ? currentPullRequest.labels.filter((item) => item.id !== label.id)
-      : [...currentPullRequest.labels, label];
+  function saveLabels(labels: IssueListLabel[]) {
     saveMetadata({ labels });
   }
 
@@ -1085,33 +1082,14 @@ export function RepositoryPullRequestDetailPage({
                 ) : null}
               </div>
               {openMetadataMenu === "labels" ? (
-                <div className="card mb-3 p-2" role="menu">
-                  {pullRequest.metadataOptions.labels.length ? (
-                    pullRequest.metadataOptions.labels.map((label) => {
-                      const selected = pullRequest.labels.some(
-                        (item) => item.id === label.id,
-                      );
-                      return (
-                        <button
-                          aria-pressed={selected}
-                          className="btn ghost sm w-full justify-start"
-                          key={label.id}
-                          onClick={() => toggleLabel(label)}
-                          type="button"
-                        >
-                          <span
-                            aria-hidden="true"
-                            className="inline-block h-2 w-2 rounded-full"
-                            style={{ background: label.color }}
-                          />
-                          {selected ? "Remove" : "Add"} {label.name}
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <p className="t-xs p-2">No labels configured.</p>
-                  )}
-                </div>
+                <LabelPicker
+                  disabled={isMutating}
+                  labels={pullRequest.metadataOptions.labels}
+                  onCancel={() => setOpenMetadataMenu(null)}
+                  onSave={saveLabels}
+                  selectedLabels={pullRequest.labels}
+                  title="Pull request label picker"
+                />
               ) : null}
               {pullRequest.labels.length ? (
                 <div className="flex flex-wrap gap-2">
