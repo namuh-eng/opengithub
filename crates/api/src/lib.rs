@@ -55,6 +55,11 @@ pub fn build_app_with_config(db: Option<DbPool>, config: AppConfig) -> Router {
         .merge(routes::account_security::router())
         .merge(routes::settings_keys::router())
         .merge(routes::settings_tokens::router())
+        .merge(routes::rate_limit::router())
+        .route_layer(axum_middleware::from_fn_with_state(
+            state.clone(),
+            middleware::rate_limit::enforce_rate_limit,
+        ))
         .route_layer(axum_middleware::from_fn_with_state(
             state.clone(),
             middleware::request_log::log_request,

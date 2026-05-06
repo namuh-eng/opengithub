@@ -8141,5 +8141,23 @@
       "Probe event coverage for pull_request_review, issue_comment, check_run, workflow_run, release, package, and page_build across repository and organization hooks, including inactive hooks and everything mode.",
       "Verify production receiver behavior through real HTTPS endpoints, HMAC signatures, retry backoff timing, timeout handling, body/header redaction, and oversized body storage keys."
     ]
+  },
+  {
+    "feature_id": "api-003",
+    "tests_written": [
+      "Added an unlogged Postgres rate_limit_buckets table keyed by subject type/key, resource, and window_start with core/search windows.",
+      "Added cross-cutting Axum rate-limit middleware that classifies core vs search, tracks bearer tokens, signed sessions, or anonymous IPs, attaches X-RateLimit-* headers, and returns 403 rate_limited over quota.",
+      "Added /rate_limit and /api/rate_limit responses with core/search bucket state plus X-GitHub-Api-Version selection support.",
+      "Added /docs/api coverage for rate limit/versioning headers and focused API docs assertions.",
+      "Added focused Rust contract coverage for no-DB header behavior and DB-backed anonymous search overage; DB-backed assertions compiled but self-skipped without TEST_DATABASE_URL.",
+      "Verification passed: focused api_rate_limits_contract, focused api-docs Vitest, web TypeScript, full make check, full make test with Cargo tests plus 643 web tests, and backend-only browser smoke was skipped."
+    ],
+    "needs_deeper_qa": [
+      "Run DB-backed rate-limit contract against a credentialed migrated Postgres; local TEST_DATABASE_URL was unavailable so overage assertions self-skipped.",
+      "Probe bearer personal access token subjects and signed-session subjects separately to verify per-token/session isolation and 5000/hour authenticated core quota.",
+      "Exercise production proxy headers with IPv4, IPv6, multiple X-Forwarded-For hops, and missing IP headers to verify anonymous bucketing.",
+      "Verify all major API families receive X-RateLimit-* and X-GitHub-Api-Version-Selected headers on success, auth errors, validation errors, and server errors.",
+      "Load-test concurrent increments around quota boundaries to confirm ON CONFLICT updates do not allow meaningful overage beyond the first rejected request."
+    ]
   }
 ]

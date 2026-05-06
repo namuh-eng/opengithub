@@ -9137,6 +9137,28 @@ docker-content-digest: sha256:manifest...`,
     response: `204 No Content`,
     notes: ["Unknown or unauthorized saved search IDs return 404."],
   },
+  {
+    id: "api-rate-limit-read",
+    method: "GET",
+    path: "/rate_limit",
+    title: "Read REST API rate limits",
+    description:
+      "Returns the current core and search buckets for the signed session, bearer token, or anonymous IP address.",
+    auth: "Optional signed opengithub session cookie or Bearer personal access token",
+    response: `{
+  "resources": {
+    "core": { "limit": 5000, "remaining": 4999, "reset": 1778155200, "used": 1, "resource": "core" },
+    "search": { "limit": 30, "remaining": 30, "reset": 1778151660, "used": 0, "resource": "search" }
+  },
+  "rate": { "limit": 5000, "remaining": 4999, "reset": 1778155200, "used": 1, "resource": "core" }
+}`,
+    notes: [
+      "Every REST response includes X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-RateLimit-Used, X-RateLimit-Resource, and X-GitHub-Api-Version-Selected.",
+      "Authenticated requests receive 5000 core requests per hour; anonymous IPs receive 60 core requests per hour; search receives 30 requests per minute.",
+      "Requests over quota return 403 with code rate_limited and no stack traces or token material.",
+      "X-GitHub-Api-Version pins the selected REST API version; missing headers default to 2022-11-28.",
+    ],
+  },
 ];
 
 export const paginationExample = `GET /api/repos?page=2&pageSize=10

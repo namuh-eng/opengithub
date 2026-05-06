@@ -15,6 +15,15 @@ describe("ApiDocsPage", () => {
       }),
     ).toBeVisible();
     expect(apiEndpointDocs.length).toBeGreaterThanOrEqual(62);
+    expect(screen.getByText("/rate_limit")).toBeVisible();
+    expect(
+      screen.getByText(/Every REST response includes X-RateLimit-Limit/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /X-GitHub-Api-Version pins the selected REST API version/,
+      ),
+    ).toBeVisible();
 
     for (const endpoint of apiEndpointDocs) {
       const card = screen

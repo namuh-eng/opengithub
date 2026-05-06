@@ -24,6 +24,7 @@ pub mod personal_settings;
 pub mod profiles;
 pub mod projects;
 pub mod pulls;
+pub mod rate_limits;
 pub mod releases;
 pub mod repositories;
 pub mod repository_imports;

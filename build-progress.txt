@@ -1,3 +1,12 @@
+2026-05-07 - api-003 REST rate limits and API version headers
+
+- Completed `api-003` as the first `build_pass:false` PRD feature: REST responses now carry GitHub-compatible `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `X-RateLimit-Used`, `X-RateLimit-Resource`, and `X-GitHub-Api-Version-Selected` headers, with `/rate_limit` and `/api/rate_limit` exposing current bucket state.
+- Added migration `202605070009_api_rate_limits` for an unlogged `rate_limit_buckets` table keyed by subject type/key, resource, and window start, with per-resource indexes and updated-at trigger.
+- Added cross-cutting Axum middleware that classifies `core` vs `search`, uses bearer token hashes, signed session IDs, or anonymous forwarded IPs as subjects, applies 5000/hour authenticated core, 60/hour anonymous core, and 30/minute search limits, and returns a stable `403 rate_limited` error envelope on overage.
+- Added API version selection from `X-GitHub-Api-Version`, defaulting to `2022-11-28`, and documented the contract on `/docs/api`.
+- Verification passed: focused `cargo test -p opengithub-api --test api_rate_limits_contract -- --nocapture`; focused `cd web && npx vitest run tests/api-docs.test.tsx`; web TypeScript; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 643 web tests. The DB-backed overage assertions compiled but self-skipped because no credentialed `TEST_DATABASE_URL` was available.
+- Browser smoke was skipped because `api-003` is backend-only; mandatory Editorial banned-value scan returned zero matches. `prd.json` now has `api-003.build_pass=true`, and `qa-hints.json` records DB, concurrency, token/session, proxy-header, and cross-family header follow-ups.
+
 2026-05-07 - api-002 organization webhooks and completed webhook API surface
 
 - Completed `api-002` as the first `build_pass:false` PRD feature: repository webhooks already had CRUD, signed delivery, retry/redelivery, delivery history, docs, and UI; this pass added the missing organization-owned webhook scope and marked the feature build-passing.
