@@ -608,6 +608,18 @@ export type ProjectInsightsFetchResult =
   | { ok: true; insights: ProjectInsights }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type ProjectInsightsChartMutationRequest = {
+  title: string;
+  description?: string | null;
+  chartType: "burn_up" | "bar" | "line" | "stacked_area" | "number" | string;
+  filter?: string | null;
+  xFieldId?: string | null;
+  yFieldId?: string | null;
+  groupFieldId?: string | null;
+  visibility: "private" | "project" | string;
+  expectedUpdatedAt?: string | null;
+};
+
 export type ProjectWorkspaceQuery = {
   view?: string | number | null;
   q?: string | null;
@@ -8329,6 +8341,84 @@ export async function getProjectInsightsFromCookie(
     ok: true,
     insights: (await response.json()) as ProjectInsights,
   };
+}
+
+async function mutateProjectInsightsChartFromCookie(
+  cookie: string | null | undefined,
+  path: string,
+  method: "POST" | "PATCH" | "DELETE",
+  request:
+    | ProjectInsightsChartMutationRequest
+    | { expectedUpdatedAt?: string | null },
+  fallbackMessage: string,
+): Promise<ProjectInsights> {
+  const response = await fetch(`${apiBaseUrl()}${path}`, {
+    method,
+    headers: {
+      "content-type": "application/json",
+      ...(cookie ? { cookie } : {}),
+    },
+    body: JSON.stringify(request),
+    cache: "no-store",
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(envelope?.error.message ?? fallbackMessage, {
+      cause: {
+        error: envelope?.error ?? {
+          code: "project_chart_mutation_failed",
+          message: fallbackMessage,
+        },
+        status: envelope?.status ?? response.status,
+      } satisfies ApiErrorEnvelope,
+    });
+  }
+  return payload as ProjectInsights;
+}
+
+export function createProjectInsightsChartFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  request: ProjectInsightsChartMutationRequest,
+): Promise<ProjectInsights> {
+  return mutateProjectInsightsChartFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/charts`,
+    "POST",
+    request,
+    "Project chart could not be created.",
+  );
+}
+
+export function updateProjectInsightsChartFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  chartId: string,
+  request: ProjectInsightsChartMutationRequest,
+): Promise<ProjectInsights> {
+  return mutateProjectInsightsChartFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/charts/${encodeURIComponent(chartId)}`,
+    "PATCH",
+    request,
+    "Project chart could not be saved.",
+  );
+}
+
+export function deleteProjectInsightsChartFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  chartId: string,
+  request: { expectedUpdatedAt?: string | null },
+): Promise<ProjectInsights> {
+  return mutateProjectInsightsChartFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/charts/${encodeURIComponent(chartId)}`,
+    "DELETE",
+    request,
+    "Project chart could not be deleted.",
+  );
 }
 
 async function mutateProjectSettingsFromCookie(

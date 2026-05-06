@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectInsightsPage } from "@/components/ProjectInsightsPage";
 import type { ProjectInsights } from "@/lib/api";
 
@@ -160,6 +160,10 @@ function insights(overrides: Partial<ProjectInsights> = {}): ProjectInsights {
 }
 
 describe("ProjectInsightsPage", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("renders organization Insights with selected project navigation and chart sidebar", () => {
     render(
       <ProjectInsightsPage
@@ -216,7 +220,9 @@ describe("ProjectInsightsPage", () => {
     );
 
     expect(screen.getByRole("img", { name: "Burn up chart" })).toBeVisible();
-    expect(screen.getByLabelText("Filter")).toHaveValue("is:open");
+    expect(
+      screen.getByPlaceholderText("is:open label:bug assignee:@me"),
+    ).toHaveValue("is:open");
     expect(screen.getByRole("link", { name: "2 weeks" })).toHaveAttribute(
       "href",
       "/orgs/namuh/projects/12/insights?chart=burn-up&range=2w&filter=is%3Aopen",
@@ -328,10 +334,115 @@ describe("ProjectInsightsPage", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "New" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Edit" })).toBeDisabled();
+    expect(screen.getByText("New")).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByText("Edit")).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByRole("button", { name: "Share" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();
     expect(screen.getByText("No custom charts yet.")).toBeVisible();
+  });
+
+  it("posts create, edit, and delete chart mutations through real API routes", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            insights({
+              viewerPermissions: {
+                ...insights().viewerPermissions,
+                canEditCharts: true,
+                canDeleteCharts: true,
+                canShareCharts: true,
+              },
+              selectedChart: {
+                ...insights().selectedChart,
+                id: "chart-created",
+                title: "Closed issue trend",
+                chartType: "line",
+                isDefault: false,
+                updatedAt: "2026-05-06T01:00:00Z",
+              },
+            }),
+          ),
+          { status: 201 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            insights({
+              viewerPermissions: {
+                ...insights().viewerPermissions,
+                canEditCharts: true,
+                canDeleteCharts: true,
+                canShareCharts: true,
+              },
+              selectedChart: {
+                ...insights().selectedChart,
+                id: "chart-created",
+                title: "Closed issue trend by type",
+                chartType: "bar",
+                isDefault: false,
+                updatedAt: "2026-05-06T02:00:00Z",
+              },
+            }),
+          ),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(insights()), { status: 200 }),
+      );
+
+    render(
+      <ProjectInsightsPage
+        insights={insights()}
+        owner="namuh"
+        scope="organization"
+      />,
+    );
+
+    fireEvent.click(screen.getByText("New"));
+    fireEvent.change(screen.getAllByLabelText("Title")[0], {
+      target: { value: "Closed issue trend" },
+    });
+    fireEvent.change(screen.getAllByLabelText("Chart type")[0], {
+      target: { value: "line" },
+    });
+    fireEvent.change(screen.getAllByLabelText("Visibility")[0], {
+      target: { value: "project" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create chart" }));
+    await screen.findByText("Chart created.");
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/projects/project-1/charts",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining("Closed issue trend"),
+      }),
+    );
+
+    fireEvent.click(screen.getByText("Edit"));
+    const editTitleInputs = screen.getAllByLabelText("Title");
+    fireEvent.change(editTitleInputs[editTitleInputs.length - 1], {
+      target: { value: "Closed issue trend by type" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save chart" }));
+    await screen.findByText("Chart saved.");
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/projects/project-1/charts/chart-created",
+      expect.objectContaining({
+        method: "PATCH",
+        body: expect.stringContaining("Closed issue trend by type"),
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await screen.findByText("Chart deleted.");
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/projects/project-1/charts/chart-created",
+      expect.objectContaining({ method: "DELETE" }),
+    );
   });
 
   it("uses real filter form controls and avoids placeholder links or banned visual tokens", () => {
@@ -343,9 +454,12 @@ describe("ProjectInsightsPage", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText("Filter"), {
-      target: { value: "is:closed" },
-    });
+    fireEvent.change(
+      screen.getByPlaceholderText("is:open label:bug assignee:@me"),
+      {
+        target: { value: "is:closed" },
+      },
+    );
     expect(
       screen.getByRole("button", { name: "Apply filter" }),
     ).toHaveAttribute("type", "submit");

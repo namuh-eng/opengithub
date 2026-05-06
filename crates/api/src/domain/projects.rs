@@ -166,6 +166,20 @@ pub struct ProjectInsightsQuery<'a> {
     pub table: Option<bool>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectInsightsChartMutationRequest {
+    pub title: String,
+    pub description: Option<String>,
+    pub chart_type: String,
+    pub filter: Option<String>,
+    pub x_field_id: Option<Uuid>,
+    pub y_field_id: Option<Uuid>,
+    pub group_field_id: Option<Uuid>,
+    pub visibility: String,
+    pub expected_updated_at: Option<DateTime<Utc>>,
+}
+
 const PROJECT_INSIGHTS_ALLOWED_FILTERS: &[&str] = &[
     "is:open",
     "is:closed",
@@ -1827,7 +1841,7 @@ pub async fn project_insights(
     let filter = normalize_insights_filter(query.filter)?;
     let chart_id = query.chart.map(str::trim).filter(|value| !value.is_empty());
     let (selected_chart, custom_charts) =
-        project_insights_charts(pool, &project, chart_id, &range, query).await?;
+        project_insights_charts(pool, &project, viewer_user_id, chart_id, &range, query).await?;
     let mut rows = project_insights_rows(pool, project_id, viewer_user_id).await?;
     apply_insights_filter(&mut rows, &filter);
     let matching_item_count = rows.len() as i64;
@@ -1879,6 +1893,205 @@ pub async fn project_insights(
         unavailable_reason: None,
         project,
     })
+}
+
+pub async fn create_project_insights_chart_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectInsightsChartMutationRequest,
+) -> Result<ProjectInsights, ProjectsError> {
+    let project = visible_workspace_project(pool, project_id, Some(actor_user_id)).await?;
+    if project.state == "closed"
+        || !project
+            .viewer_role
+            .as_deref()
+            .is_some_and(can_write_project_role)
+    {
+        return Err(ProjectsError::Forbidden);
+    }
+    let normalized = normalize_project_chart_mutation(pool, project_id, request, None).await?;
+    let configuration = project_chart_revision_config(&normalized);
+    let chart_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO project_charts (
+          project_id, owner_user_id, title, description, chart_type, filter,
+          x_field_id, y_field_id, group_field_id, visibility, cache_version
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1)
+        RETURNING id
+        "#,
+    )
+    .bind(project_id)
+    .bind(actor_user_id)
+    .bind(&normalized.title)
+    .bind(&normalized.description)
+    .bind(&normalized.chart_type)
+    .bind(&normalized.filter)
+    .bind(normalized.x_field_id)
+    .bind(normalized.y_field_id)
+    .bind(normalized.group_field_id)
+    .bind(&normalized.visibility)
+    .fetch_one(pool)
+    .await?;
+    record_project_chart_revision(pool, chart_id, actor_user_id, configuration).await?;
+    audit_project_settings_change(
+        pool,
+        actor_user_id,
+        "project.chart.create",
+        project_id,
+        json!({ "chartId": chart_id, "title": normalized.title, "visibility": normalized.visibility }),
+    )
+    .await?;
+    project_insights(
+        pool,
+        project_id,
+        Some(actor_user_id),
+        ProjectInsightsQuery {
+            chart: Some(&chart_id.to_string()),
+            range: Some("1m"),
+            start: None,
+            end: None,
+            filter: normalized.filter.as_deref(),
+            table: None,
+        },
+    )
+    .await
+}
+
+pub async fn update_project_insights_chart_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    chart_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectInsightsChartMutationRequest,
+) -> Result<ProjectInsights, ProjectsError> {
+    let project = visible_workspace_project(pool, project_id, Some(actor_user_id)).await?;
+    if project.state == "closed"
+        || !project
+            .viewer_role
+            .as_deref()
+            .is_some_and(can_write_project_role)
+    {
+        return Err(ProjectsError::Forbidden);
+    }
+    let current = project_chart_admin_row(pool, project_id, chart_id).await?;
+    if let Some(expected) = request.expected_updated_at {
+        if current.updated_at != expected {
+            return Err(ProjectsError::Validation(
+                "Project chart changed since it was loaded. Refresh before saving.".to_owned(),
+            ));
+        }
+    }
+    let normalized =
+        normalize_project_chart_mutation(pool, project_id, request, Some(chart_id)).await?;
+    let configuration = project_chart_revision_config(&normalized);
+    sqlx::query(
+        r#"
+        UPDATE project_charts
+        SET title = $3,
+            description = $4,
+            chart_type = $5,
+            filter = $6,
+            x_field_id = $7,
+            y_field_id = $8,
+            group_field_id = $9,
+            visibility = $10,
+            cache_version = cache_version + 1,
+            updated_at = now()
+        WHERE project_id = $1 AND id = $2
+        "#,
+    )
+    .bind(project_id)
+    .bind(chart_id)
+    .bind(&normalized.title)
+    .bind(&normalized.description)
+    .bind(&normalized.chart_type)
+    .bind(&normalized.filter)
+    .bind(normalized.x_field_id)
+    .bind(normalized.y_field_id)
+    .bind(normalized.group_field_id)
+    .bind(&normalized.visibility)
+    .execute(pool)
+    .await?;
+    invalidate_project_chart_cache(pool, project_id, Some(chart_id)).await?;
+    record_project_chart_revision(pool, chart_id, actor_user_id, configuration).await?;
+    audit_project_settings_change(
+        pool,
+        actor_user_id,
+        "project.chart.update",
+        project_id,
+        json!({ "chartId": chart_id, "title": normalized.title, "visibility": normalized.visibility }),
+    )
+    .await?;
+    project_insights(
+        pool,
+        project_id,
+        Some(actor_user_id),
+        ProjectInsightsQuery {
+            chart: Some(&chart_id.to_string()),
+            range: Some("1m"),
+            start: None,
+            end: None,
+            filter: normalized.filter.as_deref(),
+            table: None,
+        },
+    )
+    .await
+}
+
+pub async fn delete_project_insights_chart_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    chart_id: Uuid,
+    actor_user_id: Uuid,
+    expected_updated_at: Option<DateTime<Utc>>,
+) -> Result<ProjectInsights, ProjectsError> {
+    let project = visible_workspace_project(pool, project_id, Some(actor_user_id)).await?;
+    if project.state == "closed"
+        || !project
+            .viewer_role
+            .as_deref()
+            .is_some_and(can_write_project_role)
+    {
+        return Err(ProjectsError::Forbidden);
+    }
+    let current = project_chart_admin_row(pool, project_id, chart_id).await?;
+    if let Some(expected) = expected_updated_at {
+        if current.updated_at != expected {
+            return Err(ProjectsError::Validation(
+                "Project chart changed since it was loaded. Refresh before deleting.".to_owned(),
+            ));
+        }
+    }
+    sqlx::query("DELETE FROM project_charts WHERE project_id = $1 AND id = $2")
+        .bind(project_id)
+        .bind(chart_id)
+        .execute(pool)
+        .await?;
+    invalidate_project_chart_cache(pool, project_id, Some(chart_id)).await?;
+    audit_project_settings_change(
+        pool,
+        actor_user_id,
+        "project.chart.delete",
+        project_id,
+        json!({ "chartId": chart_id, "title": current.title }),
+    )
+    .await?;
+    project_insights(
+        pool,
+        project_id,
+        Some(actor_user_id),
+        ProjectInsightsQuery {
+            chart: Some("burn-up"),
+            range: Some("1m"),
+            start: None,
+            end: None,
+            filter: None,
+            table: None,
+        },
+    )
+    .await
 }
 
 pub async fn project_field_settings(
@@ -9169,19 +9382,31 @@ fn normalize_insights_filter(raw: Option<&str>) -> Result<ProjectInsightsFilter,
 async fn project_insights_charts(
     pool: &PgPool,
     project: &ProjectWorkspaceProject,
+    viewer_user_id: Option<Uuid>,
     selected_chart_id: Option<&str>,
     range: &ProjectInsightsRange,
     query: ProjectInsightsQuery<'_>,
 ) -> Result<(ProjectInsightsChart, Vec<ProjectInsightsChartSummary>), ProjectsError> {
+    let can_write = project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role);
     let rows = sqlx::query(
         r#"
-        SELECT id, title, description, chart_type, filter, visibility, updated_at
+        SELECT id, title, description, chart_type, filter, x_field_id, y_field_id, group_field_id, visibility, updated_at
         FROM project_charts
-        WHERE project_id = $1 AND visibility IN ('project', 'private')
+        WHERE project_id = $1
+          AND (
+            visibility = 'project'
+            OR $2 = true
+            OR owner_user_id = $3
+          )
         ORDER BY updated_at DESC, title
         "#,
     )
     .bind(project.id)
+    .bind(can_write)
+    .bind(viewer_user_id)
     .fetch_all(pool)
     .await?;
     let custom_charts = rows
@@ -9230,6 +9455,9 @@ async fn project_insights_charts(
                     ),
                     configuration: json!({
                         "filter": row.get::<Option<String>, _>("filter"),
+                        "xFieldId": row.get::<Option<Uuid>, _>("x_field_id"),
+                        "yFieldId": row.get::<Option<Uuid>, _>("y_field_id"),
+                        "groupFieldId": row.get::<Option<Uuid>, _>("group_field_id"),
                         "range": range.key,
                         "table": query.table.unwrap_or(false)
                     }),
@@ -9240,6 +9468,194 @@ async fn project_insights_charts(
         }
     }
     Ok((default_burn_up_chart(project, range, query), custom_charts))
+}
+
+struct ProjectChartAdminRow {
+    title: String,
+    updated_at: DateTime<Utc>,
+}
+
+struct NormalizedProjectChartMutation {
+    title: String,
+    description: Option<String>,
+    chart_type: String,
+    filter: Option<String>,
+    x_field_id: Option<Uuid>,
+    y_field_id: Option<Uuid>,
+    group_field_id: Option<Uuid>,
+    visibility: String,
+}
+
+async fn project_chart_admin_row(
+    pool: &PgPool,
+    project_id: Uuid,
+    chart_id: Uuid,
+) -> Result<ProjectChartAdminRow, ProjectsError> {
+    let row = sqlx::query(
+        "SELECT title, updated_at FROM project_charts WHERE project_id = $1 AND id = $2",
+    )
+    .bind(project_id)
+    .bind(chart_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ProjectsError::NotFound)?;
+    Ok(ProjectChartAdminRow {
+        title: row.get("title"),
+        updated_at: row.get("updated_at"),
+    })
+}
+
+async fn normalize_project_chart_mutation(
+    pool: &PgPool,
+    project_id: Uuid,
+    request: ProjectInsightsChartMutationRequest,
+    current_chart_id: Option<Uuid>,
+) -> Result<NormalizedProjectChartMutation, ProjectsError> {
+    let title = request.title.trim().chars().take(120).collect::<String>();
+    if title.is_empty() {
+        return Err(ProjectsError::Validation(
+            "Project chart title is required.".to_owned(),
+        ));
+    }
+    ensure_unique_project_chart_title(pool, project_id, current_chart_id, &title).await?;
+    let description = request.description.and_then(|value| {
+        let value = value.trim().chars().take(280).collect::<String>();
+        (!value.is_empty()).then_some(value)
+    });
+    let chart_type = request.chart_type.trim().to_ascii_lowercase();
+    if !matches!(
+        chart_type.as_str(),
+        "burn_up" | "bar" | "line" | "stacked_area" | "number"
+    ) {
+        return Err(ProjectsError::Validation(
+            "Project chart type must be burn_up, bar, line, stacked_area, or number.".to_owned(),
+        ));
+    }
+    let filter = request.filter.and_then(|value| {
+        let value = value.trim().chars().take(240).collect::<String>();
+        (!value.is_empty()).then_some(value)
+    });
+    normalize_insights_filter(filter.as_deref())?;
+    let visibility = request.visibility.trim().to_ascii_lowercase();
+    if !matches!(visibility.as_str(), "private" | "project") {
+        return Err(ProjectsError::Validation(
+            "Project chart visibility must be private or project.".to_owned(),
+        ));
+    }
+    for field_id in [
+        request.x_field_id,
+        request.y_field_id,
+        request.group_field_id,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        ensure_project_chart_field(pool, project_id, field_id).await?;
+    }
+    Ok(NormalizedProjectChartMutation {
+        title,
+        description,
+        chart_type,
+        filter,
+        x_field_id: request.x_field_id,
+        y_field_id: request.y_field_id,
+        group_field_id: request.group_field_id,
+        visibility,
+    })
+}
+
+async fn ensure_unique_project_chart_title(
+    pool: &PgPool,
+    project_id: Uuid,
+    current_chart_id: Option<Uuid>,
+    title: &str,
+) -> Result<(), ProjectsError> {
+    let duplicate: Option<Uuid> = sqlx::query_scalar(
+        r#"
+        SELECT id
+        FROM project_charts
+        WHERE project_id = $1
+          AND lower(title) = lower($2)
+          AND ($3::uuid IS NULL OR id <> $3)
+        LIMIT 1
+        "#,
+    )
+    .bind(project_id)
+    .bind(title)
+    .bind(current_chart_id)
+    .fetch_optional(pool)
+    .await?;
+    if duplicate.is_some() {
+        return Err(ProjectsError::Validation(
+            "A project chart with that title already exists.".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+async fn ensure_project_chart_field(
+    pool: &PgPool,
+    project_id: Uuid,
+    field_id: Uuid,
+) -> Result<(), ProjectsError> {
+    let exists: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM project_fields WHERE project_id = $1 AND id = $2 AND deleted_at IS NULL",
+    )
+    .bind(project_id)
+    .bind(field_id)
+    .fetch_optional(pool)
+    .await?;
+    if exists.is_none() {
+        return Err(ProjectsError::Validation(
+            "Project chart fields must belong to this project.".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn project_chart_revision_config(chart: &NormalizedProjectChartMutation) -> Value {
+    json!({
+        "title": chart.title,
+        "description": chart.description,
+        "chartType": chart.chart_type,
+        "filter": chart.filter,
+        "xFieldId": chart.x_field_id,
+        "yFieldId": chart.y_field_id,
+        "groupFieldId": chart.group_field_id,
+        "visibility": chart.visibility,
+    })
+}
+
+async fn record_project_chart_revision(
+    pool: &PgPool,
+    chart_id: Uuid,
+    actor_user_id: Uuid,
+    configuration: Value,
+) -> Result<(), ProjectsError> {
+    sqlx::query(
+        "INSERT INTO project_chart_revisions (chart_id, author_user_id, configuration) VALUES ($1, $2, $3)",
+    )
+    .bind(chart_id)
+    .bind(actor_user_id)
+    .bind(configuration)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn invalidate_project_chart_cache(
+    pool: &PgPool,
+    project_id: Uuid,
+    chart_id: Option<Uuid>,
+) -> Result<(), ProjectsError> {
+    sqlx::query(
+        "DELETE FROM project_chart_series_cache WHERE project_id = $1 AND ($2::uuid IS NULL OR chart_id = $2)",
+    )
+    .bind(project_id)
+    .bind(chart_id)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 fn default_burn_up_summary(

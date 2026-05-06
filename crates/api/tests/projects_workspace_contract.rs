@@ -278,6 +278,102 @@ async fn project_insights_read_contract_filters_private_items_and_returns_burnup
         .as_str()
         .expect("message")
         .contains("Unsupported Insights filter token"));
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), app_config());
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/charts"),
+        Some(&member_cookie),
+        json!({
+            "title": "Closed issue trend",
+            "description": "Visible to project viewers",
+            "chartType": "line",
+            "filter": "is:closed type:issue",
+            "visibility": "project"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["selectedChart"]["title"], "Closed issue trend");
+    assert_eq!(body["selectedChart"]["visibility"], "project");
+    let created_chart_id = body["selectedChart"]["id"]
+        .as_str()
+        .expect("created chart id")
+        .to_owned();
+    let created_updated_at = body["selectedChart"]["updatedAt"]
+        .as_str()
+        .expect("created chart updated at")
+        .to_owned();
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/charts/{created_chart_id}"),
+        Some(&member_cookie),
+        json!({
+            "title": "Private closed issue trend",
+            "description": "Editor-only chart",
+            "chartType": "bar",
+            "filter": "is:closed",
+            "visibility": "private",
+            "expectedUpdatedAt": created_updated_at
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["selectedChart"]["title"], "Private closed issue trend");
+    assert_eq!(body["selectedChart"]["visibility"], "private");
+    assert!(body["customCharts"]
+        .as_array()
+        .expect("custom charts")
+        .iter()
+        .any(|chart| chart["id"] == created_chart_id));
+
+    let (status, _, body) = get_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/insights?chart={created_chart_id}"),
+        Some(&outsider_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/charts"),
+        Some(&outsider_cookie),
+        json!({
+            "title": "Outsider chart",
+            "chartType": "bar",
+            "filter": "is:open",
+            "visibility": "project"
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+
+    let current_updated_at: chrono::DateTime<Utc> =
+        sqlx::query_scalar("SELECT updated_at FROM project_charts WHERE id = $1")
+            .bind(Uuid::parse_str(&created_chart_id).expect("created uuid"))
+            .fetch_one(&pool)
+            .await
+            .expect("chart updated_at should read");
+    let (status, _, body) = delete_json_body(
+        app.clone(),
+        &format!("/api/projects/{project_id}/charts/{created_chart_id}"),
+        Some(&member_cookie),
+        json!({ "expectedUpdatedAt": current_updated_at.to_rfc3339() }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["selectedChart"]["id"], "burn-up");
+
+    let audit_count: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM audit_events WHERE target_id = $1 AND event_type LIKE 'project.chart.%'",
+    )
+    .bind(project_id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("chart audit count should read");
+    assert!(audit_count >= 3);
 }
 
 fn app_config() -> AppConfig {

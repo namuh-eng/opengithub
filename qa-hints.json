@@ -7443,5 +7443,24 @@
       "Probe multi-token filters, unsupported token combinations, very large date ranges, start-after-end custom ranges, empty projects, projects with only draft items, sparse completed dates, mobile table overflow, keyboard operation inside the custom range details panel, and screen-reader table/chart labels.",
       "Phases 4-6 still own custom chart mutations, sharing/status integration, API docs, final browser evidence, QA handoff, and build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-008",
+    "tests_written": [
+      "Completed Phase 4 Custom Chart Mutations without marking projects-008 build_pass=true.",
+      "Added Rust POST/PATCH/DELETE custom chart endpoints with project write checks, title/type/filter/field/visibility validation, expectedUpdatedAt conflicts, revision rows, cache invalidation, audit events, and private chart visibility filtering.",
+      "Added same-origin Next chart proxy routes and typed web API helpers.",
+      "Wired ProjectInsightsPage New/Edit/Delete chart controls to real JSON mutations with success/error feedback and refreshed chart state.",
+      "Extended focused Rust contract coverage for create/edit/delete, reader denial, private chart denial, revision/audit evidence, and unsupported filters.",
+      "Extended ProjectInsightsPage Vitest coverage for chart mutation payloads, disabled reader controls, no placeholder links, and Editorial guardrails.",
+      "Browser smoke passed through the real Next route against a local API-compatible stub on port 3016: created a chart, edited it, verified chart rendering, checked no href=\"#\" links, checked no horizontal overflow, and saved ralph/screenshots/build/projects-008-phase4-custom-charts.jpg.",
+      "Verification passed: cargo fmt --all; cargo check -p opengithub-api --tests; focused Insights contract test compiled and passed under the DB guard; focused ProjectInsightsPage Vitest with 9 tests; focused Biome; full make check; full make test with Cargo tests plus 583 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Run custom chart create/edit/delete against a clean migrated credentialed TEST_DATABASE_URL; browser smoke used a local API-compatible stub and focused Rust DB assertions self-skipped because local Postgres on localhost:55432 rejected the configured postgres password.",
+      "Probe stale expectedUpdatedAt conflicts, duplicate chart titles, deleted/foreign project field ids, private chart owner/editor/viewer boundaries, reader denial, closed project denial, long titles/descriptions, unsupported filter tokens, chart type compatibility, revision rows, cache invalidation, and audit metadata.",
+      "Probe keyboard operation of details-backed New/Edit forms and mobile layout for the chart sidebar plus selected chart action row.",
+      "Phases 5-6 still own sharing/status integration, API docs, final signed-in E2E, QA handoff consolidation, and build_pass bookkeeping."
+    ]
   }
 ]

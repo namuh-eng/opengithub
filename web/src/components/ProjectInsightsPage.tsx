@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import type { ProjectInsights, ProjectInsightsChartSummary } from "@/lib/api";
 import {
   organizationProjectInsightsHref,
@@ -114,18 +115,176 @@ function maxSeriesValue(insights: ProjectInsights) {
   );
 }
 
+function stringConfig(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function ChartMutationFields({
+  chart,
+}: {
+  chart?: ProjectInsights["selectedChart"];
+}) {
+  return (
+    <>
+      <label>
+        <span className="t-label mb-1 block">Title</span>
+        <input
+          className="input w-full"
+          defaultValue={chart?.title ?? ""}
+          name="title"
+          required
+        />
+      </label>
+      <label>
+        <span className="t-label mb-1 block">Description</span>
+        <input
+          className="input w-full"
+          defaultValue={chart?.description ?? ""}
+          name="description"
+        />
+      </label>
+      <label>
+        <span className="t-label mb-1 block">Chart type</span>
+        <select
+          className="input w-full"
+          defaultValue={chart?.chartType ?? "bar"}
+          name="chartType"
+        >
+          <option value="bar">Bar</option>
+          <option value="line">Line</option>
+          <option value="stacked_area">Stacked area</option>
+          <option value="number">Number</option>
+          <option value="burn_up">Burn up</option>
+        </select>
+      </label>
+      <label>
+        <span className="t-label mb-1 block">Filter</span>
+        <input
+          className="input w-full"
+          defaultValue={stringConfig(chart?.configuration.filter)}
+          name="filter"
+          placeholder="is:closed type:issue"
+        />
+      </label>
+      <div className="grid grid-cols-3 gap-2">
+        <label>
+          <span className="t-label mb-1 block">X field</span>
+          <input
+            className="input w-full"
+            defaultValue={stringConfig(chart?.configuration.xFieldId)}
+            name="xFieldId"
+          />
+        </label>
+        <label>
+          <span className="t-label mb-1 block">Y field</span>
+          <input
+            className="input w-full"
+            defaultValue={stringConfig(chart?.configuration.yFieldId)}
+            name="yFieldId"
+          />
+        </label>
+        <label>
+          <span className="t-label mb-1 block">Group</span>
+          <input
+            className="input w-full"
+            defaultValue={stringConfig(chart?.configuration.groupFieldId)}
+            name="groupFieldId"
+          />
+        </label>
+      </div>
+      <label>
+        <span className="t-label mb-1 block">Visibility</span>
+        <select
+          className="input w-full"
+          defaultValue={chart?.visibility ?? "private"}
+          name="visibility"
+        >
+          <option value="private">Private to editors</option>
+          <option value="project">Visible to project viewers</option>
+        </select>
+      </label>
+    </>
+  );
+}
+
 export function ProjectInsightsPage({
   insights,
   scope,
   owner,
 }: ProjectInsightsPageProps) {
-  const projectNumber = insights.project.number;
-  const canCreate = insights.viewerPermissions.canCreateCharts;
-  const maxValue = maxSeriesValue(insights);
-  const status = insights.latestStatus;
-  const currentChartId = insights.selectedChart.id;
-  const showingTable = insights.selectedChart.configuration.table === true;
-  const hasMatches = insights.matchingItemCount > 0;
+  const [currentInsights, setCurrentInsights] = useState(insights);
+  const [mutationState, setMutationState] = useState<{
+    status: "idle" | "saving" | "success" | "error";
+    message: string | null;
+  }>({ status: "idle", message: null });
+  const projectNumber = currentInsights.project.number;
+  const canCreate = currentInsights.viewerPermissions.canCreateCharts;
+  const canEditSelected =
+    !currentInsights.selectedChart.isDefault &&
+    currentInsights.viewerPermissions.canEditCharts;
+  const canDeleteSelected =
+    !currentInsights.selectedChart.isDefault &&
+    currentInsights.viewerPermissions.canDeleteCharts;
+  const maxValue = maxSeriesValue(currentInsights);
+  const status = currentInsights.latestStatus;
+  const currentChartId = currentInsights.selectedChart.id;
+  const showingTable =
+    currentInsights.selectedChart.configuration.table === true;
+  const hasMatches = currentInsights.matchingItemCount > 0;
+
+  async function submitChartMutation(
+    action: "create" | "edit" | "delete",
+    formData: FormData,
+  ) {
+    const chartId = String(formData.get("chartId") ?? "");
+    const endpoint =
+      action === "create"
+        ? `/api/projects/${encodeURIComponent(currentInsights.project.id)}/charts`
+        : `/api/projects/${encodeURIComponent(currentInsights.project.id)}/charts/${encodeURIComponent(chartId)}`;
+    const body =
+      action === "delete"
+        ? { expectedUpdatedAt: String(formData.get("expectedUpdatedAt") ?? "") }
+        : {
+            title: String(formData.get("title") ?? ""),
+            description: String(formData.get("description") ?? ""),
+            chartType: String(formData.get("chartType") ?? "bar"),
+            filter: String(formData.get("filter") ?? ""),
+            xFieldId: String(formData.get("xFieldId") ?? ""),
+            yFieldId: String(formData.get("yFieldId") ?? ""),
+            groupFieldId: String(formData.get("groupFieldId") ?? ""),
+            visibility: String(formData.get("visibility") ?? "private"),
+            expectedUpdatedAt: String(formData.get("expectedUpdatedAt") ?? ""),
+          };
+    setMutationState({ status: "saving", message: "Saving chart..." });
+    const response = await fetch(endpoint, {
+      method:
+        action === "create" ? "POST" : action === "edit" ? "PATCH" : "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      setMutationState({
+        status: "error",
+        message:
+          payload?.error?.message ??
+          (action === "delete"
+            ? "Project chart could not be deleted."
+            : "Project chart could not be saved."),
+      });
+      return;
+    }
+    setCurrentInsights(payload as ProjectInsights);
+    setMutationState({
+      status: "success",
+      message:
+        action === "delete"
+          ? "Chart deleted."
+          : action === "create"
+            ? "Chart created."
+            : "Chart saved.",
+    });
+  }
 
   return (
     <main
@@ -145,13 +304,13 @@ export function ProjectInsightsPage({
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="t-label">Project insights</div>
-          <h1 className="t-h1 mt-1">{insights.project.title}</h1>
-          {insights.project.description ? (
+          <h1 className="t-h1 mt-1">{currentInsights.project.title}</h1>
+          {currentInsights.project.description ? (
             <p
               className="t-sm mt-2 max-w-3xl"
               style={{ color: "var(--ink-3)" }}
             >
-              {insights.project.description}
+              {currentInsights.project.description}
             </p>
           ) : null}
         </div>
@@ -188,7 +347,7 @@ export function ProjectInsightsPage({
         <aside className="min-w-0" aria-label="Project charts">
           <div className="card p-2">
             <div className="t-label px-2 pb-2 pt-1">Default charts</div>
-            {insights.defaultCharts.map((chart) => (
+            {currentInsights.defaultCharts.map((chart) => (
               <Link
                 aria-current={chart.id === currentChartId ? "page" : undefined}
                 className="list-row"
@@ -196,14 +355,14 @@ export function ProjectInsightsPage({
                   scope,
                   owner,
                   projectNumber,
-                  chartQuery(insights, chart),
+                  chartQuery(currentInsights, chart),
                 )}
                 key={chart.id}
                 style={{
                   borderRadius: "var(--radius)",
                   borderBottom: 0,
                   padding: "10px 8px",
-                  background:
+                  backgroundColor:
                     chart.id === currentChartId
                       ? "var(--surface-2)"
                       : "transparent",
@@ -220,21 +379,35 @@ export function ProjectInsightsPage({
           <div className="card mt-4 p-2">
             <div className="flex items-center justify-between gap-2 px-2 pb-2 pt-1">
               <div className="t-label">Custom charts</div>
-              <button
-                className="btn sm"
-                disabled
-                title={
-                  canCreate
-                    ? "Custom chart creation is implemented in a later phase."
-                    : "Your project role cannot create charts."
-                }
-                type="button"
-              >
-                New
-              </button>
+              <details>
+                <summary
+                  aria-disabled={!canCreate}
+                  className="btn sm cursor-pointer list-none"
+                  title={
+                    canCreate
+                      ? "Create a custom chart"
+                      : "Your project role cannot create charts."
+                  }
+                >
+                  New
+                </summary>
+                {canCreate ? (
+                  <form
+                    action={(formData) =>
+                      void submitChartMutation("create", formData)
+                    }
+                    className="mt-3 grid gap-2"
+                  >
+                    <ChartMutationFields />
+                    <button className="btn sm primary" type="submit">
+                      Create chart
+                    </button>
+                  </form>
+                ) : null}
+              </details>
             </div>
-            {insights.customCharts.length ? (
-              insights.customCharts.map((chart) => (
+            {currentInsights.customCharts.length ? (
+              currentInsights.customCharts.map((chart) => (
                 <Link
                   aria-current={
                     chart.id === currentChartId ? "page" : undefined
@@ -244,7 +417,7 @@ export function ProjectInsightsPage({
                     scope,
                     owner,
                     projectNumber,
-                    chartQuery(insights, chart),
+                    chartQuery(currentInsights, chart),
                   )}
                   key={chart.id}
                   style={{
@@ -277,36 +450,99 @@ export function ProjectInsightsPage({
               style={{ borderBottom: "1px solid var(--line)", padding: 18 }}
             >
               <div className="min-w-0">
-                <div className="t-label">Burn up chart</div>
-                <h2 className="t-h2 mt-1">{insights.selectedChart.title}</h2>
-                {insights.selectedChart.description ? (
+                <div className="t-label">
+                  {currentInsights.selectedChart.isDefault
+                    ? "Burn up chart"
+                    : "Custom chart"}
+                </div>
+                <h2 className="t-h2 mt-1">
+                  {currentInsights.selectedChart.title}
+                </h2>
+                {currentInsights.selectedChart.description ? (
                   <p
                     className="t-sm mt-2 max-w-2xl"
                     style={{ color: "var(--ink-3)" }}
                   >
-                    {insights.selectedChart.description}
+                    {currentInsights.selectedChart.description}
                   </p>
                 ) : null}
               </div>
               <div className="flex flex-wrap gap-2">
+                <details>
+                  <summary
+                    aria-disabled={!canEditSelected}
+                    className="btn sm cursor-pointer list-none"
+                    title={
+                      canEditSelected
+                        ? "Edit chart"
+                        : "Only custom charts can be edited by project writers."
+                    }
+                  >
+                    Edit
+                  </summary>
+                  {canEditSelected ? (
+                    <form
+                      action={(formData) =>
+                        void submitChartMutation("edit", formData)
+                      }
+                      className="card absolute right-0 z-10 mt-2 grid w-[300px] gap-2 p-3"
+                    >
+                      <input
+                        name="chartId"
+                        type="hidden"
+                        value={currentChartId}
+                      />
+                      <input
+                        name="expectedUpdatedAt"
+                        type="hidden"
+                        value={currentInsights.selectedChart.updatedAt}
+                      />
+                      <ChartMutationFields
+                        chart={currentInsights.selectedChart}
+                      />
+                      <button className="btn sm primary" type="submit">
+                        Save chart
+                      </button>
+                    </form>
+                  ) : null}
+                </details>
                 <button
                   className="btn sm"
-                  disabled={!insights.viewerPermissions.canEditCharts}
-                  title="Chart editing is implemented in a later phase."
-                  type="button"
-                >
-                  Edit
-                </button>
-                <button
-                  className="btn sm"
-                  disabled={!insights.viewerPermissions.canShareCharts}
-                  title="Chart sharing is implemented in a later phase."
+                  disabled={!currentInsights.viewerPermissions.canShareCharts}
+                  title="Chart sharing is finalized in the next phase."
                   type="button"
                 >
                   Share
                 </button>
+                <form
+                  action={(formData) =>
+                    void submitChartMutation("delete", formData)
+                  }
+                >
+                  <input name="chartId" type="hidden" value={currentChartId} />
+                  <input
+                    name="expectedUpdatedAt"
+                    type="hidden"
+                    value={currentInsights.selectedChart.updatedAt}
+                  />
+                  <button
+                    className="btn sm"
+                    disabled={!canDeleteSelected}
+                    type="submit"
+                  >
+                    Delete
+                  </button>
+                </form>
               </div>
             </div>
+            {mutationState.message ? (
+              <div
+                className={`chip ${mutationState.status === "error" ? "err" : mutationState.status === "success" ? "ok" : "soft"} m-4`}
+                role="status"
+              >
+                {mutationState.message}
+              </div>
+            ) : null}
 
             <div style={{ padding: 18 }}>
               <form
@@ -315,18 +551,22 @@ export function ProjectInsightsPage({
                 method="get"
               >
                 <input name="chart" type="hidden" value={currentChartId} />
-                <input name="range" type="hidden" value={insights.range.key} />
-                {insights.range.key === "custom" ? (
+                <input
+                  name="range"
+                  type="hidden"
+                  value={currentInsights.range.key}
+                />
+                {currentInsights.range.key === "custom" ? (
                   <>
                     <input
                       name="start"
                       type="hidden"
-                      value={insights.range.start}
+                      value={currentInsights.range.start}
                     />
                     <input
                       name="end"
                       type="hidden"
-                      value={insights.range.end}
+                      value={currentInsights.range.end}
                     />
                   </>
                 ) : null}
@@ -334,10 +574,10 @@ export function ProjectInsightsPage({
                   <input name="table" type="hidden" value="true" />
                 ) : null}
                 <label className="min-w-[240px] flex-1">
-                  <span className="t-label mb-1 block">Filter</span>
+                  <span className="t-label mb-1 block">Chart filter</span>
                   <input
                     className="input w-full"
-                    defaultValue={insights.filter.query ?? ""}
+                    defaultValue={currentInsights.filter.query ?? ""}
                     name="filter"
                     placeholder="is:open label:bug assignee:@me"
                   />
@@ -349,7 +589,7 @@ export function ProjectInsightsPage({
 
               <div className="mb-4 flex flex-wrap items-center gap-2">
                 <span className="t-label">Range</span>
-                {insights.range.options.map((option) => (
+                {currentInsights.range.options.map((option) => (
                   <Link
                     aria-current={option.active ? "page" : undefined}
                     className={`chip ${option.active ? "active" : "soft"}`}
@@ -357,7 +597,7 @@ export function ProjectInsightsPage({
                       scope,
                       owner,
                       projectNumber,
-                      rangeQuery(insights, option.key),
+                      rangeQuery(currentInsights, option.key),
                     )}
                     key={option.key}
                   >
@@ -375,11 +615,11 @@ export function ProjectInsightsPage({
                   >
                     <input name="chart" type="hidden" value={currentChartId} />
                     <input name="range" type="hidden" value="custom" />
-                    {insights.filter.query ? (
+                    {currentInsights.filter.query ? (
                       <input
                         name="filter"
                         type="hidden"
-                        value={insights.filter.query}
+                        value={currentInsights.filter.query}
                       />
                     ) : null}
                     {showingTable ? (
@@ -389,7 +629,7 @@ export function ProjectInsightsPage({
                       <span className="t-label mb-1 block">Start date</span>
                       <input
                         className="input w-full"
-                        defaultValue={insights.range.start}
+                        defaultValue={currentInsights.range.start}
                         name="start"
                         required
                         type="date"
@@ -399,7 +639,7 @@ export function ProjectInsightsPage({
                       <span className="t-label mb-1 block">End date</span>
                       <input
                         className="input w-full"
-                        defaultValue={insights.range.end}
+                        defaultValue={currentInsights.range.end}
                         name="end"
                         required
                         type="date"
@@ -411,9 +651,9 @@ export function ProjectInsightsPage({
                   </form>
                 </details>
                 <span className="t-xs ml-auto">
-                  {insights.matchingItemCount} matching items ·{" "}
-                  {formatDate(insights.range.start)} to{" "}
-                  {formatDate(insights.range.end)}
+                  {currentInsights.matchingItemCount} matching items ·{" "}
+                  {formatDate(currentInsights.range.start)} to{" "}
+                  {formatDate(currentInsights.range.end)}
                 </span>
               </div>
 
@@ -431,7 +671,7 @@ export function ProjectInsightsPage({
                 <div className="card overflow-auto">
                   <table className="w-full min-w-[640px] text-left">
                     <caption className="sr-only">
-                      {insights.selectedChart.title} chart data table
+                      {currentInsights.selectedChart.title} chart data table
                     </caption>
                     <thead>
                       <tr style={{ borderBottom: "1px solid var(--line)" }}>
@@ -444,8 +684,8 @@ export function ProjectInsightsPage({
                       </tr>
                     </thead>
                     <tbody>
-                      {insights.dataRows.length ? (
-                        insights.dataRows.map((row) => (
+                      {currentInsights.dataRows.length ? (
+                        currentInsights.dataRows.map((row) => (
                           <tr
                             key={row.itemId}
                             style={{ borderBottom: "1px solid var(--line)" }}
@@ -482,7 +722,7 @@ export function ProjectInsightsPage({
                 </div>
               ) : (
                 <div
-                  aria-label={`${insights.selectedChart.title} chart`}
+                  aria-label={`${currentInsights.selectedChart.title} chart`}
                   className="card"
                   role="img"
                   style={{
@@ -496,14 +736,14 @@ export function ProjectInsightsPage({
                       display: "grid",
                       gridTemplateColumns: `repeat(${Math.max(
                         1,
-                        insights.series[0]?.points.length ?? 1,
+                        currentInsights.series[0]?.points.length ?? 1,
                       )}, minmax(14px, 1fr))`,
                       gap: 8,
                       alignItems: "end",
                       minHeight: 220,
                     }}
                   >
-                    {(insights.series[0]?.points ?? []).map(
+                    {(currentInsights.series[0]?.points ?? []).map(
                       (point, pointIndex) => (
                         <div
                           key={point.date}
@@ -514,7 +754,7 @@ export function ProjectInsightsPage({
                             height: 220,
                           }}
                         >
-                          {insights.series.map((series, seriesIndex) => {
+                          {currentInsights.series.map((series, seriesIndex) => {
                             const seriesPoint =
                               series.points[pointIndex] ?? point;
                             return (
@@ -541,7 +781,7 @@ export function ProjectInsightsPage({
                     )}
                   </div>
                   <div className="mt-4 flex flex-wrap gap-3">
-                    {insights.series.map((series, index) => (
+                    {currentInsights.series.map((series, index) => (
                       <span className="t-xs" key={series.id}>
                         <span
                           aria-hidden="true"
@@ -565,15 +805,16 @@ export function ProjectInsightsPage({
                 <Link
                   className="btn sm"
                   href={projectInsightsHref(scope, owner, projectNumber, {
-                    ...activeQuery(insights),
+                    ...activeQuery(currentInsights),
                     table: !showingTable,
                   })}
                 >
                   {showingTable ? "View as chart" : "View as data table"}
                 </Link>
                 <span className="t-xs">
-                  Cache computed {formatDateTime(insights.cache.computedAt)}
-                  {insights.cache.stale ? " · stale" : ""}
+                  Cache computed{" "}
+                  {formatDateTime(currentInsights.cache.computedAt)}
+                  {currentInsights.cache.stale ? " · stale" : ""}
                 </span>
               </div>
             </div>
@@ -596,8 +837,10 @@ export function ProjectInsightsPage({
             </div>
           ) : null}
 
-          {insights.unavailableReason ? (
-            <div className="chip warn mt-4">{insights.unavailableReason}</div>
+          {currentInsights.unavailableReason ? (
+            <div className="chip warn mt-4">
+              {currentInsights.unavailableReason}
+            </div>
           ) : null}
         </section>
       </div>

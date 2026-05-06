@@ -56,7 +56,7 @@
 
 ## Phase 4: Custom Chart Mutations - authorized users create, edit, and delete shared charts
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add real custom chart lifecycle. Writers/admins can create charts, edit title/description/filter/type/X/Y/grouping/visibility, delete charts, and see updated sidebar entries; readers can view shared charts but cannot mutate them.
 

@@ -15,11 +15,12 @@ use crate::{
         bulk_add_project_items_for_actor, close_project_for_actor,
         convert_project_draft_to_issue_for_actor, copy_project_for_actor,
         create_project_access_grant_for_actor, create_project_field_for_actor,
-        create_project_field_option_for_actor, create_project_item_comment_for_actor,
-        create_project_iteration_break_for_actor, create_project_iteration_for_actor,
-        create_project_status_update_for_actor, delete_project_access_grant_for_actor,
-        delete_project_field_for_actor, delete_project_field_option_for_actor,
-        delete_project_for_actor, delete_project_item_comment_for_actor,
+        create_project_field_option_for_actor, create_project_insights_chart_for_actor,
+        create_project_item_comment_for_actor, create_project_iteration_break_for_actor,
+        create_project_iteration_for_actor, create_project_status_update_for_actor,
+        delete_project_access_grant_for_actor, delete_project_field_for_actor,
+        delete_project_field_option_for_actor, delete_project_for_actor,
+        delete_project_insights_chart_for_actor, delete_project_item_comment_for_actor,
         delete_project_iteration_break_for_actor, invoke_project_automation_for_actor,
         link_project_repository_for_actor, organization_projects,
         project_conversion_targets_for_actor, project_field_settings, project_insights,
@@ -29,22 +30,23 @@ use crate::{
         restore_project_item_for_actor, unlink_project_repository_for_actor,
         update_project_access_grant_for_actor, update_project_draft_item_for_actor,
         update_project_field_for_actor, update_project_field_option_for_actor,
-        update_project_item_comment_for_actor, update_project_item_field_for_actor,
-        update_project_item_position_for_actor, update_project_iteration_for_actor,
-        update_project_iteration_settings_for_actor, update_project_roadmap_settings_for_actor,
-        update_project_settings_for_actor, update_project_template_for_actor,
-        update_project_view_layout_for_actor, update_project_view_state_for_actor,
-        update_project_workflow_for_actor, user_projects, CopiedProject, CopyProjectRequest,
-        ProjectAccessGrantCreateRequest, ProjectAccessGrantDeleteRequest,
-        ProjectAccessGrantUpdateRequest, ProjectArchivedItem, ProjectAutomationInvocationRequest,
-        ProjectAutomationInvocationResponse, ProjectConversionTargets, ProjectDeleteResponse,
-        ProjectDraftConvertRequest, ProjectDraftUpdateRequest, ProjectFieldCreateRequest,
-        ProjectFieldDeleteRequest, ProjectFieldOptionCreateRequest,
-        ProjectFieldOptionReorderRequest, ProjectFieldOptionUpdateRequest, ProjectFieldSettings,
-        ProjectFieldUpdateRequest, ProjectInsights, ProjectInsightsQuery, ProjectItemAddRequest,
-        ProjectItemCommentCreateRequest, ProjectItemCommentUpdateRequest, ProjectItemDetail,
-        ProjectItemFieldValueRequest, ProjectItemPositionRequest, ProjectItemsArchivedQuery,
-        ProjectItemsBulkAddRequest, ProjectIterationBreakCreateRequest,
+        update_project_insights_chart_for_actor, update_project_item_comment_for_actor,
+        update_project_item_field_for_actor, update_project_item_position_for_actor,
+        update_project_iteration_for_actor, update_project_iteration_settings_for_actor,
+        update_project_roadmap_settings_for_actor, update_project_settings_for_actor,
+        update_project_template_for_actor, update_project_view_layout_for_actor,
+        update_project_view_state_for_actor, update_project_workflow_for_actor, user_projects,
+        CopiedProject, CopyProjectRequest, ProjectAccessGrantCreateRequest,
+        ProjectAccessGrantDeleteRequest, ProjectAccessGrantUpdateRequest, ProjectArchivedItem,
+        ProjectAutomationInvocationRequest, ProjectAutomationInvocationResponse,
+        ProjectConversionTargets, ProjectDeleteResponse, ProjectDraftConvertRequest,
+        ProjectDraftUpdateRequest, ProjectFieldCreateRequest, ProjectFieldDeleteRequest,
+        ProjectFieldOptionCreateRequest, ProjectFieldOptionReorderRequest,
+        ProjectFieldOptionUpdateRequest, ProjectFieldSettings, ProjectFieldUpdateRequest,
+        ProjectInsights, ProjectInsightsChartMutationRequest, ProjectInsightsQuery,
+        ProjectItemAddRequest, ProjectItemCommentCreateRequest, ProjectItemCommentUpdateRequest,
+        ProjectItemDetail, ProjectItemFieldValueRequest, ProjectItemPositionRequest,
+        ProjectItemsArchivedQuery, ProjectItemsBulkAddRequest, ProjectIterationBreakCreateRequest,
         ProjectIterationCreateRequest, ProjectIterationSettingsRequest,
         ProjectIterationUpdateRequest, ProjectLifecycleRequest, ProjectList, ProjectListQuery,
         ProjectRepositoryLinkRequest, ProjectRoadmapSettingsRequest, ProjectSettings,
@@ -66,6 +68,14 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/projects/:project_id/insights",
             get(project_insights_route),
+        )
+        .route(
+            "/api/projects/:project_id/charts",
+            post(create_project_insights_chart_route),
+        )
+        .route(
+            "/api/projects/:project_id/charts/:chart_id",
+            patch(update_project_insights_chart_route).delete(delete_project_insights_chart_route),
         )
         .route(
             "/api/projects/:project_id/settings",
@@ -425,6 +435,61 @@ async fn project_insights_route(
         project_id,
         actor.map(|user| user.id),
         query.as_domain_query(),
+    )
+    .await
+    .map_err(map_project_insights_error)?;
+    Ok(Json(insights))
+}
+
+async fn create_project_insights_chart_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(project_id): Path<Uuid>,
+    Json(request): Json<ProjectInsightsChartMutationRequest>,
+) -> Result<(StatusCode, Json<ProjectInsights>), (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let insights = create_project_insights_chart_for_actor(pool, project_id, actor.id, request)
+        .await
+        .map_err(map_project_insights_error)?;
+    Ok((StatusCode::CREATED, Json(insights)))
+}
+
+async fn update_project_insights_chart_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project_id, chart_id)): Path<(Uuid, Uuid)>,
+    Json(request): Json<ProjectInsightsChartMutationRequest>,
+) -> Result<Json<ProjectInsights>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let insights =
+        update_project_insights_chart_for_actor(pool, project_id, chart_id, actor.id, request)
+            .await
+            .map_err(map_project_insights_error)?;
+    Ok(Json(insights))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectInsightsChartDeleteRequest {
+    expected_updated_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+async fn delete_project_insights_chart_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project_id, chart_id)): Path<(Uuid, Uuid)>,
+    body: Option<Json<ProjectInsightsChartDeleteRequest>>,
+) -> Result<Json<ProjectInsights>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let insights = delete_project_insights_chart_for_actor(
+        pool,
+        project_id,
+        chart_id,
+        actor.id,
+        body.and_then(|Json(request)| request.expected_updated_at),
     )
     .await
     .map_err(map_project_insights_error)?;
