@@ -8010,5 +8010,24 @@
       "Replace local envelope encryption with the production AWS KMS wrapping adapter before deployment and verify key rotation/audit behavior without leaking ciphertext, fingerprints, or plaintext.",
       "Check mobile and keyboard-only behavior for the workflow permission radios, PR approval toggle, environment-scoped secret form, and long secret/environment names."
     ]
+  },
+  {
+    "feature_id": "search-007",
+    "tests_written": [
+      "Added repository_ref_files migration for cached per-ref path lists.",
+      "Added Rust API alias GET /api/repos/{owner}/{repo}/find?ref=... alongside the existing file-finder contract, refreshing repository_ref_files from resolved repository files.",
+      "Added dedicated Editorial /{owner}/{repo}/find/{ref} page that fetches the path list once, scores matches locally with fuzzy matching, highlights matched characters, supports ArrowUp/ArrowDown, Enter-to-open, Escape-to-clear, empty state, and concrete blob links.",
+      "Preserved the existing Go to file popover and added t-key navigation to the full finder plus an Open full file finder link.",
+      "Extended /docs/api with the file finder API contract and cache semantics.",
+      "Added focused Vitest coverage for fuzzy filtering, highlighted/concrete result links, keyboard open, empty state, and Escape clearing.",
+      "Browser smoke passed on /mona/octo-app/find/main with a local API-compatible stub: filtered to src/app/page.tsx, Enter navigated to the blob route, verified empty state, checked zero href=\"#\", checked no horizontal overflow, and saved ralph/screenshots/build/search-007-file-finder.jpg.",
+      "Verification passed: cargo check -p opengithub-api --tests, focused Vitest, web TypeScript, focused Biome, full make check, full make test with Cargo tests plus 631 web tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Run full signed-session Playwright after the local TEST_DATABASE_URL path is healthy; bounded timeout 120 make test-e2e terminated with no Playwright detail.",
+      "Run DB-backed API assertions after migrations against a credentialed Postgres to verify repository_ref_files rows are created/updated for branch and tag refs.",
+      "Probe very large repositories beyond the current 100-item page fetch; the UI scores the fetched cached list locally, so a later backend/page-size contract may be needed for huge path lists.",
+      "Verify keyboard-only behavior on mobile/desktop with long paths, duplicate filenames in different folders, refs containing slashes, binary files, and private repository permission boundaries."
+    ]
   }
 ]

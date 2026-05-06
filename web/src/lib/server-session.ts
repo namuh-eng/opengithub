@@ -1394,7 +1394,8 @@ export async function getRepositoryFileFinder(
   owner: string,
   repo: string,
   refName: string,
-  query: string,
+  query = "",
+  options: { page?: number; pageSize?: number } = {},
 ) {
   const requestHeaders = await headers();
   return getRepositoryFileFinderFromCookie(
@@ -1403,6 +1404,7 @@ export async function getRepositoryFileFinder(
     repo,
     refName,
     query,
+    options,
   );
 }
 

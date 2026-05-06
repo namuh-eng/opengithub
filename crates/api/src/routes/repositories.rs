@@ -413,6 +413,7 @@ pub fn router() -> Router<AppState> {
         .route("/:owner/:repo/forks/defaults", put(save_fork_defaults))
         .route("/:owner/:repo/refs", get(refs))
         .route("/:owner/:repo/file-finder", get(file_finder))
+        .route("/:owner/:repo/find", get(file_finder))
         .route("/:owner/:repo/releases", get(releases).post(create_release))
         .route("/:owner/:repo/releases/manage", get(release_manage_new))
         .route(

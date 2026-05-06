@@ -3016,6 +3016,7 @@ pub async fn repository_file_finder_for_actor_by_owner_name(
     let page = query.page.max(1);
     let page_size = query.page_size.clamp(1, 100);
     let files = list_repository_files_for_resolved_ref(pool, repository.id, &resolved_ref).await?;
+    refresh_repository_ref_files_cache(pool, repository.id, &resolved_ref, &files).await?;
     let mut items = files
         .into_iter()
         .filter(|file| {
@@ -3065,6 +3066,35 @@ pub async fn repository_file_finder_for_actor_by_owner_name(
             items,
         },
     }))
+}
+
+async fn refresh_repository_ref_files_cache(
+    pool: &PgPool,
+    repository_id: Uuid,
+    resolved_ref: &RepositoryResolvedRef,
+    files: &[RepositoryFile],
+) -> Result<(), RepositoryError> {
+    let paths = files
+        .iter()
+        .map(|file| serde_json::Value::String(file.path.clone()))
+        .collect::<Vec<_>>();
+
+    sqlx::query(
+        r#"
+        INSERT INTO repository_ref_files (repository_id, ref, paths, updated_at)
+        VALUES ($1, $2, $3, now())
+        ON CONFLICT (repository_id, ref) DO UPDATE SET
+            paths = EXCLUDED.paths,
+            updated_at = now()
+        "#,
+    )
+    .bind(repository_id)
+    .bind(&resolved_ref.short_name)
+    .bind(serde_json::Value::Array(paths))
+    .execute(pool)
+    .await?;
+
+    Ok(())
 }
 
 pub async fn repository_overview_for_actor(

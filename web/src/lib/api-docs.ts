@@ -2286,6 +2286,39 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     notes: ["Private repositories require explicit repository permission."],
   },
   {
+    id: "repo-file-finder",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/find?ref=main",
+    title: "Repository file finder",
+    description:
+      "Returns the cached file path list for a repository ref so the browser can run instant Sublime-style fuzzy matching locally.",
+    auth: "Signed opengithub session cookie with repository read access",
+    response: `{
+  "items": [
+    {
+      "path": "src/app/page.tsx",
+      "name": "page.tsx",
+      "kind": "file",
+      "href": "/mona/octo-app/blob/main/src/app/page.tsx",
+      "byteSize": 2048,
+      "language": "TypeScript"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "pageSize": 100,
+  "resolvedRef": {
+    "shortName": "main",
+    "qualifiedName": "refs/heads/main"
+  }
+}`,
+    notes: [
+      "The endpoint also remains available at /api/repos/{owner}/{repo}/file-finder for older toolbar clients.",
+      "The Rust API refreshes repository_ref_files for the resolved ref when serving this contract.",
+      "The dedicated /{owner}/{repo}/find/{ref} page fetches this list once and performs fuzzy scoring, keyboard navigation, and highlighted matches in the browser.",
+    ],
+  },
+  {
     id: "repo-commit-history",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/commits?ref=main&path=src&author=mona&until=2026-04-30T23:59:59Z&page=1&pageSize=30",

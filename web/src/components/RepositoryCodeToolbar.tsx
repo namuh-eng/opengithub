@@ -217,6 +217,29 @@ export function RepositoryFileFinder({
   const currentRef = activeRef ?? repository.default_branch;
 
   useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isTyping =
+        tagName === "input" ||
+        tagName === "textarea" ||
+        target?.isContentEditable;
+      if (isTyping || event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+      if (event.key.toLowerCase() === "t") {
+        event.preventDefault();
+        window.location.assign(
+          `${base}/find/${encodeURIComponent(currentRef)}`,
+        );
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [base, currentRef]);
+
+  useEffect(() => {
     if (!open) {
       return;
     }
@@ -365,6 +388,18 @@ export function RepositoryFileFinder({
               {isPending ? "Searching files..." : "No matching files"}
             </p>
           ) : null}
+          <div
+            className="border-t px-3 py-2"
+            style={{ borderColor: "var(--line)" }}
+          >
+            <Link
+              className="t-xs hover:underline"
+              href={`${base}/find/${encodeURIComponent(currentRef)}`}
+              style={{ color: "var(--accent)" }}
+            >
+              Open full file finder
+            </Link>
+          </div>
         </div>
       ) : null}
     </div>
