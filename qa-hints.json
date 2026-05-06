@@ -7406,5 +7406,23 @@
       "Probe large projects, empty/no-date projects, range boundary dates, unsupported filter tokens, private repository item filtering for anonymous/public viewers, custom chart visibility, stale cache metadata, status exposure, and series/data-table accessibility once the UI phase lands.",
       "Phases 2-6 still own the Insights UI, filters/ranges/custom range/data table interactions, custom chart mutations, sharing/status integration, API docs, final browser evidence, QA handoff, and build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-008",
+    "tests_written": [
+      "Completed Phase 2 Editorial Insights Page without marking projects-008 build_pass=true.",
+      "Added user and organization /projects/{number}/insights routes that load Project Insights through signed-cookie server helpers and preserve chart/range/filter/table query params.",
+      "Added ProjectInsightsPage with Editorial project header, Return to project view link, selected Insights navigation, chart sidebar, Burn up chart region, filter form, range links, status summary, disabled future mutation controls, no placeholder hrefs, and no GitHub visual tokens.",
+      "Updated ProjectWorkspacePage so the Insights control is a concrete project Insights link instead of a disabled placeholder.",
+      "Added focused Vitest coverage for org/user route hrefs, chart sidebar, chart region semantics, range/filter/table links, reader disabled mutation states, unsupported filter copy, no dead controls, and Editorial guardrails.",
+      "Browser smoke passed through the real Next route against a local API-compatible stub on port 3016: loaded /orgs/namuh/projects/12/insights, exercised range navigation, filter submission, data-table link, no href=\"#\" links, no horizontal overflow, and saved ralph/screenshots/build/projects-008-phase2-insights-page.jpg.",
+      "Verification passed: focused ProjectInsightsPage and ProjectWorkspacePage Vitest with 24 tests; focused Biome; web TypeScript; full make check; full make test with Cargo tests plus 579 web tests."
+    ],
+    "needs_deeper_qa": [
+      "Run Phase 2 browser smoke against a clean migrated credentialed TEST_DATABASE_URL when available; this iteration used a local API-compatible stub because local Postgres on localhost:55432 has repeatedly rejected the configured postgres password in signed-in E2E setup.",
+      "Bounded TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false timeout 120 make test-e2e was attempted and terminated without useful output; rerun signed-in Projects Insights E2E after fixing local test database credentials.",
+      "Probe large chart series, empty/no-match projects, long chart titles/descriptions, unsupported filter token copy, range link URL preservation, table link persistence, reader/admin role drift, custom chart visibility in the sidebar, keyboard navigation across chart links/buttons, and mobile chart wrapping.",
+      "Phases 3-6 still own real filter/range/custom range/data table recomputation, custom chart mutations, sharing/status integration, API docs, final browser evidence, QA handoff, and build_pass bookkeeping."
+    ]
   }
 ]

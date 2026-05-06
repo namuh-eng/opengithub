@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial Insights Page - default charts render with real project context
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Build `/orgs/{org}/projects/{number}/insights` and user-project equivalents using the Phase 1 read contract. The page switches from the workspace to an Insights header, selected Insights nav item, Return to project view link, left chart sidebar, Burn up chart surface, filter bar, range controls, chart action buttons, and latest status summary using Editorial primitives only.
 

@@ -14,9 +14,11 @@ import type {
   ProjectWorkspaceLayoutField,
 } from "@/lib/api";
 import {
+  organizationProjectInsightsHref,
   organizationProjectWorkspaceHref,
   projectArchivedItemsHref,
   projectItemHref,
+  userProjectInsightsHref,
   userProjectWorkspaceHref,
 } from "@/lib/navigation";
 
@@ -52,6 +54,16 @@ function workspaceHref(
   return scope === "organization"
     ? organizationProjectWorkspaceHref(owner, projectNumber, viewNumber, query)
     : userProjectWorkspaceHref(owner, projectNumber, viewNumber, query);
+}
+
+function insightsHref(
+  scope: "user" | "organization",
+  owner: string,
+  projectNumber: number,
+) {
+  return scope === "organization"
+    ? organizationProjectInsightsHref(owner, projectNumber)
+    : userProjectInsightsHref(owner, projectNumber);
 }
 
 function fieldValue(
@@ -731,14 +743,12 @@ export function ProjectWorkspacePage({
           <Link className="btn sm primary" href={currentHref}>
             View
           </Link>
-          <button
+          <Link
             className="btn sm"
-            disabled
-            title="Insights charts are scheduled after the table workspace slice."
-            type="button"
+            href={insightsHref(scope, owner, workspace.project.number)}
           >
             Insights
-          </button>
+          </Link>
           <button
             className="btn sm"
             disabled

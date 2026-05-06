@@ -183,6 +183,43 @@ export function organizationProjectWorkflowSettingsHref(
   return `/orgs/${encodeURIComponent(org)}/projects/${projectNumber}/workflows${query ? `?${query}` : ""}`;
 }
 
+export type ProjectInsightsRouteQuery = {
+  chart?: string | null;
+  range?: string | null;
+  start?: string | null;
+  end?: string | null;
+  filter?: string | null;
+  table?: boolean | null;
+};
+
+function projectInsightsQueryString(query: ProjectInsightsRouteQuery = {}) {
+  const params = new URLSearchParams();
+  if (query.chart?.trim()) params.set("chart", query.chart.trim());
+  if (query.range?.trim()) params.set("range", query.range.trim());
+  if (query.start?.trim()) params.set("start", query.start.trim());
+  if (query.end?.trim()) params.set("end", query.end.trim());
+  if (query.filter?.trim()) params.set("filter", query.filter.trim());
+  if (query.table) params.set("table", "true");
+  const value = params.toString();
+  return value ? `?${value}` : "";
+}
+
+export function userProjectInsightsHref(
+  owner: string,
+  projectNumber: number,
+  query: ProjectInsightsRouteQuery = {},
+) {
+  return `/${encodeURIComponent(owner)}/projects/${projectNumber}/insights${projectInsightsQueryString(query)}`;
+}
+
+export function organizationProjectInsightsHref(
+  org: string,
+  projectNumber: number,
+  query: ProjectInsightsRouteQuery = {},
+) {
+  return `/orgs/${encodeURIComponent(org)}/projects/${projectNumber}/insights${projectInsightsQueryString(query)}`;
+}
+
 export function projectItemHref(
   scope: "user" | "organization",
   owner: string,

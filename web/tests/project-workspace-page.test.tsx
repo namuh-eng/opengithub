@@ -850,7 +850,10 @@ describe("ProjectWorkspacePage", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "Insights" })).toBeDisabled();
+    expect(screen.getByRole("link", { name: "Insights" })).toHaveAttribute(
+      "href",
+      "/mona/projects/12/insights",
+    );
     expect(screen.getByRole("button", { name: "Settings" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "+ View" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "View menu" }));
