@@ -7534,5 +7534,25 @@
       "Probe long wiki titles, long clone URLs, large Markdown tables/code blocks, unsafe rendered links/images, stale rendered Markdown cache, custom sidebar/footer edge cases, private repository leakage, and keyboard traversal across page list, heading outline, and clone copy controls.",
       "Phases 3-4 still own slug route navigation, lazy TOC expansion, API docs, final signed-in E2E, QA handoff consolidation, and wiki-001 build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "wiki-001",
+    "tests_written": [
+      "Completed Phase 3 Wiki Page Routes and Table of Contents without marking wiki-001 build_pass=true.",
+      "Added /{owner}/{repo}/wiki/{slug} App Router page that server-fetches the selected wiki slug and keeps the RepositoryShell Wiki tab active.",
+      "Added same-origin /api/repos/{owner}/{repo}/wiki-toc/{slug} proxy route for lazy page outline loading through the existing Rust wiki read contract and signed-cookie forwarding.",
+      "Added WikiPageList client component with real chevron buttons, aria-expanded/aria-controls, disabled no-outline state, active page highlighting, nested heading links, loading and error states, and URL-safe slug endpoints.",
+      "Extended repository_wiki_contract with owner slug href/active-state assertions plus nested unknown-page missing state.",
+      "Extended RepositoryWikiPage Vitest coverage for slug page active state, current-page TOC expansion, lazy TOC fetch endpoint shape, nested heading links, no placeholder hrefs, and Editorial guardrails.",
+      "Browser smoke passed through the real Next route against a local API-compatible stub: navigated from /namuh-eng/opengithub/wiki to /namuh-eng/opengithub/wiki/Architecture%20Guide, expanded the Architecture Guide TOC, clicked the Services heading anchor, copied the clone URL, verified no href=\"#\" links, verified no horizontal overflow, and saved ralph/screenshots/build/wiki-001-phase3-page-navigation.jpg.",
+      "Verification passed: focused RepositoryWikiPage Vitest with 5 tests; web TypeScript; focused Biome; cargo fmt --all --check; cargo check -p opengithub-api --tests; focused repository_wiki_contract compiled and passed under the DB guard; full make check; full make test with Cargo tests plus 589 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Run the focused wiki contract against a clean migrated credentialed TEST_DATABASE_URL; local Postgres on localhost:55432 rejected the configured postgres password, so DB assertions self-skipped under the existing guard.",
+      "Run signed-in make test-e2e after local TEST_DATABASE_URL credentials are healthy; this iteration attempted TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false timeout 120 make test-e2e and it terminated after 120 seconds without useful output.",
+      "Run browser smoke against a real migrated database with seeded wiki pages; this phase used a local API-compatible stub for repository/wiki reads.",
+      "Probe nested wiki paths, duplicate title/slug normalization, unknown page New Page CTA behavior, pages with no headings, lazy TOC API errors, keyboard traversal through page links and TOC buttons, private repository leakage, stale outline cache, unsafe links/images, and long Markdown/code/table wrapping.",
+      "Phase 4 still owns API docs, final signed-in E2E, final QA handoff consolidation, and wiki-001 build_pass bookkeeping."
+    ]
   }
 ]

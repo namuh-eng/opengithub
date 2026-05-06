@@ -48,7 +48,7 @@ Repository navigation already exposes a Wiki tab and repository General settings
 
 ## Phase 3: Wiki Page Routes and Table of Contents - slug navigation and lazy outline expansion
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add `/{owner}/{repo}/wiki/{slug}` reader behavior and make the right-column page list interactive. Clicking a page link should navigate to the slug route and update active state; expanding a page chevron should load or reveal that page's table of contents without dead controls.
 

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CopyButton } from "@/components/CopyButton";
 import { MarkdownBody } from "@/components/MarkdownBody";
 import { RepositoryShell } from "@/components/RepositoryShell";
+import { WikiPageList } from "@/components/WikiPageList";
 import type {
   RepositoryOverview,
   RepositoryWikiFetchResult,
@@ -9,7 +10,6 @@ import type {
   RepositoryWikiRenderedBlock,
   RepositoryWikiView,
 } from "@/lib/api";
-import { repositoryWikiHref } from "@/lib/navigation";
 
 type RepositoryWikiPageProps = {
   repository: RepositoryOverview;
@@ -223,30 +223,12 @@ function WikiReader({ wiki }: { wiki: RepositoryWikiView }) {
           <p className="t-label" style={{ color: "var(--ink-3)" }}>
             Pages
           </p>
-          <nav aria-label="Wiki pages" className="mt-3 grid gap-1">
-            {wiki.pages.map((summary) => (
-              <Link
-                aria-current={summary.active ? "page" : undefined}
-                className={`rounded-md px-2 py-2 t-sm hover:underline ${
-                  summary.active ? "font-semibold" : ""
-                }`}
-                href={repositoryWikiHref(
-                  wiki.repository.ownerLogin,
-                  wiki.repository.name,
-                  summary.slug,
-                )}
-                key={summary.id}
-                style={{
-                  background: summary.active
-                    ? "var(--accent-soft)"
-                    : "transparent",
-                  color: summary.active ? "var(--ink-1)" : "var(--ink-3)",
-                }}
-              >
-                {summary.title}
-              </Link>
-            ))}
-          </nav>
+          <WikiPageList
+            currentOutline={page.outline}
+            owner={wiki.repository.ownerLogin}
+            pages={wiki.pages}
+            repo={wiki.repository.name}
+          />
         </section>
 
         <section className="card p-4">

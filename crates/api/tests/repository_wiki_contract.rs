@@ -321,7 +321,24 @@ async fn repository_wiki_read_contract_returns_pages_markdown_clone_and_states()
     assert_eq!(owner_body["page"]["title"], "Install Guide");
     assert_eq!(owner_body["viewer"]["permission"], "owner");
     assert_eq!(owner_body["viewer"]["canEditWiki"], true);
+    assert_eq!(
+        owner_body["page"]["href"],
+        format!("/{}/{}/wiki/Install%20Guide", owner_login, public_repo.name)
+    );
+    assert_eq!(owner_body["pages"][1]["active"], true);
     assert_eq!(owner_body["page"]["outline"][1]["text"], "Troubleshooting");
+
+    let nested_missing_uri = format!(
+        "/api/repos/{}/{}/wiki/Docs/Unknown%20Page",
+        body["repository"]["ownerLogin"].as_str().unwrap(),
+        public_repo.name
+    );
+    let (missing_status, _, missing_body) =
+        get_json(app.clone(), &nested_missing_uri, Some(&owner_cookie)).await;
+    assert_eq!(missing_status, StatusCode::OK);
+    assert_eq!(missing_body["state"]["kind"], "missing_page");
+    assert!(missing_body["page"].is_null());
+    assert!(missing_body["links"]["newPageHref"].as_str().is_some());
 
     sqlx::query("UPDATE repositories SET wiki_enabled = false WHERE id = $1")
         .bind(public_repo.id)

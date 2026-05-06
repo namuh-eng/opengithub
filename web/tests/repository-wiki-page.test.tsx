@@ -163,6 +163,7 @@ function wikiView(
 describe("RepositoryWikiPage", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("renders the Editorial wiki Home reader with active tab, metadata, page links, sidebar, footer, and clone copy", async () => {
@@ -274,6 +275,125 @@ describe("RepositoryWikiPage", () => {
     ).toBeVisible();
     expect(screen.queryByRole("link", { name: "New Page" })).toBeNull();
     expect(screen.getByText("Reader view")).toBeVisible();
+  });
+
+  it("highlights slug pages and expands current-page table of contents with real controls", () => {
+    const baseWiki = wikiView();
+    if (!baseWiki.page) {
+      throw new Error("wiki fixture should include a page");
+    }
+    const { container } = render(
+      <RepositoryWikiPage
+        repository={repositoryOverview()}
+        wikiResult={{
+          ok: true,
+          wiki: wikiView({
+            page: {
+              ...baseWiki.page,
+              id: "page-2",
+              title: "Architecture Guide",
+              slug: "Architecture Guide",
+              path: "Architecture Guide.md",
+              href: "/namuh-eng/opengithub/wiki/Architecture%20Guide",
+              html: '<h1 id="architecture-guide"><a class="anchor" href="#architecture-guide" aria-label="Permalink: Architecture Guide">#</a>Architecture Guide</h1><h2 id="services">Services</h2>',
+              outline: [
+                {
+                  id: "architecture-guide",
+                  level: 1,
+                  text: "Architecture Guide",
+                  href: "#architecture-guide",
+                },
+                {
+                  id: "services",
+                  level: 2,
+                  text: "Services",
+                  href: "#services",
+                },
+              ],
+            },
+            pages: [
+              {
+                id: "page-1",
+                title: "Home",
+                slug: "Home",
+                href: "/wiki",
+                active: false,
+                hasOutline: true,
+                updatedAt: "2026-05-05T00:00:00Z",
+              },
+              {
+                id: "page-2",
+                title: "Architecture Guide",
+                slug: "Architecture Guide",
+                href: "/wiki/Architecture%20Guide",
+                active: true,
+                hasOutline: true,
+                updatedAt: "2026-05-04T00:00:00Z",
+              },
+            ],
+          }),
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Architecture Guide" }),
+    ).toBeVisible();
+    const pages = screen.getByRole("navigation", { name: "Wiki pages" });
+    expect(
+      within(pages).getByRole("link", { name: "Architecture Guide" }),
+    ).toHaveAttribute("aria-current", "page");
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Expand Architecture Guide table of contents",
+      }),
+    );
+    expect(
+      screen.getAllByRole("link", { name: "Services" })[0],
+    ).toHaveAttribute("href", "#services");
+    expect(container.querySelectorAll('a[href="#"]')).toHaveLength(0);
+  });
+
+  it("lazy-loads another page table of contents through the same-origin wiki endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        outline: [
+          {
+            id: "deploy",
+            level: 2,
+            text: "Deploy",
+            href: "#deploy",
+          },
+        ],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <RepositoryWikiPage
+        repository={repositoryOverview()}
+        wikiResult={{ ok: true, wiki: wikiView() }}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Expand Architecture Guide table of contents",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/repos/namuh-eng/opengithub/wiki-toc/Architecture%20Guide",
+        { headers: { accept: "application/json" } },
+      );
+    });
+    expect(await screen.findByRole("link", { name: "Deploy" })).toHaveAttribute(
+      "href",
+      "#deploy",
+    );
   });
 
   it("keeps repository-safe fetch errors inside the repository shell", () => {
