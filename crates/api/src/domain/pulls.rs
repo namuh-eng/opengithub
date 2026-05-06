@@ -22,6 +22,7 @@ use super::{
         NotificationDeliveryCheck,
     },
     permissions::RepositoryRole,
+    projects::{run_project_item_automation, ProjectAutomationEvent, ProjectAutomationInput},
     repositories::{
         get_repository, repository_permission_for_user, Repository, RepositoryVisibility,
         RepositoryWatchEvent,
@@ -2665,6 +2666,25 @@ pub async fn update_pull_request_state(
         json!({ "state": input.state.as_str() }),
     )
     .await?;
+    run_project_item_automation(
+        pool,
+        ProjectAutomationInput {
+            actor_user_id: input.actor_user_id,
+            repository_id: pull_request.repository_id,
+            issue_id: None,
+            pull_request_id: Some(pull_request.id),
+            event: match input.state {
+                PullRequestState::Open => ProjectAutomationEvent::IssueReopened,
+                PullRequestState::Closed => ProjectAutomationEvent::PullRequestClosed,
+                PullRequestState::Merged => ProjectAutomationEvent::PullRequestMerged,
+            },
+        },
+    )
+    .await
+    .map_err(|error| match error {
+        super::projects::ProjectsError::Sqlx(error) => CollaborationError::Sqlx(error),
+        _ => CollaborationError::PullRequestNotFound,
+    })?;
     index_pull_request_search_document(pool, &pull_request, input.actor_user_id).await?;
     Ok(pull_request)
 }
@@ -2945,6 +2965,23 @@ pub async fn merge_pull_request(
     tx.commit().await?;
 
     notify_pull_request_merged(pool, &merged, input.actor_user_id).await?;
+    run_project_item_automation(
+        pool,
+        ProjectAutomationInput {
+            actor_user_id: input.actor_user_id,
+            repository_id: merged.repository_id,
+            issue_id: None,
+            pull_request_id: Some(merged.id),
+            event: ProjectAutomationEvent::PullRequestMerged,
+        },
+    )
+    .await
+    .map_err(|error| match error {
+        super::projects::ProjectsError::Sqlx(error) => {
+            MergePullRequestError::Collaboration(CollaborationError::Sqlx(error))
+        }
+        _ => MergePullRequestError::Collaboration(CollaborationError::PullRequestNotFound),
+    })?;
     index_pull_request_search_document(pool, &merged, input.actor_user_id).await?;
     Ok(merged)
 }

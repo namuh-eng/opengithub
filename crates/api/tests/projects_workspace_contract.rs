@@ -1463,6 +1463,160 @@ async fn project_workflow_settings_seed_defaults_and_filter_targets() {
 }
 
 #[tokio::test]
+async fn project_workflow_engine_moves_closed_issue_to_done_idempotently() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping projects workflow execution scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("workflowexec{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let writer = create_user(&pool, &format!("{marker}-writer")).await;
+    let writer_cookie = cookie_header(&pool, &config, &writer).await;
+
+    let repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("workflow-exec-{}", Uuid::new_v4().simple()),
+            description: None,
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    grant_repository_permission(&pool, repo.id, writer.id, RepositoryRole::Write, "direct")
+        .await
+        .expect("writer repository permission should grant");
+
+    let project_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO projects
+          (owner_user_id, number, title, short_description, visibility, default_repository_id, created_by_user_id)
+        VALUES ($1, 82, 'Workflow execution project', 'Automation execution contract', 'private', $2, $1)
+        RETURNING id
+        "#,
+    )
+    .bind(owner.id)
+    .bind(repo.id)
+    .fetch_one(&pool)
+    .await
+    .expect("project should insert");
+    sqlx::query(
+        "INSERT INTO project_permissions (project_id, user_id, role) VALUES ($1, $2, 'write')",
+    )
+    .bind(project_id)
+    .bind(writer.id)
+    .execute(&pool)
+    .await
+    .expect("project permission should insert");
+    let status_field: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_fields (project_id, name, field_type, position) VALUES ($1, 'Status', 'status', 1) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("status field should insert");
+    let done_option: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_field_options (project_field_id, name, color, position) VALUES ($1, 'Done', 'green', 1) RETURNING id",
+    )
+    .bind(status_field)
+    .fetch_one(&pool)
+    .await
+    .expect("done option should insert");
+    let issue_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO issues (repository_id, number, title, body, state, author_user_id)
+        VALUES ($1, 42, 'Close this project item', 'Automation should move this to Done', 'open', $2)
+        RETURNING id
+        "#,
+    )
+    .bind(repo.id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("issue should insert");
+    let item_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_items (project_id, item_type, issue_id, position) VALUES ($1, 'issue', $2, 1) RETURNING id",
+    )
+    .bind(project_id)
+    .bind(issue_id)
+    .fetch_one(&pool)
+    .await
+    .expect("project item should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config.clone());
+    let (status, _, body) = get_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/workflows"),
+        Some(&writer_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body["workflows"][0]["configuration"]["target"]["optionId"],
+        done_option.to_string()
+    );
+
+    let (status, _, body) = patch_json(
+        app.clone(),
+        &format!("/api/repos/{}/{}/issues/42", repo.owner_login, repo.name),
+        Some(&writer_cookie),
+        json!({ "state": "closed" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let status_value: Value = sqlx::query_scalar(
+        "SELECT value FROM project_item_field_values WHERE project_item_id = $1 AND project_field_id = $2",
+    )
+    .bind(item_id)
+    .bind(status_field)
+    .fetch_one(&pool)
+    .await
+    .expect("workflow field value should persist");
+    assert_eq!(status_value, json!("Done"));
+    let event_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM project_item_events WHERE project_item_id = $1 AND event_type = 'project.workflow.execute'",
+    )
+    .bind(item_id)
+    .fetch_one(&pool)
+    .await
+    .expect("project workflow event count should load");
+    assert_eq!(event_count, 1);
+    let log_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_execution_logs WHERE project_id = $1 AND project_item_id = $2 AND status = 'success'",
+    )
+    .bind(project_id)
+    .bind(item_id)
+    .fetch_one(&pool)
+    .await
+    .expect("workflow log count should load");
+    assert_eq!(log_count, 1);
+
+    let (status, _, body) = patch_json(
+        app,
+        &format!("/api/repos/{}/{}/issues/42", repo.owner_login, repo.name),
+        Some(&writer_cookie),
+        json!({ "state": "closed" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let repeated_log_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM workflow_execution_logs WHERE project_id = $1 AND project_item_id = $2 AND status = 'success'",
+    )
+    .bind(project_id)
+    .bind(item_id)
+    .fetch_one(&pool)
+    .await
+    .expect("repeated workflow log count should load");
+    assert_eq!(repeated_log_count, 1);
+}
+
+#[tokio::test]
 async fn project_field_settings_returns_options_iterations_limits_and_guards() {
     let Some(pool) = database_pool().await else {
         eprintln!("skipping projects field settings scenario; set TEST_DATABASE_URL");

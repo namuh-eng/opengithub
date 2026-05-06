@@ -15,6 +15,7 @@ use super::{
         NotificationDeliveryCheck,
     },
     permissions::RepositoryRole,
+    projects::{run_project_item_automation, ProjectAutomationEvent, ProjectAutomationInput},
     repositories::{
         get_repository, get_repository_by_owner_name, repository_permission_for_user, Repository,
         RepositoryVisibility, RepositoryWatchEvent,
@@ -1551,6 +1552,24 @@ pub async fn update_issue_state(
         format!("Issue #{} was {}", issue.number, event_type),
     )
     .await?;
+    run_project_item_automation(
+        pool,
+        ProjectAutomationInput {
+            actor_user_id: input.actor_user_id,
+            repository_id: issue.repository_id,
+            issue_id: Some(issue.id),
+            pull_request_id: None,
+            event: match issue.state {
+                IssueState::Open => ProjectAutomationEvent::IssueReopened,
+                IssueState::Closed => ProjectAutomationEvent::IssueClosed,
+            },
+        },
+    )
+    .await
+    .map_err(|error| match error {
+        super::projects::ProjectsError::Sqlx(error) => CollaborationError::Sqlx(error),
+        _ => CollaborationError::IssueNotFound,
+    })?;
     index_issue_search_document(pool, &issue, input.actor_user_id).await?;
     Ok(issue)
 }

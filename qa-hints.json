@@ -7230,5 +7230,24 @@
       "Probe concurrent saves/stale timestamps, invalid status field and option IDs, repository targets where the project is linked but the actor lacks repository write access, empty repository target selections, archiveAfterDays boundaries 1 and 365, long filter conditions, read-only users, and UI error copy.",
       "Phase 4 still owns the item-state automation engine; Phase 5 Actions/GraphQL-style hooks; Phase 6 docs, final screenshots, QA handoff, and build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-006",
+    "tests_written": [
+      "Completed Phase 4 Item-State Automation Engine without marking projects-006 build_pass=true.",
+      "Added a shared Rust project automation engine for item_added, issue_closed, issue_reopened, pull_request_closed, pull_request_merged, and archive_completed workflow evaluation.",
+      "Hooked linked project item add, issue close/reopen, pull request close, and pull request merge flows into the engine after existing repository/project permission checks.",
+      "Workflow execution now applies configured status targets, writes project_item_events, workflow_execution_logs, last-run metadata, and idempotency metadata, and skips non-matching repository targets or conditions.",
+      "Added auto-archive evaluation for completed items using configured archiveAfterDays and automation attribution.",
+      "Added projects_workspace_contract coverage for closing an issue through the API, moving the linked project item to Done, writing workflow event/log evidence, and suppressing duplicate success logs on repeated events.",
+      "Verification passed: cargo fmt --all; cargo check -p opengithub-api --tests; focused DB-guarded Rust scenario compile/run; full make check; full make test with Cargo tests plus 563 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Focused Rust DB assertions self-skipped because TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test failed with password authentication failed for user postgres; rerun project_workflow_engine_moves_closed_issue_to_done_idempotently against a clean migrated credentialed database.",
+      "Browser smoke and make test-e2e were skipped for Phase 4 because this slice is backend-heavy and .qrspi/projects-006/structure.md marks browser smoke optional for backend-heavy/API-first phases; final workflows browser evidence remains Phase 6.",
+      "Probe merged PR to Done, PR close without merge, issue reopen reset workflows if configured, item-added default status with repository target filters, duplicate webhook/event delivery idempotency, private linked repository boundaries, and auto-archive age thresholds around 1/14/365 days.",
+      "Probe close-on-status permission denial from project field edits where the actor can write the project but lacks linked repository write access, plus audit/notification behavior for repository-visible versus project-local side effects.",
+      "Phase 5 still owns Actions/GraphQL-style automation hooks; Phase 6 docs, final screenshots, QA handoff, and build_pass bookkeeping."
+    ]
   }
 ]

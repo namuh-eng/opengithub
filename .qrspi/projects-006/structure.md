@@ -58,7 +58,7 @@
 
 ## Phase 4: Item-State Automation Engine - issue/PR events update project fields safely
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Implement the server-side automation engine for built-in project workflows. Repository issue/PR close, reopen, merge, and item-add events evaluate enabled project workflows, update project item field values, add project item events, and preserve repository/project permission boundaries.
 
