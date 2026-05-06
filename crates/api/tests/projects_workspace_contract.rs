@@ -580,6 +580,177 @@ async fn project_workspace_returns_table_fields_items_filters_and_private_guards
 }
 
 #[tokio::test]
+async fn project_item_detail_and_archived_list_enforce_visibility() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping projects item detail scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("itemdetail{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let member = create_user(&pool, &format!("{marker}-member")).await;
+    let project_reader = create_user(&pool, &format!("{marker}-reader")).await;
+    let member_cookie = cookie_header(&pool, &config, &member).await;
+    let reader_cookie = cookie_header(&pool, &config, &project_reader).await;
+
+    let repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("private-source-{}", Uuid::new_v4().simple()),
+            description: None,
+            visibility: RepositoryVisibility::Private,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    grant_repository_permission(&pool, repo.id, member.id, RepositoryRole::Write, "direct")
+        .await
+        .expect("repository permission should grant");
+
+    let project_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO projects (owner_user_id, number, title, short_description, visibility, created_by_user_id)
+        VALUES ($1, 71, 'Item detail project', 'Side panel read contract', 'private', $1)
+        RETURNING id
+        "#,
+    )
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("project should insert");
+    sqlx::query(
+        "INSERT INTO project_permissions (project_id, user_id, role) VALUES ($1, $2, 'write'), ($1, $3, 'read')",
+    )
+    .bind(project_id)
+    .bind(member.id)
+    .bind(project_reader.id)
+    .execute(&pool)
+    .await
+    .expect("project permissions should insert");
+    sqlx::query(
+        "INSERT INTO project_views (project_id, name, layout, position, configuration) VALUES ($1, 'Table', 'table', 1, '{}')",
+    )
+    .bind(project_id)
+    .execute(&pool)
+    .await
+    .expect("view should insert");
+    sqlx::query(
+        "INSERT INTO project_fields (project_id, name, field_type, position) VALUES ($1, 'Title', 'title', 1), ($1, 'Status', 'status', 2)",
+    )
+    .bind(project_id)
+    .execute(&pool)
+    .await
+    .expect("fields should insert");
+
+    let draft_item_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_items (project_id, item_type, title, body, position) VALUES ($1, 'draft_issue', 'Draft side panel', 'Project-only body', 1) RETURNING id",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("draft should insert");
+    sqlx::query(
+        "INSERT INTO project_item_comments (project_id, project_item_id, author_user_id, body) VALUES ($1, $2, $3, 'Draft-only comment')",
+    )
+    .bind(project_id)
+    .bind(draft_item_id)
+    .bind(member.id)
+    .execute(&pool)
+    .await
+    .expect("draft comment should insert");
+    sqlx::query(
+        "INSERT INTO project_item_events (project_id, project_item_id, actor_user_id, event_type, metadata) VALUES ($1, $2, $3, 'project.item.created', $4)",
+    )
+    .bind(project_id)
+    .bind(draft_item_id)
+    .bind(member.id)
+    .bind(json!({ "source": "test" }))
+    .execute(&pool)
+    .await
+    .expect("item event should insert");
+
+    let issue_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO issues (repository_id, number, title, body, state, author_user_id)
+        VALUES ($1, 22, 'Private source issue', 'Only repo readers can see it', 'open', $2)
+        RETURNING id
+        "#,
+    )
+    .bind(repo.id)
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("issue should insert");
+    let hidden_linked_item_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO project_items (project_id, item_type, issue_id, position) VALUES ($1, 'issue', $2, 2) RETURNING id",
+    )
+    .bind(project_id)
+    .bind(issue_id)
+    .fetch_one(&pool)
+    .await
+    .expect("linked item should insert");
+    let archived_item_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO project_items (
+          project_id, item_type, title, body, position, archived_at, archived_by_user_id, source_synced_at, source_sync_version
+        )
+        VALUES ($1, 'draft_issue', 'Archived draft', 'Restorable project-only body', 3, now(), $2, now(), 2)
+        RETURNING id
+        "#,
+    )
+    .bind(project_id)
+    .bind(member.id)
+    .fetch_one(&pool)
+    .await
+    .expect("archived item should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let (status, _, body) = get_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/items/{draft_item_id}"),
+        Some(&member_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["item"]["title"], "Draft side panel");
+    assert_eq!(body["draft"]["repositoryNotificationsEnabled"], false);
+    assert_eq!(body["comments"][0]["body"], "Draft-only comment");
+    assert_eq!(body["activity"][0]["eventType"], "project.item.created");
+    assert_eq!(body["viewerPermissions"]["canConvert"], true);
+    assert_eq!(body["archive"]["archived"], false);
+
+    let (status, _, body) = get_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/items/{hidden_linked_item_id}"),
+        Some(&reader_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert_eq!(body["error"]["code"], "not_found");
+    assert!(!body.to_string().contains("Private source issue"));
+
+    let (status, _, body) = get_json(
+        app,
+        &format!("/api/projects/{project_id}/items/archived?itemType=draft_issue&pageSize=10"),
+        Some(&member_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["total"], 1);
+    assert_eq!(body["items"][0]["item"]["id"], archived_item_id.to_string());
+    assert_eq!(body["items"][0]["item"]["title"], "Archived draft");
+    assert_eq!(
+        body["items"][0]["archivedBy"]["login"],
+        member.username.as_deref().expect("member login")
+    );
+    assert_eq!(body["items"][0]["viewerPermissions"]["canRestore"], true);
+}
+
+#[tokio::test]
 async fn project_field_settings_returns_options_iterations_limits_and_guards() {
     let Some(pool) = database_pool().await else {
         eprintln!("skipping projects field settings scenario; set TEST_DATABASE_URL");

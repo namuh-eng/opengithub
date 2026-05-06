@@ -6,7 +6,7 @@
 
 ## Phase 1: Item Detail Read Contract - side panel data is screen-ready
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Extend the existing Projects workspace item model with a dedicated read contract for item side panels and archive views. This phase makes draft, linked issue, and linked PR metadata testable without adding new mutations.
 

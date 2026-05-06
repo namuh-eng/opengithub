@@ -148,6 +148,14 @@ pub struct ProjectWorkspaceQuery<'a> {
     pub page_size: Option<i64>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ProjectItemsArchivedQuery<'a> {
+    pub item_type: Option<&'a str>,
+    pub query: Option<&'a str>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectViewStateRequest {
@@ -577,6 +585,97 @@ pub struct ProjectWorkspacePermissions {
     pub can_add_items: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectItemDetail {
+    pub project: ProjectWorkspaceProject,
+    pub item: ProjectWorkspaceItem,
+    pub source: Option<ProjectItemSourceSummary>,
+    pub activity: Vec<ProjectItemActivity>,
+    pub comments: Vec<ProjectItemComment>,
+    pub archive: ProjectItemArchiveState,
+    pub draft: Option<ProjectDraftIssueMetadata>,
+    pub viewer_permissions: ProjectItemDetailPermissions,
+    pub unavailable_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectItemSourceSummary {
+    pub source_type: String,
+    pub id: Uuid,
+    pub number: i64,
+    pub title: String,
+    pub state: String,
+    pub href: String,
+    pub repository: ProjectRepositoryScopeSummary,
+    pub updated_at: DateTime<Utc>,
+    pub synced_at: Option<DateTime<Utc>>,
+    pub sync_version: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectItemActivity {
+    pub id: Uuid,
+    pub event_type: String,
+    pub actor: Option<ProjectWorkspaceUser>,
+    pub metadata: Value,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectItemComment {
+    pub id: Uuid,
+    pub author: ProjectWorkspaceUser,
+    pub body: String,
+    pub is_deleted: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectItemArchiveState {
+    pub archived: bool,
+    pub archived_at: Option<DateTime<Utc>>,
+    pub archived_by: Option<ProjectWorkspaceUser>,
+    pub restored_at: Option<DateTime<Utc>>,
+    pub restored_by: Option<ProjectWorkspaceUser>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectDraftIssueMetadata {
+    pub editable: bool,
+    pub edit_version: DateTime<Utc>,
+    pub repository_notifications_enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectItemDetailPermissions {
+    pub authenticated: bool,
+    pub viewer_role: Option<String>,
+    pub can_edit: bool,
+    pub can_comment: bool,
+    pub can_convert: bool,
+    pub can_archive: bool,
+    pub can_restore: bool,
+    pub can_remove: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectArchivedItem {
+    pub item: ProjectWorkspaceItem,
+    pub source: Option<ProjectItemSourceSummary>,
+    pub archived_at: DateTime<Utc>,
+    pub archived_by: Option<ProjectWorkspaceUser>,
+    pub viewer_permissions: ProjectItemDetailPermissions,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CopyProjectRequest {
@@ -973,6 +1072,122 @@ pub async fn project_workspace(
             can_add_items: can_edit,
         },
         unavailable_reason: None,
+    })
+}
+
+pub async fn project_item_detail(
+    pool: &PgPool,
+    project_id: Uuid,
+    item_id: Uuid,
+    viewer_user_id: Option<Uuid>,
+) -> Result<ProjectItemDetail, ProjectsError> {
+    let project = visible_workspace_project(pool, project_id, viewer_user_id).await?;
+    let fields = workspace_fields_for_detail(pool, project_id).await?;
+    let mut items =
+        project_items_for_detail(pool, project_id, viewer_user_id, Some(item_id), false).await?;
+    if items.is_empty() {
+        items =
+            project_items_for_detail(pool, project_id, viewer_user_id, Some(item_id), true).await?;
+    }
+    let item = items.pop().ok_or(ProjectsError::NotFound)?;
+    let values = workspace_field_values(pool, &[item.id]).await?;
+    let labels = workspace_labels(pool, &[item.id]).await?;
+    let assignees = workspace_assignees(pool, &[item.id]).await?;
+    let item = workspace_item_from_row(item.row, &fields, &values, &labels, &assignees)?;
+    let source = project_item_source(pool, item.id).await?;
+    let archive = project_item_archive_state(pool, item.id).await?;
+    let activity = project_item_activity(pool, item.id).await?;
+    let comments = project_item_comments(pool, item.id).await?;
+    let can_edit = project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role);
+    let is_draft = item.item_type == "draft_issue";
+    let item_updated_at = item.updated_at;
+    let archived = archive.archived;
+    let permissions = project_item_permissions(
+        viewer_user_id,
+        project.viewer_role.clone(),
+        can_edit,
+        is_draft,
+        archived,
+    );
+    Ok(ProjectItemDetail {
+        project: project.clone(),
+        item,
+        source,
+        activity,
+        comments,
+        archive,
+        draft: is_draft.then_some(ProjectDraftIssueMetadata {
+            editable: can_edit && !archived,
+            edit_version: item_updated_at,
+            repository_notifications_enabled: false,
+        }),
+        viewer_permissions: permissions,
+        unavailable_reason: None,
+    })
+}
+
+pub async fn project_items_archived(
+    pool: &PgPool,
+    project_id: Uuid,
+    viewer_user_id: Option<Uuid>,
+    query: ProjectItemsArchivedQuery<'_>,
+) -> Result<ListEnvelope<ProjectArchivedItem>, ProjectsError> {
+    let project = visible_workspace_project(pool, project_id, viewer_user_id).await?;
+    let filters = normalize_archived_item_filters(query)?;
+    let fields = workspace_fields_for_detail(pool, project_id).await?;
+    let mut rows = project_items_for_detail(pool, project_id, viewer_user_id, None, true).await?;
+    if let Some(item_type) = filters.item_type.as_deref() {
+        rows.retain(|row| row.item_type == item_type);
+    }
+    if let Some(query) = filters.query.as_deref() {
+        let normalized = query.to_lowercase();
+        rows.retain(|row| row.search_title.to_lowercase().contains(&normalized));
+    }
+    let total = rows.len() as i64;
+    let offset = ((filters.page - 1) * filters.page_size) as usize;
+    let page_rows = rows
+        .into_iter()
+        .skip(offset)
+        .take(filters.page_size as usize)
+        .collect::<Vec<_>>();
+    let item_ids = page_rows.iter().map(|row| row.id).collect::<Vec<_>>();
+    let values = workspace_field_values(pool, &item_ids).await?;
+    let labels = workspace_labels(pool, &item_ids).await?;
+    let assignees = workspace_assignees(pool, &item_ids).await?;
+    let can_edit = project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role);
+    let mut archived_items = Vec::new();
+    for row in page_rows {
+        let archived_at = row.archived_at.ok_or_else(|| {
+            ProjectsError::Validation("Archived item is missing archive metadata.".to_owned())
+        })?;
+        let archived_by = row.archived_by;
+        let item = workspace_item_from_row(row.row, &fields, &values, &labels, &assignees)?;
+        let source = project_item_source(pool, item.id).await?;
+        archived_items.push(ProjectArchivedItem {
+            viewer_permissions: project_item_permissions(
+                viewer_user_id,
+                project.viewer_role.clone(),
+                can_edit,
+                item.item_type == "draft_issue",
+                true,
+            ),
+            item,
+            source,
+            archived_at,
+            archived_by,
+        });
+    }
+    Ok(ListEnvelope {
+        items: archived_items,
+        total,
+        page: filters.page,
+        page_size: filters.page_size,
     })
 }
 
@@ -4389,6 +4604,389 @@ fn configuration_string(configuration: &Value, key: &str) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
+}
+
+#[derive(Debug)]
+struct ProjectItemDetailRow {
+    id: Uuid,
+    item_type: String,
+    search_title: String,
+    archived_at: Option<DateTime<Utc>>,
+    archived_by: Option<ProjectWorkspaceUser>,
+    row: sqlx::postgres::PgRow,
+}
+
+#[derive(Debug)]
+struct ProjectArchivedItemFilters {
+    item_type: Option<String>,
+    query: Option<String>,
+    page: i64,
+    page_size: i64,
+}
+
+async fn visible_workspace_project(
+    pool: &PgPool,
+    project_id: Uuid,
+    viewer_user_id: Option<Uuid>,
+) -> Result<ProjectWorkspaceProject, ProjectsError> {
+    let project = workspace_project_row(pool, project_id, viewer_user_id).await?;
+    if project.visibility != "public" && project.viewer_role.is_none() {
+        return if viewer_user_id.is_some() {
+            Err(ProjectsError::Forbidden)
+        } else {
+            Err(ProjectsError::NotFound)
+        };
+    }
+    Ok(project)
+}
+
+async fn workspace_fields_for_detail(
+    pool: &PgPool,
+    project_id: Uuid,
+) -> Result<Vec<ProjectWorkspaceField>, ProjectsError> {
+    let views = workspace_views(pool, project_id, "project", 1).await?;
+    let selected_view = views.first().ok_or(ProjectsError::NotFound)?;
+    workspace_fields(pool, project_id, selected_view).await
+}
+
+fn normalize_archived_item_filters(
+    query: ProjectItemsArchivedQuery<'_>,
+) -> Result<ProjectArchivedItemFilters, ProjectsError> {
+    let item_type = query
+        .item_type
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && *value != "all")
+        .map(ToOwned::to_owned);
+    if let Some(item_type) = item_type.as_deref() {
+        if !matches!(item_type, "draft_issue" | "issue" | "pull_request") {
+            return Err(ProjectsError::InvalidFilter(
+                "Archived item type must be draft_issue, issue, or pull_request.".to_owned(),
+            ));
+        }
+    }
+    let pagination = normalize_pagination(query.page, query.page_size);
+    Ok(ProjectArchivedItemFilters {
+        item_type,
+        query: query
+            .query
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned),
+        page: pagination.page,
+        page_size: pagination.page_size,
+    })
+}
+
+async fn project_items_for_detail(
+    pool: &PgPool,
+    project_id: Uuid,
+    viewer_user_id: Option<Uuid>,
+    item_id: Option<Uuid>,
+    archived_only: bool,
+) -> Result<Vec<ProjectItemDetailRow>, ProjectsError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT
+          project_items.id, project_items.item_type, project_items.title AS draft_title,
+          project_items.body AS draft_body, project_items.position::text AS position_text,
+          project_items.updated_at, project_items.issue_id, project_items.pull_request_id,
+          project_items.archived_at, project_items.restored_at, project_items.source_synced_at,
+          project_items.source_sync_version,
+          archived_by.id AS archived_by_id,
+          COALESCE(NULLIF(archived_by.username, ''), archived_by.email) AS archived_by_login,
+          archived_by.avatar_url AS archived_by_avatar_url,
+          issues.title AS issue_title, issues.body AS issue_body, issues.state AS issue_state,
+          issues.number AS issue_number, COALESCE(issue_repositories.id, pull_repositories.id) AS issue_repository_id,
+          COALESCE(
+            NULLIF(issue_owner_user.username, ''),
+            issue_owner_user.email,
+            issue_owner_org.slug,
+            NULLIF(pull_owner_user.username, ''),
+            pull_owner_user.email,
+            pull_owner_org.slug
+          ) AS issue_owner,
+          COALESCE(issue_repositories.name, pull_repositories.name) AS issue_repository_name,
+          pull_requests.title AS pull_title, pull_requests.body AS pull_body, pull_requests.state AS pull_state,
+          pull_requests.number AS pull_number
+        FROM project_items
+        LEFT JOIN users archived_by ON archived_by.id = project_items.archived_by_user_id
+        LEFT JOIN issues ON issues.id = project_items.issue_id
+        LEFT JOIN repositories issue_repositories ON issue_repositories.id = issues.repository_id
+        LEFT JOIN users issue_owner_user ON issue_owner_user.id = issue_repositories.owner_user_id
+        LEFT JOIN organizations issue_owner_org ON issue_owner_org.id = issue_repositories.owner_organization_id
+        LEFT JOIN pull_requests ON pull_requests.id = project_items.pull_request_id
+        LEFT JOIN repositories pull_repositories ON pull_repositories.id = pull_requests.repository_id
+        LEFT JOIN users pull_owner_user ON pull_owner_user.id = pull_repositories.owner_user_id
+        LEFT JOIN organizations pull_owner_org ON pull_owner_org.id = pull_repositories.owner_organization_id
+        WHERE project_items.project_id = $1
+          AND ($2::uuid IS NULL OR project_items.id = $2)
+          AND (($3::bool = true AND project_items.archived_at IS NOT NULL)
+            OR ($3::bool = false AND project_items.archived_at IS NULL))
+          AND (
+            COALESCE(issue_repositories.id, pull_repositories.id) IS NULL
+            OR COALESCE(issue_repositories.visibility, pull_repositories.visibility) = 'public'
+            OR COALESCE(issue_repositories.owner_user_id, pull_repositories.owner_user_id) = $4
+            OR EXISTS (
+              SELECT 1 FROM repository_permissions
+              WHERE repository_permissions.repository_id = COALESCE(issue_repositories.id, pull_repositories.id)
+                AND repository_permissions.user_id = $4
+            )
+            OR EXISTS (
+              SELECT 1 FROM organization_memberships
+              WHERE organization_memberships.organization_id = COALESCE(issue_repositories.owner_organization_id, pull_repositories.owner_organization_id)
+                AND organization_memberships.user_id = $4
+            )
+          )
+        ORDER BY project_items.archived_at DESC NULLS LAST, project_items.position, project_items.created_at
+        "#,
+    )
+    .bind(project_id)
+    .bind(item_id)
+    .bind(archived_only)
+    .bind(viewer_user_id)
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            let id = row.get("id");
+            let item_type: String = row.get("item_type");
+            let search_title = row
+                .get::<Option<String>, _>("issue_title")
+                .or_else(|| row.get::<Option<String>, _>("pull_title"))
+                .or_else(|| row.get::<Option<String>, _>("draft_title"))
+                .unwrap_or_else(|| "Untitled item".to_owned());
+            let archived_by = row
+                .get::<Option<Uuid>, _>("archived_by_id")
+                .zip(row.get::<Option<String>, _>("archived_by_login"))
+                .map(|(id, login)| ProjectWorkspaceUser {
+                    id,
+                    login,
+                    avatar_url: row.get("archived_by_avatar_url"),
+                });
+            Ok(ProjectItemDetailRow {
+                id,
+                item_type,
+                search_title,
+                archived_at: row.get("archived_at"),
+                archived_by,
+                row,
+            })
+        })
+        .collect()
+}
+
+async fn project_item_source(
+    pool: &PgPool,
+    item_id: Uuid,
+) -> Result<Option<ProjectItemSourceSummary>, ProjectsError> {
+    let row = sqlx::query(
+        r#"
+        SELECT
+          project_items.item_type,
+          project_items.source_synced_at,
+          project_items.source_sync_version,
+          COALESCE(issues.id, pull_requests.id) AS source_id,
+          COALESCE(issues.number, pull_requests.number) AS source_number,
+          COALESCE(issues.title, pull_requests.title) AS source_title,
+          COALESCE(issues.state, pull_requests.state) AS source_state,
+          COALESCE(issues.updated_at, pull_requests.updated_at) AS source_updated_at,
+          repositories.id AS repository_id,
+          COALESCE(NULLIF(owner_user.username, ''), owner_user.email, owner_org.slug) AS repository_owner,
+          repositories.name AS repository_name
+        FROM project_items
+        LEFT JOIN issues ON issues.id = project_items.issue_id
+        LEFT JOIN pull_requests ON pull_requests.id = project_items.pull_request_id
+        LEFT JOIN repositories ON repositories.id = COALESCE(issues.repository_id, pull_requests.repository_id)
+        LEFT JOIN users owner_user ON owner_user.id = repositories.owner_user_id
+        LEFT JOIN organizations owner_org ON owner_org.id = repositories.owner_organization_id
+        WHERE project_items.id = $1
+        "#,
+    )
+    .bind(item_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(ProjectsError::NotFound)?;
+    let Some(source_id) = row.get::<Option<Uuid>, _>("source_id") else {
+        return Ok(None);
+    };
+    let Some(repository_id) = row.get::<Option<Uuid>, _>("repository_id") else {
+        return Ok(None);
+    };
+    let owner = row
+        .get::<Option<String>, _>("repository_owner")
+        .unwrap_or_else(|| "unknown".to_owned());
+    let name = row
+        .get::<Option<String>, _>("repository_name")
+        .unwrap_or_else(|| "unknown".to_owned());
+    let item_type: String = row.get("item_type");
+    let number: i64 = row.get("source_number");
+    let segment = if item_type == "pull_request" {
+        "pull"
+    } else {
+        "issues"
+    };
+    Ok(Some(ProjectItemSourceSummary {
+        source_type: item_type,
+        id: source_id,
+        number,
+        title: row.get("source_title"),
+        state: row.get("source_state"),
+        href: format!("/{owner}/{name}/{segment}/{number}"),
+        repository: ProjectRepositoryScopeSummary {
+            id: repository_id,
+            owner: owner.clone(),
+            name: name.clone(),
+            full_name: format!("{owner}/{name}"),
+            href: format!("/{owner}/{name}"),
+        },
+        updated_at: row.get("source_updated_at"),
+        synced_at: row.get("source_synced_at"),
+        sync_version: row.get("source_sync_version"),
+    }))
+}
+
+async fn project_item_archive_state(
+    pool: &PgPool,
+    item_id: Uuid,
+) -> Result<ProjectItemArchiveState, ProjectsError> {
+    let row = sqlx::query(
+        r#"
+        SELECT project_items.archived_at, project_items.restored_at,
+          archived_by.id AS archived_by_id,
+          COALESCE(NULLIF(archived_by.username, ''), archived_by.email) AS archived_by_login,
+          archived_by.avatar_url AS archived_by_avatar_url,
+          restored_by.id AS restored_by_id,
+          COALESCE(NULLIF(restored_by.username, ''), restored_by.email) AS restored_by_login,
+          restored_by.avatar_url AS restored_by_avatar_url
+        FROM project_items
+        LEFT JOIN users archived_by ON archived_by.id = project_items.archived_by_user_id
+        LEFT JOIN users restored_by ON restored_by.id = project_items.restored_by_user_id
+        WHERE project_items.id = $1
+        "#,
+    )
+    .bind(item_id)
+    .fetch_one(pool)
+    .await?;
+    let archived_at: Option<DateTime<Utc>> = row.get("archived_at");
+    Ok(ProjectItemArchiveState {
+        archived: archived_at.is_some(),
+        archived_at,
+        archived_by: row
+            .get::<Option<Uuid>, _>("archived_by_id")
+            .zip(row.get::<Option<String>, _>("archived_by_login"))
+            .map(|(id, login)| ProjectWorkspaceUser {
+                id,
+                login,
+                avatar_url: row.get("archived_by_avatar_url"),
+            }),
+        restored_at: row.get("restored_at"),
+        restored_by: row
+            .get::<Option<Uuid>, _>("restored_by_id")
+            .zip(row.get::<Option<String>, _>("restored_by_login"))
+            .map(|(id, login)| ProjectWorkspaceUser {
+                id,
+                login,
+                avatar_url: row.get("restored_by_avatar_url"),
+            }),
+    })
+}
+
+async fn project_item_activity(
+    pool: &PgPool,
+    item_id: Uuid,
+) -> Result<Vec<ProjectItemActivity>, ProjectsError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT project_item_events.id, project_item_events.event_type,
+          project_item_events.metadata, project_item_events.created_at,
+          users.id AS actor_id,
+          COALESCE(NULLIF(users.username, ''), users.email) AS actor_login,
+          users.avatar_url AS actor_avatar_url
+        FROM project_item_events
+        LEFT JOIN users ON users.id = project_item_events.actor_user_id
+        WHERE project_item_events.project_item_id = $1
+        ORDER BY project_item_events.created_at, project_item_events.id
+        "#,
+    )
+    .bind(item_id)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(ProjectItemActivity {
+                id: row.get("id"),
+                event_type: row.get("event_type"),
+                actor: row
+                    .get::<Option<Uuid>, _>("actor_id")
+                    .zip(row.get::<Option<String>, _>("actor_login"))
+                    .map(|(id, login)| ProjectWorkspaceUser {
+                        id,
+                        login,
+                        avatar_url: row.get("actor_avatar_url"),
+                    }),
+                metadata: row.get("metadata"),
+                created_at: row.get("created_at"),
+            })
+        })
+        .collect()
+}
+
+async fn project_item_comments(
+    pool: &PgPool,
+    item_id: Uuid,
+) -> Result<Vec<ProjectItemComment>, ProjectsError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT project_item_comments.id, project_item_comments.body,
+          project_item_comments.is_deleted, project_item_comments.created_at,
+          project_item_comments.updated_at, users.id AS author_id,
+          COALESCE(NULLIF(users.username, ''), users.email) AS author_login,
+          users.avatar_url AS author_avatar_url
+        FROM project_item_comments
+        JOIN users ON users.id = project_item_comments.author_user_id
+        WHERE project_item_comments.project_item_id = $1
+        ORDER BY project_item_comments.created_at, project_item_comments.id
+        "#,
+    )
+    .bind(item_id)
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(ProjectItemComment {
+                id: row.get("id"),
+                author: ProjectWorkspaceUser {
+                    id: row.get("author_id"),
+                    login: row.get("author_login"),
+                    avatar_url: row.get("author_avatar_url"),
+                },
+                body: row.get("body"),
+                is_deleted: row.get("is_deleted"),
+                created_at: row.get("created_at"),
+                updated_at: row.get("updated_at"),
+            })
+        })
+        .collect()
+}
+
+fn project_item_permissions(
+    viewer_user_id: Option<Uuid>,
+    viewer_role: Option<String>,
+    can_edit: bool,
+    is_draft: bool,
+    archived: bool,
+) -> ProjectItemDetailPermissions {
+    ProjectItemDetailPermissions {
+        authenticated: viewer_user_id.is_some(),
+        viewer_role,
+        can_edit: can_edit && !archived,
+        can_comment: can_edit && !archived,
+        can_convert: can_edit && is_draft && !archived,
+        can_archive: can_edit && !archived,
+        can_restore: can_edit && archived,
+        can_remove: can_edit,
+    }
 }
 
 async fn workspace_items(

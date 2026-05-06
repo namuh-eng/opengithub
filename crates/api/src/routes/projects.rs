@@ -16,20 +16,22 @@ use crate::{
         create_project_iteration_break_for_actor, create_project_iteration_for_actor,
         delete_project_field_for_actor, delete_project_field_option_for_actor,
         delete_project_iteration_break_for_actor, organization_projects, project_field_settings,
-        project_workspace, remove_project_item_for_actor, reorder_project_field_options_for_actor,
+        project_item_detail, project_items_archived, project_workspace,
+        remove_project_item_for_actor, reorder_project_field_options_for_actor,
         repository_projects, update_project_field_for_actor, update_project_field_option_for_actor,
         update_project_item_field_for_actor, update_project_item_position_for_actor,
         update_project_iteration_for_actor, update_project_iteration_settings_for_actor,
         update_project_roadmap_settings_for_actor, update_project_view_layout_for_actor,
         update_project_view_state_for_actor, user_projects, CopiedProject, CopyProjectRequest,
-        ProjectFieldCreateRequest, ProjectFieldDeleteRequest, ProjectFieldOptionCreateRequest,
-        ProjectFieldOptionReorderRequest, ProjectFieldOptionUpdateRequest, ProjectFieldSettings,
-        ProjectFieldUpdateRequest, ProjectItemAddRequest, ProjectItemFieldValueRequest,
-        ProjectItemPositionRequest, ProjectItemsBulkAddRequest, ProjectIterationBreakCreateRequest,
-        ProjectIterationCreateRequest, ProjectIterationSettingsRequest,
-        ProjectIterationUpdateRequest, ProjectList, ProjectListQuery,
-        ProjectRoadmapSettingsRequest, ProjectViewLayoutRequest, ProjectViewStateRequest,
-        ProjectWorkspace, ProjectWorkspaceQuery, ProjectsError,
+        ProjectArchivedItem, ProjectFieldCreateRequest, ProjectFieldDeleteRequest,
+        ProjectFieldOptionCreateRequest, ProjectFieldOptionReorderRequest,
+        ProjectFieldOptionUpdateRequest, ProjectFieldSettings, ProjectFieldUpdateRequest,
+        ProjectItemAddRequest, ProjectItemDetail, ProjectItemFieldValueRequest,
+        ProjectItemPositionRequest, ProjectItemsArchivedQuery, ProjectItemsBulkAddRequest,
+        ProjectIterationBreakCreateRequest, ProjectIterationCreateRequest,
+        ProjectIterationSettingsRequest, ProjectIterationUpdateRequest, ProjectList,
+        ProjectListQuery, ProjectRoadmapSettingsRequest, ProjectViewLayoutRequest,
+        ProjectViewStateRequest, ProjectWorkspace, ProjectWorkspaceQuery, ProjectsError,
     },
     AppState,
 };
@@ -99,6 +101,14 @@ pub fn router() -> Router<AppState> {
             patch(update_project_item_field_route),
         )
         .route(
+            "/api/projects/:project_id/items/archived",
+            get(project_items_archived_route),
+        )
+        .route(
+            "/api/projects/:project_id/items/:item_id",
+            get(project_item_detail_route).delete(remove_project_item_route),
+        )
+        .route(
             "/api/projects/:project_id/items",
             post(add_project_item_route),
         )
@@ -109,10 +119,6 @@ pub fn router() -> Router<AppState> {
         .route(
             "/api/projects/:project_id/items/:item_id/position",
             patch(update_project_item_position_route),
-        )
-        .route(
-            "/api/projects/:project_id/items/:item_id",
-            delete(remove_project_item_route),
         )
         .route("/api/projects/:project_id/copies", post(copy_project_route))
         .route(
@@ -146,6 +152,16 @@ struct ProjectWorkspaceRouteQuery {
     page_size: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectItemsArchivedRouteQuery {
+    item_type: Option<String>,
+    q: Option<String>,
+    page: Option<i64>,
+    #[serde(rename = "pageSize")]
+    page_size: Option<i64>,
+}
+
 impl ProjectWorkspaceRouteQuery {
     fn as_domain_query(&self) -> ProjectWorkspaceQuery<'_> {
         ProjectWorkspaceQuery {
@@ -154,6 +170,17 @@ impl ProjectWorkspaceRouteQuery {
             sort: self.sort.as_deref(),
             group: self.group.as_deref(),
             slice: self.slice.as_deref(),
+            page: self.page,
+            page_size: self.page_size,
+        }
+    }
+}
+
+impl ProjectItemsArchivedRouteQuery {
+    fn as_domain_query(&self) -> ProjectItemsArchivedQuery<'_> {
+        ProjectItemsArchivedQuery {
+            item_type: self.item_type.as_deref(),
+            query: self.q.as_deref(),
             page: self.page,
             page_size: self.page_size,
         }
@@ -262,6 +289,41 @@ async fn project_workspace_route(
     .await
     .map_err(map_projects_error)?;
     Ok(Json(workspace))
+}
+
+async fn project_item_detail_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project_id, item_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<ProjectItemDetail>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let detail = project_item_detail(pool, project_id, item_id, actor.map(|user| user.id))
+        .await
+        .map_err(map_projects_error)?;
+    Ok(Json(detail))
+}
+
+async fn project_items_archived_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(project_id): Path<Uuid>,
+    Query(query): Query<ProjectItemsArchivedRouteQuery>,
+) -> Result<
+    Json<crate::api_types::ListEnvelope<ProjectArchivedItem>>,
+    (StatusCode, Json<ErrorEnvelope>),
+> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let archived = project_items_archived(
+        pool,
+        project_id,
+        actor.map(|user| user.id),
+        query.as_domain_query(),
+    )
+    .await
+    .map_err(map_projects_error)?;
+    Ok(Json(archived))
 }
 
 async fn project_field_settings_route(

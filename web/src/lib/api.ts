@@ -358,6 +358,103 @@ export type ProjectWorkspace = {
   unavailableReason: string | null;
 };
 
+export type ProjectItemSourceSummary = {
+  sourceType: string;
+  id: string;
+  number: number;
+  title: string;
+  state: string;
+  href: string;
+  repository: ProjectRepositoryScopeSummary;
+  updatedAt: string;
+  syncedAt: string | null;
+  syncVersion: number;
+};
+
+export type ProjectItemActivity = {
+  id: string;
+  eventType: string;
+  actor: ProjectWorkspaceUser | null;
+  metadata: unknown;
+  createdAt: string;
+};
+
+export type ProjectItemComment = {
+  id: string;
+  author: ProjectWorkspaceUser;
+  body: string;
+  isDeleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProjectItemArchiveState = {
+  archived: boolean;
+  archivedAt: string | null;
+  archivedBy: ProjectWorkspaceUser | null;
+  restoredAt: string | null;
+  restoredBy: ProjectWorkspaceUser | null;
+};
+
+export type ProjectDraftIssueMetadata = {
+  editable: boolean;
+  editVersion: string;
+  repositoryNotificationsEnabled: boolean;
+};
+
+export type ProjectItemDetailPermissions = {
+  authenticated: boolean;
+  viewerRole: string | null;
+  canEdit: boolean;
+  canComment: boolean;
+  canConvert: boolean;
+  canArchive: boolean;
+  canRestore: boolean;
+  canRemove: boolean;
+};
+
+export type ProjectItemDetail = {
+  project: ProjectWorkspaceProject;
+  item: ProjectWorkspaceItem;
+  source: ProjectItemSourceSummary | null;
+  activity: ProjectItemActivity[];
+  comments: ProjectItemComment[];
+  archive: ProjectItemArchiveState;
+  draft: ProjectDraftIssueMetadata | null;
+  viewerPermissions: ProjectItemDetailPermissions;
+  unavailableReason: string | null;
+};
+
+export type ProjectArchivedItem = {
+  item: ProjectWorkspaceItem;
+  source: ProjectItemSourceSummary | null;
+  archivedAt: string;
+  archivedBy: ProjectWorkspaceUser | null;
+  viewerPermissions: ProjectItemDetailPermissions;
+};
+
+export type ProjectArchivedItems = {
+  items: ProjectArchivedItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+export type ProjectItemDetailFetchResult =
+  | { ok: true; detail: ProjectItemDetail }
+  | { ok: false; status: number; code: string | null; message: string };
+
+export type ProjectArchivedItemsFetchResult =
+  | { ok: true; archived: ProjectArchivedItems }
+  | { ok: false; status: number; code: string | null; message: string };
+
+export type ProjectArchivedItemsQuery = {
+  itemType?: "draft_issue" | "issue" | "pull_request" | "all" | null;
+  q?: string | null;
+  page?: number | null;
+  pageSize?: number | null;
+};
+
 export type ProjectWorkspaceQuery = {
   view?: string | number | null;
   q?: string | null;
@@ -7343,6 +7440,31 @@ function projectFieldSettingsPath(projectId: string): string {
   return `/api/projects/${encodeURIComponent(projectId)}/settings/fields`;
 }
 
+function projectItemDetailPath(projectId: string, itemId: string): string {
+  return `/api/projects/${encodeURIComponent(projectId)}/items/${encodeURIComponent(itemId)}`;
+}
+
+function projectArchivedItemsPath(
+  projectId: string,
+  query: ProjectArchivedItemsQuery = {},
+): string {
+  const params = new URLSearchParams();
+  if (query.itemType && query.itemType !== "all") {
+    params.set("itemType", query.itemType);
+  }
+  if (query.q?.trim()) {
+    params.set("q", query.q.trim());
+  }
+  if (query.page != null) {
+    params.set("page", String(query.page));
+  }
+  if (query.pageSize != null) {
+    params.set("pageSize", String(query.pageSize));
+  }
+  const suffix = params.toString();
+  return `/api/projects/${encodeURIComponent(projectId)}/items/archived${suffix ? `?${suffix}` : ""}`;
+}
+
 async function getProjectListFromCookie(
   cookie: string | null | undefined,
   path: string,
@@ -7490,6 +7612,96 @@ export async function getProjectWorkspaceFromCookie(
   return {
     ok: true,
     workspace: (await response.json()) as ProjectWorkspace,
+  };
+}
+
+export async function getProjectItemDetailFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  itemId: string,
+): Promise<ProjectItemDetailFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}${projectItemDetailPath(projectId, itemId)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Project item detail is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let body: ApiErrorEnvelope | null = null;
+    try {
+      body = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      body = null;
+    }
+    return {
+      ok: false,
+      status: body?.status ?? response.status,
+      code: body?.error.code ?? null,
+      message:
+        body?.error.message ?? "Project item detail could not be loaded.",
+    };
+  }
+
+  return {
+    ok: true,
+    detail: (await response.json()) as ProjectItemDetail,
+  };
+}
+
+export async function getProjectArchivedItemsFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  query: ProjectArchivedItemsQuery = {},
+): Promise<ProjectArchivedItemsFetchResult> {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}${projectArchivedItemsPath(projectId, query)}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Archived project items are unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let body: ApiErrorEnvelope | null = null;
+    try {
+      body = (await response.json()) as ApiErrorEnvelope;
+    } catch {
+      body = null;
+    }
+    return {
+      ok: false,
+      status: body?.status ?? response.status,
+      code: body?.error.code ?? null,
+      message:
+        body?.error.message ?? "Archived project items could not be loaded.",
+    };
+  }
+
+  return {
+    ok: true,
+    archived: (await response.json()) as ProjectArchivedItems,
   };
 }
 
