@@ -108,6 +108,28 @@ export function organizationProjectFieldSettingsHref(
   return `/orgs/${encodeURIComponent(org)}/projects/${projectNumber}/settings/fields${query ? `?${query}` : ""}`;
 }
 
+export function userProjectWorkflowSettingsHref(
+  owner: string,
+  projectNumber: number,
+  workflowId?: string | null,
+) {
+  const params = new URLSearchParams();
+  if (workflowId) params.set("workflow", workflowId);
+  const query = params.toString();
+  return `/${encodeURIComponent(owner)}/projects/${projectNumber}/workflows${query ? `?${query}` : ""}`;
+}
+
+export function organizationProjectWorkflowSettingsHref(
+  org: string,
+  projectNumber: number,
+  workflowId?: string | null,
+) {
+  const params = new URLSearchParams();
+  if (workflowId) params.set("workflow", workflowId);
+  const query = params.toString();
+  return `/orgs/${encodeURIComponent(org)}/projects/${projectNumber}/workflows${query ? `?${query}` : ""}`;
+}
+
 export function projectItemHref(
   scope: "user" | "organization",
   owner: string,

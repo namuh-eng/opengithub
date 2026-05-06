@@ -9,8 +9,10 @@ import type {
 } from "@/lib/api";
 import {
   organizationProjectFieldSettingsHref,
+  organizationProjectWorkflowSettingsHref,
   organizationProjectWorkspaceHref,
   userProjectFieldSettingsHref,
+  userProjectWorkflowSettingsHref,
   userProjectWorkspaceHref,
 } from "@/lib/navigation";
 
@@ -58,7 +60,7 @@ const SETTINGS_NAV = [
   { label: "General", key: "general", disabled: true },
   { label: "Fields", key: "fields", disabled: false },
   { label: "Views", key: "views", disabled: true },
-  { label: "Workflows", key: "workflows", disabled: true },
+  { label: "Workflows", key: "workflows", disabled: false },
   { label: "Access", key: "access", disabled: true },
 ];
 
@@ -81,6 +83,16 @@ function workspaceHref(
   return scope === "organization"
     ? organizationProjectWorkspaceHref(owner, projectNumber, 1)
     : userProjectWorkspaceHref(owner, projectNumber, 1);
+}
+
+function workflowSettingsHref(
+  scope: "user" | "organization",
+  owner: string,
+  projectNumber: number,
+) {
+  return scope === "organization"
+    ? organizationProjectWorkflowSettingsHref(owner, projectNumber)
+    : userProjectWorkflowSettingsHref(owner, projectNumber);
 }
 
 function fieldTypeLabel(field: ProjectFieldSettingsField) {
@@ -594,8 +606,18 @@ export function ProjectFieldSettingsPage({
               </button>
             ) : (
               <Link
-                className="btn ghost active"
-                href={baseFieldsHref}
+                className={
+                  item.key === "fields" ? "btn ghost active" : "btn ghost"
+                }
+                href={
+                  item.key === "workflows"
+                    ? workflowSettingsHref(
+                        scope,
+                        owner,
+                        settings.project.number,
+                      )
+                    : baseFieldsHref
+                }
                 key={item.key}
                 style={{
                   justifyContent: "flex-start",

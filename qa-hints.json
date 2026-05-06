@@ -7196,5 +7196,22 @@
       "Probe projects without a Status/Done option, projects with multiple eligible status fields, linked private repositories where the project reader lacks repository access, existing legacy project_workflows rows upgraded by migration, and execution log ordering/metadata redaction.",
       "Phase 2 still owns the Editorial Workflows settings page; Phase 3 workflow mutations; Phase 4 item-state automation engine; Phase 5 Actions/GraphQL-style hooks; Phase 6 docs, browser evidence, QA handoff, and build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-006",
+    "tests_written": [
+      "Completed Phase 2 Editorial Workflows Settings Page without marking projects-006 build_pass=true.",
+      "Added user and organization workflow settings routes at /{owner}/projects/{number}/workflows and /orgs/{org}/projects/{number}/workflows that resolve project numbers through signed-cookie server helpers.",
+      "Added ProjectWorkflowSettingsPage with Editorial settings navigation, default workflow cards, enabled/disabled chips, recent automation activity, repository targets, route-backed edit panels, automation attribution, unavailable states, and permission-disabled controls.",
+      "Updated project settings navigation so Fields links to Workflows instead of showing a disabled placeholder.",
+      "Added focused Vitest coverage for owner/org rendering, default cards, route-backed edit links, edit panel behavior, read-only disabled state, no dead placeholder links, and Editorial token guardrails.",
+      "Verification passed: focused web TypeScript; focused Biome; focused project-workflow-settings-page and project-field-settings-page Vitest with 13 tests; full make check; full make test with Cargo tests plus 562 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Full make test-e2e was attempted with TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test and DB_SSL=false, but it stayed silent while Playwright/API/Next children were active and was terminated by a 90 second timeout. Child listeners on ports 3015 and 3016 were cleaned up.",
+      "Rerun a focused Projects workflow settings browser smoke against a clean migrated credentialed TEST_DATABASE_URL and save ralph/screenshots/build/projects-006-phase2-workflows-settings.jpg.",
+      "Probe read-only users, unauthenticated users, hidden private repository targets, missing Status/Done eligible fields, empty recent logs, very long workflow names/descriptions, mobile settings grid fit, and query-state opening for ?workflow=<id>.",
+      "Phase 3 still owns real enable/disable and rule mutation persistence; Phase 4 item-state automation engine; Phase 5 Actions/GraphQL-style hooks; Phase 6 docs, final screenshots, QA handoff, and build_pass bookkeeping."
+    ]
   }
 ]

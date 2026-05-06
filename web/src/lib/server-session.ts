@@ -20,6 +20,7 @@ import {
   getOrganizationProfileSettingsFromCookie,
   getOrganizationProjectFieldSettingsFromCookie,
   getOrganizationProjectsFromCookie,
+  getOrganizationProjectWorkflowSettingsFromCookie,
   getOrganizationProjectWorkspaceFromCookie,
   getOrganizationRepositoriesFromCookie,
   getOrganizationTeamDetailFromCookie,
@@ -100,6 +101,7 @@ import {
   getUserPackagesFromCookie,
   getUserProjectFieldSettingsFromCookie,
   getUserProjectsFromCookie,
+  getUserProjectWorkflowSettingsFromCookie,
   getUserProjectWorkspaceFromCookie,
   type KeySettingsFetchResult,
   type OrganizationMemberPrivilegesFetchResult,
@@ -120,6 +122,7 @@ import {
   type ProjectItemDetailFetchResult,
   type ProjectListFetchResult,
   type ProjectListQuery,
+  type ProjectWorkflowSettingsFetchResult,
   type ProjectWorkspaceFetchResult,
   type ProjectWorkspaceQuery,
   type RepositoryActionsDashboardQuery,
@@ -367,6 +370,30 @@ export async function getOrganizationProjectFieldSettings(
 ): Promise<ProjectFieldSettingsFetchResult> {
   const requestHeaders = await headers();
   return getOrganizationProjectFieldSettingsFromCookie(
+    requestHeaders.get("cookie"),
+    org,
+    projectNumber,
+  );
+}
+
+export async function getUserProjectWorkflowSettings(
+  username: string,
+  projectNumber: number,
+): Promise<ProjectWorkflowSettingsFetchResult> {
+  const requestHeaders = await headers();
+  return getUserProjectWorkflowSettingsFromCookie(
+    requestHeaders.get("cookie"),
+    username,
+    projectNumber,
+  );
+}
+
+export async function getOrganizationProjectWorkflowSettings(
+  org: string,
+  projectNumber: number,
+): Promise<ProjectWorkflowSettingsFetchResult> {
+  const requestHeaders = await headers();
+  return getOrganizationProjectWorkflowSettingsFromCookie(
     requestHeaders.get("cookie"),
     org,
     projectNumber,

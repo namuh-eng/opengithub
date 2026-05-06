@@ -23,7 +23,7 @@
 
 ## Phase 2: Editorial Workflows Settings Page - automation cards render without dead controls
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Render the Projects settings Workflows page using the Phase 1 read contract. The page shows the settings shell, default workflow cards, enabled/disabled toggles, event descriptions, recent activity, automation attribution as `@github-project-automation` equivalent, and permission-aware Edit/Turn on controls.
 
