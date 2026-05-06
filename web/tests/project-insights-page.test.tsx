@@ -231,6 +231,82 @@ describe("ProjectInsightsPage", () => {
     );
   });
 
+  it("renders the accessible data table and preserves table state in exploration links", () => {
+    render(
+      <ProjectInsightsPage
+        insights={insights({
+          selectedChart: {
+            ...insights().selectedChart,
+            configuration: { table: true },
+          },
+        })}
+        owner="namuh"
+        scope="organization"
+      />,
+    );
+
+    expect(
+      screen.getByRole("table", { name: "Burn up chart data table" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("cell", { name: "Ship Insights shell" }),
+    ).toBeVisible();
+    expect(screen.getByRole("link", { name: "2 weeks" })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/projects/12/insights?chart=burn-up&range=2w&filter=is%3Aopen&table=true",
+    );
+    expect(screen.getByRole("link", { name: "View as chart" })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/projects/12/insights?chart=burn-up&range=1m&filter=is%3Aopen",
+    );
+  });
+
+  it("renders custom date selection as a real route-backed form", () => {
+    render(
+      <ProjectInsightsPage
+        insights={insights({
+          range: {
+            ...insights().range,
+            key: "custom",
+            label: "Custom",
+            start: "2026-04-01",
+            end: "2026-04-15",
+            options: insights().range.options.map((option) => ({
+              ...option,
+              active: false,
+            })),
+          },
+        })}
+        owner="namuh"
+        scope="organization"
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Custom range"));
+    expect(screen.getByLabelText("Start date")).toHaveValue("2026-04-01");
+    expect(screen.getByLabelText("End date")).toHaveValue("2026-04-15");
+    expect(screen.getByRole("button", { name: "Apply dates" })).toHaveAttribute(
+      "type",
+      "submit",
+    );
+  });
+
+  it("renders a no-match state without dropping the chart controls", () => {
+    render(
+      <ProjectInsightsPage
+        insights={insights({
+          matchingItemCount: 0,
+          dataRows: [],
+        })}
+        owner="namuh"
+        scope="organization"
+      />,
+    );
+
+    expect(screen.getByText("No matching items")).toBeVisible();
+    expect(screen.getByRole("img", { name: "Burn up chart" })).toBeVisible();
+  });
+
   it("keeps reader mutation controls disabled with visible capability state", () => {
     render(
       <ProjectInsightsPage
@@ -261,13 +337,7 @@ describe("ProjectInsightsPage", () => {
   it("uses real filter form controls and avoids placeholder links or banned visual tokens", () => {
     const { container } = render(
       <ProjectInsightsPage
-        insights={insights({
-          filter: {
-            query: "field:missing",
-            tokens: [],
-            unsupportedTokens: ["field:missing"],
-          },
-        })}
+        insights={insights()}
         owner="namuh"
         scope="organization"
       />,
@@ -279,8 +349,7 @@ describe("ProjectInsightsPage", () => {
     expect(
       screen.getByRole("button", { name: "Apply filter" }),
     ).toHaveAttribute("type", "submit");
-    expect(screen.getByRole("button", { name: "Custom range" })).toBeDisabled();
-    expect(screen.getByText("Ignored tokens: field:missing")).toBeVisible();
+    expect(screen.getByText("Custom range")).toBeVisible();
     expect(container.querySelector('[href="#"]')).toBeNull();
     expect(container.innerHTML).not.toContain("onClick={() => {}}");
     expect(container.innerHTML).not.toContain("#0969da");

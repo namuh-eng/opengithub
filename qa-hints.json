@@ -7424,5 +7424,24 @@
       "Probe large chart series, empty/no-match projects, long chart titles/descriptions, unsupported filter token copy, range link URL preservation, table link persistence, reader/admin role drift, custom chart visibility in the sidebar, keyboard navigation across chart links/buttons, and mobile chart wrapping.",
       "Phases 3-6 still own real filter/range/custom range/data table recomputation, custom chart mutations, sharing/status integration, API docs, final browser evidence, QA handoff, and build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-008",
+    "tests_written": [
+      "Completed Phase 3 Filters, Ranges, Custom Range, and Data Table without marking projects-008 build_pass=true.",
+      "Tightened Rust Project Insights filter parsing so unsupported filter tokens return a structured invalid_filter response instead of silently rendering fake client-only behavior.",
+      "Preserved range, custom start/end, filter, and table query state across chart sidebar links, range links, filter submissions, and chart/table toggles.",
+      "Added a route-backed Custom range date form, accessible chart data table, no-match state, and table/chart toggle while keeping custom chart mutation controls for Phase 4.",
+      "Extended focused Rust contract coverage for unsupported Insights filters and custom-range validation.",
+      "Extended ProjectInsightsPage Vitest coverage for data table rendering, table-state URL preservation, custom date form controls, no-match states, real filter controls, and Editorial guardrails.",
+      "Browser smoke passed through the real Next route against a local API-compatible stub on port 3016: loaded /orgs/namuh/projects/12/insights, navigated ranges, applied a no-match filter, toggled data table mode, submitted a custom range, checked no href=\"#\" links, checked no horizontal overflow, and saved ralph/screenshots/build/projects-008-phase3-chart-exploration.jpg.",
+      "Verification passed: cargo fmt --all; cargo check -p opengithub-api --tests; focused Insights contract test compiled and passed under the DB guard; focused ProjectInsightsPage Vitest with 8 tests; web TypeScript; focused Biome; full make check; full make test with Cargo tests plus 582 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Run Phase 3 browser smoke and the focused Rust Insights contract against a clean migrated credentialed TEST_DATABASE_URL; this iteration used a local API-compatible stub for browser smoke and DB assertions self-skipped because local Postgres on localhost:55432 rejected the configured postgres password.",
+      "Bounded TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false timeout 120 make test-e2e was attempted and terminated without useful output; rerun signed-in Projects Insights E2E after fixing local test database credentials.",
+      "Probe multi-token filters, unsupported token combinations, very large date ranges, start-after-end custom ranges, empty projects, projects with only draft items, sparse completed dates, mobile table overflow, keyboard operation inside the custom range details panel, and screen-reader table/chart labels.",
+      "Phases 4-6 still own custom chart mutations, sharing/status integration, API docs, final browser evidence, QA handoff, and build_pass bookkeeping."
+    ]
   }
 ]

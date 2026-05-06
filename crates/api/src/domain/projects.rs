@@ -166,6 +166,14 @@ pub struct ProjectInsightsQuery<'a> {
     pub table: Option<bool>,
 }
 
+const PROJECT_INSIGHTS_ALLOWED_FILTERS: &[&str] = &[
+    "is:open",
+    "is:closed",
+    "type:issue",
+    "type:pull_request",
+    "type:draft",
+];
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectViewStateRequest {
@@ -1816,7 +1824,7 @@ pub async fn project_insights(
 ) -> Result<ProjectInsights, ProjectsError> {
     let project = visible_workspace_project(pool, project_id, viewer_user_id).await?;
     let range = normalize_insights_range(query)?;
-    let filter = normalize_insights_filter(query.filter);
+    let filter = normalize_insights_filter(query.filter)?;
     let chart_id = query.chart.map(str::trim).filter(|value| !value.is_empty());
     let (selected_chart, custom_charts) =
         project_insights_charts(pool, &project, chart_id, &range, query).await?;
@@ -9133,25 +9141,29 @@ fn normalize_insights_range(
     })
 }
 
-fn normalize_insights_filter(raw: Option<&str>) -> ProjectInsightsFilter {
+fn normalize_insights_filter(raw: Option<&str>) -> Result<ProjectInsightsFilter, ProjectsError> {
     let query = raw.map(str::trim).filter(|value| !value.is_empty());
     let mut tokens = Vec::new();
     let mut unsupported_tokens = Vec::new();
     for token in query.unwrap_or("").split_whitespace() {
-        if matches!(
-            token,
-            "is:open" | "is:closed" | "type:issue" | "type:pull_request" | "type:draft"
-        ) {
+        if PROJECT_INSIGHTS_ALLOWED_FILTERS.contains(&token) {
             tokens.push(token.to_owned());
         } else {
             unsupported_tokens.push(token.to_owned());
         }
     }
-    ProjectInsightsFilter {
+    if !unsupported_tokens.is_empty() {
+        return Err(ProjectsError::InvalidFilter(format!(
+            "Unsupported Insights filter token(s): {}. Supported tokens are {}.",
+            unsupported_tokens.join(", "),
+            PROJECT_INSIGHTS_ALLOWED_FILTERS.join(", ")
+        )));
+    }
+    Ok(ProjectInsightsFilter {
         query: query.map(ToOwned::to_owned),
         tokens,
         unsupported_tokens,
-    }
+    })
 }
 
 async fn project_insights_charts(

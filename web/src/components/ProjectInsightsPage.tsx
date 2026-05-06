@@ -74,6 +74,7 @@ function rangeQuery(
     chart: insights.selectedChart.id,
     range,
     filter: insights.filter.query,
+    table: insights.selectedChart.configuration.table === true,
   };
 }
 
@@ -85,6 +86,18 @@ function chartQuery(
     chart: chart.id,
     range: insights.range.key,
     filter: insights.filter.query,
+    table: insights.selectedChart.configuration.table === true,
+  };
+}
+
+function activeQuery(insights: ProjectInsights): ProjectInsightsRouteQuery {
+  return {
+    chart: insights.selectedChart.id,
+    range: insights.range.key,
+    start: insights.range.key === "custom" ? insights.range.start : null,
+    end: insights.range.key === "custom" ? insights.range.end : null,
+    filter: insights.filter.query,
+    table: insights.selectedChart.configuration.table === true,
   };
 }
 
@@ -111,6 +124,8 @@ export function ProjectInsightsPage({
   const maxValue = maxSeriesValue(insights);
   const status = insights.latestStatus;
   const currentChartId = insights.selectedChart.id;
+  const showingTable = insights.selectedChart.configuration.table === true;
+  const hasMatches = insights.matchingItemCount > 0;
 
   return (
     <main
@@ -301,6 +316,23 @@ export function ProjectInsightsPage({
               >
                 <input name="chart" type="hidden" value={currentChartId} />
                 <input name="range" type="hidden" value={insights.range.key} />
+                {insights.range.key === "custom" ? (
+                  <>
+                    <input
+                      name="start"
+                      type="hidden"
+                      value={insights.range.start}
+                    />
+                    <input
+                      name="end"
+                      type="hidden"
+                      value={insights.range.end}
+                    />
+                  </>
+                ) : null}
+                {showingTable ? (
+                  <input name="table" type="hidden" value="true" />
+                ) : null}
                 <label className="min-w-[240px] flex-1">
                   <span className="t-label mb-1 block">Filter</span>
                   <input
@@ -332,14 +364,52 @@ export function ProjectInsightsPage({
                     {option.label}
                   </Link>
                 ))}
-                <button
-                  className="chip soft"
-                  disabled
-                  title="Custom range date selection is implemented in a later phase."
-                  type="button"
-                >
-                  Custom range
-                </button>
+                <details className="relative">
+                  <summary className="chip soft cursor-pointer list-none">
+                    Custom range
+                  </summary>
+                  <form
+                    action={projectInsightsHref(scope, owner, projectNumber)}
+                    className="card absolute right-0 z-10 mt-2 w-[280px] p-3"
+                    method="get"
+                  >
+                    <input name="chart" type="hidden" value={currentChartId} />
+                    <input name="range" type="hidden" value="custom" />
+                    {insights.filter.query ? (
+                      <input
+                        name="filter"
+                        type="hidden"
+                        value={insights.filter.query}
+                      />
+                    ) : null}
+                    {showingTable ? (
+                      <input name="table" type="hidden" value="true" />
+                    ) : null}
+                    <label className="block">
+                      <span className="t-label mb-1 block">Start date</span>
+                      <input
+                        className="input w-full"
+                        defaultValue={insights.range.start}
+                        name="start"
+                        required
+                        type="date"
+                      />
+                    </label>
+                    <label className="mt-3 block">
+                      <span className="t-label mb-1 block">End date</span>
+                      <input
+                        className="input w-full"
+                        defaultValue={insights.range.end}
+                        name="end"
+                        required
+                        type="date"
+                      />
+                    </label>
+                    <button className="btn sm mt-3 w-full" type="submit">
+                      Apply dates
+                    </button>
+                  </form>
+                </details>
                 <span className="t-xs ml-auto">
                   {insights.matchingItemCount} matching items ·{" "}
                   {formatDate(insights.range.start)} to{" "}
@@ -347,101 +417,159 @@ export function ProjectInsightsPage({
                 </span>
               </div>
 
-              {insights.filter.unsupportedTokens.length ? (
-                <div className="chip warn mb-4">
-                  Ignored tokens: {insights.filter.unsupportedTokens.join(", ")}
+              {!hasMatches ? (
+                <div className="card mb-4 p-4">
+                  <div className="t-label">No matching items</div>
+                  <p className="t-sm mt-2" style={{ color: "var(--ink-3)" }}>
+                    Adjust the filter or date range to include project items in
+                    this chart.
+                  </p>
                 </div>
               ) : null}
 
-              <div
-                aria-label={`${insights.selectedChart.title} chart`}
-                className="card"
-                role="img"
-                style={{
-                  padding: 18,
-                  background: "var(--surface-2)",
-                  minHeight: 300,
-                }}
-              >
+              {showingTable ? (
+                <div className="card overflow-auto">
+                  <table className="w-full min-w-[640px] text-left">
+                    <caption className="sr-only">
+                      {insights.selectedChart.title} chart data table
+                    </caption>
+                    <thead>
+                      <tr style={{ borderBottom: "1px solid var(--line)" }}>
+                        <th className="t-label p-3">Item</th>
+                        <th className="t-label p-3">Type</th>
+                        <th className="t-label p-3">State</th>
+                        <th className="t-label p-3">Repository</th>
+                        <th className="t-label p-3">Created</th>
+                        <th className="t-label p-3">Completed</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {insights.dataRows.length ? (
+                        insights.dataRows.map((row) => (
+                          <tr
+                            key={row.itemId}
+                            style={{ borderBottom: "1px solid var(--line)" }}
+                          >
+                            <td className="t-sm p-3">{row.title}</td>
+                            <td className="t-mono-sm p-3">{row.itemType}</td>
+                            <td className="t-sm p-3">{row.state ?? "open"}</td>
+                            <td className="t-sm p-3">
+                              {row.repository?.fullName ?? "Project draft"}
+                            </td>
+                            <td className="t-sm p-3">
+                              {formatDate(row.createdAt)}
+                            </td>
+                            <td className="t-sm p-3">
+                              {row.completedAt
+                                ? formatDate(row.completedAt)
+                                : "Not completed"}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td
+                            className="t-sm p-4"
+                            colSpan={6}
+                            style={{ color: "var(--ink-3)" }}
+                          >
+                            No chart rows match the selected filters.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
                 <div
+                  aria-label={`${insights.selectedChart.title} chart`}
+                  className="card"
+                  role="img"
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: `repeat(${Math.max(
-                      1,
-                      insights.series[0]?.points.length ?? 1,
-                    )}, minmax(14px, 1fr))`,
-                    gap: 8,
-                    alignItems: "end",
-                    minHeight: 220,
+                    padding: 18,
+                    background: "var(--surface-2)",
+                    minHeight: 300,
                   }}
                 >
-                  {(insights.series[0]?.points ?? []).map(
-                    (point, pointIndex) => (
-                      <div
-                        key={point.date}
-                        style={{
-                          display: "flex",
-                          alignItems: "end",
-                          gap: 3,
-                          height: 220,
-                        }}
-                      >
-                        {insights.series.map((series, seriesIndex) => {
-                          const seriesPoint =
-                            series.points[pointIndex] ?? point;
-                          return (
-                            <span
-                              key={series.id}
-                              title={`${series.name}: ${seriesPoint.value}`}
-                              style={{
-                                background: seriesColor(seriesIndex),
-                                borderRadius: "var(--radius) var(--radius) 0 0",
-                                display: "block",
-                                flex: 1,
-                                minHeight: 2,
-                                height: `${Math.max(
-                                  2,
-                                  (seriesPoint.value / maxValue) * 100,
-                                )}%`,
-                              }}
-                            />
-                          );
-                        })}
-                      </div>
-                    ),
-                  )}
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: `repeat(${Math.max(
+                        1,
+                        insights.series[0]?.points.length ?? 1,
+                      )}, minmax(14px, 1fr))`,
+                      gap: 8,
+                      alignItems: "end",
+                      minHeight: 220,
+                    }}
+                  >
+                    {(insights.series[0]?.points ?? []).map(
+                      (point, pointIndex) => (
+                        <div
+                          key={point.date}
+                          style={{
+                            display: "flex",
+                            alignItems: "end",
+                            gap: 3,
+                            height: 220,
+                          }}
+                        >
+                          {insights.series.map((series, seriesIndex) => {
+                            const seriesPoint =
+                              series.points[pointIndex] ?? point;
+                            return (
+                              <span
+                                key={series.id}
+                                title={`${series.name}: ${seriesPoint.value}`}
+                                style={{
+                                  background: seriesColor(seriesIndex),
+                                  borderRadius:
+                                    "var(--radius) var(--radius) 0 0",
+                                  display: "block",
+                                  flex: 1,
+                                  minHeight: 2,
+                                  height: `${Math.max(
+                                    2,
+                                    (seriesPoint.value / maxValue) * 100,
+                                  )}%`,
+                                }}
+                              />
+                            );
+                          })}
+                        </div>
+                      ),
+                    )}
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    {insights.series.map((series, index) => (
+                      <span className="t-xs" key={series.id}>
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            background: seriesColor(index),
+                            borderRadius: "var(--radius-pill)",
+                            display: "inline-block",
+                            height: 8,
+                            marginRight: 6,
+                            width: 8,
+                          }}
+                        />
+                        {series.name}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-                <div className="mt-4 flex flex-wrap gap-3">
-                  {insights.series.map((series, index) => (
-                    <span className="t-xs" key={series.id}>
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          background: seriesColor(index),
-                          borderRadius: "var(--radius-pill)",
-                          display: "inline-block",
-                          height: 8,
-                          marginRight: 6,
-                          width: 8,
-                        }}
-                      />
-                      {series.name}
-                    </span>
-                  ))}
-                </div>
-              </div>
+              )}
 
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <Link
                   className="btn sm"
                   href={projectInsightsHref(scope, owner, projectNumber, {
-                    chart: currentChartId,
-                    range: insights.range.key,
-                    filter: insights.filter.query,
-                    table: true,
+                    ...activeQuery(insights),
+                    table: !showingTable,
                   })}
                 >
-                  View as data table
+                  {showingTable ? "View as chart" : "View as data table"}
                 </Link>
                 <span className="t-xs">
                   Cache computed {formatDateTime(insights.cache.computedAt)}

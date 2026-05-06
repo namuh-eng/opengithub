@@ -427,7 +427,7 @@ async fn project_insights_route(
         query.as_domain_query(),
     )
     .await
-    .map_err(map_projects_error)?;
+    .map_err(map_project_insights_error)?;
     Ok(Json(insights))
 }
 
@@ -1140,5 +1140,14 @@ fn map_projects_error(error: ProjectsError) -> (StatusCode, Json<ErrorEnvelope>)
             "internal_error",
             "Project list could not be loaded",
         ),
+    }
+}
+
+fn map_project_insights_error(error: ProjectsError) -> (StatusCode, Json<ErrorEnvelope>) {
+    match error {
+        ProjectsError::InvalidFilter(message) => {
+            error_response(StatusCode::UNPROCESSABLE_ENTITY, "invalid_filter", message)
+        }
+        other => map_projects_error(other),
     }
 }

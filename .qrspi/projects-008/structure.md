@@ -40,7 +40,7 @@
 
 ## Phase 3: Filters, Ranges, Custom Range, and Data Table - chart exploration recomputes from project items
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make chart exploration real. Filter changes update URL/query state and matching count, range links recompute the Burn up window, custom range validates date selection, and View as data table toggles an accessible table without losing project context.
 

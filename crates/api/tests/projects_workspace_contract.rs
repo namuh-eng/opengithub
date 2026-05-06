@@ -262,8 +262,22 @@ async fn project_insights_read_contract_filters_private_items_and_returns_burnup
         Some(&member_cookie),
     )
     .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(body["error"]["code"], "invalid_filter");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), app_config());
+    let (status, _, body) = get_json(
+        app,
+        &format!("/api/projects/{project_id}/insights?filter=label:bug"),
+        Some(&member_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(body["error"]["code"], "invalid_filter");
+    assert!(body["error"]["message"]
+        .as_str()
+        .expect("message")
+        .contains("Unsupported Insights filter token"));
 }
 
 fn app_config() -> AppConfig {
