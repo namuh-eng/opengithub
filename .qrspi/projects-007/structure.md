@@ -92,7 +92,7 @@
 
 ## Phase 6: API Docs, Browser Smoke, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `projects-007` only after settings reads, Editorial settings UI, general/template/status/repository mutations, access grants, danger lifecycle, docs, screenshots, and QA handoff are verified. Do not implement project insights, exports, billing, full organization policy management, repository issue creation beyond default-repository routing, custom field/workflow behavior already covered by `projects-004` and `projects-006`, or GitHub visual styling as part of this feature.
 

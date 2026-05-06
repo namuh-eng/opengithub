@@ -356,6 +356,39 @@ describe("ApiDocsPage", () => {
       screen.getByText(/Workspace filters understand iteration values/),
     ).toBeVisible();
     expect(
+      screen.getAllByText("/api/projects/{project_id}/settings")[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/projects/{project_id}/settings/access"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/projects/{project_id}/repositories/{repository_id}",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/projects/{project_id}/status-updates"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/projects/{project_id}/template"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/projects/{project_id}/access-grants"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/projects/{project_id}/access-grants/{grant_id}"),
+    ).toBeVisible();
+    expect(screen.getByText("/api/projects/{project_id}/close")).toBeVisible();
+    expect(screen.getByText("/api/projects/{project_id}/reopen")).toBeVisible();
+    expect(
+      screen.getByText(/Organization policy can deny visibility changes/),
+    ).toBeVisible();
+    expect(screen.getByText(/Repository link changes write/)).toBeVisible();
+    expect(screen.getAllByText(/protects the last admin/)[0]).toBeVisible();
+    expect(
+      screen.getByText(/Deleted projects disappear from normal list/),
+    ).toBeVisible();
+    expect(
       screen.getByText("/api/projects/{project_id}/workflows"),
     ).toBeVisible();
     expect(

@@ -1201,6 +1201,298 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "projects-settings-read",
+    method: "GET",
+    path: "/api/projects/{project_id}/settings",
+    title: "Read Project settings",
+    description:
+      "Returns the Project settings contract used by General, Access, Templates, and Danger Zone pages, including metadata, README, policy locks, linked repositories, access grants, status updates, template state, and lifecycle capabilities.",
+    auth: "Signed opengithub session cookie when required by project visibility; private projects require project read access",
+    response: `{
+  "project": { "id": "project_01", "number": 12, "title": "Release tracking" },
+  "general": {
+    "title": "Release tracking",
+    "shortDescription": "Plan the next train",
+    "readmeMarkdown": "## Release process",
+    "visibility": "private",
+    "defaultRepositoryId": "repo_01",
+    "updatedAt": "2026-05-06T10:20:00Z"
+  },
+  "policy": {
+    "projectsEnabled": true,
+    "visibilityChangesAllowed": false,
+    "basePermission": "write"
+  },
+  "repositories": [
+    { "id": "repo_01", "fullName": "acme-labs/platform", "default": true, "viewerCanWrite": true }
+  ],
+  "accessGrants": [
+    { "id": "grant_01", "subjectType": "user", "login": "mona", "role": "admin", "inherited": false }
+  ],
+  "teamGrants": [
+    { "id": "grant_02", "team": { "slug": "platform" }, "role": "write", "inherited": false }
+  ],
+  "statusUpdates": [
+    { "id": "status_01", "state": "on_track", "messageMarkdown": "Ready for review" }
+  ],
+  "template": { "isTemplate": true, "copySourceProjectId": null },
+  "dangerState": { "closed": false, "deleted": false },
+  "viewerPermissions": { "canUpdateSettings": true, "canManageAccess": true, "canDeleteProject": true }
+}`,
+    notes: [
+      "GET /api/projects/{project_id}/settings/access returns the same contract for Access pages so the browser can share permission, grant, and policy state.",
+      "User and organization settings routes resolve project numbers before calling this project-id endpoint.",
+      "Linked repositories are filtered by repository visibility, and policy locks are explicit instead of relying on browser-only disabled controls.",
+      "Deleted projects return privacy-preserving not_found responses through normal settings reads.",
+    ],
+  },
+  {
+    id: "projects-settings-update",
+    method: "PATCH",
+    path: "/api/projects/{project_id}/settings",
+    title: "Update Project settings",
+    description:
+      "Persists General settings edits for title, short description, README Markdown, visibility, and default repository.",
+    auth: "Signed opengithub session cookie with project admin access",
+    request: `{
+  "title": "Release train",
+  "shortDescription": "Plan the next train",
+  "readmeMarkdown": "## Release process",
+  "visibility": "private",
+  "defaultRepositoryId": "repo_01",
+  "expectedUpdatedAt": "2026-05-06T10:20:00Z"
+}`,
+    response: `{
+  "general": {
+    "title": "Release train",
+    "visibility": "private",
+    "defaultRepositoryId": "repo_01",
+    "updatedAt": "2026-05-06T10:25:00Z"
+  }
+}`,
+    notes: [
+      "Organization policy can deny visibility changes while still allowing title, README, and default repository edits.",
+      "Default repositories must be linked to the project and writable by the actor so new issue routing cannot target inaccessible repositories.",
+      "README edits create project_readme revision rows; stale expectedUpdatedAt values return conflict.",
+      "Successful updates write project.settings.update audit events and return a refreshed settings contract.",
+    ],
+  },
+  {
+    id: "projects-settings-access-read",
+    method: "GET",
+    path: "/api/projects/{project_id}/settings/access",
+    title: "Read Project access settings",
+    description:
+      "Returns the shared settings contract scoped for the Access page, including direct grants, team grants, eligible teams, base permission inheritance, and viewer access capabilities.",
+    auth: "Signed opengithub session cookie when required by project visibility; private projects require project read access",
+    response: `{
+  "accessGrants": [
+    { "id": "grant_01", "subjectType": "user", "login": "mona", "role": "admin" }
+  ],
+  "teamGrants": [
+    { "id": "grant_02", "team": { "slug": "platform" }, "role": "write" }
+  ],
+  "eligibleTeams": [
+    { "id": "team_01", "slug": "platform", "name": "Platform" }
+  ],
+  "policy": { "basePermission": "write" },
+  "viewerPermissions": { "canManageAccess": true }
+}`,
+    notes: [
+      "This endpoint shares the same privacy, deleted-project, and no-secret behavior as GET /api/projects/{project_id}/settings.",
+      "Inherited organization base permissions and team grants are explicit so the browser can distinguish removable direct grants from policy-derived access.",
+    ],
+  },
+  {
+    id: "projects-settings-repositories",
+    method: "POST",
+    path: "/api/projects/{project_id}/repositories/{repository_id}",
+    title: "Link Project repository",
+    description:
+      "Links a repository to a Project so repository Projects tabs and default issue routing can point back to the Project. The same route supports DELETE to remove a link.",
+    auth: "Signed opengithub session cookie with project admin access and repository write access",
+    request: `{
+  "expectedUpdatedAt": "2026-05-06T10:20:00Z"
+}`,
+    response: `{
+  "repositories": [
+    { "id": "repo_01", "fullName": "acme-labs/platform", "default": true }
+  ]
+}`,
+    notes: [
+      "Duplicate links return conflict, foreign-owner or inaccessible repositories return forbidden, and removing the default repository clears defaultRepositoryId.",
+      "DELETE /api/projects/{project_id}/repositories/{repository_id} removes only the project link; it never deletes the repository.",
+      "Repository link changes write project.repository.link or project.repository.unlink audit events.",
+    ],
+  },
+  {
+    id: "projects-settings-status-update",
+    method: "POST",
+    path: "/api/projects/{project_id}/status-updates",
+    title: "Publish Project status update",
+    description:
+      "Publishes an on-track, at-risk, off-track, or complete status update for a Project settings status panel.",
+    auth: "Signed opengithub session cookie with project write/admin access",
+    request: `{
+  "state": "at_risk",
+  "messageMarkdown": "Waiting on security review",
+  "startDate": "2026-05-01",
+  "targetDate": "2026-05-31",
+  "expectedUpdatedAt": "2026-05-06T10:20:00Z"
+}`,
+    response: `{
+  "statusUpdates": [
+    { "id": "status_02", "state": "at_risk", "messageMarkdown": "Waiting on security review" }
+  ]
+}`,
+    notes: [
+      "State must be on_track, at_risk, off_track, or complete; blank messages and inverted date ranges return validation_failed.",
+      "Closed or deleted projects reject new status updates.",
+      "Successful publishes append project_status_updates and project.status_update.create audit events.",
+    ],
+  },
+  {
+    id: "projects-settings-template",
+    method: "PATCH",
+    path: "/api/projects/{project_id}/template",
+    title: "Update Project template state",
+    description:
+      "Toggles whether a Project can be copied as a template and records optional copy-source metadata.",
+    auth: "Signed opengithub session cookie with project admin access",
+    request: `{
+  "isTemplate": true,
+  "expectedUpdatedAt": "2026-05-06T10:20:00Z"
+}`,
+    response: `{
+  "template": { "isTemplate": true, "copySourceProjectId": null }
+}`,
+    notes: [
+      "Template toggles are disabled for closed or deleted projects and honor stale expectedUpdatedAt conflicts.",
+      "Successful writes update project_templates and write project.template.update audit events.",
+    ],
+  },
+  {
+    id: "projects-settings-access-grants",
+    method: "POST",
+    path: "/api/projects/{project_id}/access-grants",
+    title: "Create Project access grant",
+    description:
+      "Adds a direct user or team grant to a Project Access settings page. Existing grants can be changed or removed through the grant-id route.",
+    auth: "Signed opengithub session cookie with project admin access",
+    request: `{
+  "subjectType": "team",
+  "subjectId": "team_01",
+  "role": "write",
+  "expectedUpdatedAt": "2026-05-06T10:20:00Z"
+}`,
+    response: `{
+  "teamGrants": [
+    { "id": "grant_02", "team": { "slug": "platform" }, "role": "write" }
+  ]
+}`,
+    notes: [
+      "Roles are read, write, or admin; users must belong to the owning organization and teams must be owned by the same organization.",
+      "PATCH /api/projects/{project_id}/access-grants/{grant_id} changes role with stale-update protection.",
+      "DELETE /api/projects/{project_id}/access-grants/{grant_id} removes the grant but protects the last admin.",
+      "Access mutations write project.access_grant.create, update, or delete audit events.",
+    ],
+  },
+  {
+    id: "projects-settings-access-grant-update",
+    method: "PATCH",
+    path: "/api/projects/{project_id}/access-grants/{grant_id}",
+    title: "Update Project access grant",
+    description:
+      "Changes a direct user or team grant role. The same grant-id resource supports DELETE to remove a grant.",
+    auth: "Signed opengithub session cookie with project admin access",
+    request: `{
+  "role": "admin",
+  "expectedUpdatedAt": "2026-05-06T10:20:00Z"
+}`,
+    response: `{
+  "accessGrants": [
+    { "id": "grant_01", "subjectType": "user", "login": "mona", "role": "admin" }
+  ]
+}`,
+    notes: [
+      "Role updates require read, write, or admin and reject stale expectedUpdatedAt values.",
+      "DELETE /api/projects/{project_id}/access-grants/{grant_id} removes a direct grant but protects the last admin.",
+      "Inherited organization base permissions cannot be removed through direct grant deletion.",
+    ],
+  },
+  {
+    id: "projects-settings-close",
+    method: "POST",
+    path: "/api/projects/{project_id}/close",
+    title: "Close Project",
+    description:
+      "Closes an active Project after admin confirmation, leaving it readable while mutation controls become disabled.",
+    auth: "Signed opengithub session cookie with project admin access",
+    request: `{
+  "expectedUpdatedAt": "2026-05-06T10:20:00Z"
+}`,
+    response: `{
+  "dangerState": {
+    "closed": true,
+    "closedAt": "2026-05-06T10:30:00Z",
+    "deleted": false
+  },
+  "viewerPermissions": { "canUpdateSettings": false, "canManageAccess": false }
+}`,
+    notes: [
+      "POST /api/projects/{project_id}/reopen reverses a closed project when the actor still has admin access.",
+      "Closed projects remain readable from settings and workspace reads but reject unrelated field, access, and item mutations.",
+      "Close and reopen writes project.close and project.reopen audit events.",
+    ],
+  },
+  {
+    id: "projects-settings-reopen",
+    method: "POST",
+    path: "/api/projects/{project_id}/reopen",
+    title: "Reopen Project",
+    description:
+      "Reopens a closed Project when the actor still has project admin access.",
+    auth: "Signed opengithub session cookie with project admin access",
+    request: `{
+  "expectedUpdatedAt": "2026-05-06T10:30:00Z"
+}`,
+    response: `{
+  "dangerState": {
+    "closed": false,
+    "closedAt": null,
+    "deleted": false
+  },
+  "viewerPermissions": { "canUpdateSettings": true, "canManageAccess": true }
+}`,
+    notes: [
+      "Reopen rejects deleted projects and stale expectedUpdatedAt values.",
+      "Successful reopens write project.reopen audit events and return refreshed mutation capabilities.",
+    ],
+  },
+  {
+    id: "projects-settings-delete",
+    method: "DELETE",
+    path: "/api/projects/{project_id}",
+    title: "Delete Project",
+    description:
+      "Soft-deletes a Project after typed title confirmation and returns the owner or organization Projects list destination.",
+    auth: "Signed opengithub session cookie with project admin access",
+    request: `{
+  "confirmation": "Release tracking",
+  "expectedUpdatedAt": "2026-05-06T10:20:00Z"
+}`,
+    response: `{
+  "deleted": true,
+  "redirectHref": "/orgs/acme-labs/projects"
+}`,
+    notes: [
+      "Confirmation must match the current title; casing or whitespace mistakes return validation_failed.",
+      "Deleted projects disappear from normal list, workspace, and settings reads without leaking private metadata.",
+      "Soft delete preserves audit, item, workflow, and archive rows for retention while hiding the Project from product surfaces.",
+      "Successful deletes write project.delete audit events.",
+    ],
+  },
+  {
     id: "projects-workflow-settings-read",
     method: "GET",
     path: "/api/projects/{project_id}/workflows",
