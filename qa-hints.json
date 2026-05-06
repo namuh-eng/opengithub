@@ -7710,5 +7710,20 @@
       "Probe concurrent reverts, stale compare pages, base/head revisions from different wiki pages, disabled wiki and archived repository denial, ambiguous short-SHA compare inputs feeding revert, local bare Git contents after revert, audit/activity/revert-event consistency if Git publishing fails, notification fanout where enabled, private repository leakage, and keyboard-only Revert Changes flow.",
       "Phase 5 still owns API docs, final signed-in E2E, final screenshots, QA handoff consolidation, and wiki-003 build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "wiki-003",
+    "tests_written": [
+      "Completed Phase 5 Docs, E2E, QA Handoff, and Build-Pass Bookkeeping and marked wiki-003 build_pass=true while leaving qa_pass=false.",
+      "Added /docs/api entries for wiki history, historical revision reads, two-revision compare, and permissioned revert, including pagination, SHA resolution, diff cache behavior, stale conflicts, permission boundaries, revert events, audit/activity side effects, and no-secret response envelopes.",
+      "Added focused ApiDocsPage coverage for the wiki history/revision/compare/revert docs and existing RepositoryWikiHistoryPage, RepositoryWikiRevisionPage, and RepositoryWikiComparePage coverage for row accessibility, snapshot banners, diff rendering, permissioned revert visibility/action, no placeholder links, and Editorial guardrails.",
+      "Added web/tests/e2e/repository-wiki-history.spec.ts for a signed-session sweep that creates a two-revision page through the Rust API, opens page-scoped history, reads a historical snapshot, compares revisions, reverts from the compare view, checks no dead controls/no horizontal overflow, and saves desktop/mobile screenshots.",
+      "Final verification for this phase should include focused docs/wiki tests, web TypeScript, Biome, Rust wiki contracts, full make check, full make test, bounded make test-e2e/direct Playwright attempt, JSON validation, and the mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Run web/tests/e2e/repository-wiki-history.spec.ts against a clean migrated credentialed TEST_DATABASE_URL; the local localhost:55432 postgres credential issue has blocked prior signed-in E2E runs.",
+      "Probe large histories, ambiguous short SHA collisions, identical timestamps, page-scoped histories across nested slugs, same-content revisions, huge truncated diffs, keyboard-only checkbox-to-compare and Revert Changes flows, and mobile long-line wrapping.",
+      "Probe concurrent reverts and stale compare pages, disabled wiki and archived repository denial, cross-page revision rejection, private repository leakage, notification fanout where enabled, audit/activity/revert-event consistency, and local bare Git contents after revert."
+    ]
   }
 ]

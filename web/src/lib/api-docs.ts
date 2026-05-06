@@ -2877,6 +2877,151 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-wiki-history",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/wiki/_history?page=1&pageSize=30",
+    title: "List repository wiki revision history",
+    description:
+      "Returns the screen-ready wiki revision history contract for all pages or a page-scoped history route, including author metadata, commit messages, short SHA links, revision snapshot links, pagination, and viewer permissions.",
+    auth: "Anonymous for public repositories; signed opengithub session cookie with repository read access for private repositories",
+    response: `{
+  "repository": { "ownerLogin": "mona", "name": "octo-app", "wikiEnabled": true },
+  "viewer": { "permission": "write", "canEditWiki": true },
+  "scope": { "kind": "all_pages", "page": null },
+  "revisions": [
+    {
+      "id": "rev_02",
+      "pageTitle": "Home",
+      "pageSlug": "Home",
+      "message": "Refresh wiki home",
+      "shortOid": "bcdef12",
+      "href": "/mona/octo-app/wiki/Home/_history/bcdef1234567890",
+      "revisionHref": "/mona/octo-app/wiki/Home/_history/bcdef1234567890"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "pageSize": 30,
+    "hasNewer": false,
+    "hasOlder": true,
+    "olderHref": "/mona/octo-app/wiki/_history?page=2"
+  },
+  "links": { "historyHref": "/mona/octo-app/wiki/_history" }
+}`,
+    notes: [
+      "Page-scoped history is available at /api/repos/{owner}/{repo}/wiki/{slug}/_history and preserves page, pageSize, and page scope in Newer/Older links.",
+      "page is clamped to at least 1 and pageSize is bounded so large histories cannot force unbounded reads.",
+      "Short SHA links target immutable revision snapshots; the response never includes raw session rows, OAuth secrets, local wiki storage paths, or stack traces.",
+      "Readers can select revisions for compare, but write-only controls such as revert are exposed later by the compare contract only when canEditWiki is true.",
+    ],
+  },
+  {
+    id: "repo-wiki-revision-read",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/wiki/{slug}/_history/{revision}",
+    title: "Read repository wiki historical revision",
+    description:
+      "Renders one historical wiki revision by revision id, full commit OID, or unique short OID using the same Rust Markdown sanitizer as the live reader while keeping the browser route read-only.",
+    auth: "Anonymous for public repositories; signed opengithub session cookie with repository read access for private repositories",
+    response: `{
+  "page": {
+    "title": "Home",
+    "slug": "Home",
+    "html": "<h1 id=\\"home\\">Home</h1><p>Historical body.</p>",
+    "revision": {
+      "id": "rev_01",
+      "message": "Publish wiki home",
+      "shortOid": "abcdef1"
+    },
+    "editHref": null
+  },
+  "revisionContext": {
+    "selectedRevision": { "id": "rev_01", "shortOid": "abcdef1" },
+    "latestHref": "/mona/octo-app/wiki",
+    "historyHref": "/mona/octo-app/wiki/Home/_history",
+    "previousRevisionHref": null,
+    "nextRevisionHref": "/mona/octo-app/wiki/Home/_history/bcdef12",
+    "isLatest": false
+  }
+}`,
+    notes: [
+      "Ambiguous short OIDs, unknown revisions, disabled wikis, and private repositories outside the viewer boundary return structured error envelopes.",
+      "Historical snapshots never return editHref or save endpoints; reverting is intentionally available only from compare after permission checks.",
+      "HTML is sanitized from the stored historical Markdown, not from the latest page content or client-side rendering.",
+    ],
+  },
+  {
+    id: "repo-wiki-compare",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/wiki/_compare?base={revision}&head={revision}&page={slug}",
+    title: "Compare repository wiki revisions",
+    description:
+      "Returns a bounded line diff between two wiki revisions, normalizing base/head order, resolving cached diffs when available, and exposing permissioned revert capability through viewer.canEditWiki.",
+    auth: "Anonymous for public repositories; signed opengithub session cookie with repository read access for private repositories",
+    response: `{
+  "page": { "title": "Home", "slug": "Home", "href": "/mona/octo-app/wiki" },
+  "base": { "id": "rev_01", "shortOid": "abcdef1", "message": "Publish wiki home" },
+  "head": { "id": "rev_02", "shortOid": "bcdef12", "message": "Refresh wiki home" },
+  "stats": { "additions": 1, "deletions": 1, "totalLines": 2, "truncated": false },
+  "files": [
+    {
+      "path": "Home.md",
+      "additions": 1,
+      "deletions": 1,
+      "hunks": [
+        {
+          "header": "@@ -1,2 +1,2 @@",
+          "lines": [
+            { "kind": "deletion", "oldNumber": 2, "newNumber": null, "content": "Old body." },
+            { "kind": "addition", "oldNumber": null, "newNumber": 2, "content": "New body." }
+          ]
+        }
+      ]
+    }
+  ],
+  "links": { "historyHref": "/mona/octo-app/wiki/Home/_history" }
+}`,
+    notes: [
+      "base and head may be revision ids, full commit OIDs, or unique short OIDs; identical, unrelated, cross-page, and unavailable revisions return validation or not_found envelopes.",
+      "wiki_diff_cache stores bounded structured diff results and is refreshed when source revisions change or revert invalidates stale comparisons.",
+      "Huge diffs are truncated for inline viewing and still preserve line numbers, paths, stats, and raw revision links for QA inspection.",
+    ],
+  },
+  {
+    id: "repo-wiki-revert",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/wiki/reverts",
+    title: "Revert repository wiki revisions",
+    description:
+      "Creates a new wiki revision that restores the base revision from a compare view, records a revert event, publishes a local bare Git commit, invalidates render/diff caches, and redirects to page history.",
+    auth: "Signed opengithub session cookie with repository write or admin permission",
+    request: `{
+  "pageSlug": "Home",
+  "baseRevisionId": "rev_01",
+  "expectedHeadRevisionId": "rev_02"
+}`,
+    response: `{
+  "page": {
+    "title": "Home",
+    "slug": "Home",
+    "href": "/mona/octo-app/wiki",
+    "revision": { "id": "rev_03", "shortOid": "cafe123" }
+  },
+  "gitCommit": {
+    "shortOid": "cafe123",
+    "message": "Revert wiki page Home to abcdef1"
+  },
+  "revertEventId": "revert_01",
+  "restoredRevisionId": "rev_03",
+  "redirectHref": "/mona/octo-app/wiki/Home/_history"
+}`,
+    notes: [
+      "The mutation validates edit permission, enabled wiki state, non-archived repository state, same-page revision compatibility, and expectedHeadRevisionId freshness.",
+      "Successful reverts write wiki_revert_events, wiki_page_revisions, wiki_git_commits, rendered_markdown_cache invalidation, repository activity, and audit_events in one publishing flow.",
+      "Reader, stale, disabled, archived, cross-page, and unavailable revisions return 401, 403, 404, 409, or 422 without stack traces, secrets, local Git paths, or raw submitted cookies.",
+    ],
+  },
+  {
     id: "repo-access-read",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/settings/access",

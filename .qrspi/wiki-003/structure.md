@@ -86,7 +86,7 @@
 
 ## Phase 5: Docs, E2E, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `wiki-003` only after history, revision snapshots, compare, revert, docs, screenshots, and QA handoff are complete.
 

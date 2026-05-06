@@ -409,6 +409,34 @@ describe("ApiDocsPage", () => {
       screen.getByText(/Stale expectedRevisionId values return 409 conflict/),
     ).toBeVisible();
     expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/wiki/_history?page=1&pageSize=30",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/wiki/{slug}/_history/{revision}",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/wiki/_compare?base={revision}&head={revision}&page={slug}",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/wiki/reverts"),
+    ).toBeVisible();
+    expect(screen.getByText(/Page-scoped history is available/)).toBeVisible();
+    expect(
+      screen.getByText(/Ambiguous short OIDs, unknown revisions/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/wiki_diff_cache stores bounded structured diff/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Successful reverts write wiki_revert_events/),
+    ).toBeVisible();
+    expect(
       screen.getByText("/api/projects/{project_id}/settings/access"),
     ).toBeVisible();
     expect(
