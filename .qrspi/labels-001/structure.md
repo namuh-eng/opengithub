@@ -86,7 +86,7 @@ The collaboration foundation already has repository-scoped `labels`, `issue_labe
 
 ## Phase 5: Docs, E2E, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `labels-001` only after label CRUD, search/sort, issue/PR/discussion application, docs, screenshots, E2E coverage, QA hints, and final bookkeeping are complete.
 

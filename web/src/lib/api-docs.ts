@@ -5830,6 +5830,168 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-labels-list",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/labels?q=bug&sort=name&direction=asc&page=1&pageSize=100",
+    title: "List repository labels",
+    description:
+      "Returns repository labels with search, sort, pagination, open issue and pull request counts, discussion counts, and concrete filter hrefs for every collaboration surface.",
+    auth: "Anonymous for public repositories, signed opengithub session cookie for private repositories",
+    response: `{
+  "items": [
+    {
+      "id": "label_bug",
+      "name": "bug",
+      "color": "b85c38",
+      "description": "Something is not working",
+      "counts": {
+        "openIssues": 3,
+        "openPullRequests": 1,
+        "discussions": 2,
+        "totalIssueCount": 4
+      },
+      "issuesHref": "/mona/octo-app/issues?q=is%3Aissue+state%3Aopen+label%3Abug&labels=bug",
+      "pullRequestsHref": "/mona/octo-app/pulls?q=is%3Apr+state%3Aopen+label%3Abug&labels=bug",
+      "discussionsHref": "/mona/octo-app/discussions?label=bug"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "pageSize": 100
+}`,
+    notes: [
+      "Search matches label names and descriptions; sort supports name and total issue count with ascending or descending direction.",
+      "Private repositories return not_found to unauthorized viewers, while public repository labels remain readable without a session.",
+      "Counts are computed from issues, pull-request backing issues, and discussions without exposing private conversation bodies or raw join rows.",
+    ],
+  },
+  {
+    id: "repo-labels-create",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/labels",
+    title: "Create repository label",
+    description:
+      "Creates a repository-owned label, normalizes its color, records label event evidence, and returns the created label summary used by the Editorial Labels page.",
+    auth: "Signed opengithub session cookie with write, admin, or owner repository permission",
+    request: `{
+  "name": "needs review",
+  "description": "Needs maintainer attention",
+  "color": "b85c38"
+}`,
+    response: `{
+  "eventId": "event_01",
+  "label": {
+    "id": "label_needs_review",
+    "name": "needs review",
+    "color": "b85c38",
+    "description": "Needs maintainer attention"
+  }
+}`,
+    notes: [
+      "Validation rejects blank names, duplicate names case-insensitively, malformed colors, oversized descriptions, archived repositories, and insufficient permissions.",
+      "The API accepts colors with or without a leading hash but always returns six lowercase hexadecimal characters.",
+      "Errors use the standard envelope and never serialize session cookies, OAuth profile data, stack traces, database URLs, or environment values.",
+    ],
+  },
+  {
+    id: "repo-labels-update",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/labels/{label_id}",
+    title: "Update repository label",
+    description:
+      "Renames or recolors an existing repository label and lets issue, pull request, and discussion chips reflect the updated label through their existing label joins.",
+    auth: "Signed opengithub session cookie with write, admin, or owner repository permission",
+    request: `{
+  "name": "confirmed bug",
+  "description": "Confirmed defect",
+  "color": "7f6a42"
+}`,
+    response: `{
+  "eventId": "event_02",
+  "label": {
+    "id": "label_bug",
+    "name": "confirmed bug",
+    "color": "7f6a42"
+  }
+}`,
+    notes: [
+      "Partial updates preserve omitted fields and reject duplicate names, invalid colors, cross-repository label ids, archived repositories, and readers.",
+      "Successful updates write repository_label_events and audit evidence so QA can trace renamed labels without duplicating join rows.",
+      "Responses return the refreshed label contract only, not raw audit payloads or permission internals.",
+    ],
+  },
+  {
+    id: "repo-labels-delete",
+    method: "DELETE",
+    path: "/api/repos/{owner}/{repo}/labels/{label_id}",
+    title: "Delete repository label",
+    description:
+      "Deletes a repository label and removes its issue, pull request, and discussion assignments without deleting the linked conversations.",
+    auth: "Signed opengithub session cookie with write, admin, or owner repository permission",
+    response: `{
+  "eventId": "event_03",
+  "deleted": true,
+  "removedAssignments": {
+    "issues": 3,
+    "pullRequests": 1,
+    "discussions": 2
+  }
+}`,
+    notes: [
+      "Deletion cascades through issue_labels, pull-request issue labels, and discussion_labels while preserving issues, pull requests, discussion threads, comments, subscriptions, and notifications.",
+      "Missing or cross-repository label ids return not_found; readers and archived repositories receive stable permission or validation envelopes.",
+      "The Labels page, issue sidebar, pull request sidebar, and discussion sidebar all consume the same label source of truth after deletion.",
+    ],
+  },
+  {
+    id: "repo-issue-metadata-labels-update",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/issues/{issue_number}/metadata",
+    title: "Update issue labels",
+    description:
+      "Replaces issue sidebar label assignments with repository-owned labels, records metadata timeline evidence, and returns the refreshed issue detail contract.",
+    auth: "Signed opengithub session cookie with triage, write, admin, or owner repository permission",
+    request: `{
+  "labelIds": ["label_bug", "label_docs"],
+  "assigneeUserIds": [],
+  "milestoneId": null
+}`,
+    response: `{
+  "issue": { "number": 42 },
+  "labels": [{ "id": "label_bug", "name": "bug" }],
+  "timeline": [{ "eventType": "metadata_changed" }]
+}`,
+    notes: [
+      "Label ids must belong to the same repository; cross-repository labels are rejected before any issue_labels rows are changed.",
+      "The mutation computes added and removed labels transactionally and writes timeline/audit metadata with bounded label names and ids.",
+      "The same endpoint keeps assignee and milestone payloads compatible with existing issue metadata controls.",
+    ],
+  },
+  {
+    id: "repo-pull-metadata-labels-update",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/pulls/{pull_number}/metadata",
+    title: "Update pull request labels",
+    description:
+      "Replaces pull request sidebar label assignments through the pull request's backing issue row and returns the refreshed pull request detail contract.",
+    auth: "Signed opengithub session cookie with triage, write, admin, or owner repository permission",
+    request: `{
+  "labelIds": ["label_bug"],
+  "assigneeUserIds": [],
+  "milestoneId": null
+}`,
+    response: `{
+  "pullRequest": { "number": 7 },
+  "labels": [{ "id": "label_bug", "name": "bug" }],
+  "timeline": [{ "eventType": "metadata_changed" }]
+}`,
+    notes: [
+      "Pull request labels share the repository label table and issue_labels join semantics used by issues, so label edits and deletes propagate consistently.",
+      "Cross-repository labels, archived repositories, missing pull requests, and insufficient permissions fail without exposing private repository metadata.",
+      "Timeline, audit, and notification side effects use redacted old/new label metadata.",
+    ],
+  },
+  {
     id: "repo-discussion-metadata-update",
     method: "PATCH",
     path: "/api/repos/{owner}/{repo}/discussions/{discussion_number}/metadata",

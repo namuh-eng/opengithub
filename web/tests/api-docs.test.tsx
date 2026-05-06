@@ -96,6 +96,28 @@ describe("ApiDocsPage", () => {
       screen.getByText(/never includes invitation tokens, raw session rows/),
     ).toBeVisible();
     expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/labels?q=bug&sort=name&direction=asc&page=1&pageSize=100",
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("/api/repos/{owner}/{repo}/labels")).toBeVisible();
+    expect(
+      screen.getAllByText("/api/repos/{owner}/{repo}/labels/{label_id}")[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/issues/{issue_number}/metadata",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/pulls/{pull_number}/metadata",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Deletion cascades through issue_labels/),
+    ).toBeVisible();
+    expect(
       screen.getByText("/api/organizations/slug-availability?name=Acme%20Labs"),
     ).toBeVisible();
     expect(screen.getByText("/api/organizations")).toBeVisible();

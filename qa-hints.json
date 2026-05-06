@@ -7794,5 +7794,19 @@
       "Probe cross-surface edit/delete propagation by renaming and deleting labels from /labels, then checking issue, pull request, and discussion chips/filter links update without deleting conversations.",
       "Phase 5 still owns API docs, signed-in E2E coverage, final desktop/mobile screenshots, QA handoff consolidation, and labels-001 build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "labels-001",
+    "tests_written": [
+      "Completed Phase 5 Docs, E2E, QA Handoff, and Build-Pass Bookkeeping.",
+      "Added /docs/api coverage for repository label list/create/update/delete, query params, sorting, count semantics, permission boundaries, validation errors, issue/PR/discussion metadata label updates, audit/timeline side effects, delete cascades, and no-secret error envelopes.",
+      "Added web/tests/e2e/repository-labels.spec.ts for a signed-session sweep that creates a repository, creates/edits labels, applies labels on issue and pull request sidebars, verifies a discussion label, checks no dead controls/no horizontal overflow, and saves final desktop/mobile screenshots.",
+      "Verification passed: JSON validation, focused docs/label/issue/PR/discussion Vitest with 41 tests, web TypeScript, focused Biome, cargo fmt, focused Rust label/discussion contracts under the DB guard, full make check, full make test with Cargo tests plus 611 web tests, and mandatory Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Run web/tests/e2e/repository-labels.spec.ts against a clean migrated credentialed TEST_DATABASE_URL; bounded make test-e2e terminated after 120 seconds with no Playwright detail, and the direct labels spec failed in dashboard_e2e_seed because local localhost:55432 rejected the configured postgres credentials.",
+      "Probe concurrent label edits/deletes, case-insensitive name collisions, arbitrary user label color contrast, long labels/descriptions, delete cascade across issue_labels, pull-request backing issue labels, and discussion_labels, notification fanout, private repository leakage, archived repository denial, and keyboard-only LabelPicker use.",
+      "Probe stale UI after metadata changes across issue, pull request, and discussion detail pages, especially when a label is renamed or deleted while a picker is open."
+    ]
   }
 ]
