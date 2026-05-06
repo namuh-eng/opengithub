@@ -170,9 +170,22 @@ export function UserProfileActions({
   return (
     <div className="mt-4 grid gap-3">
       {relationshipLabel ? (
-        <p className="t-mono-sm" style={{ color: "var(--ink-3)" }}>
-          {relationshipLabel}
-        </p>
+        <div className="grid gap-1">
+          <p className="t-mono-sm" style={{ color: "var(--ink-3)" }}>
+            {relationshipLabel}
+          </p>
+          <p
+            className="t-mono-sm flex flex-wrap gap-2"
+            style={{ color: "var(--ink-3)" }}
+          >
+            {followers !== null ? (
+              <a href={`/${encodeURIComponent(login)}/followers`}>Followers</a>
+            ) : null}
+            {followingCount !== null ? (
+              <a href={`/${encodeURIComponent(login)}/following`}>Following</a>
+            ) : null}
+          </p>
+        </div>
       ) : null}
 
       {isPrivate ? null : state.isSelf ? (

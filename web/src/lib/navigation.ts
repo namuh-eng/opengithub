@@ -270,6 +270,13 @@ export const GLOBAL_NAV_ITEMS = [
     protected: true,
   },
   {
+    href: "/stars",
+    label: "Stars",
+    kind: "primary",
+    description: "Repositories you have starred",
+    protected: true,
+  },
+  {
     href: "/notifications",
     label: "Notifications",
     kind: "primary",

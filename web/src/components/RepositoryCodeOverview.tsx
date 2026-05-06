@@ -50,9 +50,21 @@ function RepositorySidebar({ repository }: RepositoryCodeOverviewProps) {
         ) : null}
       </section>
       <section className="space-y-2" style={{ color: "var(--ink-3)" }}>
-        <p>{formatCount(repository.sidebar.starsCount, "stars")}</p>
+        <Link
+          className="block hover:underline"
+          href={`${base}/stargazers`}
+          style={{ color: "var(--ink-3)" }}
+        >
+          {formatCount(repository.sidebar.starsCount, "stars")}
+        </Link>
         <p>{formatCount(repository.sidebar.watchersCount, "watching")}</p>
-        <p>{formatCount(repository.sidebar.forksCount, "forks")}</p>
+        <Link
+          className="block hover:underline"
+          href={`${base}/network/members`}
+          style={{ color: "var(--ink-3)" }}
+        >
+          {formatCount(repository.sidebar.forksCount, "forks")}
+        </Link>
         <Link
           className="block hover:underline"
           href={`${base}/releases`}

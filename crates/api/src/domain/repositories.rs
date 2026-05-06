@@ -6,7 +6,7 @@ use sqlx::{types::Json, PgPool, Row};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
-use crate::api_types::ListEnvelope;
+use crate::api_types::{normalize_pagination, ListEnvelope};
 
 use super::{
     branch_policies::branch_pattern_matches,
@@ -1875,6 +1875,34 @@ pub struct RepositorySocialState {
     pub forked_repository_href: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryStargazerList {
+    #[serde(flatten)]
+    pub envelope: crate::api_types::ListEnvelope<RepositoryStargazer>,
+    pub repository: RepositoryStargazerRepository,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryStargazerRepository {
+    pub owner_login: String,
+    pub name: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryStargazer {
+    pub id: Uuid,
+    pub login: String,
+    pub name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub bio: Option<String>,
+    pub href: String,
+    pub starred_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum RepositoryWatchLevel {
@@ -3217,6 +3245,82 @@ pub async fn set_repository_star_by_owner_name(
     repository_social_state(pool, &repository, actor_user_id)
         .await
         .map(Some)
+}
+
+pub async fn repository_stargazers_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Option<Uuid>,
+    owner_login: &str,
+    name: &str,
+    page: Option<i64>,
+    page_size: Option<i64>,
+) -> Result<Option<RepositoryStargazerList>, RepositoryError> {
+    let repository = match actor_user_id {
+        Some(actor_user_id) => {
+            get_repository_for_actor_by_owner_name(pool, actor_user_id, owner_login, name).await?
+        }
+        None => get_repository_by_owner_name(pool, owner_login, name)
+            .await?
+            .filter(|repository| repository.visibility == RepositoryVisibility::Public),
+    };
+    let Some(repository) = repository else {
+        return Ok(None);
+    };
+    let pagination = normalize_pagination(page, page_size);
+    let page = pagination.page;
+    let page_size = pagination.page_size;
+    let offset = (page - 1) * page_size;
+    let total = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*)::bigint FROM repository_stars WHERE repository_id = $1",
+    )
+    .bind(repository.id)
+    .fetch_one(pool)
+    .await?;
+    let rows = sqlx::query(
+        r#"
+        SELECT users.id, users.username, users.display_name, users.avatar_url, users.bio,
+               repository_stars.created_at AS starred_at
+        FROM repository_stars
+        JOIN users ON users.id = repository_stars.user_id
+        WHERE repository_stars.repository_id = $1
+        ORDER BY repository_stars.created_at DESC, lower(users.username) ASC
+        LIMIT $2 OFFSET $3
+        "#,
+    )
+    .bind(repository.id)
+    .bind(page_size)
+    .bind(offset)
+    .fetch_all(pool)
+    .await?;
+    let items = rows
+        .into_iter()
+        .map(|row| {
+            let login: String = row.get("username");
+            RepositoryStargazer {
+                id: row.get("id"),
+                login: login.clone(),
+                name: row.get("display_name"),
+                avatar_url: row.get("avatar_url"),
+                bio: row.get("bio"),
+                href: format!("/{login}"),
+                starred_at: row.get("starred_at"),
+            }
+        })
+        .collect();
+
+    Ok(Some(RepositoryStargazerList {
+        envelope: crate::api_types::ListEnvelope {
+            items,
+            total,
+            page,
+            page_size,
+        },
+        repository: RepositoryStargazerRepository {
+            owner_login: repository.owner_login.clone(),
+            name: repository.name.clone(),
+            href: format!("/{}/{}", repository.owner_login, repository.name),
+        },
+    }))
 }
 
 pub async fn set_repository_watch_by_owner_name(

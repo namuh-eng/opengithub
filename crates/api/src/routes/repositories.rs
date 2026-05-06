@@ -138,10 +138,11 @@ use crate::{
         repository_overview_for_viewer_by_owner_name,
         repository_path_overview_for_actor_by_owner_name, repository_pulse_for_actor_by_owner_name,
         repository_refs_for_actor_by_owner_name, repository_sbom_export_status,
-        repository_settings_for_actor_by_owner_name, repository_traffic_for_actor_by_owner_name,
-        repository_watch_settings_by_owner_name, save_repository_fork_defaults_by_owner_name,
-        set_repository_star_by_owner_name, set_repository_watch_by_owner_name,
-        start_repository_sbom_export, update_repository_branch_rule_by_owner_name,
+        repository_settings_for_actor_by_owner_name, repository_stargazers_for_actor_by_owner_name,
+        repository_traffic_for_actor_by_owner_name, repository_watch_settings_by_owner_name,
+        save_repository_fork_defaults_by_owner_name, set_repository_star_by_owner_name,
+        set_repository_watch_by_owner_name, start_repository_sbom_export,
+        update_repository_branch_rule_by_owner_name,
         update_repository_collaborator_access_by_owner_name,
         update_repository_ruleset_by_owner_name, update_repository_settings_by_owner_name,
         update_repository_team_access_by_owner_name,
@@ -152,8 +153,8 @@ use crate::{
         RepositoryContributorsQuery, RepositoryDependencyQuery, RepositoryDependentsQuery,
         RepositoryError, RepositoryFileFinderQuery, RepositoryForksQuery, RepositoryOwner,
         RepositoryPathQuery, RepositoryPulseQuery, RepositoryRefsQuery, RepositoryRulesetMutation,
-        RepositorySettingsPatch, RepositoryTrafficQuery, RepositoryVisibility,
-        RepositoryWatchSettingsPatch,
+        RepositorySettingsPatch, RepositoryStargazerList, RepositoryTrafficQuery,
+        RepositoryVisibility, RepositoryWatchSettingsPatch,
     },
     domain::repository_security::{
         bulk_update_repository_dependabot_alerts_for_actor_by_owner_name,
@@ -618,6 +619,7 @@ pub fn router() -> Router<AppState> {
             post(unpublish_pages),
         )
         .route("/:owner/:repo/star", put(star).delete(unstar))
+        .route("/:owner/:repo/stargazers", get(stargazers))
         .route(
             "/:owner/:repo/watch",
             get(read_watch)
@@ -732,6 +734,14 @@ struct ForksQuery {
     #[serde(alias = "type")]
     repository_type: Option<String>,
     sort: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RepositoryStargazersQuery {
+    page: Option<i64>,
+    #[serde(alias = "page_size")]
+    page_size: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -5383,6 +5393,35 @@ async fn star(
     Path((owner, repo)): Path<(String, String)>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     set_star(state, headers, owner, repo, true).await
+}
+
+async fn stargazers(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<RepositoryStargazersQuery>,
+) -> Result<Json<RepositoryStargazerList>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let list = repository_stargazers_for_actor_by_owner_name(
+        pool,
+        actor.map(|user| user.id),
+        &owner,
+        &repo,
+        query.page,
+        query.page_size,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(list))
 }
 
 async fn unstar(

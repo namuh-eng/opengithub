@@ -10,6 +10,17 @@ export type AuthSession = {
   user: AuthUser | null;
 };
 
+export type ApiUser = {
+  id: string;
+  login: string;
+  name: string | null;
+  email: string;
+  avatarUrl: string | null;
+  htmlUrl: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type RepositoryLabelCounts = {
   openIssues: number;
   openPullRequests: number;
@@ -2499,6 +2510,32 @@ export type ProfileActionState = {
   followerCount: number | null;
 };
 
+export type ProfileSocialList = {
+  items: ProfileSocialListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  owner: ProfileSocialOwner;
+  mode: "followers" | "following" | string;
+};
+
+export type ProfileSocialOwner = {
+  login: string;
+  name: string | null;
+  href: string;
+};
+
+export type ProfileSocialListItem = {
+  id: string;
+  login: string;
+  name: string | null;
+  avatarUrl: string | null;
+  bio: string | null;
+  href: string;
+  followedAt: string;
+  viewerState: ProfileViewerState;
+};
+
 export type ProfileReport = {
   id: string;
   viewerState: ProfileViewerState;
@@ -2951,6 +2988,28 @@ export type RepositorySocialState = RepositoryViewerState & {
   starsCount: number;
   watchersCount: number;
   forksCount: number;
+};
+
+export type RepositoryStargazerList = {
+  items: RepositoryStargazer[];
+  total: number;
+  page: number;
+  pageSize: number;
+  repository: {
+    ownerLogin: string;
+    name: string;
+    href: string;
+  };
+};
+
+export type RepositoryStargazer = {
+  id: string;
+  login: string;
+  name: string | null;
+  avatarUrl: string | null;
+  bio: string | null;
+  href: string;
+  starredAt: string;
 };
 
 export type RepositoryWatchLevel =
@@ -8704,6 +8763,22 @@ export async function getSessionFromHeaders(
   return getSessionFromCookie(requestHeaders.get("cookie"));
 }
 
+export async function getApiUserFromCookie(
+  cookie: string | null | undefined,
+): Promise<ApiUser | null> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}/api/user`, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return null;
+  }
+  if (!response.ok) return null;
+  return (await response.json()) as ApiUser;
+}
+
 function projectListPath(path: string, query: ProjectListQuery = {}): string {
   const params = new URLSearchParams();
   if (query.q?.trim()) {
@@ -12148,6 +12223,38 @@ export async function getProfileStarsFromCookie(
   }
 
   return (await response.json()) as ProfileRepositoryList;
+}
+
+export async function getProfileSocialListFromCookie(
+  cookie: string | null | undefined,
+  username: string,
+  mode: "followers" | "following",
+  query: Pick<ProfileRepositoryListQuery, "page" | "pageSize"> = {},
+): Promise<ProfileSocialList | null> {
+  let response: Response;
+  try {
+    const url = new URL(
+      `${apiBaseUrl()}/api/users/${encodeURIComponent(username)}/${mode}`,
+    );
+    if (query.page) {
+      url.searchParams.set("page", String(query.page));
+    }
+    if (query.pageSize) {
+      url.searchParams.set("pageSize", String(query.pageSize));
+    }
+    response = await fetch(url, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return null;
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return (await response.json()) as ProfileSocialList;
 }
 
 export async function setUserFollowFromCookie(
@@ -18507,6 +18614,38 @@ export async function setRepositoryStarFromCookie(
   }
 
   return (await response.json()) as RepositorySocialState;
+}
+
+export async function getRepositoryStargazersFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  query: Pick<ProfileRepositoryListQuery, "page" | "pageSize"> = {},
+): Promise<RepositoryStargazerList | null> {
+  let response: Response;
+  try {
+    const url = new URL(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/stargazers`,
+    );
+    if (query.page) {
+      url.searchParams.set("page", String(query.page));
+    }
+    if (query.pageSize) {
+      url.searchParams.set("pageSize", String(query.pageSize));
+    }
+    response = await fetch(url, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    return null;
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return (await response.json()) as RepositoryStargazerList;
 }
 
 export async function setRepositoryWatchFromCookie(

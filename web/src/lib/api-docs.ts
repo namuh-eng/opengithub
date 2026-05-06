@@ -323,6 +323,46 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "profile-followers",
+    method: "GET",
+    path: "/api/users/{username}/followers?page=1&pageSize=30",
+    title: "List profile followers",
+    description:
+      "Returns a paginated social graph list for /{user}/followers, including profile links, public bios, follow timestamps, and viewer follow/block state.",
+    auth: "Optional signed opengithub session cookie; private profiles require the owner",
+    response: `{
+  "owner": { "login": "mona", "name": "Mona", "href": "/mona" },
+  "mode": "followers",
+  "items": [
+    {
+      "id": "user-1",
+      "login": "ashley",
+      "name": "Ashley",
+      "avatarUrl": null,
+      "bio": "Maintainer",
+      "href": "/ashley",
+      "followedAt": "2026-05-07T00:00:00Z",
+      "viewerState": {
+        "authenticated": true,
+        "isSelf": false,
+        "isFollowing": false,
+        "isBlocking": false,
+        "canFollow": true,
+        "canBlock": true,
+        "canReport": true
+      }
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "pageSize": 30
+}`,
+    notes: [
+      "GET /api/users/{username}/following returns the same shape with mode following.",
+      "Private profiles return forbidden for outside viewers and never expose hidden follower counts, emails, session data, or OAuth metadata.",
+    ],
+  },
+  {
     id: "projects-user-list",
     method: "GET",
     path: "/api/users/{username}/projects?q=is%3Aopen&state=open&tab=projects&sort=recently_updated&page=1&pageSize=30",
@@ -4633,6 +4673,40 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
       "Supported sort values are most_starred, recently_pushed, recently_created, recently_updated, and name_asc. Invalid filter values return validation_failed without stack traces.",
       "Rows include archived, inactive, and starred badges plus created, updated, and pushed timestamps. Metric links point to repository-safe destinations and never mutate fork or upstream data.",
       "Readable-only filtering is enforced before totals and row serialization. hiddenPrivateForks reports omitted forks without exposing private fork names, owner logins, branches, or metric counts.",
+    ],
+  },
+  {
+    id: "repo-stargazers",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/stargazers?page=1&pageSize=30",
+    title: "Repository stargazers",
+    description:
+      "Returns the paginated users who starred a readable repository, powering /{owner}/{repo}/stargazers and repository star-count links.",
+    auth: "Public repositories are readable anonymously; private repositories require a signed session with read permission",
+    response: `{
+  "repository": {
+    "ownerLogin": "mona",
+    "name": "octo-app",
+    "href": "/mona/octo-app"
+  },
+  "items": [
+    {
+      "id": "user-1",
+      "login": "ashley",
+      "name": "Ashley",
+      "avatarUrl": null,
+      "bio": "Maintainer",
+      "href": "/ashley",
+      "starredAt": "2026-05-07T00:00:00Z"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "pageSize": 30
+}`,
+    notes: [
+      "Rows are ordered by newest star first and include only public profile metadata needed by the social list UI.",
+      "Private repository outsiders receive not_found, and responses never expose email, session, OAuth, token, or storage metadata.",
     ],
   },
   {

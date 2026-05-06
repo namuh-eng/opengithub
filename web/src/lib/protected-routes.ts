@@ -4,6 +4,7 @@ export const PROTECTED_PATHS = [
   "/issues",
   "/pulls",
   "/notifications",
+  "/stars",
   "/search",
   "/explore",
   "/codespaces",

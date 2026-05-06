@@ -232,6 +232,36 @@ pub struct ProfileActionState {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct ProfileSocialList {
+    #[serde(flatten)]
+    pub envelope: ListEnvelope<ProfileSocialListItem>,
+    pub owner: ProfileSocialOwner,
+    pub mode: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileSocialOwner {
+    pub login: String,
+    pub name: Option<String>,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileSocialListItem {
+    pub id: Uuid,
+    pub login: String,
+    pub name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub bio: Option<String>,
+    pub href: String,
+    pub followed_at: DateTime<Utc>,
+    pub viewer_state: ProfileViewerState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct ProfileReport {
     pub id: Uuid,
     pub viewer_state: ProfileViewerState,
@@ -511,6 +541,26 @@ pub async fn unfollow_user(
     profile_action_state(pool, actor_user_id, profile_user.id).await
 }
 
+pub async fn profile_followers(
+    pool: &PgPool,
+    username: &str,
+    viewer_user_id: Option<Uuid>,
+    page: Option<i64>,
+    page_size: Option<i64>,
+) -> Result<ProfileSocialList, ProfileError> {
+    profile_social_list(pool, username, viewer_user_id, "followers", page, page_size).await
+}
+
+pub async fn profile_following(
+    pool: &PgPool,
+    username: &str,
+    viewer_user_id: Option<Uuid>,
+    page: Option<i64>,
+    page_size: Option<i64>,
+) -> Result<ProfileSocialList, ProfileError> {
+    profile_social_list(pool, username, viewer_user_id, "following", page, page_size).await
+}
+
 pub async fn block_user(
     pool: &PgPool,
     actor_user_id: Uuid,
@@ -684,6 +734,103 @@ async fn count_following(pool: &PgPool, user_id: Uuid) -> Result<i64, sqlx::Erro
         .bind(user_id)
         .fetch_one(pool)
         .await
+}
+
+async fn profile_social_list(
+    pool: &PgPool,
+    username: &str,
+    viewer_user_id: Option<Uuid>,
+    mode: &str,
+    page: Option<i64>,
+    page_size: Option<i64>,
+) -> Result<ProfileSocialList, ProfileError> {
+    let Some(owner) = profile_user_by_login(pool, username).await? else {
+        return Err(ProfileError::NotFound);
+    };
+    if owner.profile_visibility == "private" && viewer_user_id != Some(owner.id) {
+        return Err(ProfileError::PrivateProfile);
+    }
+
+    let pagination = normalize_pagination(page, page_size);
+    let page = pagination.page;
+    let page_size = pagination.page_size;
+    let offset = (page - 1) * page_size;
+    let total_query = if mode == "following" {
+        "SELECT COUNT(*)::bigint FROM user_follows WHERE follower_user_id = $1"
+    } else {
+        "SELECT COUNT(*)::bigint FROM user_follows WHERE followed_user_id = $1"
+    };
+    let total = sqlx::query_scalar::<_, i64>(total_query)
+        .bind(owner.id)
+        .fetch_one(pool)
+        .await?;
+
+    let rows = if mode == "following" {
+        sqlx::query(
+            r#"
+            SELECT users.id, users.username, users.display_name, users.avatar_url, users.bio,
+                   user_follows.created_at AS followed_at, users.profile_visibility
+            FROM user_follows
+            JOIN users ON users.id = user_follows.followed_user_id
+            WHERE user_follows.follower_user_id = $1
+            ORDER BY user_follows.created_at DESC, lower(users.username) ASC
+            LIMIT $2 OFFSET $3
+            "#,
+        )
+        .bind(owner.id)
+        .bind(page_size)
+        .bind(offset)
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query(
+            r#"
+            SELECT users.id, users.username, users.display_name, users.avatar_url, users.bio,
+                   user_follows.created_at AS followed_at, users.profile_visibility
+            FROM user_follows
+            JOIN users ON users.id = user_follows.follower_user_id
+            WHERE user_follows.followed_user_id = $1
+            ORDER BY user_follows.created_at DESC, lower(users.username) ASC
+            LIMIT $2 OFFSET $3
+            "#,
+        )
+        .bind(owner.id)
+        .bind(page_size)
+        .bind(offset)
+        .fetch_all(pool)
+        .await?
+    };
+
+    let mut items = Vec::with_capacity(rows.len());
+    for row in rows {
+        let user_id = row.get("id");
+        let is_private = row.get::<String, _>("profile_visibility") == "private";
+        items.push(ProfileSocialListItem {
+            id: user_id,
+            login: row.get("username"),
+            name: row.get("display_name"),
+            avatar_url: row.get("avatar_url"),
+            bio: row.get("bio"),
+            href: format!("/{}", row.get::<String, _>("username")),
+            followed_at: row.get("followed_at"),
+            viewer_state: viewer_state(pool, user_id, viewer_user_id, is_private).await?,
+        });
+    }
+
+    Ok(ProfileSocialList {
+        envelope: ListEnvelope {
+            items,
+            total,
+            page,
+            page_size,
+        },
+        owner: ProfileSocialOwner {
+            login: owner.login.clone(),
+            name: owner.display_name,
+            href: format!("/{}", owner.login),
+        },
+        mode: mode.to_owned(),
+    })
 }
 
 async fn viewer_state(

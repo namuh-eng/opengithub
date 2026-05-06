@@ -8159,5 +8159,21 @@
       "Verify all major API families receive X-RateLimit-* and X-GitHub-Api-Version-Selected headers on success, auth errors, validation errors, and server errors.",
       "Load-test concurrent increments around quota boundaries to confirm ON CONFLICT updates do not allow meaningful overage beyond the first rejected request."
     ]
+  },
+  {
+    "feature_id": "social-001",
+    "tests_written": [
+      "Rust profile followers/following API contract for pagination and public reads",
+      "Social list React rendering for followers and repository stargazers",
+      "Repository Code sidebar social count links to stargazers and network members",
+      "API docs coverage for followers/following and repository stargazers",
+      "Browser smoke for /stars, /ashley/followers, /ashley/following, and /mona/octo-app/stargazers"
+    ],
+    "needs_deeper_qa": [
+      "Full signed-session Playwright suite still needs a healthy local TEST_DATABASE_URL; bounded make test-e2e timed out without Playwright detail",
+      "Fork creation still uses the existing server-owned default destination flow; QA should verify destination-owner/name/main-branch-only modal expectations before final release hardening",
+      "Named star lists are documented in PRD but not yet modeled beyond the core starred repositories library; validate product acceptance if named lists are required now",
+      "Real git object dedup for fork storage remains represented by existing repository_forks and snapshot-copy behavior rather than S3-backed pack dedup in local smoke"
+    ]
   }
 ]

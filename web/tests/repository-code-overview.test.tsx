@@ -550,6 +550,19 @@ describe("RepositoryCodeOverview", () => {
     ).toBeNull();
   });
 
+  it("links repository social counts to stargazer and fork member lists", () => {
+    render(<RepositoryCodeOverview repository={repositoryOverview()} />);
+
+    expect(screen.getByRole("link", { name: "3 stars" })).toHaveAttribute(
+      "href",
+      "/mona/octo-app/stargazers",
+    );
+    expect(screen.getByRole("link", { name: "1 forks" })).toHaveAttribute(
+      "href",
+      "/mona/octo-app/network/members",
+    );
+  });
+
   it("renders repository placeholders inside the shared tab shell", () => {
     render(
       <RepositoryPlaceholderPage

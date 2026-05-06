@@ -26,9 +26,10 @@ use crate::{
             UpdateAvatarInput, UpdatePersonalProfileSettings,
         },
         profiles::{
-            block_user, follow_user, profile_repositories, public_user_profile, report_user,
-            starred_repositories, unfollow_user, ProfileActionState, ProfileError, ProfileReport,
-            ProfileRepositoryList, ProfileRepositoryListQuery, PublicUserProfile,
+            block_user, follow_user, profile_followers, profile_following, profile_repositories,
+            public_user_profile, report_user, starred_repositories, unfollow_user,
+            ProfileActionState, ProfileError, ProfileReport, ProfileRepositoryList,
+            ProfileRepositoryListQuery, ProfileSocialList, PublicUserProfile,
         },
     },
     AppState,
@@ -50,6 +51,8 @@ pub fn router() -> Router<AppState> {
             patch(update_personal_avatar_route),
         )
         .route("/api/users/:username/profile", get(public_profile))
+        .route("/api/users/:username/followers", get(public_followers))
+        .route("/api/users/:username/following", get(public_following))
         .route(
             "/api/users/:username/repositories",
             get(public_repositories),
@@ -344,6 +347,46 @@ pub async fn public_stars(
     Ok(Json(repositories))
 }
 
+async fn public_followers(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+    Query(query): Query<PublicSocialListQuery>,
+) -> Result<Json<ProfileSocialList>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let list = profile_followers(
+        pool,
+        &username,
+        actor.map(|user| user.id),
+        query.page,
+        query.page_size,
+    )
+    .await
+    .map_err(map_profile_error)?;
+    Ok(Json(list))
+}
+
+async fn public_following(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(username): Path<String>,
+    Query(query): Query<PublicSocialListQuery>,
+) -> Result<Json<ProfileSocialList>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let list = profile_following(
+        pool,
+        &username,
+        actor.map(|user| user.id),
+        query.page,
+        query.page_size,
+    )
+    .await
+    .map_err(map_profile_error)?;
+    Ok(Json(list))
+}
+
 async fn personal_profile_settings_route(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -405,6 +448,13 @@ pub struct PublicStarsQuery {
     pub q: Option<String>,
     pub language: Option<String>,
     pub sort: Option<String>,
+    pub page: Option<i64>,
+    pub page_size: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PublicSocialListQuery {
     pub page: Option<i64>,
     pub page_size: Option<i64>,
 }

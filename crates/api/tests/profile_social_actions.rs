@@ -185,6 +185,59 @@ async fn follow_and_unfollow_are_idempotent_and_update_viewer_state() {
 }
 
 #[tokio::test]
+async fn followers_and_following_lists_are_paginated_and_public() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping profile social list scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let marker = format!("profilelist{}", Uuid::new_v4().simple());
+    let target = create_profile_user(&pool, &marker, false).await;
+    let follower = create_profile_user(&pool, &format!("{marker}-follower"), false).await;
+    let followed = create_profile_user(&pool, &format!("{marker}-followed"), false).await;
+    sqlx::query(
+        "INSERT INTO user_follows (follower_user_id, followed_user_id) VALUES ($1, $2), ($3, $4)",
+    )
+    .bind(follower.id)
+    .bind(target.id)
+    .bind(target.id)
+    .bind(followed.id)
+    .execute(&pool)
+    .await
+    .expect("follow graph should insert");
+
+    let config = app_config();
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+
+    let (status, headers, followers) = json_request(
+        app.clone(),
+        Method::GET,
+        &format!("/api/users/{marker}/followers"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_json(&headers);
+    assert_eq!(followers["mode"], "followers");
+    assert_eq!(followers["total"], 1);
+    assert_eq!(followers["items"][0]["login"], format!("{marker}-follower"));
+    assert_eq!(followers["items"][0]["href"], format!("/{marker}-follower"));
+
+    let (status, _, following) = json_request(
+        app,
+        Method::GET,
+        &format!("/api/users/{marker}/following?page=1&pageSize=10"),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(following["mode"], "following");
+    assert_eq!(following["items"][0]["login"], format!("{marker}-followed"));
+}
+
+#[tokio::test]
 async fn block_and_report_persist_records_and_guard_invalid_actions() {
     let Some(pool) = database_pool().await else {
         eprintln!("skipping profile social scenario; set TEST_DATABASE_URL");

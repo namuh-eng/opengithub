@@ -13,6 +13,7 @@ import {
   getAccountSecurityLogFromCookie,
   getAccountSecuritySettingsFromCookie,
   getAccountSessionsFromCookie,
+  getApiUserFromCookie,
   getAppearanceSettingsFromCookie,
   getAppShellContextFromCookie,
   getDashboardSummaryFromCookie,
@@ -44,6 +45,7 @@ import {
   getPersonalAccessTokenNewContextFromCookie,
   getPersonalProfileSettingsFromCookie,
   getProfileRepositoriesFromCookie,
+  getProfileSocialListFromCookie,
   getProfileStarsFromCookie,
   getProjectArchivedItemsFromCookie,
   getProjectItemDetailFromCookie,
@@ -111,6 +113,7 @@ import {
   getRepositorySecurityOverviewFromCookie,
   getRepositorySecurityPolicyFromCookie,
   getRepositorySettingsFromCookie,
+  getRepositoryStargazersFromCookie,
   getRepositoryTrafficFromCookie,
   getRepositoryWebhookDeliveryDetailFromCookie,
   getRepositoryWebhookDetailFromCookie,
@@ -216,6 +219,11 @@ export async function getSessionAndShellContext() {
   ]);
 
   return { session, shellContext };
+}
+
+export async function getApiUser() {
+  const requestHeaders = await headers();
+  return getApiUserFromCookie(requestHeaders.get("cookie"));
 }
 
 export async function getAppShellContext() {
@@ -706,6 +714,34 @@ export async function getProfileStars(
   return getProfileStarsFromCookie(
     requestHeaders.get("cookie"),
     username,
+    query,
+  );
+}
+
+export async function getProfileSocialList(
+  username: string,
+  mode: "followers" | "following",
+  query: Pick<ProfileRepositoryListQuery, "page" | "pageSize"> = {},
+) {
+  const requestHeaders = await headers();
+  return getProfileSocialListFromCookie(
+    requestHeaders.get("cookie"),
+    username,
+    mode,
+    query,
+  );
+}
+
+export async function getRepositoryStargazers(
+  owner: string,
+  repo: string,
+  query: Pick<ProfileRepositoryListQuery, "page" | "pageSize"> = {},
+) {
+  const requestHeaders = await headers();
+  return getRepositoryStargazersFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
     query,
   );
 }
