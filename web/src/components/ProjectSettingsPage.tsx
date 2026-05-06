@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { type FormEvent, useState } from "react";
 import type { ProjectSettings } from "@/lib/api";
 import {
   organizationProjectAccessSettingsHref,
@@ -117,6 +118,13 @@ export function ProjectSettingsPage({
   scope,
   owner,
 }: ProjectSettingsPageProps) {
+  const [currentSettings, setCurrentSettings] = useState(settings);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{
+    kind: "success" | "error";
+    message: string;
+  } | null>(null);
+  settings = currentSettings;
   const canEditGeneral =
     settings.viewerPermissions.canEditGeneral &&
     settings.dangerState.state !== "deleted";
@@ -144,6 +152,123 @@ export function ProjectSettingsPage({
     { key: "templates", label: "Templates", disabled: true },
     { key: "danger", label: "Danger Zone", disabled: true },
   ];
+
+  async function submitJson(
+    action: string,
+    path: string,
+    method: "PATCH" | "POST" | "DELETE",
+    body: Record<string, unknown>,
+    success: string,
+  ) {
+    setPendingAction(action);
+    setFeedback(null);
+    try {
+      const response = await fetch(path, {
+        method,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          payload?.error?.message ?? "Project settings could not be saved.",
+        );
+      }
+      setCurrentSettings(payload as ProjectSettings);
+      setFeedback({ kind: "success", message: success });
+    } catch (error) {
+      setFeedback({
+        kind: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Project settings could not be saved.",
+      });
+    } finally {
+      setPendingAction(null);
+    }
+  }
+
+  function handleGeneralSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    void submitJson(
+      "general",
+      `/api/projects/${encodeURIComponent(settings.project.id)}/settings`,
+      "PATCH",
+      {
+        title: form.get("title"),
+        description: form.get("description"),
+        readme: form.get("readme"),
+        visibility: form.get("visibility"),
+        defaultRepositoryId: form.get("defaultRepositoryId") || null,
+        expectedUpdatedAt: settings.general.updatedAt,
+      },
+      "Project settings saved.",
+    );
+  }
+
+  function handleStatusSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    void submitJson(
+      "status",
+      `/api/projects/${encodeURIComponent(settings.project.id)}/status-updates`,
+      "POST",
+      {
+        status: form.get("status"),
+        body: form.get("body"),
+        startDate: form.get("startDate") || null,
+        targetDate: form.get("targetDate") || null,
+      },
+      "Project status update published.",
+    );
+  }
+
+  function handleTemplateSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    void submitJson(
+      "template",
+      `/api/projects/${encodeURIComponent(settings.project.id)}/template`,
+      "PATCH",
+      {
+        isTemplate: form.get("isTemplate") === "on",
+        title: form.get("templateTitle"),
+        description: form.get("templateDescription"),
+        isPublic: form.get("isPublic") === "on",
+        expectedUpdatedAt: settings.general.updatedAt,
+      },
+      "Template settings saved.",
+    );
+  }
+
+  function handleRepositoryLink(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const repositoryId = String(form.get("repositoryId") ?? "").trim();
+    if (!repositoryId) {
+      setFeedback({ kind: "error", message: "Repository ID is required." });
+      return;
+    }
+    void submitJson(
+      "repository-link",
+      `/api/projects/${encodeURIComponent(settings.project.id)}/repositories/${encodeURIComponent(repositoryId)}`,
+      "POST",
+      { expectedUpdatedAt: settings.general.updatedAt },
+      "Repository linked.",
+    );
+  }
+
+  function handleRepositoryUnlink(repositoryId: string) {
+    void submitJson(
+      `repository-unlink-${repositoryId}`,
+      `/api/projects/${encodeURIComponent(settings.project.id)}/repositories/${encodeURIComponent(repositoryId)}`,
+      "DELETE",
+      { expectedUpdatedAt: settings.general.updatedAt },
+      "Repository removed from this project.",
+    );
+  }
 
   return (
     <main
@@ -177,6 +302,16 @@ export function ProjectSettingsPage({
           settings sections.
         </p>
       </header>
+
+      {feedback ? (
+        <div
+          className={feedback.kind === "success" ? "chip ok" : "chip err"}
+          role="status"
+          style={{ marginBottom: 18 }}
+        >
+          {feedback.message}
+        </div>
+      ) : null}
 
       <div
         style={{
@@ -248,6 +383,7 @@ export function ProjectSettingsPage({
               action={settingsHref(scope, owner, projectNumber, "general")}
               className="card"
               method="post"
+              onSubmit={handleGeneralSubmit}
               style={{ padding: 18 }}
             >
               <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
@@ -391,10 +527,10 @@ export function ProjectSettingsPage({
               <div className="row" style={{ gap: 10, marginTop: 18 }}>
                 <button
                   className="btn primary"
-                  disabled={!canEditGeneral}
+                  disabled={!canEditGeneral || pendingAction === "general"}
                   type="submit"
                 >
-                  Save changes
+                  {pendingAction === "general" ? "Saving..." : "Save changes"}
                 </button>
                 <Link
                   className="btn"
@@ -410,6 +546,7 @@ export function ProjectSettingsPage({
               className="card"
               id="status"
               method="post"
+              onSubmit={handleStatusSubmit}
               style={{ padding: 18 }}
             >
               <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
@@ -509,10 +646,12 @@ export function ProjectSettingsPage({
               <div className="row" style={{ gap: 10, marginTop: 18 }}>
                 <button
                   className="btn primary"
-                  disabled={!canPublishStatus}
+                  disabled={!canPublishStatus || pendingAction === "status"}
                   type="submit"
                 >
-                  Publish update
+                  {pendingAction === "status"
+                    ? "Publishing..."
+                    : "Publish update"}
                 </button>
                 {canPublishStatus ? null : (
                   <span className="t-xs">
@@ -560,22 +699,52 @@ export function ProjectSettingsPage({
 
             <section className="card" style={{ padding: 18 }}>
               <div className="t-label">Repositories</div>
+              {canEditGeneral ? (
+                <form
+                  onSubmit={handleRepositoryLink}
+                  style={{
+                    display: "grid",
+                    gap: 8,
+                    gridTemplateColumns: "minmax(0, 1fr) auto",
+                    marginTop: 12,
+                  }}
+                >
+                  <label className="sr-only" htmlFor="repository-id">
+                    Repository ID
+                  </label>
+                  <input
+                    className="input"
+                    id="repository-id"
+                    name="repositoryId"
+                    placeholder="Repository UUID"
+                  />
+                  <button
+                    className="btn"
+                    disabled={pendingAction === "repository-link"}
+                    type="submit"
+                  >
+                    {pendingAction === "repository-link"
+                      ? "Linking..."
+                      : "Link"}
+                  </button>
+                </form>
+              ) : null}
               <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
                 {settings.repositories.length > 0 ? (
                   settings.repositories.map((repository) => (
-                    <Link
+                    <div
                       className="list-row"
-                      href={repository.href}
                       key={repository.id}
-                      style={{ padding: "10px 0", textDecoration: "none" }}
+                      style={{ padding: "10px 0" }}
                     >
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div
+                        <Link
                           className="t-sm"
+                          href={repository.href}
                           style={{ color: "var(--ink-1)", fontWeight: 600 }}
                         >
                           {repository.fullName}
-                        </div>
+                        </Link>
                         <div className="t-xs">
                           {repository.visibility} ·{" "}
                           {repository.viewerPermission ?? "no role"}
@@ -584,7 +753,25 @@ export function ProjectSettingsPage({
                       {repository.isDefault ? (
                         <span className="chip active">Default</span>
                       ) : null}
-                    </Link>
+                      {canEditGeneral && !repository.isDefault ? (
+                        <button
+                          className="btn ghost sm"
+                          disabled={
+                            pendingAction ===
+                            `repository-unlink-${repository.repositoryId}`
+                          }
+                          onClick={() =>
+                            handleRepositoryUnlink(repository.repositoryId)
+                          }
+                          type="button"
+                        >
+                          {pendingAction ===
+                          `repository-unlink-${repository.repositoryId}`
+                            ? "Removing..."
+                            : "Remove"}
+                        </button>
+                      ) : null}
+                    </div>
                   ))
                 ) : (
                   <p className="t-sm" style={{ color: "var(--ink-3)" }}>
@@ -630,7 +817,11 @@ export function ProjectSettingsPage({
               )}
             </section>
 
-            <section className="card" style={{ padding: 18 }}>
+            <form
+              className="card"
+              onSubmit={handleTemplateSubmit}
+              style={{ padding: 18 }}
+            >
               <div className="t-label">Template</div>
               <div
                 className="row"
@@ -647,14 +838,76 @@ export function ProjectSettingsPage({
                   <span className="chip soft">Public copy source</span>
                 ) : null}
               </div>
-              <p
-                className="t-sm"
-                style={{ color: "var(--ink-3)", marginTop: 10 }}
+              <label
+                className="row t-sm"
+                style={{ gap: 8, marginTop: 14, justifyContent: "flex-start" }}
               >
-                Template controls move to the Templates section in the next
-                project settings slice.
-              </p>
-            </section>
+                <input
+                  defaultChecked={settings.template.isTemplate}
+                  disabled={!settings.viewerPermissions.canManageTemplate}
+                  name="isTemplate"
+                  type="checkbox"
+                />
+                Set this project as a template
+              </label>
+              <div style={{ marginTop: 12 }}>
+                <label className="t-label" htmlFor="template-title">
+                  Template title
+                </label>
+                <input
+                  className="input"
+                  defaultValue={
+                    settings.template.title ?? settings.general.title
+                  }
+                  disabled={!settings.viewerPermissions.canManageTemplate}
+                  id="template-title"
+                  name="templateTitle"
+                  style={{ display: "block", marginTop: 8, width: "100%" }}
+                />
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <label className="t-label" htmlFor="template-description">
+                  Copy-source note
+                </label>
+                <textarea
+                  className="input"
+                  defaultValue={settings.template.description ?? ""}
+                  disabled={!settings.viewerPermissions.canManageTemplate}
+                  id="template-description"
+                  name="templateDescription"
+                  rows={3}
+                  style={{
+                    display: "block",
+                    marginTop: 8,
+                    resize: "vertical",
+                    width: "100%",
+                  }}
+                />
+              </div>
+              <label
+                className="row t-sm"
+                style={{ gap: 8, marginTop: 12, justifyContent: "flex-start" }}
+              >
+                <input
+                  defaultChecked={settings.template.isPublic}
+                  disabled={!settings.viewerPermissions.canManageTemplate}
+                  name="isPublic"
+                  type="checkbox"
+                />
+                Allow copies from visible users
+              </label>
+              <button
+                className="btn primary"
+                disabled={
+                  !settings.viewerPermissions.canManageTemplate ||
+                  pendingAction === "template"
+                }
+                style={{ marginTop: 14 }}
+                type="submit"
+              >
+                {pendingAction === "template" ? "Saving..." : "Save template"}
+              </button>
+            </form>
           </aside>
         </section>
       </div>

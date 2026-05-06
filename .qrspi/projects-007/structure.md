@@ -40,7 +40,7 @@
 
 ## Phase 3: General Settings Mutations - metadata, README, visibility, repository links, templates, and status updates persist
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Make the General and Templates controls real. Admins can rename projects, edit description/README, change visibility when policy allows it, choose a default repository, add/remove repository links, publish status updates, and toggle template behavior with audit evidence.
 

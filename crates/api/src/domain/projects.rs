@@ -486,6 +486,42 @@ pub struct ProjectWorkflowUpdateRequest {
     pub expected_updated_at: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSettingsUpdateRequest {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub readme: Option<String>,
+    pub visibility: Option<String>,
+    pub default_repository_id: Option<Uuid>,
+    pub expected_updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectRepositoryLinkRequest {
+    pub expected_updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectStatusUpdateRequest {
+    pub status: String,
+    pub body: Option<String>,
+    pub start_date: Option<NaiveDate>,
+    pub target_date: Option<NaiveDate>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectTemplateUpdateRequest {
+    pub is_template: bool,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub is_public: Option<bool>,
+    pub expected_updated_at: Option<DateTime<Utc>>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectSettings {
@@ -1727,6 +1763,381 @@ pub async fn project_settings(
         unavailable_reason: (!projects_enabled)
             .then_some("Organization policy has disabled Projects.".to_owned()),
     })
+}
+
+pub async fn update_project_settings_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectSettingsUpdateRequest,
+) -> Result<ProjectSettings, ProjectsError> {
+    let project = visible_workspace_project(pool, project_id, Some(actor_user_id)).await?;
+    let can_write = project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role);
+    if !can_write || project.state == "closed" {
+        return Err(ProjectsError::Forbidden);
+    }
+    let current = project_settings_general(pool, project_id).await?;
+    if let Some(expected) = request.expected_updated_at {
+        if current.updated_at != expected {
+            return Err(ProjectsError::Validation(
+                "Project settings changed since they were loaded. Refresh before saving."
+                    .to_owned(),
+            ));
+        }
+    }
+
+    let title = request
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| ProjectsError::Validation("Project title is required.".to_owned()))?;
+    if title.len() > 120 {
+        return Err(ProjectsError::Validation(
+            "Project title must be 120 characters or fewer.".to_owned(),
+        ));
+    }
+    let description = request
+        .description
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if description.is_some_and(|value| value.len() > 280) {
+        return Err(ProjectsError::Validation(
+            "Project description must be 280 characters or fewer.".to_owned(),
+        ));
+    }
+    let readme = request
+        .readme
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if readme.is_some_and(|value| value.len() > 20_000) {
+        return Err(ProjectsError::Validation(
+            "Project README must be 20000 characters or fewer.".to_owned(),
+        ));
+    }
+    let visibility = request
+        .visibility
+        .as_deref()
+        .unwrap_or(current.visibility.as_str());
+    if !matches!(visibility, "public" | "private") {
+        return Err(ProjectsError::Validation(
+            "Project visibility must be public or private.".to_owned(),
+        ));
+    }
+    if visibility != current.visibility {
+        let policy = project_settings_policy(pool, project_id).await?;
+        let can_admin = project
+            .viewer_role
+            .as_deref()
+            .is_some_and(|role| matches!(role, "owner" | "admin"));
+        if !can_admin || !policy.visibility_changes_allowed {
+            return Err(ProjectsError::Forbidden);
+        }
+    }
+    if let Some(repository_id) = request.default_repository_id {
+        ensure_project_repository_write(pool, project_id, repository_id, actor_user_id).await?;
+    }
+
+    sqlx::query(
+        r#"
+        UPDATE projects
+        SET title = $2,
+            short_description = $3,
+            readme = $4,
+            visibility = $5,
+            default_repository_id = $6,
+            updated_at = now()
+        WHERE id = $1
+        "#,
+    )
+    .bind(project_id)
+    .bind(title)
+    .bind(description)
+    .bind(readme)
+    .bind(visibility)
+    .bind(request.default_repository_id)
+    .execute(pool)
+    .await?;
+
+    if readme != current.readme.as_deref() {
+        sqlx::query(
+            r#"
+            INSERT INTO project_readme_revisions (project_id, author_user_id, body)
+            VALUES ($1, $2, $3)
+            "#,
+        )
+        .bind(project_id)
+        .bind(actor_user_id)
+        .bind(readme)
+        .execute(pool)
+        .await?;
+    }
+    audit_project_settings_change(
+        pool,
+        actor_user_id,
+        "project.settings.update",
+        project_id,
+        json!({
+            "title": title,
+            "visibility": visibility,
+            "defaultRepositoryId": request.default_repository_id,
+            "readmeChanged": readme != current.readme.as_deref()
+        }),
+    )
+    .await?;
+    project_settings(pool, project_id, Some(actor_user_id)).await
+}
+
+pub async fn link_project_repository_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    repository_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectRepositoryLinkRequest,
+) -> Result<ProjectSettings, ProjectsError> {
+    let project = visible_workspace_project(pool, project_id, Some(actor_user_id)).await?;
+    if !project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role)
+        || project.state == "closed"
+    {
+        return Err(ProjectsError::Forbidden);
+    }
+    let current = project_settings_general(pool, project_id).await?;
+    if let Some(expected) = request.expected_updated_at {
+        if current.updated_at != expected {
+            return Err(ProjectsError::Validation(
+                "Project settings changed since they were loaded. Refresh before linking repositories."
+                    .to_owned(),
+            ));
+        }
+    }
+    ensure_repository_write_for_actor(pool, repository_id, actor_user_id).await?;
+    ensure_repository_link_allowed_for_project(pool, project_id, repository_id).await?;
+    sqlx::query(
+        r#"
+        INSERT INTO project_repositories (project_id, repository_id, link_type, linked_by_user_id)
+        VALUES ($1, $2, 'linked', $3)
+        ON CONFLICT (project_id, repository_id) DO UPDATE
+        SET linked_by_user_id = EXCLUDED.linked_by_user_id,
+            updated_at = now()
+        "#,
+    )
+    .bind(project_id)
+    .bind(repository_id)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
+    audit_project_settings_change(
+        pool,
+        actor_user_id,
+        "project.repository.link",
+        project_id,
+        json!({ "repositoryId": repository_id }),
+    )
+    .await?;
+    project_settings(pool, project_id, Some(actor_user_id)).await
+}
+
+pub async fn unlink_project_repository_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    repository_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectRepositoryLinkRequest,
+) -> Result<ProjectSettings, ProjectsError> {
+    let project = visible_workspace_project(pool, project_id, Some(actor_user_id)).await?;
+    if !project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role)
+        || project.state == "closed"
+    {
+        return Err(ProjectsError::Forbidden);
+    }
+    let current = project_settings_general(pool, project_id).await?;
+    if let Some(expected) = request.expected_updated_at {
+        if current.updated_at != expected {
+            return Err(ProjectsError::Validation(
+                "Project settings changed since they were loaded. Refresh before unlinking repositories."
+                    .to_owned(),
+            ));
+        }
+    }
+    sqlx::query(
+        r#"
+        DELETE FROM project_repositories
+        WHERE project_id = $1 AND repository_id = $2
+        "#,
+    )
+    .bind(project_id)
+    .bind(repository_id)
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "UPDATE projects SET default_repository_id = NULL WHERE id = $1 AND default_repository_id = $2",
+    )
+    .bind(project_id)
+    .bind(repository_id)
+    .execute(pool)
+    .await?;
+    audit_project_settings_change(
+        pool,
+        actor_user_id,
+        "project.repository.unlink",
+        project_id,
+        json!({ "repositoryId": repository_id }),
+    )
+    .await?;
+    project_settings(pool, project_id, Some(actor_user_id)).await
+}
+
+pub async fn create_project_status_update_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectStatusUpdateRequest,
+) -> Result<ProjectSettings, ProjectsError> {
+    let project = visible_workspace_project(pool, project_id, Some(actor_user_id)).await?;
+    if !project
+        .viewer_role
+        .as_deref()
+        .is_some_and(can_write_project_role)
+        || project.state == "closed"
+    {
+        return Err(ProjectsError::Forbidden);
+    }
+    if !matches!(
+        request.status.as_str(),
+        "on_track" | "at_risk" | "off_track" | "complete"
+    ) {
+        return Err(ProjectsError::Validation(
+            "Project status must be on_track, at_risk, off_track, or complete.".to_owned(),
+        ));
+    }
+    let body = request
+        .body
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if body.is_some_and(|value| value.len() > 4000) {
+        return Err(ProjectsError::Validation(
+            "Project status message must be 4000 characters or fewer.".to_owned(),
+        ));
+    }
+    if let (Some(start), Some(target)) = (request.start_date, request.target_date) {
+        if target < start {
+            return Err(ProjectsError::Validation(
+                "Project status target date cannot be before the start date.".to_owned(),
+            ));
+        }
+    }
+    sqlx::query(
+        r#"
+        INSERT INTO project_status_updates
+            (project_id, author_user_id, status, body, start_date, target_date)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        "#,
+    )
+    .bind(project_id)
+    .bind(actor_user_id)
+    .bind(&request.status)
+    .bind(body)
+    .bind(request.start_date)
+    .bind(request.target_date)
+    .execute(pool)
+    .await?;
+    audit_project_settings_change(
+        pool,
+        actor_user_id,
+        "project.status_update.create",
+        project_id,
+        json!({ "status": request.status }),
+    )
+    .await?;
+    project_settings(pool, project_id, Some(actor_user_id)).await
+}
+
+pub async fn update_project_template_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectTemplateUpdateRequest,
+) -> Result<ProjectSettings, ProjectsError> {
+    let project = visible_workspace_project(pool, project_id, Some(actor_user_id)).await?;
+    if !project
+        .viewer_role
+        .as_deref()
+        .is_some_and(|role| matches!(role, "owner" | "admin"))
+        || project.state == "closed"
+    {
+        return Err(ProjectsError::Forbidden);
+    }
+    let current = project_settings_general(pool, project_id).await?;
+    if let Some(expected) = request.expected_updated_at {
+        if current.updated_at != expected {
+            return Err(ProjectsError::Validation(
+                "Project settings changed since they were loaded. Refresh before saving template settings."
+                    .to_owned(),
+            ));
+        }
+    }
+    let title = request
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(current.title.as_str());
+    let description = request
+        .description
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let is_public = request.is_public.unwrap_or(false);
+
+    sqlx::query("UPDATE projects SET is_template = $2, updated_at = now() WHERE id = $1")
+        .bind(project_id)
+        .bind(request.is_template)
+        .execute(pool)
+        .await?;
+    if request.is_template {
+        sqlx::query(
+            r#"
+            INSERT INTO project_templates (project_id, title, description, is_public)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (project_id) DO UPDATE
+            SET title = EXCLUDED.title,
+                description = EXCLUDED.description,
+                is_public = EXCLUDED.is_public
+            "#,
+        )
+        .bind(project_id)
+        .bind(title)
+        .bind(description)
+        .bind(is_public)
+        .execute(pool)
+        .await?;
+    } else {
+        sqlx::query("DELETE FROM project_templates WHERE project_id = $1")
+            .bind(project_id)
+            .execute(pool)
+            .await?;
+    }
+    audit_project_settings_change(
+        pool,
+        actor_user_id,
+        "project.template.update",
+        project_id,
+        json!({ "isTemplate": request.is_template, "isPublic": is_public }),
+    )
+    .await?;
+    project_settings(pool, project_id, Some(actor_user_id)).await
 }
 
 pub async fn update_project_workflow_for_actor(
@@ -7000,6 +7411,28 @@ async fn touch_project_field(
     Ok(())
 }
 
+async fn audit_project_settings_change(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    event_type: &str,
+    project_id: Uuid,
+    metadata: Value,
+) -> Result<(), ProjectsError> {
+    sqlx::query(
+        r#"
+        INSERT INTO audit_events (actor_user_id, event_type, target_type, target_id, metadata)
+        VALUES ($1, $2, 'project', $3, $4)
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(event_type)
+    .bind(project_id.to_string())
+    .bind(metadata)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 async fn audit_project_option_change(
     pool: &PgPool,
     actor_user_id: Uuid,
@@ -8655,6 +9088,51 @@ async fn ensure_project_repository_write(
         Ok(())
     } else {
         Err(ProjectsError::Forbidden)
+    }
+}
+
+async fn ensure_repository_write_for_actor(
+    pool: &PgPool,
+    repository_id: Uuid,
+    actor_user_id: Uuid,
+) -> Result<(), ProjectsError> {
+    let permission = repository_permission_for_user(pool, repository_id, actor_user_id).await?;
+    if permission.is_some_and(|permission| permission.role.can_write()) {
+        Ok(())
+    } else {
+        Err(ProjectsError::Forbidden)
+    }
+}
+
+async fn ensure_repository_link_allowed_for_project(
+    pool: &PgPool,
+    project_id: Uuid,
+    repository_id: Uuid,
+) -> Result<(), ProjectsError> {
+    let allowed: bool = sqlx::query_scalar(
+        r#"
+        SELECT EXISTS (
+          SELECT 1
+          FROM projects
+          JOIN repositories ON repositories.id = $2
+          WHERE projects.id = $1
+            AND (
+              projects.owner_user_id = repositories.owner_user_id
+              OR projects.owner_organization_id = repositories.owner_organization_id
+            )
+        )
+        "#,
+    )
+    .bind(project_id)
+    .bind(repository_id)
+    .fetch_one(pool)
+    .await?;
+    if allowed {
+        Ok(())
+    } else {
+        Err(ProjectsError::Validation(
+            "Repository must belong to the same owner as the project.".to_owned(),
+        ))
     }
 }
 

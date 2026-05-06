@@ -1,5 +1,5 @@
-import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectSettingsPage } from "@/components/ProjectSettingsPage";
 import type { ProjectSettings } from "@/lib/api";
 
@@ -128,6 +128,10 @@ function settings(overrides: Partial<ProjectSettings> = {}): ProjectSettings {
 }
 
 describe("ProjectSettingsPage", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("renders organization general settings with concrete navigation", () => {
     render(
       <ProjectSettingsPage
@@ -179,10 +183,9 @@ describe("ProjectSettingsPage", () => {
     expect(screen.getByLabelText("Visibility")).toHaveValue("private");
     expect(screen.getByLabelText("Default repository")).toHaveValue("repo-1");
     expect(
-      within(
-        screen.getByRole("link", { name: /namuh\/opengithub/i }),
-      ).getByText("Default"),
+      screen.getByRole("link", { name: /namuh\/opengithub/i }),
     ).toBeVisible();
+    expect(screen.getByText("Default")).toBeVisible();
   });
 
   it("shows policy-disabled visibility and read-only metadata controls", () => {
@@ -286,5 +289,106 @@ describe("ProjectSettingsPage", () => {
     expect(container.innerHTML).not.toContain("#cf222e");
     expect(container.innerHTML).not.toContain("@primer/");
     expect(container.innerHTML).not.toContain("Octicon");
+  });
+
+  it("submits general settings and refreshes success feedback from the API", async () => {
+    const fetchMock = vi.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () =>
+        settings({
+          general: {
+            ...settings().general,
+            title: "Updated planning",
+            updatedAt: "2026-05-06T00:00:00Z",
+          },
+        }),
+    } as Response);
+
+    render(
+      <ProjectSettingsPage
+        owner="namuh"
+        scope="organization"
+        settings={settings()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "Updated planning" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/projects/project-1/settings",
+        expect.objectContaining({
+          body: expect.stringContaining("Updated planning"),
+          method: "PATCH",
+        }),
+      ),
+    );
+    expect(await screen.findByText("Project settings saved.")).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Updated planning" }),
+    ).toBeVisible();
+  });
+
+  it("publishes status updates and saves template settings through real endpoints", async () => {
+    const fetchMock = vi
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          settings({
+            statusUpdates: [
+              {
+                ...settings().statusUpdates[0],
+                status: "complete",
+                label: "Complete",
+              },
+            ],
+          }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          settings({
+            template: {
+              ...settings().template,
+              isTemplate: false,
+              title: null,
+            },
+          }),
+      } as Response);
+
+    render(
+      <ProjectSettingsPage
+        owner="namuh"
+        scope="organization"
+        settings={settings()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("State"), {
+      target: { value: "complete" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Publish update" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/projects/project-1/status-updates",
+        expect.objectContaining({ method: "POST" }),
+      ),
+    );
+
+    fireEvent.click(screen.getByLabelText("Set this project as a template"));
+    fireEvent.click(screen.getByRole("button", { name: "Save template" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/projects/project-1/template",
+        expect.objectContaining({
+          body: expect.stringContaining('"isTemplate":false'),
+          method: "PATCH",
+        }),
+      ),
+    );
   });
 });

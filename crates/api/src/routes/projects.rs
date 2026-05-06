@@ -16,20 +16,22 @@ use crate::{
         copy_project_for_actor, create_project_field_for_actor,
         create_project_field_option_for_actor, create_project_item_comment_for_actor,
         create_project_iteration_break_for_actor, create_project_iteration_for_actor,
-        delete_project_field_for_actor, delete_project_field_option_for_actor,
-        delete_project_item_comment_for_actor, delete_project_iteration_break_for_actor,
-        invoke_project_automation_for_actor, organization_projects,
+        create_project_status_update_for_actor, delete_project_field_for_actor,
+        delete_project_field_option_for_actor, delete_project_item_comment_for_actor,
+        delete_project_iteration_break_for_actor, invoke_project_automation_for_actor,
+        link_project_repository_for_actor, organization_projects,
         project_conversion_targets_for_actor, project_field_settings, project_item_detail,
         project_items_archived, project_settings, project_workflow_settings, project_workspace,
         remove_project_item_for_actor, reorder_project_field_options_for_actor,
-        repository_projects, restore_project_item_for_actor, update_project_draft_item_for_actor,
-        update_project_field_for_actor, update_project_field_option_for_actor,
-        update_project_item_comment_for_actor, update_project_item_field_for_actor,
-        update_project_item_position_for_actor, update_project_iteration_for_actor,
-        update_project_iteration_settings_for_actor, update_project_roadmap_settings_for_actor,
-        update_project_view_layout_for_actor, update_project_view_state_for_actor,
-        update_project_workflow_for_actor, user_projects, CopiedProject, CopyProjectRequest,
-        ProjectArchivedItem, ProjectAutomationInvocationRequest,
+        repository_projects, restore_project_item_for_actor, unlink_project_repository_for_actor,
+        update_project_draft_item_for_actor, update_project_field_for_actor,
+        update_project_field_option_for_actor, update_project_item_comment_for_actor,
+        update_project_item_field_for_actor, update_project_item_position_for_actor,
+        update_project_iteration_for_actor, update_project_iteration_settings_for_actor,
+        update_project_roadmap_settings_for_actor, update_project_settings_for_actor,
+        update_project_template_for_actor, update_project_view_layout_for_actor,
+        update_project_view_state_for_actor, update_project_workflow_for_actor, user_projects,
+        CopiedProject, CopyProjectRequest, ProjectArchivedItem, ProjectAutomationInvocationRequest,
         ProjectAutomationInvocationResponse, ProjectConversionTargets, ProjectDraftConvertRequest,
         ProjectDraftUpdateRequest, ProjectFieldCreateRequest, ProjectFieldDeleteRequest,
         ProjectFieldOptionCreateRequest, ProjectFieldOptionReorderRequest,
@@ -38,8 +40,9 @@ use crate::{
         ProjectItemDetail, ProjectItemFieldValueRequest, ProjectItemPositionRequest,
         ProjectItemsArchivedQuery, ProjectItemsBulkAddRequest, ProjectIterationBreakCreateRequest,
         ProjectIterationCreateRequest, ProjectIterationSettingsRequest,
-        ProjectIterationUpdateRequest, ProjectList, ProjectListQuery,
-        ProjectRoadmapSettingsRequest, ProjectSettings, ProjectViewLayoutRequest,
+        ProjectIterationUpdateRequest, ProjectList, ProjectListQuery, ProjectRepositoryLinkRequest,
+        ProjectRoadmapSettingsRequest, ProjectSettings, ProjectSettingsUpdateRequest,
+        ProjectStatusUpdateRequest, ProjectTemplateUpdateRequest, ProjectViewLayoutRequest,
         ProjectViewStateRequest, ProjectWorkflowSettings, ProjectWorkflowUpdateRequest,
         ProjectWorkspace, ProjectWorkspaceQuery, ProjectsError,
     },
@@ -56,7 +59,19 @@ pub fn router() -> Router<AppState> {
         )
         .route(
             "/api/projects/:project_id/settings",
-            get(project_settings_route),
+            get(project_settings_route).patch(update_project_settings_route),
+        )
+        .route(
+            "/api/projects/:project_id/repositories/:repository_id",
+            post(link_project_repository_route).delete(unlink_project_repository_route),
+        )
+        .route(
+            "/api/projects/:project_id/status-updates",
+            post(create_project_status_update_route),
+        )
+        .route(
+            "/api/projects/:project_id/template",
+            patch(update_project_template_route),
         )
         .route(
             "/api/projects/:project_id/settings/fields",
@@ -401,6 +416,78 @@ async fn project_settings_route(
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
     let settings = project_settings(pool, project_id, actor.map(|user| user.id))
+        .await
+        .map_err(map_projects_error)?;
+    Ok(Json(settings))
+}
+
+async fn update_project_settings_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(project_id): Path<Uuid>,
+    Json(request): Json<ProjectSettingsUpdateRequest>,
+) -> Result<Json<ProjectSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let settings = update_project_settings_for_actor(pool, project_id, actor.id, request)
+        .await
+        .map_err(map_projects_error)?;
+    Ok(Json(settings))
+}
+
+async fn link_project_repository_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project_id, repository_id)): Path<(Uuid, Uuid)>,
+    Json(request): Json<ProjectRepositoryLinkRequest>,
+) -> Result<Json<ProjectSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let settings =
+        link_project_repository_for_actor(pool, project_id, repository_id, actor.id, request)
+            .await
+            .map_err(map_projects_error)?;
+    Ok(Json(settings))
+}
+
+async fn unlink_project_repository_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((project_id, repository_id)): Path<(Uuid, Uuid)>,
+    Json(request): Json<ProjectRepositoryLinkRequest>,
+) -> Result<Json<ProjectSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let settings =
+        unlink_project_repository_for_actor(pool, project_id, repository_id, actor.id, request)
+            .await
+            .map_err(map_projects_error)?;
+    Ok(Json(settings))
+}
+
+async fn create_project_status_update_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(project_id): Path<Uuid>,
+    Json(request): Json<ProjectStatusUpdateRequest>,
+) -> Result<Json<ProjectSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let settings = create_project_status_update_for_actor(pool, project_id, actor.id, request)
+        .await
+        .map_err(map_projects_error)?;
+    Ok(Json(settings))
+}
+
+async fn update_project_template_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(project_id): Path<Uuid>,
+    Json(request): Json<ProjectTemplateUpdateRequest>,
+) -> Result<Json<ProjectSettings>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let settings = update_project_template_for_actor(pool, project_id, actor.id, request)
         .await
         .map_err(map_projects_error)?;
     Ok(Json(settings))

@@ -7316,5 +7316,24 @@
       "Probe user-owned projects, org-owned projects under owner/admin/member/base permission combinations, public anonymous reads, private repository link filtering, locked visibility policy copy, closed project disabled status controls, long README/status Markdown wrapping, and mobile settings layout.",
       "Phase 3 still owns real metadata/README/visibility/default repository/repository link/status/template mutations; Phase 4 Access settings; Phase 5 Danger Zone lifecycle; Phase 6 docs, final screenshots, QA handoff, and build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-007",
+    "tests_written": [
+      "Completed Phase 3 General Settings Mutations without marking projects-007 build_pass=true.",
+      "Added Rust mutations for PATCH /api/projects/{project_id}/settings, POST/DELETE /api/projects/{project_id}/repositories/{repository_id}, POST /api/projects/{project_id}/status-updates, and PATCH /api/projects/{project_id}/template.",
+      "Mutation helpers enforce project write/admin permissions, closed-project denial, visibility policy locks, stale expectedUpdatedAt conflicts, repository write access and same-owner linking, status validation, README revision writes, template persistence, and project audit events.",
+      "Added same-origin Next proxy routes and typed web API helpers for settings, repository links, status updates, and template toggles.",
+      "Wired ProjectSettingsPage Save changes, repository Link/Remove, Publish update, and Save template controls to real JSON submissions with pending, success, error, and refreshed-settings states.",
+      "Focused ProjectSettingsPage Vitest coverage now asserts general settings, status update, and template mutation payloads.",
+      "Browser smoke passed through the real Next route against a local API-compatible stub on port 3016: saved metadata/README, published a complete status update, toggled template off, checked no href=\"#\" links, checked no horizontal overflow, and saved ralph/screenshots/build/projects-007-phase3-general-mutations.jpg.",
+      "Verification passed: cargo fmt --all --check; cargo check -p opengithub-api --tests; focused ProjectSettingsPage Vitest with 8 tests; web TypeScript; focused Biome; full make check; full make test with Cargo tests plus 571 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Run Phase 3 mutation browser smoke against a clean migrated credentialed TEST_DATABASE_URL when available; this iteration used a local API-compatible stub because local Postgres on localhost:55432 has repeatedly rejected the configured postgres password.",
+      "Full make test-e2e was attempted with TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test and DB_SSL=false but produced no output before the bounded 90 second timeout; rerun the signed-in Projects settings suite after fixing local test database credentials.",
+      "Probe concurrent metadata/template edits and stale expectedUpdatedAt conflicts, organization policy visibility locks, read-only/write/admin role boundaries, closed project mutation denial, invalid status date ranges, long README/status Markdown, duplicate repository linking, removing the current default repository, private repository write-denial, repository from another owner, README revision history, template copy-source behavior, and project audit rows.",
+      "Phase 4 still owns Access settings; Phase 5 Danger Zone lifecycle; Phase 6 docs, final screenshots, QA handoff, and build_pass bookkeeping."
+    ]
   }
 ]

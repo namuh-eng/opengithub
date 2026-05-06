@@ -790,6 +790,34 @@ export type ProjectSettingsFetchResult =
   | { ok: true; settings: ProjectSettings }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type ProjectSettingsUpdateRequest = {
+  title: string;
+  description?: string | null;
+  readme?: string | null;
+  visibility?: "public" | "private" | string | null;
+  defaultRepositoryId?: string | null;
+  expectedUpdatedAt?: string | null;
+};
+
+export type ProjectRepositoryLinkRequest = {
+  expectedUpdatedAt?: string | null;
+};
+
+export type ProjectStatusUpdateRequest = {
+  status: "on_track" | "at_risk" | "off_track" | "complete" | string;
+  body?: string | null;
+  startDate?: string | null;
+  targetDate?: string | null;
+};
+
+export type ProjectTemplateUpdateRequest = {
+  isTemplate: boolean;
+  title?: string | null;
+  description?: string | null;
+  isPublic?: boolean | null;
+  expectedUpdatedAt?: string | null;
+};
+
 export type ProjectFieldCreateRequest = {
   name: string;
   fieldType: "single_select" | "iteration" | "date" | "text" | "number";
@@ -8074,6 +8102,114 @@ export async function getProjectSettingsFromCookie(
     ok: true,
     settings: (await response.json()) as ProjectSettings,
   };
+}
+
+async function mutateProjectSettingsFromCookie(
+  cookie: string | null | undefined,
+  path: string,
+  method: "PATCH" | "POST" | "DELETE",
+  request:
+    | ProjectSettingsUpdateRequest
+    | ProjectRepositoryLinkRequest
+    | ProjectStatusUpdateRequest
+    | ProjectTemplateUpdateRequest,
+  fallbackMessage: string,
+): Promise<ProjectSettings> {
+  const response = await fetch(`${apiBaseUrl()}${path}`, {
+    method,
+    headers: {
+      "content-type": "application/json",
+      ...(cookie ? { cookie } : {}),
+    },
+    body: JSON.stringify(request),
+    cache: "no-store",
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(envelope?.error.message ?? fallbackMessage, {
+      cause: {
+        error: envelope?.error ?? {
+          code: "project_settings_update_failed",
+          message: fallbackMessage,
+        },
+        status: envelope?.status ?? response.status,
+      } satisfies ApiErrorEnvelope,
+    });
+  }
+  return payload as ProjectSettings;
+}
+
+export function updateProjectSettingsFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  request: ProjectSettingsUpdateRequest,
+): Promise<ProjectSettings> {
+  return mutateProjectSettingsFromCookie(
+    cookie,
+    projectSettingsPath(projectId),
+    "PATCH",
+    request,
+    "Project settings could not be saved.",
+  );
+}
+
+export function linkProjectRepositoryFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  repositoryId: string,
+  request: ProjectRepositoryLinkRequest,
+): Promise<ProjectSettings> {
+  return mutateProjectSettingsFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repositoryId)}`,
+    "POST",
+    request,
+    "Project repository could not be linked.",
+  );
+}
+
+export function unlinkProjectRepositoryFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  repositoryId: string,
+  request: ProjectRepositoryLinkRequest,
+): Promise<ProjectSettings> {
+  return mutateProjectSettingsFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repositoryId)}`,
+    "DELETE",
+    request,
+    "Project repository could not be removed.",
+  );
+}
+
+export function createProjectStatusUpdateFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  request: ProjectStatusUpdateRequest,
+): Promise<ProjectSettings> {
+  return mutateProjectSettingsFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/status-updates`,
+    "POST",
+    request,
+    "Project status update could not be published.",
+  );
+}
+
+export function updateProjectTemplateFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  request: ProjectTemplateUpdateRequest,
+): Promise<ProjectSettings> {
+  return mutateProjectSettingsFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/template`,
+    "PATCH",
+    request,
+    "Project template settings could not be saved.",
+  );
 }
 
 export async function getProjectWorkflowSettingsFromCookie(
