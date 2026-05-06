@@ -7879,5 +7879,20 @@
       "Probe keyboard-only reorder on desktop and mobile, focus preservation after reorder failure, long item titles, dense label/assignee rows, lifecycle close/reopen/delete races, deleted milestone stale URLs, and association clearing on delete.",
       "Phase 5 still owns API docs, signed-in E2E coverage, final QA handoff consolidation, and milestones-001 build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "milestones-001",
+    "tests_written": [
+      "Completed Phase 5 Docs, E2E, QA Handoff, and Build-Pass Bookkeeping and marked milestones-001 build_pass=true while leaving qa_pass=false.",
+      "Added /docs/api coverage for milestone list, create, detail, update, close, reopen, delete, and order endpoints, including sort/state query params, progress semantics, permission boundaries, validation errors, deletion association clearing, stale reorder conflicts, over-500 reorder cap, audit/timeline side effects, and no-secret error envelopes.",
+      "Added web/tests/e2e/repository-milestones.spec.ts for a signed-session sweep covering milestone list, create, edit, detail open/closed tabs, New issue preselection, issue and PR milestone clearing from sidebars, reorder controls, close/reopen/delete lifecycle, final desktop/mobile screenshots, no dead controls, and no horizontal overflow.",
+      "Focused verification passed for api-docs, repository-milestones-page, and repository-milestone-detail-page Vitest coverage, web TypeScript, and focused Biome checks before final full verification.",
+      "Attempted direct Playwright milestone E2E with TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false; it failed before feature assertions in dashboard_e2e_seed because local Postgres rejected the configured postgres credentials."
+    ],
+    "needs_deeper_qa": [
+      "Run web/tests/e2e/repository-milestones.spec.ts against a clean migrated credentialed TEST_DATABASE_URL; the direct chromium run failed before feature assertions in dashboard_e2e_seed because local Postgres rejected the configured postgres credentials.",
+      "Probe concurrent milestone edits/deletes, duplicate title collisions, stale reorder conflicts, over-500 open-item reorder cap, cross-repository item or milestone IDs, archived repository denial, private repository leakage, and no-secret error envelopes from every lifecycle endpoint.",
+      "Probe due-date timezone handling, Markdown sanitization, deletion association clearing across issues and PR-backed issues, notification fanout, audit/timeline event ordering, stale progress after issue/PR metadata changes, keyboard-only reorder and MilestonePicker usage, and dense/long content on mobile."
+    ]
   }
 ]

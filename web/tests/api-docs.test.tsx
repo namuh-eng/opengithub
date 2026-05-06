@@ -118,6 +118,43 @@ describe("ApiDocsPage", () => {
       screen.getByText(/Deletion cascades through issue_labels/),
     ).toBeVisible();
     expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/milestones?state=open&sort=updated-desc&page=1&pageSize=30",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText("/api/repos/{owner}/{repo}/milestones"),
+    ).toBeVisible();
+    expect(
+      screen.getAllByText(
+        "/api/repos/{owner}/{repo}/milestones/{milestone_id}",
+      )[0],
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/milestones/{milestone_id}/close",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/milestones/{milestone_id}/reopen",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/api/repos/{owner}/{repo}/milestones/{milestone_id}/order",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/state supports open, closed, and all/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Deletion clears issues\.milestone_id/),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/expectedVersion provides stale-order conflict/),
+    ).toBeVisible();
+    expect(
       screen.getByText("/api/organizations/slug-availability?name=Acme%20Labs"),
     ).toBeVisible();
     expect(screen.getByText("/api/organizations")).toBeVisible();

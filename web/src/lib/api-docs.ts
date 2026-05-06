@@ -5830,6 +5830,208 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "repo-milestones-list",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/milestones?state=open&sort=updated-desc&page=1&pageSize=30",
+    title: "List repository milestones",
+    description:
+      "Returns repository milestones with state tabs, full sort support, progress counts, due dates, issue-count links, and viewer edit capability for the Editorial Milestones page.",
+    auth: "Anonymous for public repositories, signed opengithub session cookie for private repositories",
+    response: `{
+  "items": [
+    {
+      "id": "milestone_01",
+      "title": "Launch readiness",
+      "state": "open",
+      "dueOn": "2026-05-20T00:00:00Z",
+      "progress": {
+        "openCount": 3,
+        "closedCount": 2,
+        "totalCount": 5,
+        "percentComplete": 40
+      },
+      "openIssuesHref": "/mona/octo-app/issues?state=open&milestone=Launch%20readiness",
+      "closedIssuesHref": "/mona/octo-app/issues?state=closed&milestone=Launch%20readiness",
+      "href": "/mona/octo-app/milestones/milestone_01"
+    }
+  ],
+  "openCount": 1,
+  "closedCount": 0,
+  "filters": { "state": "open", "sort": "updated-desc" },
+  "viewer": { "permission": "write", "canEditMilestones": true }
+}`,
+    notes: [
+      "state supports open, closed, and all; sort supports recently updated, due-date, completion, alphabetical, reverse alphabetical, most issues, and fewest issues modes.",
+      "Private repositories return not_found outside the viewer boundary; public repositories remain readable without exposing raw permission rows or private item bodies.",
+      "Progress counts include issues and pull requests through pull-request backing issues, so list rows, detail progress, and issue-count links share one Rust-owned source of truth.",
+    ],
+  },
+  {
+    id: "repo-milestones-create",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/milestones",
+    title: "Create repository milestone",
+    description:
+      "Creates a repository milestone with title, optional Markdown description, optional due date, rendered description cache, event evidence, and audit rows.",
+    auth: "Signed opengithub session cookie with write, admin, or owner repository permission",
+    request: `{
+  "title": "Launch readiness",
+  "description": "Track blockers before launch.",
+  "dueOn": "2026-05-20T00:00:00Z"
+}`,
+    response: `{
+  "id": "milestone_01",
+  "title": "Launch readiness",
+  "descriptionHtml": "<p>Track blockers before launch.</p>",
+  "state": "open",
+  "progress": { "openCount": 0, "closedCount": 0, "totalCount": 0, "percentComplete": 0 },
+  "viewer": { "canEditMilestones": true }
+}`,
+    notes: [
+      "Validation rejects blank titles, case-insensitive duplicate titles, oversized descriptions, invalid dates, archived repositories, and insufficient permissions with stable error envelopes.",
+      "Descriptions are rendered through the Rust Markdown sanitizer and cached without returning parser stack traces, session rows, database URLs, or environment values.",
+      "Create writes milestone_events and audit evidence before the browser refreshes the list or redirects to detail.",
+    ],
+  },
+  {
+    id: "repo-milestones-detail",
+    method: "GET",
+    path: "/api/repos/{owner}/{repo}/milestones/{milestone_id}",
+    title: "Read repository milestone detail",
+    description:
+      "Returns the planning view for one milestone, including rendered description, open and closed issue or pull-request rows, selected-item metadata, progress, and reorder capability.",
+    auth: "Anonymous for public repositories, signed opengithub session cookie for private repositories",
+    response: `{
+  "id": "milestone_01",
+  "title": "Launch readiness",
+  "descriptionHtml": "<p>Track blockers before launch.</p>",
+  "progress": { "openCount": 2, "closedCount": 1, "totalCount": 3, "percentComplete": 33 },
+  "items": [
+    {
+      "id": "issue_42",
+      "number": 42,
+      "title": "Stabilize importer",
+      "state": "open",
+      "isPullRequest": false,
+      "href": "/mona/octo-app/issues/42"
+    }
+  ],
+  "order": { "canReorder": true, "reason": null, "version": "order-v1" }
+}`,
+    notes: [
+      "Rows include labels, assignees, comment counts, pull-request identity, and concrete links without serializing private comments or raw join rows.",
+      "order.canReorder is false for readers, archived repositories, and milestones with more than 500 open items; reason explains the disabled state for the browser.",
+      "Missing or inaccessible milestones return repository-safe not_found envelopes so private repository names and milestone titles are not leaked.",
+    ],
+  },
+  {
+    id: "repo-milestones-update",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/milestones/{milestone_id}",
+    title: "Update repository milestone",
+    description:
+      "Updates milestone title, Markdown description, and due date while preserving issue and pull request assignments.",
+    auth: "Signed opengithub session cookie with write, admin, or owner repository permission",
+    request: `{
+  "title": "Launch readiness v2",
+  "description": "Updated launch blockers.",
+  "dueOn": null
+}`,
+    response: `{
+  "id": "milestone_01",
+  "title": "Launch readiness v2",
+  "dueOn": null,
+  "descriptionHtml": "<p>Updated launch blockers.</p>"
+}`,
+    notes: [
+      "Partial edits go through the same validation as create and reject cross-repository ids, duplicate titles, archived repositories, and reader sessions.",
+      "Successful edits refresh rendered_markdown_cache, milestone_events, and audit_events while keeping issue and pull request milestone_id values intact.",
+      "The response contains the refreshed milestone contract only, not raw audit metadata, session data, OAuth profile data, or storage internals.",
+    ],
+  },
+  {
+    id: "repo-milestones-close",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/milestones/{milestone_id}/close",
+    title: "Close repository milestone",
+    description:
+      "Transitions an open milestone to closed and returns the refreshed milestone detail contract for list and detail lifecycle controls.",
+    auth: "Signed opengithub session cookie with write, admin, or owner repository permission",
+    response: `{
+  "id": "milestone_01",
+  "state": "closed",
+  "closedAt": "2026-05-20T00:00:00Z"
+}`,
+    notes: [
+      "Closing is idempotent for already-closed milestones and does not close assigned issues or pull requests.",
+      "Archived repositories, missing milestones, and insufficient permissions return structured errors without stack traces or private repository metadata.",
+      "Successful transitions write milestone_events and audit rows so QA can trace state changes.",
+    ],
+  },
+  {
+    id: "repo-milestones-reopen",
+    method: "POST",
+    path: "/api/repos/{owner}/{repo}/milestones/{milestone_id}/reopen",
+    title: "Reopen repository milestone",
+    description:
+      "Transitions a closed milestone back to open and clears its closed timestamp without changing assigned work items.",
+    auth: "Signed opengithub session cookie with write, admin, or owner repository permission",
+    response: `{
+  "id": "milestone_01",
+  "state": "open",
+  "closedAt": null
+}`,
+    notes: [
+      "Reopening preserves milestone_item_order, due date, description, and all issue or pull request assignments.",
+      "State changes use the same repository write permission boundary as create, update, delete, and reorder.",
+      "Responses never include session cookies, OAuth tokens, database URLs, raw audit payloads, or environment values.",
+    ],
+  },
+  {
+    id: "repo-milestones-delete",
+    method: "DELETE",
+    path: "/api/repos/{owner}/{repo}/milestones/{milestone_id}",
+    title: "Delete repository milestone",
+    description:
+      "Deletes a milestone, clears associated issue and pull-request backing issue milestone assignments, records timeline evidence, and leaves conversations intact.",
+    auth: "Signed opengithub session cookie with write, admin, or owner repository permission",
+    response: `{
+  "deleted": true,
+  "clearedAssignments": { "issues": 2, "pullRequests": 1 }
+}`,
+    notes: [
+      "Deletion clears issues.milestone_id for issues and pull-request backing issues while preserving issue numbers, pull request numbers, comments, labels, assignees, notifications, and subscriptions.",
+      "Each cleared assignment writes metadata timeline evidence so issue and pull request sidebars can explain why the milestone chip disappeared.",
+      "Missing, cross-repository, archived, or unauthorized deletes fail through stable no-secret envelopes.",
+    ],
+  },
+  {
+    id: "repo-milestones-order",
+    method: "PATCH",
+    path: "/api/repos/{owner}/{repo}/milestones/{milestone_id}/order",
+    title: "Reorder milestone work items",
+    description:
+      "Persists writer-controlled priority order for a milestone's open issues and pull requests when the milestone has 500 or fewer open items.",
+    auth: "Signed opengithub session cookie with write, admin, or owner repository permission",
+    request: `{
+  "orderedItemIds": ["issue_44", "issue_42"],
+  "expectedVersion": "order-v1"
+}`,
+    response: `{
+  "id": "milestone_01",
+  "items": [
+    { "id": "issue_44", "title": "Polish release notes" },
+    { "id": "issue_42", "title": "Stabilize importer" }
+  ],
+  "order": { "canReorder": true, "reason": null, "version": "order-v2" }
+}`,
+    notes: [
+      "orderedItemIds must exactly reference open issue rows in the same repository and milestone; cross-repository, duplicate, missing, closed, or stale item sets are rejected before persistence.",
+      "expectedVersion provides stale-order conflict detection for concurrent edits; the browser keeps the user's attempted order visible while showing the structured conflict message.",
+      "Milestones with more than 500 open items return an explicit disabled reorder reason and keep deterministic updated-time ordering instead of accepting a partial priority list.",
+    ],
+  },
+  {
     id: "repo-labels-list",
     method: "GET",
     path: "/api/repos/{owner}/{repo}/labels?q=bug&sort=name&direction=asc&page=1&pageSize=100",

@@ -88,7 +88,7 @@ The collaboration foundation already has repository-scoped `milestones`, `issues
 
 ## Phase 5: Docs, E2E, QA Handoff, and Build-Pass Bookkeeping
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish `milestones-001` only after milestone list/detail/mutations, issue/PR assignment, prioritization, docs, screenshots, E2E coverage, QA hints, and final bookkeeping are complete.
 
