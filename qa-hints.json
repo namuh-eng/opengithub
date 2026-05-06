@@ -7674,5 +7674,24 @@
       "Bounded TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false timeout 120 make test-e2e terminated after 120 seconds with no Playwright detail; rerun signed-in E2E after the local test database/dev-server path is healthy.",
       "Phases 3-5 still own two-revision compare, permissioned revert commits, API docs, final signed-in E2E, QA handoff consolidation, and wiki-003 build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "wiki-003",
+    "tests_written": [
+      "Completed Phase 3 Two-Revision Compare without marking wiki-003 build_pass=true.",
+      "Added GET /api/repos/{owner}/{repo}/wiki/_compare?base=...&head=...&page=... with optional signed auth, read permission checks, disabled/missing wiki behavior, same-page validation, base/head normalization by revision timestamp, no-diff validation, and structured line diff output for wiki Markdown.",
+      "Added typed Next compare DTOs/fetch helpers, server-session wrapper, catch-all /wiki/_compare route handling, and RepositoryWikiComparePage with Editorial base/head metadata, history/page links, file diff stats, line-numbered addition/deletion/context rows, long-line wrapping, and no revert controls until Phase 4.",
+      "Updated RepositoryWikiHistoryPage so exactly two selected revisions produce a real Compare Revisions link to /wiki/_compare with base/head/page query parameters instead of a disabled placeholder.",
+      "Extended repository_wiki_contract with compare assertions for page title, base revision ordering, diff stats, addition lines, history hrefs, no secret leakage, and same-revision validation; local DB row assertions self-skipped because TEST_DATABASE_URL postgres credentials are still rejected, but the contract compiled and ran under the existing guard.",
+      "Added focused RepositoryWikiComparePage Vitest coverage for base/head metadata, concrete links, diff line rendering, unavailable/truncated states, no href=\"#\", and banned visual values; updated history tests for the real compare href.",
+      "Browser smoke passed through a clean local Next dev server on 3015 and API-compatible stub on 3026: loaded /namuh-eng/opengithub/wiki/_compare?base=abcdef1234567890&head=bcdef1234567890&page=Home, verified Compare revisions heading, added/removed diff lines, zero href=\"#\" links, and saved ralph/screenshots/build/wiki-003-phase3-compare.jpg.",
+      "Verification passed: focused RepositoryWiki history/compare/revision Vitest with 6 tests; web TypeScript; cargo fmt --all --check; cargo check -p opengithub-api --tests; focused repository_wiki_contract compiled and passed under the DB guard; full make check; full make test with Cargo tests plus 603 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Run compare API and browser smoke against a clean migrated credentialed TEST_DATABASE_URL; local localhost:55432 still rejects the configured postgres credentials, so DB assertions self-skipped and browser smoke used a local API-compatible stub.",
+      "Probe compare selection from all-pages history across different wiki pages, ambiguous short SHA collisions, same-content revisions, huge diffs past the 500-line inline cap, missing commit OIDs, identical timestamps, nested slugs, long unbroken Markdown lines, private/disabled repository leakage, and keyboard-only checkbox-to-compare traversal.",
+      "Full make test-e2e was attempted with the signed-session/test DB environment but stayed silent for roughly one minute and was terminated; rerun signed-in E2E after the local test database/dev-server path is healthy.",
+      "Phases 4-5 still own permissioned revert commits, API docs, final signed-in E2E, QA handoff consolidation, and wiki-003 build_pass bookkeeping."
+    ]
   }
 ]

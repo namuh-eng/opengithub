@@ -176,6 +176,7 @@ use crate::{
     },
     domain::wiki::{
         create_repository_wiki_page_by_owner_name, preview_repository_wiki_page_by_owner_name,
+        repository_wiki_compare_for_actor_by_owner_name,
         repository_wiki_edit_for_actor_by_owner_name, repository_wiki_for_actor_by_owner_name,
         repository_wiki_history_for_actor_by_owner_name,
         repository_wiki_pages_for_actor_by_owner_name,
@@ -216,6 +217,7 @@ pub fn router() -> Router<AppState> {
         )
         .route("/:owner/:repo/network", get(network))
         .route("/:owner/:repo/wiki", get(wiki_home))
+        .route("/:owner/:repo/wiki/_compare", get(wiki_compare))
         .route("/:owner/:repo/wiki/_history", get(wiki_history))
         .route("/:owner/:repo/wiki/_pages", get(wiki_pages))
         .route("/:owner/:repo/wiki/pages", post(create_wiki_page))
@@ -904,11 +906,49 @@ struct WikiHistoryQuery {
     page_size: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WikiCompareQuery {
+    base: String,
+    head: String,
+    page: Option<String>,
+}
+
 fn wiki_history_bounds(query: &WikiHistoryQuery) -> (i64, i64) {
     (
         query.page.unwrap_or(1).clamp(1, 1_000),
         query.page_size.unwrap_or(30).clamp(1, 100),
     )
+}
+
+async fn wiki_compare(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<WikiCompareQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let actor = AuthenticatedUser::optional_from_headers(&state, &headers).await?;
+    let compare = repository_wiki_compare_for_actor_by_owner_name(
+        pool,
+        actor.map(|user| user.id),
+        &owner,
+        &repo,
+        query.page.as_deref(),
+        &query.base,
+        &query.head,
+    )
+    .await
+    .map_err(map_repository_error)?
+    .ok_or_else(|| {
+        error_response(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "repository wiki compare was not found".to_owned(),
+        )
+    })?;
+
+    Ok(Json(json!(compare)))
 }
 
 async fn wiki_history(

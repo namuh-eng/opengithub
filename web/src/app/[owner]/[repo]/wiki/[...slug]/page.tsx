@@ -1,6 +1,7 @@
 import { AppShell } from "@/components/AppShell";
 import { RepositoryShell } from "@/components/RepositoryShell";
 import { RepositoryUnavailablePage } from "@/components/RepositoryUnavailablePage";
+import { RepositoryWikiComparePage } from "@/components/RepositoryWikiComparePage";
 import { RepositoryWikiEditor } from "@/components/RepositoryWikiEditor";
 import { RepositoryWikiHistoryPage } from "@/components/RepositoryWikiHistoryPage";
 import { RepositoryWikiPage as RepositoryWikiView } from "@/components/RepositoryWikiPage";
@@ -9,6 +10,7 @@ import { RepositoryWikiRevisionPage } from "@/components/RepositoryWikiRevisionP
 import {
   getRepository,
   getRepositoryWiki,
+  getRepositoryWikiCompare,
   getRepositoryWikiEdit,
   getRepositoryWikiHistory,
   getRepositoryWikiPages,
@@ -18,7 +20,12 @@ import {
 
 type RepositoryWikiSlugPageProps = {
   params: Promise<{ owner: string; repo: string; slug: string[] }>;
-  searchParams: Promise<{ page?: string; pageSize?: string }>;
+  searchParams: Promise<{
+    base?: string;
+    head?: string;
+    page?: string;
+    pageSize?: string;
+  }>;
 };
 
 function decodePathSegment(value: string) {
@@ -76,6 +83,33 @@ export default async function RepositoryWikiSlugPage({
       <AppShell session={session}>
         <RepositoryWikiPagesIndex
           pagesIndex={pagesIndex}
+          repository={repository}
+        />
+      </AppShell>
+    );
+  }
+
+  if (wikiSlug === "_compare") {
+    const compareResult =
+      query.base && query.head
+        ? await getRepositoryWikiCompare(
+            ownerLogin,
+            repositoryName,
+            query.base,
+            query.head,
+            query.page,
+          )
+        : {
+            ok: false as const,
+            status: 422,
+            code: "validation_failed",
+            message: "Select two wiki revisions before comparing.",
+          };
+
+    return (
+      <AppShell session={session}>
+        <RepositoryWikiComparePage
+          compareResult={compareResult}
           repository={repository}
         />
       </AppShell>

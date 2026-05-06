@@ -657,3 +657,38 @@ a {
   border-radius: 8px;
   pointer-events: none;
 }
+
+.wiki-diff-hunk {
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-3);
+}
+.wiki-diff-line {
+  background: var(--surface);
+}
+.wiki-diff-line-add {
+  background: var(--ok-soft);
+}
+.wiki-diff-line-del {
+  background: var(--err-soft);
+}
+.wiki-diff-num,
+.wiki-diff-prefix {
+  width: 1%;
+  padding: 2px 8px;
+  color: var(--ink-4);
+  text-align: right;
+  user-select: none;
+  white-space: nowrap;
+}
+.wiki-diff-prefix {
+  color: var(--ink-3);
+  text-align: center;
+}
+.wiki-diff-code {
+  min-width: 420px;
+  padding: 2px 12px 2px 4px;
+  color: var(--ink-1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

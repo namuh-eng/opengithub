@@ -96,6 +96,7 @@ import {
   getRepositoryWebhookDeliveryDetailFromCookie,
   getRepositoryWebhookDetailFromCookie,
   getRepositoryWebhookSettingsFromCookie,
+  getRepositoryWikiCompareFromCookie,
   getRepositoryWikiEditFromCookie,
   getRepositoryWikiFromCookie,
   getRepositoryWikiHistoryFromCookie,
@@ -171,6 +172,7 @@ import {
   type RepositorySecurityOverviewFetchResult,
   type RepositorySecurityPolicyFetchResult,
   type RepositoryTrafficFetchResult,
+  type RepositoryWikiCompareFetchResult,
   type RepositoryWikiFetchResult,
   type RepositoryWikiRevisionFetchResult,
   type SearchSuggestionsQuery,
@@ -901,6 +903,24 @@ export async function getRepositoryWikiRevision(
     repo,
     slug,
     revision,
+  );
+}
+
+export async function getRepositoryWikiCompare(
+  owner: string,
+  repo: string,
+  base: string,
+  head: string,
+  slug?: string | null,
+): Promise<RepositoryWikiCompareFetchResult> {
+  const requestHeaders = await headers();
+  return getRepositoryWikiCompareFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    base,
+    head,
+    slug,
   );
 }
 

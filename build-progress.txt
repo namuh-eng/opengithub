@@ -1,3 +1,15 @@
+2026-05-06 - wiki-003 phase 3 two-revision compare
+
+- Completed Phase 3 from `.qrspi/wiki-003/structure.md`: wiki history selections now navigate to a real Editorial compare page with structured Markdown diffs without marking `wiki-003.build_pass=true`; Phases 4-5 remain.
+- Added `GET /api/repos/{owner}/{repo}/wiki/_compare?base=...&head=...&page=...` with optional signed auth, repository read permission checks, wiki enabled/missing behavior, same-page validation, base/head normalization by revision timestamp, same/no-diff validation, and bounded line diff output for additions, deletions, and context.
+- Added typed Next compare DTOs/fetch helpers, server-session wrapper, catch-all `_compare` routing, `RepositoryWikiComparePage`, and Editorial diff styling using existing tokens. Updated history selection so exactly two revisions create a concrete Compare Revisions link.
+- Extended `repository_wiki_contract` with compare ordering, diff stats, addition lines, history hrefs, no-secret leakage, and same-revision validation. The contract compiled and ran, but DB assertions self-skipped because local `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test` still rejects the available `postgres` credentials.
+- Added focused Vitest coverage for history compare hrefs and compare page metadata, concrete links, diff lines, unavailable/truncated states, no placeholder links, and Editorial banned-value guardrails.
+- Browser smoke passed against a local Next dev server on port 3015 and API-compatible stub on port 3026: loaded `/namuh-eng/opengithub/wiki/_compare?base=abcdef1234567890&head=bcdef1234567890&page=Home`, verified heading, added/removed lines, zero `href="#"`, and saved `ralph/screenshots/build/wiki-003-phase3-compare.jpg`.
+- Verification passed: focused history/compare/revision Vitest with 6 tests; `cd web && npx tsc --noEmit --pretty false`; focused Biome; `cargo fmt --all --check`; `cargo check -p opengithub-api --tests`; focused `repository_wiki_contract` under DB guard; full `TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false CARGO_INCREMENTAL=0 make check`; full `DB_SSL=false CARGO_INCREMENTAL=0 make test` with Cargo tests plus 603 web tests; mandatory Editorial banned-value scan returned zero matches.
+- Full `make test-e2e` was attempted with the signed-session/test DB environment but stayed silent for roughly one minute and was terminated. `prd.json` remains `build_pass:false` because permissioned revert and final docs/E2E/QA/build-pass bookkeeping remain.
+- Unrelated pre-existing local changes in `.clawhip/state/prompt-submit.json` and `ralph/failure-log.json` were not touched.
+
 2026-05-06 - wiki-003 phase 1 history read contract and Editorial history page
 
 - Completed Phase 1 from `.qrspi/wiki-003/structure.md`: wiki history is now browsable through an API-backed Editorial page without marking `wiki-003.build_pass=true`; Phases 2-5 remain.

@@ -182,8 +182,10 @@ describe("RepositoryWikiHistoryPage", () => {
     );
     expect(screen.getAllByText(/committed/)).toHaveLength(2);
 
-    const compare = screen.getByRole("button", { name: "Compare Revisions" });
-    expect(compare).toBeDisabled();
+    expect(screen.getByText("Compare Revisions")).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
     fireEvent.click(
       screen.getByRole("checkbox", {
         name: "Select revision Refresh wiki home",
@@ -194,7 +196,12 @@ describe("RepositoryWikiHistoryPage", () => {
         name: "Select revision Publish wiki home",
       }),
     );
-    expect(compare).toBeEnabled();
+    expect(
+      screen.getByRole("link", { name: "Compare Revisions" }),
+    ).toHaveAttribute(
+      "href",
+      "/namuh-eng/opengithub/wiki/_compare?base=abcdef1234567890&head=bcdef1234567890&page=Home",
+    );
 
     expect(screen.getByRole("link", { name: "Newer" })).toHaveAttribute(
       "href",

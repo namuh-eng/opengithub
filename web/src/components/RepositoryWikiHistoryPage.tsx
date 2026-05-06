@@ -9,6 +9,7 @@ import type {
   RepositoryWikiHistoryRevision,
   RepositoryWikiHistoryView,
 } from "@/lib/api";
+import { repositoryWikiCompareHref } from "@/lib/navigation";
 
 type RepositoryWikiHistoryPageProps = {
   repository: RepositoryOverview;
@@ -72,6 +73,15 @@ function HistoryReader({ history }: { history: RepositoryWikiHistoryView }) {
   );
   const compareEnabled = selectedRows.length === 2;
   const scopedPage = history.scope.page;
+  const compareHref = compareEnabled
+    ? repositoryWikiCompareHref(
+        history.repository.ownerLogin,
+        history.repository.name,
+        selectedRows[1].commitOid ?? selectedRows[1].id,
+        selectedRows[0].commitOid ?? selectedRows[0].id,
+        scopedPage?.slug ?? selectedRows[0].pageSlug,
+      )
+    : null;
 
   function toggleRevision(revisionId: string) {
     setSelected((current) => {
@@ -116,20 +126,28 @@ function HistoryReader({ history }: { history: RepositoryWikiHistoryView }) {
           <Link className="btn sm" href={history.links.pagesHref}>
             Pages
           </Link>
-          <button
-            aria-describedby="wiki-history-compare-help"
-            className="btn primary sm"
-            disabled={!compareEnabled}
-            type="button"
-          >
-            Compare Revisions
-          </button>
+          {compareHref ? (
+            <Link
+              aria-describedby="wiki-history-compare-help"
+              className="btn primary sm"
+              href={compareHref}
+            >
+              Compare Revisions
+            </Link>
+          ) : (
+            <span
+              aria-describedby="wiki-history-compare-help"
+              aria-disabled="true"
+              className="btn primary sm"
+            >
+              Compare Revisions
+            </span>
+          )}
         </div>
       </section>
 
       <p className="t-xs" id="wiki-history-compare-help">
-        Select two revisions to compare. Compare opens in the next wiki history
-        phase.
+        Select exactly two revisions to compare their wiki content.
       </p>
 
       <section className="card overflow-hidden" aria-label="Wiki revisions">

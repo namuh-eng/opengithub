@@ -423,6 +423,54 @@ async fn repository_wiki_read_contract_returns_pages_markdown_clone_and_states()
         older_home_revision_id.to_string()
     );
 
+    let latest_revision = page_history_body["revisions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|revision| revision["id"] != older_home_revision_id.to_string())
+        .expect("latest home revision should exist");
+    let compare_uri = format!(
+        "/api/repos/{}/{}/wiki/_compare?base={}&head={}&page=Home",
+        owner_login,
+        public_repo.name,
+        short_revision,
+        latest_revision["commitOid"].as_str().unwrap()
+    );
+    let (compare_status, _, compare_body) =
+        get_json(app.clone(), &compare_uri, Some(&owner_cookie)).await;
+    assert_eq!(compare_status, StatusCode::OK);
+    assert_eq!(compare_body["page"]["title"], "Home");
+    assert_eq!(
+        compare_body["base"]["id"],
+        older_home_revision_id.to_string()
+    );
+    assert_eq!(compare_body["files"][0]["path"], "Home.md");
+    assert!(compare_body["stats"]["additions"].as_i64().unwrap() > 0);
+    assert!(compare_body["stats"]["deletions"].as_i64().unwrap() > 0);
+    assert!(compare_body["files"][0]["hunks"][0]["lines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|line| line["kind"] == "addition"
+            && line["content"].as_str().unwrap().contains("Welcome")));
+    assert_eq!(
+        compare_body["links"]["historyHref"],
+        format!("/{}/{}/wiki/Home/_history", owner_login, public_repo.name)
+    );
+    assert!(!compare_body.to_string().contains("google-client-secret"));
+
+    let same_compare_uri = format!(
+        "/api/repos/{}/{}/wiki/_compare?base={}&head={}&page=Home",
+        owner_login, public_repo.name, short_revision, short_revision
+    );
+    let (same_compare_status, _, same_compare_body) =
+        get_json(app.clone(), &same_compare_uri, Some(&owner_cookie)).await;
+    assert_eq!(same_compare_status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        same_compare_body["error"]["message"],
+        "Wiki compare revisions must be different."
+    );
+
     let nested_missing_uri = format!(
         "/api/repos/{}/{}/wiki/Docs/Unknown%20Page",
         body["repository"]["ownerLogin"].as_str().unwrap(),

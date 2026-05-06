@@ -335,6 +335,93 @@ pub struct WikiRevisionLinks {
     pub pages_href: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiCompareView {
+    pub repository: WikiRepositorySummary,
+    pub viewer: WikiViewer,
+    pub page: WikiComparePageSummary,
+    pub base: WikiCompareRevisionSummary,
+    pub head: WikiCompareRevisionSummary,
+    pub files: Vec<WikiDiffFile>,
+    pub stats: WikiDiffStats,
+    pub links: WikiCompareLinks,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiComparePageSummary {
+    pub id: Uuid,
+    pub title: String,
+    pub slug: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiCompareRevisionSummary {
+    pub id: Uuid,
+    pub author: Option<WikiAuthor>,
+    pub message: String,
+    pub commit_oid: Option<String>,
+    pub short_oid: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiDiffStats {
+    pub additions: i64,
+    pub deletions: i64,
+    pub total_lines: i64,
+    pub truncated: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiDiffFile {
+    pub path: String,
+    pub old_path: String,
+    pub new_path: String,
+    pub additions: i64,
+    pub deletions: i64,
+    pub hunks: Vec<WikiDiffHunk>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiDiffHunk {
+    pub header: String,
+    pub lines: Vec<WikiDiffLine>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiDiffLine {
+    pub kind: WikiDiffLineKind,
+    pub old_number: Option<i64>,
+    pub new_number: Option<i64>,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WikiDiffLineKind {
+    Context,
+    Addition,
+    Deletion,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WikiCompareLinks {
+    pub history_href: String,
+    pub base_revision_href: String,
+    pub head_revision_href: String,
+    pub page_href: String,
+}
+
 pub async fn repository_wiki_for_actor_by_owner_name(
     pool: &PgPool,
     actor_user_id: Option<Uuid>,
@@ -718,6 +805,140 @@ pub async fn repository_wiki_revision_for_actor_by_owner_name(
         links: WikiRevisionLinks {
             home_href: wiki_home_href(&repository),
             pages_href: format!("{}/_pages", wiki_home_href(&repository)),
+        },
+    }))
+}
+
+pub async fn repository_wiki_compare_for_actor_by_owner_name(
+    pool: &PgPool,
+    actor_user_id: Option<Uuid>,
+    owner_login: &str,
+    name: &str,
+    slug: Option<&str>,
+    base: &str,
+    head: &str,
+) -> Result<Option<WikiCompareView>, RepositoryError> {
+    let Some(repository) = get_repository_by_owner_name(pool, owner_login, name).await? else {
+        return Ok(None);
+    };
+    let can_read = repository_can_read(pool, &repository, actor_user_id).await?;
+    if !can_read {
+        return Ok(None);
+    }
+    if base.trim().is_empty() || head.trim().is_empty() {
+        return Err(RepositoryError::InvalidSecurityPolicy(
+            "Wiki compare requires base and head revisions.".to_owned(),
+        ));
+    }
+    if base.trim().eq_ignore_ascii_case(head.trim()) {
+        return Err(RepositoryError::InvalidSecurityPolicy(
+            "Wiki compare revisions must be different.".to_owned(),
+        ));
+    }
+    if !repository_wiki_enabled(pool, repository.id).await? {
+        return Err(RepositoryError::InvalidSecurityPolicy(
+            "Wiki is disabled for this repository.".to_owned(),
+        ));
+    }
+    let Some(wiki_repository_id) = wiki_repository_id(pool, repository.id).await? else {
+        return Err(RepositoryError::NotFound);
+    };
+    let page_summary = match slug {
+        Some(slug) if !slug.trim().is_empty() => {
+            wiki_compare_page_by_slug(pool, &repository, wiki_repository_id, slug)
+                .await?
+                .ok_or(RepositoryError::NotFound)?
+        }
+        _ => wiki_page_for_revision_pair(pool, &repository, wiki_repository_id, base, head).await?,
+    };
+    let base_row = wiki_revision_page_row(pool, page_summary.id, base).await?;
+    let head_row = wiki_revision_page_row(pool, page_summary.id, head).await?;
+    let base_revision = revision_from_row(&repository, &page_summary.slug, &base_row);
+    let head_revision = revision_from_row(&repository, &page_summary.slug, &head_row);
+    if base_revision.id == head_revision.id {
+        return Err(RepositoryError::InvalidSecurityPolicy(
+            "Wiki compare revisions must be different.".to_owned(),
+        ));
+    }
+
+    let (base_row, head_row) = if base_revision.created_at <= head_revision.created_at {
+        (base_row, head_row)
+    } else {
+        (head_row, base_row)
+    };
+    let base_revision = revision_from_row(&repository, &page_summary.slug, &base_row);
+    let head_revision = revision_from_row(&repository, &page_summary.slug, &head_row);
+    let base_markdown: String = base_row.get("markdown");
+    let head_markdown: String = head_row.get("markdown");
+    let diff = wiki_markdown_diff(&page_summary.path, &base_markdown, &head_markdown);
+    if diff.stats.additions == 0 && diff.stats.deletions == 0 {
+        return Err(RepositoryError::InvalidSecurityPolicy(
+            "Selected wiki revisions have no content changes.".to_owned(),
+        ));
+    }
+
+    let permission = viewer_permission(pool, &repository, actor_user_id).await?;
+    let can_edit_wiki = match actor_user_id {
+        Some(user_id) => {
+            can_write_repository(pool, &repository, user_id).await? && !repository.is_archived
+        }
+        None => false,
+    };
+    let base_href = wiki_revision_history_href(
+        &repository,
+        &page_summary.slug,
+        base_revision.commit_oid.as_deref(),
+    );
+    let head_href = wiki_revision_history_href(
+        &repository,
+        &page_summary.slug,
+        head_revision.commit_oid.as_deref(),
+    );
+    Ok(Some(WikiCompareView {
+        repository: WikiRepositorySummary {
+            id: repository.id,
+            owner_login: repository.owner_login.clone(),
+            name: repository.name.clone(),
+            visibility: repository.visibility.as_str().to_owned(),
+            default_branch: repository.default_branch.clone(),
+            wiki_enabled: true,
+        },
+        viewer: WikiViewer {
+            permission,
+            can_read: true,
+            can_edit_wiki,
+        },
+        page: WikiComparePageSummary {
+            id: page_summary.id,
+            title: page_summary.title.clone(),
+            slug: page_summary.slug.clone(),
+            href: page_summary.href.clone(),
+        },
+        base: WikiCompareRevisionSummary {
+            id: base_revision.id,
+            author: base_revision.author,
+            message: base_revision.message,
+            commit_oid: base_revision.commit_oid,
+            short_oid: base_revision.short_oid,
+            created_at: base_revision.created_at,
+            href: base_href.clone(),
+        },
+        head: WikiCompareRevisionSummary {
+            id: head_revision.id,
+            author: head_revision.author,
+            message: head_revision.message,
+            commit_oid: head_revision.commit_oid,
+            short_oid: head_revision.short_oid,
+            created_at: head_revision.created_at,
+            href: head_href.clone(),
+        },
+        files: vec![diff.file],
+        stats: diff.stats,
+        links: WikiCompareLinks {
+            history_href: wiki_history_href(&repository, Some(&page_summary.slug), 1, 30),
+            base_revision_href: base_href,
+            head_revision_href: head_href,
+            page_href: wiki_page_href(&repository, &page_summary.slug),
         },
     }))
 }
@@ -1426,6 +1647,227 @@ async fn wiki_revision_page_row(
             "Wiki revision reference is ambiguous.".to_owned(),
         )),
     }
+}
+
+#[derive(Debug, Clone)]
+struct WikiComparePageData {
+    id: Uuid,
+    title: String,
+    slug: String,
+    path: String,
+    href: String,
+}
+
+struct WikiMarkdownDiffResult {
+    file: WikiDiffFile,
+    stats: WikiDiffStats,
+}
+
+async fn wiki_compare_page_by_slug(
+    pool: &PgPool,
+    repository: &Repository,
+    wiki_repository_id: Uuid,
+    slug: &str,
+) -> Result<Option<WikiComparePageData>, RepositoryError> {
+    let row = sqlx::query(
+        r#"
+        SELECT id, title, slug, path
+        FROM wiki_pages
+        WHERE wiki_repository_id = $1
+          AND lower(slug) = lower($2)
+          AND is_sidebar = false
+          AND is_footer = false
+        LIMIT 1
+        "#,
+    )
+    .bind(wiki_repository_id)
+    .bind(normalize_slug(slug))
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|row| {
+        let slug: String = row.get("slug");
+        WikiComparePageData {
+            id: row.get("id"),
+            title: row.get("title"),
+            path: row.get("path"),
+            href: wiki_page_href(repository, &slug),
+            slug,
+        }
+    }))
+}
+
+async fn wiki_page_for_revision_pair(
+    pool: &PgPool,
+    repository: &Repository,
+    wiki_repository_id: Uuid,
+    base: &str,
+    head: &str,
+) -> Result<WikiComparePageData, RepositoryError> {
+    let base = base.trim();
+    let head = head.trim();
+    let rows = sqlx::query(
+        r#"
+        SELECT DISTINCT wiki_pages.id, wiki_pages.title, wiki_pages.slug, wiki_pages.path
+        FROM wiki_pages
+        JOIN wiki_page_revisions ON wiki_page_revisions.page_id = wiki_pages.id
+        WHERE wiki_pages.wiki_repository_id = $1
+          AND wiki_pages.is_sidebar = false
+          AND wiki_pages.is_footer = false
+          AND (
+            wiki_page_revisions.id::text IN ($2, $3)
+            OR wiki_page_revisions.commit_oid ILIKE $4
+            OR wiki_page_revisions.commit_oid ILIKE $5
+          )
+        "#,
+    )
+    .bind(wiki_repository_id)
+    .bind(base)
+    .bind(head)
+    .bind(format!("{base}%"))
+    .bind(format!("{head}%"))
+    .fetch_all(pool)
+    .await?;
+
+    if rows.len() != 1 {
+        return Err(RepositoryError::InvalidSecurityPolicy(
+            "Wiki compare revisions must belong to the same page.".to_owned(),
+        ));
+    }
+    let row = rows.into_iter().next().expect("one wiki compare page");
+    let slug: String = row.get("slug");
+    Ok(WikiComparePageData {
+        id: row.get("id"),
+        title: row.get("title"),
+        path: row.get("path"),
+        href: wiki_page_href(repository, &slug),
+        slug,
+    })
+}
+
+fn wiki_markdown_diff(
+    path: &str,
+    old_markdown: &str,
+    new_markdown: &str,
+) -> WikiMarkdownDiffResult {
+    const MAX_DIFF_LINES: usize = 500;
+    let old_lines = old_markdown.lines().collect::<Vec<_>>();
+    let new_lines = new_markdown.lines().collect::<Vec<_>>();
+    let operations = diff_line_operations(&old_lines, &new_lines);
+    let mut old_number = 1_i64;
+    let mut new_number = 1_i64;
+    let mut additions = 0_i64;
+    let mut deletions = 0_i64;
+    let mut lines = Vec::new();
+    let mut truncated = false;
+
+    for operation in operations {
+        if lines.len() >= MAX_DIFF_LINES {
+            truncated = true;
+            break;
+        }
+        match operation {
+            DiffOperation::Context(value) => {
+                lines.push(WikiDiffLine {
+                    kind: WikiDiffLineKind::Context,
+                    old_number: Some(old_number),
+                    new_number: Some(new_number),
+                    content: value.to_owned(),
+                });
+                old_number += 1;
+                new_number += 1;
+            }
+            DiffOperation::Deletion(value) => {
+                lines.push(WikiDiffLine {
+                    kind: WikiDiffLineKind::Deletion,
+                    old_number: Some(old_number),
+                    new_number: None,
+                    content: value.to_owned(),
+                });
+                deletions += 1;
+                old_number += 1;
+            }
+            DiffOperation::Addition(value) => {
+                lines.push(WikiDiffLine {
+                    kind: WikiDiffLineKind::Addition,
+                    old_number: None,
+                    new_number: Some(new_number),
+                    content: value.to_owned(),
+                });
+                additions += 1;
+                new_number += 1;
+            }
+        }
+    }
+
+    let file = WikiDiffFile {
+        path: path.to_owned(),
+        old_path: format!("a/{path}"),
+        new_path: format!("b/{path}"),
+        additions,
+        deletions,
+        hunks: vec![WikiDiffHunk {
+            header: format!("@@ -1,{} +1,{} @@", old_lines.len(), new_lines.len()),
+            lines,
+        }],
+    };
+    WikiMarkdownDiffResult {
+        stats: WikiDiffStats {
+            additions,
+            deletions,
+            total_lines: (additions + deletions),
+            truncated,
+        },
+        file,
+    }
+}
+
+enum DiffOperation<'a> {
+    Context(&'a str),
+    Deletion(&'a str),
+    Addition(&'a str),
+}
+
+fn diff_line_operations<'a>(
+    old_lines: &'a [&'a str],
+    new_lines: &'a [&'a str],
+) -> Vec<DiffOperation<'a>> {
+    let mut lcs = vec![vec![0_usize; new_lines.len() + 1]; old_lines.len() + 1];
+    for old_index in (0..old_lines.len()).rev() {
+        for new_index in (0..new_lines.len()).rev() {
+            lcs[old_index][new_index] = if old_lines[old_index] == new_lines[new_index] {
+                lcs[old_index + 1][new_index + 1] + 1
+            } else {
+                lcs[old_index + 1][new_index].max(lcs[old_index][new_index + 1])
+            };
+        }
+    }
+
+    let mut old_index = 0;
+    let mut new_index = 0;
+    let mut operations = Vec::new();
+    while old_index < old_lines.len() && new_index < new_lines.len() {
+        if old_lines[old_index] == new_lines[new_index] {
+            operations.push(DiffOperation::Context(old_lines[old_index]));
+            old_index += 1;
+            new_index += 1;
+        } else if lcs[old_index + 1][new_index] >= lcs[old_index][new_index + 1] {
+            operations.push(DiffOperation::Deletion(old_lines[old_index]));
+            old_index += 1;
+        } else {
+            operations.push(DiffOperation::Addition(new_lines[new_index]));
+            new_index += 1;
+        }
+    }
+    while old_index < old_lines.len() {
+        operations.push(DiffOperation::Deletion(old_lines[old_index]));
+        old_index += 1;
+    }
+    while new_index < new_lines.len() {
+        operations.push(DiffOperation::Addition(new_lines[new_index]));
+        new_index += 1;
+    }
+    operations
 }
 
 async fn adjacent_revision_href(

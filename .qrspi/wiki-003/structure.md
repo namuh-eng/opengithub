@@ -48,7 +48,7 @@
 
 ## Phase 3: Two-Revision Compare - selected revisions produce a real diff
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Wire two-row selection and compare navigation. The compare page should show an Editorial file/page diff with added and removed lines for the selected revisions, and it should stay read-only except for users who can edit and will receive revert controls in Phase 4.
 

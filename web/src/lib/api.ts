@@ -4220,6 +4220,73 @@ export type RepositoryWikiRevisionFetchResult =
   | { ok: true; revision: RepositoryWikiRevisionView }
   | { ok: false; status: number; code: string | null; message: string };
 
+export type RepositoryWikiCompareView = {
+  repository: RepositoryWikiRepository;
+  viewer: RepositoryWikiViewer;
+  page: RepositoryWikiComparePageSummary;
+  base: RepositoryWikiCompareRevisionSummary;
+  head: RepositoryWikiCompareRevisionSummary;
+  files: RepositoryWikiDiffFile[];
+  stats: RepositoryWikiDiffStats;
+  links: RepositoryWikiCompareLinks;
+};
+
+export type RepositoryWikiComparePageSummary = {
+  id: string;
+  title: string;
+  slug: string;
+  href: string;
+};
+
+export type RepositoryWikiCompareRevisionSummary = {
+  id: string;
+  author: RepositoryWikiAuthor | null;
+  message: string;
+  commitOid: string | null;
+  shortOid: string | null;
+  createdAt: string;
+  href: string;
+};
+
+export type RepositoryWikiDiffStats = {
+  additions: number;
+  deletions: number;
+  totalLines: number;
+  truncated: boolean;
+};
+
+export type RepositoryWikiDiffFile = {
+  path: string;
+  oldPath: string;
+  newPath: string;
+  additions: number;
+  deletions: number;
+  hunks: RepositoryWikiDiffHunk[];
+};
+
+export type RepositoryWikiDiffHunk = {
+  header: string;
+  lines: RepositoryWikiDiffLine[];
+};
+
+export type RepositoryWikiDiffLine = {
+  kind: "context" | "addition" | "deletion";
+  oldNumber: number | null;
+  newNumber: number | null;
+  content: string;
+};
+
+export type RepositoryWikiCompareLinks = {
+  historyHref: string;
+  baseRevisionHref: string;
+  headRevisionHref: string;
+  pageHref: string;
+};
+
+export type RepositoryWikiCompareFetchResult =
+  | { ok: true; compare: RepositoryWikiCompareView }
+  | { ok: false; status: number; code: string | null; message: string };
+
 export type RepositorySecurityAdvisoriesFetchResult =
   | { ok: true; advisories: RepositorySecurityAdvisoriesView }
   | { ok: false; status: number; code: string | null; message: string };
@@ -14578,6 +14645,55 @@ export async function getRepositoryWikiRevisionFromCookie(
   return {
     ok: true,
     revision: (await response.json()) as RepositoryWikiRevisionView,
+  };
+}
+
+export async function getRepositoryWikiCompareFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  base: string,
+  head: string,
+  slug?: string | null,
+): Promise<RepositoryWikiCompareFetchResult> {
+  const params = new URLSearchParams({ base, head });
+  if (slug?.trim()) params.set("page", slug.trim());
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/wiki/_compare?${params.toString()}`,
+      {
+        headers: cookie ? { cookie } : undefined,
+        cache: "no-store",
+      },
+    );
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      code: "api_unavailable",
+      message: "Repository wiki compare is unavailable right now.",
+    };
+  }
+
+  if (!response.ok) {
+    let code: string | null = null;
+    let message = "Repository wiki compare is unavailable right now.";
+    try {
+      const body = (await response.json()) as {
+        error?: { code?: string; message?: string };
+      };
+      code = body.error?.code ?? null;
+      message = body.error?.message ?? message;
+    } catch {
+      code = null;
+    }
+    return { ok: false, status: response.status, code, message };
+  }
+
+  return {
+    ok: true,
+    compare: (await response.json()) as RepositoryWikiCompareView,
   };
 }
 
