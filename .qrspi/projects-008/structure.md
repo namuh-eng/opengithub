@@ -73,7 +73,7 @@
 
 ## Phase 5: Sharing, Status Surfacing, and Cross-Project Integration - charts become shareable project artifacts
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Finish integration points around charts and status. Shared charts are readable to project viewers, chart links preserve selected project/range/filter state, project status updates surface in lists and side panels where existing Projects pages already render context, and chart mutations leave audit/cache evidence.
 

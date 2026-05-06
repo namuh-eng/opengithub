@@ -7462,5 +7462,25 @@
       "Probe keyboard operation of details-backed New/Edit forms and mobile layout for the chart sidebar plus selected chart action row.",
       "Phases 5-6 still own sharing/status integration, API docs, final signed-in E2E, QA handoff consolidation, and build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-008",
+    "tests_written": [
+      "Completed Phase 5 Sharing, Status Surfacing, and Cross-Project Integration without marking projects-008 build_pass=true.",
+      "Added viewer-safe share metadata to Project Insights chart summaries and selected charts, including shareHref and sharedWithViewers state.",
+      "Added project chart cache snapshot persistence through project_chart_series_cache and surfaced cache snapshot versioning in the Insights response/UI.",
+      "Generated share slugs for newly shared custom charts and preserved viewer-safe chart lookup through the existing Insights endpoint.",
+      "Surfaced shared chart badges, copy/share link feedback, cache version copy, and direct project-list Insights links alongside existing status chips.",
+      "Extended focused Rust and Vitest coverage for share hrefs, shared/private chart visibility, cache snapshot rows/versioning, copied link shape, project list Insights links, no dead controls, and Editorial guardrails.",
+      "Browser smoke passed through the real Next route against a local API-compatible stub on port 3016 using Playwright fallback because Ever's Chrome extension was not connected; verified data-table route, share feedback, no href=\"#\", no horizontal overflow, and saved ralph/screenshots/build/projects-008-phase5-sharing-status.jpg.",
+      "Verification passed: cargo fmt --all; cargo check -p opengithub-api --tests; focused Insights contract compiled and passed under the DB guard; focused ProjectInsightsPage and ProjectsListPage Vitest with 18 tests; web TypeScript; focused Biome; full make check; full make test with Cargo tests plus 584 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Run shared chart read/write and cache snapshot assertions against a clean migrated credentialed TEST_DATABASE_URL; local Postgres on localhost:55432 rejected the configured postgres password, so DB assertions self-skipped.",
+      "Run signed-in make test-e2e after local test database credentials are healthy; this iteration used a local API-compatible stub for browser smoke.",
+      "Probe shared chart privacy for anonymous, reader, writer, admin, owner, and outsider roles; private chart denial; share slug stability after edits; stale cache refreshes after item/status changes; and audit/cache rows.",
+      "Probe project-list status/Insights links on user, organization, repository, closed, template, mobile, and filtered list surfaces.",
+      "Phase 6 still owns API docs, final signed-in browser/E2E evidence, QA handoff consolidation, and projects-008 build_pass bookkeeping."
+    ]
   }
 ]

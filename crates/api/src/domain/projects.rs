@@ -1220,6 +1220,7 @@ pub struct ProjectInsightsChartSummary {
     pub description: Option<String>,
     pub chart_type: String,
     pub href: String,
+    pub share_href: String,
     pub visibility: String,
     pub shared_with_viewers: bool,
     pub updated_at: DateTime<Utc>,
@@ -1233,8 +1234,10 @@ pub struct ProjectInsightsChart {
     pub description: Option<String>,
     pub chart_type: String,
     pub visibility: String,
+    pub shared_with_viewers: bool,
     pub is_default: bool,
     pub href: String,
+    pub share_href: String,
     pub configuration: Value,
     pub updated_at: DateTime<Utc>,
 }
@@ -1313,6 +1316,7 @@ pub struct ProjectInsightsCacheState {
     pub cache_key: String,
     pub computed_at: DateTime<Utc>,
     pub stale: bool,
+    pub version: i64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1859,6 +1863,19 @@ pub async fn project_insights(
         range.start,
         filter.query.as_deref().unwrap_or("")
     );
+    let cache_version = refresh_project_chart_cache(ProjectChartCacheRefresh {
+        pool,
+        project_id,
+        chart: &selected_chart,
+        cache_key: &cache_key,
+        range: &range,
+        filter: filter.query.as_deref(),
+        series: &series,
+        rows: &rows,
+        matching_item_count,
+        computed_at,
+    })
+    .await?;
 
     Ok(ProjectInsights {
         navigation: ProjectInsightsNavigation {
@@ -1889,6 +1906,7 @@ pub async fn project_insights(
             cache_key,
             computed_at,
             stale: false,
+            version: cache_version,
         },
         unavailable_reason: None,
         project,
@@ -1912,13 +1930,15 @@ pub async fn create_project_insights_chart_for_actor(
     }
     let normalized = normalize_project_chart_mutation(pool, project_id, request, None).await?;
     let configuration = project_chart_revision_config(&normalized);
+    let share_slug =
+        (normalized.visibility == "project").then(|| Uuid::new_v4().simple().to_string());
     let chart_id: Uuid = sqlx::query_scalar(
         r#"
         INSERT INTO project_charts (
           project_id, owner_user_id, title, description, chart_type, filter,
-          x_field_id, y_field_id, group_field_id, visibility, cache_version
+          x_field_id, y_field_id, group_field_id, visibility, share_slug, cache_version
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 1)
         RETURNING id
         "#,
     )
@@ -1932,6 +1952,7 @@ pub async fn create_project_insights_chart_for_actor(
     .bind(normalized.y_field_id)
     .bind(normalized.group_field_id)
     .bind(&normalized.visibility)
+    .bind(&share_slug)
     .fetch_one(pool)
     .await?;
     record_project_chart_revision(pool, chart_id, actor_user_id, configuration).await?;
@@ -1986,6 +2007,8 @@ pub async fn update_project_insights_chart_for_actor(
     let normalized =
         normalize_project_chart_mutation(pool, project_id, request, Some(chart_id)).await?;
     let configuration = project_chart_revision_config(&normalized);
+    let share_slug =
+        (normalized.visibility == "project").then(|| Uuid::new_v4().simple().to_string());
     sqlx::query(
         r#"
         UPDATE project_charts
@@ -1997,6 +2020,10 @@ pub async fn update_project_insights_chart_for_actor(
             y_field_id = $8,
             group_field_id = $9,
             visibility = $10,
+            share_slug = CASE
+              WHEN $10 = 'project' THEN COALESCE(share_slug, $11)
+              ELSE share_slug
+            END,
             cache_version = cache_version + 1,
             updated_at = now()
         WHERE project_id = $1 AND id = $2
@@ -2012,6 +2039,7 @@ pub async fn update_project_insights_chart_for_actor(
     .bind(normalized.y_field_id)
     .bind(normalized.group_field_id)
     .bind(&normalized.visibility)
+    .bind(&share_slug)
     .execute(pool)
     .await?;
     invalidate_project_chart_cache(pool, project_id, Some(chart_id)).await?;
@@ -9393,7 +9421,7 @@ async fn project_insights_charts(
         .is_some_and(can_write_project_role);
     let rows = sqlx::query(
         r#"
-        SELECT id, title, description, chart_type, filter, x_field_id, y_field_id, group_field_id, visibility, updated_at
+        SELECT id, title, description, chart_type, filter, x_field_id, y_field_id, group_field_id, visibility, share_slug, cache_version, updated_at
         FROM project_charts
         WHERE project_id = $1
           AND (
@@ -9423,6 +9451,7 @@ async fn project_insights_charts(
                     "{}/insights?chart={id}&range={}",
                     project.workspace_href, range.key
                 ),
+                share_href: project_chart_share_href(project, id, row.get("share_slug"), range),
                 shared_with_viewers: visibility == "project",
                 visibility,
                 updated_at: row.get("updated_at"),
@@ -9431,35 +9460,38 @@ async fn project_insights_charts(
         .collect::<Vec<_>>();
     if let Some(selected_chart_id) = selected_chart_id {
         if selected_chart_id != "burn-up" {
-            let chart_id = Uuid::parse_str(selected_chart_id).map_err(|_| {
-                ProjectsError::InvalidFilter(
-                    "Insights chart must be burn-up or a chart id.".to_owned(),
-                )
-            })?;
             let row = rows
                 .into_iter()
-                .find(|row| row.get::<Uuid, _>("id") == chart_id)
+                .find(|row| {
+                    row.get::<Uuid, _>("id").to_string() == selected_chart_id
+                        || row.get::<Option<String>, _>("share_slug").as_deref()
+                            == Some(selected_chart_id)
+                })
                 .ok_or(ProjectsError::NotFound)?;
             let id: Uuid = row.get("id");
+            let visibility: String = row.get("visibility");
             return Ok((
                 ProjectInsightsChart {
                     id: id.to_string(),
                     title: row.get("title"),
                     description: row.get("description"),
                     chart_type: row.get("chart_type"),
-                    visibility: row.get("visibility"),
+                    shared_with_viewers: visibility == "project",
+                    visibility,
                     is_default: false,
                     href: format!(
                         "{}/insights?chart={id}&range={}",
                         project.workspace_href, range.key
                     ),
+                    share_href: project_chart_share_href(project, id, row.get("share_slug"), range),
                     configuration: json!({
                         "filter": row.get::<Option<String>, _>("filter"),
                         "xFieldId": row.get::<Option<Uuid>, _>("x_field_id"),
                         "yFieldId": row.get::<Option<Uuid>, _>("y_field_id"),
                         "groupFieldId": row.get::<Option<Uuid>, _>("group_field_id"),
                         "range": range.key,
-                        "table": query.table.unwrap_or(false)
+                        "table": query.table.unwrap_or(false),
+                        "cacheVersion": row.get::<i64, _>("cache_version")
                     }),
                     updated_at: row.get("updated_at"),
                 },
@@ -9658,6 +9690,74 @@ async fn invalidate_project_chart_cache(
     Ok(())
 }
 
+struct ProjectChartCacheRefresh<'a> {
+    pool: &'a PgPool,
+    project_id: Uuid,
+    chart: &'a ProjectInsightsChart,
+    cache_key: &'a str,
+    range: &'a ProjectInsightsRange,
+    filter: Option<&'a str>,
+    series: &'a [ProjectInsightsSeries],
+    rows: &'a [ProjectInsightsDataRow],
+    matching_item_count: i64,
+    computed_at: DateTime<Utc>,
+}
+
+async fn refresh_project_chart_cache(
+    input: ProjectChartCacheRefresh<'_>,
+) -> Result<i64, ProjectsError> {
+    let chart_id = Uuid::parse_str(&input.chart.id).ok();
+    let series_json = serde_json::to_value(input.series).unwrap_or_else(|_| json!([]));
+    let rows_json = serde_json::to_value(input.rows).unwrap_or_else(|_| json!([]));
+    let version = sqlx::query_scalar(
+        r#"
+        INSERT INTO project_chart_series_cache (
+          chart_id, project_id, cache_key, range_key, filter, series, data_rows,
+          matching_item_count, computed_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ON CONFLICT (project_id, cache_key) DO UPDATE
+        SET chart_id = EXCLUDED.chart_id,
+            range_key = EXCLUDED.range_key,
+            filter = EXCLUDED.filter,
+            series = EXCLUDED.series,
+            data_rows = EXCLUDED.data_rows,
+            matching_item_count = EXCLUDED.matching_item_count,
+            computed_at = EXCLUDED.computed_at
+        RETURNING (
+          SELECT COALESCE(max(cache_version), 0)
+          FROM project_charts
+          WHERE project_id = $2 AND ($1::uuid IS NULL OR id = $1)
+        )::bigint
+        "#,
+    )
+    .bind(chart_id)
+    .bind(input.project_id)
+    .bind(input.cache_key)
+    .bind(&input.range.key)
+    .bind(input.filter)
+    .bind(series_json)
+    .bind(rows_json)
+    .bind(input.matching_item_count)
+    .bind(input.computed_at)
+    .fetch_one(input.pool)
+    .await?;
+    Ok(version)
+}
+
+fn project_chart_share_href(
+    project: &ProjectWorkspaceProject,
+    chart_id: Uuid,
+    share_slug: Option<String>,
+    range: &ProjectInsightsRange,
+) -> String {
+    let chart = share_slug.unwrap_or_else(|| chart_id.to_string());
+    format!(
+        "{}/insights?chart={chart}&range={}",
+        project.workspace_href, range.key
+    )
+}
+
 fn default_burn_up_summary(
     project: &ProjectWorkspaceProject,
     range: &ProjectInsightsRange,
@@ -9670,6 +9770,7 @@ fn default_burn_up_summary(
         description: chart.description,
         chart_type: chart.chart_type,
         href: chart.href,
+        share_href: chart.share_href,
         visibility: chart.visibility.clone(),
         shared_with_viewers: true,
         updated_at: chart.updated_at,
@@ -9687,8 +9788,13 @@ fn default_burn_up_chart(
         description: Some("Completed items against total project scope.".to_owned()),
         chart_type: "burn_up".to_owned(),
         visibility: "project".to_owned(),
+        shared_with_viewers: true,
         is_default: true,
         href: format!(
+            "{}/insights?chart=burn-up&range={}",
+            project.workspace_href, range.key
+        ),
+        share_href: format!(
             "{}/insights?chart=burn-up&range={}",
             project.workspace_href, range.key
         ),

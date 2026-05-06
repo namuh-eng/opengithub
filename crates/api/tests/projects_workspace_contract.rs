@@ -221,8 +221,17 @@ async fn project_insights_read_contract_filters_private_items_and_returns_burnup
     assert_eq!(body["project"]["title"], "Insights launch board");
     assert_eq!(body["navigation"]["selectedItem"], "insights");
     assert_eq!(body["selectedChart"]["id"], "burn-up");
+    assert_eq!(body["selectedChart"]["sharedWithViewers"], true);
+    assert!(body["selectedChart"]["shareHref"]
+        .as_str()
+        .expect("default share href")
+        .contains("chart=burn-up"));
     assert_eq!(body["defaultCharts"][0]["title"], "Burn up");
     assert_eq!(body["customCharts"][0]["id"], custom_chart_id.to_string());
+    assert!(body["customCharts"][0]["shareHref"]
+        .as_str()
+        .expect("custom share href")
+        .contains("chart="));
     assert_eq!(body["range"]["key"], "2w");
     assert_eq!(
         body["filter"]["tokens"].as_array().expect("tokens").len(),
@@ -238,6 +247,15 @@ async fn project_insights_read_contract_filters_private_items_and_returns_burnup
         .iter()
         .any(|series| series["id"] == "completed"
             && !series["points"].as_array().expect("points").is_empty()));
+    assert!(body["cache"]["version"].as_i64().unwrap_or_default() >= 0);
+    let cache_rows: i64 = sqlx::query_scalar(
+        "SELECT count(*)::bigint FROM project_chart_series_cache WHERE project_id = $1",
+    )
+    .bind(project_id)
+    .fetch_one(&pool)
+    .await
+    .expect("chart cache rows should read");
+    assert!(cache_rows >= 1);
 
     let (status, _, body) = get_json(
         app.clone(),
@@ -296,6 +314,11 @@ async fn project_insights_read_contract_filters_private_items_and_returns_burnup
     assert_eq!(status, StatusCode::CREATED, "{body}");
     assert_eq!(body["selectedChart"]["title"], "Closed issue trend");
     assert_eq!(body["selectedChart"]["visibility"], "project");
+    assert_eq!(body["selectedChart"]["sharedWithViewers"], true);
+    assert!(body["selectedChart"]["shareHref"]
+        .as_str()
+        .expect("created share href")
+        .contains("chart="));
     let created_chart_id = body["selectedChart"]["id"]
         .as_str()
         .expect("created chart id")
@@ -322,6 +345,7 @@ async fn project_insights_read_contract_filters_private_items_and_returns_burnup
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["selectedChart"]["title"], "Private closed issue trend");
     assert_eq!(body["selectedChart"]["visibility"], "private");
+    assert_eq!(body["selectedChart"]["sharedWithViewers"], false);
     assert!(body["customCharts"]
         .as_array()
         .expect("custom charts")

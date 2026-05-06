@@ -28,6 +28,7 @@ function insights(overrides: Partial<ProjectInsights> = {}): ProjectInsights {
       description: "Completed items against total scope.",
       chartType: "burn_up",
       href: "/orgs/namuh/projects/12/insights?chart=burn-up&range=1m",
+      shareHref: "/orgs/namuh/projects/12/insights?chart=burn-up&range=1m",
       visibility: "project",
       sharedWithViewers: true,
       updatedAt: "2026-05-05T00:00:00Z",
@@ -41,6 +42,7 @@ function insights(overrides: Partial<ProjectInsights> = {}): ProjectInsights {
         description: "Completed items against total scope.",
         chartType: "burn_up",
         href: "/orgs/namuh/projects/12/insights?chart=burn-up&range=1m",
+        shareHref: "/orgs/namuh/projects/12/insights?chart=burn-up&range=1m",
         visibility: "project",
         sharedWithViewers: true,
         updatedAt: "2026-05-05T00:00:00Z",
@@ -53,6 +55,7 @@ function insights(overrides: Partial<ProjectInsights> = {}): ProjectInsights {
         description: "Tracks bug load by assignee team.",
         chartType: "bar",
         href: "/orgs/namuh/projects/12/insights?chart=chart-1&range=1m",
+        shareHref: "/orgs/namuh/projects/12/insights?chart=chart-1&range=1m",
         visibility: "project",
         sharedWithViewers: true,
         updatedAt: "2026-05-05T00:00:00Z",
@@ -153,6 +156,7 @@ function insights(overrides: Partial<ProjectInsights> = {}): ProjectInsights {
       cacheKey: "project-1:burn-up:1m:is-open",
       computedAt: "2026-05-06T00:00:00Z",
       stale: false,
+      version: 2,
     },
     unavailableReason: null,
     ...overrides,
@@ -336,9 +340,33 @@ describe("ProjectInsightsPage", () => {
 
     expect(screen.getByText("New")).toHaveAttribute("aria-disabled", "true");
     expect(screen.getByText("Edit")).toHaveAttribute("aria-disabled", "true");
-    expect(screen.getByRole("button", { name: "Share" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Share" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();
     expect(screen.getByText("No custom charts yet.")).toBeVisible();
+  });
+
+  it("copies a viewer-safe share link that preserves chart exploration state", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(
+      <ProjectInsightsPage
+        insights={insights()}
+        owner="namuh"
+        scope="organization"
+      />,
+    );
+
+    expect(screen.getByText("Shared with project viewers")).toBeVisible();
+    expect(screen.getByText("Cache v2")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    await screen.findByText("Share link copied.");
+    expect(writeText).toHaveBeenCalledWith(
+      "http://localhost:3000/orgs/namuh/projects/12/insights?chart=burn-up&range=1m&filter=is%3Aopen",
+    );
   });
 
   it("posts create, edit, and delete chart mutations through real API routes", async () => {

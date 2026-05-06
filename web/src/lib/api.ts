@@ -521,6 +521,7 @@ export type ProjectInsightsChartSummary = {
   description: string | null;
   chartType: string;
   href: string;
+  shareHref: string;
   visibility: string;
   sharedWithViewers: boolean;
   updatedAt: string;
@@ -600,6 +601,7 @@ export type ProjectInsights = {
     cacheKey: string;
     computedAt: string;
     stale: boolean;
+    version: number;
   };
   unavailableReason: string | null;
 };

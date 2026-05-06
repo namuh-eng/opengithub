@@ -143,6 +143,10 @@ describe("ProjectsListPage", () => {
       "href",
       "/orgs/namuh/projects/12/views/1",
     );
+    expect(screen.getByRole("link", { name: "Insights" })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/projects/12/insights",
+    );
   });
 
   it("renders the templates tab and disables unavailable copy actions", () => {

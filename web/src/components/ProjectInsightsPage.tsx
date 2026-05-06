@@ -217,6 +217,7 @@ export function ProjectInsightsPage({
     status: "idle" | "saving" | "success" | "error";
     message: string | null;
   }>({ status: "idle", message: null });
+  const [shareState, setShareState] = useState<string | null>(null);
   const projectNumber = currentInsights.project.number;
   const canCreate = currentInsights.viewerPermissions.canCreateCharts;
   const canEditSelected =
@@ -231,6 +232,22 @@ export function ProjectInsightsPage({
   const showingTable =
     currentInsights.selectedChart.configuration.table === true;
   const hasMatches = currentInsights.matchingItemCount > 0;
+  const selectedShareHref = projectInsightsHref(
+    scope,
+    owner,
+    projectNumber,
+    activeQuery(currentInsights),
+  );
+
+  async function copyShareLink() {
+    const href = `${window.location.origin}${selectedShareHref}`;
+    try {
+      await navigator.clipboard?.writeText(href);
+      setShareState("Share link copied.");
+    } catch {
+      setShareState(selectedShareHref);
+    }
+  }
 
   async function submitChartMutation(
     action: "create" | "edit" | "delete",
@@ -430,8 +447,10 @@ export function ProjectInsightsPage({
                     {chart.title}
                   </span>
                   <span className="t-xs">
-                    {chart.sharedWithViewers ? "Shared" : "Private"} ·{" "}
-                    {chart.chartType}
+                    {chart.sharedWithViewers
+                      ? "Shared with viewers"
+                      : "Private"}{" "}
+                    · {chart.chartType}
                   </span>
                 </Link>
               ))
@@ -466,6 +485,22 @@ export function ProjectInsightsPage({
                     {currentInsights.selectedChart.description}
                   </p>
                 ) : null}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span
+                    className={
+                      currentInsights.selectedChart.sharedWithViewers
+                        ? "chip ok"
+                        : "chip soft"
+                    }
+                  >
+                    {currentInsights.selectedChart.sharedWithViewers
+                      ? "Shared with project viewers"
+                      : "Private chart"}
+                  </span>
+                  <span className="chip soft">
+                    Cache v{currentInsights.cache.version}
+                  </span>
+                </div>
               </div>
               <div className="flex flex-wrap gap-2">
                 <details>
@@ -508,8 +543,7 @@ export function ProjectInsightsPage({
                 </details>
                 <button
                   className="btn sm"
-                  disabled={!currentInsights.viewerPermissions.canShareCharts}
-                  title="Chart sharing is finalized in the next phase."
+                  onClick={copyShareLink}
                   type="button"
                 >
                   Share
@@ -541,6 +575,11 @@ export function ProjectInsightsPage({
                 role="status"
               >
                 {mutationState.message}
+              </div>
+            ) : null}
+            {shareState ? (
+              <div className="chip soft m-4" role="status">
+                {shareState}
               </div>
             ) : null}
 
@@ -814,7 +853,8 @@ export function ProjectInsightsPage({
                 <span className="t-xs">
                   Cache computed{" "}
                   {formatDateTime(currentInsights.cache.computedAt)}
-                  {currentInsights.cache.stale ? " · stale" : ""}
+                  {currentInsights.cache.stale ? " · stale" : ""} · Snapshot v
+                  {currentInsights.cache.version}
                 </span>
               </div>
             </div>

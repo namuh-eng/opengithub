@@ -110,6 +110,10 @@ function projectMeta(project: ProjectRow) {
   return parts.join(" · ");
 }
 
+function projectInsightsHref(project: ProjectRow) {
+  return project.workspaceHref.replace(/\/views\/\d+.*$/, "/insights");
+}
+
 function ProjectsTabs({ list }: { list: ProjectList }) {
   const projectActive = list.filters.tab !== "templates";
   return (
@@ -310,6 +314,9 @@ function ProjectRowView({
         </p>
       </Link>
       <div className="flex flex-wrap gap-2 md:justify-end">
+        <Link className="btn sm ghost" href={projectInsightsHref(project)}>
+          Insights
+        </Link>
         <Link className="btn sm ghost" href={project.workspaceHref}>
           Open
         </Link>
