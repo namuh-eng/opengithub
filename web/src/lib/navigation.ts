@@ -1018,6 +1018,15 @@ export function repositoryPulseHref(
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulse${query ? `?${query}` : ""}`;
 }
 
+export function repositoryWikiHref(
+  owner: string,
+  repo: string,
+  slug?: string | null,
+) {
+  const encodedSlug = slug?.trim() ? `/${encodePathSegments(slug.trim())}` : "";
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/wiki${encodedSlug}`;
+}
+
 export function repositoryContributorsHref(
   owner: string,
   repo: string,

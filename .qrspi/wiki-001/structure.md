@@ -29,7 +29,7 @@ Repository navigation already exposes a Wiki tab and repository General settings
 
 ## Phase 2: Editorial Wiki Home Reader - repository tab, Markdown body, sidebar, and clone URL
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the placeholder `/{owner}/{repo}/wiki` page with the Phase 1 Home reader inside the repository shell. The page should show the Wiki tab active, Markdown content, revision metadata, permissioned Edit/New Page buttons when available, page list, custom sidebar/footer, and a working clone URL copy control.
 

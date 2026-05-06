@@ -1,4 +1,11 @@
-import { RepositoryFeaturePage } from "@/components/RepositoryFeaturePage";
+import { AppShell } from "@/components/AppShell";
+import { RepositoryUnavailablePage } from "@/components/RepositoryUnavailablePage";
+import { RepositoryWikiPage as RepositoryWikiView } from "@/components/RepositoryWikiPage";
+import {
+  getRepository,
+  getRepositoryWiki,
+  getSession,
+} from "@/lib/server-session";
 
 type RepositoryWikiPageProps = {
   params: Promise<{ owner: string; repo: string }>;
@@ -7,17 +14,21 @@ type RepositoryWikiPageProps = {
 export default async function RepositoryWikiPage({
   params,
 }: RepositoryWikiPageProps) {
-  const { owner, repo } = await params;
-  const base = `/${decodeURIComponent(owner)}/${decodeURIComponent(repo)}`;
+  const [{ owner, repo }, session] = await Promise.all([params, getSession()]);
+  const ownerLogin = decodeURIComponent(owner);
+  const repositoryName = decodeURIComponent(repo);
+  const [repository, wikiResult] = await Promise.all([
+    getRepository(ownerLogin, repositoryName),
+    getRepositoryWiki(ownerLogin, repositoryName),
+  ]);
 
   return (
-    <RepositoryFeaturePage
-      actions={[{ href: `${base}`, label: "Repository Code" }]}
-      activePath={`${base}/wiki`}
-      description="Wiki pages will be implemented after the core repository collaboration workflows. This placeholder keeps the tab route available without pretending content exists."
-      owner={owner}
-      repo={repo}
-      title="Wiki"
-    />
+    <AppShell session={session}>
+      {repository ? (
+        <RepositoryWikiView repository={repository} wikiResult={wikiResult} />
+      ) : (
+        <RepositoryUnavailablePage owner={ownerLogin} repo={repositoryName} />
+      )}
+    </AppShell>
   );
 }

@@ -7516,5 +7516,23 @@
       "Probe Home fallback when no Home page exists, missing page state, sidebar/footer precedence when both flags and _Sidebar/_Footer slugs exist, duplicate slug normalization, nested wiki slugs, long Markdown/code/table rendering, unsafe links/images, stale rendered Markdown cache, and private repository leakage.",
       "Phases 2-4 still own the Editorial UI, clone-copy interaction, slug route UI, lazy TOC expansion, API docs, final browser evidence, QA handoff consolidation, and wiki-001 build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "wiki-001",
+    "tests_written": [
+      "Completed Phase 2 Editorial Wiki Home Reader without marking wiki-001 build_pass=true.",
+      "Replaced the /{owner}/{repo}/wiki placeholder with a real server-fetched repository wiki reader inside RepositoryShell and AppShell.",
+      "Added RepositoryWikiPage with active Wiki tab, Home title/body rendering, revision metadata, permissioned Edit/New Page links, page list, current-page outline, custom sidebar/footer rendering, disabled/error states, and clone URL copy feedback.",
+      "Added repositoryWikiHref navigation helper for Home/page slugs with URL-safe segment encoding.",
+      "Added focused RepositoryWikiPage Vitest coverage for active tab, revision link, edit/new permissions, page links, custom sidebar/footer, clone copy feedback, disabled state, repository-safe fetch errors, no placeholder hrefs, and Editorial guardrails.",
+      "Browser smoke passed through the real Next route against a local API-compatible Rust API stub: loaded /namuh-eng/opengithub/wiki, copied the clone URL, verified no href=\"#\" links, verified no horizontal overflow, and saved ralph/screenshots/build/wiki-001-phase2-home.jpg.",
+      "Verification passed: focused RepositoryWikiPage Vitest with 3 tests; web TypeScript; focused Biome; full make check; full make test with Cargo tests plus 587 web tests; mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Run signed-in make test-e2e after local TEST_DATABASE_URL credentials are healthy; this iteration attempted TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false timeout 120 make test-e2e and it terminated without useful output.",
+      "Run browser smoke against a real migrated database with seeded wiki pages; this phase used a local API-compatible stub for the Home reader route.",
+      "Probe long wiki titles, long clone URLs, large Markdown tables/code blocks, unsafe rendered links/images, stale rendered Markdown cache, custom sidebar/footer edge cases, private repository leakage, and keyboard traversal across page list, heading outline, and clone copy controls.",
+      "Phases 3-4 still own slug route navigation, lazy TOC expansion, API docs, final signed-in E2E, QA handoff consolidation, and wiki-001 build_pass bookkeeping."
+    ]
   }
 ]
