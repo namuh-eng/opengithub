@@ -836,6 +836,17 @@ export type ProjectAccessGrantDeleteRequest = {
   expectedUpdatedAt?: string | null;
 };
 
+export type ProjectLifecycleRequest = {
+  confirmation?: string | null;
+  expectedUpdatedAt?: string | null;
+};
+
+export type ProjectDeleteResponse = {
+  deleted: true;
+  projectId: string;
+  destinationHref: string;
+};
+
 export type ProjectAccessMutation =
   | {
       action: "add-user";
@@ -8158,7 +8169,8 @@ async function mutateProjectSettingsFromCookie(
     | ProjectTemplateUpdateRequest
     | ProjectAccessGrantCreateRequest
     | ProjectAccessGrantUpdateRequest
-    | ProjectAccessGrantDeleteRequest,
+    | ProjectAccessGrantDeleteRequest
+    | ProjectLifecycleRequest,
   fallbackMessage: string,
 ): Promise<ProjectSettings> {
   const response = await fetch(`${apiBaseUrl()}${path}`, {
@@ -8312,6 +8324,70 @@ export function mutateProjectAccessFromCookie(
     { expectedUpdatedAt: mutation.expectedUpdatedAt },
     "Project access grant could not be removed.",
   );
+}
+
+export function closeProjectFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  request: ProjectLifecycleRequest,
+): Promise<ProjectSettings> {
+  return mutateProjectSettingsFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/close`,
+    "POST",
+    request,
+    "Project could not be closed.",
+  );
+}
+
+export function reopenProjectFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  request: ProjectLifecycleRequest,
+): Promise<ProjectSettings> {
+  return mutateProjectSettingsFromCookie(
+    cookie,
+    `/api/projects/${encodeURIComponent(projectId)}/reopen`,
+    "POST",
+    request,
+    "Project could not be reopened.",
+  );
+}
+
+export async function deleteProjectFromCookie(
+  cookie: string | null | undefined,
+  projectId: string,
+  request: ProjectLifecycleRequest,
+): Promise<ProjectDeleteResponse> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/projects/${encodeURIComponent(projectId)}`,
+    {
+      method: "DELETE",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(request),
+      cache: "no-store",
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const envelope = payload as ApiErrorEnvelope | null;
+    throw new Error(
+      envelope?.error.message ?? "Project could not be deleted.",
+      {
+        cause: {
+          error: envelope?.error ?? {
+            code: "project_delete_failed",
+            message: "Project could not be deleted.",
+          },
+          status: envelope?.status ?? response.status,
+        } satisfies ApiErrorEnvelope,
+      },
+    );
+  }
+  return payload as ProjectDeleteResponse;
 }
 
 export async function getProjectWorkflowSettingsFromCookie(

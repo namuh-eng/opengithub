@@ -7354,5 +7354,24 @@
       "Probe adding organization members and non-members, granting teams from the owning org and foreign orgs, changing the last direct admin, removing inherited grants, organization base permission inheritance, closed project access denial, stale expectedUpdatedAt conflicts, project audit rows, large access lists, keyboard navigation in role menus, and mobile table wrapping.",
       "Phase 5 still owns Danger Zone lifecycle; Phase 6 docs, final screenshots, QA handoff, and build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "projects-007",
+    "tests_written": [
+      "Completed Phase 5 Danger Zone Lifecycle without marking projects-007 build_pass=true.",
+      "Added Rust lifecycle mutations for POST /api/projects/{project_id}/close, POST /api/projects/{project_id}/reopen, and DELETE /api/projects/{project_id}.",
+      "Lifecycle helpers enforce project admin permission, stale expectedUpdatedAt conflicts, typed delete confirmation, soft-delete privacy, closed-project mutation disablement through refreshed settings, owner project-list destination redirects, and project audit events.",
+      "Added same-origin Next proxy routes and typed web API helpers for close, reopen, and delete lifecycle requests.",
+      "Added user and organization /settings/danger routes plus ProjectDangerZonePage with Editorial navigation, close/reopen controls, typed delete confirmation, permission-disabled states, pending/error/success feedback, and post-delete navigation.",
+      "Focused ProjectSettingsPage Vitest coverage now asserts Danger Zone navigation, close payloads, reopen payloads, disabled delete before confirmation, and delete confirmation payloads.",
+      "Browser smoke passed through the real Next route against a local API-compatible stub on port 3016: loaded /orgs/namuh/projects/12/settings/danger, closed and reopened the project, verified delete stays disabled until typed confirmation, checked no href=\"#\" links, checked no horizontal overflow, and saved ralph/screenshots/build/projects-007-phase5-danger-zone.jpg.",
+      "Verification passed: cargo fmt --all; cargo check -p opengithub-api --tests; focused lifecycle Rust contract compiled and ran under the DB guard; focused ProjectSettingsPage Vitest with 11 tests; web TypeScript; focused Biome; full make check; full make test with Cargo tests plus 574 web tests; mandatory Editorial banned-value scan returned zero matches using the local-compatible rg -e form."
+    ],
+    "needs_deeper_qa": [
+      "Run Phase 5 lifecycle browser smoke against a clean migrated credentialed TEST_DATABASE_URL when available; this iteration used a local API-compatible stub because local Postgres on localhost:55432 rejected the configured postgres password.",
+      "Focused Rust DB assertions self-skipped for the same local Postgres authentication failure; rerun project_lifecycle_close_reopen_and_delete_are_confirmed_and_private after fixing test database credentials.",
+      "Probe close/reopen races, stale expectedUpdatedAt conflicts, read-only and writer denial, typed delete confirmation with casing/whitespace mistakes, deleted-project privacy for public/private projects, closed project denial across General/Access/Fields/Workflows/Items, owner/org project-list disappearance after delete, project item/workflow/archive side-effect boundaries, audit rows, keyboard operation in confirmation controls, and mobile Danger Zone layout.",
+      "Phase 6 still owns API docs, final signed-in E2E/screenshot evidence, QA handoff consolidation, and build_pass bookkeeping."
+    ]
   }
 ]

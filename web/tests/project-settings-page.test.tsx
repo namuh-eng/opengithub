@@ -1,8 +1,15 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectAccessSettingsPage } from "@/components/ProjectAccessSettingsPage";
+import { ProjectDangerZonePage } from "@/components/ProjectDangerZonePage";
 import { ProjectSettingsPage } from "@/components/ProjectSettingsPage";
 import type { ProjectSettings } from "@/lib/api";
+
+const mockRouterPush = vi.hoisted(() => vi.fn());
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mockRouterPush }),
+}));
 
 function settings(overrides: Partial<ProjectSettings> = {}): ProjectSettings {
   return {
@@ -131,6 +138,7 @@ function settings(overrides: Partial<ProjectSettings> = {}): ProjectSettings {
 describe("ProjectSettingsPage", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    mockRouterPush.mockReset();
   });
 
   it("renders organization general settings with concrete navigation", () => {
@@ -165,7 +173,10 @@ describe("ProjectSettingsPage", () => {
       "/orgs/namuh/projects/12/settings/access",
     );
     expect(screen.getByRole("button", { name: "Templates" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Danger Zone" })).toBeDisabled();
+    expect(screen.getByRole("link", { name: "Danger Zone" })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/projects/12/settings/danger",
+    );
   });
 
   it("renders metadata, README, visibility, and repository defaults", () => {
@@ -530,5 +541,88 @@ describe("ProjectSettingsPage", () => {
     expect(screen.getByLabelText("Role for mona")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Remove" })).toBeDisabled();
     expect(screen.getByText("Read-only")).toBeVisible();
+  });
+
+  it("renders danger zone and closes, reopens, and deletes through lifecycle endpoints", async () => {
+    const fetchMock = vi
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          settings({
+            project: { ...settings().project, state: "closed" },
+            dangerState: {
+              ...settings().dangerState,
+              state: "closed",
+              closedAt: "2026-05-06T00:00:00Z",
+              closedBy: { id: "user-1", login: "ashley", avatarUrl: null },
+            },
+            viewerPermissions: {
+              ...settings().viewerPermissions,
+              canClose: false,
+              canReopen: true,
+            },
+          }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => settings(),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          deleted: true,
+          projectId: "project-1",
+          destinationHref: "/orgs/namuh/projects",
+        }),
+      } as Response);
+
+    render(
+      <ProjectDangerZonePage
+        owner="namuh"
+        scope="organization"
+        settings={settings()}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "General" })).toHaveAttribute(
+      "href",
+      "/orgs/namuh/projects/12/settings",
+    );
+    expect(screen.getByLabelText("Type Editorial planning")).toHaveValue("");
+    expect(
+      screen.getByRole("button", { name: "Delete project" }),
+    ).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close project" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/projects/project-1/close",
+        expect.objectContaining({ method: "POST" }),
+      ),
+    );
+    expect(await screen.findByText("Project closed.")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reopen project" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/projects/project-1/reopen",
+        expect.objectContaining({ method: "POST" }),
+      ),
+    );
+
+    fireEvent.change(screen.getByLabelText("Type Editorial planning"), {
+      target: { value: "Editorial planning" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Delete project" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/projects/project-1",
+        expect.objectContaining({
+          body: expect.stringContaining('"confirmation":"Editorial planning"'),
+          method: "DELETE",
+        }),
+      ),
+    );
   });
 });

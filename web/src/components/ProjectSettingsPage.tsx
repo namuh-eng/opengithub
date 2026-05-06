@@ -150,7 +150,7 @@ export function ProjectSettingsPage({
     { key: "fields", label: "Fields", disabled: false },
     { key: "workflows", label: "Workflows", disabled: false },
     { key: "templates", label: "Templates", disabled: true },
-    { key: "danger", label: "Danger Zone", disabled: true },
+    { key: "danger", label: "Danger Zone", disabled: false },
   ];
 
   async function submitJson(

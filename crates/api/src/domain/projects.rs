@@ -544,6 +544,21 @@ pub struct ProjectAccessGrantDeleteRequest {
     pub expected_updated_at: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectLifecycleRequest {
+    pub confirmation: Option<String>,
+    pub expected_updated_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectDeleteResponse {
+    pub deleted: bool,
+    pub project_id: Uuid,
+    pub destination_href: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectSettings {
@@ -1241,7 +1256,7 @@ pub async fn copy_project_for_actor(
         LEFT JOIN project_permissions
           ON project_permissions.project_id = projects.id
          AND project_permissions.user_id = $2
-        WHERE projects.id = $1
+        WHERE projects.id = $1 AND projects.deleted_at IS NULL
         FOR UPDATE
         "#,
     )
@@ -2330,6 +2345,140 @@ pub async fn delete_project_access_grant_for_actor(
         return project_settings(pool, project_id, Some(actor_user_id)).await;
     }
     Err(ProjectsError::NotFound)
+}
+
+pub async fn close_project_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectLifecycleRequest,
+) -> Result<ProjectSettings, ProjectsError> {
+    ensure_can_manage_project_lifecycle(
+        pool,
+        project_id,
+        actor_user_id,
+        request.expected_updated_at,
+        false,
+    )
+    .await?;
+    sqlx::query(
+        r#"
+        UPDATE projects
+        SET state = 'closed',
+            closed_at = COALESCE(closed_at, now()),
+            closed_by_user_id = COALESCE(closed_by_user_id, $2),
+            updated_at = now()
+        WHERE id = $1 AND state = 'open' AND deleted_at IS NULL
+        "#,
+    )
+    .bind(project_id)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
+    audit_project_settings_change(
+        pool,
+        actor_user_id,
+        "project.lifecycle.close",
+        project_id,
+        json!({ "state": "closed" }),
+    )
+    .await?;
+    project_settings(pool, project_id, Some(actor_user_id)).await
+}
+
+pub async fn reopen_project_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectLifecycleRequest,
+) -> Result<ProjectSettings, ProjectsError> {
+    ensure_can_manage_project_lifecycle(
+        pool,
+        project_id,
+        actor_user_id,
+        request.expected_updated_at,
+        true,
+    )
+    .await?;
+    sqlx::query(
+        r#"
+        UPDATE projects
+        SET state = 'open',
+            closed_at = NULL,
+            closed_by_user_id = NULL,
+            updated_at = now()
+        WHERE id = $1 AND state = 'closed' AND deleted_at IS NULL
+        "#,
+    )
+    .bind(project_id)
+    .execute(pool)
+    .await?;
+    audit_project_settings_change(
+        pool,
+        actor_user_id,
+        "project.lifecycle.reopen",
+        project_id,
+        json!({ "state": "open" }),
+    )
+    .await?;
+    project_settings(pool, project_id, Some(actor_user_id)).await
+}
+
+pub async fn delete_project_for_actor(
+    pool: &PgPool,
+    project_id: Uuid,
+    actor_user_id: Uuid,
+    request: ProjectLifecycleRequest,
+) -> Result<ProjectDeleteResponse, ProjectsError> {
+    let project = visible_workspace_project(pool, project_id, Some(actor_user_id)).await?;
+    if !project
+        .viewer_role
+        .as_deref()
+        .is_some_and(|role| matches!(role, "owner" | "admin"))
+    {
+        return Err(ProjectsError::Forbidden);
+    }
+    let current = project_settings_general(pool, project_id).await?;
+    if let Some(expected) = request.expected_updated_at {
+        if current.updated_at != expected {
+            return Err(ProjectsError::Validation(
+                "Project settings changed since they were loaded. Refresh before deleting."
+                    .to_owned(),
+            ));
+        }
+    }
+    if request.confirmation.as_deref().map(str::trim) != Some(current.title.as_str()) {
+        return Err(ProjectsError::Validation(
+            "Type the project title to confirm deletion.".to_owned(),
+        ));
+    }
+    let destination_href = project_owner_projects_href(pool, project_id).await?;
+    sqlx::query(
+        r#"
+        UPDATE projects
+        SET deleted_at = COALESCE(deleted_at, now()),
+            deleted_by_user_id = COALESCE(deleted_by_user_id, $2),
+            updated_at = now()
+        WHERE id = $1 AND deleted_at IS NULL
+        "#,
+    )
+    .bind(project_id)
+    .bind(actor_user_id)
+    .execute(pool)
+    .await?;
+    audit_project_settings_change(
+        pool,
+        actor_user_id,
+        "project.lifecycle.delete",
+        project_id,
+        json!({ "destinationHref": destination_href }),
+    )
+    .await?;
+    Ok(ProjectDeleteResponse {
+        deleted: true,
+        project_id,
+        destination_href,
+    })
 }
 
 pub async fn update_project_workflow_for_actor(
@@ -5145,7 +5294,7 @@ async fn workspace_project_row(
          AND organization_memberships.user_id = $2
         LEFT JOIN organization_policy_settings
           ON organization_policy_settings.organization_id = projects.owner_organization_id
-        WHERE projects.id = $1
+        WHERE projects.id = $1 AND projects.deleted_at IS NULL
         "#,
     )
     .bind(project_id)
@@ -5692,6 +5841,69 @@ async fn ensure_not_last_project_admin(
             "At least one project admin or owner must remain.".to_owned(),
         ))
     }
+}
+
+async fn ensure_can_manage_project_lifecycle(
+    pool: &PgPool,
+    project_id: Uuid,
+    actor_user_id: Uuid,
+    expected_updated_at: Option<DateTime<Utc>>,
+    require_closed: bool,
+) -> Result<(), ProjectsError> {
+    let project = visible_workspace_project(pool, project_id, Some(actor_user_id)).await?;
+    if !project
+        .viewer_role
+        .as_deref()
+        .is_some_and(|role| matches!(role, "owner" | "admin"))
+    {
+        return Err(ProjectsError::Forbidden);
+    }
+    if require_closed && project.state != "closed" {
+        return Err(ProjectsError::Validation(
+            "Only closed projects can be reopened.".to_owned(),
+        ));
+    }
+    if !require_closed && project.state == "closed" {
+        return Err(ProjectsError::Validation(
+            "Project is already closed.".to_owned(),
+        ));
+    }
+    if let Some(expected) = expected_updated_at {
+        let current = project_settings_general(pool, project_id).await?;
+        if current.updated_at != expected {
+            return Err(ProjectsError::Validation(
+                "Project settings changed since they were loaded. Refresh before changing lifecycle state."
+                    .to_owned(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+async fn project_owner_projects_href(
+    pool: &PgPool,
+    project_id: Uuid,
+) -> Result<String, ProjectsError> {
+    let row = sqlx::query(
+        r#"
+        SELECT COALESCE(NULLIF(users.username, ''), users.email) AS user_login,
+               organizations.slug AS org_slug
+        FROM projects
+        LEFT JOIN users ON users.id = projects.owner_user_id
+        LEFT JOIN organizations ON organizations.id = projects.owner_organization_id
+        WHERE projects.id = $1
+        "#,
+    )
+    .bind(project_id)
+    .fetch_one(pool)
+    .await?;
+    if let Some(org_slug) = row.try_get::<Option<String>, _>("org_slug")? {
+        return Ok(format!("/orgs/{org_slug}/projects"));
+    }
+    let user_login = row
+        .try_get::<Option<String>, _>("user_login")?
+        .unwrap_or_else(|| "projects".to_owned());
+    Ok(format!("/{user_login}/projects"))
 }
 
 async fn project_settings_status_updates(

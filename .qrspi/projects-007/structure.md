@@ -74,7 +74,7 @@
 
 ## Phase 5: Danger Zone Lifecycle - close, reopen, and delete are confirmed, audited, and reflected everywhere
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add the Danger Zone page and lifecycle mutations. Admins can close/reopen projects and delete projects only after typed confirmation; closed projects remain readable but mutation-disabled where appropriate, and deleted projects disappear from normal project lists without leaking private metadata.
 

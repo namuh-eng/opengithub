@@ -200,6 +200,36 @@ async fn delete_json(
     (status, headers, value)
 }
 
+async fn delete_json_body(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, HeaderMap, Value) {
+    let mut builder = Request::builder()
+        .method(Method::DELETE)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_string()))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let headers = response.headers().clone();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let value = serde_json::from_slice(&bytes).expect("response should be JSON");
+    (status, headers, value)
+}
+
 #[tokio::test]
 async fn project_workspace_returns_table_fields_items_filters_and_private_guards() {
     let Some(pool) = database_pool().await else {
@@ -1705,6 +1735,124 @@ async fn project_settings_read_contract_filters_private_repositories_and_permiss
         get_json(app, &format!("/api/projects/{project_id}/settings"), None).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
     assert_eq!(body["error"]["code"], "not_found");
+}
+
+#[tokio::test]
+async fn project_lifecycle_close_reopen_and_delete_are_confirmed_and_private() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping projects lifecycle scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let config = app_config();
+    let marker = format!("lifecycle{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let admin = create_user(&pool, &format!("{marker}-admin")).await;
+    let reader = create_user(&pool, &format!("{marker}-reader")).await;
+    let admin_cookie = cookie_header(&pool, &config, &admin).await;
+    let reader_cookie = cookie_header(&pool, &config, &reader).await;
+
+    let project_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO projects (owner_user_id, number, title, short_description, visibility, created_by_user_id)
+        VALUES ($1, 92, 'Lifecycle project', 'Lifecycle contract', 'private', $1)
+        RETURNING id
+        "#,
+    )
+    .bind(owner.id)
+    .fetch_one(&pool)
+    .await
+    .expect("project should insert");
+    sqlx::query(
+        "INSERT INTO project_permissions (project_id, user_id, role) VALUES ($1, $2, 'admin'), ($1, $3, 'read')",
+    )
+    .bind(project_id)
+    .bind(admin.id)
+    .bind(reader.id)
+    .execute(&pool)
+    .await
+    .expect("permissions should insert");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/close"),
+        Some(&reader_cookie),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/close"),
+        Some(&admin_cookie),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["dangerState"]["state"], "closed");
+    assert_eq!(body["viewerPermissions"]["canEditGeneral"], false);
+    assert_eq!(body["viewerPermissions"]["canReopen"], true);
+    assert_eq!(
+        body["dangerState"]["closedBy"]["login"],
+        admin.username.as_deref().unwrap_or(&admin.email)
+    );
+
+    let (status, _, body) = post_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/reopen"),
+        Some(&admin_cookie),
+        json!({}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["dangerState"]["state"], "open");
+    assert!(body["dangerState"]["closedAt"].is_null());
+
+    let (status, _, body) = delete_json_body(
+        app.clone(),
+        &format!("/api/projects/{project_id}"),
+        Some(&admin_cookie),
+        json!({ "confirmation": "wrong title" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert_eq!(body["error"]["code"], "validation_failed");
+
+    let (status, _, body) = delete_json_body(
+        app.clone(),
+        &format!("/api/projects/{project_id}"),
+        Some(&admin_cookie),
+        json!({ "confirmation": "Lifecycle project" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["deleted"], true);
+    assert_eq!(
+        body["destinationHref"],
+        format!(
+            "/{}/projects",
+            owner.username.as_deref().unwrap_or(&owner.email)
+        )
+    );
+
+    let (status, _, body) = get_json(
+        app.clone(),
+        &format!("/api/projects/{project_id}/settings"),
+        Some(&admin_cookie),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+
+    let audit_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_events WHERE target_id = $1 AND event_type LIKE 'project.lifecycle.%'",
+    )
+    .bind(project_id.to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("audit events should count");
+    assert_eq!(audit_count, 3);
 }
 
 #[tokio::test]
