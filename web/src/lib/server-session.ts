@@ -72,6 +72,7 @@ import {
   getRepositoryIssueTemplatesFromCookie,
   getRepositoryIssueTimelineFromCookie,
   getRepositoryLabelsFromCookie,
+  getRepositoryMilestonesFromCookie,
   getRepositoryNetworkFromCookie,
   getRepositoryPagesSettingsFromCookie,
   getRepositoryPathFromCookie,
@@ -160,6 +161,7 @@ import {
   type RepositoryForksQuery,
   type RepositoryIssueListQuery,
   type RepositoryLabelsQuery,
+  type RepositoryMilestoneListQuery,
   type RepositoryNetworkFetchResult,
   type RepositoryPullRequestDiffQuery,
   type RepositoryPullRequestListQuery,
@@ -674,6 +676,20 @@ export async function getRepositoryLabels(
 ) {
   const requestHeaders = await headers();
   return getRepositoryLabelsFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    query,
+  );
+}
+
+export async function getRepositoryMilestones(
+  owner: string,
+  repo: string,
+  query: RepositoryMilestoneListQuery = {},
+) {
+  const requestHeaders = await headers();
+  return getRepositoryMilestonesFromCookie(
     requestHeaders.get("cookie"),
     owner,
     repo,

@@ -1048,6 +1048,33 @@ export function repositoryLabelsHref(
   return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/labels${suffix}`;
 }
 
+export type RepositoryMilestonesRouteQuery = {
+  state?: string | null;
+  sort?: string | null;
+  page?: number | null;
+};
+
+export function repositoryMilestonesHref(
+  owner: string,
+  repo: string,
+  query: RepositoryMilestonesRouteQuery = {},
+) {
+  const params = new URLSearchParams();
+  if (query.state?.trim()) params.set("state", query.state.trim());
+  if (query.sort?.trim()) params.set("sort", query.sort.trim());
+  if (query.page && query.page > 1) params.set("page", String(query.page));
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/milestones${suffix}`;
+}
+
+export function repositoryMilestoneHref(
+  owner: string,
+  repo: string,
+  milestoneId: string,
+) {
+  return `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/milestones/${encodeURIComponent(milestoneId)}`;
+}
+
 export function repositoryWikiPagesHref(owner: string, repo: string) {
   return repositoryWikiHref(owner, repo, "_pages");
 }

@@ -31,7 +31,7 @@ The collaboration foundation already has repository-scoped `milestones`, `issues
 
 ## Phase 2: Editorial Milestones List - milestones are searchable, sortable, and manageable
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Replace the placeholder `/{owner}/{repo}/milestones` route with a real Editorial milestones page backed by Phase 1. Users should switch Open/Closed tabs, sort milestones through URL state, follow count links, and use permissioned create/edit/delete controls with no dead interactions.
 

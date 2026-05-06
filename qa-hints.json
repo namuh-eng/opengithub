@@ -7824,5 +7824,23 @@
       "Probe private repository anonymous access, archived repository mutation denial, duplicate title collisions, very long descriptions, Markdown sanitization, due-date timezone display, association clearing for PR-backed issues, notification fanout, and audit/timeline ordering.",
       "Phase 2 still owns the Editorial milestones list UI, browser smoke, and no-dead-control validation."
     ]
+  },
+  {
+    "feature_id": "milestones-001",
+    "tests_written": [
+      "Completed Phase 2 Editorial Milestones List without marking milestones-001 build_pass=true.",
+      "Replaced the placeholder /{owner}/{repo}/milestones route with a server-backed Editorial repository shell page that fetches repository metadata and the Rust milestone list contract.",
+      "Added open/closed tabs with URL state, the full milestone sort menu, progress bars, percent complete, due-date/no-due-date text, updated timestamps, concrete open/closed issue count links, empty states, and permissioned New/Edit/Delete controls.",
+      "Added same-origin Next mutation proxies under /milestones/actions for create, update, and delete while preserving Rust API/session authority.",
+      "Added focused Vitest coverage for tabs, sort URL state, progress rendering, count links, create/edit/delete payloads, reader controls, empty-state CTAs, no placeholder links, and no dead controls.",
+      "Browser smoke passed through a real Next route on :3025 with an API-compatible Rust stub on :3016: loaded /namuh-eng/opengithub/milestones, switched Closed tab, changed sort, created a milestone, edited it, deleted after confirmation, followed an open-issues count link, checked no href=\"#\", checked no horizontal overflow, and saved ralph/screenshots/build/milestones-001-phase2-list.jpg.",
+      "Verification passed: focused repository-milestones-page Vitest, web TypeScript, focused Biome, full make check, full make test with Cargo tests plus 616 web tests, mandatory Editorial banned-value scan, and browser smoke."
+    ],
+    "needs_deeper_qa": [
+      "Bounded TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false timeout 120 make test-e2e was attempted and terminated after 120 seconds with no Playwright result output; rerun signed-in E2E after the local E2E database/dev-server path is healthy.",
+      "Probe the Milestones page against the real Rust API with a migrated credentialed TEST_DATABASE_URL, including duplicate title collisions, invalid due dates, archived repositories, private repository access, reader/write permission boundaries, and delete association clearing.",
+      "Probe long milestone titles/descriptions on mobile, sort-menu keyboard behavior, delete cancellation, stale UI after concurrent edits/deletes, due-date timezone display, and count-link query correctness for milestone titles containing spaces or punctuation.",
+      "Phases 3-5 still own milestone detail, issue/PR assignment, prioritization/reorder, lifecycle edge cases, docs, signed-in E2E coverage, final QA handoff consolidation, and milestones-001 build_pass bookkeeping."
+    ]
   }
 ]
