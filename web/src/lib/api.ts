@@ -7294,6 +7294,12 @@ export type MilestoneViewer = {
   canEditMilestones: boolean;
 };
 
+export type MilestoneOrderState = {
+  canReorder: boolean;
+  reason: string | null;
+  version: string;
+};
+
 export type MilestoneProgress = {
   openCount: number;
   closedCount: number;
@@ -7350,6 +7356,7 @@ export type MilestoneIssueItem = {
 export type RepositoryMilestoneDetail = RepositoryMilestoneSummary & {
   descriptionHtml: string;
   items: MilestoneIssueItem[];
+  order: MilestoneOrderState;
   viewer: MilestoneViewer;
   repository: RepositoryMilestonesView["repository"];
 };
@@ -7358,6 +7365,11 @@ export type RepositoryMilestoneMutation = {
   title: string;
   description?: string | null;
   dueOn?: string | null;
+};
+
+export type RepositoryMilestoneOrderRequest = {
+  itemIds: string[];
+  expectedVersion?: string | null;
 };
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
@@ -12364,6 +12376,25 @@ export async function deleteRepositoryMilestoneFromCookie(
     repositoryMilestonePath(owner, repo, milestoneId),
     "DELETE",
   );
+}
+
+export async function reorderRepositoryMilestoneItemsFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  milestoneId: string,
+  input: RepositoryMilestoneOrderRequest,
+): Promise<RepositoryMilestoneDetail> {
+  const result = await mutateRepositoryMilestoneFromCookie(
+    cookie,
+    `${repositoryMilestonePath(owner, repo, milestoneId)}/order`,
+    "PATCH",
+    input,
+  );
+  if (!result) {
+    throw new Error("Milestone reorder returned no milestone");
+  }
+  return result;
 }
 
 export function repositoryPullRequestsPath(

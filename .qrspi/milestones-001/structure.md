@@ -69,7 +69,7 @@ The collaboration foundation already has repository-scoped `milestones`, `issues
 
 ## Phase 4: Milestone Prioritization and Lifecycle Edge Cases - ordering and state transitions are durable
 
-**Done**: [ ]
+**Done**: [x]
 
 **Scope**: Add drag/drop prioritization for milestones with 500 or fewer open items and harden lifecycle edge cases. Writers should reorder open work items, close/reopen/delete safely, and get deterministic conflict/error behavior.
 

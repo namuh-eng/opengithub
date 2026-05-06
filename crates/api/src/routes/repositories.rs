@@ -80,10 +80,12 @@ use crate::{
     },
     domain::milestones::{
         create_repository_milestone_by_owner_name, delete_repository_milestone_by_owner_name,
+        reorder_repository_milestone_items_by_owner_name,
         repository_milestone_detail_for_actor_by_owner_name,
         repository_milestones_for_actor_by_owner_name, update_repository_milestone_by_owner_name,
         update_repository_milestone_state_by_owner_name, MilestoneListState, MilestoneSort,
-        MilestonesError, RepositoryMilestoneMutation, RepositoryMilestonesQuery,
+        MilestonesError, RepositoryMilestoneMutation, RepositoryMilestoneOrderRequest,
+        RepositoryMilestonesQuery,
     },
     domain::pages::{
         connect_repository_pages_actions_deployment_by_owner_name,
@@ -254,6 +256,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/:owner/:repo/milestones/:milestone_id/reopen",
             post(reopen_milestone),
+        )
+        .route(
+            "/:owner/:repo/milestones/:milestone_id/order",
+            patch(reorder_milestone_items),
         )
         .route("/:owner/:repo/wiki/_compare", get(wiki_compare))
         .route("/:owner/:repo/wiki/_history", get(wiki_history))
@@ -1169,6 +1175,27 @@ async fn delete_milestone(
         .await
         .map_err(map_milestones_error)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn reorder_milestone_items(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo, milestone_id)): Path<(String, String, Uuid)>,
+    RestJson(request): RestJson<RepositoryMilestoneOrderRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let result = reorder_repository_milestone_items_by_owner_name(
+        pool,
+        &owner,
+        &repo,
+        milestone_id,
+        actor.0.id,
+        request,
+    )
+    .await
+    .map_err(map_milestones_error)?;
+    Ok(Json(json!(result)))
 }
 
 async fn wiki_home(
@@ -5682,7 +5709,9 @@ fn map_milestones_error(error: MilestonesError) -> (StatusCode, Json<ErrorEnvelo
         MilestonesError::RepositoryAccessDenied => {
             error_response(StatusCode::FORBIDDEN, "forbidden", error.to_string())
         }
-        MilestonesError::ArchivedRepository | MilestonesError::Conflict => {
+        MilestonesError::ArchivedRepository
+        | MilestonesError::Conflict
+        | MilestonesError::StaleOrder => {
             error_response(StatusCode::CONFLICT, "conflict", error.to_string())
         }
         MilestonesError::Validation(_) => error_response(

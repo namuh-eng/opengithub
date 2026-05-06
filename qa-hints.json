@@ -7860,5 +7860,24 @@
       "Probe long milestone descriptions and dense item lists on mobile, keyboard-only MilestonePicker usage, close/reopen/delete race conditions, deleted milestone stale URLs, private repository leakage, archived repository mutation denial, and due-date timezone display.",
       "Phases 4-5 still own prioritization/reorder, lifecycle edge cases, docs, signed-in E2E coverage, final QA handoff consolidation, and milestones-001 build_pass bookkeeping."
     ]
+  },
+  {
+    "feature_id": "milestones-001",
+    "tests_written": [
+      "Completed Phase 4 Milestone Prioritization and Lifecycle Edge Cases without marking milestones-001 build_pass=true.",
+      "Added Rust milestone item reorder contract with PATCH /api/repos/{owner}/{repo}/milestones/{milestone_id}/order, stale expectedVersion conflict detection, 500-open-item cap, repository ownership validation, milestone_item_order persistence, milestone event rows, and audit evidence.",
+      "Extended milestone detail responses with order.canReorder, order.reason, and order.version metadata, and sorted open items by persisted milestone_item_order before updated-time fallback.",
+      "Added typed Next.js cookie helper and same-origin /milestones/actions/{milestoneId} PATCH proxy for saving ordered item IDs through Rust session authority.",
+      "Added keyboard-accessible Up/Down controls on the Editorial milestone detail page with optimistic order updates, pending/error states, focusable buttons, and over-cap/read-only reason display.",
+      "Added focused Vitest coverage for reorder PATCH payloads, stale-safe expectedVersion forwarding, over-cap disabled messaging, lifecycle actions, no placeholder links, and no dead controls.",
+      "Browser smoke passed through a real Next route on :3015 with an API-compatible stub on :3016: loaded /mona/octo-app/milestones/milestone-1, moved Polish release notes up, verified persisted order after refresh, closed the milestone, checked no href=\"#\", checked no horizontal overflow, and saved ralph/screenshots/build/milestones-001-phase4-prioritization.jpg.",
+      "Verification passed: cargo fmt --all --check, cargo check -p opengithub-api --tests, focused repository-milestone-detail-page Vitest with 5 tests, web TypeScript, focused Biome, full make check, full make test with Cargo tests plus 621 web tests, mandatory Editorial banned-value scan, and browser smoke."
+    ],
+    "needs_deeper_qa": [
+      "Bounded TEST_DATABASE_URL=postgresql://postgres@localhost:55432/opengithub_identity_test DB_SSL=false timeout 120 make test-e2e was attempted and terminated after 120 seconds with no Playwright result output; rerun signed-in E2E after the local E2E database/dev-server path is healthy.",
+      "Probe real Rust-backed reorder against a migrated credentialed TEST_DATABASE_URL, including stale order conflicts after concurrent edits, over-500 open-item cap, cross-repository item IDs, duplicate/missing item IDs, archived repository denial, private repository leakage, and audit/milestone event ordering.",
+      "Probe keyboard-only reorder on desktop and mobile, focus preservation after reorder failure, long item titles, dense label/assignee rows, lifecycle close/reopen/delete races, deleted milestone stale URLs, and association clearing on delete.",
+      "Phase 5 still owns API docs, signed-in E2E coverage, final QA handoff consolidation, and milestones-001 build_pass bookkeeping."
+    ]
   }
 ]

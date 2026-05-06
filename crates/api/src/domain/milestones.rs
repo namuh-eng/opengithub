@@ -30,6 +30,8 @@ pub enum MilestonesError {
     Validation(String),
     #[error("milestone title already exists")]
     Conflict,
+    #[error("milestone changed since it was loaded")]
+    StaleOrder,
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
 }
@@ -88,6 +90,14 @@ pub struct RepositoryMilestoneMutation {
 pub struct MilestoneViewer {
     pub permission: Option<String>,
     pub can_edit_milestones: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MilestoneOrderState {
+    pub can_reorder: bool,
+    pub reason: Option<String>,
+    pub version: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -167,9 +177,17 @@ pub struct RepositoryMilestoneDetail {
     pub updated_at: DateTime<Utc>,
     pub progress: MilestoneProgress,
     pub items: Vec<MilestoneIssueItem>,
+    pub order: MilestoneOrderState,
     pub viewer: MilestoneViewer,
     pub repository: MilestoneRepositorySummary,
     pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryMilestoneOrderRequest {
+    pub item_ids: Vec<Uuid>,
+    pub expected_version: Option<String>,
 }
 
 pub async fn repository_milestones_for_actor_by_owner_name(
@@ -266,6 +284,7 @@ pub async fn repository_milestone_detail_for_actor_by_owner_name(
 
     Ok(RepositoryMilestoneDetail {
         items: milestone_items(pool, &repository, milestone_id).await?,
+        order: milestone_order_state(pool, milestone_id, &viewer).await?,
         viewer,
         repository: repository_summary(&repository),
         id: summary.id,
@@ -280,6 +299,99 @@ pub async fn repository_milestone_detail_for_actor_by_owner_name(
         progress: summary.progress,
         href: summary.href,
     })
+}
+
+pub async fn reorder_repository_milestone_items_by_owner_name(
+    pool: &PgPool,
+    owner: &str,
+    repo: &str,
+    milestone_id: Uuid,
+    actor_user_id: Uuid,
+    request: RepositoryMilestoneOrderRequest,
+) -> Result<RepositoryMilestoneDetail, MilestonesError> {
+    let repository = repository_for_writer(pool, owner, repo, actor_user_id).await?;
+    ensure_milestone_belongs(pool, repository.id, milestone_id).await?;
+    let current_items = milestone_items(pool, &repository, milestone_id).await?;
+    let current_open_ids: Vec<Uuid> = current_items
+        .iter()
+        .filter(|item| item.state == IssueState::Open)
+        .map(|item| item.id)
+        .collect();
+    if current_open_ids.len() > 500 {
+        return Err(MilestonesError::Validation(
+            "milestone item order is disabled above 500 open items".to_owned(),
+        ));
+    }
+    let current_version = milestone_order_version(pool, milestone_id).await?;
+    if request
+        .expected_version
+        .as_deref()
+        .is_some_and(|expected| expected != current_version)
+    {
+        return Err(MilestonesError::StaleOrder);
+    }
+    let mut requested = request.item_ids;
+    requested.dedup();
+    if requested.len() != current_open_ids.len()
+        || !current_open_ids.iter().all(|id| requested.contains(id))
+    {
+        return Err(MilestonesError::Validation(
+            "milestone order must include every open item exactly once".to_owned(),
+        ));
+    }
+
+    let mut tx = pool.begin().await?;
+    sqlx::query("DELETE FROM milestone_item_order WHERE milestone_id = $1")
+        .bind(milestone_id)
+        .execute(&mut *tx)
+        .await?;
+    for (position, issue_id) in requested.iter().enumerate() {
+        sqlx::query(
+            r#"
+            INSERT INTO milestone_item_order (milestone_id, issue_id, position, updated_by_user_id)
+            VALUES ($1, $2, $3, $4)
+            "#,
+        )
+        .bind(milestone_id)
+        .bind(issue_id)
+        .bind(position as i32)
+        .bind(actor_user_id)
+        .execute(&mut *tx)
+        .await?;
+    }
+    sqlx::query("UPDATE milestones SET updated_at = now() WHERE repository_id = $1 AND id = $2")
+        .bind(repository.id)
+        .bind(milestone_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+
+    insert_milestone_event(
+        pool,
+        repository.id,
+        Some(milestone_id),
+        Some(actor_user_id),
+        "reordered",
+        json!({ "itemIds": requested }),
+    )
+    .await?;
+    insert_audit_event(
+        pool,
+        actor_user_id,
+        "repository.milestone.reorder",
+        "milestone",
+        milestone_id,
+        json!({ "repositoryId": repository.id }),
+    )
+    .await?;
+    repository_milestone_detail_for_actor_by_owner_name(
+        pool,
+        owner,
+        repo,
+        milestone_id,
+        Some(actor_user_id),
+    )
+    .await
 }
 
 pub async fn create_repository_milestone_by_owner_name(
@@ -794,9 +906,15 @@ async fn milestone_items(
         LEFT JOIN labels ON labels.id = issue_labels.label_id
         LEFT JOIN issue_assignees ON issue_assignees.issue_id = issues.id
         LEFT JOIN users ON users.id = issue_assignees.user_id
+        LEFT JOIN milestone_item_order
+          ON milestone_item_order.milestone_id = $2
+         AND milestone_item_order.issue_id = issues.id
         WHERE issues.repository_id = $1 AND issues.milestone_id = $2
         GROUP BY issues.id, pull_requests.id
-        ORDER BY issues.state ASC, issues.updated_at DESC, issues.number DESC
+        ORDER BY issues.state ASC,
+                 MIN(milestone_item_order.position) ASC NULLS LAST,
+                 issues.updated_at DESC,
+                 issues.number DESC
         "#
     )
     .bind(repository.id)
@@ -830,6 +948,52 @@ async fn milestone_items(
             }
         })
         .collect())
+}
+
+async fn milestone_order_state(
+    pool: &PgPool,
+    milestone_id: Uuid,
+    viewer: &MilestoneViewer,
+) -> Result<MilestoneOrderState, MilestonesError> {
+    let open_count = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*)::bigint FROM issues WHERE milestone_id = $1 AND state = 'open'",
+    )
+    .bind(milestone_id)
+    .fetch_one(pool)
+    .await?;
+    let version = milestone_order_version(pool, milestone_id).await?;
+    let reason = if !viewer.can_edit_milestones {
+        Some("write permission is required to reorder milestone items".to_owned())
+    } else if open_count > 500 {
+        Some("milestones with more than 500 open items cannot be reordered".to_owned())
+    } else {
+        None
+    };
+    Ok(MilestoneOrderState {
+        can_reorder: reason.is_none(),
+        reason,
+        version,
+    })
+}
+
+async fn milestone_order_version(
+    pool: &PgPool,
+    milestone_id: Uuid,
+) -> Result<String, MilestonesError> {
+    let version = sqlx::query_scalar::<_, Option<String>>(
+        r#"
+        SELECT md5(COALESCE(string_agg(issues.id::text || ':' || COALESCE(milestone_item_order.position::text, ''), ',' ORDER BY milestone_item_order.position ASC NULLS LAST, issues.updated_at DESC, issues.number DESC), ''))
+        FROM issues
+        LEFT JOIN milestone_item_order
+          ON milestone_item_order.milestone_id = $1
+         AND milestone_item_order.issue_id = issues.id
+        WHERE issues.milestone_id = $1 AND issues.state = 'open'
+        "#,
+    )
+    .bind(milestone_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(version.unwrap_or_else(|| "empty".to_owned()))
 }
 
 fn repository_summary(repository: &Repository) -> MilestoneRepositorySummary {

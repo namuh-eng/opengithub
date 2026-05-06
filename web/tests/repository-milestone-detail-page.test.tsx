@@ -92,6 +92,11 @@ function milestoneDetail(
       totalCount: 2,
       percentComplete: 50,
     },
+    order: {
+      canReorder: true,
+      reason: null,
+      version: "order-v1",
+    },
     items: [
       {
         id: "issue-1",
@@ -223,5 +228,80 @@ describe("RepositoryMilestoneDetailPage", () => {
     await waitFor(() =>
       expect(pushMock).toHaveBeenCalledWith("/mona/octo-app/milestones"),
     );
+  });
+
+  it("reorders open milestone items with keyboard-safe controls", async () => {
+    renderDetail(
+      milestoneDetail({
+        progress: {
+          openCount: 2,
+          closedCount: 0,
+          totalCount: 2,
+          percentComplete: 0,
+        },
+        items: [
+          {
+            id: "issue-1",
+            number: 42,
+            title: "Stabilize importer",
+            state: "open",
+            isPullRequest: false,
+            href: "/mona/octo-app/issues/42",
+            commentCount: 3,
+            labelNames: ["bug"],
+            assigneeLogins: ["mona"],
+            updatedAt: "2026-05-06T00:00:00Z",
+          },
+          {
+            id: "issue-3",
+            number: 44,
+            title: "Polish release notes",
+            state: "open",
+            isPullRequest: false,
+            href: "/mona/octo-app/issues/44",
+            commentCount: 0,
+            labelNames: [],
+            assigneeLogins: [],
+            updatedAt: "2026-05-04T00:00:00Z",
+          },
+        ],
+      }),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Move Polish release notes up" }),
+    );
+
+    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    expect(fetch).toHaveBeenCalledWith(
+      "/mona/octo-app/milestones/actions/milestone-1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({
+          itemIds: ["issue-3", "issue-1"],
+          expectedVersion: "order-v1",
+        }),
+      }),
+    );
+  });
+
+  it("explains disabled reorder when the milestone is over the item cap", () => {
+    renderDetail(
+      milestoneDetail({
+        order: {
+          canReorder: false,
+          reason:
+            "milestones with more than 500 open items cannot be reordered",
+          version: "order-v1",
+        },
+      }),
+    );
+
+    expect(
+      screen.getByText(
+        "milestones with more than 500 open items cannot be reordered",
+      ),
+    ).toBeVisible();
+    expect(screen.queryByRole("button", { name: /Move .* up/ })).toBeNull();
   });
 });

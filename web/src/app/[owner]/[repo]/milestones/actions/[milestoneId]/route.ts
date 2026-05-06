@@ -4,7 +4,9 @@ import {
   closeRepositoryMilestoneFromCookie,
   deleteRepositoryMilestoneFromCookie,
   type RepositoryMilestoneMutation,
+  type RepositoryMilestoneOrderRequest,
   reopenRepositoryMilestoneFromCookie,
+  reorderRepositoryMilestoneItemsFromCookie,
   updateRepositoryMilestoneFromCookie,
 } from "@/lib/api";
 
@@ -48,9 +50,48 @@ function errorResponse(error: unknown, message: string) {
   );
 }
 
+function orderRequest(body: unknown): RepositoryMilestoneOrderRequest {
+  const itemIds =
+    typeof body === "object" &&
+    body !== null &&
+    Array.isArray((body as { itemIds?: unknown }).itemIds)
+      ? (body as { itemIds: unknown[] }).itemIds.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : [];
+  const expectedVersion =
+    typeof body === "object" &&
+    body !== null &&
+    typeof (body as { expectedVersion?: unknown }).expectedVersion === "string"
+      ? (body as { expectedVersion: string }).expectedVersion
+      : null;
+  return { itemIds, expectedVersion };
+}
+
 export async function PATCH(request: NextRequest, context: RouteContext) {
   const { owner, repo, milestoneId } = await context.params;
   const body = await request.json().catch(() => null);
+  if (
+    typeof body === "object" &&
+    body !== null &&
+    Array.isArray((body as { itemIds?: unknown }).itemIds)
+  ) {
+    try {
+      const result = await reorderRepositoryMilestoneItemsFromCookie(
+        request.headers.get("cookie"),
+        decodeURIComponent(owner),
+        decodeURIComponent(repo),
+        decodeURIComponent(milestoneId),
+        orderRequest(body),
+      );
+      return NextResponse.json(result);
+    } catch (error) {
+      return errorResponse(
+        error,
+        "Repository milestone order could not be saved.",
+      );
+    }
+  }
 
   try {
     const result = await updateRepositoryMilestoneFromCookie(

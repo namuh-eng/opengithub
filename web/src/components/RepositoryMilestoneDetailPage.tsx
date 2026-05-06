@@ -65,13 +65,15 @@ export function RepositoryMilestoneDetailPage({
   const repo = repository.name;
   const state = query.state === "closed" ? "closed" : "open";
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [orderedItems, setOrderedItems] = useState(milestone.items);
   const [message, setMessage] = useState<string | null>(null);
   const [isMutating, setIsMutating] = useState(false);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
   const canWrite =
     milestone.viewer.canEditMilestones && !milestone.repository.isArchived;
   const visibleItems = useMemo(
-    () => milestone.items.filter((item) => item.state === state),
-    [milestone.items, state],
+    () => orderedItems.filter((item) => item.state === state),
+    [orderedItems, state],
   );
   const progress = milestone.progress.percentComplete;
   const detailHref = repositoryMilestoneHref(owner, repo, milestone.id);
@@ -123,6 +125,58 @@ export function RepositoryMilestoneDetailPage({
         ? current.filter((id) => id !== itemId)
         : [...current, itemId],
     );
+  }
+
+  async function moveItem(itemId: string, direction: -1 | 1) {
+    const openItems = orderedItems.filter((item) => item.state === "open");
+    const currentIndex = openItems.findIndex((item) => item.id === itemId);
+    const nextIndex = currentIndex + direction;
+    if (
+      !milestone.order.canReorder ||
+      state !== "open" ||
+      currentIndex < 0 ||
+      nextIndex < 0 ||
+      nextIndex >= openItems.length
+    ) {
+      return;
+    }
+    const reorderedOpen = [...openItems];
+    const [moved] = reorderedOpen.splice(currentIndex, 1);
+    reorderedOpen.splice(nextIndex, 0, moved);
+    const nextItems = [
+      ...reorderedOpen,
+      ...orderedItems.filter((item) => item.state !== "open"),
+    ];
+    setOrderedItems(nextItems);
+    setMessage(null);
+    setIsSavingOrder(true);
+    try {
+      const response = await fetch(
+        `/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/milestones/actions/${encodeURIComponent(milestone.id)}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            itemIds: reorderedOpen.map((item) => item.id),
+            expectedVersion: milestone.order.version,
+          }),
+        },
+      );
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        const envelope = body as ApiErrorEnvelope | null;
+        throw new Error(
+          envelope?.error.message ?? "Milestone order could not be saved.",
+          { cause: envelope },
+        );
+      }
+      router.refresh();
+    } catch (error) {
+      setOrderedItems(milestone.items);
+      setMessage(errorMessage(error, "Milestone order could not be saved."));
+    } finally {
+      setIsSavingOrder(false);
+    }
   }
 
   return (
@@ -288,9 +342,17 @@ export function RepositoryMilestoneDetailPage({
               <span className="t-num">{visibleItems.length}</span> items
             </span>
           </div>
+          {state === "open" && !milestone.order.canReorder ? (
+            <p
+              className="border-b px-5 py-3 t-sm"
+              style={{ borderColor: "var(--line)", color: "var(--ink-3)" }}
+            >
+              {milestone.order.reason}
+            </p>
+          ) : null}
 
           {visibleItems.length ? (
-            visibleItems.map((item) => (
+            visibleItems.map((item, index) => (
               <article className="list-row px-5 py-4" key={item.id}>
                 <label className="flex min-w-0 flex-1 items-start gap-3">
                   <input
@@ -334,6 +396,34 @@ export function RepositoryMilestoneDetailPage({
                     </span>
                   </span>
                 </label>
+                {state === "open" && milestone.order.canReorder ? (
+                  <div className="ml-3 flex shrink-0 gap-2">
+                    <button
+                      aria-disabled={isSavingOrder || index === 0}
+                      aria-label={`Move ${item.title} up`}
+                      className="btn sm"
+                      disabled={isSavingOrder || index === 0}
+                      onClick={() => void moveItem(item.id, -1)}
+                      type="button"
+                    >
+                      Up
+                    </button>
+                    <button
+                      aria-disabled={
+                        isSavingOrder || index === visibleItems.length - 1
+                      }
+                      aria-label={`Move ${item.title} down`}
+                      className="btn sm"
+                      disabled={
+                        isSavingOrder || index === visibleItems.length - 1
+                      }
+                      onClick={() => void moveItem(item.id, 1)}
+                      type="button"
+                    >
+                      Down
+                    </button>
+                  </div>
+                ) : null}
               </article>
             ))
           ) : (
