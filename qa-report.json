@@ -2587,5 +2587,66 @@
       }
     ],
     "fix_description": "Fixed AI changelog context to honor previousTag/targetTag bounds and added focused DB-backed contract coverage. Full signed-session, private-repo opt-in, rate-limit bucket, and live OpenAI provider verification remain blocked by unavailable local test Postgres, so prd.json keeps ai-001.qa_pass=false."
+  },
+  {
+    "feature_id": "git-001",
+    "attempt": 1,
+    "status": "partial",
+    "sub_phases": {
+      "functional": {
+        "status": "partial",
+        "notes": "Focused Rust git transport/security tests compiled and passed (11 tests total), but every DB-backed git scenario self-skipped because TEST_DATABASE_URL localhost:55433 was unreachable. Focused repository Code overview Vitest passed (25 tests). make check passed after installing missing web npm dependencies and rerunning with CARGO_INCREMENTAL=0. Full CARGO_INCREMENTAL=0 make test could not complete in this environment because linking all Rust test binaries exhausted disk space (ld write errno=28). make test-e2e timed out after db-wait-test reported test Postgres did not become ready on :55433."
+      },
+      "api_contract": {
+        "status": "partial",
+        "endpoints_tested": [
+          "GET /:owner/:repo.git/info/refs?service=git-upload-pack",
+          "POST /:owner/:repo.git/git-upload-pack",
+          "GET /:owner/:repo.git/info/refs?service=git-receive-pack",
+          "POST /:owner/:repo.git/git-receive-pack",
+          "GET /:owner/:repo/raw/:ref/*path",
+          "GET /:owner/:repo/download/:ref/*path",
+          "GET /:owner/:repo/archive/refs/heads/:branch.zip"
+        ],
+        "notes": "Route/test inspection and focused Rust tests cover smart HTTP service validation, upload-pack/receive-pack result types, raw streaming, ZIP archive cache behavior, malformed path handling, and archive path sanitization. Real DB-backed happy-path clone/fetch/push/raw/archive assertions were not proven because the local test database was unavailable."
+      },
+      "security": {
+        "status": "partial",
+        "checks": [
+          "auth_bypass",
+          "token_scope_boundaries",
+          "oversized_requests",
+          "path_traversal",
+          "cors",
+          "data_exposure",
+          "request_log_redaction"
+        ],
+        "notes": "Focused git_transport_security tests passed but reported DB-backed scenarios skipped. Mandatory Editorial banned-token scan returned no matches. CORS/data exposure live endpoint probes requiring a running DB-backed app could not be completed because make test-e2e/dev DB setup was blocked."
+      },
+      "accessibility": {
+        "status": "partial",
+        "violations": [],
+        "notes": "Focused UI unit coverage for repository Code overview passed and Editorial scan was clean. Browser/a11y smoke for /docs/git and repository Code menu could not complete because Playwright setup timed out navigating to /login without healthy test infrastructure."
+      }
+    },
+    "evidence": {
+      "timestamp": "2026-05-08T01:05:00+09:00",
+      "passed": [
+        "CARGO_INCREMENTAL=0 cargo test --test git_transport --test git_transport_security -- --nocapture: 8 git_transport + 3 git_transport_security tests passed; DB-backed bodies self-skipped due unavailable TEST_DATABASE_URL",
+        "CARGO_INCREMENTAL=0 make check: Cargo check, Web typecheck, Clippy, Biome passed",
+        "cd web && npx vitest run tests/repository-code-overview.test.tsx: 25 tests passed",
+        "rg -n -e '#(0969da|1f883d|1a7f37|cf222e|82071e|f6f8fa|1f2328|d0d7de|59636e|f1aeb5|fff1f3)\\b|@primer/|Octicon' web/src/ --glob '!**/og*.css': no matches"
+      ],
+      "blocked_or_failed": [
+        "make db-up-test / make test-e2e: test postgres did not become ready on :55433; timeout 120 make test-e2e exited 124",
+        "CARGO_INCREMENTAL=0 make test: failed while linking full Rust test suite because disk filled (ld write errno=28 / No space left on device)",
+        "Focused Playwright git-transport without DB: auth.setup timed out at page.goto(/login); git-transport specs did not run"
+      ]
+    },
+    "remaining_blockers": [
+      "Provide a reachable migrated TEST_DATABASE_URL/DATABASE_URL on localhost:55433 or another configured DSN so DB-backed git clone/fetch/push/raw/archive scenarios can run.",
+      "Provide enough free disk for cargo test --workspace --all-targets to link all test binaries, or a CI runner with adequate storage.",
+      "Rerun make test-e2e/focused git-transport Playwright after the test DB/dev-server path is healthy."
+    ]
   }
 ]

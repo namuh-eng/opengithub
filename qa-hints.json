@@ -8208,5 +8208,19 @@
       "Rate-limit bucket behavior for repeated AI generation under real signed sessions",
       "Full signed-session E2E after local TEST_DATABASE_URL credentials are healthy"
     ]
+  },
+  {
+    "feature_id": "git-001",
+    "tests_written": [
+      "QA lane evidence: focused git_transport and git_transport_security Rust suites compile and pass, but DB-backed scenario bodies self-skip while TEST_DATABASE_URL localhost:55433 is unavailable.",
+      "QA lane evidence: CARGO_INCREMENTAL=0 make check passes after restoring web/node_modules with npm install.",
+      "QA lane evidence: repository Code overview Vitest passes 25 tests and mandatory Editorial banned-token scan is clean."
+    ],
+    "needs_deeper_qa": [
+      "Do not mark git-001 qa_pass=true until DB-backed git clone/fetch/push/raw/archive scenarios run against a reachable migrated test DB.",
+      "Full CARGO_INCREMENTAL=0 make test currently fails for environment storage, not an observed product assertion: Rust test-binary linking exhausts disk with ld errno=28.",
+      "make test-e2e currently cannot start because test Postgres on :55433 does not become ready and the command times out before git-transport browser assertions run.",
+      "Rerun private repository PAT/session auth, receive-pack write authorization, raw/archive bounded streaming, clipboard, Download ZIP, and empty-repo Quick setup browser smoke once DB/dev-server infrastructure is healthy."
+    ]
   }
 ]
