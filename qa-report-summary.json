@@ -8,31 +8,31 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 22,
+    "features_passed": 23,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 20,
+      "pass": 21,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 17,
+      "pass": 18,
       "fail": 0,
       "skip": 3
     },
     "security": {
-      "pass": 17,
+      "pass": 18,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
       "pass": 0,
       "fail": 0,
-      "skip": 20
+      "skip": 21
     }
   },
   "features": [
@@ -884,10 +884,49 @@
       "feature_id": "prs-004",
       "description": "Render pull request conversation with timeline events, review requests, checks s",
       "category": "crud",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "make test passed before fixes; focused PR detail Vitest passed after permission-gating regression coverage; DB-backed focused Playwright PR detail suite passed on fresh local Postgres, covering conversation/files, comments, sidebar metadata and notifications, close/reopen, blocked merge, and successful merge. Full make test-e2e without DB failed before prs-004 in unrelated repository-discussions specs requiring TEST_DATABASE_URL/DATABASE_URL."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/repos/:owner/:repo/pulls/:number",
+            "GET /api/repos/:owner/:repo/pulls/:number/timeline",
+            "POST /api/repos/:owner/:repo/pulls/:number/comments",
+            "PATCH /api/repos/:owner/:repo/pulls/:number/review-requests",
+            "PATCH /api/repos/:owner/:repo/pulls/:number/draft",
+            "PATCH /api/repos/:owner/:repo/pulls/:number/metadata",
+            "PATCH /api/repos/:owner/:repo/pulls/:number/subscription",
+            "PATCH /api/repos/:owner/:repo/pulls/:number",
+            "POST /api/repos/:owner/:repo/pulls/:number/merge",
+            "GET /api/repos/:owner/:repo/pulls/:number/files",
+            "GET /api/repos/:owner/:repo/pulls/:number.diff",
+            "GET /api/repos/:owner/:repo/pulls/:number.patch"
+          ],
+          "notes": "DB-backed api_pull_request_detail_contract passed after fixing zero-check-run synchronization and aligning stale username-first login assertions. Contract covers public/private read authorization, rendered Markdown, metadata, timeline comments, blank comment validation, sidebar mutations, subscription custom-events validation, draft/close/reopen/merge state, branch/ruleset mergeability, failed/pending/missing checks, required reviews, linked issues, raw diff/patch, and merge blockers."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_bypass",
+            "input_sanitization",
+            "cors",
+            "data_exposure"
+          ],
+          "notes": "Authenticated mutation routes use Rust signed-session extraction and write/read repository role checks; missing auth and invalid input envelopes are covered by focused contracts and E2E. Mandatory Editorial banned-token scan had zero hits. No stack traces, secrets, SQL errors, or raw script execution were observed in focused validation."
+        },
+        "accessibility": {
+          "status": "skip",
+          "violations": [],
+          "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "prs-005",
