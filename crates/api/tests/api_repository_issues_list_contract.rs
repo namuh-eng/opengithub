@@ -170,6 +170,11 @@ async fn issue_list_contract_returns_screen_ready_rows_counts_and_filters() {
 
     let config = app_config();
     let owner = create_user(&pool, "issue-list-owner").await;
+    let owner_login = owner
+        .username
+        .as_deref()
+        .unwrap_or(owner.email.as_str())
+        .to_owned();
     let reader = create_user(&pool, "issue-list-reader").await;
     let repo_name = format!("issues-contract-{}", Uuid::new_v4().simple());
     let repository = create_repository(
@@ -343,7 +348,7 @@ async fn issue_list_contract_returns_screen_ready_rows_counts_and_filters() {
         .as_array()
         .expect("user options should be an array")
         .iter()
-        .any(|user| user["login"] == owner.email));
+        .any(|user| user["login"] == owner_login));
     assert!(body["filterOptions"]["milestones"]
         .as_array()
         .expect("milestone options should be an array")
@@ -361,10 +366,10 @@ async fn issue_list_contract_returns_screen_ready_rows_counts_and_filters() {
     let item = &body["items"][0];
     assert_eq!(item["number"], open_issue.number);
     assert_eq!(item["title"], "Issue list keeps search filters");
-    assert_eq!(item["author"]["login"], owner.email);
+    assert_eq!(item["author"]["login"], owner_login);
     assert_eq!(item["labels"][0]["name"], "bug");
     assert_eq!(item["milestone"]["title"], "MVP");
-    assert_eq!(item["assignees"][0]["login"], owner.email);
+    assert_eq!(item["assignees"][0]["login"], owner_login);
     assert_eq!(item["commentCount"], 2);
     assert_eq!(
         item["linkedPullRequest"]["number"],
@@ -374,7 +379,7 @@ async fn issue_list_contract_returns_screen_ready_rows_counts_and_filters() {
         item["href"],
         format!(
             "/{}/{}/issues/{}",
-            owner.email, repo_name, open_issue.number
+            owner_login, repo_name, open_issue.number
         )
     );
 }
@@ -388,6 +393,11 @@ async fn issue_detail_contract_returns_public_read_model_and_redacts_private_acc
 
     let config = app_config();
     let owner = create_user(&pool, "issue-detail-owner").await;
+    let owner_login = owner
+        .username
+        .as_deref()
+        .unwrap_or(owner.email.as_str())
+        .to_owned();
     let repo_name = format!("issue-detail-{}", Uuid::new_v4().simple());
     let repository = create_repository(
         &pool,
@@ -544,11 +554,11 @@ async fn issue_detail_contract_returns_public_read_model_and_redacts_private_acc
     assert_eq!(body["number"], issue.number);
     assert_eq!(body["title"], "Render issue detail read model");
     assert_eq!(body["state"], "open");
-    assert_eq!(body["author"]["login"], owner.email);
+    assert_eq!(body["author"]["login"], owner_login);
     assert_eq!(body["labels"][0]["name"], "bug");
     assert_eq!(body["milestone"]["title"], "Phase 1");
-    assert_eq!(body["assignees"][0]["login"], owner.email);
-    assert_eq!(body["participants"][0]["login"], owner.email);
+    assert_eq!(body["assignees"][0]["login"], owner_login);
+    assert_eq!(body["participants"][0]["login"], owner_login);
     assert_eq!(body["attachments"][0]["fileName"], "trace.txt");
     assert_eq!(body["attachments"][0]["byteSize"], 42);
     assert_eq!(body["commentCount"], 1);
@@ -569,7 +579,7 @@ async fn issue_detail_contract_returns_public_read_model_and_redacts_private_acc
         .as_array()
         .expect("assignee options should be an array")
         .iter()
-        .any(|user| user["login"] == owner.email));
+        .any(|user| user["login"] == owner_login));
     assert!(body["metadataOptions"]["milestones"]
         .as_array()
         .expect("milestone options should be an array")
@@ -714,7 +724,7 @@ async fn issue_detail_contract_returns_public_read_model_and_redacts_private_acc
         .iter()
         .find(|item| item["eventType"] == "commented")
         .expect("comment timeline item should exist");
-    assert_eq!(comment_item["actor"]["login"], owner.email);
+    assert_eq!(comment_item["actor"]["login"], owner_login);
     assert!(comment_item["comment"]["bodyHtml"]
         .as_str()
         .expect("comment body html should be a string")
@@ -739,7 +749,7 @@ async fn issue_detail_contract_returns_public_read_model_and_redacts_private_acc
     .await;
     assert_eq!(comment_status, StatusCode::CREATED);
     assert_eq!(comment_body["eventType"], "commented");
-    assert_eq!(comment_body["actor"]["login"], owner.email);
+    assert_eq!(comment_body["actor"]["login"], owner_login);
     assert!(comment_body["comment"]["bodyHtml"]
         .as_str()
         .expect("created comment body html should be a string")
@@ -1199,6 +1209,11 @@ async fn issue_list_filters_round_trip_urls_and_validate_bad_filters() {
 
     let config = app_config();
     let owner = create_user(&pool, "issue-filter-owner").await;
+    let owner_login = owner
+        .username
+        .as_deref()
+        .unwrap_or(owner.email.as_str())
+        .to_owned();
     let repo_name = format!("issue-filters-{}", Uuid::new_v4().simple());
     let repository = create_repository(
         &pool,
@@ -1354,7 +1369,7 @@ async fn issue_list_filters_round_trip_urls_and_validate_bad_filters() {
     assert_eq!(body["items"][0]["number"], matched.number);
     assert_eq!(body["filters"]["labels"][0], "bug");
     assert_eq!(body["filters"]["milestone"], "Phase 3");
-    assert_eq!(body["filters"]["assignee"], owner.email);
+    assert_eq!(body["filters"]["assignee"], owner_login);
     assert_eq!(body["filters"]["sort"], "created-asc");
 
     let (author_status, author_body) = send_json(
@@ -1367,7 +1382,7 @@ async fn issue_list_filters_round_trip_urls_and_validate_bad_filters() {
     .await;
     assert_eq!(author_status, StatusCode::OK);
     assert_eq!(author_body["total"], 3);
-    assert_eq!(author_body["filters"]["author"], owner.email);
+    assert_eq!(author_body["filters"]["author"], owner_login);
 
     let (exclude_author_status, exclude_author_body) = send_json(
         app.clone(),
@@ -1381,7 +1396,7 @@ async fn issue_list_filters_round_trip_urls_and_validate_bad_filters() {
     assert_eq!(exclude_author_body["total"], 0);
     assert_eq!(
         exclude_author_body["filters"]["excludedAuthor"],
-        owner.email
+        owner_login
     );
 
     let (no_assignee_status, no_assignee_body) = send_json(

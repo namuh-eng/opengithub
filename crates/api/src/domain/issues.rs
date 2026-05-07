@@ -1135,7 +1135,10 @@ pub async fn repository_issue_list_view_for_viewer(
                   SELECT 1
                   FROM users
                   WHERE users.id = issues.author_user_id
-                    AND lower(COALESCE(users.username, users.email)) = lower($4)
+                    AND (
+                        lower(COALESCE(users.username, users.email)) = lower($4)
+                        OR lower(users.email) = lower($4)
+                    )
               )
           )
           AND (
@@ -1144,7 +1147,10 @@ pub async fn repository_issue_list_view_for_viewer(
                   SELECT 1
                   FROM users
                   WHERE users.id = issues.author_user_id
-                    AND lower(COALESCE(users.username, users.email)) = lower($5)
+                    AND (
+                        lower(COALESCE(users.username, users.email)) = lower($5)
+                        OR lower(users.email) = lower($5)
+                    )
               )
           )
           AND (
@@ -1198,7 +1204,10 @@ pub async fn repository_issue_list_view_for_viewer(
                   FROM issue_assignees
                   JOIN users ON users.id = issue_assignees.user_id
                   WHERE issue_assignees.issue_id = issues.id
-                    AND lower(COALESCE(users.username, users.email)) = lower($11)
+                    AND (
+                        lower(COALESCE(users.username, users.email)) = lower($11)
+                        OR lower(users.email) = lower($11)
+                    )
               )
           )
           AND (
@@ -3135,7 +3144,10 @@ async fn count_issue_list_items(
                   SELECT 1
                   FROM users
                   WHERE users.id = issues.author_user_id
-                    AND lower(COALESCE(users.username, users.email)) = lower($4)
+                    AND (
+                        lower(COALESCE(users.username, users.email)) = lower($4)
+                        OR lower(users.email) = lower($4)
+                    )
               )
           )
           AND (
@@ -3144,7 +3156,10 @@ async fn count_issue_list_items(
                   SELECT 1
                   FROM users
                   WHERE users.id = issues.author_user_id
-                    AND lower(COALESCE(users.username, users.email)) = lower($5)
+                    AND (
+                        lower(COALESCE(users.username, users.email)) = lower($5)
+                        OR lower(users.email) = lower($5)
+                    )
               )
           )
           AND (
@@ -3198,7 +3213,10 @@ async fn count_issue_list_items(
                   FROM issue_assignees
                   JOIN users ON users.id = issue_assignees.user_id
                   WHERE issue_assignees.issue_id = issues.id
-                    AND lower(COALESCE(users.username, users.email)) = lower($11)
+                    AND (
+                        lower(COALESCE(users.username, users.email)) = lower($11)
+                        OR lower(users.email) = lower($11)
+                    )
               )
           )
           AND (

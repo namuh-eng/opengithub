@@ -215,7 +215,8 @@ test("signed-in repository Issues tab renders real issues and row navigation", a
     has: page.getByRole("heading", { name: "Labels" }),
   });
   await labelsSection.getByRole("button", { name: "Edit" }).click();
-  await page.getByRole("button", { name: /Add bug/ }).click();
+  await page.getByRole("checkbox", { name: /bug/ }).check();
+  await page.getByRole("button", { name: "Save labels" }).click();
   await expect(page.getByText("Issue metadata updated.")).toBeVisible();
   await expect(page.locator(".chip", { hasText: "bug" })).toBeVisible();
   const assigneesSection = page.locator("section", {

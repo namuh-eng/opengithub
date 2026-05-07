@@ -735,5 +735,72 @@
     ],
     "bugs_found": [],
     "fix_description": "no product fix needed; QA recorded DB/Ever environment gaps instead of weakening tests"
+  },
+  {
+    "feature_id": "issues-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed; DB-backed focused issue-list API contract passed 7/7; focused repository-issues Playwright passed 7/7 against a local Postgres test DB; manual live verification used curl/rendered HTML plus a Playwright QA screenshot because Ever CLI was not needed after direct browser automation evidence."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/:owner/:repo/issues",
+          "GET /api/issues",
+          "POST /api/repos/:owner/:repo/issues",
+          "PATCH /api/repos/:owner/:repo/issues/preferences"
+        ],
+        "notes": "Repository issue list happy path returned 200 application/json with items, counts, filters, options, preferences, pagination, repository, and viewerPermission. Invalid query returned 422 JSON validation_failed; malformed create returned 400 JSON invalid_json; global issues without auth returned 401 JSON not_authenticated. Preference persistence was covered by DB-backed Rust and Playwright banner dismissal tests."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Anonymous public repository issue lists are readable as required; anonymous private repository issue lists return 403 without issue title/body leakage; global issue list returns 401 without auth. SQL/XSS-like query probes returned JSON data only with no SQL errors, stack traces, env values, or HTML content-type. OPTIONS from https://evil.com returned 405 without Access-Control-Allow-Origin."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json, qa-hints.json issues-001, prd.json, BUILD_GUIDE.md, ralph-config.json, web/AGENTS.md, repository issues page/component, Rust issues routes/domain, and focused tests.",
+      "Ran mandatory Editorial banned-token scan over web/src outside og CSS: no banned GitHub hex, Primer, or Octicon hits.",
+      "Ran make test: Cargo tests passed and web tests passed (653 passed).",
+      "Ran make test-e2e: 18 passed, 134 skipped, then failed in unrelated repository-discussions specs because the command environment lacked TEST_DATABASE_URL/DATABASE_URL before the focused DB run.",
+      "Provisioned/used local Postgres test DB postgresql://postgres:postgres@localhost:5432/opengithub_qa_test and reran issue-specific DB-backed checks.",
+      "Ran TEST_DATABASE_URL-backed cargo test --test api_repository_issues_list_contract: 7 passed.",
+      "Found and fixed repository issue list user-filter matching: email filters returned zero rows after usernames were auto-assigned because SQL compared only COALESCE(username,email).",
+      "Updated DB-backed issue contract expectations to assert canonical username logins while preserving the email-filter regression path.",
+      "Ran TEST_DATABASE_URL-backed cd web && npx playwright test tests/e2e/repository-issues.spec.ts: 7 passed.",
+      "Updated the repository-issues E2E metadata step to use the implemented label picker checkbox plus Save labels flow instead of a stale one-click Add bug button expectation.",
+      "Started make dev with the local test DB and verified live GET /api/repos/:owner/:repo/issues returns 200 application/json with counts, filters, row href, author, labels/options, pagination, and viewerPermission.",
+      "Verified live invalid issue query returns 422 JSON validation_failed and malformed issue create returns 400 JSON invalid_json.",
+      "Verified live GET /api/issues without auth returns 401 JSON not_authenticated.",
+      "Verified live anonymous private repository issue list returns 403 JSON forbidden without leaking private issue title/body.",
+      "Verified SQL/XSS-like query probe returns JSON only, no SQL errors, stack traces, env values, or HTML content-type.",
+      "Verified OPTIONS /api/repos/:owner/:repo/issues from Origin https://evil.com returns 405 and does not emit Access-Control-Allow-Origin.",
+      "Verified live anonymous Next issues page renders the Editorial app shell and issue list HTML using var(--bg), design-system font classes, .card/.btn/.chip/.tabs/.list-row primitives, and no GitHub/Primer imports.",
+      "Saved Playwright screenshot ralph/screenshots/qa/issues-001-public-list.png."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "api_contract",
+        "description": "Repository issue list user filters failed when callers used an email login after users had canonical usernames assigned.",
+        "expected": "Author, excluded-author, and assignee filters should match the canonical username and the account email so existing query URLs and @me-normalized filters keep returning the same issues.",
+        "actual": "The list and count SQL compared only lower(COALESCE(users.username, users.email)), so email filters returned zero rows for username-backed users.",
+        "reproduction": "Against a migrated DB, seed a public repo issue assigned to a user with username set and request /api/repos/{owner}/{repo}/issues?q=is%3Aissue%20state%3Aopen%20filters&assignee=<user-email>; before the fix, total/openCount were 0."
+      }
+    ],
+    "fix_description": "Expanded repository issue list author/excluded-author/assignee predicates in both row and count SQL to match either canonical login or email, updated DB-backed tests to assert username-shaped response logins while retaining email-filter coverage, and aligned the focused E2E label metadata step with the implemented checkbox/save picker."
   }
 ]
