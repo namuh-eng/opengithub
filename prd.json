@@ -697,7 +697,8 @@
       "infra-001",
       "repocode-002"
     ],
-    "build_pass": true
+    "build_pass": true,
+    "qa_pass": false
   },
   {
     "id": "search-002",

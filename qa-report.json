@@ -1824,5 +1824,74 @@
       }
     ],
     "fix_description": "Qualified webhook enqueue SQL columns with the webhooks table so repository/organization fanout and worker delivery queries execute correctly."
+  },
+  {
+    "feature_id": "actions-005",
+    "attempt": 1,
+    "status": "fail",
+    "sub_phases": {
+      "functional": {
+        "status": "fail",
+        "notes": "make test passed (Cargo tests plus 654 web tests). make test-e2e ran 18 passing public/auth/docs smoke tests, skipped 135 DB-gated tests, then failed in unrelated repository-discussions specs because TEST_DATABASE_URL/DATABASE_URL is not configured. Focused api_repository_actions_push_trigger_contract compiled and ran, but both real Postgres assertions self-skipped without TEST_DATABASE_URL. Code inspection and live smoke show push scanning/manual dispatch metadata exists, but PRD-required pull_request and schedule dispatch paths are not implemented."
+      },
+      "api_contract": {
+        "status": "partial",
+        "endpoints_tested": [
+          "GET /api/repos/:owner/:repo/actions/workflows",
+          "POST /api/repos/:owner/:repo/actions/workflows/:workflow_path/dispatches",
+          "GET /api/repos/:owner/:repo/actions/dashboard",
+          "GET /api/repos/:owner/:repo/actions/runs/:run_id"
+        ],
+        "notes": "Unauthenticated workflow list, dispatch, and run detail endpoints returned JSON 401 envelopes; dispatch input XSS probe was not reflected. Dashboard endpoint returned JSON 503 database_unavailable because the API is running without DATABASE_URL, so authenticated happy-path workflow/run contract checks could not be completed in this environment."
+      },
+      "security": {
+        "status": "partial",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Missing and malformed credentials did not authorize workflow list, dispatch, or run detail routes. Injected dispatch input was not reflected in the unauthenticated response. OPTIONS with Origin https://evil.com returned 405 and no Access-Control-Allow-Origin. Full data exposure checks on queued workflow/run payloads could not run without a database-backed authenticated scenario."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this backend service feature; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json, qa-hints.json actions-005 entry, BUILD_GUIDE.md, ralph-config.json, Makefile, prd.json, and the actions push trigger contract tests.",
+      "Ran Editorial banned-value scan with ripgrep -e form against web/src excluding og CSS: no banned GitHub hex, Primer, or Octicon hits.",
+      "Ran make test: Cargo tests passed and web tests passed (654 passed).",
+      "Ran make test-e2e: 18 passed, 135 skipped, then 2 unrelated repository-discussions specs failed because TEST_DATABASE_URL or DATABASE_URL is required.",
+      "Ran cargo test --test api_repository_actions_push_trigger_contract -- --nocapture: test binary passed but both database-backed actions push trigger scenarios self-skipped because TEST_DATABASE_URL is not set.",
+      "Inspected crates/api/src/domain/actions.rs and confirmed trigger_workflows_for_push discovers .github/workflows YAML, validates parse errors, evaluates push branch/tag/path filters, persists workflow_dispatch metadata, expands simple matrices, creates queued runs/jobs/steps, and stores concurrency metadata.",
+      "Inspected the same implementation and repository search results for pull_request/schedule dispatch paths; no PRD-required dispatcher for pull_request or schedule events is wired.",
+      "Started the Rust API without DATABASE_URL and verified /health reports degraded database status.",
+      "Curl-smoked unauthenticated GET /api/repos/test-owner/test-repo/actions/workflows: JSON 401 not_authenticated.",
+      "Curl-smoked unauthenticated POST /api/repos/test-owner/test-repo/actions/workflows/ci.yml/dispatches with XSS-like input: JSON 401 not_authenticated, payload not reflected.",
+      "Curl-smoked unauthenticated GET /api/repos/test-owner/test-repo/actions/runs/00000000-0000-0000-0000-000000000000: JSON 401 not_authenticated.",
+      "Curl-smoked OPTIONS /api/repos/test-owner/test-repo/actions/workflows with Origin https://evil.com: 405 with no Access-Control-Allow-Origin."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "functional",
+        "description": "actions-005 does not implement PRD-required pull_request or schedule event dispatch. The YAML parser records trigger_events, but only push-triggered scanning and workflow_dispatch manual runs are wired to enqueue workflow_runs.",
+        "expected": "Workflows declaring on: pull_request or on: schedule are evaluated by an event dispatcher and enqueue queued workflow_runs with appropriate event payloads when those events occur.",
+        "actual": "Repo search and implementation inspection found trigger_workflows_for_push and dispatch_workflow_run only; no pull_request/schedule trigger dispatcher exists.",
+        "reproduction": "Inspect crates/api/src/domain/actions.rs for trigger_workflows_for_push/dispatch_workflow_run and search for schedule or pull_request trigger dispatcher wiring; only list/detail UI support and manual create helpers exist."
+      },
+      {
+        "severity": "major",
+        "phase": "functional",
+        "description": "Real Postgres QA for the workflow parser/dispatcher could not run in this environment because TEST_DATABASE_URL/DATABASE_URL is unset, so the focused actions push trigger contract self-skips all assertions.",
+        "expected": "QA can run database-backed contract tests that insert workflow YAML, trigger events, and verify actions_workflows/workflow_runs/workflow_jobs/workflow_steps/job_leases rows.",
+        "actual": "cargo test --test api_repository_actions_push_trigger_contract -- --nocapture reported both scenarios skipped with set TEST_DATABASE_URL.",
+        "reproduction": "Run cargo test --test api_repository_actions_push_trigger_contract -- --nocapture with no TEST_DATABASE_URL or DATABASE_URL exported."
+      }
+    ],
+    "fix_description": "no product fix attempted; QA recorded unresolved major PRD coverage gaps and kept qa_pass false for retry after implementing pull_request/schedule dispatch and provisioning a test database"
   }
 ]
