@@ -1089,5 +1089,65 @@
     ],
     "bugs_found": [],
     "fix_description": "no product fix needed; QA recorded environment gaps for DB-backed signed-in browser/API checks instead of weakening tests"
+  },
+  {
+    "feature_id": "prs-003",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed; focused pull-request-compare Vitest passed; DB-backed Rust compare/create contracts passed after aligning stale canonical-href assertions; focused Playwright compare/create suite passed against a temporary Postgres DB, covering selector recovery, same-ref empty state, invalid-ref recovery, draft PR creation, metadata controls, fork comparison, redirect to /pull/{number}, no dead controls, and desktop/mobile screenshots. Full make test-e2e initially failed from a port conflict with a parallel focused run, then a DB-backed rerun hung with no progress and was terminated; focused E2E is the prs-003 browser evidence."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/:owner/:repo/compare/:base...:head",
+          "GET /api/repos/:owner/:repo/compare/:base...:head?headOwner=:owner&headRepo=:repo",
+          "POST /api/repos/:owner/:repo/pulls",
+          "POST /:owner/:repo/pulls/create"
+        ],
+        "notes": "Real DB-backed contracts verified public compare reads, slash-containing refs, same-ref no-diff status, invalid-ref 422 validation, private anonymous denial, signed private access, metadata-rich PR creation, template application, draft state, labels, assignees, reviewers, milestones, linked issue references, snapshot rows, duplicate PR rejection, and public fork metadata guardrails. Live curl verified JSON 200 compare, JSON 201 signed PR create, JSON 400 malformed/missing body, JSON 401 missing auth, JSON 422 duplicate create, and application/json content type where bodies are returned."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Anonymous PR creation returned 401 not_authenticated; public compare read returned only public repository data; private-repository compare denial is covered by the DB-backed Rust contract. SQL/XSS-shaped probes produced structured JSON validation or duplicate-ref envelopes without stack traces, SQL errors, env values, credential leakage, or raw HTML responses. Hostile-origin OPTIONS returned 405 without Access-Control-Allow-Origin."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json history, prd.json prs-003 spec, BUILD_GUIDE.md, web/AGENTS.md, compare/create page components, compare/create Rust routes/domain code, focused Vitest, focused Playwright, and Rust compare/create contracts.",
+      "Ran mandatory Editorial banned-token scan with rg -e: zero banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran make test: Cargo tests passed and web tests passed (653 passed).",
+      "Ran cd web && npm test -- pull-request-compare.test.tsx --run: 6 focused compare UI/helper tests passed.",
+      "Started an isolated postgres:16-alpine container on localhost:55433 and ran migrations through the Rust tests for real DB-backed verification.",
+      "Ran TEST_DATABASE_URL-backed api_pull_request_compare_contract; first run exposed a stale email-vs-canonical-login href assertion, then passed after the test expected canonical owner login hrefs.",
+      "Ran TEST_DATABASE_URL-backed api_pull_request_create_contract; first run exposed the same stale canonical href assertion for create response href, then passed after the test expected canonical owner login hrefs.",
+      "Ran TEST_DATABASE_URL-backed Playwright pull-request-compare.spec.ts: 3/3 passed, covering signed-in compare page, selectors, invalid refs, draft PR creation, metadata controls, fork compare, /pull/{number} redirects, no dead controls, and mobile no-overflow checks.",
+      "Saved QA screenshots to ralph/screenshots/qa/prs-003-qa-compare-page.jpg, prs-003-qa-desktop.jpg, and prs-003-qa-mobile.jpg.",
+      "Started make dev with the temporary DB and matching test session secret/cookie name, seeded real data, then used curl against the live Rust API for compare read, signed create, malformed input, missing auth, duplicate create, XSS/SQL-shaped values, invalid ref, and hostile-origin OPTIONS probes.",
+      "Ran make test-e2e without DB first: focused compare specs skipped and broad run failed because port 3015 was already occupied by the parallel focused run. Re-ran make test-e2e with DB after stopping the dev server; it produced no progress output and was terminated after focused DB-backed E2E had already passed."
+    ],
+    "bugs_found": [
+      {
+        "severity": "minor",
+        "phase": "api_contract",
+        "description": "DB-backed PR compare/create contract tests expected email-based hrefs even though the API correctly returns canonical username owner paths.",
+        "expected": "Contract tests should assert canonical owner-login hrefs returned by the repository row while still allowing email aliases for API route lookup.",
+        "actual": "api_pull_request_compare_contract and api_pull_request_create_contract failed against a real temporary Postgres DB because expected hrefs used owner.email instead of owner.username.",
+        "reproduction": "TEST_DATABASE_URL='postgresql://postgres:postgres@localhost:55433/opengithub_prs003_qa' DB_SSL=false cargo test -p opengithub-api --test api_pull_request_compare_contract -- --nocapture; repeat for api_pull_request_create_contract before the test fix."
+      }
+    ],
+    "fix_description": "Aligned DB-backed compare/create contract expectations with canonical owner-login hrefs; no product code changes were needed."
   }
 ]

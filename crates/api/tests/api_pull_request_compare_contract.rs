@@ -270,7 +270,11 @@ async fn pull_request_compare_contract_resolves_refs_files_and_privacy() {
         .any(|file| file["path"] == "src/lib.rs" && file["status"] == "added"));
     assert_eq!(
         body["pullListHref"],
-        format!("/{}/{}/pulls", owner.email, repo_name)
+        format!(
+            "/{}/{}/pulls",
+            owner.username.as_deref().unwrap_or(&owner.email),
+            repo_name
+        )
     );
 
     let same_uri = format!(

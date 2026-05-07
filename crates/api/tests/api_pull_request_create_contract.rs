@@ -334,7 +334,9 @@ async fn pull_request_create_contract_persists_metadata_snapshots_and_guardrails
         body["href"],
         format!(
             "/{}/{}/pull/{}",
-            owner.email, repo_name, body["pull_request"]["number"]
+            owner.username.as_deref().unwrap_or(&owner.email),
+            repo_name,
+            body["pull_request"]["number"]
         )
     );
     let pull_id: Uuid = serde_json::from_value(body["pull_request"]["id"].clone()).unwrap();
