@@ -10,6 +10,7 @@ use serde_json::json;
 use crate::{
     api_types::{
         database_unavailable, error_response, normalize_pagination, ErrorEnvelope, ListEnvelope,
+        Pagination, DEFAULT_PAGE, DEFAULT_PAGE_SIZE,
     },
     auth::extractor::AuthenticatedUser,
     domain::search::{
@@ -117,7 +118,7 @@ async fn search(
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
-    let pagination = normalize_pagination(request.page, request.page_size);
+    let pagination = normalize_web_search_pagination(request.page, request.page_size);
     let selected_type = request
         .result_type
         .as_deref()
@@ -409,7 +410,14 @@ fn search_kind_from_param(value: &str) -> Result<SearchDocumentKind, SearchError
     }
 }
 
-fn normalize_rest_pagination(request: &SearchRequest) -> crate::api_types::Pagination {
+fn normalize_web_search_pagination(page: Option<i64>, page_size: Option<i64>) -> Pagination {
+    Pagination {
+        page: page.unwrap_or(DEFAULT_PAGE).max(1),
+        page_size: page_size.unwrap_or(DEFAULT_PAGE_SIZE).clamp(1, 50),
+    }
+}
+
+fn normalize_rest_pagination(request: &SearchRequest) -> Pagination {
     normalize_pagination(request.page, request.per_page.or(request.page_size))
 }
 

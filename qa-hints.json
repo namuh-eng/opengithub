@@ -8214,5 +8214,20 @@
       "Rate-limit bucket behavior for repeated AI generation under real signed sessions",
       "Full signed-session E2E after local TEST_DATABASE_URL credentials are healthy"
     ]
+  },
+  {
+    "feature_id": "prs-006",
+    "tests_written": [
+      "QA independently verified prs-006 mergeability, merge execution, raw .diff/.patch, docs/raw links, and UI merge controls with focused Rust, Vitest, Playwright, make check, make test, and Editorial banned-token scan evidence.",
+      "Focused Rust coverage passed for branch-policy mergeability and raw diff/patch/private denial contracts before the local test DB became unavailable later in full-suite stress.",
+      "Focused Playwright passed for PR detail signed-in conversation shell, sidebar metadata, successful merge confirmation, and raw .diff/.patch link behavior.",
+      "Fixed a minor non-prs API hardening regression discovered during broad QA: web /api/search now clamps pageSize to 50 while REST search remains at the shared 100 maximum."
+    ],
+    "needs_deeper_qa": [
+      "Full make test-e2e remains environment-blocked in this worktree: initial compose used a conflicting opengithub-postgres-test container from another worktree; later full chromium suite hit rustc ENOSPC with only 3.7GiB free / 99% disk used and Postgres stopped accepting localhost:55433 connections.",
+      "Raw .diff/.patch output is still sourced from stored PR hunk snapshots and bounded to the first 100 files; revisit byte-for-byte Git patch fidelity and large-PR messaging when full Git object diff generation matures.",
+      "Merge commit synthesis persists metadata commit rows and ref targets rather than full Git object storage pack mutation; retest true Git object mutation and divergent-branch conflicts when that layer matures.",
+      "Required status checks are still represented by aggregate pull_request_checks_summary rows rather than per-context workflow/check-run resolution in the mergeability contract."
+    ]
   }
 ]
