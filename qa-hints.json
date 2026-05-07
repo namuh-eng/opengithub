@@ -1316,17 +1316,15 @@
   {
     "feature_id": "marketing-001",
     "tests_written": [
-      "Replaced the logged-out home page with an Editorial marketing surface using dropdown mega-nav groups, a search/jump field, hero CTA, repository preview, capability sections, customer story cards, hosted/self-host CTA cards, and a dense footer of concrete internal links.",
-      "Added Vitest coverage for public auth links, dropdown menu opening and Escape close, header search URL construction, footer destinations, and no inert href placeholders.",
-      "Added Playwright coverage for the public home heading, mega-menu links, Escape close, logged-out search intent preservation through the login redirect, auth CTA navigation, footer API link, dead-control scan, and mobile viewport visibility.",
-      "Saved browser smoke screenshot to ralph/screenshots/build/marketing-001-home.jpg.",
-      "Verification passed: make check, make test with 113 web tests plus cargo tests, make test-e2e with 18 Playwright tests, and mandatory Editorial banned-value scan."
+      "QA verified existing MarketingHome unit coverage for public auth links, dropdown menu opening/Escape close, search URL construction, footer destinations, and no inert href placeholders.",
+      "QA verified existing Playwright marketing-home coverage for heading, mega-menu links, Escape close, logged-out search intent preservation through /login next, auth CTA navigation, API footer link, dead-control scan, and mobile visibility.",
+      "QA added no product code; evidence-only pass used focused Vitest, focused Playwright, manual Chromium smoke, axe-core WCAG scan, web typecheck, Biome, Editorial source banned-value scan, and direct Rust workspace cargo tests.",
+      "Required Makefile targets remain blocked in this isolated worktree by missing .ralph-setup-done, so QA used direct equivalent/lower-cost commands and recorded the exact blocker."
     ],
     "needs_deeper_qa": [
-      "The logged-out search field submits to /search, which is currently auth-walled by the existing signed-in search contract; browser flow preserves the intended /search query in the login next parameter.",
-      "Marketing copy and customer story content are static placeholders and should be reviewed for product positioning before launch.",
-      "Dropdown hover/click behavior is covered in Chromium, but QA should spot-check touch devices and screen-reader announcement quality.",
-      "Footer links intentionally route to existing implemented or skeleton pages; QA should verify future marketing-specific destinations if they are added."
+      "Run full make test-e2e after the isolated worktree is onboarded or .ralph-setup-done is intentionally restored; the required Makefile target is currently blocked before Playwright starts.",
+      "Spot-check real touch devices and screen-reader announcements for hover/click mega-nav state changes.",
+      "Review static marketing copy/customer stories for final product positioning before launch."
     ]
   },
   {

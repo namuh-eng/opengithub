@@ -395,7 +395,7 @@
     ],
     "needs_structure": false,
     "build_pass": true,
-    "qa_pass": false
+    "qa_pass": true
   },
   {
     "id": "issues-001",
