@@ -95,6 +95,7 @@ fi
 # Copy hack helpers (so worktree make targets work even if branch is older)
 mkdir -p "$WORKTREE_PATH/hack"
 [ -f hack/run_silent.sh ] && cp hack/run_silent.sh "$WORKTREE_PATH/hack/run_silent.sh"
+[ -f hack/cargo_locked.sh ] && cp hack/cargo_locked.sh "$WORKTREE_PATH/hack/cargo_locked.sh"
 [ -f hack/create_worktree.sh ] && cp hack/create_worktree.sh "$WORKTREE_PATH/hack/create_worktree.sh"
 
 # Symlink .env / .env.* (skip .env.example, .git, node_modules)

@@ -31,6 +31,16 @@ An autonomously-built clone of a SaaS product. It has its own backend (cloud ser
 - `make all` — check + test
 - `make dev` — start dev server (if not already running)
 
+## Shared Rust build cache
+
+The Makefile routes Cargo through `hack/cargo_locked.sh`, which defaults to:
+
+- `CARGO_TARGET_DIR=$HOME/.cache/opengithub/cargo-target`
+- `CARGO_BUILD_JOBS=2`
+- `CARGO_INCREMENTAL=0`
+
+This keeps large Rust build artifacts out of individual worktrees and serializes Cargo invocations with a repo-scoped lock. Do not run raw `cargo clean` in a QA worktree; it can wipe the shared target cache for every active lane. If you need custom Cargo commands, prefer `./hack/cargo_locked.sh <subcommand> ...`.
+
 ## Verification Setup — read before claiming a test pass
 
 If `make test-e2e` reports "no Playwright detail" or DB-backed tests "self-skip", the local test DB is not running. **Do not log this as "verified".** Fix the setup:

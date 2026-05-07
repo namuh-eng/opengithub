@@ -23,6 +23,7 @@ endif
 # --- Stack detection ---
 HAS_WEB := $(wildcard web/package.json)
 HAS_CARGO := $(wildcard Cargo.toml)
+CARGO_LOCKED := ./hack/cargo_locked.sh
 
 # Full validation: check + test
 all: check test
@@ -33,7 +34,7 @@ check: check-header typecheck lint
 typecheck:
 	@. ./hack/run_silent.sh && \
 	if [ -n "$(HAS_CARGO)" ]; then \
-	  run_silent "Cargo check passed" "cargo check --workspace --all-targets"; \
+	  run_silent "Cargo check passed" "$(CARGO_LOCKED) check --workspace --all-targets"; \
 	fi && \
 	if [ -n "$(HAS_WEB)" ]; then \
 	  run_silent "Web typecheck passed" "cd web && npx tsc --noEmit"; \
@@ -42,14 +43,14 @@ typecheck:
 lint:
 	@. ./hack/run_silent.sh && \
 	if [ -n "$(HAS_CARGO)" ]; then \
-	  run_silent "Clippy passed" "cargo clippy --workspace --all-targets -- -D warnings"; \
+	  run_silent "Clippy passed" "$(CARGO_LOCKED) clippy --workspace --all-targets -- -D warnings"; \
 	fi && \
 	if [ -n "$(HAS_WEB)" ]; then \
 	  run_silent "Biome passed" "cd web && npx biome check ."; \
 	fi
 
 fix:
-	@if [ -n "$(HAS_CARGO)" ]; then cargo clippy --workspace --fix --allow-dirty --allow-staged -- -D warnings || true; fi
+	@if [ -n "$(HAS_CARGO)" ]; then $(CARGO_LOCKED) clippy --workspace --fix --allow-dirty --allow-staged -- -D warnings || true; fi
 	@if [ -n "$(HAS_WEB)" ]; then cd web && npx biome check --write .; fi
 
 format:
@@ -60,7 +61,7 @@ format:
 test: test-header
 	@. ./hack/run_silent.sh && \
 	if [ -n "$(HAS_CARGO)" ]; then \
-	  run_silent "Cargo tests passed" "cargo test --workspace --all-targets"; \
+	  run_silent "Cargo tests passed" "$(CARGO_LOCKED) test --workspace --all-targets"; \
 	fi && \
 	if [ -n "$(HAS_WEB)" ]; then \
 	  run_silent_with_test_count "Web tests passed" "cd web && npx vitest run" "vitest"; \
@@ -99,9 +100,9 @@ test-verbose:
 # Dev: run API (with hot reload via cargo-watch) and Next.js together
 dev:
 	@if command -v cargo-watch >/dev/null 2>&1; then \
-	  API_DEV_CMD="cargo watch -q -x 'run --bin api'"; \
+	  API_DEV_CMD='CARGO_TARGET_DIR="$${CARGO_TARGET_DIR:-$$HOME/.cache/opengithub/cargo-target}" CARGO_BUILD_JOBS="$${CARGO_BUILD_JOBS:-2}" CARGO_INCREMENTAL="$${CARGO_INCREMENTAL:-0}" cargo watch -q -x "run --bin api"'; \
 	else \
-	  API_DEV_CMD="cargo run --bin api"; \
+	  API_DEV_CMD='$(CARGO_LOCKED) run --bin api'; \
 	fi; \
 	if [ -n "$(HAS_WEB)" ]; then \
 	  ( sh -c "$$API_DEV_CMD" & API_PID=$$! ; cd web && npm run dev ; kill $$API_PID 2>/dev/null ) ; \
@@ -110,14 +111,18 @@ dev:
 	fi
 
 api-dev:
-	@if command -v cargo-watch >/dev/null 2>&1; then cargo watch -q -x 'run --bin api'; else cargo run --bin api; fi
+	@if command -v cargo-watch >/dev/null 2>&1; then \
+	  CARGO_TARGET_DIR="$${CARGO_TARGET_DIR:-$$HOME/.cache/opengithub/cargo-target}" CARGO_BUILD_JOBS="$${CARGO_BUILD_JOBS:-2}" CARGO_INCREMENTAL="$${CARGO_INCREMENTAL:-0}" cargo watch -q -x 'run --bin api'; \
+	else \
+	  $(CARGO_LOCKED) run --bin api; \
+	fi
 
 web-dev:
 	@if [ -n "$(HAS_WEB)" ]; then cd web && npm run dev; else echo "web/ not yet scaffolded"; exit 1; fi
 
 # Production build
 build:
-	@if [ -n "$(HAS_CARGO)" ]; then cargo build --workspace --release; fi
+	@if [ -n "$(HAS_CARGO)" ]; then $(CARGO_LOCKED) build --workspace --release; fi
 	@if [ -n "$(HAS_WEB)" ]; then cd web && npm run build; fi
 
 # Database migrations (SQLx — wired once migrations exist in crates/api/migrations/)
@@ -226,7 +231,7 @@ setup-local:
 
 # Clean build artifacts
 clean:
-	@if [ -n "$(HAS_CARGO)" ]; then cargo clean; fi
+	@if [ -n "$(HAS_CARGO)" ]; then CARGO_TARGET_DIR="$${CARGO_TARGET_DIR:-$$HOME/.cache/opengithub/cargo-target}" cargo clean; fi
 	@if [ -n "$(HAS_WEB)" ]; then cd web && rm -rf .next node_modules/.cache; fi
 
 # Validate state files against JSON schemas
