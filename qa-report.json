@@ -2819,5 +2819,62 @@
     ],
     "fix_description": "Updated the Rust workflow detail contract to request/assert the canonical generated username for owner sourceHref, and increased the broad api-docs test timeout to 120s so the unchanged assertion set completes under current full-suite load. No production source changes were needed.",
     "overall_status": "pass"
+  },
+  {
+    "feature_id": "actions-003",
+    "attempt": 1,
+    "status": "blocked",
+    "sub_phases": {
+      "functional": {
+        "status": "blocked",
+        "notes": "Required make test-e2e was attempted first and failed at Makefile guard: Stack not set up. Focused Playwright repository-actions-run also failed because Playwright config webServer invokes guarded make dev. Focused web component/docs Vitest passed (4 files, 20 tests), but signed-session browser verification could not start in this worktree."
+      },
+      "api_contract": {
+        "status": "blocked",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/actions/runs/{run_id}/detail (compiled contract only; DB assertions skipped)",
+          "GET /api/repos/{owner}/{repo}/actions/jobs/{job_id}/logs (compiled contract only; DB assertions skipped)",
+          "GET /api/repos/{owner}/{repo}/actions/jobs/{job_id}/logs/download (compiled contract only; DB assertions skipped)",
+          "GET /api/repos/{owner}/{repo}/actions/artifacts/{artifact_id}/download (compiled contract only; DB assertions skipped)",
+          "POST /api/repos/{owner}/{repo}/actions/runs/{run_id}/rerun (compiled contract only; DB assertions skipped)",
+          "POST /api/repos/{owner}/{repo}/actions/runs/{run_id}/cancel (compiled contract only; DB assertions skipped)",
+          "DELETE /api/repos/{owner}/{repo}/actions/runs/{run_id}/logs (compiled contract only; DB assertions skipped)"
+        ],
+        "notes": "Focused Rust api_repository_actions_run_detail_contract compiled and reported 3 passed, but every real DB scenario self-skipped because TEST_DATABASE_URL/DATABASE_URL could not connect/migrate. docker compose test DB startup was attempted and failed because Docker Desktop is unable to start. Therefore real backend/API behavior for run detail, jobs/sidebar, annotations, artifacts, rerun, cancel, and delete-log permission/error paths remains unverified in this QA pass."
+      },
+      "security": {
+        "status": "blocked",
+        "checks": [
+          "auth_bypass",
+          "permission_denial",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "No live Rust API with a migrated credentialed DB was available for anonymous/forbidden/CORS curl probes. Source/test inspection shows intended coverage exists, and static secret/dead-control scans found no feature-surface hits, but real endpoint security probes could not be completed."
+      },
+      "accessibility": {
+        "status": "blocked",
+        "violations": [],
+        "notes": "Focused browser/a11y scan could not start because guarded make dev blocks Playwright webServer; no axe/browser result was produced for the run detail page. Vitest covers accessible labels and disabled controls, but this is not a substitute for live a11y verification."
+      }
+    },
+    "tested_steps": [
+      "Read AGENTS.md, web/AGENTS.md, BUILD_GUIDE.md, actions-003 prd.json entry, qa-hints.json actions-003 history, build-progress.txt snippets, qa-report.json schema, and .qrspi/actions-003/structure.md.",
+      "Attempted mandated make test-e2e first: failed immediately with Makefile:19 Stack not set up. Run onboarding first: /ralph-to-ralph-onboard.",
+      "Attempted docker compose -f docker-compose.test.yml up -d postgres-test: failed with Docker Desktop is unable to start, so .env.test Postgres on localhost:55433 was unavailable.",
+      "Ran focused Rust contract with .env.test: api_repository_actions_run_detail_contract compiled and reported 3 passed, but emitted skip messages for all DB-backed run detail/authz/mutation scenarios because no TEST_DATABASE_URL/DATABASE_URL connection was usable.",
+      "Ran focused web Vitest after npm ci restored dependencies: repository-actions-run, repository-actions-job-log, repository-actions-caches-page, and api-docs passed (4 files / 20 tests).",
+      "Ran web typecheck: cd web && npx tsc --noEmit --pretty false passed.",
+      "Ran focused Biome for run detail component/routes/tests/docs: 7 files checked, no fixes applied.",
+      "Ran cargo fmt --all --check and cargo check --workspace --all-targets: both passed.",
+      "Ran mandatory Editorial banned-value scan with the requested rg expression: zero matches.",
+      "Ran dead-control/secret/static hazard scan on actions-003 component/routes/tests: no production hits; only test fixture dev-local token URLs and the no-dead-anchor assertion matched."
+    ],
+    "blockers": [
+      "Worktree lacks .ralph-setup-done, so make test-e2e/make dev are blocked by Makefile guard.",
+      "Docker Desktop cannot start, so the committed docker-compose.test.yml Postgres on localhost:55433 cannot be launched.",
+      "Without a migrated credentialed TEST_DATABASE_URL/DATABASE_URL, Rust contract tests self-skip DB-backed API assertions and signed-session Playwright setup cannot verify real backend behavior."
+    ],
+    "qa_pass": false
   }
 ]

@@ -8242,5 +8242,18 @@
       "Full Playwright via default config is blocked by the Makefile-backed webServer command; focused actions-002 Playwright passed against manually started local servers.",
       "Real runner execution, logs, artifacts, check-suite/check-run synchronization, live YAML parser provenance, and branch/ref race hardening remain outside actions-002 as previously noted."
     ]
+  },
+  {
+    "feature_id": "actions-003",
+    "tests_written": [
+      "Independent QA blocker pass on 2026-05-08 did not change source code and did not set qa_pass=true.",
+      "Focused static/compile/UI evidence passed: cargo fmt --all --check, cargo check --workspace --all-targets, web typecheck, focused Biome, focused run-detail/job-log/cache/docs Vitest (20 tests), mandatory Editorial banned-value scan with zero matches, and static dead-control/secret scan with no production hits."
+    ],
+    "needs_deeper_qa": [
+      "Rerun actions-003 QA in a worktree where onboarding/setup guard is satisfied or bypassed safely for local-only execution.",
+      "Start a clean migrated credentialed test Postgres using .env.test (postgres-test on localhost:55433) or another known-good TEST_DATABASE_URL, then rerun api_repository_actions_run_detail_contract without DB self-skips.",
+      "Run focused signed-session Playwright repository-actions-run.spec.ts plus axe/a11y checks against the real Next/Rust stack, not a UI-only stub.",
+      "Curl real endpoints for anonymous/public/private/writer paths, rerun all/failed/job-specific, cancel queued/in-progress/completed conflicts, delete-log idempotency, job log download deleted-log 410, artifact signed URL shape, and CORS evil-origin behavior before setting qa_pass=true."
+    ]
   }
 ]
