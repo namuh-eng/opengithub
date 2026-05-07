@@ -2819,5 +2819,70 @@
     ],
     "fix_description": "Updated the Rust workflow detail contract to request/assert the canonical generated username for owner sourceHref, and increased the broad api-docs test timeout to 120s so the unchanged assertion set completes under current full-suite load. No production source changes were needed.",
     "overall_status": "pass"
+  },
+  {
+    "feature_id": "prs-006",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Focused PR mergeability/merge/raw-link browser smoke passed, focused Rust PR mergeability and diff/patch contract tests passed with DB-backed evidence earlier in the run, focused Vitest passed, make check passed, and make test passed. Full make test-e2e was attempted first but was blocked by local compose name conflict and later disk/DB exhaustion during unrelated suites; focused prs-006 Playwright passed."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/:owner/:repo/pulls/:number",
+          "POST /api/repos/:owner/:repo/pulls/:number/merge",
+          "GET /api/repos/:owner/:repo/pulls/:number/files",
+          "GET /api/repos/:owner/:repo/pulls/:number.diff",
+          "GET /api/repos/:owner/:repo/pulls/:number.patch",
+          "Next same-origin /api/repos/:owner/:repo/pulls/:number.diff proxy",
+          "Next same-origin /api/repos/:owner/:repo/pulls/:number.patch proxy"
+        ],
+        "notes": "Rust contracts cover repository merge settings, branch protection, required reviews/checks, successful merge side effects, disabled-method/merged blockers, raw diff/patch shape, and private raw denial. Focused PR browser smoke verified raw .diff/.patch links and successful merge flow through the real Rust API."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_boundaries",
+          "private_raw_diff_patch_denial",
+          "structured_merge_blockers",
+          "editorial_banned_value_scan",
+          "dead_control_smoke"
+        ],
+        "notes": "Private raw .diff/.patch anonymous denial is covered by Rust contract. Focused E2E used signed Rust sessions and verified live links/merge controls. Mandatory Editorial banned-value scan returned zero matches. No prs-006 auth bypass or reflected payload issue found."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component tests cover accessible merge controls, blocked feedback, raw links, docs links, keyboard/focus behavior, no dead anchors, and mobile no-overflow expectations. Focused PR Playwright smoke covered live controls in browser; full axe was not run separately."
+      }
+    },
+    "tested_steps": [
+      "Read AGENTS.md, web/AGENTS.md, BUILD_GUIDE.md, prs-006 prd.json entry, qa-hints.json, build-progress.txt, qa-report.json, and .qrspi/prs-006/structure.md.",
+      "Inspected prs-006 implementation in crates/api/src/domain/pulls.rs, crates/api/src/routes/pulls.rs, web/src/components/RepositoryPullRequestDetailPage.tsx, web/src/components/PullRequestFilesChangedPage.tsx, web/src/app/api/repos/[owner]/[repo]/pulls/[number]/route.ts, web/src/lib/api.ts, and web/src/lib/api-docs.ts.",
+      "Attempted required make test-e2e first; initial make failed before tests because .ralph-setup-done was absent in the isolated worktree, then a bounded retry hit docker compose name conflict with an existing opengithub-postgres-test container from another worktree and later full Playwright exhausted local disk/DB while running unrelated suites.",
+      "Installed web dependencies with npm ci because web/node_modules was absent in the isolated worktree; node_modules was not committed.",
+      "Ran DB-backed focused Rust PR mergeability contract earlier in the run: cargo test -p opengithub-api --test api_pull_request_detail_contract pull_request_mergeability_uses_repository_policy_and_branch_rules -- --nocapture: 1 passed.",
+      "Ran DB-backed focused Rust PR diff/patch contract earlier in the run: cargo test -p opengithub-api --test api_pull_request_diff_review_contract -- --nocapture: 2 passed.",
+      "Ran focused Vitest: cd web && npx vitest run tests/repository-pull-request-detail.test.tsx tests/api-docs.test.tsx: 2 files passed, 20 tests passed.",
+      "Ran focused Playwright: cd web && npx playwright test tests/e2e/repository-pull-request-detail.spec.ts --project=chromium with .env.test: 4 passed, including signed-in merge confirmation and raw .diff/.patch link checks.",
+      "Ran mandatory Editorial banned-value scan with rg -n -e over web/src excluding og CSS: zero matches.",
+      "Ran make check with .env.test loaded and CARGO_INCREMENTAL=0: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 make test after fixing a non-prs search pagination regression found by the broad suite: Cargo tests passed and web tests passed (655 passed).",
+      "Attempted full chromium Playwright suite directly after focused pass; unrelated dashboard/settings/profile/actions suites began failing and then local disk dropped to 3.7GiB free / 99% used with rustc temp-dir ENOSPC and Postgres connection refusal, so full E2E is recorded as an infra blocker rather than prs-006 failure."
+    ],
+    "bugs_found": [
+      {
+        "severity": "minor",
+        "phase": "api_contract",
+        "description": "Broad API hardening test found the web /api/search route returning pageSize 100 for pageSize=1000 even though the existing search contract expects web global search to clamp to 50.",
+        "expected": "Web /api/search normalizes pageSize to at most 50 while REST-compatible /api/search/code still honors per_page/pageSize up to the shared API maximum.",
+        "actual": "The web /api/search route used the shared normalize_pagination helper and returned pageSize 100.",
+        "reproduction": "Run TEST_DATABASE_URL-backed cargo test -p opengithub-api --test api_contract_hardening api_families_share_error_envelopes_and_redacted_request_logs before the fix; the assertion at crates/api/tests/api_contract_hardening.rs:375 fails with left 100 right 50."
+      }
+    ],
+    "fix_description": "Fixed the non-prs web search pagination regression in crates/api/src/routes/search.rs by adding a web-search-specific 50 item clamp while leaving REST search pagination on the shared 100 item limit. Marked prs-006 qa_pass true based on focused backend/API/UI/security evidence; recorded full-suite E2E disk/DB blocker separately."
   }
 ]
