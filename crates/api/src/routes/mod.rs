@@ -3,6 +3,7 @@ pub mod actions;
 pub mod app_shell;
 pub mod auth;
 pub mod dashboard;
+pub mod gists;
 pub mod git;
 pub mod health;
 pub mod highlight;

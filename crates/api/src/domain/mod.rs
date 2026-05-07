@@ -5,6 +5,7 @@ pub mod app_shell;
 pub mod branch_policies;
 pub mod dashboard;
 pub mod discussions;
+pub mod gists;
 pub mod git_archives;
 pub mod git_transport;
 pub mod highlight;

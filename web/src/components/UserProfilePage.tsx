@@ -10,6 +10,7 @@ import { UserProfileActions } from "@/components/UserProfileActions";
 import type {
   AppShellContext,
   AuthSession,
+  GistList,
   OwnerPackageList,
   ProfileRepositoryList,
   ProjectList,
@@ -27,6 +28,7 @@ type UserProfilePageProps = {
   profile: PublicUserProfile;
   packageList?: OwnerPackageList | null;
   projectList?: ProjectList | null;
+  gistList?: GistList | null;
   repositoryList?: ProfileRepositoryList | null;
   session: AuthSession;
   shellContext?: AppShellContext | null;
@@ -333,6 +335,33 @@ function Achievements({ profile }: { profile: PublicUserProfile }) {
   );
 }
 
+function PublicGists({ list }: { list?: GistList | null }) {
+  if (!list?.items.length) return null;
+  return (
+    <section className="card p-4" aria-labelledby="profile-gists">
+      <h2 className="t-label" id="profile-gists">
+        Public gists
+      </h2>
+      <div className="mt-3 grid gap-3">
+        {list.items.slice(0, 4).map((gist) => (
+          <Link
+            className="list-row block py-2 no-underline"
+            href={gist.href}
+            key={gist.id}
+          >
+            <p className="t-sm">
+              {gist.description || gist.files[0]?.filename || "Untitled gist"}
+            </p>
+            <p className="t-xs mt-1">
+              {gist.files.length} files · {gist.starsCount} stars
+            </p>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function Overview({ profile }: { profile: PublicUserProfile }) {
   return (
     <div className="grid gap-6">
@@ -377,6 +406,7 @@ export function UserProfilePage({
   activeTab,
   profile,
   packageList,
+  gistList,
   projectList,
   repositoryList,
   session,
@@ -427,6 +457,9 @@ export function UserProfilePage({
               </div>
               <div className="grid content-start gap-4">
                 <Achievements profile={profile} />
+                {!profile.identity.isPrivate ? (
+                  <PublicGists list={gistList} />
+                ) : null}
                 {!profile.identity.isPrivate ? (
                   <section
                     className="card p-4"

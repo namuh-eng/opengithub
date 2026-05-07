@@ -1,0 +1,6 @@
+DROP TABLE IF EXISTS gist_forks;
+DROP TABLE IF EXISTS gist_stars;
+DROP TABLE IF EXISTS gist_comments;
+DROP TABLE IF EXISTS gist_revisions;
+DROP TABLE IF EXISTS gist_files;
+DROP TABLE IF EXISTS gists;

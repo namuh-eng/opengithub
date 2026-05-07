@@ -34,6 +34,59 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     notes: ["Anonymous callers receive a standard 401 error envelope."],
   },
   {
+    id: "gists-list",
+    method: "GET",
+    path: "/api/gists?scope=mine",
+    title: "List gists",
+    description:
+      "Lists public gists plus the caller's own secret gists, or only the caller's gists with scope=mine.",
+    auth: "Optional signed opengithub session cookie",
+    response: `{
+  "items": [{
+    "id": "gist_01",
+    "description": "Release helper",
+    "isPublic": false,
+    "files": [{ "filename": "release.ts", "language": "TypeScript" }],
+    "cloneUrl": "https://opengithub.namuh.co/gist/gist_01.git",
+    "embedUrl": "https://opengithub.namuh.co/api/gists/gist_01/embed.js"
+  }],
+  "total": 1,
+  "page": 1,
+  "pageSize": 30,
+  "scope": "mine"
+}`,
+    notes: [
+      "Secret gists are unlisted and visible by URL only unless the owner is signed in.",
+      "User profiles call /api/users/{username}/gists for the public gists widget.",
+    ],
+  },
+  {
+    id: "gists-create",
+    method: "POST",
+    path: "/api/gists",
+    title: "Create gist",
+    description:
+      "Creates a public or secret single-file or multi-file gist with detected languages, content hashes, and initial revision history.",
+    auth: "Signed opengithub session cookie",
+    request: `{
+  "description": "Release helper",
+  "isPublic": false,
+  "files": [{ "filename": "release.ts", "content": "export const release = true;" }]
+}`,
+    response: `{
+  "id": "gist_01",
+  "description": "Release helper",
+  "isPublic": false,
+  "files": [{ "filename": "release.ts", "language": "TypeScript" }],
+  "viewer": { "canEdit": true, "isStarred": false }
+}`,
+    notes: [
+      "PATCH /api/gists/{gist_id} replaces the file set and appends a new revision.",
+      "PUT/DELETE /api/gists/{gist_id}/star and POST /api/gists/{gist_id}/fork back the browser controls.",
+      "GET /api/gists/{gist_id}/embed.js returns a self-contained script that writes token-compatible HTML.",
+    ],
+  },
+  {
     id: "organization-slug-availability",
     method: "GET",
     path: "/api/organizations/slug-availability?name=Acme%20Labs",

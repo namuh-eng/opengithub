@@ -21,6 +21,81 @@ export type ApiUser = {
   updatedAt: string;
 };
 
+export type GistOwner = {
+  id: string;
+  login: string;
+  name: string | null;
+  avatarUrl: string | null;
+  href: string;
+};
+
+export type GistFile = {
+  id: string;
+  filename: string;
+  language: string | null;
+  sizeBytes: number;
+  contentSha: string;
+  content: string;
+  position: number;
+};
+
+export type GistSummary = {
+  id: string;
+  description: string | null;
+  isPublic: boolean;
+  owner: GistOwner;
+  files: GistFile[];
+  commentsCount: number;
+  starsCount: number;
+  forksCount: number;
+  cloneUrl: string;
+  embedUrl: string;
+  href: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type GistDetail = GistSummary & {
+  comments: Array<{
+    id: string;
+    body: string;
+    author: GistOwner;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  viewer: {
+    authenticated: boolean;
+    canEdit: boolean;
+    isStarred: boolean;
+  };
+};
+
+export type GistRevisionList = {
+  gist: GistSummary;
+  revisions: Array<{
+    id: string;
+    version: number;
+    description: string | null;
+    files: GistFile[];
+    author: GistOwner;
+    createdAt: string;
+  }>;
+};
+
+export type GistList = {
+  items: GistSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  scope: string;
+};
+
+export type GistMutationRequest = {
+  description?: string | null;
+  isPublic?: boolean;
+  files: Array<{ filename: string; content: string }>;
+};
+
 export type RepositoryLabelCounts = {
   openIssues: number;
   openPullRequests: number;
@@ -8777,6 +8852,152 @@ export async function getApiUserFromCookie(
   }
   if (!response.ok) return null;
   return (await response.json()) as ApiUser;
+}
+
+function gistListUrl(
+  path: string,
+  query: { page?: number | null; pageSize?: number | null } = {},
+) {
+  const url = new URL(`${apiBaseUrl()}${path}`);
+  if (query.page && query.page > 1) {
+    url.searchParams.set("page", String(query.page));
+  }
+  if (query.pageSize) {
+    url.searchParams.set("pageSize", String(query.pageSize));
+  }
+  return url;
+}
+
+export async function getGistsFromCookie(
+  cookie: string | null | undefined,
+  query: {
+    scope?: "mine" | "public" | string;
+    page?: number | null;
+    pageSize?: number | null;
+  } = {},
+): Promise<GistList | null> {
+  const url = gistListUrl("/api/gists", query);
+  if (query.scope) url.searchParams.set("scope", query.scope);
+  try {
+    const response = await fetch(url, {
+      headers: cookie ? { cookie } : undefined,
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    return (await response.json()) as GistList;
+  } catch {
+    return null;
+  }
+}
+
+export async function getUserGistsFromCookie(
+  cookie: string | null | undefined,
+  username: string,
+  query: { page?: number | null; pageSize?: number | null } = {},
+): Promise<GistList | null> {
+  try {
+    const response = await fetch(
+      gistListUrl(`/api/users/${encodeURIComponent(username)}/gists`, query),
+      { headers: cookie ? { cookie } : undefined, cache: "no-store" },
+    );
+    if (!response.ok) return null;
+    return (await response.json()) as GistList;
+  } catch {
+    return null;
+  }
+}
+
+export async function getGistFromCookie(
+  cookie: string | null | undefined,
+  gistId: string,
+): Promise<GistDetail | null> {
+  try {
+    const response = await fetch(
+      `${apiBaseUrl()}/api/gists/${encodeURIComponent(gistId)}`,
+      { headers: cookie ? { cookie } : undefined, cache: "no-store" },
+    );
+    if (!response.ok) return null;
+    return (await response.json()) as GistDetail;
+  } catch {
+    return null;
+  }
+}
+
+export async function getGistRevisionsFromCookie(
+  cookie: string | null | undefined,
+  gistId: string,
+): Promise<GistRevisionList | null> {
+  try {
+    const response = await fetch(
+      `${apiBaseUrl()}/api/gists/${encodeURIComponent(gistId)}/revisions`,
+      { headers: cookie ? { cookie } : undefined, cache: "no-store" },
+    );
+    if (!response.ok) return null;
+    return (await response.json()) as GistRevisionList;
+  } catch {
+    return null;
+  }
+}
+
+export async function createGistFromCookie(
+  cookie: string | null | undefined,
+  input: GistMutationRequest,
+): Promise<GistDetail> {
+  const response = await fetch(`${apiBaseUrl()}/api/gists`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(cookie ? { cookie } : {}),
+    },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error("Gist could not be created");
+  return (await response.json()) as GistDetail;
+}
+
+export async function updateGistFromCookie(
+  cookie: string | null | undefined,
+  gistId: string,
+  input: GistMutationRequest,
+): Promise<GistDetail> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/gists/${encodeURIComponent(gistId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      body: JSON.stringify(input),
+    },
+  );
+  if (!response.ok) throw new Error("Gist could not be updated");
+  return (await response.json()) as GistDetail;
+}
+
+export async function starGistFromCookie(
+  cookie: string | null | undefined,
+  gistId: string,
+  starred: boolean,
+): Promise<GistDetail> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/gists/${encodeURIComponent(gistId)}/star`,
+    { method: starred ? "PUT" : "DELETE", headers: cookie ? { cookie } : {} },
+  );
+  if (!response.ok) throw new Error("Gist star could not be changed");
+  return (await response.json()) as GistDetail;
+}
+
+export async function forkGistFromCookie(
+  cookie: string | null | undefined,
+  gistId: string,
+): Promise<GistDetail> {
+  const response = await fetch(
+    `${apiBaseUrl()}/api/gists/${encodeURIComponent(gistId)}/forks`,
+    { method: "POST", headers: cookie ? { cookie } : {} },
+  );
+  if (!response.ok) throw new Error("Gist could not be forked");
+  return (await response.json()) as GistDetail;
 }
 
 function projectListPath(path: string, query: ProjectListQuery = {}): string {

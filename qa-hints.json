@@ -8175,5 +8175,23 @@
       "Named star lists are documented in PRD but not yet modeled beyond the core starred repositories library; validate product acceptance if named lists are required now",
       "Real git object dedup for fork storage remains represented by existing repository_forks and snapshot-copy behavior rather than S3-backed pack dedup in local smoke"
     ]
+  },
+  {
+    "feature_id": "gist-001",
+    "tests_written": [
+      "Added Rust-owned gist schema for gists, files, comments, stars, forks, and revisions",
+      "Added Axum REST endpoints for list/create/read/update/revisions/star/unstar/fork/embed",
+      "Added Editorial /gist, /gist/new, /gist/<id>, /gist/<id>/edit, and /gist/<id>/revisions pages",
+      "Added profile public gists widget and API docs coverage",
+      "Focused Vitest coverage for multi-file GistEditor behavior and API docs",
+      "Browser smoke covered gist list -> new -> create -> detail -> star -> edit -> revisions with no dead links or horizontal overflow"
+    ],
+    "needs_deeper_qa": [
+      "Run DB-backed gist contract against a migrated Postgres; local TEST_DATABASE_URL remains unavailable in this environment",
+      "Verify real git clone over https://opengithub.namuh.co/gist/<id>.git once gist bare-repository materialization is wired to production storage",
+      "Probe secret gist unlisted behavior through search, public profile widgets, anonymous direct URL, and owner sessions",
+      "Validate embed script rendering inside a third-party page and CSP-heavy host page",
+      "Exercise comment moderation and comment creation if QA treats full gist comments parity as required beyond the read surface"
+    ]
   }
 ]

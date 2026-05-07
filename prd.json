@@ -2285,7 +2285,7 @@
       "markdown-001",
       "highlight-001"
     ],
-    "build_pass": false
+    "build_pass": true
   },
   {
     "id": "ai-001",

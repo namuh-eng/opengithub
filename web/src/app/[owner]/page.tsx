@@ -10,6 +10,7 @@ import {
   getProfileStars,
   getPublicUserProfile,
   getSessionAndShellContext,
+  getUserGists,
   getUserPackages,
   getUserProjects,
 } from "@/lib/server-session";
@@ -53,7 +54,7 @@ export default async function ProfilePage({
   const profile = await getPublicUserProfile(ownerLogin, {
     year: numericYear(queryParams?.year),
   });
-  const [repositoryList, packageList] = await Promise.all([
+  const [repositoryList, packageList, gistList] = await Promise.all([
     activeTab === "repositories" || activeTab === "stars"
       ? (activeTab === "stars" ? getProfileStars : getProfileRepositories)(
           ownerLogin,
@@ -81,6 +82,9 @@ export default async function ProfilePage({
           pageSize: numericPositive(queryParams?.pageSize),
         })
       : Promise.resolve(null),
+    activeTab === "overview"
+      ? getUserGists(ownerLogin, { pageSize: 4 })
+      : Promise.resolve(null),
   ]);
   const projectList =
     activeTab === "projects"
@@ -100,6 +104,7 @@ export default async function ProfilePage({
         activeTab={activeTab}
         profile={profile}
         packageList={packageList}
+        gistList={gistList}
         projectList={projectList?.ok ? projectList.projects : null}
         repositoryList={repositoryList}
         session={session}

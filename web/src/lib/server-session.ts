@@ -7,6 +7,9 @@ import {
   type CodeSearchQuery,
   type CollaborationSearchQuery,
   type DashboardSummaryQuery,
+  type GistDetail,
+  type GistList,
+  type GistRevisionList,
   type GlobalIssueListQuery,
   type GlobalPullRequestListQuery,
   type GlobalSearchQuery,
@@ -17,6 +20,9 @@ import {
   getAppearanceSettingsFromCookie,
   getAppShellContextFromCookie,
   getDashboardSummaryFromCookie,
+  getGistFromCookie,
+  getGistRevisionsFromCookie,
+  getGistsFromCookie,
   getGlobalIssuesFromCookie,
   getGlobalPullRequestsFromCookie,
   getKeySettingsFromCookie,
@@ -126,6 +132,7 @@ import {
   getRepositoryWikiRevisionFromCookie,
   getSearchSuggestionsFromCookie,
   getSessionFromHeaders,
+  getUserGistsFromCookie,
   getUserPackageDetailFromCookie,
   getUserPackageSettingsFromCookie,
   getUserPackagesFromCookie,
@@ -224,6 +231,37 @@ export async function getSessionAndShellContext() {
 export async function getApiUser() {
   const requestHeaders = await headers();
   return getApiUserFromCookie(requestHeaders.get("cookie"));
+}
+
+export async function getGists(
+  query: {
+    scope?: "mine" | "public" | string;
+    page?: number | null;
+    pageSize?: number | null;
+  } = {},
+): Promise<GistList | null> {
+  const requestHeaders = await headers();
+  return getGistsFromCookie(requestHeaders.get("cookie"), query);
+}
+
+export async function getUserGists(
+  username: string,
+  query: { page?: number | null; pageSize?: number | null } = {},
+): Promise<GistList | null> {
+  const requestHeaders = await headers();
+  return getUserGistsFromCookie(requestHeaders.get("cookie"), username, query);
+}
+
+export async function getGist(gistId: string): Promise<GistDetail | null> {
+  const requestHeaders = await headers();
+  return getGistFromCookie(requestHeaders.get("cookie"), gistId);
+}
+
+export async function getGistRevisions(
+  gistId: string,
+): Promise<GistRevisionList | null> {
+  const requestHeaders = await headers();
+  return getGistRevisionsFromCookie(requestHeaders.get("cookie"), gistId);
 }
 
 export async function getAppShellContext() {
