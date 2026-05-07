@@ -1,7 +1,7 @@
 use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
 
 use crate::{
-    api_types::{error_response, ErrorEnvelope},
+    api_types::{error_response, ErrorEnvelope, RestJson},
     domain::highlight::{highlight_code, HighlightCodeInput, HighlightError},
     AppState,
 };
@@ -12,7 +12,7 @@ pub fn router() -> Router<AppState> {
 
 async fn render(
     State(state): State<AppState>,
-    Json(request): Json<HighlightCodeInput>,
+    RestJson(request): RestJson<HighlightCodeInput>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let highlighted = highlight_code(state.db.as_ref(), request)
         .await

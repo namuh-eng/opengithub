@@ -1994,5 +1994,67 @@
     ],
     "bugs_found": [],
     "fix_description": "no product fix needed; QA recorded remaining environment/product-model gaps for full Playwright and future staff-only admin authorization instead of weakening tests"
+  },
+  {
+    "feature_id": "highlight-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Focused Rust, Vitest, and Playwright highlight tests passed after the API error-envelope fix. /docs/highlight rendered the Editorial code viewer with line numbers, token classes, Symbols sidebar, Find, Wrap, and 56 language options; screenshot saved to ralph/screenshots/qa/highlight-001-docs-smoke.png. Full make test-e2e stayed silent for several minutes and was terminated; focused highlight E2E passed. Ever CLI started but expired before snapshot, so manual browser evidence used Playwright and direct rendered HTML."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "POST /api/highlight/render",
+          "POST /highlight/render"
+        ],
+        "notes": "Happy-path Rust endpoint returns application/json 200 with language, line token classes, symbols, supportedLanguages, sha/path, and cached fields. Next proxy forwards the same JSON contract. Missing required JSON fields now return a standard application/json 400 invalid_json envelope; empty source returns the existing 422 validation_failed envelope."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "The public stateless highlight endpoint was probed anonymously and returned only caller-supplied source tokens, not protected repository data. XSS/SQL-like source content was serialized as JSON token text for safe client rendering, with no stack traces, local paths, SQLx/Postgres errors, DATABASE_URL, SESSION_SECRET, password fields, or raw HTML response. OPTIONS from https://evil.com returned 405 without Access-Control-Allow-Origin."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json and confirmed no previous highlight-001 attempts.",
+      "Read qa-hints.json for highlight-001 and focused on the local tokenizer limitation, missing future diff/PR/commit integrations, dark-theme caveat, and file_tokens cache caveat.",
+      "Inspected crates/api/src/domain/highlight.rs, crates/api/src/routes/highlight.rs, web/src/components/CodeViewer.tsx, web/src/app/docs/highlight/page.tsx, web/src/app/highlight/render/route.ts, Rust highlight tests, Vitest highlight tests, and Playwright highlight E2E.",
+      "Ran required Editorial banned-value scan with ripgrep-compatible -e syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Initial make test was run concurrently with full make test-e2e and timed out in an unrelated api-docs Vitest case; rerunning make test by itself passed Cargo plus 654 web tests.",
+      "Focused Playwright passed: cd web && npx playwright test tests/e2e/highlight.spec.ts completed 2 passed, covering anonymous setup and /docs/highlight controls.",
+      "Live GET /docs/highlight returned 200 HTML using var(--bg), Editorial font classes, .btn, .input, t-* classes, token spans, line anchors, comment buttons, and the Symbols sidebar.",
+      "Live POST /api/highlight/render happy path returned 200 application/json for Rust source with tok-keyword/tok-string tokens, main symbol, 56 supported languages, and cached=false.",
+      "Live POST /highlight/render through the Next proxy returned 200 application/json for SQL source with token classes and supported language metadata.",
+      "Found and fixed an API contract bug where missing required JSON fields returned Axum's default text/plain deserialization error instead of the standard JSON envelope.",
+      "After the fix, live POST /api/highlight/render with {} returned 400 application/json with error.code invalid_json.",
+      "Security probes with script and SQL-like source did not leak secrets, stack traces, local paths, SQLx/Postgres errors, or env values; source text is reflected only as JSON token text for the caller's own submitted source.",
+      "CORS probe for OPTIONS /api/highlight/render from https://evil.com returned 405 without Access-Control-Allow-Origin.",
+      "Attempted Ever CLI manual snapshot for /docs/highlight; the session expired immediately after ever start, so Ever evidence was unavailable in this environment.",
+      "Saved QA screenshot with Playwright CLI to ralph/screenshots/qa/highlight-001-docs-smoke.png."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "api_contract",
+        "description": "POST /api/highlight/render returned Axum's default text/plain JSON deserialization rejection when required fields were missing.",
+        "expected": "Malformed or incomplete JSON requests return the standard application/json error envelope.",
+        "actual": "The live endpoint returned 422 text/plain with 'Failed to deserialize the JSON body into the target type: missing field `source`'.",
+        "reproduction": "curl -s -D - -X POST http://localhost:3016/api/highlight/render -H 'Content-Type: application/json' -d '{}'"
+      }
+    ],
+    "fix_description": "Changed the highlight route to use the shared RestJson extractor and added a Rust regression test for malformed highlight request bodies."
   }
 ]

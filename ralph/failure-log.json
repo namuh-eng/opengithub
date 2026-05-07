@@ -4375,6 +4375,14 @@
       "exit_code": 0,
       "category": "test_failure",
       "attempt": 5
+    },
+    {
+      "timestamp": "2026-05-07T10:07:46.436482",
+      "phase": "qa",
+      "feature": "qa_cycle_2",
+      "exit_code": 0,
+      "category": "timeout",
+      "attempt": 6
     }
   ]
 }

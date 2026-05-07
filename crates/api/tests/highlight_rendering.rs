@@ -116,6 +116,20 @@ async fn highlight_api_returns_error_envelope_for_empty_source() {
 }
 
 #[tokio::test]
+async fn highlight_api_returns_error_envelope_for_malformed_body() {
+    let app = opengithub_api::build_app_with_config(
+        None,
+        opengithub_api::config::AppConfig::local_development(),
+    );
+
+    let (status, body) = send_json(app, "/api/highlight/render", json!({})).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "invalid_json");
+    assert_eq!(body["status"], 400);
+}
+
+#[tokio::test]
 async fn highlight_cache_returns_cached_hit_with_database() {
     let Some(pool) = database_pool().await else {
         eprintln!(
