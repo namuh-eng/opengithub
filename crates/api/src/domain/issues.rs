@@ -1490,7 +1490,17 @@ pub async fn global_issue_list_for_viewer(
                     AND lower(milestones.title) = lower($7)
               )
           )
-          AND $8::text IS NULL
+          AND (
+              $8::text IS NULL
+              OR EXISTS (
+                  SELECT 1
+                  FROM project_items
+                  JOIN projects ON projects.id = project_items.project_id
+                  WHERE project_items.issue_id = issues.id
+                    AND project_items.archived_at IS NULL
+                    AND lower(projects.title) = lower($8)
+              )
+          )
         ORDER BY
           CASE WHEN $9 = 'best-match' AND $4::text IS NOT NULL AND issues.title ILIKE '%' || $4 || '%' THEN 0 END ASC,
           CASE WHEN $9 = 'best-match' AND $4::text IS NOT NULL AND COALESCE(issues.body, '') ILIKE '%' || $4 || '%' THEN 1 END ASC,
@@ -1547,7 +1557,7 @@ pub async fn global_issue_list_for_viewer(
             repositories: global_issue_repository_options(pool, actor_user_id, scope).await?,
             labels: global_issue_label_options(pool, actor_user_id, scope).await?,
             milestones: global_issue_milestone_options(pool, actor_user_id, scope).await?,
-            projects: Vec::new(),
+            projects: global_issue_project_options(pool, actor_user_id, scope).await?,
             sort_options: issue_sort_options()
                 .into_iter()
                 .map(ToOwned::to_owned)
@@ -3370,7 +3380,17 @@ async fn count_global_issue_list_items(
                     AND lower(milestones.title) = lower($7)
               )
           )
-          AND $8::text IS NULL
+          AND (
+              $8::text IS NULL
+              OR EXISTS (
+                  SELECT 1
+                  FROM project_items
+                  JOIN projects ON projects.id = project_items.project_id
+                  WHERE project_items.issue_id = issues.id
+                    AND project_items.archived_at IS NULL
+                    AND lower(projects.title) = lower($8)
+              )
+          )
         "#,
     )
     .bind(actor_user_id)
@@ -3545,6 +3565,61 @@ async fn global_issue_milestone_options(
             })
         })
         .collect()
+}
+
+async fn global_issue_project_options(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    scope: &str,
+) -> Result<Vec<IssueListMetadataOption>, CollaborationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT projects.id, projects.title AS name, projects.short_description AS description,
+               count(*) AS issue_count
+        FROM issues
+        JOIN repositories ON repositories.id = issues.repository_id
+        JOIN project_items ON project_items.issue_id = issues.id
+        JOIN projects ON projects.id = project_items.project_id
+        WHERE project_items.archived_at IS NULL
+          AND (
+              repositories.visibility = 'public'
+              OR EXISTS (
+                  SELECT 1 FROM repository_permissions
+                  WHERE repository_permissions.repository_id = repositories.id
+                    AND repository_permissions.user_id = $1
+                    AND repository_permissions.role IN ('owner', 'admin', 'maintain', 'write', 'triage', 'read')
+              )
+          )
+          AND NOT EXISTS (SELECT 1 FROM pull_requests WHERE pull_requests.issue_id = issues.id)
+          AND (
+              ($2 = 'created' AND issues.author_user_id = $1)
+              OR ($2 = 'assigned' AND EXISTS (
+                  SELECT 1 FROM issue_assignees WHERE issue_assignees.issue_id = issues.id AND issue_assignees.user_id = $1
+              ))
+              OR ($2 = 'mentioned' AND EXISTS (
+                  SELECT 1 FROM notifications WHERE notifications.subject_type = 'issue' AND notifications.subject_id = issues.id AND notifications.user_id = $1 AND notifications.reason IN ('mention', 'team_mention')
+              ))
+          )
+        GROUP BY projects.id, projects.title, projects.short_description
+        ORDER BY issue_count DESC, lower(projects.title) ASC
+        LIMIT 50
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(scope)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| IssueListMetadataOption {
+            id: row.get::<Uuid, _>("id").to_string(),
+            name: row.get("name"),
+            description: row.get("description"),
+            count: row.get("issue_count"),
+            disabled_reason: None,
+        })
+        .collect())
 }
 
 async fn issue_list_items_for_issues(

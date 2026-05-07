@@ -1,6 +1,7 @@
 use axum::{
+    body::{to_bytes, Body},
     extract::State,
-    http::{header, HeaderMap, HeaderValue, StatusCode},
+    http::{header, HeaderMap, HeaderValue, Method, Request, StatusCode},
 };
 use chrono::{Duration, Utc};
 use opengithub_api::{
@@ -11,6 +12,7 @@ use opengithub_api::{
     AppState,
 };
 use sqlx::PgPool;
+use tower::ServiceExt;
 use url::Url;
 use uuid::Uuid;
 
@@ -93,6 +95,30 @@ async fn protected_route_rejects_missing_cookie_with_json_401() {
         .expect_err("missing cookie must not authenticate");
 
     assert_not_authenticated(error);
+}
+
+#[tokio::test]
+async fn global_issues_api_rejects_missing_cookie_before_database_lookup() {
+    let app = opengithub_api::build_app_with_config(None, app_config());
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/issues")
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should run");
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    let body: serde_json::Value = serde_json::from_slice(&bytes).expect("body should be JSON");
+    assert_eq!(body["status"], 401);
+    assert_eq!(body["error"]["code"], "not_authenticated");
+    assert!(!body.to_string().contains("database"));
 }
 
 #[tokio::test]

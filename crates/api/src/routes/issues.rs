@@ -182,8 +182,8 @@ async fn global_list(
     headers: HeaderMap,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
-    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let pagination = normalize_pagination(query.page, query.page_size);
     let envelope = global_issue_list_for_viewer(
         pool,
