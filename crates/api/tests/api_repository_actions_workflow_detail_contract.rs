@@ -145,6 +145,10 @@ async fn workflow_detail_returns_scoped_runs_dispatch_metadata_refs_and_filters(
 
     let config = app_config();
     let owner = create_user(&pool, "actions-workflow-owner").await;
+    let owner_login = owner
+        .username
+        .as_deref()
+        .expect("test user should receive a canonical username");
     let repo_name = format!("actions-workflow-{}", Uuid::new_v4().simple());
     let repository = create_repository(
         &pool,
@@ -331,7 +335,7 @@ async fn workflow_detail_returns_scoped_runs_dispatch_metadata_refs_and_filters(
     let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
     let uri = format!(
         "/api/repos/{}/{}/actions/workflows/{}/dashboard?status=success&page=1&pageSize=5",
-        owner.email,
+        owner_login,
         repo_name,
         encoded_workflow_path(".github/workflows/ci.yml")
     );
@@ -348,7 +352,7 @@ async fn workflow_detail_returns_scoped_runs_dispatch_metadata_refs_and_filters(
         body["workflow"]["sourceHref"],
         format!(
             "/{owner}/{repo_name}/blob/main/.github/workflows/ci.yml",
-            owner = owner.email
+            owner = owner_login
         )
     );
     assert_eq!(body["workflow"]["dispatch"]["enabled"], true);
