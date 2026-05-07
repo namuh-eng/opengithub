@@ -87,5 +87,58 @@
     ],
     "bugs_found": [],
     "fix_description": "no fix needed"
+  },
+  {
+    "feature_id": "repo-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed; repository-create E2E cases passed during make test-e2e before the suite later failed in unrelated repository-discussions specs that require TEST_DATABASE_URL/DATABASE_URL. Component and E2E coverage verifies signed-in /new options, name normalization/availability, README toggle, gitignore filtering, mobile/keyboard behavior, submit, redirect, duplicate inline error recovery, and bootstrap files. Ever CLI manual snapshot expired immediately after ever start, so live browser evidence used Playwright and curl instead."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/creation-options",
+          "GET /api/repos/name-availability",
+          "POST /api/repos",
+          "GET /new",
+          "GET /new/name-availability",
+          "POST /new/repositories"
+        ],
+        "notes": "Rust API endpoints return JSON 401 envelopes without auth; repository-create E2E exercises authenticated happy-path creation through the Next proxy and Rust API, including 201 create semantics, href redirect metadata, duplicate conflict handling, and bootstrap file visibility. Anonymous Next /new and proxy routes redirect to /login with next preservation."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Unauthenticated /new redirects to login; unauthenticated Rust creation/options/availability endpoints return JSON 401 and do not reflect XSS payloads or stack traces. OPTIONS from https://evil.com returns 405 without Access-Control-Allow-Origin. No banned GitHub visual tokens, Primer imports, or Octicon imports were found in web/src outside og CSS."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json and qa-hints.json; no previous repo-001 QA attempts existed.",
+      "Inspected /new page, RepositoryCreateForm, Next proxy routes, Rust repository routes, Rust repository create-flow tests, and Playwright repository-create E2E coverage.",
+      "Ran required Editorial banned-value scan with ripgrep-compatible syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran make test: Cargo tests passed and web tests passed (650 passed).",
+      "Ran make test-e2e: repository-create.spec.ts passed all 3 signed-in repository creation tests; full suite later failed in unrelated repository-discussions specs because TEST_DATABASE_URL/DATABASE_URL is not configured for those specs.",
+      "Started make dev and verified anonymous GET /new returns 307 Location /login?next=%2Fnew.",
+      "Verified anonymous Next proxy GET /new/name-availability and POST /new/repositories redirect to /login with next preservation.",
+      "Verified anonymous Rust GET /api/repos/creation-options, GET /api/repos/name-availability, and POST /api/repos return JSON 401 not_authenticated envelopes.",
+      "Sent XSS-like repository name payload to unauthenticated POST /api/repos; response stayed generic 401 and did not reflect the payload.",
+      "Verified OPTIONS /api/repos with Origin https://evil.com returns 405 and does not emit Access-Control-Allow-Origin.",
+      "Attempted Ever CLI manual snapshot for /new; the Ever session expired immediately after start, so Ever evidence was unavailable in this environment."
+    ],
+    "bugs_found": [],
+    "fix_description": "no fix needed"
   }
 ]
