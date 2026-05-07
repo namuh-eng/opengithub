@@ -4865,9 +4865,10 @@ async fn webhook_settings(
 async fn webhook_detail(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path((owner, repo, hook_id)): Path<(String, String, Uuid)>,
+    Path((owner, repo, hook_id)): Path<(String, String, String)>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let hook_id = parse_webhook_uuid(&hook_id, "hook_id")?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let detail =
         repository_webhook_detail_for_actor_by_owner_name(pool, actor.0.id, &owner, &repo, hook_id)
@@ -4887,9 +4888,11 @@ async fn webhook_detail(
 async fn webhook_delivery_detail(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path((owner, repo, hook_id, delivery_id)): Path<(String, String, Uuid, Uuid)>,
+    Path((owner, repo, hook_id, delivery_id)): Path<(String, String, String, String)>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let hook_id = parse_webhook_uuid(&hook_id, "hook_id")?;
+    let delivery_id = parse_webhook_uuid(&delivery_id, "delivery_id")?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let detail = repository_webhook_delivery_for_actor_by_owner_name(
         pool,
@@ -4937,10 +4940,11 @@ async fn create_webhook(
 async fn update_webhook(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path((owner, repo, hook_id)): Path<(String, String, Uuid)>,
+    Path((owner, repo, hook_id)): Path<(String, String, String)>,
     RestJson(request): RestJson<WebhookMutation>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let hook_id = parse_webhook_uuid(&hook_id, "hook_id")?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let settings =
         update_repository_webhook_by_owner_name(pool, actor.0.id, &owner, &repo, hook_id, request)
@@ -4960,9 +4964,10 @@ async fn update_webhook(
 async fn delete_webhook(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path((owner, repo, hook_id)): Path<(String, String, Uuid)>,
+    Path((owner, repo, hook_id)): Path<(String, String, String)>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let hook_id = parse_webhook_uuid(&hook_id, "hook_id")?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let settings =
         delete_repository_webhook_by_owner_name(pool, actor.0.id, &owner, &repo, hook_id)
@@ -4982,9 +4987,10 @@ async fn delete_webhook(
 async fn ping_webhook(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path((owner, repo, hook_id)): Path<(String, String, Uuid)>,
+    Path((owner, repo, hook_id)): Path<(String, String, String)>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let hook_id = parse_webhook_uuid(&hook_id, "hook_id")?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let result = ping_repository_webhook_by_owner_name(pool, actor.0.id, &owner, &repo, hook_id)
         .await
@@ -5003,9 +5009,11 @@ async fn ping_webhook(
 async fn redeliver_webhook_delivery(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path((owner, repo, hook_id, delivery_id)): Path<(String, String, Uuid, Uuid)>,
+    Path((owner, repo, hook_id, delivery_id)): Path<(String, String, String, String)>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let hook_id = parse_webhook_uuid(&hook_id, "hook_id")?;
+    let delivery_id = parse_webhook_uuid(&delivery_id, "delivery_id")?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let result = redeliver_repository_webhook_delivery_by_owner_name(
         pool,
@@ -5026,6 +5034,16 @@ async fn redeliver_webhook_delivery(
     })?;
 
     Ok(Json(json!(result)))
+}
+
+fn parse_webhook_uuid(value: &str, field: &str) -> Result<Uuid, (StatusCode, Json<ErrorEnvelope>)> {
+    Uuid::parse_str(value).map_err(|_| {
+        error_response(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            format!("{field} must be a valid UUID"),
+        )
+    })
 }
 
 async fn actions_secrets_settings(

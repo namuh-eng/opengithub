@@ -1,5 +1,6 @@
 use std::time::{Duration, Instant};
 
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use hmac::{Hmac, Mac};
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, USER_AGENT};
 use serde_json::{json, Value};
@@ -362,9 +363,18 @@ fn request_headers(
 }
 
 pub fn signature_header(secret_material: &str, body: &[u8]) -> String {
-    let mut mac = HmacSha256::new_from_slice(secret_material.as_bytes()).expect("HMAC key");
+    let signing_secret = signing_secret_material(secret_material);
+    let mut mac = HmacSha256::new_from_slice(signing_secret.as_bytes()).expect("HMAC key");
     mac.update(body);
     format!("sha256={}", hex(mac.finalize().into_bytes().as_slice()))
+}
+
+fn signing_secret_material(stored_secret: &str) -> String {
+    stored_secret
+        .strip_prefix("secret:v1:")
+        .and_then(|encoded| STANDARD.decode(encoded).ok())
+        .and_then(|bytes| String::from_utf8(bytes).ok())
+        .unwrap_or_else(|| stored_secret.to_owned())
 }
 
 fn subscribed_to_event(events: &[String], event: &str) -> bool {
@@ -409,6 +419,21 @@ fn hex(bytes: &[u8]) -> String {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::signature_header;
+
+    #[test]
+    fn signature_header_uses_decoded_configured_secret_for_new_webhooks() {
+        let body = br#"{"ref":"refs/heads/main"}"#;
+
+        assert_eq!(
+            signature_header("secret:v1:c3VwZXItc2VjcmV0LXZhbHVl", body),
+            signature_header("super-secret-value", body)
+        );
+    }
 }
 
 async fn load_delivery_work_item(

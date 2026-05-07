@@ -1,7 +1,7 @@
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Row};
 use url::Url;
 use uuid::Uuid;
@@ -462,7 +462,7 @@ pub async fn create_organization_webhook_by_slug(
         return Ok(None);
     };
     let normalized = normalize_mutation(mutation, None)?;
-    let secret_hash = normalized.secret.as_deref().map(hash_secret);
+    let secret_hash = normalized.secret.as_deref().map(encode_secret_material);
     let mut transaction = pool.begin().await?;
     let hook_id = sqlx::query_scalar::<_, Uuid>(
         r#"
@@ -582,7 +582,7 @@ pub async fn create_repository_webhook_by_owner_name(
     };
     require_repository_admin(pool, &repository, actor_user_id).await?;
     let normalized = normalize_mutation(mutation, None)?;
-    let secret_hash = normalized.secret.as_deref().map(hash_secret);
+    let secret_hash = normalized.secret.as_deref().map(encode_secret_material);
     let mut transaction = pool.begin().await?;
     let hook_row = sqlx::query(
         r#"
@@ -672,7 +672,7 @@ pub async fn update_repository_webhook_by_owner_name(
         .await?
         .ok_or(WebhookError::WebhookNotFound)?;
     let normalized = normalize_mutation(mutation, Some(&before))?;
-    let secret_hash = normalized.secret.as_deref().map(hash_secret);
+    let secret_hash = normalized.secret.as_deref().map(encode_secret_material);
     let mut changed_fields = vec![
         "payloadUrl".to_owned(),
         "contentType".to_owned(),
@@ -751,7 +751,7 @@ pub async fn update_organization_webhook_by_slug(
         .await?
         .ok_or(WebhookError::WebhookNotFound)?;
     let normalized = normalize_mutation(mutation, Some(&before))?;
-    let secret_hash = normalized.secret.as_deref().map(hash_secret);
+    let secret_hash = normalized.secret.as_deref().map(encode_secret_material);
     let mut transaction = pool.begin().await?;
     sqlx::query(
         r#"
@@ -1245,7 +1245,12 @@ fn webhook_event_definitions() -> Vec<WebhookEventDefinition> {
         (
             "pull_request",
             "Pull requests",
-            "Pull request lifecycle and review activity.",
+            "Pull request lifecycle activity.",
+        ),
+        (
+            "pull_request_review",
+            "Pull request reviews",
+            "Pull request review submit, edit, and dismissal activity.",
         ),
         (
             "release",
@@ -1253,9 +1258,19 @@ fn webhook_event_definitions() -> Vec<WebhookEventDefinition> {
             "Release publish, edit, and delete activity.",
         ),
         (
+            "issue_comment",
+            "Issue comments",
+            "Issue and pull request conversation activity.",
+        ),
+        (
             "workflow_run",
             "Workflow runs",
             "Actions workflow run state changes.",
+        ),
+        (
+            "check_run",
+            "Check runs",
+            "Check run creation, rerequest, completion, and annotations.",
         ),
         (
             "package",
@@ -1387,13 +1402,8 @@ fn normalize_events(
     Ok(normalized.into_iter().collect())
 }
 
-fn hash_secret(secret: &str) -> String {
-    let digest = Sha256::digest(secret.as_bytes());
-    let hex = digest
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    format!("sha256:{hex}")
+fn encode_secret_material(secret: &str) -> String {
+    format!("secret:v1:{}", STANDARD.encode(secret.as_bytes()))
 }
 
 fn audit_hook_state(

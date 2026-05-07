@@ -618,10 +618,11 @@ async fn org_webhook_settings(
 async fn org_webhook_detail(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path((org, hook_id)): Path<(String, Uuid)>,
+    Path((org, hook_id)): Path<(String, String)>,
 ) -> Result<Json<crate::domain::webhooks::RepositoryWebhookDetail>, (StatusCode, Json<ErrorEnvelope>)>
 {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let hook_id = parse_webhook_uuid(&hook_id, "hook_id")?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let detail = organization_webhook_detail_for_actor_by_slug(pool, actor.0.id, &org, hook_id)
         .await
@@ -639,10 +640,12 @@ async fn org_webhook_detail(
 async fn org_webhook_delivery_detail(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path((org, hook_id, delivery_id)): Path<(String, Uuid, Uuid)>,
+    Path((org, hook_id, delivery_id)): Path<(String, String, String)>,
 ) -> Result<Json<crate::domain::webhooks::WebhookDeliveryDetail>, (StatusCode, Json<ErrorEnvelope>)>
 {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let hook_id = parse_webhook_uuid(&hook_id, "hook_id")?;
+    let delivery_id = parse_webhook_uuid(&delivery_id, "delivery_id")?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let detail = organization_webhook_delivery_for_actor_by_slug(
         pool,
@@ -690,13 +693,14 @@ async fn create_org_webhook(
 async fn update_org_webhook(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path((org, hook_id)): Path<(String, Uuid)>,
+    Path((org, hook_id)): Path<(String, String)>,
     RestJson(request): RestJson<WebhookMutation>,
 ) -> Result<
     Json<crate::domain::webhooks::OrganizationWebhookSettings>,
     (StatusCode, Json<ErrorEnvelope>),
 > {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let hook_id = parse_webhook_uuid(&hook_id, "hook_id")?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let settings = update_organization_webhook_by_slug(pool, actor.0.id, &org, hook_id, request)
         .await
@@ -714,12 +718,13 @@ async fn update_org_webhook(
 async fn delete_org_webhook(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path((org, hook_id)): Path<(String, Uuid)>,
+    Path((org, hook_id)): Path<(String, String)>,
 ) -> Result<
     Json<crate::domain::webhooks::OrganizationWebhookSettings>,
     (StatusCode, Json<ErrorEnvelope>),
 > {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let hook_id = parse_webhook_uuid(&hook_id, "hook_id")?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let settings = delete_organization_webhook_by_slug(pool, actor.0.id, &org, hook_id)
         .await
@@ -737,9 +742,10 @@ async fn delete_org_webhook(
 async fn ping_org_webhook(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path((org, hook_id)): Path<(String, Uuid)>,
+    Path((org, hook_id)): Path<(String, String)>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let hook_id = parse_webhook_uuid(&hook_id, "hook_id")?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let (settings, delivery) = ping_organization_webhook_by_slug(pool, actor.0.id, &org, hook_id)
         .await
@@ -757,9 +763,11 @@ async fn ping_org_webhook(
 async fn redeliver_org_webhook_delivery(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path((org, hook_id, delivery_id)): Path<(String, Uuid, Uuid)>,
+    Path((org, hook_id, delivery_id)): Path<(String, String, String)>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
+    let hook_id = parse_webhook_uuid(&hook_id, "hook_id")?;
+    let delivery_id = parse_webhook_uuid(&delivery_id, "delivery_id")?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let (settings, delivery) = redeliver_organization_webhook_delivery_by_slug(
         pool,
@@ -778,6 +786,16 @@ async fn redeliver_org_webhook_delivery(
         )
     })?;
     Ok(Json(json!({ "settings": settings, "delivery": delivery })))
+}
+
+fn parse_webhook_uuid(value: &str, field: &str) -> Result<Uuid, (StatusCode, Json<ErrorEnvelope>)> {
+    Uuid::parse_str(value).map_err(|_| {
+        error_response(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            format!("{field} must be a valid UUID"),
+        )
+    })
 }
 
 async fn public_package_settings(

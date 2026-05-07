@@ -141,7 +141,7 @@ async fn repository_webhook_settings_cover_validation_redaction_delivery_and_aud
     .await
     .expect("secret hash should load")
     .expect("secret hash should be configured");
-    assert!(stored_secret.starts_with("sha256:"));
+    assert!(stored_secret.starts_with("secret:v1:"));
     assert_ne!(stored_secret, "super-secret-value");
 
     let (detail_status, _, detail_body) = send_json(

@@ -144,7 +144,7 @@ async fn webhook_worker_filters_signs_records_and_retries_deliveries() {
             repository_id,
             actor_user_id: owner_id,
             url: success_url,
-            secret_hash: Some("sha256:test-secret".to_owned()),
+            secret_hash: Some("secret:v1:dGVzdC1zZWNyZXQ=".to_owned()),
             events: vec!["push".to_owned()],
         },
     )
@@ -229,7 +229,7 @@ async fn webhook_worker_filters_signs_records_and_retries_deliveries() {
             .expect("signature header")
             .to_str()
             .expect("signature header text"),
-        signature_header("sha256:test-secret", &received.body)
+        signature_header("test-secret", &received.body)
     );
     assert!(String::from_utf8_lossy(&received.body).contains("refs/heads/main"));
 
