@@ -2587,5 +2587,57 @@
       }
     ],
     "fix_description": "Fixed AI changelog context to honor previousTag/targetTag bounds and added focused DB-backed contract coverage. Full signed-session, private-repo opt-in, rate-limit bucket, and live OpenAI provider verification remain blocked by unavailable local test Postgres, so prd.json keeps ai-001.qa_pass=false."
+  },
+  {
+    "feature_id": "dx-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified the developer settings token workflow documentation and docs API/Git snippets render opengithub-only examples, working copy controls, internal docs links, no placeholder/dead article links, and no api.github.com leakage. Full signed-in /settings/tokens browser E2E remains covered by the existing Playwright spec but skipped locally without a reachable TEST_DATABASE_URL/session DB."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "/docs/api endpoint catalog documentation",
+          "documented /api/settings/tokens",
+          "documented /api/settings/tokens/new",
+          "documented /api/settings/sudo",
+          "documented /api/settings/tokens/{token_id}"
+        ],
+        "notes": "dx-001 is a documentation/developer-experience slice; token write API behavior belongs to the later credentials feature. Docs table coverage and examples were verified by focused Vitest and smoke checks."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "no_github_api_urls",
+          "no_secret_material_in_token_list",
+          "copy_examples_use_opengithub_domain",
+          "editorial_banned_value_scan"
+        ],
+        "notes": "Focused tests assert token rows expose prefixes/metadata only, not sha256 hashes or plaintext tokens. Mandatory Editorial scan found no banned GitHub hex, Primer, or Octicon usage in web/src outside og CSS."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused tests and smoke checks exercised accessible button names/status feedback for copy controls and checked no dead article links. Full axe was not run because this lane used focused Playwright/browser smoke instead of full E2E due local DB/dev-server limits."
+      }
+    },
+    "tested_steps": [
+      "Read the dx-001 prd.json entry, build-progress.txt, qa-hints.json, qa-report.json, BUILD_GUIDE.md, AGENTS.md, and web/AGENTS.md; .qrspi/dx-001/structure.md was absent.",
+      "Inspected /settings/tokens, DeveloperTokensPage, DeveloperCommandBlock, CopyButton, ApiDocsPage, and dx-001 focused unit/E2E tests.",
+      "Ran mandatory Editorial scan: rg -n -e '#(0969da|1f883d|1a7f37|cf222e|82071e|f6f8fa|1f2328|d0d7de|59636e|f1aeb5|fff1f3)\\b|@primer/|Octicon' web/src/ --glob '!**/og*.css' returned zero matches.",
+      "Installed web dependencies with npm ci from the existing lockfile because web/node_modules was absent in the isolated worktree.",
+      "Ran focused Vitest: cd web && npm test -- --run tests/developer-experience.test.tsx tests/api-docs.test.tsx: 2 files passed, 12 tests passed.",
+      "Ran make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Attempted CARGO_INCREMENTAL=0 make test; Rust test compilation failed with No space left on device. Cleaned local target and retried with CARGO_INCREMENTAL=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_BUILD_JOBS=1 make test; it was externally terminated after the Cargo phase had been running, so full make test remained environment-blocked rather than product-failing.",
+      "Ran focused Rust unit check: CARGO_INCREMENTAL=0 CARGO_PROFILE_TEST_DEBUG=0 CARGO_BUILD_JOBS=1 cargo test -p opengithub-api --lib: 3 passed.",
+      "Ran full web unit suite: cd web && npx vitest run: 107 files passed, 655 tests passed.",
+      "Ran focused docs browser smoke against Next dev with Playwright: /docs/api and /docs/git loaded, first copy button on each page produced status feedback, no article dead links, and no api.github.com leakage.",
+      "Attempted focused Playwright developer-experience spec; without TEST_DATABASE_URL it ran auth setup and skipped the selected chromium test by file-level skip. Attempted timeout 180 make test-e2e; local test Postgres did not become ready on :55433 and the bounded run terminated, matching a local environment E2E blocker."
+    ],
+    "bugs_found": [],
+    "fix_description": "No dx-001 product bugs found. Marked dx-001 qa_pass true based on focused unit, static, Editorial, Rust lib, full web unit, and browser smoke evidence; recorded full Cargo/E2E environment blockers separately."
   }
 ]

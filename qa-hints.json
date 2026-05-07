@@ -1066,13 +1066,19 @@
       "Updated /docs/api and /docs/git snippets to use working copy buttons and added links to /settings/tokens",
       "Added Vitest coverage for token workflow docs, copy behavior, no placeholder links, no create-token dead control, and no api.github.com leakage",
       "Added Playwright coverage for authenticated /settings/tokens, docs copy buttons, internal docs/settings links, dead-control scans, and screenshots",
-      "Verification passed: TEST_DATABASE_URL-backed make check, make test with 79 frontend tests plus cargo tests, and make test-e2e with 35 Playwright tests"
+      "Verification passed: TEST_DATABASE_URL-backed make check, make test with 79 frontend tests plus cargo tests, and make test-e2e with 35 Playwright tests",
+      "QA verified focused developer-experience Vitest and API docs tests: 2 files passed, 12 tests passed.",
+      "QA verified full web Vitest suite: 107 files passed, 655 tests passed.",
+      "QA verified make check passed and mandatory Editorial banned-token scan returned zero matches.",
+      "QA verified docs browser smoke for /docs/api and /docs/git copy buttons, internal links, no dead article links, and no api.github.com leakage."
     ],
     "needs_deeper_qa": [
       "Token creation and revocation are intentionally deferred to a later security settings feature; QA should not expect a working Create token action yet",
       "Examples use placeholder <opengithub_pat> values and opengithub.namuh.co commands; real PAT issuance still needs backend write APIs and audit events",
       "Clipboard behavior depends on browser clipboard permission; E2E accepts copied or unavailable status but verifies the buttons are wired",
-      "Webhook documentation links are represented through /docs/api and Git/docs references; full webhook management docs remain for the webhooks/settings feature"
+      "Webhook documentation links are represented through /docs/api and Git/docs references; full webhook management docs remain for the webhooks/settings feature",
+      "Full CARGO_INCREMENTAL=0 make test could not complete in this worktree because Rust test linking exhausted local disk and the debug-reduced retry was terminated; rerun when the host has enough free space.",
+      "Full make test-e2e could not complete because local test Postgres on :55433 did not become ready before the bounded run; rerun signed-session /settings/tokens E2E when the DB is healthy."
     ]
   },
   {
