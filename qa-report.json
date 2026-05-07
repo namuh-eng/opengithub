@@ -189,5 +189,45 @@
     ],
     "bugs_found": [],
     "fix_description": "no fix needed"
+  },
+  {
+    "feature_id": "layout-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed; focused app-shell Vitest passed; required Editorial banned-token scan was clean; focused app-shell Playwright setup ran but signed-in cases skipped because TEST_DATABASE_URL/DATABASE_URL is not configured; full make test-e2e passed public/auth smoke before failing in unrelated repository-discussions specs that also require a database URL. Live curl verified anonymous /dashboard redirects to /login?next=%2Fdashboard, and rendered login HTML preserves the Google OAuth next path plus Editorial font/token classes. Ever CLI manual snapshot was unavailable because sessions expired immediately after start."
+      },
+      "api_contract": {
+        "status": "skip",
+        "endpoints_tested": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base and footer only"
+      },
+      "security": {
+        "status": "skip",
+        "checks": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base and footer only"
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base and footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json, qa-hints.json layout-001 entries, BUILD_GUIDE.md, ralph-config.json, web/AGENTS.md, AppShell/AppHeader/AppShellFrame, and app-shell Vitest/Playwright coverage.",
+      "Confirmed current implementation includes signed-in sticky header, dashboard mark, global menu, recent repositories, organizations/teams, create menu, notification count badge, avatar menu, global search modal, mobile drawer, and AppShellFrame centered/repository modes.",
+      "Ran required Editorial banned-value scan with repo-compatible ripgrep syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran make test: Cargo tests passed and web tests passed (650 passed).",
+      "Ran cd web && npm test -- app-shell.test.tsx --run: 8 app-shell tests passed.",
+      "Ran cd web && npm run test:e2e -- app-shell.spec.ts: setup passed; five signed-in layout tests skipped because TEST_DATABASE_URL/DATABASE_URL is not configured.",
+      "Ran make test-e2e: 18 public/auth/docs tests passed and 134 skipped before two unrelated repository-discussions specs failed on missing TEST_DATABASE_URL/DATABASE_URL.",
+      "Started make dev and verified live GET /dashboard returns 307 Location /login?next=%2Fdashboard for anonymous users.",
+      "Verified rendered /login?next=%2Fdashboard HTML includes Continue with Google pointing to the Rust OAuth start URL with next=%2Fdashboard and the Fraunces/Inter Tight/JetBrains font variables plus Editorial token styles.",
+      "Attempted Ever CLI manual snapshot for /dashboard; ever start succeeded but ever snapshot returned Session expired, so Ever browser evidence was unavailable in this environment."
+    ],
+    "bugs_found": [],
+    "fix_description": "no product fix needed; QA recorded environment gaps for signed-in DB-backed E2E and Ever instead of weakening tests"
   }
 ]
