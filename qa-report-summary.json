@@ -1,0 +1,1276 @@
+{
+  "schema_version": "2.1",
+  "sub_phases": [
+    "functional",
+    "api_contract",
+    "security",
+    "accessibility"
+  ],
+  "totals": {
+    "features_total": 119,
+    "features_passed": 8,
+    "features_failed": 0,
+    "features_exhausted": 0,
+    "features_crashed": 0
+  },
+  "sub_phase_totals": {
+    "functional": {
+      "pass": 6,
+      "fail": 0,
+      "skip": 0
+    },
+    "api_contract": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 2
+    },
+    "security": {
+      "pass": 4,
+      "fail": 0,
+      "skip": 2
+    },
+    "accessibility": {
+      "pass": 0,
+      "fail": 0,
+      "skip": 6
+    }
+  },
+  "features": [
+    {
+      "feature_id": "infra-001",
+      "description": "Create the core Postgres schema and Rust data access layer for users, auth accou",
+      "category": "data",
+      "qa_pass": true,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "auth-001",
+      "description": "Implement Google OAuth login natively in the Rust API (oauth2 + tower-sessions +",
+      "category": "auth",
+      "qa_pass": true,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "auth-002",
+      "description": "Protect Next.js routes and Rust API routes with shared session verification.",
+      "category": "auth",
+      "qa_pass": true,
+      "attempts": 1,
+      "exhausted": false,
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "make test passed; auth route guard scenario passed; live auth-wall curl scenario passed for /dashboard redirect, login error UX, /api/auth/current-user malformed credentials, and anonymous /api/repos. make test-e2e and focused Playwright auth runs were attempted but timed out before emitting browser test progress in this session; Ever CLI sessions expired immediately, so manual browser verification used direct HTTP responses and rendered HTML inspection."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/auth/me",
+            "GET /api/auth/current-user",
+            "POST /api/auth/logout",
+            "GET /api/repos"
+          ],
+          "notes": "Protected API endpoints tested through direct Rust handlers and live curl probes. Missing or malformed credentials returned application/json 401 envelopes with error.code not_authenticated; valid-cookie no-DB path returns database_unavailable only after cookie verification per existing tests."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_bypass",
+            "input_sanitization",
+            "cors",
+            "data_exposure"
+          ],
+          "notes": "Unauthenticated and malformed Authorization/Cookie probes did not bypass auth, did not reflect injected token/script values, and did not leak cookie values or stack traces. OPTIONS returned 405 without Access-Control-Allow-Origin for https://evil.com."
+        },
+        "accessibility": {
+          "status": "skip",
+          "violations": [],
+          "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+        }
+      },
+      "overall_status": "pass"
+    },
+    {
+      "feature_id": "markdown-001",
+      "description": "Site-wide Markdown rendering pipeline (CommonMark + GFM + extensions). Renders R",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "highlight-001",
+      "description": "Source-file syntax highlighting via Tree-sitter. Powers the file viewer, diff vi",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "onboarding-001",
+      "description": "Create first-run dashboard onboarding for users with no repositories.",
+      "category": "onboarding",
+      "qa_pass": true,
+      "attempts": 1,
+      "exhausted": false,
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "make test passed; focused dashboard onboarding E2E cases passed inside make test-e2e; component tests cover the signed-in zero-repository empty state, CTAs, repository search, hint dismissal success/failure, persisted dismissed hints, and switching to the feed when repositories exist. Full make test-e2e later failed in unrelated repository-discussions tests because TEST_DATABASE_URL/DATABASE_URL is not configured. Ever CLI session expired immediately after start, so live manual verification used curl/rendered HTML plus the focused Playwright evidence."
+        },
+        "api_contract": {
+          "status": "skip",
+          "endpoints_tested": [],
+          "notes": "not applicable for this feature category; QA_MODULES included base and footer only"
+        },
+        "security": {
+          "status": "skip",
+          "checks": [],
+          "notes": "not applicable for this feature category; QA_MODULES included base and footer only"
+        },
+        "accessibility": {
+          "status": "skip",
+          "violations": [],
+          "notes": "not applicable for this feature category; QA_MODULES included base and footer only"
+        }
+      },
+      "overall_status": "pass"
+    },
+    {
+      "feature_id": "dashboard-001",
+      "description": "Implement the signed-in personal dashboard layout and top-repository sidebar.",
+      "category": "layout",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "dashboard-002",
+      "description": "Show dashboard recent activity for issues and pull requests involving the user.",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "dashboard-003",
+      "description": "Build the dashboard feed with Following/For you filters and event-type filtering",
+      "category": "interaction",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "repo-001",
+      "description": "Create repository flow modeled on GitHub's live /new form.",
+      "category": "crud",
+      "qa_pass": true,
+      "attempts": 1,
+      "exhausted": false,
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "make test passed; repository-create E2E cases passed during make test-e2e before the suite later failed in unrelated repository-discussions specs that require TEST_DATABASE_URL/DATABASE_URL. Component and E2E coverage verifies signed-in /new options, name normalization/availability, README toggle, gitignore filtering, mobile/keyboard behavior, submit, redirect, duplicate inline error recovery, and bootstrap files. Ever CLI manual snapshot expired immediately after ever start, so live browser evidence used Playwright and curl instead."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/repos/creation-options",
+            "GET /api/repos/name-availability",
+            "POST /api/repos",
+            "GET /new",
+            "GET /new/name-availability",
+            "POST /new/repositories"
+          ],
+          "notes": "Rust API endpoints return JSON 401 envelopes without auth; repository-create E2E exercises authenticated happy-path creation through the Next proxy and Rust API, including 201 create semantics, href redirect metadata, duplicate conflict handling, and bootstrap file visibility. Anonymous Next /new and proxy routes redirect to /login with next preservation."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_bypass",
+            "input_sanitization",
+            "cors",
+            "data_exposure"
+          ],
+          "notes": "Unauthenticated /new redirects to login; unauthenticated Rust creation/options/availability endpoints return JSON 401 and do not reflect XSS payloads or stack traces. OPTIONS from https://evil.com returns 405 without Access-Control-Allow-Origin. No banned GitHub visual tokens, Primer imports, or Octicon imports were found in web/src outside og CSS."
+        },
+        "accessibility": {
+          "status": "skip",
+          "violations": [],
+          "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+        }
+      },
+      "overall_status": "pass"
+    },
+    {
+      "feature_id": "repo-002",
+      "description": "Import an external Git repository into a new opengithub repository.",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "repo-003",
+      "description": "Render the repository Code tab overview with header actions, repository tabs, fi",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "repo-004",
+      "description": "Implement repository branch/tag selection, Go to file, and directory tree browsi",
+      "category": "nav",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "repo-005",
+      "description": "Render repository blob/file views with syntax highlighting, line numbers, raw/co",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "git-001",
+      "description": "Support HTTPS Git clone/fetch/push, raw file streaming, and source archive downl",
+      "category": "developer-experience",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "api-001",
+      "description": "Expose initial GitHub-style REST API for authenticated user, repository create/d",
+      "category": "developer-experience",
+      "qa_pass": true,
+      "attempts": 1,
+      "exhausted": false,
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "make test passed; /api/user contract scenario passed for anonymous, valid-cookie/no-DB, malformed-cookie, content-type, and redaction cases, with the Postgres-backed signed-in happy path self-skipped because no TEST_DATABASE_URL/DATABASE_URL is configured. make test-e2e passed api-docs.spec.ts and other public/auth smoke coverage before failing later in unrelated repository-discussions specs that require TEST_DATABASE_URL/DATABASE_URL. Ever CLI expired immediately after start, so manual browser evidence was unavailable in this environment."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/user"
+          ],
+          "notes": "Live Rust API probes returned application/json 401 not_authenticated envelopes for anonymous, malformed cookie, SQL-like query, and XSS-like cookie inputs. cargo test --test api_contract_hardening passed but its DB-backed cross-route scenario self-skipped without TEST_DATABASE_URL."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_bypass",
+            "input_sanitization",
+            "cors",
+            "data_exposure"
+          ],
+          "notes": "Unauthenticated and malformed-cookie requests did not bypass auth; injection/XSS probes were not reflected and leaked no stack traces, local paths, cookie values, session secret, SQLx/Postgres errors, or raw payloads. OPTIONS /api/user from https://evil.com returned 405 without Access-Control-Allow-Origin echo."
+        },
+        "accessibility": {
+          "status": "skip",
+          "violations": [],
+          "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+        }
+      },
+      "overall_status": "pass"
+    },
+    {
+      "feature_id": "dx-001",
+      "description": "Document developer workflows equivalent to GitHub CLI quickstart without buildin",
+      "category": "developer-experience",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "layout-001",
+      "description": "Implement the signed-in app shell with GitHub-style global navigation, quick lin",
+      "category": "layout",
+      "qa_pass": true,
+      "attempts": 1,
+      "exhausted": false,
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "make test passed; focused app-shell Vitest passed; required Editorial banned-token scan was clean; focused app-shell Playwright setup ran but signed-in cases skipped because TEST_DATABASE_URL/DATABASE_URL is not configured; full make test-e2e passed public/auth smoke before failing in unrelated repository-discussions specs that also require a database URL. Live curl verified anonymous /dashboard redirects to /login?next=%2Fdashboard, and rendered login HTML preserves the Google OAuth next path plus Editorial font/token classes. Ever CLI manual snapshot was unavailable because sessions expired immediately after start."
+        },
+        "api_contract": {
+          "status": "skip",
+          "endpoints_tested": [],
+          "notes": "not applicable for this feature category; QA_MODULES included base and footer only"
+        },
+        "security": {
+          "status": "skip",
+          "checks": [],
+          "notes": "not applicable for this feature category; QA_MODULES included base and footer only"
+        },
+        "accessibility": {
+          "status": "skip",
+          "violations": [],
+          "notes": "not applicable for this feature category; QA_MODULES included base and footer only"
+        }
+      },
+      "overall_status": "pass"
+    },
+    {
+      "feature_id": "nav-001",
+      "description": "Create the global site map routes and navigation skeleton for dashboard, reposit",
+      "category": "nav",
+      "qa_pass": true,
+      "attempts": 1,
+      "exhausted": false,
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "make test passed; mandatory Editorial banned-value scan had no hits; full make test-e2e passed all reachable tests until unrelated repository-discussions DB seeding failed because TEST_DATABASE_URL/DATABASE_URL is missing; targeted nav Playwright specs loaded and skipped signed-in cases for the same missing DB. Direct HTTP verification covered protected redirect preservation for /dashboard, /codespaces, /search, public profile and team skeleton routes returning 200, Editorial font/token classes in rendered HTML, no visible 404 page responses for sampled public nav skeletons, and screenshot evidence at ralph/screenshots/qa/nav-001-team-route.png. Ever CLI expired immediately after start, so it was unavailable for manual interaction."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/auth/current-user",
+            "GET /api/repos",
+            "GET /search/suggestions?q=router",
+            "GET /search/saved-searches"
+          ],
+          "notes": "No dedicated nav-owned data API is required for route skeletons. Relevant auth/search-adjacent endpoints were probed anonymously: Rust API routes returned application/json 401 envelopes with error.code not_authenticated, and protected Next route handlers redirected to /login?next=... rather than returning malformed data or 404s."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_bypass",
+            "input_sanitization",
+            "cors",
+            "data_exposure"
+          ],
+          "notes": "Anonymous protected UI/API access did not bypass auth; SQL/XSS-shaped search URLs were encoded into login redirects without stack traces or reflected raw script HTML in the checked response; OPTIONS probes did not echo Access-Control-Allow-Origin for https://evil.com; API responses did not expose secrets, env values, passwords, or stack traces."
+        },
+        "accessibility": {
+          "status": "skip",
+          "violations": [],
+          "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+        }
+      },
+      "overall_status": "pass"
+    },
+    {
+      "feature_id": "search-001",
+      "description": "Implement GitHub-style global search and jump-to navigation across repositories,",
+      "category": "search",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "marketing-001",
+      "description": "Build the logged-out public home page and global marketing navigation as a low-p",
+      "category": "layout",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "issues-001",
+      "description": "Render repository issue list with query search, open/closed tabs, saved URL filt",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "issues-002",
+      "description": "Implement issue filter menus and sort controls for author, labels, projects, mil",
+      "category": "search",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "issues-003",
+      "description": "Create repository issues through template chooser, issue forms, Markdown editors",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "issues-004",
+      "description": "Render issue detail conversations with timeline events, comments, Markdown, reac",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "prs-001",
+      "description": "Render repository pull request list with query search, open/closed tabs, review/",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "prs-002",
+      "description": "Implement pull request filter menus and sort controls for author, label, project",
+      "category": "search",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "prs-003",
+      "description": "Create pull requests through compare/base-head branch selection, fork comparison",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "prs-004",
+      "description": "Render pull request conversation with timeline events, review requests, checks s",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "prs-005",
+      "description": "Implement pull request Files changed diff review with file tree, split/unified h",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "prs-006",
+      "description": "Support pull request merge methods, mergeability computation, checks integration",
+      "category": "developer-experience",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "actions-001",
+      "description": "Render repository Actions all-workflows run list with workflow rail, filters, ru",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "actions-002",
+      "description": "Render workflow-specific run history and manual workflow dispatch controls.",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "actions-003",
+      "description": "Render workflow run detail with summary, job sidebar, annotations, artifacts, re",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "actions-004",
+      "description": "Implement job log viewer with collapsible steps, line search, log options, and d",
+      "category": "search",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "actions-005",
+      "description": "Workflow YAML parser and event-trigger dispatcher. Parses .github/workflows/*.ym",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "search-002",
+      "description": "Implement global search bar, scoped query-builder modal, autocomplete suggestion",
+      "category": "search",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "search-003",
+      "description": "Render code search results with type counts, language/path facets, query chips, ",
+      "category": "search",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "search-004",
+      "description": "Render issues and pull request search results with shared search shell, result-t",
+      "category": "search",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "search-005",
+      "description": "Search REST API endpoints: /search/code, /search/repositories, /search/issues, /",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "profiles-001",
+      "description": "Render public user profile overview with identity card, follow/block/report cont",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "profiles-002",
+      "description": "Render user repository and starred repository tabs with search, type, language, ",
+      "category": "search",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "orgs-001",
+      "description": "Render organization overview profile with verified identity, pinned repositories",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "orgs-002",
+      "description": "Render organization repository list and public people list with org-scoped filte",
+      "category": "search",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "settings-001",
+      "description": "Render repository Settings overview and persist general feature, merge, visibili",
+      "category": "settings",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "settings-002",
+      "description": "Manage repository access for collaborators and organization teams with role assi",
+      "category": "settings",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "settings-003",
+      "description": "Configure branch protection and repository rulesets that feed pull request merge",
+      "category": "settings",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "settings-004",
+      "description": "Manage repository webhooks, event subscriptions, delivery history, ping tests, a",
+      "category": "developer-experience",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "settings-005",
+      "description": "Manage repository Actions secrets and variables with write-only encrypted values",
+      "category": "settings",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "settings-006",
+      "description": "Configure GitHub Pages-style static publishing from a branch or Actions workflow",
+      "category": "settings",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "releases-001",
+      "description": "Render repository releases list, latest release detail, release reactions, asset",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "releases-002",
+      "description": "Create, edit, publish, draft, prerelease, delete, and upload assets for reposito",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "releases-003",
+      "description": "Render repository tags list with verified signatures, archive links, notes links",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "packages-001",
+      "description": "Render owner package lists for organizations/users with type, visibility, sort, ",
+      "category": "developer-experience",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "packages-002",
+      "description": "Render package detail pages with install commands, version/digest metadata, READ",
+      "category": "developer-experience",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "packages-003",
+      "description": "Implement OCI/container package registry APIs for authenticated push, pull, tag ",
+      "category": "developer-experience",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "notifications-001",
+      "description": "Render the signed-in notifications inbox with folders, default filters, reposito",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "notifications-002",
+      "description": "Implement single and bulk notification triage actions: read, unread, done, move ",
+      "category": "interaction",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "notifications-003",
+      "description": "Manage custom notification inbox filters with documented qualifier validation an",
+      "category": "settings",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "notifications-004",
+      "description": "Implement repository Watch menu and thread-level notification subscriptions for ",
+      "category": "settings",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "personal-settings-001",
+      "description": "Render and save personal public profile settings, avatar, optional identity fiel",
+      "category": "settings",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "personal-settings-002",
+      "description": "Render and save personal notification delivery preferences for web/email channel",
+      "category": "settings",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "credentials-001",
+      "description": "Manage personal access tokens for Git over HTTPS, REST API calls, package regist",
+      "category": "developer-experience",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "credentials-002",
+      "description": "Manage SSH keys, GPG keys, signing key metadata, and vigilant-mode commit verifi",
+      "category": "settings",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "security-001",
+      "description": "Account security: sign-in methods management (linked Google accounts), sudo-mode",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "org-admin-001",
+      "description": "Create organization flow with plan picker, setup form, slug validation, contact ",
+      "category": "onboarding",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "org-admin-002",
+      "description": "Render and save organization profile/settings shell with public profile fields, ",
+      "category": "settings",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "org-admin-003",
+      "description": "Manage organization people, invitations, membership visibility, owner/member rol",
+      "category": "settings",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "org-admin-004",
+      "description": "Build organization teams list, empty state, team creation form, nested-team rule",
+      "category": "settings",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "org-admin-005",
+      "description": "Implement organization member privilege and repository policy settings that cont",
+      "category": "settings",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "commits-001",
+      "description": "Render repository commit history with branch/tag, author, and date filters plus ",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "commits-002",
+      "description": "Render commit detail with verification, parent links, checks, file tree, searcha",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "branches-001",
+      "description": "Render repository branches page with Overview/Active/Stale/All tabs, branch sear",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "insights-001",
+      "description": "Render repository Pulse activity summary with period selector, overview metrics,",
+      "category": "data",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "insights-002",
+      "description": "Render repository contributor analytics with repository-wide commit chart, perio",
+      "category": "data",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "insights-003",
+      "description": "Render repository traffic analytics for push-access users, including clones, vis",
+      "category": "data",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "insights-004",
+      "description": "Render repository network graph and forks list with period/type/sort filters and",
+      "category": "data",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "insights-005",
+      "description": "Render dependency graph dependencies, dependents, package filtering, ecosystem f",
+      "category": "data",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "code-security-001",
+      "description": "Render repository security overview and SECURITY.md policy viewing/editing.",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "code-security-002",
+      "description": "Render and manage Dependabot vulnerability alerts from dependency manifests.",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "code-security-003",
+      "description": "Render and manage code scanning alerts from SARIF uploads and Actions analysis.",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "code-security-004",
+      "description": "Render and manage secret scanning alerts and push-protection outcomes.",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "code-security-005",
+      "description": "Create, publish, and view repository security advisories with package, CVE, CVSS",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "discussions-001",
+      "description": "Render repository Discussions list with pinned discussions, category rail, searc",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "discussions-002",
+      "description": "Create discussions through category chooser, category-specific forms, Markdown c",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "discussions-003",
+      "description": "Render discussion detail pages with timeline comments, replies, reactions, answe",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "discussions-004",
+      "description": "Manage discussion categories, sections, category formats, emoji/name/description",
+      "category": "settings",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "discussions-005",
+      "description": "Moderate and manage discussions through pinning, locking, transferring, deleting",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "discussions-006",
+      "description": "Render and operate discussion polls with poll category list/detail, voting contr",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "projects-001",
+      "description": "Implement user, organization, and repository Projects v2 list pages with search,",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "projects-002",
+      "description": "Implement the Projects v2 table workspace with saved view tabs, filter bar, fiel",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "projects-003",
+      "description": "Implement Projects v2 board and roadmap layouts with layout switching, columns, ",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "projects-004",
+      "description": "Implement Projects v2 custom fields and iterations, including field creation, si",
+      "category": "settings",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "projects-005",
+      "description": "Implement project items, draft issues, linked issue/PR sync, conversion of draft",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "projects-006",
+      "description": "Implement built-in project workflows and automation for status updates, add-item",
+      "category": "settings",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "projects-007",
+      "description": "Implement project settings, permissions, repository linking, templates, visibili",
+      "category": "settings",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "projects-008",
+      "description": "Implement Projects v2 Insights charts with default burn-up chart, custom charts,",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "wiki-001",
+      "description": "Render repository wiki home and page-reading experience with Markdown content, p",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "wiki-002",
+      "description": "Implement wiki page list, create, edit, preview, save, and local Git-backed publ",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "wiki-003",
+      "description": "Implement wiki history, revision viewing, two-revision compare, and revert contr",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "labels-001",
+      "description": "Implement repository label management for listing, searching, sorting, creating,",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "milestones-001",
+      "description": "Implement repository milestone management for list, detail, progress, issue prio",
+      "category": "crud",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "actions-006",
+      "description": "Runner pool and job provisioning. Allocates ephemeral container-based runners, s",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "actions-007",
+      "description": "Live job log streaming and persistence. Streams stdout/stderr from runners to th",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "actions-008",
+      "description": "Workflow artifact upload/download and dependency cache. Implements the artifact ",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "actions-009",
+      "description": "Workflow check-run integration. Each Actions job creates a Check Run on the head",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "actions-010",
+      "description": "Workflow permissions and repository/organization secrets. Resolves the permissio",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "search-006",
+      "description": "Background indexing pipeline. Hooks into git ref updates, issue/PR/comment write",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "search-007",
+      "description": "File finder widget \u2014 keyboard-driven `t` shortcut on a repo to fuzzy-find a file",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "security-002",
+      "description": "Active web sessions panel \u2014 list devices, locations, signed-in time; revoke indi",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "security-003",
+      "description": "Security log \u2014 append-only audit trail of security-relevant actions (sign-in, si",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "globalpulls-001",
+      "description": "Global pull-request dashboard at /pulls \u2014 every PR the signed-in user opened, wa",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "globalissues-001",
+      "description": "Global issue dashboard at /issues \u2014 every issue the signed-in user opened, was a",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "theme-001",
+      "description": "Site-wide theme, accessibility, and responsive layout system. Light/dark/system ",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "api-002",
+      "description": "Webhooks event catalog with HMAC signing. Repo and org owners register webhook e",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "api-003",
+      "description": "REST API rate limiting and API versioning. Returns X-RateLimit-Limit/Remaining/R",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "social-001",
+      "description": "Social loop primitives: star, fork, watch (subscribe), and follow (user-to-user)",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "gist-001",
+      "description": "Gists \u2014 single-file or multi-file snippets at /gist/<id> with their own git hist",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    },
+    {
+      "feature_id": "ai-001",
+      "description": "AI surface \u2014 repository auto-summary card, AI-generated PR summary + suggested r",
+      "category": "feature",
+      "qa_pass": false,
+      "attempts": 0,
+      "exhausted": false,
+      "sub_phases": {}
+    }
+  ]
+}
