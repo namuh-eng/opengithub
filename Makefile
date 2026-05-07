@@ -11,6 +11,7 @@
 .PHONY: check-header test-header check-verbose test-verbose
 .PHONY: db-generate db-migrate db-push api-dev web-dev
 .PHONY: db-up-test db-down-test db-wait-test
+.PHONY: doctor setup-local
 
 # --- Guard: ensure onboarding has run ---
 SETUP_DONE := $(wildcard .ralph-setup-done)
@@ -155,6 +156,73 @@ db-wait-test:
 # Tear down the test DB and drop the volume so the next run starts fresh.
 db-down-test:
 	@docker compose -f docker-compose.test.yml down -v
+
+# Diagnose local dev/test setup. Run this in any worktree to know what's
+# missing. Exits 0 if healthy, non-zero with actionable guidance if not.
+# Agents: run `make doctor` before claiming verification is complete.
+doctor:
+	@ok=1; \
+	if docker info >/dev/null 2>&1; then \
+	  printf "  \033[32m✓\033[0m Docker daemon running\n"; \
+	else \
+	  printf "  \033[31m✗\033[0m Docker daemon not running — run: make setup-local (or start Docker Desktop)\n"; ok=0; \
+	fi; \
+	if docker ps --filter "name=opengithub-postgres-test" --format '{{.Status}}' 2>/dev/null | grep -q "Up"; then \
+	  printf "  \033[32m✓\033[0m postgres-test container up\n"; \
+	else \
+	  printf "  \033[31m✗\033[0m postgres-test container not running — run: make setup-local\n"; ok=0; \
+	fi; \
+	if command -v pg_isready >/dev/null 2>&1 && pg_isready -h localhost -p 55433 -U opengithub -d opengithub_test >/dev/null 2>&1; then \
+	  printf "  \033[32m✓\033[0m Postgres reachable on :55433\n"; \
+	elif docker ps --filter "name=opengithub-postgres-test" --format '{{.Status}}' 2>/dev/null | grep -q "Up"; then \
+	  if docker compose -f docker-compose.test.yml exec -T postgres-test pg_isready -U opengithub -d opengithub_test >/dev/null 2>&1; then \
+	    printf "  \033[32m✓\033[0m Postgres reachable inside container\n"; \
+	  else \
+	    printf "  \033[31m✗\033[0m Postgres container up but not accepting connections\n"; ok=0; \
+	  fi; \
+	else \
+	  printf "  \033[33m!\033[0m Postgres not reachable on :55433 (start it with: make setup-local)\n"; \
+	fi; \
+	if [ -f .env.test ]; then \
+	  printf "  \033[32m✓\033[0m .env.test present\n"; \
+	else \
+	  printf "  \033[31m✗\033[0m .env.test missing — checkout from main, it is committed\n"; ok=0; \
+	fi; \
+	if [ -e .env ]; then \
+	  printf "  \033[32m✓\033[0m .env present\n"; \
+	else \
+	  printf "  \033[33m!\033[0m .env missing (only needed for live OAuth/AWS dev, not for tests)\n"; \
+	fi; \
+	if [ "$$ok" = "1" ]; then \
+	  printf "\n\033[32mLocal verification stack is healthy.\033[0m Run: make all && make test-e2e\n"; \
+	else \
+	  printf "\n\033[31mSome required checks failed.\033[0m Run: make setup-local\n"; exit 1; \
+	fi
+
+# One-shot bring-up of the local test DB. Idempotent — safe to rerun.
+# Boots Docker Desktop if needed, starts postgres-test, runs migrations,
+# then runs `make doctor` to confirm.
+setup-local:
+	@if ! docker info >/dev/null 2>&1; then \
+	  echo "Starting Docker Desktop..."; \
+	  open -a Docker 2>/dev/null || (echo "Could not start Docker. Open it manually and rerun." && exit 1); \
+	  for i in $$(seq 1 60); do \
+	    if docker info >/dev/null 2>&1; then break; fi; \
+	    sleep 2; \
+	  done; \
+	  if ! docker info >/dev/null 2>&1; then \
+	    echo "Docker did not become ready within 120s. Start it manually and rerun." && exit 1; \
+	  fi; \
+	fi
+	@echo "Bringing up postgres-test container..."
+	@$(MAKE) -s db-up-test
+	@echo "Applying migrations (if sqlx-cli installed)..."
+	@if command -v sqlx >/dev/null 2>&1 && [ -d crates/api/migrations ]; then \
+	  DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test sqlx migrate run --source crates/api/migrations || true; \
+	else \
+	  echo "(sqlx-cli not installed or no migrations yet — skipping)"; \
+	fi
+	@$(MAKE) -s doctor
 
 # Clean build artifacts
 clean:

@@ -23,11 +23,25 @@ You are the independent QA evaluator. The build agent claims features work — y
 An autonomously-built clone of a SaaS product. It has its own backend (cloud services + database) and may be deployed. Your job is to make sure it actually works.
 
 ## Commands
+- `make doctor` — diagnose local verification stack. **Run this FIRST in any worktree.**
+- `make setup-local` — start Docker, bring up the test Postgres on :55433, apply migrations. Idempotent.
 - `make check` — typecheck + lint/format. Run after every code change.
 - `make test` — run unit tests. Must all pass.
-- `make test-e2e` — run E2E tests. Run FIRST before manual testing.
+- `make test-e2e` — run E2E tests. Requires `make setup-local` to have run.
 - `make all` — check + test
 - `make dev` — start dev server (if not already running)
+
+## Verification Setup — read before claiming a test pass
+
+If `make test-e2e` reports "no Playwright detail" or DB-backed tests "self-skip", the local test DB is not running. **Do not log this as "verified".** Fix the setup:
+
+1. `make doctor` — green/red checklist of what's missing.
+2. `make setup-local` — fix it. Boots Docker, starts `opengithub-postgres-test` container on :55433, runs migrations.
+3. Re-run `make all && make test-e2e`. These automatically pick up the committed `.env.test`.
+
+**The test DB URL is fixed:** `postgresql://opengithub:opengithub@localhost:55433/opengithub_test`. Do NOT invent alternative URLs — the watchdog wasted many iterations on `postgresql://postgres@localhost:55432/opengithub_identity_test`, which is wrong on every dimension. The correct values live in `docker-compose.test.yml` and `.env.test`.
+
+New worktrees created via `./hack/create_worktree.sh` automatically symlink `.env.test` and run `make doctor`, so you know immediately if the worktree is verification-ready.
 
 ## QA Sub-Phases (Progressive Disclosure)
 

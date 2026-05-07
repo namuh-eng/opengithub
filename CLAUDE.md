@@ -18,13 +18,29 @@ All loops run via `codex exec` — no Anthropic API key required.
 
 ## Commands
 All commands go through `make`. The Makefile is a contract — onboarding wires up real recipes based on your stack.
+- `make doctor` — diagnose local verification stack (run this FIRST in any new worktree)
+- `make setup-local` — boot Docker, start test Postgres on :55433, apply migrations
 - `make check` — typecheck + lint/format
 - `make test` — run unit tests
-- `make test-e2e` — run E2E tests (requires dev server)
+- `make test-e2e` — run E2E tests (requires `make setup-local` once, then dev server)
 - `make all` — check + test
 - `make dev` — start dev server on port 3015
 - `make build` — production build
 - `make db-push` — push schema to database
+
+## Verification Loop (CRITICAL — read before claiming "tests pass")
+
+**Every worktree** needs the local test DB running before E2E or DB-backed tests are real.
+
+1. **In a fresh worktree, run `make doctor` first.** It prints a green/red checklist (Docker, postgres-test container, .env.test, .env).
+2. **If anything is red, run `make setup-local`.** It's idempotent — boots Docker if needed, starts the postgres-test container, runs migrations.
+3. **Then run `make all && make test-e2e`.** Use the committed `.env.test` (`TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test`). Do NOT invent a `TEST_DATABASE_URL` — the watchdog wasted many cycles doing that.
+4. **`make test-e2e` exiting with "no Playwright detail" means the DB was unreachable** — go back to step 2. Do not log this as "verified".
+
+The test DB definition is in `docker-compose.test.yml` (port 55433, user/pass `opengithub`/`opengithub`, db `opengithub_test`). `.env.test` is committed and matches it.
+
+## Worktrees
+Use `./hack/create_worktree.sh [name] [base]`. It symlinks `.env`, `.env.test`, `.mcp.json`, copies `.claude/`, touches `.ralph-setup-done`, and runs `make doctor` so you immediately know if setup is healthy.
 
 ## Quality Standards
 - Strict type checking enabled (language-specific: TypeScript strict, Go vet, etc.)
