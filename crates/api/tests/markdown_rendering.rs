@@ -137,6 +137,17 @@ async fn markdown_api_returns_error_envelopes_for_invalid_toggle() {
 }
 
 #[tokio::test]
+async fn markdown_api_returns_error_envelopes_for_invalid_render_json() {
+    let app = opengithub_api::build_app_with_config(None, super_config());
+
+    let (status, body) = send_json(app, "/api/markdown/render", json!({})).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(body["error"]["code"], "invalid_json");
+    assert_eq!(body["status"], 400);
+}
+
+#[tokio::test]
 async fn markdown_cache_returns_cached_hit_with_database() {
     let Some(pool) = database_pool().await else {
         eprintln!(

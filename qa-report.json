@@ -1346,5 +1346,68 @@
     ],
     "bugs_found": [],
     "fix_description": "no fix needed"
+  },
+  {
+    "feature_id": "markdown-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed; focused backend markdown_rendering tests passed 6/6; focused Vitest markdown-rendering tests passed 3/3; focused Playwright markdown docs E2E passed 2/2 after starting the Rust API. Live scenario verified /docs/markdown, sanitized rendering, Mermaid/math text preservation through the current markdown path, task toggles, mention and issue links, repository-relative path rewriting, and saved a QA screenshot. Ever CLI session expired immediately after start, so manual browser evidence used Playwright plus curl/rendered HTML."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "POST /api/markdown/render",
+          "POST /api/markdown/task-toggle",
+          "POST /markdown/preview",
+          "OPTIONS /api/markdown/render"
+        ],
+        "notes": "Happy-path render returns JSON with contentSha/html/cached, content-type application/json, sanitized HTML, language-decorated code blocks, task toggles, @mention/#issue links, and repository-relative blob/raw rewrites. Task toggle returns updated markdown plus rendered HTML. Missing-field JSON now returns the standard 400 invalid_json envelope for both markdown API endpoints. Invalid task index returns 422 validation_failed. Next preview proxy forwards to the same renderer and returns matching JSON."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Markdown render and task-toggle are public rendering utilities with no user data returned. XSS probes with javascript: hrefs, onerror attributes, and script tags were sanitized without raw executable HTML. Hostile-origin OPTIONS returned 405 without Access-Control-Allow-Origin echo or wildcard. Error responses did not leak stack traces, local paths, env values, SQLx/Postgres text, or raw secrets."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json, qa-hints.json markdown-001 entry, BUILD_GUIDE.md, web/AGENTS.md, markdown Rust routes/domain code, MarkdownBody, MarkdownEditor, and focused tests.",
+      "Ran mandatory Editorial banned-value scan with rg -n -e: zero banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran make test: Cargo tests passed and web tests passed (654 passed).",
+      "Ran make test-e2e: broad suite failed outside markdown setup because the API was not initially listening on :3016 and DB-backed discussion specs lacked TEST_DATABASE_URL; after starting Rust API, focused markdown Playwright passed 2/2.",
+      "Verified live /docs/markdown initially returned 500 when the API was down, then 200 with Editorial token/font classes and rendered markdown sample once the API was running.",
+      "Live curl-probed POST /api/markdown/render for sanitized script removal, Mermaid fenced code preservation, math text preservation, task toggles, @mention links, #issue links, and repository-relative link/image rewriting.",
+      "Live curl-probed POST /api/markdown/task-toggle for successful toggle and invalid-task 422 validation_failed envelope.",
+      "Found missing-field JSON returned Axum plaintext 422 instead of the standard JSON envelope; fixed markdown routes to use RestJson and added a backend regression test.",
+      "Live curl-probed missing-field JSON after the fix: POST /api/markdown/render and POST /api/markdown/task-toggle both returned application/json 400 invalid_json envelopes.",
+      "Live curl-probed POST /markdown/preview and verified the Next proxy returns renderer JSON with heading and task-toggle HTML.",
+      "Live curl-probed XSS payloads with javascript: href, img onerror, and script tags; output removed executable attributes/protocols and did not include script tags.",
+      "Live CORS probe for OPTIONS /api/markdown/render from https://evil.com returned 405 without Access-Control-Allow-Origin.",
+      "Ran .scratch/markdown-001-scenario.sh against live Next and Rust API: passed.",
+      "Saved screenshot ralph/screenshots/qa/markdown-001-docs.png with Playwright because Ever CLI sessions expired immediately after ever start."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "api_contract",
+        "description": "Malformed or missing JSON for markdown endpoints used Axum's default plaintext extractor rejection instead of the project's standard JSON error envelope.",
+        "expected": "Invalid render/task-toggle request bodies should return application/json with { error: { code, message }, status }.",
+        "actual": "POST /api/markdown/render with {} returned 422 text/plain: Failed to deserialize the JSON body into the target type: missing field `markdown`...",
+        "reproduction": "curl -i -X POST http://localhost:3016/api/markdown/render -H 'Content-Type: application/json' -d '{}'"
+      }
+    ],
+    "fix_description": "Switched markdown render and task-toggle routes to the shared RestJson extractor and added a markdown API regression test for invalid render JSON."
   }
 ]

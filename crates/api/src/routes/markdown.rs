@@ -1,7 +1,7 @@
 use axum::{extract::State, http::StatusCode, routing::post, Json, Router};
 
 use crate::{
-    api_types::{error_response, ErrorEnvelope},
+    api_types::{error_response, ErrorEnvelope, RestJson},
     domain::markdown::{
         render_markdown, toggle_task, MarkdownError, RenderMarkdownInput, ToggleTaskInput,
     },
@@ -16,7 +16,7 @@ pub fn router() -> Router<AppState> {
 
 async fn render(
     State(state): State<AppState>,
-    Json(request): Json<RenderMarkdownInput>,
+    RestJson(request): RestJson<RenderMarkdownInput>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let rendered = render_markdown(state.db.as_ref(), request)
         .await
@@ -27,7 +27,7 @@ async fn render(
 
 async fn toggle(
     State(state): State<AppState>,
-    Json(request): Json<ToggleTaskInput>,
+    RestJson(request): RestJson<ToggleTaskInput>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let output = toggle_task(state.db.as_ref(), request)
         .await
