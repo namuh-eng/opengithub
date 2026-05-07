@@ -2386,5 +2386,71 @@
       }
     ],
     "fix_description": "Added the fork options dialog and propagated destination owner/name/mainBranchOnly through the Next action route and Rust fork API; fork names now default to -fork and destination owners are authorization-checked."
+  },
+  {
+    "feature_id": "ai-001",
+    "attempt": 1,
+    "status": "partial",
+    "sub_phases": {
+      "functional": {
+        "status": "partial",
+        "notes": "Repository, PR, and release AI UI unit coverage passed; focused AI Rust contract compiled and ran but DB-backed assertions self-skipped because TEST_DATABASE_URL localhost:55433 was unavailable. make test passed after the fix; make test-e2e timed out in db-wait-test before Playwright started. Live OpenAI/provider and signed-session E2E remain unverified in this environment."
+      },
+      "api_contract": {
+        "status": "partial",
+        "endpoints_tested": [
+          "GET /api/ai/repos/:owner/:repo/summary",
+          "POST /api/ai/repos/:owner/:repo/summary",
+          "GET /api/ai/repos/:owner/:repo/pulls/:number/summary",
+          "POST /api/ai/repos/:owner/:repo/pulls/:number/summary",
+          "POST /api/ai/repos/:owner/:repo/releases/changelog"
+        ],
+        "notes": "Route and domain inspection verified JSON shapes, provider error mapping, cache contract, and global rate-limit middleware coverage. Added a focused Rust contract for repository/user opt-in behavior. DB-backed happy-path/provider calls could not run because the test Postgres service was unavailable."
+      },
+      "security": {
+        "status": "partial",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure",
+          "private_repo_opt_in"
+        ],
+        "notes": "Code inspection verified private repositories require read permission before AI context is built, provider failures return generic errors, and rate limiting is applied by the global middleware. Fixed the per-repository opt-in gap so disabled public repositories also avoid provider calls. Anonymous/signed curl probes could not run without a healthy DB-backed app session."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json and confirmed no previous ai-001 QA attempts existed.",
+      "Read BUILD_GUIDE.md, ralph-config.json, qa-hints.json, and web/AGENTS.md; ai-001 uses Rust Axum /api/ai/* endpoints, OpenAI chat completions, repository/user AI opt-in settings, ai_outputs cache rows, and API rate-limit middleware.",
+      "Inspected crates/api/src/routes/ai.rs and crates/api/src/domain/ai.rs for repository summary, PR summary, changelog, provider failure mapping, readable repository checks, opt-in gates, cache keys, and OpenAI model selection.",
+      "Ran mandatory Editorial banned-token scan with ripgrep-native syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Found ai_gate only blocked disabled private repositories; disabled public repositories still proceeded to call OpenAI despite the per-repo opt-in feature contract.",
+      "Fixed ai_gate so any repository with ai_features_enabled=false returns enabled:false without building provider requests, with separate public/private reason text.",
+      "Added crates/api/tests/api_ai_surfaces_contract.rs covering disabled public repository, disabled private repository, and disabled user AI settings without requiring OPENAI_API_KEY calls.",
+      "Ran cargo test -p opengithub-api --test api_ai_surfaces_contract -- --nocapture without DB env: 1 passed with DB self-skip.",
+      "Sourced .env and .env.test, confirmed TEST_DATABASE_URL and DATABASE_URL variables exist, then pg_isready reported localhost:55433 - no response.",
+      "Attempted make db-up-test with a 180s timeout; it exited Error 130 and localhost:55433 still reported no response.",
+      "Ran cd web && npx vitest run tests/repository-code-overview.test.tsx tests/repository-pull-request-detail.test.tsx tests/repository-releases-page.test.tsx: 3 files passed, 59 tests passed.",
+      "Ran cargo fmt --all --check: passed.",
+      "Ran make check as part of timeout-bounded make check && make test: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran make test separately with a 900s timeout: Cargo tests passed and web tests passed (655 passed).",
+      "Attempted make test-e2e with a 180s timeout; it timed out in db-wait-test before Playwright started."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "security",
+        "description": "Repository AI opt-in was enforced only for private repositories, so public repositories with ai_features_enabled=false still built repository context and attempted an OpenAI provider call.",
+        "expected": "The per-repository AI opt-in setting prevents provider calls for any repository when ai_features_enabled=false; private repository content never leaves the cluster unless the repository is explicitly enabled.",
+        "actual": "ai_gate returned disabled only when repository.visibility was not public and repo_enabled was false; disabled public repositories continued into cached_or_generate.",
+        "reproduction": "Before this fix, create a public repository with repositories.ai_features_enabled=false and request GET /api/ai/repos/:owner/:repo/summary; the route proceeds toward cached_or_generate/OpenAI instead of returning enabled:false."
+      }
+    ],
+    "fix_description": "Enforced repository AI opt-in for public and private repositories and added a focused AI contract test. Full DB-backed provider/session verification remains blocked by an unhealthy local test Postgres service, so prd.json keeps ai-001.qa_pass=false."
   }
 ]

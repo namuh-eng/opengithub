@@ -312,10 +312,13 @@ async fn ai_gate(
             .bind(repository.id)
             .fetch_one(pool)
             .await?;
-    if repository.visibility != RepositoryVisibility::Public && !repo_enabled {
-        return Ok(Some(
-            "AI features are disabled for private repository content.".to_owned(),
-        ));
+    if !repo_enabled {
+        let reason = if repository.visibility == RepositoryVisibility::Public {
+            "AI features are disabled for this repository."
+        } else {
+            "AI features are disabled for private repository content."
+        };
+        return Ok(Some(reason.to_owned()));
     }
     if let Some(user_id) = actor_user_id {
         let user_enabled = sqlx::query_scalar::<_, bool>(
