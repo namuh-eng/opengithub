@@ -15,6 +15,7 @@ import type {
   IssueListMilestone,
   IssueListUser,
   MergeMethod,
+  PullRequestAiSummary,
   PullRequestDetailView,
   PullRequestSubscriptionState,
   PullRequestTimelineItem,
@@ -25,9 +26,14 @@ import type {
 type RepositoryPullRequestDetailPageProps = {
   repository: RepositoryOverview;
   pullRequest: PullRequestDetailView;
+  aiSummary?: PullRequestAiSummary | ApiErrorEnvelope | null;
   timeline: PullRequestTimelineItem[];
   viewerAuthenticated: boolean;
 };
+
+function isApiError(value: unknown): value is ApiErrorEnvelope {
+  return Boolean(value && typeof value === "object" && "error" in value);
+}
 
 function relativeTime(value: string) {
   const timestamp = new Date(value).getTime();
@@ -151,6 +157,7 @@ function SidebarSection({
 }
 
 export function RepositoryPullRequestDetailPage({
+  aiSummary,
   repository,
   pullRequest: initialPullRequest,
   timeline,
@@ -535,6 +542,64 @@ export function RepositoryPullRequestDetailPage({
             </Link>
           ))}
         </nav>
+
+        <section className="card mb-6 p-5" aria-label="AI pull request summary">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="t-label">AI review brief</p>
+              <h2 className="t-h3 mt-1">Summary and reviewer suggestions</h2>
+            </div>
+            <form action={`${activePath}/ai/summary`} method="post">
+              <button className="btn sm" type="submit">
+                Regenerate
+              </button>
+            </form>
+          </div>
+          {aiSummary && !isApiError(aiSummary) && aiSummary.output ? (
+            <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_280px]">
+              <p
+                className="t-sm whitespace-pre-wrap"
+                style={{ color: "var(--ink-2)" }}
+              >
+                {aiSummary.output.output}
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <p className="t-label">Files of interest</p>
+                  <ul className="mt-2 space-y-1">
+                    {aiSummary.filesOfInterest.map((file) => (
+                      <li className="t-xs" key={file.path}>
+                        <span className="t-mono-sm">{file.path}</span> ·{" "}
+                        {file.note}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <p className="t-label">Suggested reviewers</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {aiSummary.suggestedReviewers.map((reviewer) => (
+                      <span className="chip soft" key={reviewer.login}>
+                        {reviewer.login} · {reviewer.reason}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                {aiSummary.inlineCommentSeed ? (
+                  <p className="t-xs">{aiSummary.inlineCommentSeed}</p>
+                ) : null}
+              </div>
+            </div>
+          ) : aiSummary && !isApiError(aiSummary) && !aiSummary.enabled ? (
+            <p className="t-sm mt-4" style={{ color: "var(--ink-3)" }}>
+              {aiSummary.reason}
+            </p>
+          ) : (
+            <p className="t-sm mt-4" style={{ color: "var(--ink-3)" }}>
+              Generate a summary after the diff is ready for review.
+            </p>
+          )}
+        </section>
 
         <div className="grid grid-cols-[minmax(0,1fr)_296px] gap-8 max-lg:grid-cols-1">
           <div className="min-w-0">

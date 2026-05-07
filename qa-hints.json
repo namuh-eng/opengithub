@@ -8193,5 +8193,20 @@
       "Validate embed script rendering inside a third-party page and CSP-heavy host page",
       "Exercise comment moderation and comment creation if QA treats full gist comments parity as required beyond the read surface"
     ]
+  },
+  {
+    "feature_id": "ai-001",
+    "tests_written": [
+      "repository AI summary card renders cached output and regenerate POST action",
+      "pull request AI brief renders TL;DR, files of interest, suggested reviewers, and regenerate POST action",
+      "release detail renders AI changelog output and generate changelog POST action",
+      "API docs list repository summary, PR summary, and release changelog AI endpoints"
+    ],
+    "needs_deeper_qa": [
+      "Live OpenAI provider behavior with OPENAI_API_KEY, prompt quality, and provider failure handling",
+      "Private repository opt-in enforcement against real private repositories and user AI setting toggles",
+      "Rate-limit bucket behavior for repeated AI generation under real signed sessions",
+      "Full signed-session E2E after local TEST_DATABASE_URL credentials are healthy"
+    ]
   }
 ]

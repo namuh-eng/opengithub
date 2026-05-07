@@ -3,6 +3,7 @@ import { MarkdownBody } from "@/components/MarkdownBody";
 import { RepositoryReleaseInteractions } from "@/components/RepositoryReleaseInteractions";
 import { RepositoryShell } from "@/components/RepositoryShell";
 import type {
+  AiChangelog,
   ApiErrorEnvelope,
   ListEnvelope,
   ReleaseTagSummary,
@@ -19,6 +20,7 @@ type RepositoryReleasesPageProps = {
 
 type RepositoryReleaseDetailPageProps = {
   authenticated: boolean;
+  aiChangelog?: AiChangelog | ApiErrorEnvelope | null;
   repository: RepositoryOverview;
   release: RepositoryReleaseDetail | ApiErrorEnvelope;
 };
@@ -340,6 +342,7 @@ export function RepositoryReleasesPage({
 
 export function RepositoryReleaseDetailPage({
   authenticated,
+  aiChangelog,
   release,
   repository,
 }: RepositoryReleaseDetailPageProps) {
@@ -387,6 +390,41 @@ export function RepositoryReleaseDetailPage({
               release={release}
               repository={repository}
             />
+            <section className="card mt-5 p-5" aria-label="AI changelog">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="t-label">AI changelog</p>
+                  <h2 className="t-h3 mt-1">Generated from commit history</h2>
+                </div>
+                <form
+                  action={`${basePath(repository)}/releases/${release.tagName}/ai/changelog`}
+                  method="post"
+                >
+                  <button className="btn sm" type="submit">
+                    Generate changelog with AI
+                  </button>
+                </form>
+              </div>
+              {aiChangelog && !isApiError(aiChangelog) && aiChangelog.output ? (
+                <p
+                  className="t-sm mt-4 whitespace-pre-wrap"
+                  style={{ color: "var(--ink-2)" }}
+                >
+                  {aiChangelog.output.output}
+                </p>
+              ) : aiChangelog &&
+                !isApiError(aiChangelog) &&
+                !aiChangelog.enabled ? (
+                <p className="t-sm mt-4" style={{ color: "var(--ink-3)" }}>
+                  {aiChangelog.reason}
+                </p>
+              ) : (
+                <p className="t-sm mt-4" style={{ color: "var(--ink-3)" }}>
+                  Generate a grouped changelog, then edit the notes before
+                  publishing.
+                </p>
+              )}
+            </section>
             {release.tagSignatureSummary ? (
               <p className="t-xs mt-3">{release.tagSignatureSummary}</p>
             ) : null}

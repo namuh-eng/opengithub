@@ -3236,6 +3236,48 @@ export type RepositoryReleaseDetail = RepositoryReleaseSummary & {
   tagSignatureSummary: string | null;
 };
 
+export type AiOutput = {
+  id: string;
+  kind: string;
+  scopeType: string;
+  scopeId: string;
+  contentHash: string;
+  promptVersion: string;
+  model: string;
+  output: string;
+  generatedAt: string;
+  regeneratedCount: number;
+  cached: boolean;
+};
+
+export type RepositoryAiSummary = {
+  enabled: boolean;
+  reason: string | null;
+  output: AiOutput | null;
+};
+
+export type PullRequestAiSummary = {
+  enabled: boolean;
+  reason: string | null;
+  output: AiOutput | null;
+  filesOfInterest: Array<{ path: string; note: string }>;
+  suggestedReviewers: Array<{ login: string; reason: string }>;
+  inlineCommentSeed: string | null;
+};
+
+export type AiChangelogRequest = {
+  previousTag?: string | null;
+  targetTag: string;
+};
+
+export type AiChangelog = {
+  enabled: boolean;
+  reason: string | null;
+  output: AiOutput | null;
+  previousTag: string | null;
+  targetTag: string;
+};
+
 export type ReleaseMutation = {
   tagName?: string;
   target?: string;
@@ -15102,6 +15144,129 @@ export async function getRepositoryFromCookie(
   }
 
   return (await response.json()) as RepositoryOverview;
+}
+
+function aiEndpoint(
+  owner: string,
+  repo: string,
+  suffix: string,
+  regenerate = false,
+) {
+  const query = regenerate ? "?regenerate=true" : "";
+  return `/api/ai/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}${suffix}${query}`;
+}
+
+async function fetchAiFromCookie<T>(
+  cookie: string | null | undefined,
+  endpoint: string,
+  fallbackMessage: string,
+  init?: RequestInit,
+): Promise<T | ApiErrorEnvelope> {
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl()}${endpoint}`, {
+      ...init,
+      headers: {
+        ...(init?.headers ?? {}),
+        ...(cookie ? { cookie } : {}),
+      },
+      cache: "no-store",
+    });
+  } catch {
+    return {
+      error: { code: "network_error", message: fallbackMessage },
+      status: 503,
+    };
+  }
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    return (
+      (payload as ApiErrorEnvelope | null) ?? {
+        error: { code: "ai_failed", message: fallbackMessage },
+        status: response.status,
+      }
+    );
+  }
+  return payload as T;
+}
+
+export function getRepositoryAiSummaryFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+) {
+  return fetchAiFromCookie<RepositoryAiSummary>(
+    cookie,
+    aiEndpoint(owner, repo, "/summary"),
+    "Repository AI summary is temporarily unavailable.",
+  );
+}
+
+export function regenerateRepositoryAiSummaryFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+) {
+  return fetchAiFromCookie<RepositoryAiSummary>(
+    cookie,
+    aiEndpoint(owner, repo, "/summary", true),
+    "Repository AI summary could not be regenerated.",
+    { method: "POST" },
+  );
+}
+
+export function getPullRequestAiSummaryFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  number: number | string,
+) {
+  return fetchAiFromCookie<PullRequestAiSummary>(
+    cookie,
+    aiEndpoint(
+      owner,
+      repo,
+      `/pulls/${encodeURIComponent(String(number))}/summary`,
+    ),
+    "Pull request AI summary is temporarily unavailable.",
+  );
+}
+
+export function regeneratePullRequestAiSummaryFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  number: number | string,
+) {
+  return fetchAiFromCookie<PullRequestAiSummary>(
+    cookie,
+    aiEndpoint(
+      owner,
+      repo,
+      `/pulls/${encodeURIComponent(String(number))}/summary`,
+      true,
+    ),
+    "Pull request AI summary could not be regenerated.",
+    { method: "POST" },
+  );
+}
+
+export function generateAiChangelogFromCookie(
+  cookie: string | null | undefined,
+  owner: string,
+  repo: string,
+  request: AiChangelogRequest,
+) {
+  return fetchAiFromCookie<AiChangelog>(
+    cookie,
+    aiEndpoint(owner, repo, "/releases/changelog", true),
+    "AI changelog could not be generated.",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
 }
 
 function repositoryLabelsPath(

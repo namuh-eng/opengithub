@@ -4,6 +4,7 @@ import {
   type AccountSecurityLogQuery,
   type AccountSecuritySettingsFetchResult,
   type AccountSessionsFetchResult,
+  type AiChangelogRequest,
   type CodeSearchQuery,
   type CollaborationSearchQuery,
   type DashboardSummaryQuery,
@@ -13,6 +14,7 @@ import {
   type GlobalIssueListQuery,
   type GlobalPullRequestListQuery,
   type GlobalSearchQuery,
+  generateAiChangelogFromCookie,
   getAccountSecurityLogFromCookie,
   getAccountSecuritySettingsFromCookie,
   getAccountSessionsFromCookie,
@@ -57,6 +59,7 @@ import {
   getProjectItemDetailFromCookie,
   getPublicOrganizationProfileFromCookie,
   getPublicUserProfileFromCookie,
+  getPullRequestAiSummaryFromCookie,
   getPullRequestCompareFromCookie,
   getRepositoryAccessSettingsFromCookie,
   getRepositoryActionsCachesFromCookie,
@@ -66,6 +69,7 @@ import {
   getRepositoryActionsRunnerSettingsFromCookie,
   getRepositoryActionsSecretsSettingsFromCookie,
   getRepositoryActionsWorkflowDashboardFromCookie,
+  getRepositoryAiSummaryFromCookie,
   getRepositoryBlameFromCookie,
   getRepositoryBlobFromCookie,
   getRepositoryBranchActivityFromCookie,
@@ -231,6 +235,43 @@ export async function getSessionAndShellContext() {
 export async function getApiUser() {
   const requestHeaders = await headers();
   return getApiUserFromCookie(requestHeaders.get("cookie"));
+}
+
+export async function getRepositoryAiSummary(owner: string, repo: string) {
+  const requestHeaders = await headers();
+  return getRepositoryAiSummaryFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+  );
+}
+
+export async function getPullRequestAiSummary(
+  owner: string,
+  repo: string,
+  number: number | string,
+) {
+  const requestHeaders = await headers();
+  return getPullRequestAiSummaryFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    number,
+  );
+}
+
+export async function generateAiChangelog(
+  owner: string,
+  repo: string,
+  request: AiChangelogRequest,
+) {
+  const requestHeaders = await headers();
+  return generateAiChangelogFromCookie(
+    requestHeaders.get("cookie"),
+    owner,
+    repo,
+    request,
+  );
 }
 
 export async function getGists(

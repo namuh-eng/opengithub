@@ -455,6 +455,53 @@ describe("RepositoryPullRequestDetailPage", () => {
     expect(screen.getByRole("button", { name: "Comment" })).toBeDisabled();
   });
 
+  it("renders the AI review brief, risk files, reviewers, and regenerate action", () => {
+    const { container } = render(
+      <RepositoryPullRequestDetailPage
+        aiSummary={{
+          enabled: true,
+          reason: null,
+          output: {
+            id: "ai-pr-1",
+            kind: "pr_summary",
+            scopeType: "pull_request",
+            scopeId: "pr-1",
+            contentHash: "hash",
+            promptVersion: "ai-001-v1",
+            model: "gpt-4o",
+            output: "TL;DR: routes moved into smaller modules.",
+            generatedAt: "2026-05-07T00:00:00Z",
+            regeneratedCount: 0,
+            cached: true,
+          },
+          filesOfInterest: [
+            {
+              path: "web/src/components/RepositoryPullRequestDetailPage.tsx",
+              note: "modified with reviewer-visible UI changes",
+            },
+          ],
+          suggestedReviewers: [{ login: "ashley", reason: "recent committer" }],
+          inlineCommentSeed:
+            "Ask whether diff coverage needs an integration test.",
+        }}
+        pullRequest={pullRequestDetail()}
+        repository={repositoryOverview()}
+        timeline={pullRequestTimeline()}
+        viewerAuthenticated={true}
+      />,
+    );
+
+    expect(screen.getByLabelText("AI pull request summary")).toHaveTextContent(
+      "TL;DR",
+    );
+    expect(screen.getByText("ashley · recent committer")).toBeVisible();
+    expect(
+      container.querySelector(
+        'form[action="/mona/octo-app/pull/42/ai/summary"]',
+      ),
+    ).toHaveAttribute("method", "post");
+  });
+
   it("opens merge confirmation, switches methods, and submits commit details", async () => {
     const mergedPullRequest = pullRequestDetail({
       state: "merged",

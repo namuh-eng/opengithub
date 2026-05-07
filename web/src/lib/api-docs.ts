@@ -87,6 +87,71 @@ export const apiEndpointDocs: ApiEndpointDoc[] = [
     ],
   },
   {
+    id: "ai-repository-summary",
+    method: "GET",
+    path: "/api/ai/repos/{owner}/{repo}/summary",
+    title: "AI repository summary",
+    description:
+      "Returns or generates a cached OpenAI-backed repository summary from README, top-level files, and recent commits.",
+    auth: "Optional signed opengithub session cookie; private repositories require read access and repository AI opt-in",
+    response: `{
+  "enabled": true,
+  "reason": null,
+  "output": {
+    "kind": "repo_summary",
+    "model": "gpt-4o-mini",
+    "output": "Three concise bullets...",
+    "cached": true
+  }
+}`,
+    notes: [
+      "POST to the same path regenerates the cache entry.",
+      "Private repository content never leaves the cluster unless repository ai_features_enabled is true.",
+      "Outputs are cached in ai_outputs by content_hash, prompt_version, and model.",
+    ],
+  },
+  {
+    id: "ai-pull-request-summary",
+    method: "GET",
+    path: "/api/ai/repos/{owner}/{repo}/pulls/{number}/summary",
+    title: "AI pull request summary",
+    description:
+      "Builds the PR AI tab contract: TL;DR output, files of interest, reviewer suggestions, and an author-only inline comment seed.",
+    auth: "Optional signed opengithub session cookie; private repositories require read access and repository AI opt-in",
+    response: `{
+  "enabled": true,
+  "filesOfInterest": [{ "path": "src/main.rs", "note": "modified +12 -3" }],
+  "suggestedReviewers": [{ "login": "mona", "reason": "recent committer" }],
+  "inlineCommentSeed": "Check whether this needs an integration test."
+}`,
+    notes: [
+      "POST to the same path forces a fresh OpenAI call when OPENAI_API_KEY is configured.",
+      "Reviewer suggestions prefer requested reviewers and fall back to recent committers.",
+    ],
+  },
+  {
+    id: "ai-release-changelog",
+    method: "POST",
+    path: "/api/ai/repos/{owner}/{repo}/releases/changelog",
+    title: "AI release changelog",
+    description:
+      "Generates grouped Added/Changed/Fixed/Deprecated Markdown bullets from repository commit history for edit-before-publish release notes.",
+    auth: "Optional signed opengithub session cookie; private repositories require read access and repository AI opt-in",
+    request: `{
+  "previousTag": "v1.9.0",
+  "targetTag": "v2.0.0"
+}`,
+    response: `{
+  "enabled": true,
+  "targetTag": "v2.0.0",
+  "output": { "kind": "changelog", "model": "gpt-4o" }
+}`,
+    notes: [
+      "Uses the same ai_outputs cache contract as repository and PR summaries.",
+      "Provider failures return ai_provider_failed without exposing prompts or secrets.",
+    ],
+  },
+  {
     id: "organization-slug-availability",
     method: "GET",
     path: "/api/organizations/slug-availability?name=Acme%20Labs",

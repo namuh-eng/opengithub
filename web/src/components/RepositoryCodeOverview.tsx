@@ -3,17 +3,29 @@ import { RepositoryCodeToolbar } from "@/components/RepositoryCodeToolbar";
 import { RepositoryFileTable } from "@/components/RepositoryFileTable";
 import { RepositoryQuickSetup } from "@/components/RepositoryQuickSetup";
 import { RepositoryShell } from "@/components/RepositoryShell";
-import type { RepositoryOverview } from "@/lib/api";
+import type {
+  ApiErrorEnvelope,
+  RepositoryAiSummary,
+  RepositoryOverview,
+} from "@/lib/api";
 
 type RepositoryCodeOverviewProps = {
   repository: RepositoryOverview;
+  aiSummary?: RepositoryAiSummary | ApiErrorEnvelope | null;
 };
+
+function isApiError(value: unknown): value is ApiErrorEnvelope {
+  return Boolean(value && typeof value === "object" && "error" in value);
+}
 
 function formatCount(value: number, label: string) {
   return `${new Intl.NumberFormat("en").format(value)} ${label}`;
 }
 
-function RepositorySidebar({ repository }: RepositoryCodeOverviewProps) {
+function RepositorySidebar({
+  aiSummary,
+  repository,
+}: RepositoryCodeOverviewProps) {
   const base = `/${repository.owner_login}/${repository.name}`;
 
   return (
@@ -48,6 +60,39 @@ function RepositorySidebar({ repository }: RepositoryCodeOverviewProps) {
             ))}
           </div>
         ) : null}
+      </section>
+      <section
+        className="card p-4"
+        aria-label="AI repository summary"
+        style={{ background: "var(--surface-2)" }}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="t-label">AI summary</h2>
+          <form
+            action={`/${repository.owner_login}/${repository.name}/ai/summary`}
+            method="post"
+          >
+            <button className="btn sm" type="submit">
+              Regenerate
+            </button>
+          </form>
+        </div>
+        {aiSummary && !isApiError(aiSummary) && aiSummary.output ? (
+          <p
+            className="t-sm mt-3 whitespace-pre-wrap"
+            style={{ color: "var(--ink-2)" }}
+          >
+            {aiSummary.output.output}
+          </p>
+        ) : aiSummary && !isApiError(aiSummary) && !aiSummary.enabled ? (
+          <p className="t-sm mt-3" style={{ color: "var(--ink-3)" }}>
+            {aiSummary.reason}
+          </p>
+        ) : (
+          <p className="t-sm mt-3" style={{ color: "var(--ink-3)" }}>
+            AI summary will appear after the first generation.
+          </p>
+        )}
       </section>
       <section className="space-y-2" style={{ color: "var(--ink-3)" }}>
         <Link
@@ -125,6 +170,7 @@ function RepositorySidebar({ repository }: RepositoryCodeOverviewProps) {
 }
 
 export function RepositoryCodeOverview({
+  aiSummary,
   repository,
 }: RepositoryCodeOverviewProps) {
   return (
@@ -160,7 +206,7 @@ export function RepositoryCodeOverview({
           </article>
         ) : null}
       </div>
-      <RepositorySidebar repository={repository} />
+      <RepositorySidebar aiSummary={aiSummary} repository={repository} />
     </RepositoryShell>
   );
 }

@@ -393,6 +393,41 @@ describe("RepositoryCodeOverview", () => {
     }
   });
 
+  it("renders a cached AI repository summary with a working regenerate action", () => {
+    const { container } = render(
+      <RepositoryCodeOverview
+        aiSummary={{
+          enabled: true,
+          reason: null,
+          output: {
+            id: "ai-1",
+            kind: "repo_summary",
+            scopeType: "repository",
+            scopeId: "repo-1",
+            contentHash: "hash",
+            promptVersion: "ai-001-v1",
+            model: "gpt-4o-mini",
+            output:
+              "Purpose, notable files, and recent activity are summarized.",
+            generatedAt: "2026-05-07T00:00:00Z",
+            regeneratedCount: 0,
+            cached: true,
+          },
+        }}
+        repository={repositoryOverview()}
+      />,
+    );
+
+    expect(screen.getByLabelText("AI repository summary")).toHaveTextContent(
+      "Purpose, notable files",
+    );
+    expect(screen.getByRole("button", { name: "Regenerate" })).toBeEnabled();
+    expect(container.querySelector("form")).toHaveAttribute(
+      "action",
+      "/mona/octo-app/ai/summary",
+    );
+  });
+
   it("searches files from the Go to file combobox and opens the selected result", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(

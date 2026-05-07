@@ -1,5 +1,6 @@
 pub mod account_security;
 pub mod actions;
+pub mod ai;
 pub mod app_shell;
 pub mod auth;
 pub mod dashboard;

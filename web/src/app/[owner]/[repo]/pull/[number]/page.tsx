@@ -2,6 +2,7 @@ import { AppShell } from "@/components/AppShell";
 import { RepositoryPullRequestDetailPage } from "@/components/RepositoryPullRequestDetailPage";
 import { RepositoryUnavailablePage } from "@/components/RepositoryUnavailablePage";
 import {
+  getPullRequestAiSummary,
   getRepository,
   getRepositoryPullRequest,
   getRepositoryPullRequestTimeline,
@@ -23,21 +24,25 @@ export default async function PullRequestPage({
   const ownerLogin = decodeURIComponent(owner);
   const repositoryName = decodeURIComponent(repo);
   const pullNumber = Number.parseInt(decodeURIComponent(number), 10);
-  const [{ session, shellContext }, repository, pullRequest, timeline] =
-    await Promise.all([
-      getSessionAndShellContext(),
-      getRepository(ownerLogin, repositoryName),
-      Number.isFinite(pullNumber)
-        ? getRepositoryPullRequest(ownerLogin, repositoryName, pullNumber)
-        : Promise.resolve(null),
-      Number.isFinite(pullNumber)
-        ? getRepositoryPullRequestTimeline(
-            ownerLogin,
-            repositoryName,
-            pullNumber,
-          )
-        : Promise.resolve([]),
-    ]);
+  const [
+    { session, shellContext },
+    repository,
+    pullRequest,
+    timeline,
+    aiSummary,
+  ] = await Promise.all([
+    getSessionAndShellContext(),
+    getRepository(ownerLogin, repositoryName),
+    Number.isFinite(pullNumber)
+      ? getRepositoryPullRequest(ownerLogin, repositoryName, pullNumber)
+      : Promise.resolve(null),
+    Number.isFinite(pullNumber)
+      ? getRepositoryPullRequestTimeline(ownerLogin, repositoryName, pullNumber)
+      : Promise.resolve([]),
+    Number.isFinite(pullNumber)
+      ? getPullRequestAiSummary(ownerLogin, repositoryName, pullNumber)
+      : Promise.resolve(null),
+  ]);
 
   return (
     <AppShell session={session} shellContext={shellContext}>
@@ -47,6 +52,7 @@ export default async function PullRequestPage({
       !("error" in timeline) ? (
         <RepositoryPullRequestDetailPage
           pullRequest={pullRequest}
+          aiSummary={aiSummary}
           repository={repository}
           timeline={timeline}
           viewerAuthenticated={session.authenticated}

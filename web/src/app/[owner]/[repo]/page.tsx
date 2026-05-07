@@ -1,7 +1,11 @@
 import { AppShell } from "@/components/AppShell";
 import { RepositoryCodeOverview } from "@/components/RepositoryCodeOverview";
 import { RepositoryUnavailablePage } from "@/components/RepositoryUnavailablePage";
-import { getRepository, getSessionAndShellContext } from "@/lib/server-session";
+import {
+  getRepository,
+  getRepositoryAiSummary,
+  getSessionAndShellContext,
+} from "@/lib/server-session";
 
 type RepositoryOverviewPageProps = {
   params: Promise<{
@@ -23,11 +27,14 @@ export default async function RepositoryOverviewPage({
     session.authenticated && session.user
       ? await getRepository(ownerLogin, repositoryName)
       : null;
+  const aiSummary = repository
+    ? await getRepositoryAiSummary(ownerLogin, repositoryName)
+    : null;
 
   return (
     <AppShell session={session} shellContext={shellContext}>
       {repository ? (
-        <RepositoryCodeOverview repository={repository} />
+        <RepositoryCodeOverview aiSummary={aiSummary} repository={repository} />
       ) : (
         <RepositoryUnavailablePage owner={ownerLogin} repo={repositoryName} />
       )}

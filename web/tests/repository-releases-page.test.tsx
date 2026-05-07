@@ -374,6 +374,54 @@ describe("RepositoryReleaseDetailPage", () => {
     expectNoDeadControls(container);
   });
 
+  it("renders generated AI changelog output with an editable generation action", () => {
+    const detail: RepositoryReleaseDetail = {
+      ...release(),
+      body: "## Full notes",
+      bodyHtml: "<h2>Full notes</h2>",
+      immutable: false,
+      tagSignatureSummary: null,
+    };
+    const { container } = render(
+      <RepositoryReleaseDetailPage
+        aiChangelog={{
+          enabled: true,
+          reason: null,
+          previousTag: "v1.9.0",
+          targetTag: "v2.0.0",
+          output: {
+            id: "ai-release-1",
+            kind: "changelog",
+            scopeType: "release",
+            scopeId: "release-1",
+            contentHash: "hash",
+            promptVersion: "ai-001-v1",
+            model: "gpt-4o",
+            output: "### Added\n- Editorial AI changelog generation.",
+            generatedAt: "2026-05-07T00:00:00Z",
+            regeneratedCount: 0,
+            cached: true,
+          },
+        }}
+        authenticated={true}
+        release={detail}
+        repository={repositoryOverview({ viewerPermission: "write" })}
+      />,
+    );
+
+    expect(screen.getByLabelText("AI changelog")).toHaveTextContent(
+      "Editorial AI changelog",
+    );
+    expect(
+      screen.getByRole("button", { name: "Generate changelog with AI" }),
+    ).toBeEnabled();
+    expect(
+      container.querySelector(
+        'form[action="/mona/octo-app/releases/v2.0.0/ai/changelog"]',
+      ),
+    ).toHaveAttribute("method", "post");
+  });
+
   it("links write viewers to the dedicated edit and publish surface", () => {
     const detail: RepositoryReleaseDetail = {
       ...release({ draft: true, latest: false }),

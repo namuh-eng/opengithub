@@ -2,6 +2,7 @@ import { AppShell } from "@/components/AppShell";
 import { RepositoryReleaseDetailPage } from "@/components/RepositoryReleasesPage";
 import { RepositoryUnavailablePage } from "@/components/RepositoryUnavailablePage";
 import {
+  generateAiChangelog,
   getRepository,
   getRepositoryReleaseDetail,
   getSession,
@@ -23,12 +24,20 @@ export default async function ReleaseTagPage({ params }: ReleaseTagPageProps) {
   const release = repository
     ? await getRepositoryReleaseDetail(ownerLogin, repositoryName, releaseTag)
     : null;
+  const aiChangelog =
+    repository && release && !("error" in release)
+      ? await generateAiChangelog(ownerLogin, repositoryName, {
+          previousTag: null,
+          targetTag: release.tagName,
+        })
+      : null;
 
   return (
     <AppShell session={session}>
       {repository && release ? (
         <RepositoryReleaseDetailPage
           authenticated={session.authenticated}
+          aiChangelog={aiChangelog}
           release={release}
           repository={repository}
         />
