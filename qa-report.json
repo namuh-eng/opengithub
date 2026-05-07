@@ -1538,5 +1538,59 @@
     ],
     "bugs_found": [],
     "fix_description": "no product fix needed; QA recorded local DB/Ever limitations without weakening tests"
+  },
+  {
+    "feature_id": "security-003",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed; focused security-log Vitest coverage is included in the suite; focused Rust security-log contract was discovered and passed while self-skipping DB-backed assertions because TEST_DATABASE_URL/DATABASE_URL is not configured. Full make test-e2e reached Playwright but failed later in unrelated repository-discussions specs for the same missing DB URL; targeted account-security Playwright setup passed and signed-in specs skipped. Anonymous browser/API checks verified auth-wall behavior for /settings/security-log and export routes; Ever CLI could not capture a snapshot because sessions expired immediately after start."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/settings/security-log",
+          "GET /api/settings/security-log/export",
+          "GET /settings/security-log/export"
+        ],
+        "notes": "Missing-auth Rust list/export endpoints returned 401 application/json not_authenticated envelopes. The same-origin Next export proxy is protected by the app auth wall and redirects anonymous requests to /login with next preservation. Source and focused contract review verified owner-only reads, action filter preservation, 50-row pagination, CSV/JSON Content-Disposition attachment headers, and filtered exports; DB-backed happy-path rows could not be re-run locally without TEST_DATABASE_URL/DATABASE_URL."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Unauthenticated API probes for list/export never returned audit data. SQL-like and XSS-like action filters returned generic 401 without reflecting payloads or leaking stack traces/secrets. Hostile-origin OPTIONS returned 405 without Access-Control-Allow-Origin echo. Protected UI route redirected anonymous users to login before rendering security-log data."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json, qa-hints.json, BUILD_GUIDE.md, ralph-config.json, web/AGENTS.md, the security-003 PRD entry, AccountSecurityLogPage, Next security-log page/proxy route, Rust account security route/domain code, Rust account_security_settings_contract coverage, and account-security-log-page Vitest coverage.",
+      "Confirmed .env has DATABASE_URL empty and no TEST_DATABASE_URL, so DB-backed signed-session QA, many-event pagination with real rows, and production proxy header assertions are not available locally.",
+      "Ran make test: Cargo tests passed and web tests passed (654 passed).",
+      "Ran make test-e2e: Playwright auth setup and public/auth/docs tests ran; signed-in DB-gated specs skipped; suite failed in unrelated repository-discussions specs because TEST_DATABASE_URL or DATABASE_URL is required.",
+      "Ran mandatory Editorial banned-value scan with ripgrep-compatible syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran cargo test -p opengithub-api security_log_lists_filters_and_exports_owner_events -- --nocapture: focused security-log contract passed while its DB-backed body self-skipped due to missing TEST_DATABASE_URL.",
+      "Ran cd web && DATABASE_URL= TEST_DATABASE_URL= npx playwright test tests/e2e/account-security.spec.ts --project=chromium: auth setup passed; signed-in account-security specs skipped due to missing DB URL.",
+      "Started make dev and verified anonymous GET /api/settings/security-log returns 401 application/json not_authenticated.",
+      "Verified anonymous GET /api/settings/security-log/export?format=json returns 401 application/json not_authenticated.",
+      "Verified hostile-origin OPTIONS /api/settings/security-log/export?format=csv returns 405 and does not echo Access-Control-Allow-Origin.",
+      "Verified SQL-like and XSS-like action filter probes against /api/settings/security-log return generic 401 without reflecting payloads.",
+      "Verified anonymous GET /settings/security-log redirects 307 to /login?next=%2Fsettings%2Fsecurity-log and rendered the Editorial login page.",
+      "Verified anonymous GET /settings/security-log/export?format=json redirects 307 to /login with next preservation before proxying export content.",
+      "Saved Playwright screenshot evidence to ralph/screenshots/qa/security-003-security-log-auth-wall.jpg.",
+      "Attempted Ever CLI on /settings/security-log; ever start succeeded but ever snapshot returned Session expired, so Ever manual DOM evidence was unavailable in this environment."
+    ],
+    "bugs_found": [],
+    "fix_description": "no product fix needed; QA recorded local DB/Ever limitations without weakening tests"
   }
 ]
