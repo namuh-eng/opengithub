@@ -2755,5 +2755,69 @@
       "Full broad make test-e2e did not pass in this lane because of local setup/test DB readiness and an unrelated account-security failure; focused Actions E2E passed against the signed-session test environment.",
       "axe-core scan was not run because @axe-core/playwright is not installed; keyboard/role/dead-control/no-overflow accessibility checks passed."
     ]
+  },
+  {
+    "feature_id": "actions-002",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified workflow-specific Actions page with DB-backed focused Rust contract, focused Vitest, and signed-session Playwright smoke. Workflow rail selection, scoped run filters without Workflow filter, source/options/docs links, Run workflow dialog, dynamic dispatch inputs, queued-row insertion, keyboard focus, no dead controls, and desktop/mobile no-horizontal-overflow passed."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/actions/workflows/{workflow_path}/dashboard",
+          "POST /api/repos/{owner}/{repo}/actions/workflows/{workflow_path}/dispatches",
+          "same-origin POST /{owner}/{repo}/actions/workflows/dispatches"
+        ],
+        "notes": "Focused Rust contract passed with real TEST_DATABASE_URL for public/private permissions, invalid YAML state, dispatch validation, default-branch enforcement, ref/input validation, queue side effects, job lease payload, and no cross-workflow run leakage. Live anonymous POST probe returned standard 401 JSON with rate-limit/version headers."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "private_repo_permission_boundary",
+          "input_validation",
+          "cors",
+          "data_exposure",
+          "dead_controls"
+        ],
+        "notes": "Anonymous dispatch was 401 not_authenticated; hostile Origin OPTIONS returned 405 without Access-Control-Allow-Origin; malformed-cookie/XSS/SQL-shaped dispatch probe returned generic 401 without payload reflection. Rust contract covers private denial and sanitized invalid YAML."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Vitest and Playwright verify visible buttons have accessible names, dialog labels/selects/checkboxes are named, keyboard focus lands on a real element, no inert anchors, and mobile/desktop no horizontal overflow. axe package was absent locally, so no separate axe scan was run."
+      }
+    },
+    "tested_steps": [
+      "Read AGENTS.md, web/AGENTS.md, BUILD_GUIDE.md, prd.json actions-002, qa-hints.json, build-progress.txt, qa-report.json, and .qrspi/actions-002/structure.md.",
+      "Inspected Rust Actions domain/routes, workflow detail/dispatch contract tests, Next workflow page/proxy, component, Vitest, and Playwright E2E.",
+      "Attempted make test-e2e first; blocked immediately by Makefile setup guard: .ralph-setup-done missing.",
+      "Installed web dependencies with npm ci because web/node_modules was absent; did not stage node_modules.",
+      "Started local Rust API and Next dev server with .env.test and ran focused signed-session Playwright workflow spec: 2 passed.",
+      "Ran focused Rust contract with TEST_DATABASE_URL: api_repository_actions_workflow_detail_contract 3 passed after fixing canonical owner-login test expectation.",
+      "Ran focused Vitest repository-actions-workflow: 5 passed; full web Vitest: 107 files and 655 tests passed after extending the long api-docs assertion timeout without removing assertions.",
+      "Ran cargo fmt --all --check, cargo check --workspace --all-targets, cargo clippy --workspace --all-targets -- -D warnings: passed.",
+      "Ran web typecheck and focused Biome for actions workflow files: passed; full Biome exited 0 with four pre-existing reduced-motion !important warnings in globals.css.",
+      "Ran mandatory Editorial banned-value scan across web/src excluding og CSS: zero matches.",
+      "Live-probed anonymous dispatch and hostile-origin OPTIONS; verified standard 401/405 behavior and no evil CORS echo.",
+      "Attempted full cargo test --workspace --all-targets; blocked by local disk exhaustion during linker for an unrelated repository_tree_navigation test after focused Rust contract had passed.",
+      "Attempted full Playwright through standard config; blocked by the same Makefile setup guard in webServer. Focused no-vibes Playwright workflow spec passed against manually started servers."
+    ],
+    "bugs_found": [
+      {
+        "severity": "minor",
+        "phase": "test",
+        "description": "The workflow detail Rust contract still expected sourceHref to use the request alias email even though users now receive canonical usernames and repository links render canonical owner logins.",
+        "expected": "Contract assertions should verify canonical repository owner_login in workflow source links, matching the UI route contract.",
+        "actual": "The test called the route with owner.email and expected sourceHref to include the email alias, failing against canonical owner_login output.",
+        "reproduction": "Run TEST_DATABASE_URL-backed cargo test -p opengithub-api --test api_repository_actions_workflow_detail_contract before this fix; workflow_detail_returns_scoped_runs_dispatch_metadata_refs_and_filters fails on sourceHref."
+      }
+    ],
+    "fix_description": "Updated the Rust workflow detail contract to request/assert the canonical generated username for owner sourceHref, and increased the broad api-docs test timeout to 120s so the unchanged assertion set completes under current full-suite load. No production source changes were needed.",
+    "overall_status": "pass"
   }
 ]

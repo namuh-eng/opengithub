@@ -8228,5 +8228,19 @@
       "Run axe WCAG scan when @axe-core/playwright is available in the QA environment; this lane covered role/name, focus, dead controls, and overflow but did not install new a11y dependencies.",
       "Live runner execution, streaming logs, artifacts, manual dispatch, and real cache/deployment/attestation/usage/performance data remain outside actions-001 and need later feature QA."
     ]
+  },
+  {
+    "feature_id": "actions-002",
+    "tests_written": [
+      "QA passed workflow-specific run history and manual dispatch controls with focused Rust contract, focused/full web tests, focused signed-session Playwright, direct cargo check/clippy, web typecheck/Biome, API auth/CORS probes, and Editorial banned-value scan.",
+      "Fixed stale contract expectations so workflow source links assert canonical owner usernames instead of email aliases.",
+      "Extended the broad API docs test timeout without dropping assertions so the current large endpoint catalog passes in full web Vitest."
+    ],
+    "needs_deeper_qa": [
+      "Full make targets are still blocked in this worktree by the Makefile setup guard (.ralph-setup-done missing); direct equivalents were run instead.",
+      "Full cargo test hit local disk exhaustion while linking an unrelated repository_tree_navigation test; rerun on a roomier machine for complete Rust workspace evidence.",
+      "Full Playwright via default config is blocked by the Makefile-backed webServer command; focused actions-002 Playwright passed against manually started local servers.",
+      "Real runner execution, logs, artifacts, check-suite/check-run synchronization, live YAML parser provenance, and branch/ref race hardening remain outside actions-002 as previously noted."
+    ]
   }
 ]
