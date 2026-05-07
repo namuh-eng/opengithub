@@ -681,5 +681,59 @@
       }
     ],
     "fix_description": "Added GET /api/repos/:owner/:repo/contents for root directory reads, updated the Next tree page and API client to use the selected-ref contents contract for root paths, and added a page-level regression test for slash-containing refs."
+  },
+  {
+    "feature_id": "repo-005",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed; focused repo-005 Playwright loaded and skipped authenticated DB-backed cases because TEST_DATABASE_URL/DATABASE_URL is unset; make test-e2e reached repo-005 specs, skipped them for the same DB gap, then failed only in unrelated repository-discussions specs requiring a DB URL. Source and test inspection verified code view, line anchors, raw textarea, raw/download links, blame mode, y/b/l shortcuts, symbols panel, binary/large fallbacks, invalid-path recovery, branch refs, and mobile no-overflow coverage. Ever CLI expired immediately after start, so manual browser evidence used Playwright screenshot/curl instead."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/:owner/:repo/blobs/*path",
+          "GET /api/repos/:owner/:repo/blobs/*path?raw=1",
+          "GET /api/repos/:owner/:repo/blobs/*path?download=1",
+          "GET /api/repos/:owner/:repo/blame/*path"
+        ],
+        "notes": "Live unauthenticated Rust probes returned application/json 401 envelopes for blob JSON, raw, download, and blame endpoints. Focused repository_blob_view contract test passed but DB-backed assertions self-skipped without TEST_DATABASE_URL; existing code/test inspection covers authenticated JSON shape, raw/download headers, large/binary modes, invalid refs, missing paths, blame shape, and recent visit writes when a DB is configured."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Anonymous blob JSON/raw/download/blame probes returned 401 and no repository content. SQL-like ref and XSS-like path probes returned generic 401 without reflection, SQL errors, stack traces, local paths, or env leakage. OPTIONS from https://evil.com returned 405 without Access-Control-Allow-Origin. Focused repository_blob_security passed but DB-backed assertions self-skipped without TEST_DATABASE_URL. Mandatory Editorial banned-token scan was clean using ripgrep -e syntax."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json, prd.json repo-005, BUILD_GUIDE.md, ralph-config.json, all repo-005 qa-hints entries, blob page/component code, Rust blob/blame routes, domain implementation, and focused blob tests.",
+      "Ran mandatory Editorial banned-token scan with rg -n -e fallback syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran make test: Cargo tests passed and web tests passed (653 passed).",
+      "Ran cargo test --test repository_blob_view -- --nocapture: test passed, with DB-backed scenario self-skipped because TEST_DATABASE_URL/DATABASE_URL is unset.",
+      "Ran cargo test --test repository_blob_security -- --nocapture: test passed, with DB-backed scenario self-skipped because TEST_DATABASE_URL/DATABASE_URL is unset.",
+      "Ran make test-e2e: 18 passed, 134 skipped, repo-005 specs skipped because TEST_DATABASE_URL/DATABASE_URL is unset, and the suite failed only in unrelated repository-discussions specs requiring a DB URL.",
+      "Ran focused cd web && npx playwright test tests/e2e/repository-blob-view.spec.ts --reporter=line: setup passed and the two authenticated blob specs skipped because no DB URL is configured.",
+      "Started make dev and verified live Rust API GET /api/repos/octocat/Hello-World/blobs/README.md?ref=main returns 401 application/json not_authenticated without content leakage.",
+      "Verified live Rust API raw, download, and blame variants return the same 401 JSON auth-wall envelope without content leakage.",
+      "Verified SQL-like ref and XSS-like path probes return generic 401 JSON without reflecting payloads or leaking stack traces/SQL errors.",
+      "Verified OPTIONS /api/repos/octocat/Hello-World/blobs/README.md?ref=main from Origin https://evil.com returns 405 and does not emit Access-Control-Allow-Origin.",
+      "Verified live anonymous Next blob page renders the Editorial File unavailable recovery state using var(--bg), design-system fonts, var(--line), var(--surface), and var(--accent) tokens.",
+      "Attempted Ever CLI manual verification; ever snapshot failed with Session expired immediately after ever start.",
+      "Saved Playwright screenshot ralph/screenshots/qa/repo-005-anonymous-file-unavailable.png."
+    ],
+    "bugs_found": [],
+    "fix_description": "no product fix needed; QA recorded DB/Ever environment gaps instead of weakening tests"
   }
 ]
