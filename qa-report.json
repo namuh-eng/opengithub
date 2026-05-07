@@ -2587,5 +2587,73 @@
       }
     ],
     "fix_description": "Fixed AI changelog context to honor previousTag/targetTag bounds and added focused DB-backed contract coverage. Full signed-session, private-repo opt-in, rate-limit bucket, and live OpenAI provider verification remain blocked by unavailable local test Postgres, so prd.json keeps ai-001.qa_pass=false."
+  },
+  {
+    "feature_id": "prs-005",
+    "attempt": 1,
+    "status": "blocked",
+    "sub_phases": {
+      "functional": {
+        "status": "blocked",
+        "notes": "PR files implementation was inspected and focused feature evidence passed: backend diff-review contract, focused Files changed Vitest cases, full web Vitest, and isolated Playwright browser smoke on this worktree's Next app at :3017 all passed. Official make wrappers are blocked by missing .ralph-setup-done, and full direct Cargo regression failed in api_contract_hardening, so qa_pass remains false. Port :3015 was occupied by another worktree, so browser smoke used :3017 with this worktree's API on :3016."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/:owner/:repo/pulls/:number/files",
+          "PATCH /api/repos/:owner/:repo/pulls/:number/files/viewed",
+          "POST /api/repos/:owner/:repo/pulls/:number/review-comments/drafts",
+          "PATCH /api/repos/:owner/:repo/pulls/:number/review-comments/drafts/:draft_id",
+          "DELETE /api/repos/:owner/:repo/pulls/:number/review-comments/drafts/:draft_id",
+          "POST /api/repos/:owner/:repo/pulls/:number/reviews",
+          "DELETE /api/repos/:owner/:repo/pulls/:number/reviews/draft"
+        ],
+        "notes": "Focused Rust contract passed against TEST_DATABASE_URL on localhost:55433: public/private read, split/whitespace settings, viewed state/toggle, filter, pending draft privacy/edit/delete, submit review side effects, abandon review, raw diff/patch, notifications, timeline, and audit assertions. Live unauthenticated curl probes for viewed/draft/review writes returned JSON 401 not_authenticated when valid request bodies were sent."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "data_exposure",
+          "test_weakening_scan"
+        ],
+        "notes": "Unauthenticated write probes did not bypass auth. Rust contract covers private anonymous read denial and raw diff/patch non-leak. git diff origin/main...HEAD -- web/tests tests crates showed no branch test weakening/deletion because this QA branch has no product/test diff from origin/main."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Isolated Playwright smoke verified visible Files changed buttons have accessible names and desktop/mobile pages have no horizontal overflow. Full axe was not run because official E2E wrapper is blocked by the onboarding sentinel; rerun axe/full E2E once make test-e2e is unblocked."
+      }
+    },
+    "tested_steps": [
+      "Read prd.json prs-005 row, .qrspi/prs-005/structure.md, BUILD_GUIDE.md, and web/tests/e2e/AGENTS.md.",
+      "Inspected web PR files page, same-origin viewed/draft/review route handlers, PullRequestFilesChangedPage controls, Rust pull routes/domain symbols, Rust diff review contract tests, and PR detail E2E/Vitest coverage.",
+      "Ran git diff origin/main...HEAD -- web/tests tests crates: no changed files, no weakening/deletion evidence on this QA branch.",
+      "Tried make check, CARGO_INCREMENTAL=0 make test, and make test-e2e: all exited 2 at Makefile guard: Stack not set up. Run onboarding first: /ralph-to-ralph-onboard.",
+      "Direct DB setup via make db-up-test was also blocked by the same guard; a healthy existing opengithub-postgres-test container was available on localhost:55433 and used without removing/renaming it.",
+      "Ran focused backend: TEST_DATABASE_URL/DATABASE_URL from .env.test, DB_SSL=false, CARGO_INCREMENTAL=0 cargo test --test api_pull_request_diff_review_contract -- --nocapture: 2 passed.",
+      "Installed web dependencies with npm ci from web/package-lock.json because node_modules was absent; node_modules was not staged.",
+      "Ran focused Vitest: cd web && npx vitest run tests/repository-pull-request-detail.test.tsx --testNamePattern 'Files changed|viewed|review|pending|filter|inert': 8 passed, 9 skipped.",
+      "Ran web typecheck: cd web && npx tsc --noEmit: passed.",
+      "Ran Biome: cd web && npx biome check .: exit 0 with four pre-existing noImportantStyles warnings in src/app/globals.css reduced-motion rules.",
+      "Ran direct Rust static checks: cargo check --workspace --all-targets passed; cargo clippy --workspace --all-targets -- -D warnings passed.",
+      "Ran full web unit suite: cd web && npx vitest run: 107 files passed, 655 tests passed.",
+      "Ran direct full Cargo suite: TEST_DATABASE_URL/DATABASE_URL from .env.test, DB_SSL=false, CARGO_INCREMENTAL=0 cargo test --workspace --all-targets; failed in api_contract_hardening.rs asserting left Number(100) right 50.",
+      "Started this worktree's Rust API on :3016 and Next app on :3017 because :3015 was occupied by /Users/jaeyunha/wt/opengithub/qa-marketing-001/web.",
+      "Ran isolated Playwright smoke via /tmp/prs005-smoke.cjs with seeded signed auth: Files changed page loaded, file filter URL worked, split/unified/whitespace controls had concrete hrefs, viewed toggle persisted, inline draft and reload persistence worked when hunk controls were present, submit review dialog submitted, no dead links, visible buttons had accessible names, and desktop/mobile overflow checks passed.",
+      "Ran live unauthenticated curl probes for PATCH viewed, POST draft, and POST review with valid JSON bodies: all returned 401 not_authenticated JSON envelopes.",
+      "Ran required Editorial banned-value scan against PR files UI/test-relevant files and broader web/src excluding og CSS: no GitHub banned hex, Primer imports, or Octicon hits."
+    ],
+    "bugs_found": [
+      {
+        "severity": "blocker",
+        "description": "Official make wrappers cannot run in this worktree because .ralph-setup-done is missing, so required make check/test/test-e2e proof cannot be collected through the contracted commands."
+      },
+      {
+        "severity": "blocker",
+        "description": "Direct full Cargo regression failed outside prs-005: api_contract_hardening.rs expected pagination/page size 50 but got Number(100)."
+      }
+    ],
+    "fix_description": "No product fix made in QA lane. prs-005 qa_pass intentionally left false pending rerun of official make check, CARGO_INCREMENTAL=0 make test, make test-e2e, and direct full Cargo regression after environment/regression blockers are resolved."
   }
 ]
