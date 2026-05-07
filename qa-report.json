@@ -229,5 +229,61 @@
     ],
     "bugs_found": [],
     "fix_description": "no product fix needed; QA recorded environment gaps for signed-in DB-backed E2E and Ever instead of weakening tests"
+  },
+  {
+    "feature_id": "nav-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed; mandatory Editorial banned-value scan had no hits; full make test-e2e passed all reachable tests until unrelated repository-discussions DB seeding failed because TEST_DATABASE_URL/DATABASE_URL is missing; targeted nav Playwright specs loaded and skipped signed-in cases for the same missing DB. Direct HTTP verification covered protected redirect preservation for /dashboard, /codespaces, /search, public profile and team skeleton routes returning 200, Editorial font/token classes in rendered HTML, no visible 404 page responses for sampled public nav skeletons, and screenshot evidence at ralph/screenshots/qa/nav-001-team-route.png. Ever CLI expired immediately after start, so it was unavailable for manual interaction."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/auth/current-user",
+          "GET /api/repos",
+          "GET /search/suggestions?q=router",
+          "GET /search/saved-searches"
+        ],
+        "notes": "No dedicated nav-owned data API is required for route skeletons. Relevant auth/search-adjacent endpoints were probed anonymously: Rust API routes returned application/json 401 envelopes with error.code not_authenticated, and protected Next route handlers redirected to /login?next=... rather than returning malformed data or 404s."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Anonymous protected UI/API access did not bypass auth; SQL/XSS-shaped search URLs were encoded into login redirects without stack traces or reflected raw script HTML in the checked response; OPTIONS probes did not echo Access-Control-Allow-Origin for https://evil.com; API responses did not expose secrets, env values, passwords, or stack traces."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json: no previous nav-001 QA attempts existed.",
+      "Read qa-hints.json for nav-001 and used the latest Phase 5 hints as the current acceptance surface: global routes, repository tabs/settings, profile/org/search routes, and mobile drawer sweep.",
+      "Ran mandatory Editorial banned-value scan with ripgrep-compatible -e syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran make test: Cargo tests passed and web tests passed (650 passed).",
+      "Ran make test-e2e: 18 tests passed and 134 skipped before two unrelated repository-discussions tests failed because TEST_DATABASE_URL or DATABASE_URL is required.",
+      "Ran focused navigation Playwright specs: setup passed and 6 signed-in nav tests skipped because TEST_DATABASE_URL/DATABASE_URL is missing.",
+      "Started make dev on localhost:3015/3016 for direct QA probes.",
+      "Verified anonymous /dashboard redirects 307 to /login?next=%2Fdashboard and /codespaces redirects 307 to /login?next=%2Fcodespaces.",
+      "Verified anonymous /search?q=router&type=code redirects 307 to /login?next=%2Fsearch%3Fq%3Drouter%26type%3Dcode, preserving query context.",
+      "Verified public /mona?tab=stars returns 200 with profile tabs, active Stars tab content, Editorial font classes, and tokenized bg/accent styling.",
+      "Verified public /orgs/namuh/teams/platform returns 200 with team heading, concrete All teams and Organization settings links, Editorial classes, and no rendered 404 response.",
+      "Saved manual QA screenshot at ralph/screenshots/qa/nav-001-team-route.png.",
+      "Probed GET /api/auth/current-user and GET /api/repos anonymously: both returned application/json 401 standard error envelopes.",
+      "Probed GET /search/suggestions?q=router and GET /search/saved-searches anonymously: both redirected to /login?next=... rather than leaking data.",
+      "Probed OPTIONS for /api/auth/current-user, /api/repos, and /search/saved-searches with Origin https://evil.com: no Access-Control-Allow-Origin echo was present.",
+      "Attempted Ever CLI manual snapshot; the session expired immediately after ever start, so Ever evidence was unavailable in this environment."
+    ],
+    "bugs_found": [],
+    "fix_description": "no fix needed"
   }
 ]
