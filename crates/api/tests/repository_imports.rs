@@ -261,6 +261,18 @@ async fn repository_import_rejects_anonymous_invalid_duplicate_and_forbidden_req
     assert_eq!(anonymous_status, StatusCode::UNAUTHORIZED);
     assert_eq!(anonymous_body["error"]["code"], "not_authenticated");
 
+    let (missing_fields_status, missing_fields_body) = send_json(
+        app.clone(),
+        Method::POST,
+        "/api/repos/imports",
+        Some(&cookie),
+        Some(json!({})),
+    )
+    .await;
+    assert_eq!(missing_fields_status, StatusCode::BAD_REQUEST);
+    assert_eq!(missing_fields_body["error"]["code"], "invalid_json");
+    assert_eq!(missing_fields_body["status"], 400);
+
     let (invalid_status, invalid_body) = send_json(
         app.clone(),
         Method::POST,

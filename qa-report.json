@@ -415,5 +415,70 @@
       }
     ],
     "fix_description": "Restored top-level commit history items alongside grouped commits, updated the frontend API type/test fixture, and routed watch settings JSON extraction through RestJson so malformed input returns a sanitized JSON 400 envelope."
+  },
+  {
+    "feature_id": "repo-002",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed; mandatory Editorial banned-token scan was clean; focused DB-backed repository-import Playwright E2E passed after wiring an isolated local Postgres QA database; live browser manual pass used Playwright because Ever CLI sessions expired immediately; screenshots saved to ralph/screenshots/qa/repo-002-import-wizard.png and repo-002-import-status.png."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "POST /api/repos/imports",
+          "GET /api/repos/imports/:id",
+          "POST /new/imports",
+          "GET /new/imports/:importId"
+        ],
+        "notes": "Focused Rust import contract/security/worker tests passed 7/7 against the QA database. Direct curl verified anonymous POST returns 401 JSON, signed POST returns 201 JSON with queued import shape/statusHref/repositoryHref, signed GET returns 200 JSON status, private-network source returns 422 JSON, and malformed or missing JSON now returns 400 JSON invalid_json after the fix."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Anonymous create is blocked with 401 JSON; credential values submitted during signed create were absent from create/status responses; private-network literal source was blocked; OPTIONS with Origin https://evil.com returned 405 without Access-Control-Allow-Origin; focused security tests verified private host normalization and request-log credential redaction. DNS rebinding/resolved private-address hardening remains a known production-deepening item from build hints, not a shipping blocker for this MVP phase."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json, qa-hints.json repo-002 entries, BUILD_GUIDE.md, web/AGENTS.md, import UI/API routes, and focused import tests.",
+      "Ran mandatory Editorial banned-value scan with ripgrep-compatible syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran make test: Cargo tests and 650 web tests passed.",
+      "Ran make test-e2e in the default environment: 18 tests passed before unrelated repository-discussions specs failed because TEST_DATABASE_URL/DATABASE_URL was not configured in .env; repo import E2E skipped there for the same env reason.",
+      "Created isolated local database opengithub_qa_repo_002 on the available local Postgres and ran focused repository-import E2E with TEST_DATABASE_URL; setup plus signed-in import wizard test passed.",
+      "Ran DB-backed cargo test -p opengithub-api --test repository_imports --test repository_import_security --test repository_import_worker: initially exposed no focused failures, then passed 7/7 again after adding missing-field regression coverage and fixing RestJson extraction.",
+      "Started live dev server on localhost:3015/3016 with the QA database and seeded a real signed session cookie via dashboard_e2e_seed.",
+      "Direct curl verified POST /api/repos/imports anonymous returns 401 application/json not_authenticated.",
+      "Direct curl verified signed POST /api/repos/imports with GitHub source and private credentials returns 201 application/json queued import shape, statusHref, repositoryHref, and no submitted token/password/username in the response.",
+      "Direct curl verified signed GET /api/repos/imports/:id returns 200 application/json status for the created import.",
+      "Direct curl found malformed/missing POST JSON returned Axum text/plain 422 before the fix; after switching the route to RestJson it returns 400 application/json invalid_json for missing fields and malformed JSON.",
+      "Direct curl verified private-network source https://127.0.0.1/repo.git returns 422 application/json validation_failed.",
+      "Direct curl verified an OPTIONS request from https://evil.com does not echo Access-Control-Allow-Origin.",
+      "Attempted Ever CLI on /new/import; ever snapshot failed with Session expired, consistent with prior QA environment behavior.",
+      "Used Playwright against the live dev server for manual UI verification: wizard heading/controls render, Begin import starts disabled, blocked private-network source shows validation, valid GitHub source redirects to /new/import/:id, status page shows terminal/queued state, repo name, and github.com source.",
+      "Saved manual QA screenshots to ralph/screenshots/qa/repo-002-import-wizard.png and ralph/screenshots/qa/repo-002-import-status.png."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "api_contract",
+        "description": "POST /api/repos/imports returned Axum default text/plain 422 for missing required JSON fields instead of the project standard JSON error envelope.",
+        "expected": "Malformed or missing JSON fields return application/json with an error envelope such as { error: { code: string, message: string }, status: 400 }.",
+        "actual": "Live curl with {} returned 422 text/plain: Failed to deserialize the JSON body into the target type: missing field `sourceUrl`...",
+        "reproduction": "Before the fix, run curl -i -X POST http://localhost:3016/api/repos/imports -H \"Cookie: og_session=...\" -H \"Content-Type: application/json\" -d \"{}\"."
+      }
+    ],
+    "fix_description": "Changed the repository import create route to use the shared RestJson extractor and added regression coverage for missing-field import POST requests returning a sanitized JSON 400 envelope."
   }
 ]

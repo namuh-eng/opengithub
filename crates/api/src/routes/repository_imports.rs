@@ -9,7 +9,9 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::{
-    api_types::{database_unavailable, error_response, error_response_with_details, ErrorEnvelope},
+    api_types::{
+        database_unavailable, error_response, error_response_with_details, ErrorEnvelope, RestJson,
+    },
     auth::extractor::AuthenticatedUser,
     domain::{
         repositories::{CreateRepository, RepositoryError, RepositoryOwner, RepositoryVisibility},
@@ -51,7 +53,7 @@ enum OwnerType {
 async fn create(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(request): Json<CreateRepositoryImportRequest>,
+    RestJson(request): RestJson<CreateRepositoryImportRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
