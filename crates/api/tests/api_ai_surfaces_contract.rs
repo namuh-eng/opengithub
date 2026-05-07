@@ -14,7 +14,8 @@ use opengithub_api::{
     },
 };
 use serde_json::{json, Value};
-use sqlx::PgPool;
+use sha2::{Digest, Sha256};
+use sqlx::{PgPool, Row};
 use tower::ServiceExt;
 use url::Url;
 use uuid::Uuid;
@@ -99,6 +100,37 @@ async fn send_json(app: axum::Router, uri: &str, cookie: Option<&str>) -> (Statu
     )
 }
 
+async fn post_json(
+    app: axum::Router,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Value,
+) -> (StatusCode, Value) {
+    let mut builder = Request::builder()
+        .method(Method::POST)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    let response = app
+        .oneshot(
+            builder
+                .body(Body::from(body.to_string()))
+                .expect("request should build"),
+        )
+        .await
+        .expect("request should run");
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should read");
+    (
+        status,
+        serde_json::from_slice(&bytes).expect("response should be json"),
+    )
+}
+
 async fn create_repo(
     pool: &PgPool,
     owner: &User,
@@ -126,6 +158,71 @@ async fn create_repo(
         .await
         .expect("repository AI setting should update");
     name
+}
+
+fn hash_content(content: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(content.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
+async fn seed_commit(
+    pool: &PgPool,
+    repository_id: Uuid,
+    author_id: Uuid,
+    message: &str,
+    days_ago: i64,
+) -> (Uuid, String) {
+    let oid = format!("{:040x}", Uuid::new_v4().as_u128());
+    let row = sqlx::query(
+        r#"
+        INSERT INTO commits (repository_id, oid, author_user_id, committer_user_id, message, committed_at)
+        VALUES ($1, $2, $3, $3, $4, $5)
+        RETURNING id
+        "#,
+    )
+    .bind(repository_id)
+    .bind(&oid)
+    .bind(author_id)
+    .bind(message)
+    .bind(Utc::now() - Duration::days(days_ago))
+    .fetch_one(pool)
+    .await
+    .expect("commit should persist");
+    (row.get("id"), oid)
+}
+
+async fn seed_release(
+    pool: &PgPool,
+    repository_id: Uuid,
+    author_id: Uuid,
+    tag: &str,
+    commit_id: Uuid,
+) -> Uuid {
+    let row = sqlx::query(
+        r#"
+        INSERT INTO releases (repository_id, tag_name, name, body, author_user_id, target_commit_id)
+        VALUES ($1, $2, $2, '', $3, $4)
+        RETURNING id
+        "#,
+    )
+    .bind(repository_id)
+    .bind(tag)
+    .bind(author_id)
+    .bind(commit_id)
+    .fetch_one(pool)
+    .await
+    .expect("release should persist");
+    sqlx::query(
+        "INSERT INTO repository_git_refs (repository_id, name, kind, target_commit_id) VALUES ($1, $2, 'tag', $3)",
+    )
+    .bind(repository_id)
+    .bind(format!("refs/tags/{tag}"))
+    .bind(commit_id)
+    .execute(pool)
+    .await
+    .expect("tag ref should persist");
+    row.get("id")
 }
 
 #[tokio::test]
@@ -204,4 +301,79 @@ async fn repository_ai_summary_respects_repository_and_user_opt_in() {
         "AI features are disabled in your account settings."
     );
     assert_eq!(body["output"], Value::Null);
+}
+
+#[tokio::test]
+async fn ai_changelog_uses_previous_and_target_tag_range_for_cache_key() {
+    let Some(pool) = database_pool().await else {
+        eprintln!(
+            "skipping ai-001 changelog range scenario; set TEST_DATABASE_URL or DATABASE_URL"
+        );
+        return;
+    };
+
+    let config = app_config();
+    let owner = create_user(&pool, "ai-changelog-owner").await;
+    let owner_login = owner.username.as_deref().unwrap_or(&owner.email);
+    let owner_cookie = cookie_header(&pool, &config, &owner).await;
+    let repo_name = create_repo(&pool, &owner, RepositoryVisibility::Public, true).await;
+    let repository_id = sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM repositories WHERE owner_user_id = $1 AND name = $2",
+    )
+    .bind(owner.id)
+    .bind(&repo_name)
+    .fetch_one(&pool)
+    .await
+    .expect("repository should exist");
+
+    let (previous_commit_id, _) =
+        seed_commit(&pool, repository_id, owner.id, "Legacy release baseline", 4).await;
+    let (_, included_oid) = seed_commit(
+        &pool,
+        repository_id,
+        owner.id,
+        "Add ranged changelog support",
+        2,
+    )
+    .await;
+    let (target_commit_id, target_oid) =
+        seed_commit(&pool, repository_id, owner.id, "Fix changelog editor", 1).await;
+    let _ = seed_commit(&pool, repository_id, owner.id, "Future unreleased work", 0).await;
+
+    seed_release(&pool, repository_id, owner.id, "v1.0.0", previous_commit_id).await;
+    let release_id = seed_release(&pool, repository_id, owner.id, "v1.1.0", target_commit_id).await;
+
+    let context =
+        format!("{target_oid} Fix changelog editor\n{included_oid} Add ranged changelog support");
+    let content_hash = hash_content(&format!("{}:{}:{context}", "v1.0.0", "v1.1.0"));
+    sqlx::query(
+        r#"
+        INSERT INTO ai_outputs (kind, scope_type, scope_id, content_hash, prompt_version, model, output, created_by_user_id)
+        VALUES ('changelog', 'release', $1, $2, 'ai-001-v1', 'gpt-4o', $3, $4)
+        "#,
+    )
+    .bind(release_id)
+    .bind(content_hash)
+    .bind("### Added\n- Generated from only the selected tag range.")
+    .bind(owner.id)
+    .execute(&pool)
+    .await
+    .expect("cached changelog should persist");
+
+    let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
+    let (status, body) = post_json(
+        app,
+        &format!("/api/ai/repos/{owner_login}/{repo_name}/releases/changelog"),
+        Some(&owner_cookie),
+        json!({ "previousTag": "v1.0.0", "targetTag": "v1.1.0" }),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["enabled"], true);
+    assert_eq!(body["output"]["cached"], true);
+    assert_eq!(
+        body["output"]["output"],
+        "### Added\n- Generated from only the selected tag range."
+    );
 }

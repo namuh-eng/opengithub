@@ -255,8 +255,13 @@ pub async fn ai_changelog(
         });
     }
 
-    let context =
-        release_commit_context(pool, repository.id, request.previous_tag.as_deref()).await?;
+    let context = release_commit_context(
+        pool,
+        repository.id,
+        request.previous_tag.as_deref(),
+        &request.target_tag,
+    )
+    .await?;
     let content_hash = content_hash(&format!(
         "{}:{}:{context}",
         request.previous_tag.as_deref().unwrap_or(""),
@@ -734,9 +739,84 @@ async fn release_id_for_tag(
 async fn release_commit_context(
     pool: &PgPool,
     repository_id: Uuid,
-    _previous_tag: Option<&str>,
+    previous_tag: Option<&str>,
+    target_tag: &str,
 ) -> Result<String, AiError> {
-    Ok(recent_commits(pool, repository_id, 60).await?.join("\n"))
+    let previous_committed_at = match previous_tag {
+        Some(tag) => Some(tag_committed_at(pool, repository_id, tag).await?),
+        None => None,
+    };
+    let target_committed_at = tag_committed_at(pool, repository_id, target_tag).await?;
+    let commits = sqlx::query(
+        r#"
+        SELECT oid, message
+        FROM commits
+        WHERE repository_id = $1
+          AND ($2::timestamptz IS NULL OR committed_at > $2)
+          AND committed_at <= $3
+        ORDER BY committed_at DESC, created_at DESC
+        LIMIT 60
+        "#,
+    )
+    .bind(repository_id)
+    .bind(previous_committed_at)
+    .bind(target_committed_at)
+    .fetch_all(pool)
+    .await?;
+    Ok(commits
+        .into_iter()
+        .map(|row| {
+            format!(
+                "{} {}",
+                row.get::<String, _>("oid"),
+                row.get::<String, _>("message")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n"))
+}
+
+async fn tag_committed_at(
+    pool: &PgPool,
+    repository_id: Uuid,
+    tag: &str,
+) -> Result<DateTime<Utc>, AiError> {
+    sqlx::query_scalar::<_, DateTime<Utc>>(
+        r#"
+        SELECT commits.committed_at
+        FROM commits
+        WHERE commits.repository_id = $1
+          AND commits.id = COALESCE(
+              (
+                  SELECT releases.target_commit_id
+                  FROM releases
+                  WHERE releases.repository_id = $1
+                    AND lower(releases.tag_name) = lower($2)
+                    AND releases.deleted_at IS NULL
+                    AND releases.target_commit_id IS NOT NULL
+                  LIMIT 1
+              ),
+              (
+                  SELECT refs.target_commit_id
+                  FROM repository_git_refs refs
+                  WHERE refs.repository_id = $1
+                    AND lower(regexp_replace(refs.name, '^refs/tags/', '')) = lower($2)
+                    AND refs.kind = 'tag'
+                    AND refs.target_commit_id IS NOT NULL
+                  LIMIT 1
+              )
+          )
+        "#,
+    )
+    .bind(repository_id)
+    .bind(clean_tag_name(tag))
+    .fetch_optional(pool)
+    .await?
+    .ok_or(AiError::ReleaseNotFound)
+}
+
+fn clean_tag_name(tag: &str) -> String {
+    tag.trim().trim_start_matches("refs/tags/").to_owned()
 }
 
 #[cfg(test)]

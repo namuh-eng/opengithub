@@ -2518,5 +2518,74 @@
       }
     ],
     "fix_description": "Restricted PR AI inline-comment seed to the PR author and added focused unit coverage. Full DB-backed signed-session, private repository opt-in, rate-limit bucket, and live OpenAI provider verification remain blocked by unavailable local test Postgres, so prd.json keeps ai-001.qa_pass=false."
+  },
+  {
+    "feature_id": "ai-001",
+    "attempt": 3,
+    "status": "partial",
+    "sub_phases": {
+      "functional": {
+        "status": "partial",
+        "notes": "Repository, PR, and release AI UI unit coverage passed; added and ran focused AI changelog tag-range contract coverage, but DB-backed assertions self-skipped because the local test Postgres service on localhost:55433 did not become ready. make test-e2e timed out in db-wait-test before Playwright started, and Ever CLI still returned a non-JSON HTML parse error. Live OpenAI/provider, signed-session E2E, private-repo opt-in, and real rate-limit bucket behavior remain unverified in this environment."
+      },
+      "api_contract": {
+        "status": "partial",
+        "endpoints_tested": [
+          "GET /api/ai/repos/:owner/:repo/summary",
+          "POST /api/ai/repos/:owner/:repo/summary",
+          "GET /api/ai/repos/:owner/:repo/pulls/:number/summary",
+          "POST /api/ai/repos/:owner/:repo/pulls/:number/summary",
+          "POST /api/ai/repos/:owner/:repo/releases/changelog"
+        ],
+        "notes": "Code inspection found and fixed the changelog compare-range contract. Live degraded curl probes verified application/json database_unavailable envelopes and rate-limit/version headers without a DB pool. Focused AI integration tests compile and run, but DB-backed provider/cache/private-repo/session assertions self-skip without a reachable TEST_DATABASE_URL/DATABASE_URL."
+      },
+      "security": {
+        "status": "partial",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure",
+          "private_repo_opt_in",
+          "author_only_inline_seed",
+          "changelog_range"
+        ],
+        "notes": "Anonymous and injection-shaped live probes returned generic 503 database_unavailable JSON without reflecting payloads or leaking stack traces; hostile-origin OPTIONS returned 405 without Access-Control-Allow-Origin. The changelog fix prevents sending commits outside the requested tag range to OpenAI. DB-backed signed-session, private repository content, and repeated rate-limit bucket probes remain blocked by the unavailable test database."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json attempt history, qa-hints.json, BUILD_GUIDE.md, ralph-config.json, web/AGENTS.md, AI route/domain code, AI UI components, and focused AI tests.",
+      "Attempted timeout 120 make db-up-test; it hung until timeout and exited Error 130, so localhost:55433 remained unavailable for DB-backed QA.",
+      "Ran mandatory Editorial banned-token scan with ripgrep -e syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran cd web && npx vitest run tests/repository-code-overview.test.tsx tests/repository-pull-request-detail.test.tsx tests/repository-releases-page.test.tsx: 3 files passed, 59 tests passed.",
+      "Reviewed crates/api/src/domain/ai.rs and found release_commit_context ignored previousTag and targetTag, so AI changelog prompts could include commits outside the selected compare range.",
+      "Fixed AI changelog context to resolve previous and target tag commit timestamps from releases/repository_git_refs and include only commits after previousTag and up through targetTag.",
+      "Added api_ai_surfaces_contract coverage for the tag-range cache key so a healthy DB verifies only the selected range hits the cached changelog output instead of calling OpenAI.",
+      "Ran cargo fmt --all --check: passed after formatting.",
+      "Ran cargo test -p opengithub-api --test api_ai_surfaces_contract -- --nocapture with .env.test loaded: 2 passed with DB-backed scenarios self-skipping because TEST_DATABASE_URL/DATABASE_URL were unreachable.",
+      "Ran cargo test -p opengithub-api domain::ai::tests::pr_inline_comment_seed_is_author_only -- --nocapture: passed.",
+      "Started the Rust API without a DB pool and live-probed AI summary and changelog endpoints; each returned JSON 503 database_unavailable with X-RateLimit and X-GitHub-Api-Version headers.",
+      "Sent SQL-like and XSS-like AI probes; responses stayed generic JSON 503 without payload reflection, SQL errors, stack traces, or environment values.",
+      "Probed OPTIONS /api/ai/repos/mona/octo-app/summary with Origin https://evil.com; response was 405 and did not emit Access-Control-Allow-Origin.",
+      "Attempted timeout 180 make test-e2e; it timed out in db-wait-test before Playwright started.",
+      "Started Next dev and attempted Ever CLI against http://localhost:3015; ever start returned Unexpected token HTML/non-JSON, so Ever manual verification remained unavailable.",
+      "Curl-rendered /mona/octo-app through Next; degraded repo page rendered the Editorial shell with var(--bg) and Fraunces/Inter/JetBrains font classes, but no DB-backed AI content could load."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "functional",
+        "description": "AI changelog generation ignored the selected previousTag and targetTag compare range, so the OpenAI prompt could include unrelated commits outside the release range.",
+        "expected": "Generate changelog with AI sends only the commit log between previousTag and targetTag, matching the PRD behavior \"Compare from <prev tag>\".",
+        "actual": "release_commit_context ignored previousTag and selected the latest 60 repository commits regardless of the requested target release range.",
+        "reproduction": "Before this fix, create releases v1.0.0 and v1.1.0 with later unreleased commits, then POST /api/ai/repos/:owner/:repo/releases/changelog with {\"previousTag\":\"v1.0.0\",\"targetTag\":\"v1.1.0\"}; the context builder used recent_commits(repository_id, 60), including commits outside v1.0.0..v1.1.0."
+      }
+    ],
+    "fix_description": "Fixed AI changelog context to honor previousTag/targetTag bounds and added focused DB-backed contract coverage. Full signed-session, private-repo opt-in, rate-limit bucket, and live OpenAI provider verification remain blocked by unavailable local test Postgres, so prd.json keeps ai-001.qa_pass=false."
   }
 ]
