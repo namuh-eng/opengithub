@@ -8242,5 +8242,19 @@
       "Full Playwright via default config is blocked by the Makefile-backed webServer command; focused actions-002 Playwright passed against manually started local servers.",
       "Real runner execution, logs, artifacts, check-suite/check-run synchronization, live YAML parser provenance, and branch/ref race hardening remain outside actions-002 as previously noted."
     ]
+  },
+  {
+    "feature_id": "actions-004",
+    "tests_written": [
+      "Independent QA attempt compiled and exercised existing actions-004 focused Rust/web tests: repository-actions-job-log Vitest, api-docs Vitest, full web Vitest, cargo check/clippy, and cargo test all passed in the available environment.",
+      "Mandatory Editorial banned-value scan returned zero matches in web/src excluding og CSS.",
+      "No production source changes were made during this QA attempt."
+    ],
+    "needs_deeper_qa": [
+      "actions-004 remains qa_pass=false because real DB-backed/browser verification was blocked: make test-e2e first failed on missing .ralph-setup-done, Docker Desktop could not start the test Postgres service on :55433, and local pg_isready had no response on :5432/:55433/:55432.",
+      "Rerun full make test-e2e and focused repository-actions-job-log Playwright after onboarding marker and test Postgres are healthy; verify collapsible steps, search next/previous, copy/permalink, timestamp/raw options, preference persistence, job/run archive downloads, unavailable 410 state, keyboard/no-overflow, and screenshots on the live route.",
+      "Rerun DB-backed Rust api_repository_actions_job_log_contract with a reachable TEST_DATABASE_URL; the current attempt compiled and passed but printed skip notices for DB-backed job-log/private/live scenarios.",
+      "Perform live HTTP API/security probes for detail, log-preferences, job download, and run archive endpoints, including anonymous/private denial, malformed inputs, hostile Origin CORS, deleted/expired logs, and secret/storage-key redaction."
+    ]
   }
 ]
