@@ -406,6 +406,17 @@ async fn search_suggestions_include_people_teams_and_qualifier_replacements() {
 }
 
 #[tokio::test]
+async fn saved_search_delete_authenticates_before_uuid_parsing() {
+    let app = opengithub_api::build_app_with_config(None, app_config());
+    let (status, headers, body) =
+        delete_json(app, "/api/search/saved-searches/not-a-uuid", None).await;
+
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_json(&headers);
+    assert_eq!(body["error"]["code"], "not_authenticated");
+}
+
+#[tokio::test]
 async fn saved_search_mutations_validate_persist_and_enforce_ownership() {
     let Some(pool) = database_pool().await else {
         eprintln!("skipping saved search contract scenario; set TEST_DATABASE_URL");

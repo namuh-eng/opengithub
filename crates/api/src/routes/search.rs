@@ -357,10 +357,15 @@ async fn create_saved(
 async fn delete_saved(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path(id): Path<uuid::Uuid>,
+    Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorEnvelope>)> {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let id = id.parse::<uuid::Uuid>().map_err(|_| {
+        map_search_error(SearchError::Validation(
+            "saved search id must be a valid UUID".to_owned(),
+        ))
+    })?;
     delete_saved_search(pool, actor.0.id, id)
         .await
         .map_err(map_search_error)?;

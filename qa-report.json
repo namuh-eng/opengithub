@@ -1230,5 +1230,70 @@
       }
     ],
     "fix_description": "Gated PR write controls to write-capable viewer permissions, preserved explicit PR check summaries when no concrete check runs exist, treated linear-history branch policy as merge-method guidance rather than a universal blocker, updated stale username-first contract expectations, and updated focused E2E label interaction to use the actual LabelPicker checkbox/save flow."
+  },
+  {
+    "feature_id": "search-002",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed before fixes; focused global-search-modal/app-shell Vitest passed; make test-e2e ran 18 public tests and failed only in unrelated repository-discussions DB-required specs, while search modal E2E was skipped because TEST_DATABASE_URL/DATABASE_URL is unset. Ever CLI was attempted for /dashboard but sessions expired immediately. Mandatory Editorial banned-token scan was clean."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/search/suggestions",
+          "POST /api/search/saved-searches",
+          "DELETE /api/search/saved-searches/{id}",
+          "POST /api/search/recent",
+          "GET /search/suggestions",
+          "POST /search/saved-searches",
+          "DELETE /search/saved-searches/{id}"
+        ],
+        "notes": "Discovered Rust search routes and Next same-origin proxy routes. Anonymous suggestions/create/recent returned JSON 401 envelopes. DELETE with a malformed saved-search id initially returned Axum plain-text 400 before auth; fixed to authenticate first and return JSON 401 when anonymous. Focused search_suggestions_contract now includes the regression and passes."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Unauthenticated suggestions, saved-search create/delete, and recent-search probes did not bypass auth. SQL/XSS-shaped probes returned generic JSON 401 without reflecting payloads or leaking stack traces. OPTIONS from https://evil.com returned 405 without Access-Control-Allow-Origin echo. Malformed saved-search id no longer leaks parser text before auth."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json and qa-hints.json; no previous search-002 QA attempt existed, and build hints showed five completed search-002 phases with deeper QA focused on browser modal behavior, saved-search writes, long-list/concurrency, and private leakage.",
+      "Ran required Editorial banned-value scan with ripgrep -e syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran make test: Cargo tests passed and web tests passed (654 passed).",
+      "Ran make test-e2e: 18 tests passed, 134 skipped, then the suite failed in unrelated repository-discussions specs because TEST_DATABASE_URL/DATABASE_URL is not configured; search modal DB-backed specs were skipped for the same missing DB config.",
+      "Ran cd web && npm test -- global-search-modal.test.tsx app-shell.test.tsx --run: 2 files and 11 modal/header tests passed.",
+      "Ran cargo test -p opengithub-api --test search_suggestions_contract -- --nocapture before and after the fix; after the fix, 4 tests passed including saved_search_delete_authenticates_before_uuid_parsing. DB-backed assertions self-skipped without TEST_DATABASE_URL/DATABASE_URL.",
+      "Started/reused local dev services on :3015/:3016 and curl-probed unauthenticated GET /api/search/suggestions, POST /api/search/saved-searches, POST /api/search/recent, and DELETE /api/search/saved-searches/not-real.",
+      "Found DELETE /api/search/saved-searches/not-real returned plain text 400 UUID parser output before auth; fixed route to parse the id after AuthenticatedUser extraction.",
+      "Reprobed DELETE /api/search/saved-searches/not-real after restarting the Rust API: returned 401 application/json with error.code not_authenticated.",
+      "Probed SQL-like and XSS-like search/saved-search inputs: responses stayed generic JSON 401 and did not reflect raw payloads.",
+      "Probed OPTIONS /api/search/saved-searches/not-real with Origin https://evil.com: returned 405 and did not emit Access-Control-Allow-Origin.",
+      "Attempted Ever CLI manual verification with ever start --url http://localhost:3015/dashboard && ever snapshot; Ever reported Session expired immediately, matching prior QA environment limitations.",
+      "Ran final make check && make test after fixes: Cargo check, web typecheck, Clippy, Biome, Cargo tests, and web tests all passed; web tests reported 654 passed."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "api_contract",
+        "description": "Malformed saved-search delete ids were parsed by Axum before authentication, returning a plain-text 400 parser error instead of the feature API JSON error envelope.",
+        "expected": "Unauthenticated DELETE /api/search/saved-searches/{id} should authenticate before id parsing and return application/json 401; malformed authenticated ids should use a controlled JSON validation error.",
+        "actual": "DELETE /api/search/saved-searches/not-real returned text/plain 400: Invalid URL: UUID parsing failed...",
+        "reproduction": "curl -i -X DELETE http://localhost:3016/api/search/saved-searches/not-real"
+      }
+    ],
+    "fix_description": "Changed the saved-search delete route to accept the path id as a string, authenticate first, then parse UUID into a controlled validation error; added a route regression test for unauthenticated malformed ids."
   }
 ]
