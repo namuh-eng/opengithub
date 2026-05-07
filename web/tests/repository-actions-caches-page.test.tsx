@@ -116,7 +116,7 @@ describe("RepositoryActionsCachesPage", () => {
     );
 
     expect(
-      screen.getByRole("heading", { name: "Dependency caches" }),
+      screen.getByRole("heading", { name: "Actions caches" }),
     ).toBeVisible();
     expect(screen.getByText("node-linux-lock")).toBeVisible();
     expect(screen.getByText("v1-main")).toBeVisible();

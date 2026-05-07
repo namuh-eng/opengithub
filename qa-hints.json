@@ -8212,5 +8212,21 @@
       "Rate-limit bucket behavior for repeated AI generation under real signed sessions",
       "Full signed-session E2E after local TEST_DATABASE_URL credentials are healthy"
     ]
+  },
+  {
+    "feature_id": "actions-001",
+    "tests_written": [
+      "QA fixed Actions caches management page h1 to 'Actions caches' and updated cache-page unit coverage to match the all-workflows management navigation contract.",
+      "Focused Actions Vitest/docs/cache tests passed: repository-actions, repository-actions-caches-page, and api-docs (13 tests).",
+      "Focused Rust Actions dashboard contract passed (4 tests) against .env.test TEST_DATABASE_URL, covering auth boundaries, filters/status normalization, pagination, private redaction, empty state, and recent-view telemetry.",
+      "Focused Actions Playwright passed after restarting stale dev servers, covering workflow rail, run list, URL filters, workflow scoping, management/docs/run navigation, keyboard focus, no dead controls, no overflow, and screenshot flows.",
+      "Full web Vitest passed: 107 files / 655 tests. make check passed with .env.test and CARGO_INCREMENTAL=0. Mandatory Editorial banned-value scan returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Re-run full make test on a machine/volume with enough free disk for all Rust test binaries; this lane hit ld errno=28 No space left on device while linking unrelated Rust contract tests.",
+      "Re-run full make test-e2e after local test Postgres and unrelated account-security failures are healthy; focused Actions E2E passed.",
+      "Run axe WCAG scan when @axe-core/playwright is available in the QA environment; this lane covered role/name, focus, dead controls, and overflow but did not install new a11y dependencies.",
+      "Live runner execution, streaming logs, artifacts, manual dispatch, and real cache/deployment/attestation/usage/performance data remain outside actions-001 and need later feature QA."
+    ]
   }
 ]

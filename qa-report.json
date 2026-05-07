@@ -2691,5 +2691,69 @@
     "bugs_found": [],
     "fix_description": "No product fixes required; QA evidence and pass state updated only.",
     "overall_status": "pass"
+  },
+  {
+    "feature_id": "actions-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified repository Actions all-workflows page with real focused browser and component evidence. Found and fixed a management-navigation contract bug: /actions/caches rendered the h1 'Dependency caches' while the Actions management destination/test contract expected 'Actions caches'. Focused Playwright repository-actions.spec.ts passed after restarting stale dev servers, covering workflow rail, run list, search/status/branch filters, workflow scoping, recent-view POST, management/docs/run navigation, keyboard focus, no dead controls, desktop/mobile overflow, and screenshots. Full make test-e2e was attempted first after local setup/dependency repair but broad suite failed before Actions completion on unrelated account-security and then was terminated; focused Actions E2E passed."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/actions/dashboard",
+          "POST /api/repos/{owner}/{repo}/actions/recent-view",
+          "POST /api/repos/{owner}/{repo}/actions/workflows",
+          "POST /api/repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs",
+          "PATCH /api/repos/{owner}/{repo}/actions/runs/{run_id}",
+          "GET /api/repos/{owner}/{repo}/actions/caches via management page"
+        ],
+        "notes": "Focused Rust contract api_repository_actions_dashboard_contract passed 4/4 with .env.test TEST_DATABASE_URL: public anonymous reads, private repository 403 redaction, owner private access, pagination clamps, filters/status normalization, invalid status 422 envelope, and signed recent-view telemetry auth/persistence."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "anonymous_public_read_allowed",
+          "private_anonymous_forbidden_no_metadata_leak",
+          "private_outsider_forbidden_no_metadata_leak",
+          "recent_view_requires_auth",
+          "standard_error_envelopes",
+          "no_dead_placeholder_controls",
+          "no_banned_editorial_values"
+        ],
+        "notes": "Rust contract explicitly asserted private repository forbidden responses do not include the private repo name and recent-view anonymous POST returns 401. Playwright no-dead-controls sweep found no href='#'/missing href links and visible buttons had accessible names. Mandatory Editorial banned-value scan returned zero matches."
+      },
+      "accessibility": {
+        "status": "pass_with_caveat",
+        "violations": [],
+        "notes": "Focused Playwright verified role/name navigation, dialog visibility, filter button focus, visible button accessible names, and no desktop/mobile horizontal overflow. @axe-core/playwright is not installed in this worktree after npm ci, so an axe WCAG scan was not runnable without changing dependencies."
+      }
+    },
+    "evidence": [
+      "make test-e2e attempted first: initially blocked by missing web/node_modules and test postgres readiness; after npm ci, broad Playwright reached suite execution but failed on unrelated account-security and terminated with make Error 143 before Actions completion.",
+      "cd web && npx vitest run tests/repository-actions.test.tsx tests/repository-actions-caches-page.test.tsx tests/api-docs.test.tsx: 3 files, 13 tests passed.",
+      "set -a; . ./.env.test; DB_SSL=false cargo test -p opengithub-api --test api_repository_actions_dashboard_contract -- --nocapture: 4 tests passed.",
+      "cd web && DASHBOARD_E2E_SKIP_MIGRATIONS=1 DB_SSL=false npx playwright test tests/e2e/repository-actions.spec.ts --project=chromium: 2 tests passed after killing stale :3015/:3016 dev servers.",
+      "set -a; . ./.env.test; DB_SSL=false CARGO_INCREMENTAL=0 make check: passed Cargo check, web typecheck, Clippy, Biome after clearing generated caches from a disk-full first attempt.",
+      "cd web && npx vitest run: 107 files, 655 tests passed.",
+      "make test attempted with .env.test and CARGO_INCREMENTAL=0: blocked by local disk exhaustion during Rust test binary linking (ld write() failed errno=28 No space left on device) before web tests; focused Cargo Actions contract and full web Vitest were used as bounded substitutes.",
+      "Editorial banned-value scan passed with zero matches."
+    ],
+    "changed_files": [
+      "web/src/components/RepositoryActionsCachesPage.tsx",
+      "web/tests/repository-actions-caches-page.test.tsx",
+      "prd.json",
+      "qa-report.json",
+      "qa-hints.json",
+      "build-progress.txt"
+    ],
+    "caveats": [
+      "Full broad make test remains blocked locally by disk capacity while linking unrelated Rust test binaries after target rebuild; exact linker evidence recorded as errno=28 No space left on device.",
+      "Full broad make test-e2e did not pass in this lane because of local setup/test DB readiness and an unrelated account-security failure; focused Actions E2E passed against the signed-session test environment.",
+      "axe-core scan was not run because @axe-core/playwright is not installed; keyboard/role/dead-control/no-overflow accessibility checks passed."
+    ]
   }
 ]

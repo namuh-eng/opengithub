@@ -111,8 +111,8 @@ export function RepositoryActionsCachesPage({
               <span className="t-xs">/</span>
               <span className="t-sm">Caches</span>
             </div>
-            <p className="t-label">Repository Insights</p>
-            <h1 className="t-h1 mt-1">Dependency caches</h1>
+            <p className="t-label">Dependency caches</p>
+            <h1 className="t-h1 mt-1">Actions caches</h1>
             <p
               className="t-sm mt-2 max-w-2xl"
               style={{ color: "var(--ink-3)" }}
