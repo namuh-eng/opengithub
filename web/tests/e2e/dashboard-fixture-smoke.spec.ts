@@ -26,10 +26,12 @@ test("fixture: signed-in dashboard renders for the owner persona", async ({
   const seeded = await seed();
   await signIn(page, seeded, "owner");
 
-  await page.goto("/");
-  await expect(page).toHaveURL(/\/$|\/dashboard$/);
+  await page.goto("/dashboard");
   await expect(
-    page.getByRole("heading", { level: 1, name: /dashboard|home/i }).first(),
+    page.getByRole("heading", { name: "Top repositories" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Dashboard feed" }),
   ).toBeVisible();
 
   await expectNoDeadControls(page);
