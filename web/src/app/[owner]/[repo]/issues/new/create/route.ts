@@ -9,7 +9,7 @@ type RouteContext = {
   params: Promise<{ owner: string; repo: string }>;
 };
 
-function validationError(message: string) {
+function malformedJsonError(message: string) {
   return NextResponse.json(
     {
       error: {
@@ -33,11 +33,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   try {
     body = (await request.json()) as CreateIssueRequest;
   } catch {
-    return validationError("Issue creation payload must be valid JSON");
-  }
-
-  if (!body.title?.trim()) {
-    return validationError("issue title is required");
+    return malformedJsonError("Issue creation payload must be valid JSON");
   }
 
   try {
@@ -47,7 +43,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       repo,
       {
         ...body,
-        title: body.title.trim(),
+        title: body.title?.trim() ?? "",
         body: body.body?.trim() ? body.body : null,
       },
     );
