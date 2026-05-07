@@ -2250,12 +2250,12 @@
       "description": "AI surface \u2014 repository auto-summary card, AI-generated PR summary + suggested r",
       "category": "feature",
       "qa_pass": false,
-      "attempts": 1,
+      "attempts": 2,
       "exhausted": false,
       "sub_phases": {
         "functional": {
           "status": "partial",
-          "notes": "Repository, PR, and release AI UI unit coverage passed; focused AI Rust contract compiled and ran but DB-backed assertions self-skipped because TEST_DATABASE_URL localhost:55433 was unavailable. make test passed after the fix; make test-e2e timed out in db-wait-test before Playwright started. Live OpenAI/provider and signed-session E2E remain unverified in this environment."
+          "notes": "Repository, PR, and release AI UI unit coverage passed; PR inline-comment seed author-only unit coverage passed; focused AI Rust contract compiled and ran but DB-backed assertions self-skipped because no TEST_DATABASE_URL/DATABASE_URL was available. Live no-DB API probes returned safe JSON 503 envelopes with rate-limit headers. make test-e2e timed out in db-wait-test before Playwright started; Ever CLI returned a non-JSON HTML parse error, so signed-session browser QA and live OpenAI provider behavior remain unverified. Final make check && make test passed after the fix."
         },
         "api_contract": {
           "status": "partial",
@@ -2263,10 +2263,9 @@
             "GET /api/ai/repos/:owner/:repo/summary",
             "POST /api/ai/repos/:owner/:repo/summary",
             "GET /api/ai/repos/:owner/:repo/pulls/:number/summary",
-            "POST /api/ai/repos/:owner/:repo/pulls/:number/summary",
             "POST /api/ai/repos/:owner/:repo/releases/changelog"
           ],
-          "notes": "Route and domain inspection verified JSON shapes, provider error mapping, cache contract, and global rate-limit middleware coverage. Added a focused Rust contract for repository/user opt-in behavior. DB-backed happy-path/provider calls could not run because the test Postgres service was unavailable."
+          "notes": "Degraded live curl probes verified application/json database_unavailable envelopes and X-RateLimit/X-GitHub-Api-Version headers for AI endpoints without a DB pool. Focused contract test still self-skips DB-backed repository/user opt-in assertions without TEST_DATABASE_URL/DATABASE_URL, so provider-backed happy paths, private repo opt-in against real rows, and repeated signed rate-limit bucket behavior remain unverified."
         },
         "security": {
           "status": "partial",
@@ -2275,9 +2274,10 @@
             "input_sanitization",
             "cors",
             "data_exposure",
-            "private_repo_opt_in"
+            "private_repo_opt_in",
+            "author_only_inline_seed"
           ],
-          "notes": "Code inspection verified private repositories require read permission before AI context is built, provider failures return generic errors, and rate limiting is applied by the global middleware. Fixed the per-repository opt-in gap so disabled public repositories also avoid provider calls. Anonymous/signed curl probes could not run without a healthy DB-backed app session."
+          "notes": "Fixed a major PR privacy issue: inline-comment seed is now returned only when the authenticated actor is the PR author. Anonymous SQL/XSS-shaped live probes returned generic 503 database_unavailable envelopes without reflecting payloads or leaking stack traces. Hostile-origin OPTIONS returned 405 without Access-Control-Allow-Origin. DB-backed private repository and signed-session curl probes remain blocked by unavailable local test Postgres."
         },
         "accessibility": {
           "status": "skip",
