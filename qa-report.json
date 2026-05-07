@@ -480,5 +480,78 @@
       }
     ],
     "fix_description": "Changed the repository import create route to use the shared RestJson extractor and added regression coverage for missing-field import POST requests returning a sanitized JSON 400 envelope."
+  },
+  {
+    "feature_id": "dashboard-002",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed; mandatory Editorial banned-token scan was clean; focused DB-backed dashboard Playwright E2E passed 6/6 against isolated local Postgres QA database; live browser manual verification used Playwright because Ever CLI sessions expired immediately; screenshot saved to ralph/screenshots/qa/dashboard-002-recent-activity.png."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/dashboard",
+          "PUT /api/dashboard/feed-preferences",
+          "DELETE /api/dashboard/feed-preferences"
+        ],
+        "notes": "Direct curl verified signed GET returns 200 application/json with recentActivity issue/PR rows containing number, state, actorLogin, repositoryName, href and <=4 rows; anonymous GET/PUT return 401 JSON; invalid feedTab/eventType return JSON validation errors; signed PUT/DELETE return expected JSON preference shapes; missing PUT JSON now returns 400 JSON invalid_json after the fix."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Anonymous dashboard API access is blocked with 401 JSON; SQL/XSS probes through dashboard filters produced validation errors without SQL errors, stack traces, or raw HTML rendering; OPTIONS from https://evil.com returned 405 without Access-Control-Allow-Origin; responses did not expose passwords, env values, stack paths, or private repository rows outside the signed session scope."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json, qa-hints.json dashboard-002 entry, BUILD_GUIDE.md, dashboard routes/components/tests, and prior QA history showing no previous attempts.",
+      "Ran make test: Cargo tests passed and 650 web tests passed before fixes.",
+      "Ran mandatory Editorial banned-value scan with ripgrep-compatible syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran make test-e2e in the default environment: 18 tests passed before unrelated repository-discussions specs failed because TEST_DATABASE_URL/DATABASE_URL was not configured; dashboard E2E skipped there for the same env reason.",
+      "Created isolated local database opengithub_dashboard_qa on available local Postgres and ran focused dashboard E2E with TEST_DATABASE_URL; setup plus five signed-in dashboard specs passed.",
+      "Started live dev server on localhost:3015/3016 with the QA database and seeded a Rust-signed session cookie using dashboard_e2e_seed.",
+      "Direct curl verified GET /api/dashboard without auth returns 401 application/json not_authenticated.",
+      "Direct curl verified signed GET /api/dashboard?pageSize=4 returns 200 application/json with issue and pull_request recentActivity rows, repositoryName, number, state, actorLogin, actorAvatarUrl, occurredAt, and href metadata.",
+      "Direct curl verified invalid feedTab and XSS-like eventType query values return JSON validation errors without stack traces or reflected HTML rendering.",
+      "Direct curl verified signed PUT /api/dashboard/feed-preferences succeeds with feedTab/eventTypes and DELETE resets preferences.",
+      "Direct curl found PUT /api/dashboard/feed-preferences with {} returned Axum text/plain 422 before the fix; after switching to RestJson it returns 400 application/json invalid_json.",
+      "Direct curl verified anonymous PUT /api/dashboard/feed-preferences returns 401 JSON and OPTIONS from https://evil.com does not echo Access-Control-Allow-Origin.",
+      "Attempted Ever CLI on /dashboard; ever start succeeded but ever snapshot failed with Session expired, so manual browser verification used Playwright against the live dev server.",
+      "Manual browser verification initially found the API recentActivity data was not rendered on the dashboard. Added the Recent activity section at the top of the dashboard feed and regression tests.",
+      "Manual browser verification after the fix showed Recent activity with PR and issue links, state chips, repository link, number, actor, and relative updated time; screenshot saved to ralph/screenshots/qa/dashboard-002-recent-activity.png.",
+      "Ran focused Vitest dashboard-onboarding test file after UI fix: 17 passed.",
+      "Ran focused dashboard Playwright E2E after UI fix: 6 passed."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "functional",
+        "description": "The dashboard API returned recentActivity issue/PR rows, but the dashboard UI did not render a Recent activity section for those rows.",
+        "expected": "The top of the main dashboard feed shows up to four recent issue or pull request activity rows with title link, repository, number, state badge, actor, avatar/initial, and updated relative time, plus empty-state Create repository and Explore repositories links.",
+        "actual": "The dashboard rendered Dashboard feed events, assigned issues, and review requests, but ignored summary.recentActivity entirely.",
+        "reproduction": "Seed dashboard_e2e_seed, sign in with the generated og_session cookie, open http://localhost:3015/dashboard, and compare GET /api/dashboard recentActivity rows to the rendered dashboard."
+      },
+      {
+        "severity": "major",
+        "phase": "api_contract",
+        "description": "PUT /api/dashboard/feed-preferences returned Axum default text/plain 422 for missing required JSON fields instead of the project standard JSON error envelope.",
+        "expected": "Malformed or missing JSON fields return application/json with an error envelope such as { error: { code: string, message: string }, status: 400 }.",
+        "actual": "Live curl with {} returned 422 text/plain: Failed to deserialize the JSON body into the target type: missing field `feedTab`...",
+        "reproduction": "Before the fix, run curl -i -X PUT http://localhost:3016/api/dashboard/feed-preferences -H \"Cookie: og_session=...\" -H \"Content-Type: application/json\" -d \"{}\"."
+      }
+    ],
+    "fix_description": "Rendered the dashboard recentActivity issue/PR section with empty-state actions and regression tests, and switched dashboard feed-preference writes to the shared RestJson extractor for sanitized JSON error envelopes."
   }
 ]

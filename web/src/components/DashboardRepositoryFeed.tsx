@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type {
+  DashboardActivityItem,
   DashboardFeedEvent,
   DashboardFeedEventType,
   DashboardFeedTab,
@@ -123,6 +124,33 @@ function ActorAvatar({ event }: { event: DashboardFeedEvent }) {
   );
 }
 
+function ActivityAvatar({ item }: { item: DashboardActivityItem }) {
+  const initial = item.actorLogin.charAt(0).toUpperCase() || "U";
+
+  if (item.actorAvatarUrl) {
+    return (
+      <span
+        aria-hidden="true"
+        className="av sm bg-cover bg-center"
+        style={{ backgroundImage: `url(${item.actorAvatarUrl})` }}
+      />
+    );
+  }
+
+  return (
+    <span
+      aria-hidden="true"
+      className="av sm inline-flex items-center justify-center t-xs font-semibold"
+      style={{
+        background: "var(--surface-3)",
+        color: "var(--ink-3)",
+      }}
+    >
+      {initial}
+    </span>
+  );
+}
+
 function feedUrl(
   feedTab: DashboardFeedTab,
   eventTypes: DashboardFeedEventType[] = [],
@@ -193,6 +221,112 @@ function FeedCard({ event }: { event: DashboardFeedEvent }) {
         </div>
       </article>
     </li>
+  );
+}
+
+function activityIconLabel(kind: DashboardActivityItem["kind"]): string {
+  return kind === "pull_request" ? "P" : "I";
+}
+
+function stateChipClass(state: DashboardActivityItem["state"]): string {
+  if (state === "closed") {
+    return "chip err";
+  }
+  if (state === "merged") {
+    return "chip info";
+  }
+  return "chip ok";
+}
+
+function WorkActivityRow({ item }: { item: DashboardActivityItem }) {
+  return (
+    <li className="list-row gap-3 py-3">
+      <span
+        aria-hidden="true"
+        className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full t-xs font-semibold"
+        style={{
+          border: "1px solid var(--line)",
+          background: "var(--surface-2)",
+          color: "var(--ink-3)",
+        }}
+      >
+        {activityIconLabel(item.kind)}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <Link
+            className="min-w-0 truncate t-sm font-semibold leading-5 hover:underline"
+            style={{ color: "var(--accent)" }}
+            href={item.href}
+          >
+            {item.title}
+          </Link>
+          <span className={stateChipClass(item.state)}>{item.state}</span>
+        </div>
+        <div
+          className="mt-1 flex min-w-0 flex-wrap items-center gap-2 t-xs"
+          style={{ color: "var(--ink-3)" }}
+        >
+          <ActivityAvatar item={item} />
+          <Link
+            className="font-medium hover:underline"
+            style={{ color: "inherit" }}
+            href={item.repositoryHref}
+          >
+            {item.repositoryName}
+          </Link>
+          <span>#{item.number}</span>
+          <span>{item.description ?? "updated"}</span>
+          <span>{item.actorLogin}</span>
+          <time
+            dateTime={item.occurredAt}
+            suppressHydrationWarning
+            title={formatActivityDate(item.occurredAt)}
+          >
+            {formatRelativeActivityTime(item.occurredAt)}
+          </time>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function RecentWorkActivity({ summary }: { summary: DashboardSummary }) {
+  return (
+    <section aria-labelledby="recent-activity-heading" className="card p-5">
+      <h2 className="t-h3" id="recent-activity-heading">
+        Recent activity
+      </h2>
+      {summary.recentActivity.length > 0 ? (
+        <ul className="mt-2">
+          {summary.recentActivity.map((item) => (
+            <WorkActivityRow item={item} key={item.id} />
+          ))}
+        </ul>
+      ) : (
+        <div className="mt-2">
+          <p className="t-sm leading-6" style={{ color: "var(--ink-3)" }}>
+            There is no recent activity involving you yet.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <Link
+              className="t-sm font-semibold hover:underline"
+              style={{ color: "var(--accent)" }}
+              href="/new"
+            >
+              Create repository
+            </Link>
+            <Link
+              className="t-sm font-semibold hover:underline"
+              style={{ color: "var(--accent)" }}
+              href="/explore"
+            >
+              Explore repositories
+            </Link>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -324,6 +458,8 @@ export function DashboardRepositoryFeed({
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,720px)_minmax(240px,1fr)]">
       <main className="min-w-0 max-w-[720px] space-y-5">
+        <RecentWorkActivity summary={summary} />
+
         <section aria-labelledby="dashboard-feed-heading">
           <h1 className="mb-3 t-h3" id="dashboard-feed-heading">
             Dashboard feed

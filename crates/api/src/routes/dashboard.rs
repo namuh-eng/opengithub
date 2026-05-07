@@ -9,7 +9,9 @@ use serde_json::json;
 use std::collections::HashMap;
 
 use crate::{
-    api_types::{database_unavailable, error_response, error_response_with_details, ErrorEnvelope},
+    api_types::{
+        database_unavailable, error_response, error_response_with_details, ErrorEnvelope, RestJson,
+    },
     auth::extractor::AuthenticatedUser,
     domain::{
         dashboard::{
@@ -87,7 +89,7 @@ async fn read(
 async fn update_feed_preferences(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(request): Json<UpdateFeedPreferencesRequest>,
+    RestJson(request): RestJson<UpdateFeedPreferencesRequest>,
 ) -> Result<Json<DashboardFeedPreferences>, (StatusCode, Json<ErrorEnvelope>)> {
     let feed_tab =
         DashboardFeedTab::try_from(request.feed_tab.0.as_str()).map_err(map_dashboard_error)?;
