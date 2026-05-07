@@ -923,5 +923,60 @@
       }
     ],
     "fix_description": "Moved title validation behind the authenticated Rust issue-create call by forwarding an empty title when absent, preserving authenticated server-side validation while making unauthenticated create requests return 401 first."
+  },
+  {
+    "feature_id": "issues-004",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed; focused RepositoryIssueDetailPage Vitest passed 6/6; full make test-e2e reached known no-DB environment failure before repository-issues specs, and issue-detail Rust contract self-skipped DB-backed assertions because TEST_DATABASE_URL/DATABASE_URL is unset. Existing issue-detail E2E and Rust contract coverage covers live controls when DB is configured; Ever CLI expired immediately after start, so manual browser interaction was unavailable."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/:owner/:repo/issues/:number",
+          "GET /api/repos/:owner/:repo/issues/:number/timeline",
+          "POST /api/repos/:owner/:repo/issues/:number/comments",
+          "PATCH /api/repos/:owner/:repo/issues/:number",
+          "POST /api/repos/:owner/:repo/issues/:number/reactions",
+          "PATCH /api/repos/:owner/:repo/issues/:number/subscription",
+          "PATCH /api/repos/:owner/:repo/issues/:number/metadata"
+        ],
+        "notes": "Route discovery and focused contract coverage confirm the issue detail read model, timeline, comments, state, reactions, subscription, and metadata routes. Live no-DB probes returned JSON 503 database_unavailable for public read routes and JSON 401/400 envelopes for write/validation probes without leaking internals; DB-backed happy-path contract assertions self-skipped in this environment."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Unauthenticated write probes did not bypass auth; XSS-like comment input returned generic 401 without reflecting payload; malformed/injection-shaped state input returned safe JSON errors without SQL leakage; OPTIONS probes returned 405 and did not echo Access-Control-Allow-Origin for https://evil.com. Mandatory Editorial banned-token scan had zero hits."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json, qa-hints.json issues-004 history, prd.json feature spec, BUILD_GUIDE.md, ralph-config.json, web/AGENTS.md, issue detail page/component, same-origin Next routes, Rust issue routes, focused Vitest, focused Rust contract, and repository-issues E2E coverage.",
+      "Ran mandatory Editorial banned-token scan over web/src outside og CSS with ripgrep-compatible --pcre2 syntax: no banned GitHub hex, Primer, or Octicon hits.",
+      "Ran make test: Cargo tests passed and web tests passed (653 passed).",
+      "Ran make test-e2e: 18 public/auth/docs tests passed, 134 skipped, then two unrelated repository-discussions tests failed because TEST_DATABASE_URL/DATABASE_URL was missing before repository-issues specs could run.",
+      "Ran cd web && npm test -- repository-issue-detail.test.tsx --run: 6 issue-detail component tests passed, covering header/sidebar rendering, empty states, metadata edits, markdown preview, comment submit, reactions, subscription customization, state action, and discussion conversion controls.",
+      "Ran cargo test --test api_repository_issues_list_contract issue_detail -- --nocapture: issue-detail contract test passed but DB-backed assertions self-skipped because TEST_DATABASE_URL/DATABASE_URL is unset.",
+      "Started make dev on localhost:3015/3016 for live probes.",
+      "Verified live API route discovery for issue detail, timeline, comments, state, reactions, subscription, and metadata endpoints in crates/api/src/routes/issues.rs and matching Next proxy routes under web/src/app/[owner]/[repo]/issues/[number].",
+      "Verified unauthenticated live write/security probes returned safe JSON auth or validation envelopes and did not expose stack traces, env values, session secrets, SQL errors, or reflected XSS payloads.",
+      "Verified OPTIONS probes from Origin https://evil.com returned 405 without Access-Control-Allow-Origin on issue mutation endpoints.",
+      "Attempted Ever CLI manual verification for /mona/octo-app/issues/42; ever snapshot failed with Session expired immediately after ever start.",
+      "Reviewed existing final build screenshots referenced by qa-hints for desktop/mobile issue detail guardrails; no new QA screenshot was captured because live DB-backed issue detail rendering is unavailable in this environment."
+    ],
+    "bugs_found": [],
+    "fix_description": "no product fix needed; QA recorded no-DB seeded E2E/API and Ever CLI environment gaps without weakening tests"
   }
 ]
