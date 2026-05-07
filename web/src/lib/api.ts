@@ -3126,6 +3126,12 @@ export type RepositoryForkResult = {
   social: RepositorySocialState;
 };
 
+export type RepositoryForkRequest = {
+  destinationOwner?: string;
+  name?: string;
+  mainBranchOnly?: boolean;
+};
+
 export type RepositoryCloneUrls = {
   https: string;
   git: string;
@@ -19124,12 +19130,17 @@ export async function forkRepositoryFromCookie(
   cookie: string | null | undefined,
   owner: string,
   repo: string,
+  request: RepositoryForkRequest = {},
 ): Promise<RepositoryForkResult> {
   const response = await fetch(
     `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/forks`,
     {
       method: "POST",
-      headers: cookie ? { cookie } : undefined,
+      headers: {
+        ...(cookie ? { cookie } : {}),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(request),
       cache: "no-store",
     },
   );

@@ -2024,6 +2024,14 @@ pub struct RepositoryForkResult {
     pub social: RepositorySocialState,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoryForkRequest {
+    pub destination_owner: Option<String>,
+    pub name: Option<String>,
+    pub main_branch_only: Option<bool>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RepositoryOverview {
@@ -3426,6 +3434,7 @@ pub async fn fork_repository_by_owner_name(
     actor_user_id: Uuid,
     owner_login: &str,
     name: &str,
+    request: RepositoryForkRequest,
 ) -> Result<Option<RepositoryForkResult>, RepositoryError> {
     let Some(source_repository) =
         get_repository_for_actor_by_owner_name(pool, actor_user_id, owner_login, name).await?
@@ -3440,11 +3449,29 @@ pub async fn fork_repository_by_owner_name(
         return Err(RepositoryError::ForkAlreadyExists);
     }
 
+    let destination_owner =
+        resolve_repository_fork_owner(pool, actor_user_id, request.destination_owner.as_deref())
+            .await?;
+    let default_name = default_fork_name(&source_repository.name);
+    let fork_name = normalize_repository_name(
+        request
+            .name
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or(default_name.as_str()),
+    );
+    validate_repository_name(&fork_name).map_err(RepositoryError::InvalidName)?;
+    if repository_exists_for_owner(pool, &destination_owner, &fork_name).await? {
+        return Err(RepositoryError::InvalidName(format!(
+            "repository `{fork_name}` already exists for the selected destination"
+        )));
+    }
+
     let fork_repository = create_repository_with_bootstrap(
         pool,
         CreateRepository {
-            owner: RepositoryOwner::User { id: actor_user_id },
-            name: source_repository.name.clone(),
+            owner: destination_owner,
+            name: fork_name,
             description: source_repository.description.clone(),
             visibility: source_repository.visibility.clone(),
             default_branch: Some(source_repository.default_branch.clone()),
@@ -3477,6 +3504,57 @@ pub async fn fork_repository_by_owner_name(
         fork_href,
         social,
     }))
+}
+
+fn default_fork_name(source_name: &str) -> String {
+    let base = source_name.trim_end_matches("-fork");
+    format!("{base}-fork")
+}
+
+async fn resolve_repository_fork_owner(
+    pool: &PgPool,
+    actor_user_id: Uuid,
+    destination_owner: Option<&str>,
+) -> Result<RepositoryOwner, RepositoryError> {
+    let Some(destination_owner) = destination_owner
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(RepositoryOwner::User { id: actor_user_id });
+    };
+
+    let Some(row) = sqlx::query(
+        r#"
+        SELECT 'user' AS owner_type, users.id
+        FROM users
+        WHERE users.id = $1
+          AND lower(COALESCE(NULLIF(users.username, ''), users.email)) = lower($2)
+
+        UNION ALL
+
+        SELECT 'organization' AS owner_type, organizations.id
+        FROM organizations
+        JOIN organization_memberships
+          ON organization_memberships.organization_id = organizations.id
+        WHERE organization_memberships.user_id = $1
+          AND lower(organizations.slug) = lower($2)
+        LIMIT 1
+        "#,
+    )
+    .bind(actor_user_id)
+    .bind(destination_owner)
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Err(RepositoryError::OwnerPermissionDenied);
+    };
+
+    let owner_id: Uuid = row.get("id");
+    match row.get::<String, _>("owner_type").as_str() {
+        "user" => Ok(RepositoryOwner::User { id: owner_id }),
+        "organization" => Ok(RepositoryOwner::Organization { id: owner_id }),
+        _ => Err(RepositoryError::OwnerNotFound),
+    }
 }
 
 pub async fn repository_path_overview_for_actor_by_owner_name(

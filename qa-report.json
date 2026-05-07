@@ -2312,5 +2312,79 @@
       }
     ],
     "fix_description": "Verified bearer tokens before assigning authenticated token rate-limit subjects, fell back invalid/unverifiable bearer headers to anonymous IP buckets, and added focused regression coverage."
+  },
+  {
+    "feature_id": "social-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed before fixes; focused repository social Vitest passed after fixes; cargo check for the API passed; make test-e2e was attempted but blocked in docker compose db-wait-test before Playwright started. Ever CLI was attempted but unavailable due a non-JSON daemon response. Visual banned-token scan returned no hits."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/users/:username/followers",
+          "GET /api/users/:username/following",
+          "GET /api/users/:username/stars",
+          "PUT /api/users/:username/follow",
+          "DELETE /api/users/:username/follow",
+          "GET /api/repos/:owner/:repo/stargazers",
+          "PUT /api/repos/:owner/:repo/star",
+          "DELETE /api/repos/:owner/:repo/star",
+          "GET /api/repos/:owner/:repo/watch",
+          "PATCH /api/repos/:owner/:repo/watch",
+          "PUT /api/repos/:owner/:repo/watch",
+          "DELETE /api/repos/:owner/:repo/watch",
+          "POST /api/repos/:owner/:repo/forks"
+        ],
+        "notes": "Route inspection verified public social list read endpoints and auth-gated write endpoints. Fork POST now accepts JSON destinationOwner/name/mainBranchOnly, returns 201 JSON, preserves empty-body compatibility, and validation errors use existing 400/422/409 envelopes."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Route layer uses AuthenticatedUser for star/watch/fork/follow writes and optional auth for public read lists. Fork destination owner is resolved only to the actor or organizations where the actor is a member; unavailable owners return permission errors. Repository names are normalized and validated before insert, avoiding raw payload reflection or SQL construction."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json and confirmed no previous social-001 QA attempts existed.",
+      "Read BUILD_GUIDE.md, ralph-config.json, ralph/pre-setup.md, qa-hints.json, web/AGENTS.md, and Ever CLI guidance.",
+      "Ran make test before fixes: Cargo tests passed and web tests passed with 654 tests.",
+      "Ran the required Editorial banned-token scan with ripgrep-native syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Inspected Axum social routes for profile followers/following/stars/follow and repository star/stargazers/watch/forks.",
+      "Inspected RepositoryHeaderActions and found Fork was a one-click POST with no destination owner, default -fork name, or Copy main branch only toggle.",
+      "Fixed RepositoryHeaderActions to render an Editorial fork dialog with destination owner, repository name defaulting to -fork, and Copy main branch only toggle.",
+      "Fixed the Next fork action route and API client to forward destinationOwner/name/mainBranchOnly JSON to the Rust API.",
+      "Fixed the Rust fork endpoint/domain to parse optional fork JSON, resolve destination owner to the actor or actor organizations, validate normalized fork names, preserve empty-body compatibility, and create the fork with the requested -fork name.",
+      "Added focused repository-code-overview Vitest coverage for the fork dialog payload and redirect.",
+      "Updated the repository-code-overview Playwright expectation to use the fork dialog and -fork destination.",
+      "Ran cargo fmt --all and Biome format on changed web files.",
+      "Ran cargo check -p opengithub-api --all-targets: passed.",
+      "Ran cd web && npx vitest run tests/repository-code-overview.test.tsx: 25 tests passed.",
+      "Attempted make test-e2e; it blocked in docker compose db-wait-test/pg_isready before Playwright started and was terminated. A separate docker compose ps also hung, so Docker test DB health could not be established in this environment.",
+      "Attempted Ever CLI session discovery; ever returned an HTML/non-JSON daemon response, so manual browser control was unavailable from this environment."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "functional",
+        "description": "Repository Fork skipped the required modal and always posted a server-owned default fork creation using the source repository name.",
+        "expected": "Clicking Fork opens a modal with destination owner, repository name defaulting to the source name plus -fork, and a Copy main branch only toggle; POST carries those options to the backend.",
+        "actual": "Clicking Fork immediately POSTed to /actions/fork, and the Rust API created a fork for the actor with the original source repository name.",
+        "reproduction": "Before this fix, open /mona/octo-app, click Fork, and observe there is no dialog and the POST body contains no destinationOwner/name/mainBranchOnly options."
+      }
+    ],
+    "fix_description": "Added the fork options dialog and propagated destination owner/name/mainBranchOnly through the Next action route and Rust fork API; fork names now default to -fork and destination owners are authorization-checked."
   }
 ]

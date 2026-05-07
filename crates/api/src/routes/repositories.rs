@@ -151,10 +151,10 @@ use crate::{
         RepositoryBootstrapRequest, RepositoryBranchRuleMutation, RepositoryBranchesQuery,
         RepositoryCommitDetailContextQuery, RepositoryCommitHistoryQuery,
         RepositoryContributorsQuery, RepositoryDependencyQuery, RepositoryDependentsQuery,
-        RepositoryError, RepositoryFileFinderQuery, RepositoryForksQuery, RepositoryOwner,
-        RepositoryPathQuery, RepositoryPulseQuery, RepositoryRefsQuery, RepositoryRulesetMutation,
-        RepositorySettingsPatch, RepositoryStargazerList, RepositoryTrafficQuery,
-        RepositoryVisibility, RepositoryWatchSettingsPatch,
+        RepositoryError, RepositoryFileFinderQuery, RepositoryForkRequest, RepositoryForksQuery,
+        RepositoryOwner, RepositoryPathQuery, RepositoryPulseQuery, RepositoryRefsQuery,
+        RepositoryRulesetMutation, RepositorySettingsPatch, RepositoryStargazerList,
+        RepositoryTrafficQuery, RepositoryVisibility, RepositoryWatchSettingsPatch,
     },
     domain::repository_security::{
         bulk_update_repository_dependabot_alerts_for_actor_by_owner_name,
@@ -5581,10 +5581,22 @@ async fn fork(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path((owner, repo)): Path<(String, String)>,
+    body: Bytes,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorEnvelope>)> {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
-    let fork = fork_repository_by_owner_name(pool, actor.0.id, &owner, &repo)
+    let request = if body.is_empty() {
+        RepositoryForkRequest::default()
+    } else {
+        serde_json::from_slice::<RepositoryForkRequest>(&body).map_err(|_| {
+            error_response(
+                StatusCode::BAD_REQUEST,
+                "validation_failed",
+                "Fork request must be a JSON object with destinationOwner, name, and mainBranchOnly fields.",
+            )
+        })?
+    };
+    let fork = fork_repository_by_owner_name(pool, actor.0.id, &owner, &repo, request)
         .await
         .map_err(map_repository_error)?
         .ok_or_else(|| {

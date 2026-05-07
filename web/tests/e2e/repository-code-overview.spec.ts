@@ -362,8 +362,15 @@ test("signed-in repository Code tab renders files, README, sidebar, and clone me
       response.status() === 201,
   );
   await page.getByRole("button", { name: /Fork/ }).click();
+  await expect(
+    page.getByRole("dialog", { name: "Create a new fork" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Repository Name")).toHaveValue(
+    `${socialSourceName}-fork`,
+  );
+  await page.getByRole("button", { name: "Create fork" }).click();
   await forkResponse;
-  await expect(page).toHaveURL(new RegExp(`/[^/]+/${socialSourceName}$`));
+  await expect(page).toHaveURL(new RegExp(`/[^/]+/${socialSourceName}-fork$`));
   await expect(page.getByRole("button", { name: /Star/ })).toBeVisible();
 
   await page.screenshot({

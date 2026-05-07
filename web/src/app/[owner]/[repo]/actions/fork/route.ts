@@ -11,10 +11,16 @@ type RouteContext = {
 export async function POST(request: NextRequest, context: RouteContext) {
   const { owner, repo } = await context.params;
   try {
+    const payload = (await request.json().catch(() => ({}))) as {
+      destinationOwner?: string;
+      name?: string;
+      mainBranchOnly?: boolean;
+    };
     const fork = await forkRepositoryFromCookie(
       request.headers.get("cookie"),
       owner,
       repo,
+      payload,
     );
     return NextResponse.json(fork, { status: 201 });
   } catch (error) {

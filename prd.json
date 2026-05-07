@@ -2281,7 +2281,8 @@
       "infra-001",
       "repo-001"
     ],
-    "build_pass": true
+    "build_pass": true,
+    "qa_pass": true
   },
   {
     "id": "gist-001",

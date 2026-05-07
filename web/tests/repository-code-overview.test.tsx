@@ -656,6 +656,63 @@ describe("RepositoryCodeOverview", () => {
     });
   });
 
+  it("opens the fork dialog with a default fork name and submits fork options", async () => {
+    const assign = vi.fn();
+    const originalLocation = window.location;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...originalLocation, assign },
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          forkHref: "/mona/octo-app-fork",
+          social: {
+            starred: false,
+            watching: false,
+            starsCount: 3,
+            watchersCount: 2,
+            forksCount: 2,
+            forkedRepositoryHref: "/mona/octo-app-fork",
+          },
+        }),
+        { status: 201, headers: { "content-type": "application/json" } },
+      ),
+    );
+
+    render(<RepositoryHeaderActions repository={repositoryOverview()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Fork/ }));
+    expect(
+      screen.getByRole("dialog", { name: "Create a new fork" }),
+    ).toBeVisible();
+    expect(screen.getByLabelText("Repository Name")).toHaveValue(
+      "octo-app-fork",
+    );
+    fireEvent.change(screen.getByLabelText("Destination Owner"), {
+      target: { value: "mona" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create fork" }));
+
+    await waitFor(() => {
+      expect(assign).toHaveBeenCalledWith("/mona/octo-app-fork");
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/mona/octo-app/actions/fork", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        destinationOwner: "mona",
+        name: "octo-app-fork",
+        mainBranchOnly: true,
+      }),
+    });
+
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: originalLocation,
+    });
+  });
+
   it("saves repository watch settings through the Editorial watch menu", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")

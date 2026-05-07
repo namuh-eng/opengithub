@@ -139,6 +139,14 @@ export function RepositoryHeaderActions({
   );
   const [feedback, setFeedback] = useState<string | null>(null);
   const [watchMenuOpen, setWatchMenuOpen] = useState(false);
+  const [forkDialogOpen, setForkDialogOpen] = useState(false);
+  const [forkDestinationOwner, setForkDestinationOwner] = useState(
+    repository.viewerState.forkedRepositoryHref
+      ? repository.viewerState.forkedRepositoryHref.split("/")[1] || ""
+      : "",
+  );
+  const [forkName, setForkName] = useState(`${repository.name}-fork`);
+  const [copyMainBranchOnly, setCopyMainBranchOnly] = useState(true);
   const [watchSettings, setWatchSettings] =
     useState<RepositoryWatchSettings | null>(null);
   const [selectedWatchLevel, setSelectedWatchLevel] =
@@ -282,11 +290,23 @@ export function RepositoryHeaderActions({
   }
 
   function forkRepository() {
+    const destinationOwner = forkDestinationOwner.trim();
+    const name = forkName.trim();
+    if (!name) {
+      setFeedback("Fork repository name is required.");
+      return;
+    }
     setFeedback(null);
     startTransition(async () => {
       try {
         const response = await fetch(`/${owner}/${repo}/actions/fork`, {
           method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            destinationOwner: destinationOwner || undefined,
+            name,
+            mainBranchOnly: copyMainBranchOnly,
+          }),
         });
         if (!response.ok) {
           throw new Error("fork failed");
@@ -296,6 +316,7 @@ export function RepositoryHeaderActions({
           social: RepositorySocialState;
         };
         setSocial(result.social);
+        setForkDialogOpen(false);
         window.location.assign(result.forkHref);
       } catch {
         setFeedback("Repository could not be forked.");
@@ -451,7 +472,10 @@ export function RepositoryHeaderActions({
         <button
           className="btn sm disabled:opacity-60"
           disabled={isPending}
-          onClick={forkRepository}
+          onClick={() => {
+            setFeedback(null);
+            setForkDialogOpen(true);
+          }}
           type="button"
         >
           Fork
@@ -460,6 +484,84 @@ export function RepositoryHeaderActions({
           </span>
         </button>
       )}
+      {forkDialogOpen ? (
+        <div
+          aria-labelledby="fork-repository-title"
+          aria-modal="true"
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/20 p-4"
+          role="dialog"
+        >
+          <div
+            className="card w-[min(94vw,460px)] p-5 text-left shadow-lg"
+            style={{ background: "var(--surface)", color: "var(--ink-1)" }}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="t-label">Fork Repository</p>
+                <h2 className="t-h2 mt-1" id="fork-repository-title">
+                  Create a new fork
+                </h2>
+              </div>
+              <button
+                aria-label="Close fork dialog"
+                className="btn ghost sm"
+                onClick={() => setForkDialogOpen(false)}
+                type="button"
+              >
+                x
+              </button>
+            </div>
+            <div className="mt-4 space-y-3">
+              <label className="block">
+                <span className="t-label mb-1 block">Destination Owner</span>
+                <input
+                  className="input w-full"
+                  onChange={(event) =>
+                    setForkDestinationOwner(event.currentTarget.value)
+                  }
+                  placeholder="Your account"
+                  value={forkDestinationOwner}
+                />
+              </label>
+              <label className="block">
+                <span className="t-label mb-1 block">Repository Name</span>
+                <input
+                  className="input w-full"
+                  onChange={(event) => setForkName(event.currentTarget.value)}
+                  value={forkName}
+                />
+              </label>
+              <label className="flex items-center gap-2 t-sm">
+                <input
+                  checked={copyMainBranchOnly}
+                  onChange={(event) =>
+                    setCopyMainBranchOnly(event.currentTarget.checked)
+                  }
+                  type="checkbox"
+                />
+                <span>Copy main branch only</span>
+              </label>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                className="btn ghost sm"
+                onClick={() => setForkDialogOpen(false)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="btn accent sm disabled:opacity-60"
+                disabled={isPending}
+                onClick={forkRepository}
+                type="button"
+              >
+                Create fork
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <button
         aria-pressed={social.starred}
         className="btn sm disabled:opacity-60"
