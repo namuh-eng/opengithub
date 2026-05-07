@@ -113,6 +113,35 @@ async fn active_sessions_list_revoke_and_sign_out_everywhere() {
     assert_eq!(body["sessions"][0]["device"], "Mac · Chrome");
     assert_eq!(body["sessions"][0]["location"], "Localhost");
 
+    let (status, _, body) = send_json_with_headers(
+        app.clone(),
+        Method::GET,
+        "/api/settings/security/sessions",
+        Some(&cookie),
+        None,
+        &[("x-forwarded-for", "malformed-client-ip, 203.0.113.9")],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["sessions"][0]["ipAddress"], "127.0.0.1");
+    assert_eq!(body["sessions"][0]["location"], "Localhost");
+
+    let (status, _, body) = send_json_with_headers(
+        app.clone(),
+        Method::GET,
+        "/api/settings/security/sessions",
+        Some(&cookie),
+        None,
+        &[("x-forwarded-for", "2001:db8::4, 203.0.113.9")],
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["sessions"][0]["ipAddress"], "2001:db8::4");
+    assert_eq!(
+        body["sessions"][0]["location"],
+        "Approximate location unavailable"
+    );
+
     let (status, _, body) = send_json(
         app.clone(),
         Method::DELETE,
@@ -321,9 +350,23 @@ async fn send_json(
     cookie: Option<&str>,
     body: Option<Value>,
 ) -> (StatusCode, HeaderMap, Value) {
+    send_json_with_headers(app, method, uri, cookie, body, &[]).await
+}
+
+async fn send_json_with_headers(
+    app: axum::Router,
+    method: Method,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Option<Value>,
+    extra_headers: &[(&str, &str)],
+) -> (StatusCode, HeaderMap, Value) {
     let mut builder = Request::builder().method(method).uri(uri);
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
+    }
+    for (name, value) in extra_headers {
+        builder = builder.header(*name, *value);
     }
     if body.is_some() {
         builder = builder.header(header::CONTENT_TYPE, "application/json");

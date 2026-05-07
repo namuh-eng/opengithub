@@ -259,7 +259,7 @@ pub async fn account_sessions(
 ) -> Result<AccountSessions, AccountSecurityError> {
     let rows = sqlx::query(
         r#"
-        SELECT id, user_agent, ip_inet::text AS ip_address, created_at,
+        SELECT id, user_agent, host(ip_inet) AS ip_address, created_at,
                COALESCE(last_active_at, last_seen_at) AS last_active_at, expires_at
         FROM sessions
         WHERE user_id = $1

@@ -652,6 +652,61 @@ async fn main() -> anyhow::Result<()> {
         expires_at,
     )
     .await?;
+    if seed_account_security_second_identity() {
+        let desktop_session_id = Uuid::new_v4().to_string();
+        let mobile_session_id = Uuid::new_v4().to_string();
+        let expired_session_id = Uuid::new_v4().to_string();
+        upsert_session(
+            &pool,
+            &desktop_session_id,
+            Some(user.id),
+            serde_json::json!({ "provider": "google", "fixture": "desktop" }),
+            expires_at,
+        )
+        .await?;
+        upsert_session(
+            &pool,
+            &mobile_session_id,
+            Some(user.id),
+            serde_json::json!({ "provider": "google", "fixture": "mobile" }),
+            expires_at,
+        )
+        .await?;
+        upsert_session(
+            &pool,
+            &expired_session_id,
+            Some(user.id),
+            serde_json::json!({ "provider": "google", "fixture": "expired" }),
+            Utc::now() - Duration::hours(1),
+        )
+        .await?;
+        sqlx::query(
+            r#"
+            UPDATE sessions
+            SET user_agent = CASE id
+                  WHEN $1 THEN 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36 VeryLongDeviceLabel/abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz'
+                  WHEN $2 THEN 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1'
+                  ELSE user_agent
+                END,
+                ip_inet = CASE id
+                  WHEN $1 THEN '2001:db8::42'::inet
+                  WHEN $2 THEN '10.44.55.66'::inet
+                  ELSE ip_inet
+                END,
+                last_active_at = CASE id
+                  WHEN $1 THEN now() - interval '10 minutes'
+                  WHEN $2 THEN now() - interval '20 minutes'
+                  ELSE last_active_at
+                END
+            WHERE id IN ($1, $2, $3)
+            "#,
+        )
+        .bind(&desktop_session_id)
+        .bind(&mobile_session_id)
+        .bind(&expired_session_id)
+        .execute(&pool)
+        .await?;
+    }
     let set_cookie = session::set_cookie_header(&config, &session_id, expires_at)?;
     let cookie_value = session::cookie_value_from_set_cookie(&set_cookie)
         .ok_or_else(|| anyhow::anyhow!("set-cookie did not include a value"))?;

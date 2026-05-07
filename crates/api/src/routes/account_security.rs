@@ -1,3 +1,5 @@
+use std::net::IpAddr;
+
 use axum::{
     extract::{Path, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
@@ -313,7 +315,9 @@ fn client_ip(headers: &HeaderMap) -> Option<String> {
     header_str(headers, "x-forwarded-for")
         .and_then(|value| value.split(',').next())
         .map(str::trim)
-        .filter(|value| !value.is_empty())
+        .filter(|value| value.parse::<IpAddr>().is_ok())
         .or_else(|| header_str(headers, "x-real-ip"))
+        .map(str::trim)
+        .filter(|value| value.parse::<IpAddr>().is_ok())
         .map(str::to_owned)
 }
