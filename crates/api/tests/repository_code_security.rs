@@ -94,12 +94,25 @@ async fn send(
     uri: &str,
     cookie: Option<&str>,
 ) -> (StatusCode, Value, String) {
-    let mut builder = Request::builder().method(method).uri(uri);
+    send_with_body(app, method, uri, cookie, Body::empty()).await
+}
+
+async fn send_with_body(
+    app: axum::Router,
+    method: Method,
+    uri: &str,
+    cookie: Option<&str>,
+    body: Body,
+) -> (StatusCode, Value, String) {
+    let mut builder = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::CONTENT_TYPE, "application/json");
     if let Some(cookie) = cookie {
         builder = builder.header(header::COOKIE, cookie);
     }
     let response = app
-        .oneshot(builder.body(Body::empty()).expect("request should build"))
+        .oneshot(builder.body(body).expect("request should build"))
         .await
         .expect("request should run");
     let status = response.status();
@@ -246,4 +259,19 @@ async fn repository_code_routes_reject_bad_refs_and_path_traversal() {
         assert_eq!(body["error"]["code"], expected_code);
         assert_error_hygiene(&body, &text);
     }
+
+    let invalid_watch_body =
+        Body::from(r#"{"level":"<script>alert(1)</script>","customEvents":["issues"]}"#);
+    let (watch_status, watch_body, watch_text) = send_with_body(
+        app,
+        Method::PATCH,
+        &format!("{base}/watch"),
+        Some(&cookie),
+        invalid_watch_body,
+    )
+    .await;
+    assert_eq!(watch_status, StatusCode::BAD_REQUEST);
+    assert_eq!(watch_body["error"]["code"], "invalid_json");
+    assert!(!watch_text.contains("<script>"));
+    assert_error_hygiene(&watch_body, &watch_text);
 }

@@ -2833,6 +2833,7 @@ export type RepositoryCommitHistoryView = {
   repository: RepositoryCommitHistoryRepository;
   resolvedRef: RepositoryCommitResolvedRef;
   filters: RepositoryCommitHistoryFilters;
+  items: RepositoryCommitListItem[];
   groups: RepositoryCommitGroup[];
   authorOptions: RepositoryCommitAuthorOption[];
   total: number;

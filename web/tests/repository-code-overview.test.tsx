@@ -1132,6 +1132,7 @@ describe("RepositoryCodeOverview", () => {
             author: null,
             until: null,
           },
+          items: [],
           groups: [
             {
               date: "2026-04-30",

@@ -339,5 +339,81 @@
       }
     ],
     "fix_description": "Renamed duplicate SQLx migration files to unique versions without changing SQL contents; dashboard signed-in E2E then passed on a fresh migrated QA database."
+  },
+  {
+    "feature_id": "repo-003",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed; mandatory Editorial banned-token scan was clean; focused DB-backed repository-code-overview Playwright suite passed on a fresh QA database after fixes; manual Ever CLI was attempted but sessions expired immediately, so browser evidence used Playwright screenshots copied to ralph/screenshots/qa/repo-003-final-default-overview.jpg and repo-003-final-mobile.jpg."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/:owner/:repo",
+          "GET /api/repos/:owner/:repo/refs",
+          "GET /api/repos/:owner/:repo/file-finder",
+          "GET /api/repos/:owner/:repo/contents/:path",
+          "GET /api/repos/:owner/:repo/commits",
+          "PUT /api/repos/:owner/:repo/star",
+          "PATCH /api/repos/:owner/:repo/watch",
+          "POST /api/repos/:owner/:repo/forks"
+        ],
+        "notes": "Fresh DB-backed Rust contract tests and direct curl probes verified JSON content types, overview/ref/file-finder/tree/history response shapes, top-level commit history items compatibility, social mutation auth envelopes, and malformed watch input returning a JSON 400 envelope."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Anonymous public overview remains readable as expected; anonymous Star/Watch/Fork mutations return 401 JSON envelopes; path traversal and SQL-shaped ref probes return sanitized 404 JSON without stack/env leakage; CORS probe did not echo https://evil.com; malformed watch JSON no longer reflects raw script text."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json, qa-hints.json repo-003 entries, BUILD_GUIDE.md, web/AGENTS.md, repo Code tab Playwright coverage, and Rust repository API contract/security tests.",
+      "Ran mandatory Editorial banned-value scan with ripgrep-compatible syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran make test: Cargo and web unit tests passed.",
+      "Ran make test-e2e in the default environment: 18 tests passed before unrelated repository-discussions specs failed because TEST_DATABASE_URL/DATABASE_URL is absent; repo Code tab specs require DB and were skipped in that default run.",
+      "Created fresh local QA database opengithub_qa_repo003 after the shared opengithub_identity_test database showed a stale SQLx migration checksum.",
+      "Ran focused DB-backed repository-code-overview Playwright suite: initially exposed stale API contract issue, then passed all 5 tests after fixes.",
+      "Ran DB-backed cargo test -p opengithub-api --test repository_code_overview: initially failed because commit history lacked top-level items, then passed 4/4 after restoring items.",
+      "Ran DB-backed cargo test -p opengithub-api --test repository_code_security: passed 2/2 after adding malformed watch JSON regression coverage.",
+      "Direct curl verified GET overview, refs, file-finder, contents/src, and commits?ref=main&path=src/main.rs return application/json; commit history now includes items[0].message = Initial commit as well as grouped commits.",
+      "Direct curl verified anonymous Star, Watch, and Fork mutations return 401 application/json not_authenticated envelopes.",
+      "Direct curl verified path traversal and SQL-shaped ref probes return sanitized JSON errors without stack traces or env values.",
+      "Direct curl verified OPTIONS with Origin https://evil.com does not echo Access-Control-Allow-Origin.",
+      "Direct curl verified malformed watch body with a script-shaped level now returns 400 application/json invalid_json without reflecting the script payload.",
+      "Attempted Ever CLI on the live Code tab; ever snapshot failed with Session expired, consistent with prior QA environment behavior.",
+      "Saved QA screenshot evidence from the passing Playwright run to ralph/screenshots/qa/repo-003-final-default-overview.jpg and ralph/screenshots/qa/repo-003-final-mobile.jpg."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "api_contract",
+        "description": "Repository commit history API no longer returned the top-level items array expected by the repo-003 contract; path-scoped history clients saw history_body.items[0].message as null even though grouped commits contained the data.",
+        "expected": "GET /api/repos/:owner/:repo/commits?ref=main&path=src/main.rs includes items[0].message = Initial commit while preserving grouped history output.",
+        "actual": "Fresh DB-backed contract test found history_body[\"items\"][0][\"message\"] was null because the response only exposed groups.",
+        "reproduction": "Run env TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/opengithub_qa_repo003 cargo test -p opengithub-api --test repository_code_overview -- --nocapture before the fix."
+      },
+      {
+        "severity": "major",
+        "phase": "security",
+        "description": "Malformed repository watch settings returned Axum default 422 text/plain and reflected the raw submitted script-shaped enum value.",
+        "expected": "PATCH /api/repos/:owner/:repo/watch with malformed JSON/enums returns a structured JSON error envelope without reflecting raw unsafe input.",
+        "actual": "Response was 422 text/plain with text containing <script>alert(1)</script>.",
+        "reproduction": "curl -i -X PATCH -H \"Cookie: og_session=...\" -H \"Content-Type: application/json\" -d '{\"level\":\"<script>alert(1)</script>\",\"customEvents\":[\"issues\"]}' http://localhost:3016/api/repos/:owner/:repo/watch before the fix."
+      }
+    ],
+    "fix_description": "Restored top-level commit history items alongside grouped commits, updated the frontend API type/test fixture, and routed watch settings JSON extraction through RestJson so malformed input returns a sanitized JSON 400 envelope."
   }
 ]

@@ -5519,7 +5519,7 @@ async fn update_watch(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path((owner, repo)): Path<(String, String)>,
-    Json(patch): Json<RepositoryWatchSettingsPatch>,
+    RestJson(patch): RestJson<RepositoryWatchSettingsPatch>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
