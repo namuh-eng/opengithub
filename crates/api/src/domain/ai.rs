@@ -222,10 +222,16 @@ pub async fn pull_request_ai_summary(
         output: Some(output),
         files_of_interest: risks,
         suggested_reviewers: reviewers,
-        inline_comment_seed: Some(
-            "Check whether this change needs an integration test before merge.".to_owned(),
-        ),
+        inline_comment_seed: pr_author_inline_seed(actor_user_id, pull_request.author_user_id),
     })
+}
+
+fn pr_author_inline_seed(actor_user_id: Option<Uuid>, author_user_id: Uuid) -> Option<String> {
+    if actor_user_id == Some(author_user_id) {
+        Some("Check whether this change needs an integration test before merge.".to_owned())
+    } else {
+        None
+    }
 }
 
 pub async fn ai_changelog(
@@ -572,6 +578,7 @@ struct PullRequestLite {
     body: Option<String>,
     head_ref: String,
     base_ref: String,
+    author_user_id: Uuid,
 }
 
 async fn pull_request_row(
@@ -580,7 +587,7 @@ async fn pull_request_row(
     number: i64,
 ) -> Result<PullRequestLite, AiError> {
     let row = sqlx::query(
-        "SELECT id, title, body, head_ref, base_ref FROM pull_requests WHERE repository_id = $1 AND number = $2",
+        "SELECT id, title, body, head_ref, base_ref, author_user_id FROM pull_requests WHERE repository_id = $1 AND number = $2",
     )
     .bind(repository_id)
     .bind(number)
@@ -593,6 +600,7 @@ async fn pull_request_row(
         body: row.try_get("body")?,
         head_ref: row.try_get("head_ref")?,
         base_ref: row.try_get("base_ref")?,
+        author_user_id: row.try_get("author_user_id")?,
     })
 }
 
@@ -729,4 +737,20 @@ async fn release_commit_context(
     _previous_tag: Option<&str>,
 ) -> Result<String, AiError> {
     Ok(recent_commits(pool, repository_id, 60).await?.join("\n"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pr_author_inline_seed;
+    use uuid::Uuid;
+
+    #[test]
+    fn pr_inline_comment_seed_is_author_only() {
+        let author = Uuid::new_v4();
+        let reader = Uuid::new_v4();
+
+        assert!(pr_author_inline_seed(Some(author), author).is_some());
+        assert_eq!(pr_author_inline_seed(Some(reader), author), None);
+        assert_eq!(pr_author_inline_seed(None, author), None);
+    }
 }

@@ -2452,5 +2452,71 @@
       }
     ],
     "fix_description": "Enforced repository AI opt-in for public and private repositories and added a focused AI contract test. Full DB-backed provider/session verification remains blocked by an unhealthy local test Postgres service, so prd.json keeps ai-001.qa_pass=false."
+  },
+  {
+    "feature_id": "ai-001",
+    "attempt": 2,
+    "status": "partial",
+    "sub_phases": {
+      "functional": {
+        "status": "partial",
+        "notes": "Repository, PR, and release AI UI unit coverage passed; PR inline-comment seed author-only unit coverage passed; focused AI Rust contract compiled and ran but DB-backed assertions self-skipped because no TEST_DATABASE_URL/DATABASE_URL was available. Live no-DB API probes returned safe JSON 503 envelopes with rate-limit headers. make test-e2e timed out in db-wait-test before Playwright started; Ever CLI returned a non-JSON HTML parse error, so signed-session browser QA and live OpenAI provider behavior remain unverified. Final make check && make test passed after the fix."
+      },
+      "api_contract": {
+        "status": "partial",
+        "endpoints_tested": [
+          "GET /api/ai/repos/:owner/:repo/summary",
+          "POST /api/ai/repos/:owner/:repo/summary",
+          "GET /api/ai/repos/:owner/:repo/pulls/:number/summary",
+          "POST /api/ai/repos/:owner/:repo/releases/changelog"
+        ],
+        "notes": "Degraded live curl probes verified application/json database_unavailable envelopes and X-RateLimit/X-GitHub-Api-Version headers for AI endpoints without a DB pool. Focused contract test still self-skips DB-backed repository/user opt-in assertions without TEST_DATABASE_URL/DATABASE_URL, so provider-backed happy paths, private repo opt-in against real rows, and repeated signed rate-limit bucket behavior remain unverified."
+      },
+      "security": {
+        "status": "partial",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure",
+          "private_repo_opt_in",
+          "author_only_inline_seed"
+        ],
+        "notes": "Fixed a major PR privacy issue: inline-comment seed is now returned only when the authenticated actor is the PR author. Anonymous SQL/XSS-shaped live probes returned generic 503 database_unavailable envelopes without reflecting payloads or leaking stack traces. Hostile-origin OPTIONS returned 405 without Access-Control-Allow-Origin. DB-backed private repository and signed-session curl probes remain blocked by unavailable local test Postgres."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json, qa-hints.json, BUILD_GUIDE.md, ralph-config.json, routes/domain AI code, and previous ai-001 attempt history.",
+      "Confirmed .env has OPENAI_API_KEY but DATABASE_URL is empty; no TEST_DATABASE_URL is exported in this shell. .env.test points at localhost:55433, but docker compose ps hung and make test-e2e timed out in db-wait-test.",
+      "Ran mandatory Editorial banned-token scan with rg -e syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Found PR AI inlineCommentSeed was returned for every enabled PR summary caller despite the PRD requiring it to be visible only to the PR author.",
+      "Fixed pull_request_ai_summary to load pull_requests.author_user_id and return inlineCommentSeed only when actor_user_id matches the PR author.",
+      "Added focused unit coverage for author, non-author, and anonymous inline-comment seed behavior.",
+      "Ran cargo test -p opengithub-api domain::ai::tests::pr_inline_comment_seed_is_author_only -- --nocapture: passed.",
+      "Ran cargo test -p opengithub-api --test api_ai_surfaces_contract -- --nocapture: passed with DB-backed scenario self-skip because TEST_DATABASE_URL/DATABASE_URL is not set.",
+      "Ran cd web && npx vitest run tests/repository-code-overview.test.tsx tests/repository-pull-request-detail.test.tsx tests/repository-releases-page.test.tsx: 3 files passed, 59 tests passed.",
+      "Started the Rust API without a DB pool and live-probed AI summary, PR summary, and changelog endpoints; each returned JSON 503 database_unavailable with rate-limit/version headers.",
+      "Probed SQL-like and XSS-like AI paths; responses stayed generic JSON 503 without reflecting payloads, SQL errors, stack traces, or environment values.",
+      "Probed OPTIONS /api/ai/repos/mona/octo-app/summary with Origin https://evil.com; response was 405 and did not emit Access-Control-Allow-Origin.",
+      "Attempted Ever CLI against localhost:3015; ever start and snapshot returned Unexpected token HTML/non-JSON errors, so no manual browser snapshot was available.",
+      "Attempted timeout 180 make test-e2e; it timed out in db-wait-test before Playwright started.",
+      "Ran make check && make test after the fix: Cargo check, web typecheck, Clippy, Biome, Cargo tests, and web tests passed (655 web tests)."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "security",
+        "description": "PR AI inline-comment seed was returned to every caller who could read an enabled PR AI summary, not only to the PR author.",
+        "expected": "inlineCommentSeed is present only when the authenticated actor is the pull request author; non-authors and anonymous callers receive null/omitted seed data.",
+        "actual": "pull_request_ai_summary always returned a seed string after a successful enabled AI generation, regardless of actor_user_id.",
+        "reproduction": "Before this fix, request GET /api/ai/repos/:owner/:repo/pulls/:number/summary as any readable non-author after AI generation; the JSON response includes inlineCommentSeed."
+      }
+    ],
+    "fix_description": "Restricted PR AI inline-comment seed to the PR author and added focused unit coverage. Full DB-backed signed-session, private repository opt-in, rate-limit bucket, and live OpenAI provider verification remain blocked by unavailable local test Postgres, so prd.json keeps ai-001.qa_pass=false."
   }
 ]
