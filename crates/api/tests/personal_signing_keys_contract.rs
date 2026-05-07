@@ -39,7 +39,7 @@ async fn database_pool() -> Option<PgPool> {
         .execute(&pool)
         .await;
         let _ = sqlx::raw_sql(include_str!(
-            "../migrations/202605040009_signing_key_integration.up.sql"
+            "../migrations/202605040014_signing_key_integration.up.sql"
         ))
         .execute(&pool)
         .await;

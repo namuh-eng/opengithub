@@ -285,5 +285,59 @@
     ],
     "bugs_found": [],
     "fix_description": "no fix needed"
+  },
+  {
+    "feature_id": "dashboard-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed; mandatory Editorial banned-token scan was clean; dashboard component tests passed; dashboard API scenario passed against local Postgres; signed-in dashboard Playwright suite passed on a fresh migrated QA database after fixing duplicate SQLx migration versions; live anonymous /dashboard redirect and /api/dashboard auth-wall were verified; Ever CLI expired immediately after start so manual interaction used Playwright/curl evidence instead."
+      },
+      "api_contract": {
+        "status": "skip",
+        "endpoints_tested": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base and footer only"
+      },
+      "security": {
+        "status": "skip",
+        "checks": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base and footer only"
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base and footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json and qa-hints.json; no previous dashboard-001 QA attempts existed.",
+      "Inspected dashboard page, DashboardOnboarding tests, dashboard API DTOs, dashboard Playwright specs, BUILD_GUIDE.md, ralph-config.json, and web/AGENTS.md.",
+      "Ran required Editorial banned-value scan with ripgrep-compatible syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran make test: Cargo tests passed and web tests passed (650 passed).",
+      "Ran cd web && npm test -- dashboard-onboarding.test.tsx --run: 15 tests passed, including top repository client-side filtering and empty filter state.",
+      "Ran cargo test -p opengithub-api --test dashboard_summary -- --nocapture: 10 tests passed, with DB-backed scenarios skipped when no DB URL was set.",
+      "Ran bash .scratch/dashboard-summary-scenario.sh: dashboard summary API scenario passed against local Postgres.",
+      "Ran make test-e2e: 18 public/auth/dashboard smoke tests passed before unrelated repository-discussions specs failed because TEST_DATABASE_URL/DATABASE_URL was missing in the default environment; dashboard signed-in specs skipped in that default run.",
+      "Attempted signed-in dashboard E2E against the existing local test database; it failed because migration 202605030041 had a stale checksum, proving the DB was not clean evidence.",
+      "Created a fresh throwaway QA database and reran signed-in dashboard E2E; duplicate migration versions blocked fresh migrations, so the migration filenames were repaired to unique versions.",
+      "Reran cd web && npm run test:e2e -- dashboard-dashboard.spec.ts with TEST_DATABASE_URL pointing at the fresh QA database and Playwright owning the server environment: all 6 tests passed.",
+      "Verified live anonymous GET /dashboard returns 307 Location /login?next=%2Fdashboard.",
+      "Verified live anonymous GET /api/dashboard returns 401 application/json with error.code not_authenticated.",
+      "Saved signed-in dashboard screenshot evidence to ralph/screenshots/qa/dashboard-001-dashboard.png.",
+      "Attempted Ever CLI manual snapshot; ever start succeeded but ever snapshot returned Session expired, so Ever evidence was unavailable in this environment."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "functional",
+        "description": "Fresh Postgres migrations could not run because multiple SQLx migration files shared the same numeric version, blocking signed-in dashboard E2E seeding on a clean database.",
+        "expected": "Each SQLx migration has a unique version so a fresh database can migrate and seed dashboard browser fixtures.",
+        "actual": "Versions 202605030041, 202605040004, 202605040009, 202605060007, 202605060017, 202605070001, and 202605070006 were duplicated; fresh migration failed with duplicate _sqlx_migrations keys and stale-checksum errors.",
+        "reproduction": "Create a fresh Postgres database, set TEST_DATABASE_URL to it, then run cd web && npm run test:e2e -- dashboard-dashboard.spec.ts before the fix."
+      }
+    ],
+    "fix_description": "Renamed duplicate SQLx migration files to unique versions without changing SQL contents; dashboard signed-in E2E then passed on a fresh migrated QA database."
   }
 ]
