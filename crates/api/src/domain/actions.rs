@@ -861,6 +861,20 @@ pub struct TriggerWorkflowsForPush {
     pub head_sha: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerWorkflowsForPullRequest {
+    pub repository_id: Uuid,
+    pub actor_user_id: Uuid,
+    pub pull_request_id: Uuid,
+    pub action: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerWorkflowsForSchedule {
+    pub repository_id: Uuid,
+    pub schedule: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PushTriggerResult {
@@ -875,6 +889,9 @@ pub struct PushTriggerSkip {
     pub path: String,
     pub reason: String,
 }
+
+pub type WorkflowTriggerResult = PushTriggerResult;
+pub type WorkflowTriggerSkip = PushTriggerSkip;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransitionRun {
@@ -1876,6 +1893,245 @@ pub async fn trigger_workflows_for_push(
     }
 
     Ok(PushTriggerResult {
+        scanned_workflows: workflow_files.len(),
+        triggered_runs,
+        skipped_workflows,
+    })
+}
+
+pub async fn trigger_workflows_for_pull_request(
+    pool: &PgPool,
+    input: TriggerWorkflowsForPullRequest,
+) -> Result<WorkflowTriggerResult, AutomationError> {
+    let repository = get_repository(pool, input.repository_id)
+        .await
+        .map_err(map_repository_error)?
+        .ok_or(AutomationError::RepositoryNotFound)?;
+    require_repository_role(
+        pool,
+        repository.id,
+        input.actor_user_id,
+        RepositoryRole::Read,
+    )
+    .await?;
+
+    let pull_request = pull_request_trigger_context(pool, repository.id, input.pull_request_id)
+        .await?
+        .ok_or(AutomationError::WorkflowRunNotFound)?;
+    let base_ref_name = format!("refs/heads/{}", pull_request.base_ref);
+    let workflow_files = workflow_files_for_ref(pool, repository.id, &base_ref_name).await?;
+    let changed_paths =
+        changed_paths_for_pull_request(pool, repository.id, input.pull_request_id).await?;
+    let mut triggered_runs = Vec::new();
+    let mut skipped_workflows = Vec::new();
+
+    for file in &workflow_files {
+        let parsed = match parse_workflow_file(&file.content) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                upsert_discovered_workflow(
+                    pool,
+                    &repository,
+                    file,
+                    &pull_request.base_ref,
+                    DiscoveredWorkflow {
+                        name: workflow_name_from_path(&file.path),
+                        trigger_events: Vec::new(),
+                        dispatch_enabled: false,
+                        dispatch_inputs: Vec::new(),
+                        yaml_parse_error: Some(sanitize_yaml_parse_error(error.to_string())),
+                    },
+                )
+                .await?;
+                skipped_workflows.push(WorkflowTriggerSkip {
+                    path: file.path.clone(),
+                    reason: "invalid_yaml".to_owned(),
+                });
+                continue;
+            }
+        };
+
+        let workflow = upsert_discovered_workflow(
+            pool,
+            &repository,
+            file,
+            &pull_request.base_ref,
+            parsed.discovered.clone(),
+        )
+        .await?;
+        if workflow.state != WorkflowState::Active {
+            skipped_workflows.push(WorkflowTriggerSkip {
+                path: file.path.clone(),
+                reason: "disabled".to_owned(),
+            });
+            continue;
+        }
+        let Some(ref pull_request_config) = parsed.pull_request else {
+            skipped_workflows.push(WorkflowTriggerSkip {
+                path: file.path.clone(),
+                reason: "pull_request_not_configured".to_owned(),
+            });
+            continue;
+        };
+        if !pull_request_config.matches_branch(&pull_request.base_ref) {
+            skipped_workflows.push(WorkflowTriggerSkip {
+                path: file.path.clone(),
+                reason: "branch_filter".to_owned(),
+            });
+            continue;
+        }
+        if !pull_request_config.matches_paths(&changed_paths) {
+            skipped_workflows.push(WorkflowTriggerSkip {
+                path: file.path.clone(),
+                reason: "path_filter".to_owned(),
+            });
+            continue;
+        }
+
+        let run = create_event_workflow_run(
+            pool,
+            EventWorkflowRunInput {
+                repository: &repository,
+                workflow: &workflow,
+                parsed: &parsed,
+                actor_user_id: Some(input.actor_user_id),
+                head_branch: &pull_request.head_ref,
+                head_sha: pull_request.head_sha.as_deref(),
+                event: "pull_request",
+                display_title: format!(
+                    "{} #{}: {}",
+                    input.action, pull_request.number, pull_request.title
+                ),
+                event_payload: json!({
+                    "action": input.action,
+                    "number": pull_request.number,
+                    "pullRequestId": pull_request.id,
+                    "baseRef": pull_request.base_ref,
+                    "headRef": pull_request.head_ref,
+                    "headSha": pull_request.head_sha,
+                    "workflowPath": workflow.path,
+                    "changedPaths": changed_paths,
+                    "source": "pull_request",
+                }),
+                queue: "actions.workflow_pull_request",
+                lease_prefix: "workflow-pull-request",
+                pull_request_id: Some(pull_request.id),
+                fork_pull_request: pull_request.is_fork,
+            },
+        )
+        .await?;
+        triggered_runs.push(run);
+    }
+
+    Ok(WorkflowTriggerResult {
+        scanned_workflows: workflow_files.len(),
+        triggered_runs,
+        skipped_workflows,
+    })
+}
+
+pub async fn trigger_workflows_for_schedule(
+    pool: &PgPool,
+    input: TriggerWorkflowsForSchedule,
+) -> Result<WorkflowTriggerResult, AutomationError> {
+    let repository = get_repository(pool, input.repository_id)
+        .await
+        .map_err(map_repository_error)?
+        .ok_or(AutomationError::RepositoryNotFound)?;
+    let default_ref_name = format!("refs/heads/{}", repository.default_branch);
+    let workflow_files = workflow_files_for_ref(pool, repository.id, &default_ref_name).await?;
+    let head_sha = head_sha_for_ref(pool, repository.id, &default_ref_name).await?;
+    let mut triggered_runs = Vec::new();
+    let mut skipped_workflows = Vec::new();
+
+    for file in &workflow_files {
+        let parsed = match parse_workflow_file(&file.content) {
+            Ok(parsed) => parsed,
+            Err(error) => {
+                upsert_discovered_workflow(
+                    pool,
+                    &repository,
+                    file,
+                    &repository.default_branch,
+                    DiscoveredWorkflow {
+                        name: workflow_name_from_path(&file.path),
+                        trigger_events: Vec::new(),
+                        dispatch_enabled: false,
+                        dispatch_inputs: Vec::new(),
+                        yaml_parse_error: Some(sanitize_yaml_parse_error(error.to_string())),
+                    },
+                )
+                .await?;
+                skipped_workflows.push(WorkflowTriggerSkip {
+                    path: file.path.clone(),
+                    reason: "invalid_yaml".to_owned(),
+                });
+                continue;
+            }
+        };
+
+        let workflow = upsert_discovered_workflow(
+            pool,
+            &repository,
+            file,
+            &repository.default_branch,
+            parsed.discovered.clone(),
+        )
+        .await?;
+        if workflow.state != WorkflowState::Active {
+            skipped_workflows.push(WorkflowTriggerSkip {
+                path: file.path.clone(),
+                reason: "disabled".to_owned(),
+            });
+            continue;
+        }
+        let Some(ref schedule_config) = parsed.schedule else {
+            skipped_workflows.push(WorkflowTriggerSkip {
+                path: file.path.clone(),
+                reason: "schedule_not_configured".to_owned(),
+            });
+            continue;
+        };
+        if let Some(expected) = input.schedule.as_deref() {
+            if !schedule_config.matches_schedule(expected) {
+                skipped_workflows.push(WorkflowTriggerSkip {
+                    path: file.path.clone(),
+                    reason: "schedule_filter".to_owned(),
+                });
+                continue;
+            }
+        }
+
+        let run = create_event_workflow_run(
+            pool,
+            EventWorkflowRunInput {
+                repository: &repository,
+                workflow: &workflow,
+                parsed: &parsed,
+                actor_user_id: None,
+                head_branch: &repository.default_branch,
+                head_sha: head_sha.as_deref(),
+                event: "schedule",
+                display_title: format!("{} scheduled", workflow.name),
+                event_payload: json!({
+                    "schedule": input.schedule,
+                    "ref": default_ref_name,
+                    "headBranch": repository.default_branch,
+                    "headSha": head_sha,
+                    "workflowPath": workflow.path,
+                    "source": "scheduler",
+                }),
+                queue: "actions.workflow_schedule",
+                lease_prefix: "workflow-schedule",
+                pull_request_id: None,
+                fork_pull_request: false,
+            },
+        )
+        .await?;
+        triggered_runs.push(run);
+    }
+
+    Ok(WorkflowTriggerResult {
         scanned_workflows: workflow_files.len(),
         triggered_runs,
         skipped_workflows,
@@ -5472,6 +5728,8 @@ struct WorkflowSourceFile {
 struct ParsedWorkflow {
     discovered: DiscoveredWorkflow,
     push: Option<PushWorkflowConfig>,
+    pull_request: Option<PullRequestWorkflowConfig>,
+    schedule: Option<ScheduleWorkflowConfig>,
     jobs: Vec<WorkflowJobPlan>,
     concurrency_group: Option<String>,
 }
@@ -5495,6 +5753,19 @@ struct PushWorkflowConfig {
     paths_ignore: Vec<String>,
 }
 
+#[derive(Debug, Clone, Default)]
+struct PullRequestWorkflowConfig {
+    branches: Vec<String>,
+    branches_ignore: Vec<String>,
+    paths: Vec<String>,
+    paths_ignore: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ScheduleWorkflowConfig {
+    schedules: Vec<String>,
+}
+
 #[derive(Debug, Clone)]
 struct PushedRef {
     name: String,
@@ -5508,6 +5779,33 @@ struct WorkflowJobPlan {
     runner_label: Option<String>,
     steps: Vec<String>,
     matrix: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone)]
+struct PullRequestTriggerContext {
+    id: Uuid,
+    number: i64,
+    title: String,
+    base_ref: String,
+    head_ref: String,
+    head_sha: Option<String>,
+    is_fork: bool,
+}
+
+struct EventWorkflowRunInput<'a> {
+    repository: &'a Repository,
+    workflow: &'a ActionsWorkflow,
+    parsed: &'a ParsedWorkflow,
+    actor_user_id: Option<Uuid>,
+    head_branch: &'a str,
+    head_sha: Option<&'a str>,
+    event: &'a str,
+    display_title: String,
+    event_payload: Value,
+    queue: &'a str,
+    lease_prefix: &'a str,
+    pull_request_id: Option<Uuid>,
+    fork_pull_request: bool,
 }
 
 impl PushWorkflowConfig {
@@ -5545,6 +5843,41 @@ impl PushWorkflowConfig {
         changed_paths
             .iter()
             .any(|path| !patterns_match_any(&self.paths_ignore, path))
+    }
+}
+
+impl PullRequestWorkflowConfig {
+    fn matches_branch(&self, base_ref: &str) -> bool {
+        patterns_allow(&self.branches, base_ref)
+            && !patterns_match_any(&self.branches_ignore, base_ref)
+    }
+
+    fn matches_paths(&self, changed_paths: &[String]) -> bool {
+        if changed_paths.is_empty() {
+            return self.paths.is_empty();
+        }
+        let included = if self.paths.is_empty() {
+            true
+        } else {
+            changed_paths
+                .iter()
+                .any(|path| patterns_match_any(&self.paths, path))
+        };
+        if !included {
+            return false;
+        }
+        if self.paths_ignore.is_empty() {
+            return true;
+        }
+        changed_paths
+            .iter()
+            .any(|path| !patterns_match_any(&self.paths_ignore, path))
+    }
+}
+
+impl ScheduleWorkflowConfig {
+    fn matches_schedule(&self, schedule: &str) -> bool {
+        self.schedules.is_empty() || self.schedules.iter().any(|item| item == schedule)
     }
 }
 
@@ -5612,6 +5945,92 @@ async fn changed_paths_for_commit(
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().map(|row| row.get("path")).collect())
+}
+
+async fn changed_paths_for_pull_request(
+    pool: &PgPool,
+    repository_id: Uuid,
+    pull_request_id: Uuid,
+) -> Result<Vec<String>, AutomationError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT pull_request_files.path
+        FROM pull_request_files
+        JOIN pull_requests ON pull_requests.id = pull_request_files.pull_request_id
+        WHERE pull_requests.repository_id = $1 AND pull_requests.id = $2
+        ORDER BY lower(pull_request_files.path)
+        "#,
+    )
+    .bind(repository_id)
+    .bind(pull_request_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().map(|row| row.get("path")).collect())
+}
+
+async fn pull_request_trigger_context(
+    pool: &PgPool,
+    repository_id: Uuid,
+    pull_request_id: Uuid,
+) -> Result<Option<PullRequestTriggerContext>, AutomationError> {
+    let row = sqlx::query(
+        r#"
+        SELECT pull_requests.id, pull_requests.number, pull_requests.title,
+               pull_requests.base_ref, pull_requests.head_ref,
+               pull_requests.head_repository_id,
+               pull_requests.base_repository_id,
+               commits.oid AS head_sha
+        FROM pull_requests
+        LEFT JOIN pull_request_commits
+          ON pull_request_commits.pull_request_id = pull_requests.id
+        LEFT JOIN commits
+          ON commits.id = pull_request_commits.commit_id
+        WHERE pull_requests.repository_id = $1 AND pull_requests.id = $2
+        ORDER BY pull_request_commits.position DESC NULLS LAST
+        LIMIT 1
+        "#,
+    )
+    .bind(repository_id)
+    .bind(pull_request_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row.map(|row| {
+        let head_repository_id = row.get::<Option<Uuid>, _>("head_repository_id");
+        let base_repository_id = row.get::<Option<Uuid>, _>("base_repository_id");
+        PullRequestTriggerContext {
+            id: row.get("id"),
+            number: row.get("number"),
+            title: row.get("title"),
+            base_ref: row.get("base_ref"),
+            head_ref: row.get("head_ref"),
+            head_sha: row.get("head_sha"),
+            is_fork: head_repository_id.is_some()
+                && base_repository_id.is_some()
+                && head_repository_id != base_repository_id,
+        }
+    }))
+}
+
+async fn head_sha_for_ref(
+    pool: &PgPool,
+    repository_id: Uuid,
+    ref_name: &str,
+) -> Result<Option<String>, AutomationError> {
+    let row = sqlx::query(
+        r#"
+        SELECT commits.oid
+        FROM repository_git_refs
+        JOIN commits ON commits.id = repository_git_refs.target_commit_id
+        WHERE repository_git_refs.repository_id = $1
+          AND repository_git_refs.name = $2
+        "#,
+    )
+    .bind(repository_id)
+    .bind(ref_name)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|row| row.get("oid")))
 }
 
 async fn upsert_discovered_workflow(
@@ -5798,6 +6217,143 @@ async fn create_push_workflow_run(
     Ok(run)
 }
 
+async fn create_event_workflow_run(
+    pool: &PgPool,
+    input: EventWorkflowRunInput<'_>,
+) -> Result<WorkflowRun, AutomationError> {
+    let run_number = next_run_number(pool, input.workflow.id).await?;
+    let runtime_context = resolve_actions_runtime_context(
+        pool,
+        ActionsRuntimeResolutionRequest {
+            repository_id: input.repository.id,
+            event: input.event.to_owned(),
+            fork_pull_request: input.fork_pull_request,
+            environment: None,
+            environment_approved: false,
+            explicit_secret_names: None,
+        },
+    )
+    .await?;
+    let mut event_payload = input.event_payload;
+    if let Value::Object(ref mut payload) = event_payload {
+        payload.insert(
+            "runtimePolicy".to_owned(),
+            serde_json::to_value(&runtime_context.diagnostics).unwrap_or_else(|_| json!({})),
+        );
+    }
+    let workflow_matrix = workflow_matrix_payload(input.parsed);
+
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(
+        r#"
+        INSERT INTO workflow_runs (
+            repository_id, workflow_id, actor_user_id, run_number, head_branch,
+            head_sha, event, display_title, event_payload, concurrency_group,
+            workflow_matrix, pull_request_id
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        RETURNING id, repository_id, workflow_id, actor_user_id, run_number, status, conclusion,
+                  head_branch, head_sha, event, started_at, completed_at, created_at, updated_at
+        "#,
+    )
+    .bind(input.repository.id)
+    .bind(input.workflow.id)
+    .bind(input.actor_user_id)
+    .bind(run_number)
+    .bind(input.head_branch)
+    .bind(input.head_sha)
+    .bind(input.event)
+    .bind(&input.display_title)
+    .bind(&event_payload)
+    .bind(&input.parsed.concurrency_group)
+    .bind(&workflow_matrix)
+    .bind(input.pull_request_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    let run = workflow_run_from_row(row)?;
+
+    let jobs = if input.parsed.jobs.is_empty() {
+        vec![WorkflowJobPlan {
+            name: input.workflow.name.clone(),
+            runner_label: Some("ubuntu-latest".to_owned()),
+            steps: vec!["Run workflow".to_owned()],
+            matrix: BTreeMap::new(),
+        }]
+    } else {
+        input.parsed.jobs.clone()
+    };
+    for job in jobs {
+        let job_row = sqlx::query(
+            r#"
+            INSERT INTO workflow_jobs (run_id, name, runner_label, group_name)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id
+            "#,
+        )
+        .bind(run.id)
+        .bind(&job.name)
+        .bind(&job.runner_label)
+        .bind(&input.parsed.concurrency_group)
+        .fetch_one(&mut *tx)
+        .await?;
+        let job_id: Uuid = job_row.get("id");
+        let steps = if job.steps.is_empty() {
+            vec!["Run job".to_owned()]
+        } else {
+            job.steps
+        };
+        for (index, step) in steps.into_iter().enumerate() {
+            sqlx::query(
+                r#"
+                INSERT INTO workflow_steps (job_id, number, name)
+                VALUES ($1, $2, $3)
+                "#,
+            )
+            .bind(job_id)
+            .bind((index + 1) as i32)
+            .bind(step)
+            .execute(&mut *tx)
+            .await?;
+        }
+    }
+    tx.commit().await?;
+
+    enqueue_job(
+        pool,
+        input.queue,
+        &format!("{}:{}:{}", input.lease_prefix, input.workflow.id, run.id),
+        json!({
+            "repositoryId": input.repository.id,
+            "workflowId": input.workflow.id,
+            "workflowPath": input.workflow.path,
+            "runId": run.id,
+            "runNumber": run.run_number,
+            "actorUserId": input.actor_user_id,
+            "event": input.event,
+            "headBranch": input.head_branch,
+            "headSha": input.head_sha,
+            "concurrencyGroup": input.parsed.concurrency_group,
+            "eventPayload": event_payload,
+            "matrix": workflow_matrix,
+        }),
+    )
+    .await?;
+
+    Ok(run)
+}
+
+fn workflow_matrix_payload(parsed: &ParsedWorkflow) -> Value {
+    json!({
+        "jobCount": parsed.jobs.len(),
+        "jobs": parsed.jobs.iter().map(|job| {
+            json!({
+                "name": job.name,
+                "matrix": job.matrix,
+            })
+        }).collect::<Vec<_>>(),
+    })
+}
+
 fn parse_workflow_file(source: &str) -> Result<ParsedWorkflow, serde_yaml::Error> {
     let document: serde_yaml::Value = serde_yaml::from_str(source)?;
     let name = yaml_get(&document, "name")
@@ -5806,6 +6362,8 @@ fn parse_workflow_file(source: &str) -> Result<ParsedWorkflow, serde_yaml::Error
     let on = yaml_get(&document, "on");
     let trigger_events = workflow_trigger_events(on);
     let push = push_workflow_config(on);
+    let pull_request = pull_request_workflow_config(on);
+    let schedule = schedule_workflow_config(on);
     let dispatch_inputs = workflow_dispatch_inputs(on);
     let jobs = workflow_job_plans(yaml_get(&document, "jobs"));
     let concurrency_group = yaml_get(&document, "concurrency").and_then(concurrency_group);
@@ -5822,6 +6380,8 @@ fn parse_workflow_file(source: &str) -> Result<ParsedWorkflow, serde_yaml::Error
             yaml_parse_error: None,
         },
         push,
+        pull_request,
+        schedule,
         jobs,
         concurrency_group,
     })
@@ -5875,6 +6435,84 @@ fn push_workflow_config(on: Option<&serde_yaml::Value>) -> Option<PushWorkflowCo
                 config.paths_ignore = yaml_string_list(mapping_get(push_mapping, "paths-ignore"));
             }
             Some(config)
+        }
+        _ => None,
+    }
+}
+
+fn pull_request_workflow_config(
+    on: Option<&serde_yaml::Value>,
+) -> Option<PullRequestWorkflowConfig> {
+    let on = on?;
+    match on {
+        serde_yaml::Value::String(event) if event == "pull_request" => {
+            Some(PullRequestWorkflowConfig::default())
+        }
+        serde_yaml::Value::Sequence(events)
+            if events
+                .iter()
+                .filter_map(yaml_scalar_string)
+                .any(|event| event == "pull_request") =>
+        {
+            Some(PullRequestWorkflowConfig::default())
+        }
+        serde_yaml::Value::Mapping(mapping) => {
+            let pull_request = mapping.iter().find_map(|(key, value)| {
+                if yaml_key_string(key).as_deref() == Some("pull_request") {
+                    Some(value)
+                } else {
+                    None
+                }
+            })?;
+            let mut config = PullRequestWorkflowConfig::default();
+            if let serde_yaml::Value::Mapping(pull_mapping) = pull_request {
+                config.branches = yaml_string_list(mapping_get(pull_mapping, "branches"));
+                config.branches_ignore =
+                    yaml_string_list(mapping_get(pull_mapping, "branches-ignore"));
+                config.paths = yaml_string_list(mapping_get(pull_mapping, "paths"));
+                config.paths_ignore = yaml_string_list(mapping_get(pull_mapping, "paths-ignore"));
+            }
+            Some(config)
+        }
+        _ => None,
+    }
+}
+
+fn schedule_workflow_config(on: Option<&serde_yaml::Value>) -> Option<ScheduleWorkflowConfig> {
+    let on = on?;
+    match on {
+        serde_yaml::Value::String(event) if event == "schedule" => {
+            Some(ScheduleWorkflowConfig::default())
+        }
+        serde_yaml::Value::Sequence(events)
+            if events
+                .iter()
+                .filter_map(yaml_scalar_string)
+                .any(|event| event == "schedule") =>
+        {
+            Some(ScheduleWorkflowConfig::default())
+        }
+        serde_yaml::Value::Mapping(mapping) => {
+            let schedule = mapping.iter().find_map(|(key, value)| {
+                if yaml_key_string(key).as_deref() == Some("schedule") {
+                    Some(value)
+                } else {
+                    None
+                }
+            })?;
+            let schedules = match schedule {
+                serde_yaml::Value::Sequence(entries) => entries
+                    .iter()
+                    .filter_map(|entry| {
+                        entry
+                            .as_mapping()
+                            .and_then(|mapping| mapping_get(mapping, "cron"))
+                            .and_then(yaml_scalar_string)
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            };
+            Some(ScheduleWorkflowConfig { schedules })
         }
         _ => None,
     }

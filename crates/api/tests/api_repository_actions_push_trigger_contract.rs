@@ -1,7 +1,11 @@
 use chrono::Utc;
 use opengithub_api::domain::{
-    actions::{trigger_workflows_for_push, TriggerWorkflowsForPush},
+    actions::{
+        trigger_workflows_for_push, trigger_workflows_for_schedule, TriggerWorkflowsForPush,
+        TriggerWorkflowsForSchedule,
+    },
     identity::{upsert_user_by_email, User},
+    pulls::{create_pull_request, CreatePullRequest},
     repositories::{create_repository, CreateRepository, RepositoryOwner, RepositoryVisibility},
 };
 use serde_json::Value;
@@ -421,4 +425,158 @@ jobs:
             .await
             .expect("runs should count");
     assert_eq!(run_count, 0);
+}
+
+#[tokio::test]
+async fn pull_request_creation_dispatches_matching_workflow_runs() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping actions pull_request trigger scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let owner = create_user(&pool, "actions-pr-owner").await;
+    let repository_id = create_public_repository(&pool, &owner, "actions-pr").await;
+    let workflow_yaml = r#"
+name: PR checks
+"on":
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: cargo test
+"#;
+    insert_commit_with_files(
+        &pool,
+        repository_id,
+        owner.id,
+        "cccccccccccccccccccccccccccccccccccccccc",
+        "main",
+        &[
+            (".github/workflows/pr.yml", workflow_yaml),
+            ("README.md", "base"),
+        ],
+    )
+    .await;
+    insert_commit_with_files(
+        &pool,
+        repository_id,
+        owner.id,
+        "dddddddddddddddddddddddddddddddddddddddd",
+        "feature/pr-checks",
+        &[("src/lib.rs", "pub fn changed() {}")],
+    )
+    .await;
+
+    let detail = create_pull_request(
+        &pool,
+        CreatePullRequest {
+            repository_id,
+            actor_user_id: owner.id,
+            title: "Add PR checks".to_owned(),
+            body: None,
+            head_ref: "feature/pr-checks".to_owned(),
+            base_ref: "main".to_owned(),
+            head_repository_id: None,
+            is_draft: false,
+            label_ids: Vec::new(),
+            milestone_id: None,
+            assignee_user_ids: Vec::new(),
+            reviewer_user_ids: Vec::new(),
+            template_slug: None,
+        },
+    )
+    .await
+    .expect("pull request should create and dispatch actions");
+
+    let run = sqlx::query(
+        r#"
+        SELECT workflow_runs.event, workflow_runs.head_branch, workflow_runs.head_sha,
+               workflow_runs.event_payload, workflow_runs.pull_request_id,
+               job_leases.queue
+        FROM workflow_runs
+        JOIN job_leases ON (job_leases.payload->>'runId')::uuid = workflow_runs.id
+        WHERE workflow_runs.repository_id = $1
+          AND workflow_runs.pull_request_id = $2
+        "#,
+    )
+    .bind(repository_id)
+    .bind(detail.pull_request.id)
+    .fetch_one(&pool)
+    .await
+    .expect("pull_request workflow run should persist");
+
+    assert_eq!(run.get::<String, _>("event"), "pull_request");
+    assert_eq!(run.get::<String, _>("head_branch"), "feature/pr-checks");
+    assert_eq!(
+        run.get::<Option<String>, _>("head_sha").as_deref(),
+        Some("dddddddddddddddddddddddddddddddddddddddd")
+    );
+    assert_eq!(
+        run.get::<String, _>("queue"),
+        "actions.workflow_pull_request"
+    );
+    assert_eq!(run.get::<Value, _>("event_payload")["baseRef"], "main");
+    assert_eq!(
+        run.get::<Value, _>("event_payload")["changedPaths"][0],
+        "src/lib.rs"
+    );
+}
+
+#[tokio::test]
+async fn schedule_trigger_dispatches_default_branch_workflows() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping actions schedule trigger scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let owner = create_user(&pool, "actions-schedule-owner").await;
+    let repository_id = create_public_repository(&pool, &owner, "actions-schedule").await;
+    let workflow_yaml = r#"
+name: Nightly
+"on":
+  schedule:
+    - cron: "0 0 * * *"
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    steps:
+      - run: cargo test
+"#;
+    insert_commit_with_files(
+        &pool,
+        repository_id,
+        owner.id,
+        "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "main",
+        &[(".github/workflows/nightly.yml", workflow_yaml)],
+    )
+    .await;
+
+    let result = trigger_workflows_for_schedule(
+        &pool,
+        TriggerWorkflowsForSchedule {
+            repository_id,
+            schedule: Some("0 0 * * *".to_owned()),
+        },
+    )
+    .await
+    .expect("schedule should trigger workflow");
+
+    assert_eq!(result.scanned_workflows, 1);
+    assert_eq!(result.triggered_runs.len(), 1);
+    let run = &result.triggered_runs[0];
+    assert_eq!(run.event, "schedule");
+    assert_eq!(run.head_branch, "main");
+
+    let lease = sqlx::query("SELECT queue, payload FROM job_leases WHERE payload->>'runId' = $1")
+        .bind(run.id.to_string())
+        .fetch_one(&pool)
+        .await
+        .expect("schedule lease should enqueue");
+    assert_eq!(lease.get::<String, _>("queue"), "actions.workflow_schedule");
+    assert_eq!(lease.get::<Value, _>("payload")["event"], "schedule");
 }

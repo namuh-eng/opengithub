@@ -8,6 +8,7 @@ use uuid::Uuid;
 use crate::api_types::ListEnvelope;
 
 use super::{
+    actions::{trigger_workflows_for_pull_request, TriggerWorkflowsForPullRequest},
     branch_policies::{evaluate_branch_policy, BranchPolicyOperation, BranchPolicySummary},
     issues::{
         append_timeline_event, insert_issue_with_number, issue_from_row, next_issue_number,
@@ -1359,6 +1360,29 @@ pub async fn create_pull_request(
     .await?;
     insert_pull_request_audit_event(pool, &pull_request, input.actor_user_id).await?;
     index_pull_request_search_document(pool, &pull_request, repository.created_by_user_id).await?;
+    trigger_workflows_for_pull_request(
+        pool,
+        TriggerWorkflowsForPullRequest {
+            repository_id: repository.id,
+            actor_user_id: input.actor_user_id,
+            pull_request_id: pull_request.id,
+            action: "opened".to_owned(),
+        },
+    )
+    .await
+    .map_err(|error| match error {
+        super::actions::AutomationError::Sqlx(error) => CollaborationError::Sqlx(error),
+        super::actions::AutomationError::RepositoryNotFound => {
+            CollaborationError::RepositoryNotFound
+        }
+        super::actions::AutomationError::RepositoryAccessDenied => {
+            CollaborationError::RepositoryAccessDenied
+        }
+        other => CollaborationError::InvalidIssueField {
+            field_key: "actions".to_owned(),
+            message: other.to_string(),
+        },
+    })?;
 
     let href = pull_request_href(&repository, pull_request.number);
     Ok(PullRequestDetail {

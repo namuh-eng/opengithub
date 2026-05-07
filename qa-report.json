@@ -1893,5 +1893,58 @@
       }
     ],
     "fix_description": "no product fix attempted; QA recorded unresolved major PRD coverage gaps and kept qa_pass false for retry after implementing pull_request/schedule dispatch and provisioning a test database"
+  },
+  {
+    "feature_id": "actions-005",
+    "attempt": 2,
+    "status": "partial",
+    "sub_phases": {
+      "functional": {
+        "status": "partial",
+        "notes": "Fixed the major PRD coverage gap from attempt 1 by adding pull_request and schedule dispatchers, wiring pull request creation to enqueue matching workflow runs, and adding focused Rust contract coverage. make test passed. make test-e2e still failed only in unrelated repository-discussions specs because TEST_DATABASE_URL/DATABASE_URL is not configured. Focused actions contract compiled and ran 4 tests, but DB-backed assertions self-skipped without TEST_DATABASE_URL."
+      },
+      "api_contract": {
+        "status": "partial",
+        "endpoints_tested": [
+          "GET /api/repos/:owner/:repo/actions/workflows",
+          "POST /api/repos/:owner/:repo/actions/workflows/:workflow_path/dispatches",
+          "OPTIONS /api/repos/:owner/:repo/actions/workflows"
+        ],
+        "notes": "Unauthenticated workflow list and dispatch returned JSON 401 envelopes. Local /health reports degraded because DATABASE_URL is not configured, so authenticated database-backed happy-path workflow/run API contract checks remain environment-blocked."
+      },
+      "security": {
+        "status": "partial",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Missing auth did not authorize workflow list or dispatch. XSS-like dispatch input was not reflected in the unauthenticated response. OPTIONS with Origin https://evil.com returned 405 and did not echo Access-Control-Allow-Origin. Full data exposure checks for queued run payloads remain blocked without a DB-backed authenticated scenario."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this backend service feature; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json, qa-hints.json actions-005 entry, BUILD_GUIDE.md, prd.json, and the existing actions push trigger implementation/tests.",
+      "Confirmed attempt 1's product gap existed before fixing: only push and workflow_dispatch paths were wired; pull_request and schedule dispatch were missing.",
+      "Implemented trigger_workflows_for_pull_request and trigger_workflows_for_schedule in crates/api/src/domain/actions.rs.",
+      "Wired create_pull_request to call trigger_workflows_for_pull_request after PR persistence, snapshot, notifications, audit, and search indexing.",
+      "Added focused contract tests for pull_request creation dispatch and schedule dispatch in crates/api/tests/api_repository_actions_push_trigger_contract.rs.",
+      "Ran cargo fmt --all and cargo check -p opengithub-api: passed.",
+      "Ran cargo test --test api_repository_actions_push_trigger_contract -- --nocapture: 4 passed, but all DB-backed scenarios self-skipped because TEST_DATABASE_URL is unset.",
+      "Ran Editorial banned-value scan against web/src excluding og CSS using ripgrep -e form: no banned GitHub hex, Primer, or Octicon hits.",
+      "Ran make test: Cargo tests passed and web tests passed (654 passed).",
+      "Ran make test-e2e: 18 passed, 135 skipped, then 2 unrelated repository-discussions specs failed because TEST_DATABASE_URL or DATABASE_URL is required.",
+      "Started local Rust API without DATABASE_URL and verified /health reports degraded database status.",
+      "Curl-smoked unauthenticated GET /api/repos/test-owner/test-repo/actions/workflows: JSON 401 not_authenticated.",
+      "Curl-smoked unauthenticated POST /api/repos/test-owner/test-repo/actions/workflows/ci.yml/dispatches with XSS-like input: JSON 401 not_authenticated, payload not reflected.",
+      "Curl-smoked OPTIONS /api/repos/test-owner/test-repo/actions/workflows with Origin https://evil.com: 405 with no Access-Control-Allow-Origin."
+    ],
+    "bugs_found": [],
+    "fix_description": "fixed 1 major product gap: added pull_request and schedule workflow dispatch support, wired pull request creation to enqueue matching runs, and added focused Rust contract coverage; database-backed runtime assertions remain environment-blocked because TEST_DATABASE_URL/DATABASE_URL is unset"
   }
 ]
