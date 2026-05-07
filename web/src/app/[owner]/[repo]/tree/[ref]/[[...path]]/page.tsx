@@ -37,18 +37,16 @@ export default async function RepositoryTreePage({
   const pageSize = Number.parseInt(query.pageSize ?? "30", 10);
   const overview =
     session.authenticated && session.user
-      ? repositoryPath
-        ? await getRepositoryPath(
-            ownerLogin,
-            repositoryName,
-            refName,
-            repositoryPath,
-            {
-              page: Number.isFinite(page) ? page : 1,
-              pageSize: Number.isFinite(pageSize) ? pageSize : 30,
-            },
-          )
-        : await getRepository(ownerLogin, repositoryName)
+      ? await getRepositoryPath(
+          ownerLogin,
+          repositoryName,
+          refName,
+          repositoryPath,
+          {
+            page: Number.isFinite(page) ? page : 1,
+            pageSize: Number.isFinite(pageSize) ? pageSize : 30,
+          },
+        )
       : null;
   const recoveryRepository =
     !overview && session.authenticated && session.user
@@ -58,45 +56,7 @@ export default async function RepositoryTreePage({
   return (
     <AppShell session={session}>
       {overview ? (
-        "entries" in overview ? (
-          <RepositoryTreeView overview={overview} />
-        ) : (
-          <RepositoryTreeView
-            overview={{
-              ...overview,
-              refName,
-              resolvedRef: {
-                kind:
-                  refName === overview.default_branch ? "branch" : "unknown",
-                shortName: refName,
-                qualifiedName:
-                  refName === overview.default_branch
-                    ? `refs/heads/${refName}`
-                    : refName,
-                targetOid: overview.latestCommit?.oid ?? null,
-                recoveryHref: `/${ownerLogin}/${repositoryName}/tree/${overview.default_branch}`,
-              },
-              defaultBranchHref: `/${ownerLogin}/${repositoryName}/tree/${overview.default_branch}`,
-              recoveryHref: `/${ownerLogin}/${repositoryName}/tree/${refName}`,
-              total: overview.rootEntries.length,
-              page: 1,
-              pageSize: Math.max(overview.rootEntries.length, 1),
-              hasMore: false,
-              path: "",
-              pathName: repositoryName,
-              breadcrumbs: [
-                {
-                  name: repositoryName,
-                  path: "",
-                  href: `/${ownerLogin}/${repositoryName}/tree/${refName}`,
-                },
-              ],
-              parentHref: null,
-              entries: overview.rootEntries,
-              historyHref: `/${ownerLogin}/${repositoryName}/commits/${refName}`,
-            }}
-          />
-        )
+        <RepositoryTreeView overview={overview} />
       ) : (
         <section className="mx-auto max-w-6xl px-6 py-8">
           <div className="rounded-md border border-[var(--line)] bg-[var(--surface)] p-5">

@@ -18727,8 +18727,9 @@ export async function getRepositoryPathFromCookie(
   }
   let response: Response;
   try {
+    const contentsPath = encodedPath ? `/contents/${encodedPath}` : "/contents";
     response = await fetch(
-      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${encodedPath}?${params.toString()}`,
+      `${apiBaseUrl()}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}${contentsPath}?${params.toString()}`,
       {
         headers: cookie ? { cookie } : undefined,
         cache: "no-store",

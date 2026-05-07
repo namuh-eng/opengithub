@@ -616,5 +616,70 @@
       }
     ],
     "fix_description": "Made global search suggestion selection opt-in and preserved highlighted suggestion activation; added Vitest regression coverage."
+  },
+  {
+    "feature_id": "repo-004",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed before fixes; focused Vitest tree/page coverage passed after fixing selected-ref root tree routing; focused Rust repository_tree_navigation passed but DB-backed scenario self-skipped without TEST_DATABASE_URL; make test-e2e ran and reached repo-004 specs but skipped them because DATABASE_URL/TEST_DATABASE_URL is unset, then failed only in unrelated repository-discussions specs for the same missing DB URL. Ever CLI expired immediately after start, so manual evidence used live curl/rendered HTML and a Playwright screenshot at ralph/screenshots/qa/repo-004-tree-root-anonymous.png."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/:owner/:repo/contents",
+          "GET /api/repos/:owner/:repo/contents/*path",
+          "GET /api/repos/:owner/:repo/blobs/*path",
+          "GET /api/repos/:owner/:repo/file-finder"
+        ],
+        "notes": "Added and verified root contents route for selected refs. Live unauthenticated probes returned application/json 401 envelopes for root contents, nested contents, blobs, and file-finder. DB-backed happy-path shape is covered by repository_tree_navigation when TEST_DATABASE_URL is configured, but this local shell has DATABASE_URL empty."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Unauthenticated tree/blob/finder/traversal probes did not return repository data. SQL-like and XSS-like ref/query payloads with malformed auth returned generic 401 JSON without reflection, stack traces, local paths, or env leaks. OPTIONS from https://evil.com returned 405 without Access-Control-Allow-Origin. Editorial banned-token scan was clean using rg -n -e fallback syntax."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json and all repo-004 qa-hints entries; no previous repo-004 QA attempts existed.",
+      "Ran mandatory Editorial banned-token scan with rg -n -e fallback syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran make test before changes: Cargo tests passed and web tests passed (652 passed).",
+      "Ran make test-e2e: 18 passed, 134 skipped, repo-004 E2E specs skipped because TEST_DATABASE_URL/DATABASE_URL is not set, and the suite failed only in unrelated repository-discussions specs requiring a DB URL.",
+      "Ran cargo test --test repository_tree_navigation -- --nocapture: test passed, with DB-backed scenario self-skipped because TEST_DATABASE_URL is unset.",
+      "Inspected tree page routing and found root /tree/{ref} used repository overview fallback instead of the selected-ref contents contract.",
+      "Fixed root contents API and Next tree page routing so slash-containing refs such as feature/tree-nav resolve through getRepositoryPath with an empty path.",
+      "Added repository-tree-page Vitest coverage for /tree/feature%2Ftree-nav root routing.",
+      "Ran focused Vitest tests/repository-tree-page.test.tsx and tests/repository-code-overview.test.tsx: 25 tests passed.",
+      "Ran cargo check -p opengithub-api: passed.",
+      "Restarted dev server and verified live Rust API root/nested contents, blob, finder, traversal-like, SQL-like, and XSS-like probes return JSON 401 without data leakage.",
+      "Verified live anonymous Next /namuh-eng/opengithub/tree/feature%2Ftree-nav renders Editorial Path unavailable recovery state and does not expose repository data.",
+      "Attempted Ever CLI manual verification; ever snapshot failed with Session expired immediately after ever start.",
+      "Saved Playwright screenshot ralph/screenshots/qa/repo-004-tree-root-anonymous.png.",
+      "Ran final make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran final make test: Cargo tests passed and web tests passed (653 passed)."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "functional",
+        "description": "Root tree URLs for non-default or slash-containing refs did not resolve through the selected-ref contents contract.",
+        "expected": "/{owner}/{repo}/tree/{ref} should load the tree for the selected ref, including refs such as feature/tree-nav.",
+        "actual": "The page used getRepository for empty paths, synthesizing a default-branch overview while labeling it with the requested ref.",
+        "reproduction": "Open /mona/octo-app/tree/feature%2Ftree-nav with an authenticated session before the fix; the page does not call getRepositoryPath(owner, repo, feature/tree-nav, \"\", ...)."
+      }
+    ],
+    "fix_description": "Added GET /api/repos/:owner/:repo/contents for root directory reads, updated the Next tree page and API client to use the selected-ref contents contract for root paths, and added a page-level regression test for slash-containing refs."
   }
 ]

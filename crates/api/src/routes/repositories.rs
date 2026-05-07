@@ -209,6 +209,7 @@ pub fn router() -> Router<AppState> {
         .route("/", get(list).post(create))
         .route("/creation-options", get(creation_options))
         .route("/name-availability", get(name_availability))
+        .route("/:owner/:repo/contents", get(contents_root))
         .route("/:owner/:repo/contents/*path", get(contents))
         .route("/:owner/:repo/blobs/*path", get(blob))
         .route("/:owner/:repo/blame/*path", get(blame))
@@ -1533,6 +1534,26 @@ async fn contents(
     headers: HeaderMap,
     Path((owner, repo, path)): Path<(String, String, String)>,
     Query(query): Query<ContentsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    contents_for_path(state, headers, owner, repo, path, query).await
+}
+
+async fn contents_root(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((owner, repo)): Path<(String, String)>,
+    Query(query): Query<ContentsQuery>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
+    contents_for_path(state, headers, owner, repo, String::new(), query).await
+}
+
+async fn contents_for_path(
+    state: AppState,
+    headers: HeaderMap,
+    owner: String,
+    repo: String,
+    path: String,
+    query: ContentsQuery,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ErrorEnvelope>)> {
     let actor = AuthenticatedUser::from_headers(&state, &headers).await?;
     let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
