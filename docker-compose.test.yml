@@ -1,0 +1,29 @@
+# Isolated Postgres for opengithub E2E / integration tests.
+# Port 55433 is chosen to avoid collision with other local namuh projects
+# (e.g. namuh-send already binds 55432).
+#
+# Usage:
+#   make db-up-test         # bring up
+#   make test-e2e           # runs Playwright against this DB
+#   make db-down-test       # tear down (drops volume — fresh schema next time)
+
+services:
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: opengithub-postgres-test
+    environment:
+      POSTGRES_USER: opengithub
+      POSTGRES_PASSWORD: opengithub
+      POSTGRES_DB: opengithub_test
+    ports:
+      - "55433:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opengithub -d opengithub_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  postgres_test_data:

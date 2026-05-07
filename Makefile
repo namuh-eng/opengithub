@@ -10,6 +10,7 @@
 .PHONY: check test test-e2e typecheck lint format fix all dev build clean validate
 .PHONY: check-header test-header check-verbose test-verbose
 .PHONY: db-generate db-migrate db-push api-dev web-dev
+.PHONY: db-up-test db-down-test db-wait-test
 
 # --- Guard: ensure onboarding has run ---
 SETUP_DONE := $(wildcard .ralph-setup-done)
@@ -64,9 +65,14 @@ test: test-header
 	  run_silent_with_test_count "Web tests passed" "cd web && npx vitest run" "vitest"; \
 	fi
 
-# E2E tests (Playwright — only when web/ exists)
+# E2E tests (Playwright — only when web/ exists).
+# Loads .env.test so TEST_DATABASE_URL / SESSION_* are wired for the test DB
+# brought up by `make db-up-test`. Failing to bring up the DB is non-fatal
+# here so the recipe can also run in CI where the DB is already provisioned.
 test-e2e:
 	@if [ -n "$(HAS_WEB)" ]; then \
+	  set -a; [ -f .env.test ] && . ./.env.test; set +a; \
+	  if [ -f .env.test ]; then $(MAKE) -s db-wait-test || true; fi; \
 	  . ./hack/run_silent.sh && \
 	  run_silent_with_test_count "E2E tests passed" "cd web && npx playwright test" "playwright"; \
 	else \
@@ -128,6 +134,27 @@ db-migrate:
 	fi
 
 db-push: db-migrate
+
+# Bring up the isolated Postgres for E2E / integration tests on :55433.
+# Idempotent — safe to run repeatedly.
+db-up-test:
+	@docker compose -f docker-compose.test.yml up -d
+	@$(MAKE) -s db-wait-test
+
+# Wait for the test DB to accept connections (used by db-up-test and test-e2e).
+db-wait-test:
+	@for i in $$(seq 1 60); do \
+	  if docker compose -f docker-compose.test.yml exec -T postgres-test pg_isready -U opengithub -d opengithub_test >/dev/null 2>&1; then \
+	    exit 0; \
+	  fi; \
+	  sleep 1; \
+	done; \
+	echo "test postgres did not become ready on :55433 within 60s" >&2; \
+	exit 1
+
+# Tear down the test DB and drop the volume so the next run starts fresh.
+db-down-test:
+	@docker compose -f docker-compose.test.yml down -v
 
 # Clean build artifacts
 clean:

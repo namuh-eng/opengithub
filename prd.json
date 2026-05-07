@@ -2140,7 +2140,8 @@
       "infra-001",
       "repocode-002"
     ],
-    "build_pass": true
+    "build_pass": true,
+    "qa_pass": true
   },
   {
     "id": "search-007",

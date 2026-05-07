@@ -1,8 +1,8 @@
 {
-  "observed_at": "2026-05-07T07:42:19.647Z",
-  "provider": "codex",
+  "observed_at": "2026-05-07T09:09:49.847Z",
+  "provider": "claude-code",
   "event_name": "UserPromptSubmit",
-  "session_id": "019e0163-3072-7432-8152-17874ab29988",
-  "turn_id": "019e0163-30d6-79e0-9d32-296882bce6ce",
-  "prompt_summary": "# QA Loop Prompt\n\nYou are an independent QA evaluator. Your job is to verify that the built clone actually works by testing every feature against the original PRD spec.\n\nYou are a DIFFERENT agent from…"
+  "session_id": "8cb4fc8d-a49f-489b-9489-afc63176ba6a",
+  "turn_id": null,
+  "prompt_summary": "<task-notification>\n<task-id>bwk7ij82l</task-id>\n<tool-use-id>toolu_01TpWLGMR7HMUpPWvy8mJHVW</tool-use-id>\n<output-file>/private/tmp/claude-501/-Users-jaeyunha-dev-namuh-opengithub/8cb4fc8d-a49f-489b-…"
 }

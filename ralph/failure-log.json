@@ -4367,6 +4367,14 @@
       "exit_code": 0,
       "category": "unknown",
       "attempt": 4
+    },
+    {
+      "timestamp": "2026-05-07T09:10:28.990499",
+      "phase": "qa",
+      "feature": "qa_cycle_2",
+      "exit_code": 0,
+      "category": "test_failure",
+      "attempt": 5
     }
   ]
 }
