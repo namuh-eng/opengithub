@@ -2124,5 +2124,57 @@
       }
     ],
     "fix_description": "Fixed 1 major API contract bug by using api_types::MAX_PAGE_SIZE for shared search pagination caps and adding REST contract coverage for per_page=100."
+  },
+  {
+    "feature_id": "globalpulls-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed; focused global-pulls Vitest/API-doc coverage passed; mandatory Editorial banned-token scan was clean; source inspection verified URL-backed tabs, filters, pagination links, concrete row links, signed-out fallback, no dead href=\"#\", and tokenized Editorial primitives. Full DB-backed E2E and signed-session browser smoke could not run because local Docker/Postgres on :55433 was unavailable and docker compose commands hung; existing focused tests and source-level verification cover the feature shape."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/pulls"
+        ],
+        "notes": "Discovered Rust GET /api/pulls. Contract inspection confirmed signed-session-only route, JSON list envelope, created/assigned/mentioned/review_requests scopes, state/repo/label/milestone/q/sort/page/pageSize parsing, bounded pagination, concrete href projection, and invalid query mapping through the shared collaboration error envelope. DB-backed happy-path curl/contract execution could not run because the isolated Postgres service was not available from this session."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Route requires AuthenticatedUser before returning data when a DB pool is present. SQL inspection verified every scope and filter-option query gates visibility to public repositories or explicit repository_permissions read/write/triage/maintain/admin/owner roles. Query parameters are bound through sqlx rather than interpolated; no stack traces or secrets are projected by the list view. Hostile-origin live CORS probes could not run without the local DB/dev stack."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json and confirmed no previous globalpulls-001 attempts.",
+      "Read prd.json and qa-hints.json for globalpulls-001, including deeper-QA asks for signed-session tabs, private repo leakage, mention semantics, pagination/sort stability, and keyboard/mobile behavior.",
+      "Inspected web/AGENTS.md and BUILD_GUIDE.md for the Editorial design and stack contracts.",
+      "Inspected crates/api/src/routes/pulls.rs global_list/global_pull_list_query and crates/api/src/domain/pulls.rs global_pull_request_list_for_viewer plus option queries.",
+      "Inspected web/src/app/pulls/page.tsx, web/src/components/GlobalPullsPage.tsx, web/src/lib/api.ts globalPullRequestsPath/getGlobalPullRequestsFromCookie, and web/tests/global-pulls-page.test.tsx.",
+      "Ran make test: Cargo tests passed and web tests passed (654 passed).",
+      "Ran focused global pulls/API docs web tests: cd web && npm test -- global-pulls-page.test.tsx api-docs.test.tsx --run; 2 files and 5 tests passed.",
+      "Ran mandatory Editorial banned-token scan with local rg-compatible -e syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran dead-control scan against GlobalPullsPage and /pulls page for href=\"#\", javascript:, and inline onClick handlers: no hits.",
+      "Attempted TEST_DATABASE_URL-backed cargo test -p opengithub-api --test api_repository_pulls_list_contract -- --nocapture before starting Docker; it self-skipped because localhost:55433 was not accepting connections.",
+      "Attempted make db-up-test and docker ps to bring up/inspect isolated Postgres; docker compose/docker commands hung without output and were terminated, so DB-backed global pulls happy-path and private-leakage runtime probes could not be completed in this session.",
+      "Attempted make test-e2e with .env.test; it blocked in db-wait-test on the same unavailable Docker/Postgres path and was terminated.",
+      "Source inspection verified private repository leakage guardrails: list/count/repository/label/milestone queries all require public visibility or explicit repository_permissions for the viewer.",
+      "Source inspection verified mentioned scope uses pull_request notifications with reason mention/team_mention, matching the build hint and current notification writer model.",
+      "Source inspection verified pagination is clamped to 1..100, sorted by requested sort then updated_at/number tie-breakers, and filter/search values are SQL bind parameters."
+    ],
+    "bugs_found": [],
+    "fix_description": "no product fix needed; QA recorded the unavailable Docker/Postgres browser/API runtime gap instead of weakening tests"
   }
 ]

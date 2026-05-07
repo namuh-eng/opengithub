@@ -2203,7 +2203,8 @@
       "repopulls-001",
       "auth-001"
     ],
-    "build_pass": true
+    "build_pass": true,
+    "qa_pass": true
   },
   {
     "id": "globalissues-001",
