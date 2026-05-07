@@ -8208,5 +8208,21 @@
       "Rate-limit bucket behavior for repeated AI generation under real signed sessions",
       "Full signed-session E2E after local TEST_DATABASE_URL credentials are healthy"
     ]
+  },
+  {
+    "feature_id": "dashboard-003",
+    "tests_written": [
+      "QA migrated dashboard-dashboard.spec.ts to the shared Playwright auth fixture required for signed-in specs.",
+      "Focused dashboard Vitest component/API-shape coverage passed: 17 tests in tests/dashboard-onboarding.test.tsx.",
+      "Focused Biome check for touched dashboard UI/spec files passed.",
+      "Web typecheck passed using a temporary read-only dependency symlink because this isolated worktree has no node_modules and disk space is exhausted.",
+      "Mandatory Editorial scan found no banned GitHub hex colors, Primer imports, or Octicon references in web/src outside og CSS."
+    ],
+    "needs_deeper_qa": [
+      "dashboard-003.qa_pass remains false because make check failed with No space left on device during cargo check.",
+      "CARGO_INCREMENTAL=0 make test was not run to completion because the filesystem had only about 1 GiB free after local cleanup and cargo check already failed writing target artifacts.",
+      "make test-e2e/focused Playwright could not produce browser evidence because localhost:55433 was closed and Docker server connection timed out, preventing the test Postgres from starting.",
+      "Rerun make db-up-test, make check, CARGO_INCREMENTAL=0 make test, and make test-e2e after freeing disk and restoring Docker/Postgres."
+    ]
   }
 ]

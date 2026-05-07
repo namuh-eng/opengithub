@@ -1,77 +1,11 @@
-import { execFileSync } from "node:child_process";
-import { expect, type Page, test } from "@playwright/test";
-
-const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
-
-type SeededDashboard = {
-  cookieName: string;
-  cookieValue: string;
-  firstRepositoryHref: string;
-  secondRepositoryHref: string;
-};
-
-function seedDashboard({
-  empty = false,
-}: {
-  empty?: boolean;
-} = {}): SeededDashboard {
-  if (!databaseUrl) {
-    throw new Error("TEST_DATABASE_URL or DATABASE_URL is required");
-  }
-
-  const output = execFileSync(
-    "cargo",
-    [
-      "run",
-      "--quiet",
-      "-p",
-      "opengithub-api",
-      "--example",
-      "dashboard_e2e_seed",
-    ],
-    {
-      cwd: "..",
-      env: {
-        ...process.env,
-        DASHBOARD_E2E_EMPTY: empty ? "1" : "0",
-        SESSION_COOKIE_NAME: "og_session",
-      },
-    },
-  ).toString();
-  return JSON.parse(output) as SeededDashboard;
-}
-
-async function signIn(page: Page, seeded: SeededDashboard) {
-  await page.context().addCookies([
-    {
-      name: seeded.cookieName,
-      value: seeded.cookieValue,
-      domain: "localhost",
-      path: "/",
-      httpOnly: true,
-      sameSite: "Lax",
-      secure: false,
-    },
-  ]);
-}
-
-async function expectNoDeadDashboardControls(page: Page) {
-  await expect(page.locator('a[href="#"], a:not([href])')).toHaveCount(0);
-
-  for (const button of await page.locator("button:visible").all()) {
-    await expect(button).toHaveAccessibleName(/.+/);
-    await expect(button).not.toBeDisabled();
-  }
-}
-
-async function expectNoHorizontalOverflow(page: Page) {
-  const metrics = await page.evaluate(() => ({
-    clientWidth: document.documentElement.clientWidth,
-    scrollWidth: document.documentElement.scrollWidth,
-  }));
-
-  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth);
-}
+import type { Page } from "@playwright/test";
+import {
+  expect,
+  expectNoDeadControls,
+  expectNoHorizontalOverflow,
+  skipWithoutTestDb,
+  test,
+} from "./_fixtures/auth";
 
 async function boundingBoxFor(locator: ReturnType<Page["locator"]>) {
   const box = await locator.boundingBox();
@@ -85,14 +19,16 @@ async function boundingBoxFor(locator: ReturnType<Page["locator"]>) {
 }
 
 test.skip(
-  !databaseUrl,
+  skipWithoutTestDb(),
   "dashboard signed-in E2E needs TEST_DATABASE_URL or DATABASE_URL",
 );
 
 test("signed-in dashboard filters top repositories and navigates rows", async ({
   page,
+  seed,
+  signIn,
 }) => {
-  const seeded = seedDashboard();
+  const seeded = await seed();
   await signIn(page, seeded);
 
   await page.goto("/dashboard");
@@ -138,7 +74,7 @@ test("signed-in dashboard filters top repositories and navigates rows", async ({
   ).toHaveCount(0);
 
   await filteredRepository.click();
-  await expect(page).toHaveURL(new RegExp(`${seeded.secondRepositoryHref}$`));
+  await expect(page).toHaveURL(new RegExp(`${seeded.hrefs.secondRepository}$`));
 
   await page.goto("/dashboard");
   await dashboardFeed
@@ -183,8 +119,10 @@ test("signed-in dashboard filters top repositories and navigates rows", async ({
 
 test("signed-in dashboard feed filters support keyboard use and empty states", async ({
   page,
+  seed,
+  signIn,
 }) => {
-  const seeded = seedDashboard();
+  const seeded = await seed();
   await signIn(page, seeded);
 
   await page.goto("/dashboard?feedTab=for_you");
@@ -218,13 +156,15 @@ test("signed-in dashboard feed filters support keyboard use and empty states", a
   await expect(
     dashboardFeed.getByRole("link", { name: "Explore repositories" }),
   ).toHaveAttribute("href", "/explore");
-  await expectNoDeadDashboardControls(page);
+  await expectNoDeadControls(page);
 });
 
 test("signed-in dashboard has no dead controls on empty and non-empty states", async ({
   page,
+  seed,
+  signIn,
 }) => {
-  const emptySeed = seedDashboard({ empty: true });
+  const emptySeed = await seed({ scenes: ["empty"] });
   await signIn(page, emptySeed);
   await page.goto("/dashboard");
 
@@ -240,9 +180,9 @@ test("signed-in dashboard has no dead controls on empty and non-empty states", a
   await expect(
     page.getByRole("link", { name: "Read setup guide" }).first(),
   ).toHaveAttribute("href", "/docs/get-started");
-  await expectNoDeadDashboardControls(page);
+  await expectNoDeadControls(page);
 
-  const seeded = seedDashboard();
+  const seeded = await seed();
   await page.context().clearCookies();
   await signIn(page, seeded);
   await page.goto("/dashboard");
@@ -250,13 +190,15 @@ test("signed-in dashboard has no dead controls on empty and non-empty states", a
   await expect(
     page.getByRole("heading", { exact: true, name: "Dashboard feed" }),
   ).toBeVisible();
-  await expectNoDeadDashboardControls(page);
+  await expectNoDeadControls(page);
 });
 
 test("signed-in dashboard stacks without horizontal scroll on mobile", async ({
   page,
+  seed,
+  signIn,
 }) => {
-  const seeded = seedDashboard();
+  const seeded = await seed();
   await signIn(page, seeded);
 
   await page.setViewportSize({ width: 390, height: 900 });
@@ -295,8 +237,10 @@ test("signed-in dashboard stacks without horizontal scroll on mobile", async ({
 
 test("signed-in dashboard keeps the sidebar and feed aligned on desktop", async ({
   page,
+  seed,
+  signIn,
 }) => {
-  const seeded = seedDashboard();
+  const seeded = await seed();
   await signIn(page, seeded);
 
   await page.setViewportSize({ width: 1280, height: 900 });

@@ -2587,5 +2587,58 @@
       }
     ],
     "fix_description": "Fixed AI changelog context to honor previousTag/targetTag bounds and added focused DB-backed contract coverage. Full signed-session, private-repo opt-in, rate-limit bucket, and live OpenAI provider verification remain blocked by unavailable local test Postgres, so prd.json keeps ai-001.qa_pass=false."
+  },
+  {
+    "feature_id": "dashboard-003",
+    "attempt": 1,
+    "status": "blocked",
+    "sub_phases": {
+      "functional": {
+        "status": "blocked",
+        "notes": "Dashboard feed UI and query behavior were inspected against the PRD, and focused dashboard Vitest coverage passed. Required make check/make test/make test-e2e could not complete in this worktree because the filesystem is full and the local Docker/Postgres test service is unavailable."
+      },
+      "api_contract": {
+        "status": "blocked",
+        "endpoints_tested": [
+          "GET /api/dashboard (code/test inspection)",
+          "PUT /api/dashboard/feed-preferences (code/test inspection)",
+          "DELETE /api/dashboard/feed-preferences (code/test inspection)"
+        ],
+        "notes": "Existing Rust route/domain tests cover dashboard feed tabs, event-type validation, saved preferences, and private feed non-leakage, but the DB-backed contract tests could not be rerun because localhost:55433 was closed and Docker server connection timed out."
+      },
+      "security": {
+        "status": "blocked",
+        "checks": [
+          "auth wall and permission scoping by code/test inspection"
+        ],
+        "notes": "Feed queries join only visible repositories and include followed/watched/starred/collaborator/org-follow predicates; direct DB-backed security rerun was blocked by unavailable local Postgres."
+      },
+      "accessibility": {
+        "status": "partial",
+        "violations": [],
+        "notes": "Focused UI tests cover keyboard opening/applying the details-based filter menu and dead-control checks in the dashboard spec. Live axe/browser verification could not run because Playwright webServer failed before startup due environment constraints."
+      }
+    },
+    "tested_steps": [
+      "Read AGENTS.md, web/AGENTS.md, BUILD_GUIDE.md, prd.json dashboard-003, .qrspi/dashboard-003/structure.md, build-progress.txt, qa-hints.json, and qa-report.json.",
+      "Inspected /dashboard implementation in web/src/app/dashboard/page.tsx and web/src/components/DashboardRepositoryFeed.tsx plus Rust dashboard routes/domain and dashboard-003 tests.",
+      "Fixed web/tests/e2e/dashboard-dashboard.spec.ts to use the shared signed-in E2E fixture instead of duplicating execFileSync seeding/sign-in helpers, aligning the spec with web/tests/e2e/AGENTS.md.",
+      "Ran mandatory Editorial scan: rg -n -e '#(0969da|1f883d|1a7f37|cf222e|82071e|f6f8fa|1f2328|d0d7de|59636e|f1aeb5|fff1f3)\\b|@primer/|Octicon' web/src/ --glob '!**/og*.css' returned no matches (exit 1).",
+      "Ran focused dashboard component tests with a temporary read-only node_modules symlink: cd web && npx --no-install vitest run tests/dashboard-onboarding.test.tsx \u2014 1 file passed, 17 tests passed.",
+      "Ran focused Biome check: cd web && npx --no-install biome check tests/e2e/dashboard-dashboard.spec.ts src/components/DashboardRepositoryFeed.tsx src/app/dashboard/page.tsx tests/dashboard-onboarding.test.tsx \u2014 Checked 4 files, no fixes applied.",
+      "Ran web typecheck with the same temporary read-only dependency symlink: cd web && npx --no-install tsc --noEmit --pretty false \u2014 passed with no output.",
+      "Attempted make check: failed during cargo check with No space left on device while writing target/debug artifacts.",
+      "Attempted local test DB readiness: pg_isready -h localhost -p 55433 -U opengithub -d opengithub_test reported no response; nc reported port closed.",
+      "Attempted Docker diagnosis: timeout 10 docker info timed out while connecting to the Docker server, so make db-up-test/make test-e2e could not provision Postgres.",
+      "Attempted focused Playwright dashboard spec with .env.test: webServer failed before tests due No space left on device while compiling Rust dependencies, and the temporary node_modules symlink is not valid for Turbopack; no E2E evidence counted as passing."
+    ],
+    "bugs_found": [
+      {
+        "severity": "minor",
+        "description": "dashboard-dashboard.spec.ts duplicated legacy seeding/sign-in helpers instead of the shared E2E auth fixture required by web/tests/e2e/AGENTS.md.",
+        "fix": "Rewired the dashboard E2E spec to import test/expect/signIn/seed helpers from ./_fixtures/auth and use the empty scene for empty-dashboard coverage."
+      }
+    ],
+    "fix_description": "Migrated the dashboard-003 Playwright spec to the shared auth fixture. Product QA remains blocked by local disk exhaustion and unavailable Docker/Postgres; prd.json dashboard-003.qa_pass remains false."
   }
 ]
