@@ -1,4 +1,5 @@
 use axum::{
+    body::Bytes,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     routing::{get, patch, post, put},
@@ -205,8 +206,8 @@ async fn appearance_settings_route(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<AppearanceSettings>, (StatusCode, Json<ErrorEnvelope>)> {
-    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let user = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let settings = appearance_settings(pool, user.id)
         .await
         .map_err(map_personal_settings_error)?;
@@ -216,10 +217,17 @@ async fn appearance_settings_route(
 async fn update_appearance_settings_route(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(input): Json<UpdateAppearanceSettings>,
+    body: Bytes,
 ) -> Result<Json<AppearanceSettings>, (StatusCode, Json<ErrorEnvelope>)> {
-    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
     let user = AuthenticatedUser::from_headers(&state, &headers).await?.0;
+    let pool = state.db.as_ref().ok_or_else(database_unavailable)?;
+    let input = serde_json::from_slice::<UpdateAppearanceSettings>(&body).map_err(|_| {
+        error_response(
+            StatusCode::BAD_REQUEST,
+            "validation_failed",
+            "Theme must be light, dark, system, dark_dimmed, or dark_high_contrast; fontSize must be small, default, or large",
+        )
+    })?;
     let settings = update_appearance_settings(pool, user.id, input)
         .await
         .map_err(map_personal_settings_error)?;

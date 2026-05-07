@@ -34,6 +34,36 @@ body.og-app {
   letter-spacing: -0.005em;
 }
 
+@media (prefers-color-scheme: dark) {
+  html[data-color-mode="system"] body.og-app {
+    --bg: #15130f;
+    --surface: #1c1a16;
+    --surface-2: #232019;
+    --surface-3: #2c2820;
+    --hover: rgba(255, 250, 240, 0.04);
+    --pressed: rgba(255, 250, 240, 0.08);
+
+    --ink-1: #f3ede0;
+    --ink-2: #ddd6c5;
+    --ink-3: #9c9583;
+    --ink-4: #6e6857;
+    --ink-5: #443f33;
+
+    --line: #2e2a22;
+    --line-strong: #423d31;
+    --line-soft: #25221b;
+
+    --accent: oklch(0.68 0.15 32);
+    --accent-hover: oklch(0.74 0.16 32);
+    --accent-soft: oklch(0.3 0.08 32);
+
+    --code-add: oklch(0.3 0.08 145);
+    --code-add-strong: oklch(0.4 0.12 145);
+    --code-del: oklch(0.3 0.1 25);
+    --code-del-strong: oklch(0.4 0.14 25);
+  }
+}
+
 html[data-font-size="small"] body.og-app,
 body.og-app.font-size-small {
   font-size: 13px;

@@ -1592,5 +1592,84 @@
     ],
     "bugs_found": [],
     "fix_description": "no product fix needed; QA recorded local DB/Ever limitations without weakening tests"
+  },
+  {
+    "feature_id": "theme-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed before fixes; make test-e2e ran but failed only on two unrelated repository-discussions specs requiring TEST_DATABASE_URL/DATABASE_URL. Focused Playwright browser QA passed cookie first-paint dark_dimmed+large, system dark preference, signed-out /settings/appearance auth redirect, and 360px no-overflow checks. Required Editorial banned-value scan passed with zero hits. Ever CLI start succeeded but snapshot expired, so browser evidence used Playwright screenshots."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/user/settings/appearance",
+          "PATCH /api/user/settings/appearance",
+          "PATCH /settings/appearance/actions"
+        ],
+        "notes": "Live curl probes confirmed unauthenticated GET/PATCH now return application/json 401 envelopes before database checks. Invalid/injection-shaped PATCH payloads without auth also return 401 and do not reach raw Axum text rejection. OPTIONS returns 405 and does not echo an untrusted Origin. DB-backed happy-path row creation/update could not be exercised because no TEST_DATABASE_URL/DATABASE_URL was available in this session."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Fixed auth bypass/contract ordering so missing auth cannot receive database_unavailable for the appearance endpoint. Fixed PATCH parsing path so invalid enum/XSS payloads are not reflected in plain-text extractor errors before auth. CORS preflight did not expose Access-Control-Allow-Origin for https://evil.com; responses did not leak stack traces, env values, or secrets."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json and confirmed no previous theme-001 attempts.",
+      "Read qa-hints.json for theme-001 and focused on signed-session E2E, DB API, first-paint cookies/system mode, mobile, reduced-motion/accessibility-adjacent browser checks, and API/security probes.",
+      "Ran make test before fixes: Cargo tests passed and web tests passed (654 passed).",
+      "Ran make test-e2e: 18 passed, 135 skipped, 2 unrelated repository-discussions specs failed because TEST_DATABASE_URL or DATABASE_URL is required.",
+      "Ran required Editorial banned-value scan against web/src excluding og CSS: zero GitHub hex/Primer/Octicon hits.",
+      "Curl GET/PATCH /api/user/settings/appearance initially returned 503 database_unavailable without auth; fixed route to authenticate before database lookup.",
+      "Curl invalid enum/XSS PATCH initially returned Axum plain text with raw submitted value; fixed PATCH handler to parse after auth and use project JSON error envelope.",
+      "Rebuilt API and verified unauthenticated GET/PATCH /api/user/settings/appearance return JSON 401; injection-shaped unauthenticated PATCH also returns JSON 401.",
+      "CORS probe OPTIONS /api/user/settings/appearance with Origin https://evil.com returned 405 without Access-Control-Allow-Origin echo.",
+      "Playwright browser QA saved ralph/screenshots/qa/theme-001-login-dark-dimmed.png and theme-001-login-mobile-360.png.",
+      "Playwright verified color_mode=dark_dimmed and font_size=large first-paint attributes/body classes on signed-out login with no horizontal overflow.",
+      "Playwright initially showed color_mode=system plus browser dark preference first-painted light; fixed CSS system-dark fallback and reverified dark background/ink before hydration.",
+      "Playwright verified /settings/appearance signed-out redirects to /login?next=%2Fsettings%2Fappearance.",
+      "Ever CLI was attempted with ever start/snapshot/stop, but snapshot failed with Session expired; not counted as passing evidence.",
+      "Ran final make check && make test: Cargo check, TypeScript, Clippy, Biome, Cargo tests, and 654 web tests passed."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "security",
+        "description": "Unauthenticated appearance settings API returned database_unavailable before enforcing auth when the DB pool was absent.",
+        "expected": "Missing auth on GET/PATCH /api/user/settings/appearance returns 401 JSON auth envelope before any database availability detail.",
+        "actual": "GET/PATCH returned 503 database_unavailable without auth in the no-DB local dev environment.",
+        "reproduction": "curl -i http://localhost:3016/api/user/settings/appearance; curl -i -X PATCH http://localhost:3016/api/user/settings/appearance -H \"Content-Type: application/json\" -d \"{\\\"theme\\\":\\\"dark\\\",\\\"fontSize\\\":\\\"large\\\"}\""
+      },
+      {
+        "severity": "major",
+        "phase": "api_contract",
+        "description": "Invalid appearance PATCH payloads were rejected by Axum before the handler, returning text/plain with the raw submitted value.",
+        "expected": "Invalid JSON/enum values return project JSON error envelopes and do not reflect raw attacker-controlled payloads before auth.",
+        "actual": "PATCH with theme <script>alert(1)</script> returned text/plain 422 containing the raw script string.",
+        "reproduction": "curl -i -X PATCH http://localhost:3016/api/user/settings/appearance -H \"Content-Type: application/json\" -d \"{\\\"theme\\\":\\\"<script>alert(1)</script>\\\",\\\"fontSize\\\":\\\"large\\\"}\""
+      },
+      {
+        "severity": "major",
+        "phase": "functional",
+        "description": "System theme did not respect a dark browser preference on first paint for signed-out visitors.",
+        "expected": "With color_mode=system and prefers-color-scheme: dark, signed-out pages first-paint with Editorial dark tokens before hydration.",
+        "actual": "Playwright colorScheme=dark with color_mode=system rendered the public home with light background rgb(250, 247, 242).",
+        "reproduction": "Launch Chromium with colorScheme dark, set color_mode=system cookie for localhost, navigate to http://localhost:3015/, and inspect body computed background before hydration."
+      }
+    ],
+    "fix_description": "Fixed appearance API auth/parse ordering and added a CSS prefers-color-scheme dark fallback for html[data-color-mode=\"system\"] before hydration."
   }
 ]
