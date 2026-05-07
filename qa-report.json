@@ -978,5 +978,66 @@
     ],
     "bugs_found": [],
     "fix_description": "no product fix needed; QA recorded no-DB seeded E2E/API and Ever CLI environment gaps without weakening tests"
+  },
+  {
+    "feature_id": "prs-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed before fixes; mandatory Editorial banned-token scan had zero hits; DB-backed pull-list Rust contract passed after fixing email alias filters; focused repository-pulls Playwright passed against a throwaway Postgres DB after restarting the dev server with TEST_DATABASE_URL. Full make test-e2e still fails earlier in unrelated repository-discussions specs when DATABASE_URL is not provided, so focused E2E is the prs-001 browser evidence."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/:owner/:repo/pulls",
+          "PATCH /api/repos/:owner/:repo/pulls/preferences",
+          "POST /api/repos/:owner/:repo/pulls",
+          "PATCH /api/repos/:owner/:repo/pulls/:number"
+        ],
+        "notes": "DB-backed contract covers default open query, counts, pagination clamps, typed query filters, email alias author/assignee filters, canonical login output, labels, milestones, review/check/task metadata, row hrefs, contributor banner preference persistence, private repository denial, invalid filter 422 envelopes, and PR create/state mutations used by the focused browser smoke. Live curl probes verified JSON 404/401/422 envelopes and application/json content type on relevant routes."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Anonymous preference mutation returned 401 not_authenticated; private repository contract denies anonymous and outsider access without leaking private PR titles; SQL-like owner and XSS-like query probes returned safe JSON without stack traces, SQL errors, env values, or HTML execution; OPTIONS from https://evil.com returned 405 without Access-Control-Allow-Origin."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json, qa-hints.json prs-001 entries across phases, prd.json feature spec, BUILD_GUIDE.md, ralph-config.json, AGENTS.md, web/AGENTS.md, pull-list Rust route/domain code, RepositoryPullsPage, navigation helpers, and repository-pulls E2E coverage.",
+      "Ran make test: Cargo tests passed and web tests passed (653 passed).",
+      "Ran mandatory Editorial banned-token scan with ripgrep-compatible -e syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran make test-e2e: 18 public/auth/docs tests passed, 134 skipped, then two unrelated repository-discussions specs failed because TEST_DATABASE_URL/DATABASE_URL was missing before repository-pulls specs could run.",
+      "Created throwaway Postgres database opengithub_prs001_qa_20260507 for real DB-backed QA.",
+      "Ran TEST_DATABASE_URL-backed cargo test -p opengithub-api --test api_repository_pulls_list_contract -- --nocapture before the fix: failed because author/assignee filters using email aliases returned total 0 instead of 1.",
+      "Fixed pull-list author and assignee SQL filters to match either users.email or users.username in both row and count queries; updated the contract to assert canonical username login output while retaining email alias filter coverage.",
+      "Re-ran TEST_DATABASE_URL-backed api_repository_pulls_list_contract: passed.",
+      "Ran focused repository-pulls Playwright with TEST_DATABASE_URL after stopping a stale no-DB dev server: one transient URL wait failure reproduced detail content after click; reran the focused spec and it passed 2/2, covering signed-in repository creation, real PR creation/close, default list, filters, toolbar menus, banner dismissal persistence, mobile no-overflow, row detail navigation, and compare route.",
+      "Started make dev with the throwaway DB and ran live curl API/security probes for missing repository, invalid review filter, anonymous preferences PATCH, SQL-like owner, XSS-like query, and CORS OPTIONS.",
+      "Verified live rendered pull-list HTML uses Editorial font variable classes and tokenized colors; no GitHub/Primer banned tokens were present in source scan.",
+      "Ever CLI manual verification was not used because Playwright provided DB-backed browser evidence and prior QA attempts in this repo show Ever sessions expiring immediately in this environment."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "api_contract",
+        "description": "Repository pull-list author and assignee filters compared only COALESCE(username, email), so email alias filters returned zero rows once users had generated usernames.",
+        "expected": "Filtering by author or assignee should accept both canonical username logins and email aliases supported by repository owner routing/API contracts, with counts and rows agreeing.",
+        "actual": "GET /api/repos/{owner}/{repo}/pulls with author=<owner email>&assignee=<reviewer email> returned total 0 in the DB-backed contract even though a matching PR existed.",
+        "reproduction": "TEST_DATABASE_URL='postgresql://postgres:postgres@localhost:5432/opengithub_prs001_qa_20260507' DB_SSL=false cargo test -p opengithub-api --test api_repository_pulls_list_contract -- --nocapture"
+      }
+    ],
+    "fix_description": "Updated pull-list row and count SQL to match author/assignee filters against users.email or users.username; aligned the DB-backed contract with canonical username login output while preserving email alias filter coverage."
   }
 ]

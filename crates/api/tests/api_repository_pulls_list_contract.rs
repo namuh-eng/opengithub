@@ -143,6 +143,8 @@ async fn pull_list_contract_returns_screen_ready_rows_counts_and_filters() {
     let owner = create_user(&pool, "pull-list-owner").await;
     let reviewer = create_user(&pool, "pull-list-reviewer").await;
     let outsider = create_user(&pool, "pull-list-outsider").await;
+    let owner_login = owner.username.as_deref().unwrap_or(&owner.email);
+    let reviewer_login = reviewer.username.as_deref().unwrap_or(&reviewer.email);
     let repo_name = format!("pulls-contract-{}", Uuid::new_v4().simple());
     let repository = create_repository(
         &pool,
@@ -471,7 +473,7 @@ async fn pull_list_contract_returns_screen_ready_rows_counts_and_filters() {
         .as_array()
         .expect("user options should be an array")
         .iter()
-        .any(|user| user["login"] == reviewer.email));
+        .any(|user| user["login"] == reviewer_login));
     assert!(body["filterOptions"]["milestones"]
         .as_array()
         .expect("milestone options should be an array")
@@ -564,7 +566,7 @@ async fn pull_list_contract_returns_screen_ready_rows_counts_and_filters() {
     assert_eq!(item["number"], open_pr.pull_request.number);
     assert_eq!(item["title"], "Fix pull list filters");
     assert_eq!(item["state"], "open");
-    assert_eq!(item["author"]["login"], owner.email);
+    assert_eq!(item["author"]["login"], owner_login);
     assert_eq!(item["authorRole"], "owner");
     assert_eq!(item["labels"][0]["name"], "bug");
     assert_eq!(item["milestone"]["title"], "Review queue");
@@ -575,7 +577,7 @@ async fn pull_list_contract_returns_screen_ready_rows_counts_and_filters() {
     assert_eq!(item["review"]["reviewerCount"], 1);
     assert_eq!(
         item["review"]["requestedReviewers"][0]["login"],
-        reviewer.email
+        reviewer_login
     );
     assert_eq!(item["checks"]["status"], "completed");
     assert_eq!(item["checks"]["conclusion"], "success");
@@ -588,51 +590,51 @@ async fn pull_list_contract_returns_screen_ready_rows_counts_and_filters() {
         item["href"],
         format!(
             "/{}/{}/pull/{}",
-            owner.email, repo_name, open_pr.pull_request.number
+            owner_login, repo_name, open_pr.pull_request.number
         )
     );
     assert_eq!(
         item["checksHref"],
         format!(
             "/{}/{}/pull/{}/checks",
-            owner.email, repo_name, open_pr.pull_request.number
+            owner_login, repo_name, open_pr.pull_request.number
         )
     );
     assert_eq!(
         item["reviewsHref"],
         format!(
             "/{}/{}/pull/{}#reviews",
-            owner.email, repo_name, open_pr.pull_request.number
+            owner_login, repo_name, open_pr.pull_request.number
         )
     );
     assert_eq!(
         item["commentsHref"],
         format!(
             "/{}/{}/pull/{}#comments",
-            owner.email, repo_name, open_pr.pull_request.number
+            owner_login, repo_name, open_pr.pull_request.number
         )
     );
     assert_eq!(
         item["linkedIssuesHref"],
         format!(
             "/{}/{}/pull/{}#linked-issues",
-            owner.email, repo_name, open_pr.pull_request.number
+            owner_login, repo_name, open_pr.pull_request.number
         )
     );
 
     let typed_filter_uri = format!(
         "/api/repos/{}/{}/pulls?q=is%3Apr%20state%3Aopen%20author%3A{}%20label%3Abug%20milestone%3A%22Review%20queue%22%20assignee%3A{}%20review%3Aapproved%20checks%3Asuccess%20filters&sort=comments-desc",
-        owner.email, repo_name, owner.email, reviewer.email
+        owner.email, repo_name, owner_login, reviewer_login
     );
     let (typed_filter_status, typed_filter_body) =
         send_json(app.clone(), &typed_filter_uri, None).await;
     assert_eq!(typed_filter_status, StatusCode::OK);
     assert_eq!(typed_filter_body["total"], 1);
-    assert_eq!(typed_filter_body["filters"]["author"], owner.email);
+    assert_eq!(typed_filter_body["filters"]["author"], owner_login);
     assert_eq!(typed_filter_body["filters"]["labels"][0], "bug");
     assert_eq!(typed_filter_body["filters"]["milestone"], "Review queue");
     assert_eq!(typed_filter_body["filters"]["noMilestone"], false);
-    assert_eq!(typed_filter_body["filters"]["assignee"], reviewer.email);
+    assert_eq!(typed_filter_body["filters"]["assignee"], reviewer_login);
     assert_eq!(typed_filter_body["filters"]["review"], "approved");
     assert_eq!(typed_filter_body["filters"]["checks"], "success");
     assert_eq!(typed_filter_body["filters"]["sort"], "comments-desc");

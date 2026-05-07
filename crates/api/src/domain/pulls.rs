@@ -1518,7 +1518,10 @@ pub async fn repository_pull_request_list_view_for_viewer(
                   SELECT 1
                   FROM users
                   WHERE users.id = pull_requests.author_user_id
-                    AND lower(COALESCE(users.username, users.email)) = lower($4)
+                    AND (
+                        lower(users.email) = lower($4)
+                        OR lower(users.username) = lower($4)
+                    )
               )
           )
           AND (
@@ -1555,7 +1558,10 @@ pub async fn repository_pull_request_list_view_for_viewer(
                   FROM issue_assignees
                   JOIN users ON users.id = issue_assignees.user_id
                   WHERE issue_assignees.issue_id = issues.id
-                    AND lower(COALESCE(users.username, users.email)) = lower($8)
+                    AND (
+                        lower(users.email) = lower($8)
+                        OR lower(users.username) = lower($8)
+                    )
               )
           )
           AND (
@@ -5471,7 +5477,10 @@ async fn count_pull_request_list_items(
                   SELECT 1
                   FROM users
                   WHERE users.id = pull_requests.author_user_id
-                    AND lower(COALESCE(users.username, users.email)) = lower($4)
+                    AND (
+                        lower(users.email) = lower($4)
+                        OR lower(users.username) = lower($4)
+                    )
               )
           )
           AND (
@@ -5508,7 +5517,10 @@ async fn count_pull_request_list_items(
                   FROM issue_assignees
                   JOIN users ON users.id = issue_assignees.user_id
                   WHERE issue_assignees.issue_id = issues.id
-                    AND lower(COALESCE(users.username, users.email)) = lower($8)
+                    AND (
+                        lower(users.email) = lower($8)
+                        OR lower(users.username) = lower($8)
+                    )
               )
           )
           AND (
