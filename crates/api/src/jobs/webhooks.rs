@@ -421,21 +421,6 @@ fn hex(bytes: &[u8]) -> String {
         .collect::<String>()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::signature_header;
-
-    #[test]
-    fn signature_header_uses_decoded_configured_secret_for_new_webhooks() {
-        let body = br#"{"ref":"refs/heads/main"}"#;
-
-        assert_eq!(
-            signature_header("secret:v1:c3VwZXItc2VjcmV0LXZhbHVl", body),
-            signature_header("super-secret-value", body)
-        );
-    }
-}
-
 async fn load_delivery_work_item(
     pool: &PgPool,
     delivery_id: Uuid,
@@ -515,4 +500,19 @@ async fn delivery_from_work_item(
         updated_at: row.get("updated_at"),
     })
     .map_err(WebhookDeliveryWorkerError::Webhook)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::signature_header;
+
+    #[test]
+    fn signature_header_uses_decoded_configured_secret_for_new_webhooks() {
+        let body = br#"{"ref":"refs/heads/main"}"#;
+
+        assert_eq!(
+            signature_header("secret:v1:c3VwZXItc2VjcmV0LXZhbHVl", body),
+            signature_header("super-secret-value", body)
+        );
+    }
 }

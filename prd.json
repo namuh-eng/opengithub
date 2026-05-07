@@ -2243,7 +2243,8 @@
     "dependent_on": [
       "infra-001"
     ],
-    "build_pass": true
+    "build_pass": true,
+    "qa_pass": false
   },
   {
     "id": "api-003",
