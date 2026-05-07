@@ -140,5 +140,54 @@
     ],
     "bugs_found": [],
     "fix_description": "no fix needed"
+  },
+  {
+    "feature_id": "api-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed; /api/user contract scenario passed for anonymous, valid-cookie/no-DB, malformed-cookie, content-type, and redaction cases, with the Postgres-backed signed-in happy path self-skipped because no TEST_DATABASE_URL/DATABASE_URL is configured. make test-e2e passed api-docs.spec.ts and other public/auth smoke coverage before failing later in unrelated repository-discussions specs that require TEST_DATABASE_URL/DATABASE_URL. Ever CLI expired immediately after start, so manual browser evidence was unavailable in this environment."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/user"
+        ],
+        "notes": "Live Rust API probes returned application/json 401 not_authenticated envelopes for anonymous, malformed cookie, SQL-like query, and XSS-like cookie inputs. cargo test --test api_contract_hardening passed but its DB-backed cross-route scenario self-skipped without TEST_DATABASE_URL."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Unauthenticated and malformed-cookie requests did not bypass auth; injection/XSS probes were not reflected and leaked no stack traces, local paths, cookie values, session secret, SQLx/Postgres errors, or raw payloads. OPTIONS /api/user from https://evil.com returned 405 without Access-Control-Allow-Origin echo."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json, prd.json, BUILD_GUIDE.md, ralph-config.json, web/AGENTS.md, and qa-hints.json entries for api-001.",
+      "Inspected crates/api/src/routes/users.rs and crates/api/tests/api_user_contract.rs for the implemented /api/user route and contract coverage.",
+      "Ran required Editorial banned-value scan with ripgrep-compatible syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran make test: Cargo tests passed and web tests passed (650 passed).",
+      "Ran bash .scratch/api-user-contract-scenario.sh: 4 /api/user contract tests passed; the signed-in Postgres happy path self-skipped because no TEST_DATABASE_URL/DATABASE_URL was configured.",
+      "Ran cargo test --test api_contract_hardening -- --nocapture: test passed, with DB-backed cross-route hardening self-skipped because TEST_DATABASE_URL was not configured.",
+      "Ran make test-e2e: api-docs.spec.ts passed both desktop and mobile API docs tests, auth/docs/public smoke tests passed, and the full suite later failed only in unrelated repository-discussions specs requiring TEST_DATABASE_URL/DATABASE_URL.",
+      "Started make dev and verified live GET /api/user without auth returns 401 application/json with error.code not_authenticated.",
+      "Verified live GET /api/user with a malformed __Host-session cookie returns the same 401 envelope and does not leak cookie value, cookie name, session secret, stack text, or local paths.",
+      "Verified live GET /api/user with SQL-like query and XSS-like cookie payload returns a generic 401 envelope without reflecting payloads or leaking SQL/Postgres/SQLx errors.",
+      "Verified live OPTIONS /api/user with Origin https://evil.com returns 405 and does not emit Access-Control-Allow-Origin for the hostile origin.",
+      "Attempted Ever CLI manual snapshot for /docs/api; the Ever session expired immediately after start, so Ever evidence was unavailable in this environment."
+    ],
+    "bugs_found": [],
+    "fix_description": "no fix needed"
   }
 ]
