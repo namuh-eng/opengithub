@@ -2168,7 +2168,8 @@
     "dependent_on": [
       "security-001"
     ],
-    "build_pass": true
+    "build_pass": true,
+    "qa_pass": true
   },
   {
     "id": "security-003",
