@@ -489,4 +489,16 @@ async fn security_settings_enforce_sudo_and_last_identity_protection() {
     assert!(!unlink_body
         .to_string()
         .contains("second-google@example.com"));
+    let audit_metadata: Value = sqlx::query_scalar(
+        "SELECT metadata FROM security_audit_events WHERE actor_user_id = $1 AND event_type = 'sign_in_method.unlink' ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(user.id)
+    .fetch_one(&pool)
+    .await
+    .expect("unlink audit event should exist");
+    assert_eq!(audit_metadata["provider"], "google");
+    assert_eq!(audit_metadata["email"], "s***@example.com");
+    assert!(!audit_metadata
+        .to_string()
+        .contains("second-google@example.com"));
 }

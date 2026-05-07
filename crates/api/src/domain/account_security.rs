@@ -516,12 +516,20 @@ pub async fn unlink_sign_in_method(
         return Err(AccountSecurityError::SudoRequired);
     }
 
-    let active_count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM oauth_accounts WHERE user_id = $1")
-            .bind(user_id)
-            .fetch_one(pool)
-            .await?;
-    if active_count <= 1 {
+    let mut tx = pool.begin().await?;
+    let active_accounts: Vec<Uuid> = sqlx::query_scalar(
+        r#"
+        SELECT id
+        FROM oauth_accounts
+        WHERE user_id = $1
+        ORDER BY created_at ASC
+        FOR UPDATE
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(&mut *tx)
+    .await?;
+    if active_accounts.len() <= 1 {
         return Err(AccountSecurityError::LastIdentity);
     }
 
@@ -534,7 +542,7 @@ pub async fn unlink_sign_in_method(
     )
     .bind(account_id)
     .bind(user_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?;
     let Some(row) = deleted else {
         return Err(AccountSecurityError::Forbidden);
@@ -550,10 +558,11 @@ pub async fn unlink_sign_in_method(
     .bind(account_id)
     .bind(json!({
         "provider": row.get::<String, _>("provider"),
-        "email": row.get::<String, _>("email"),
+        "email": redact_email(&row.get::<String, _>("email")),
     }))
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
+    tx.commit().await?;
 
     Ok(UnlinkSignInMethodResponse {
         removed_id: account_id,
@@ -633,6 +642,14 @@ fn location_label(ip_address: Option<&str>) -> String {
         Some(_) => "Approximate location unavailable".to_owned(),
         None => "Unknown location".to_owned(),
     }
+}
+
+fn redact_email(email: &str) -> String {
+    let Some((local, domain)) = email.split_once('@') else {
+        return "redacted".to_owned();
+    };
+    let first = local.chars().next().unwrap_or('*');
+    format!("{first}***@{domain}")
 }
 
 async fn record_session_audit(

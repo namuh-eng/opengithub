@@ -1409,5 +1409,80 @@
       }
     ],
     "fix_description": "Switched markdown render and task-toggle routes to the shared RestJson extractor and added a markdown API regression test for invalid render JSON."
+  },
+  {
+    "feature_id": "security-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified implementation surface for /settings/security, compiled focused account-security contract test with new redaction assertions, ran focused Playwright account-security setup, live protected-page check redirected/rendered login, and mandatory Editorial banned-value scan passed. Signed-in browser scenario and real two-account Google OAuth callback were blocked by missing TEST_DATABASE_URL/DATABASE_URL and provider account switching in this environment, so covered by backend contract and code inspection rather than live OAuth."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/settings/security",
+          "POST /api/settings/security/sudo",
+          "DELETE /api/settings/security/sign-in-methods/{account_id}",
+          "GET /api/settings/security/google/link",
+          "OPTIONS /api/settings/security/sudo"
+        ],
+        "notes": "Anonymous live curl probes returned application/json 401 not_authenticated for settings, sudo, and unlink endpoints. Focused contract covers valid settings shape, invalid sudo confirmation, elevated_until persistence, sudo-required unlink, last-identity conflict, and successful second-method unlink. OAuth link endpoint is sudo-gated by require_account_security_sudo before redirect."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure",
+          "concurrent_last_identity",
+          "audit_redaction"
+        ],
+        "notes": "Unauthenticated API probes did not bypass auth. Hostile-origin OPTIONS returned 405 without Access-Control-Allow-Origin echo. Fixed unlink to lock all current user oauth_accounts in one transaction before delete, preserving last-identity protection under concurrent unlink attempts. Fixed unlink audit metadata to redact email addresses while keeping provider context."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json and confirmed no previous security-001 entry.",
+      "Read qa-hints.json security-001 entry, BUILD_GUIDE.md, web/AGENTS.md, prd.json feature entry, account-security Rust route/domain code, Next page/actions proxy, API client methods, and AccountSecurityPage component.",
+      "Ran mandatory Editorial banned-value scan with rg -n -e: zero banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Found unlink count-then-delete race and full email audit metadata exposure by code review against needs_deeper_qa items.",
+      "Fixed unlink_sign_in_method to use a transaction and SELECT ... FOR UPDATE over the user oauth_accounts before deleting, then commit audit and delete atomically.",
+      "Fixed sign_in_method.unlink audit metadata to store redacted email form only.",
+      "Added focused Rust contract assertions that unlink audit metadata stores s***@example.com and does not contain the original second-google@example.com address.",
+      "Ran cargo fmt --all; cargo fmt --all --check initially identified formatting in the new assertion before formatting was applied.",
+      "Ran focused Rust test command: cargo test -p opengithub-api --test account_security_settings_contract security_settings_enforce_sudo_and_last_identity_protection -- --nocapture. Test binary compiled and passed; DB-backed scenario skipped because TEST_DATABASE_URL/DATABASE_URL was unset.",
+      "Ran make test-e2e before API startup: failed outside this feature because :3016 was not listening, DB-backed specs lacked TEST_DATABASE_URL/DATABASE_URL, and unrelated docs/discussions specs failed. Started Rust API and reran focused account-security Playwright: anonymous setup passed and signed-in scenario skipped due missing DB seed.",
+      "Live curl GET /api/settings/security returned 401 application/json not_authenticated.",
+      "Live curl POST /api/settings/security/sudo with {} returned 401 application/json not_authenticated.",
+      "Live curl DELETE /api/settings/security/sign-in-methods/00000000-0000-0000-0000-000000000000 returned 401 application/json not_authenticated.",
+      "Live hostile-origin OPTIONS /api/settings/security/sudo returned 405 and no Access-Control-Allow-Origin echo.",
+      "Live curl of /settings/security without session rendered the Editorial login page with Google sign-in CTA preserving next=/settings/security."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "security",
+        "description": "Unlinking a sign-in method checked oauth account count before deleting outside a transaction, allowing simultaneous unlink requests to race past last-identity protection.",
+        "expected": "Last-identity protection should be atomic so concurrent unlink attempts cannot remove all sign-in methods.",
+        "actual": "unlink_sign_in_method queried count(*) and then deleted the target account without locking the user identity set.",
+        "reproduction": "With two linked oauth_accounts and active sudo, issue two concurrent DELETE /api/settings/security/sign-in-methods/{account_id} requests for different account IDs; both could observe count=2 before either delete committed."
+      },
+      {
+        "severity": "major",
+        "phase": "security",
+        "description": "sign_in_method.unlink audit metadata stored the full unlinked Google email address.",
+        "expected": "Security audit metadata and API-visible security log responses should redact sign-in identity email addresses.",
+        "actual": "Audit insert used json!({ provider, email: row.get(\"email\") }), exposing the full email through security-log reads.",
+        "reproduction": "Unlink a second Google identity, then read security_audit_events/security-log for event_type sign_in_method.unlink; metadata.email contained the full address."
+      }
+    ],
+    "fix_description": "Made sign-in method unlink atomic with row locks and redacted unlink audit email metadata; added focused backend regression assertions."
   }
 ]
