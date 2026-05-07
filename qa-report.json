@@ -1295,5 +1295,56 @@
       }
     ],
     "fix_description": "Changed the saved-search delete route to accept the path id as a string, authenticate first, then parse UUID into a controlled validation error; added a route regression test for unauthenticated malformed ids."
+  },
+  {
+    "feature_id": "search-004",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed (Cargo plus 654 frontend tests). Mandatory Editorial banned-token scan was clean. Full make test-e2e passed 13 public tests but failed outside search-004 because the broad suite was started without API/DB for unrelated auth/highlight/markdown/discussions specs; focused DB-backed search-collaboration Playwright passed 5/5 after restarting API with the QA database and matching signed-session secret, covering issue/PR result pages, type switching, sort/view/save controls, pagination-preserving links, empty-state recovery, row navigation, desktop/mobile no-overflow, and screenshots."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/search?q=:query&type=issues",
+          "GET /api/search?q=:query&type=pull_requests",
+          "GET /api/search?q=:query&type=pullrequests",
+          "GET /api/search?q=:query&type=pull_requests&sort=:sort",
+          "OPTIONS /api/search?q=:query&type=issues"
+        ],
+        "notes": "DB-backed Rust search_collaboration_results_contract passed 3/3 against fresh local Postgres. Live authenticated curl verified JSON 200 issue and PR result envelopes with total/page/pageSize, snippets, labels, repository metadata, typeCounts, activeChips, facets, diagnostics, sort options, pullrequests alias normalization, and comments-desc sort normalization. Invalid comments qualifier returned bounded diagnostics while preserving safe results."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Anonymous GET /api/search returned JSON 401 not_authenticated, never data. SQL and XSS-shaped authenticated queries returned JSON 200 empty search envelopes without SQL errors, stack traces, env values, or raw HTML reflection. Hostile-origin OPTIONS returned 405 without Access-Control-Allow-Origin echo or wildcard. DB-backed contract also verified private result redaction and non-leaky validation diagnostics."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json, qa-hints.json entries for search-004, BUILD_GUIDE.md, ralph/pre-setup.md, ralph-config.json, search routes, search page, focused Rust contract, and focused Playwright search-collaboration spec.",
+      "Ran mandatory Editorial banned-value scan with rg -n -e: zero banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran make test: Cargo tests passed and web tests passed (654 passed).",
+      "Ran make test-e2e: 13 public tests passed, 134 DB-backed tests skipped, and 7 failures were outside search-004 due to missing API/DB or unrelated highlight/markdown page expectations in the broad suite.",
+      "Created fresh local Postgres database opengithub_search004_qa on localhost:5432 and ran TEST_DATABASE_URL-backed search_collaboration_results_contract: 3/3 passed.",
+      "Started local Rust API on :3016 with DATABASE_URL pointing to opengithub_search004_qa and matching test SESSION_SECRET/SESSION_COOKIE_NAME; /health reported database ok.",
+      "Ran focused DB-backed Playwright search-collaboration.spec.ts with matching signed-session env: 5/5 passed for issue and pull request search UI, sort/save/view, empty-state recovery, row navigation, desktop/mobile overflow checks, and screenshots.",
+      "Live curl-probed authenticated /api/search for issues, pullrequests alias, comments-desc sort, and malformed comments qualifier; responses were JSON 200 with expected collaboration search schema and bounded diagnostics.",
+      "Live curl-probed anonymous /api/search, SQL-shaped q, XSS-shaped q, and hostile-origin OPTIONS; auth wall, input handling, CORS, and data-exposure checks passed.",
+      "Ever CLI manual auth was not used because deterministic Rust-signed local sessions are the repository E2E fixture for auth-walled QA; Playwright browser verification used real seeded Postgres data and signed session cookies."
+    ],
+    "bugs_found": [],
+    "fix_description": "no fix needed"
   }
 ]
