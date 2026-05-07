@@ -48,5 +48,44 @@
     ],
     "bugs_found": [],
     "fix_description": "no product fix needed; QA recorded environment/test-runner gaps for Playwright and Ever instead of weakening tests"
+  },
+  {
+    "feature_id": "onboarding-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed; focused dashboard onboarding E2E cases passed inside make test-e2e; component tests cover the signed-in zero-repository empty state, CTAs, repository search, hint dismissal success/failure, persisted dismissed hints, and switching to the feed when repositories exist. Full make test-e2e later failed in unrelated repository-discussions tests because TEST_DATABASE_URL/DATABASE_URL is not configured. Ever CLI session expired immediately after start, so live manual verification used curl/rendered HTML plus the focused Playwright evidence."
+      },
+      "api_contract": {
+        "status": "skip",
+        "endpoints_tested": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base and footer only"
+      },
+      "security": {
+        "status": "skip",
+        "checks": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base and footer only"
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base and footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json and qa-hints.json; no previous onboarding-001 QA attempts existed.",
+      "Inspected web/src/app/dashboard/page.tsx, DashboardOnboarding, DashboardTopRepositories, dashboard onboarding tests, and Rust onboarding routes.",
+      "Ran required Editorial banned-value scan with ripgrep-compatible syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran make test: Cargo tests passed and web tests passed (650 passed).",
+      "Ran make test-e2e: dashboard-onboarding.spec.ts passed all 3 focused tests; full suite stopped later on unrelated repository-discussions tests requiring TEST_DATABASE_URL/DATABASE_URL.",
+      "Ran bash .scratch/dashboard-onboarding-scenario.sh: dashboard onboarding auth-wall tests passed; Postgres-backed scenarios self-skipped because no database URL is configured.",
+      "Started make dev and verified live GET /dashboard returns 307 Location /login?next=%2Fdashboard for anonymous users.",
+      "Verified /docs/get-started renders the setup-guide destination with the expected heading and Create repository link.",
+      "Attempted Ever CLI manual snapshot after ever start; the session expired immediately, so Ever evidence was unavailable in this environment."
+    ],
+    "bugs_found": [],
+    "fix_description": "no fix needed"
   }
 ]
