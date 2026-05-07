@@ -5,7 +5,7 @@ use sqlx::{PgPool, Row};
 use std::time::Instant;
 use uuid::Uuid;
 
-use crate::api_types::ListEnvelope;
+use crate::api_types::{ListEnvelope, MAX_PAGE_SIZE};
 
 use super::repositories::{repository_permission_for_user, RepositoryVisibility};
 
@@ -870,7 +870,7 @@ pub async fn search_documents(
     }
 
     let page = input.page.max(1);
-    let page_size = input.page_size.clamp(1, 50);
+    let page_size = input.page_size.clamp(1, MAX_PAGE_SIZE);
     let offset = (page - 1) * page_size;
     let kind = input.kind.as_ref().map(SearchDocumentKind::as_str);
 
@@ -1052,7 +1052,7 @@ pub async fn search_code_results(
     }
 
     let page = input.page.max(1);
-    let page_size = input.page_size.clamp(1, 50);
+    let page_size = input.page_size.clamp(1, MAX_PAGE_SIZE);
     let offset = (page - 1) * page_size;
     let repo_owner = parsed.repo.as_ref().map(|(owner, _)| owner.as_str());
     let repo_name = parsed.repo.as_ref().map(|(_, name)| name.as_str());
@@ -1251,7 +1251,7 @@ pub async fn search_collaboration_results(
     }
 
     let page = input.page.max(1);
-    let page_size = input.page_size.clamp(1, 50);
+    let page_size = input.page_size.clamp(1, MAX_PAGE_SIZE);
     let offset = (page - 1) * page_size;
     let selected_sort = normalize_collaboration_sort(input.sort.as_deref());
     let document_kind = input.result_type.document_kind();

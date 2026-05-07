@@ -776,7 +776,8 @@
     "dependent_on": [
       "search-006"
     ],
-    "build_pass": true
+    "build_pass": true,
+    "qa_pass": true
   },
   {
     "id": "profiles-001",

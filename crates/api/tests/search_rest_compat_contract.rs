@@ -317,6 +317,7 @@ async fn search_rest_endpoints_return_github_compatible_envelopes_and_respect_au
     assert_eq!(code_body["total_count"], 2);
     assert_eq!(code_body["incomplete_results"], false);
     assert_eq!(code_body["page"], 1);
+    assert_eq!(code_body["per_page"], 100);
     assert_eq!(
         code_body["items"][0]["repository"]["full_name"],
         format!("{owner_login}/{repo_name}")

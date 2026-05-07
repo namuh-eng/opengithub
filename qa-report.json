@@ -2056,5 +2056,73 @@
       }
     ],
     "fix_description": "Changed the highlight route to use the shared RestJson extractor and added a Rust regression test for malformed highlight request bodies."
+  },
+  {
+    "feature_id": "search-005",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed before the QA fix; focused DB-backed REST contract passed after the fix; mandatory Editorial banned-value scan returned no hits with ripgrep-compatible -e syntax; focused Playwright search and code-search browser smoke passed with .env.test seeded sessions. Full make test-e2e started against .env.test and passed 43 specs before the Next dev server hit ENOSPC writing web/.next, so full-suite completion is recorded as an environment gap rather than a search-005 failure."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/search/code",
+          "GET /api/search/repositories",
+          "GET /api/search/issues",
+          "GET /api/search/users",
+          "GET /api/search/commits"
+        ],
+        "notes": "Authenticated curl against the .env.test dev server returned application/json 200 envelopes for all five endpoints with total_count, incomplete_results, items, page, and per_page. Query checks covered language/path code qualifiers and state/is issue qualifiers. The Rust contract also covers unauthenticated rejection, private-code redaction, repository/user/commit/issue projections, pagination aliases, and validation errors."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Unauthenticated curl to all five live endpoints returned 401 JSON not_authenticated. XSS/SQL-like unauthenticated probes were rejected before search execution. OPTIONS from https://evil.com returned 405 without Access-Control-Allow-Origin. Focused Rust contract verified private code is not exposed to an outsider and validation errors do not leak DATABASE_URL, SESSION_SECRET, or panic text."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json and confirmed no previous search-005 attempts.",
+      "Read qa-hints.json for search-005 and focused on backend/API coverage, REST issues scope, lightweight qualifier handling, and isolated Postgres verification.",
+      "Inspected crates/api/src/routes/search.rs, crates/api/src/domain/search.rs, and crates/api/tests/search_rest_compat_contract.rs for REST endpoint routing, query parsing, response projection, auth, pagination, and error mapping.",
+      "Ran make test before the fix: Cargo tests passed and web tests passed (654 passed).",
+      "Ran the mandatory Editorial banned-value scan with ripgrep-compatible -e syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran TEST_DATABASE_URL from .env.test cargo test -p opengithub-api --test search_rest_compat_contract -- --nocapture before the fix: 1 passed.",
+      "Found that REST requests with per_page=100 were normalized to 100 at the route layer but clamped back to 50 in the shared search domain functions, so the response envelope could not honor the requested REST page size.",
+      "Fixed the shared search page-size cap to use api_types::MAX_PAGE_SIZE and added a regression assertion that /api/search/code?q=...&per_page=100 returns per_page 100.",
+      "Reran TEST_DATABASE_URL from .env.test cargo test -p opengithub-api --test search_rest_compat_contract -- --nocapture after the fix: 1 passed.",
+      "Stopped a stale degraded local dev process and let Playwright start make dev with .env.test; /health then reported database ok.",
+      "Seeded real search data via cargo run --quiet -p opengithub-api --example dashboard_e2e_seed with SEARCH_E2E_MARKER and SESSION_COOKIE_NAME=og_session.",
+      "Authenticated curl against the live .env.test API verified all five scoped REST endpoints returned 200 JSON envelopes with non-empty items, total_count, incomplete_results=false, page=1, and per_page=100.",
+      "Authenticated curl verified /api/search/code honors language:Rust and path:src qualifiers, and /api/search/issues honors state:open and is:open qualifiers.",
+      "Unauthenticated curl to /api/search/code, /api/search/repositories, /api/search/issues, /api/search/users, and /api/search/commits returned 401 application/json not_authenticated.",
+      "OPTIONS CORS probes for all five endpoints from Origin https://evil.com returned 405 with no Access-Control-Allow-Origin.",
+      "XSS/SQL-like unauthenticated probes against code and issues search returned 401 JSON and did not reflect payloads.",
+      "Ran focused browser smoke with .env.test: npx playwright test tests/e2e/search.spec.ts tests/e2e/search-code.spec.ts --project=chromium, 8 passed.",
+      "Ran make test-e2e with .env.test; it passed 43 specs before the Next dev server crashed with ENOSPC while writing web/.next/dev/server-reference-manifest, then cleared generated web/.next/test-result artifacts to restore disk space."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "api_contract",
+        "description": "Scoped REST search endpoints accepted per_page=100 but the shared search functions clamped page_size to 50, causing REST envelopes to under-report per_page and preventing clients from requesting the documented 100-item page size.",
+        "expected": "GET /api/search/code?q=<query>&per_page=100 returns a REST-compatible envelope with per_page 100, bounded by the API-wide MAX_PAGE_SIZE.",
+        "actual": "The route normalization allowed 100, but search_documents, search_code_results, and search_collaboration_results clamped page_size to 50.",
+        "reproduction": "Run the search_rest_compat_contract with an assertion on /api/search/code?q=<marker>&per_page=100; before the fix, code_body[\"per_page\"] was 50."
+      }
+    ],
+    "fix_description": "Fixed 1 major API contract bug by using api_types::MAX_PAGE_SIZE for shared search pagination caps and adding REST contract coverage for per_page=100."
   }
 ]
