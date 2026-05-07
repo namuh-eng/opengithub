@@ -348,6 +348,9 @@ async fn pull_request_detail_contract_returns_screen_ready_metadata() {
 
     let owner_cookie = cookie_header(&pool, &config, &owner).await;
     let outsider_cookie = cookie_header(&pool, &config, &outsider).await;
+    let owner_login = owner.username.as_deref().unwrap_or(&owner.email);
+    let reviewer_login = reviewer.username.as_deref().unwrap_or(&reviewer.email);
+    let outsider_login = outsider.username.as_deref().unwrap_or(&outsider.email);
     let app = opengithub_api::build_app_with_config(Some(pool.clone()), config);
     let uri = format!(
         "/api/repos/{}/{}/pulls/{}",
@@ -363,13 +366,13 @@ async fn pull_request_detail_contract_returns_screen_ready_metadata() {
         .as_str()
         .expect("body html should be a string")
         .contains("<strong>renders</strong>"));
-    assert_eq!(anonymous_body["author"]["login"], owner.email);
+    assert_eq!(anonymous_body["author"]["login"], owner_login);
     assert_eq!(anonymous_body["labels"][0]["name"], "bug");
     assert_eq!(anonymous_body["milestone"]["title"], "Review queue");
-    assert_eq!(anonymous_body["assignees"][0]["login"], reviewer.email);
+    assert_eq!(anonymous_body["assignees"][0]["login"], reviewer_login);
     assert_eq!(
         anonymous_body["requestedReviewers"][0]["login"],
-        reviewer.email
+        reviewer_login
     );
     assert_eq!(anonymous_body["latestReviews"][0]["state"], "approved");
     assert_eq!(
@@ -397,7 +400,7 @@ async fn pull_request_detail_contract_returns_screen_ready_metadata() {
         anonymous_body["filesHref"],
         format!(
             "/{}/{}/pull/{}/files",
-            owner.email, repo_name, pull.pull_request.number
+            owner_login, repo_name, pull.pull_request.number
         )
     );
     assert_eq!(anonymous_body["subscription"]["subscribed"], false);
@@ -458,7 +461,7 @@ async fn pull_request_detail_contract_returns_screen_ready_metadata() {
     .await;
     assert_eq!(comment_status, StatusCode::CREATED);
     assert_eq!(comment_body["eventType"], "commented");
-    assert_eq!(comment_body["actor"]["login"], owner.email);
+    assert_eq!(comment_body["actor"]["login"], owner_login);
     assert!(comment_body["comment"]["bodyHtml"]
         .as_str()
         .expect("created comment html should be a string")
@@ -474,7 +477,7 @@ async fn pull_request_detail_contract_returns_screen_ready_metadata() {
     assert_eq!(review_request_status, StatusCode::OK);
     assert_eq!(
         review_request_body["requestedReviewers"][0]["login"],
-        outsider.email
+        outsider_login
     );
     assert!(review_request_body["requestedReviewers"]
         .as_array()
@@ -495,7 +498,7 @@ async fn pull_request_detail_contract_returns_screen_ready_metadata() {
     .await;
     assert_eq!(metadata_status, StatusCode::OK);
     assert_eq!(metadata_body["labels"][0]["name"], "bug");
-    assert_eq!(metadata_body["assignees"][0]["login"], outsider.email);
+    assert_eq!(metadata_body["assignees"][0]["login"], outsider_login);
     assert_eq!(metadata_body["milestone"], Value::Null);
 
     let (draft_status, draft_body) = patch_json(

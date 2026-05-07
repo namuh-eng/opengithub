@@ -291,7 +291,8 @@ test("signed-in user updates pull request sidebar metadata and notifications", a
   await expect(page.getByText("requested", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Edit" }).nth(2).click();
-  await page.getByRole("button", { name: /Add bug/ }).click();
+  await page.getByRole("checkbox", { name: /bug/ }).check();
+  await page.getByRole("button", { name: "Save labels" }).click();
   await expect(page.getByText("Pull request metadata updated.")).toBeVisible();
   await expect(page.getByText("bug")).toBeVisible();
 

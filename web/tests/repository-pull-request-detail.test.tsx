@@ -10,8 +10,10 @@ import type {
 } from "@/lib/api";
 import { apiEndpointDocs } from "@/lib/api-docs";
 
-function repositoryOverview(): RepositoryOverview {
-  return {
+function repositoryOverview(
+  overrides: Partial<RepositoryOverview> = {},
+): RepositoryOverview {
+  const base: RepositoryOverview = {
     id: "repo-1",
     owner_user_id: "user-1",
     owner_organization_id: null,
@@ -55,6 +57,7 @@ function repositoryOverview(): RepositoryOverview {
       zip: "/mona/octo-app/archive/refs/heads/main.zip",
     },
   };
+  return { ...base, ...overrides };
 }
 
 function pullRequestDetail(
@@ -658,6 +661,34 @@ describe("RepositoryPullRequestDetailPage", () => {
       "href",
       "/login?next=%2Fmona%2Focto-app%2Fpull%2F42",
     );
+  });
+
+  it("does not expose write-only PR controls to signed-in read-only viewers", () => {
+    render(
+      <RepositoryPullRequestDetailPage
+        pullRequest={pullRequestDetail({
+          viewerPermission: "read",
+        })}
+        repository={repositoryOverview({
+          viewerPermission: "read",
+        })}
+        timeline={pullRequestTimeline()}
+        viewerAuthenticated={true}
+      />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: "Convert to draft" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Close pull request" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Open merge confirmation" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(screen.getByRole("textbox", { name: "Comment body" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Unsubscribe" })).toBeVisible();
   });
 
   it("renders the files changed tab as a live comparison surface", () => {

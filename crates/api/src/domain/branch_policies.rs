@@ -485,9 +485,6 @@ fn blocking_reasons(
             if summary.requires_signed_commits {
                 reasons.push("signed commits are required".to_owned());
             }
-            if summary.requires_linear_history {
-                reasons.push("linear history is required".to_owned());
-            }
             if summary.requires_merge_queue {
                 reasons.push("merge queue is required".to_owned());
             }

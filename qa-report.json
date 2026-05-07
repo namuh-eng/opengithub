@@ -1149,5 +1149,86 @@
       }
     ],
     "fix_description": "Aligned DB-backed compare/create contract expectations with canonical owner-login hrefs; no product code changes were needed."
+  },
+  {
+    "feature_id": "prs-004",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed before fixes; focused PR detail Vitest passed after permission-gating regression coverage; DB-backed focused Playwright PR detail suite passed on fresh local Postgres, covering conversation/files, comments, sidebar metadata and notifications, close/reopen, blocked merge, and successful merge. Full make test-e2e without DB failed before prs-004 in unrelated repository-discussions specs requiring TEST_DATABASE_URL/DATABASE_URL."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/:owner/:repo/pulls/:number",
+          "GET /api/repos/:owner/:repo/pulls/:number/timeline",
+          "POST /api/repos/:owner/:repo/pulls/:number/comments",
+          "PATCH /api/repos/:owner/:repo/pulls/:number/review-requests",
+          "PATCH /api/repos/:owner/:repo/pulls/:number/draft",
+          "PATCH /api/repos/:owner/:repo/pulls/:number/metadata",
+          "PATCH /api/repos/:owner/:repo/pulls/:number/subscription",
+          "PATCH /api/repos/:owner/:repo/pulls/:number",
+          "POST /api/repos/:owner/:repo/pulls/:number/merge",
+          "GET /api/repos/:owner/:repo/pulls/:number/files",
+          "GET /api/repos/:owner/:repo/pulls/:number.diff",
+          "GET /api/repos/:owner/:repo/pulls/:number.patch"
+        ],
+        "notes": "DB-backed api_pull_request_detail_contract passed after fixing zero-check-run synchronization and aligning stale username-first login assertions. Contract covers public/private read authorization, rendered Markdown, metadata, timeline comments, blank comment validation, sidebar mutations, subscription custom-events validation, draft/close/reopen/merge state, branch/ruleset mergeability, failed/pending/missing checks, required reviews, linked issues, raw diff/patch, and merge blockers."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Authenticated mutation routes use Rust signed-session extraction and write/read repository role checks; missing auth and invalid input envelopes are covered by focused contracts and E2E. Mandatory Editorial banned-token scan had zero hits. No stack traces, secrets, SQL errors, or raw script execution were observed in focused validation."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json history, prd.json prs-004 spec, BUILD_GUIDE.md, web/AGENTS.md, qa-hints for all prs-004 phases, PR detail component, timeline component, Next.js PR mutation routes, Rust PR routes/domain code, focused Vitest, Playwright, and Rust contract tests.",
+      "Ran make test before fixes: Cargo tests passed and web tests passed (653 passed).",
+      "Ran mandatory Editorial banned-value scan using rg -n -e: zero banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran make test-e2e without DB: 18 reachable tests passed, 134 skipped, then two unrelated repository-discussions specs failed because TEST_DATABASE_URL/DATABASE_URL was missing.",
+      "Ran focused RepositoryPullRequestDetailPage Vitest after fixes: 17/17 passed, including the new signed-in read-only viewer guard.",
+      "Started a fresh local Postgres database in the existing forever-api-db container and ran TEST_DATABASE_URL-backed api_pull_request_detail_contract: 2/2 passed after fixes.",
+      "Ran focused DB-backed Playwright repository-pull-request-detail.spec.ts on a fresh local Postgres database: 4/4 passed.",
+      "Verified the required full final command make check && make test after fixes."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "functional",
+        "description": "Signed-in read-only PR viewers saw write-only controls for draft conversion, metadata editing, close/reopen, and merge confirmation even though the API rejects those mutations without write permission.",
+        "expected": "Only write/maintain/admin/owner viewers should see write-only PR controls; read-only viewers may read, comment where allowed, and manage their notification subscription.",
+        "actual": "The UI checked only viewerPermission !== null, so any authenticated public-reader or read collaborator saw controls that would fail with forbidden responses.",
+        "reproduction": "Render RepositoryPullRequestDetailPage with viewerAuthenticated=true and pullRequest.viewerPermission=\"read\" before the fix; Convert to draft, Edit, Close pull request, and Open merge confirmation are visible."
+      },
+      {
+        "severity": "major",
+        "phase": "api_contract",
+        "description": "PR mergeability synchronization overwrote an explicit failed/pending/success checks summary with an empty zero-check-run summary when no check_run rows existed for the head SHA.",
+        "expected": "When no concrete check runs exist, an existing pull_request_checks_summary should remain authoritative for current PR mergeability.",
+        "actual": "sync_check_runs_for_pull_request upserted total_count=0, causing required check blockers and ready states to be computed incorrectly in DB-backed contracts.",
+        "reproduction": "Against a fresh Postgres DB, insert pull_request_checks_summary failure/success rows in api_pull_request_detail_contract and call GET /api/repos/:owner/:repo/pulls/:number before the fix; mergeability blockers/state do not reflect the summary."
+      },
+      {
+        "severity": "minor",
+        "phase": "api_contract",
+        "description": "DB-backed PR detail contract expectations still used email-based login/href values although the API read model correctly returns canonical username-first logins and paths.",
+        "expected": "Contract tests should assert username-first login semantics while still using accepted email aliases for route lookup where supported.",
+        "actual": "Real DB-backed contract tests failed on author, reviewer, assignee, comment actor, and filesHref assertions.",
+        "reproduction": "TEST_DATABASE_URL-backed cargo test -p opengithub-api --test api_pull_request_detail_contract before the test alignment."
+      }
+    ],
+    "fix_description": "Gated PR write controls to write-capable viewer permissions, preserved explicit PR check summaries when no concrete check runs exist, treated linear-history branch policy as merge-method guidance rather than a universal blocker, updated stale username-first contract expectations, and updated focused E2E label interaction to use the actual LabelPicker checkbox/save flow."
   }
 ]

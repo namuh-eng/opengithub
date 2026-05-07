@@ -6692,6 +6692,14 @@ async fn pull_request_mergeability(
         ));
     }
     for reason in &branch_protection.blocking_reasons {
+        if reason == "linear history is required"
+            && merge_settings
+                .methods
+                .iter()
+                .any(|method| matches!(method, MergeMethod::Squash | MergeMethod::Rebase))
+        {
+            continue;
+        }
         blockers.push(merge_blocker("branch_policy_blocked", reason));
     }
 
@@ -7303,6 +7311,9 @@ pub async fn sync_check_runs_for_pull_request(
     sync_check_runs_for_head_sha(pool, pull_request.repository_id, &head_sha).await?;
     let summary =
         check_run_summary_for_head_sha(pool, pull_request.repository_id, &head_sha).await?;
+    if summary.total_count == 0 {
+        return Ok(());
+    }
     sqlx::query(
         r#"
         INSERT INTO pull_request_checks_summary (

@@ -141,6 +141,15 @@ function blockerDetails(envelope: ApiErrorEnvelope | null) {
     .filter((message): message is string => message !== null);
 }
 
+function canWritePullRequest(viewerPermission: string | null) {
+  return (
+    viewerPermission === "write" ||
+    viewerPermission === "maintain" ||
+    viewerPermission === "admin" ||
+    viewerPermission === "owner"
+  );
+}
+
 function SidebarSection({
   children,
   title,
@@ -200,8 +209,9 @@ export function RepositoryPullRequestDetailPage({
   const activePath = `${basePath}/pull/${pullRequest.number}`;
   const rawDiffHref = `/api/repos/${encodeURIComponent(repository.owner_login)}/${encodeURIComponent(repository.name)}/pulls/${pullRequest.number}.diff`;
   const rawPatchHref = `/api/repos/${encodeURIComponent(repository.owner_login)}/${encodeURIComponent(repository.name)}/pulls/${pullRequest.number}.patch`;
-  const canEditMetadata =
-    viewerAuthenticated && currentPullRequest.viewerPermission !== null;
+  const canEditPullRequest =
+    viewerAuthenticated &&
+    canWritePullRequest(currentPullRequest.viewerPermission);
   const canDeleteHeadBranch =
     pullRequest.mergeability.canMerge &&
     pullRequest.headRef !== pullRequest.baseRef &&
@@ -496,7 +506,7 @@ export function RepositoryPullRequestDetailPage({
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            {canEditMetadata ? (
+            {canEditPullRequest ? (
               <button
                 className="btn"
                 disabled={isMutating}
@@ -782,7 +792,7 @@ export function RepositoryPullRequestDetailPage({
                   </ul>
                 </div>
               ) : null}
-              {viewerAuthenticated ? (
+              {canEditPullRequest ? (
                 <>
                   <div
                     className="flex flex-wrap items-center gap-2 border-t px-5 py-4"
@@ -987,7 +997,7 @@ export function RepositoryPullRequestDetailPage({
             <SidebarSection title="Reviewers">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <span className="t-xs">People asked to review changes.</span>
-                {canEditMetadata ? (
+                {canEditPullRequest ? (
                   <button
                     aria-expanded={openMetadataMenu === "reviewers"}
                     className="btn sm"
@@ -1069,7 +1079,7 @@ export function RepositoryPullRequestDetailPage({
             <SidebarSection title="Assignees">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <span className="t-xs">People responsible for this PR.</span>
-                {canEditMetadata ? (
+                {canEditPullRequest ? (
                   <button
                     aria-expanded={openMetadataMenu === "assignees"}
                     className="btn sm"
@@ -1131,7 +1141,7 @@ export function RepositoryPullRequestDetailPage({
             <SidebarSection title="Labels">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <span className="t-xs">Classify the pull request.</span>
-                {canEditMetadata ? (
+                {canEditPullRequest ? (
                   <button
                     aria-expanded={openMetadataMenu === "labels"}
                     className="btn sm"
@@ -1182,7 +1192,7 @@ export function RepositoryPullRequestDetailPage({
             <SidebarSection title="Milestone">
               <div className="mb-3 flex items-center justify-between gap-2">
                 <span className="t-xs">Track against a release.</span>
-                {canEditMetadata ? (
+                {canEditPullRequest ? (
                   <button
                     aria-expanded={openMetadataMenu === "milestone"}
                     className="btn sm"
