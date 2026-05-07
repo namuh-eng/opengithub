@@ -1039,5 +1039,55 @@
       }
     ],
     "fix_description": "Updated pull-list row and count SQL to match author/assignee filters against users.email or users.username; aligned the DB-backed contract with canonical username login output while preserving email alias filter coverage."
+  },
+  {
+    "feature_id": "prs-002",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make test passed; focused repository-pulls Vitest passed; focused repository-pulls Playwright loaded but signed-in case skipped because local TEST_DATABASE_URL is unset and DATABASE_URL in .env is empty. Full make test-e2e passed reachable public/auth/docs tests before unrelated repository-discussions DB seed failures. Ever CLI session expired immediately, so manual UI evidence used rendered HTML/curl plus existing focused test coverage."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/pulls",
+          "GET /api/repos/{owner}/{repo}/pulls?q=...&project=...&sort=best-match",
+          "GET /{owner}/{repo}/pulls"
+        ],
+        "notes": "Live Rust API returned standard application/json database_unavailable envelopes while no database pool is configured; focused DB-backed contract test compiled but self-skipped for missing TEST_DATABASE_URL/DATABASE_URL. No malformed body or stack trace was observed. Next page route rendered the explicit repository-unavailable fallback rather than a missing route."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Anonymous pull-list API probes did not return data; SQL/XSS-shaped query values were not reflected in JSON API envelopes; hostile-origin OPTIONS returned 405 without Access-Control-Allow-Origin. Responses did not expose passwords, env values, local paths, or stack traces."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json, prd.json, BUILD_GUIDE.md, ralph-config.json, web/AGENTS.md, and all prs-002 qa-hints phases.",
+      "Ran required Editorial banned-value scan with rg -e: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Ran make test: Cargo tests passed and web tests passed (653 passed).",
+      "Ran make test-e2e: 18 reachable tests passed, 134 skipped, then two unrelated repository-discussions specs failed because TEST_DATABASE_URL/DATABASE_URL is required.",
+      "Ran cd web && npm test -- repository-pulls.test.tsx --run: 9 focused repository-pulls tests passed.",
+      "Ran focused repository-pulls Playwright spec with and without sourcing .env; signed-in case skipped both times because TEST_DATABASE_URL is absent and DATABASE_URL is empty.",
+      "Ran focused Rust api_repository_pulls_list_contract; it compiled and self-skipped DB assertions because TEST_DATABASE_URL/DATABASE_URL is unavailable.",
+      "Started make dev and probed live GET /api/repos/octocat/Hello-World/pulls plus invalid project/best-match query: API returned JSON 503 database_unavailable without leaking data or stack traces.",
+      "Verified hostile-origin OPTIONS /api/repos/octocat/Hello-World/pulls returns 405 without Access-Control-Allow-Origin.",
+      "Verified GET /octocat/Hello-World/pulls renders the explicit repository-unavailable page with Editorial font variables/tokens instead of a missing route.",
+      "Attempted Ever CLI manual snapshot; ever snapshot returned Session expired, so Ever browser evidence was unavailable in this environment."
+    ],
+    "bugs_found": [],
+    "fix_description": "no product fix needed; QA recorded environment gaps for DB-backed signed-in browser/API checks instead of weakening tests"
   }
 ]
