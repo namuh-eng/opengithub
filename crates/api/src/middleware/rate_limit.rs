@@ -25,7 +25,7 @@ pub async fn enforce_rate_limit(
     let path = req.uri().path().to_owned();
     let headers = req.headers().clone();
     let version = api_version(&headers);
-    let subject = subject_from_headers(&state.config, &headers);
+    let subject = subject_from_headers(state.db.as_ref(), &state.config, &headers).await;
     let resource = resource_for_path(&path);
     let now = Utc::now();
 

@@ -101,6 +101,33 @@ async fn api_responses_include_rate_limit_and_version_headers_without_database()
 }
 
 #[tokio::test]
+async fn invalid_bearer_token_keeps_anonymous_rate_limit_bucket() {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        HeaderName::from_static("authorization"),
+        HeaderValue::from_static("Bearer definitely-not-a-real-token"),
+    );
+    headers.insert(
+        HeaderName::from_static("x-forwarded-for"),
+        HeaderValue::from_static("198.51.100.42"),
+    );
+
+    let app = opengithub_api::build_app_with_config(None, app_config());
+    let (status, response_headers, body) = get_json(app, "/api/user", headers).await;
+
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body["error"]["code"], "not_authenticated");
+    assert_eq!(header_i32(&response_headers, "x-ratelimit-limit"), 60);
+    assert_eq!(header_i32(&response_headers, "x-ratelimit-remaining"), 60);
+    assert_eq!(
+        response_headers
+            .get("x-ratelimit-resource")
+            .and_then(|value| value.to_str().ok()),
+        Some("core")
+    );
+}
+
+#[tokio::test]
 async fn anonymous_search_requests_are_limited_and_report_current_buckets() {
     let Some(pool) = database_pool().await else {
         eprintln!("skipping api-003 rate limit scenario; set TEST_DATABASE_URL");

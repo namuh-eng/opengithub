@@ -2247,5 +2247,70 @@
       }
     ],
     "fix_description": "Fixed /api/issues auth-before-DB ordering, added regression coverage, and implemented readable active project-item filtering/options for the global issues dashboard."
+  },
+  {
+    "feature_id": "api-003",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Focused Rust api_rate_limits_contract passed after fix; live restarted API curl verified rate-limit/version headers on /health, /api/user auth error, /api/search auth error, /rate_limit, and hostile-origin OPTIONS. make test-e2e was attempted but blocked silently in db-wait-test because TEST_DATABASE_URL/DATABASE_URL is unavailable in this environment."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /health",
+          "GET /api/user",
+          "GET /api/search/code",
+          "GET /rate_limit",
+          "GET /api/rate_limit",
+          "OPTIONS /api/user"
+        ],
+        "notes": "All probed responses included X-RateLimit-Limit/Remaining/Reset/Used/Resource and X-GitHub-Api-Version-Selected. /rate_limit returns core/search bucket state. Invalid bearer auth errors now keep anonymous 60/hour core quota instead of upgrading to authenticated 5000/hour quota."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure"
+        ],
+        "notes": "Fixed invalid bearer token quota escalation. Missing/invalid auth returned 401 JSON without data; SQL-shaped search query returned a generic 401 with search rate-limit headers and no payload reflection or stack/DB/env leakage; hostile-origin OPTIONS returned 405 without Access-Control-Allow-Origin."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this backend feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json and confirmed no previous api-003 QA attempts existed.",
+      "Read BUILD_GUIDE.md and ralph-config.json; stack is Rust Axum plus Next.js with Postgres, and no DATABASE_URL/TEST_DATABASE_URL is exported in this environment.",
+      "Inspected crates/api/src/middleware/rate_limit.rs, crates/api/src/domain/rate_limits.rs, crates/api/src/routes/rate_limit.rs, and crates/api/tests/api_rate_limits_contract.rs.",
+      "Found invalid Authorization: Bearer headers were classified as authenticated rate-limit subjects before token verification, granting the 5000/hour bucket on auth errors.",
+      "Fixed rate-limit subject classification so verified PATs get token buckets only after verify_personal_access_token succeeds against the DB; invalid/unverifiable bearer headers fall back to anonymous IP bucketing, while signed sessions remain session subjects.",
+      "Added invalid_bearer_token_keeps_anonymous_rate_limit_bucket regression coverage.",
+      "Ran cargo test -p opengithub-api --test api_rate_limits_contract -- --nocapture: 3 passed; DB-backed anonymous search overage test compiled but self-skipped because TEST_DATABASE_URL was not set.",
+      "Ran required Editorial banned-token scan with ripgrep-native syntax: no banned GitHub hex, Primer, or Octicon hits in web/src outside og CSS.",
+      "Attempted make test-e2e; it produced no test progress and was terminated after it blocked in db-wait-test on unavailable database configuration.",
+      "Restarted local API on :3016 and live curl verified /api/user with invalid bearer returns 401 JSON and X-RateLimit-Limit: 60, X-RateLimit-Resource: core.",
+      "Live curl verified /health honors X-GitHub-Api-Version: 2022-11-28 and returns all rate-limit/version headers.",
+      "Live curl verified /api/search/code auth error uses search bucket headers with limit 30 and does not reflect SQL-shaped query payload.",
+      "Live curl verified /rate_limit returns JSON core/search bucket state and rate alias.",
+      "Live hostile-origin OPTIONS /api/user returned 405 without Access-Control-Allow-Origin echo."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "security",
+        "description": "Rate-limit subject classification trusted any Bearer token string before authentication, so invalid tokens were treated as authenticated subjects and received the 5000/hour core quota on auth errors.",
+        "expected": "Only verified personal access tokens receive authenticated token buckets; invalid bearer headers remain anonymous IP subjects with the 60/hour core quota.",
+        "actual": "Invalid Authorization: Bearer definitely-not-a-real-token returned 401 but carried X-RateLimit-Limit: 5000 before the fix.",
+        "reproduction": "Start the API and run: curl -i http://localhost:3016/api/user -H 'Authorization: Bearer definitely-not-a-real-token' -H 'X-Forwarded-For: 198.51.100.42'."
+      }
+    ],
+    "fix_description": "Verified bearer tokens before assigning authenticated token rate-limit subjects, fell back invalid/unverifiable bearer headers to anonymous IP buckets, and added focused regression coverage."
   }
 ]

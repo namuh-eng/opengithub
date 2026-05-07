@@ -14,7 +14,7 @@ pub fn router() -> Router<AppState> {
 }
 
 async fn read(State(state): State<AppState>, headers: HeaderMap) -> Json<serde_json::Value> {
-    let subject = subject_from_headers(&state.config, &headers);
+    let subject = subject_from_headers(state.db.as_ref(), &state.config, &headers).await;
     let status = match rate_limit_status(state.db.as_ref(), &subject, Utc::now()).await {
         Ok(status) => status,
         Err(error) => {

@@ -4,7 +4,11 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 
-use crate::{auth::session, config::AppConfig, domain::tokens::hash_personal_access_token};
+use crate::{
+    auth::session,
+    config::AppConfig,
+    domain::tokens::{hash_personal_access_token, verify_personal_access_token},
+};
 
 pub const API_VERSION_HEADER: &str = "x-github-api-version";
 pub const LATEST_API_VERSION: &str = "2022-11-28";
@@ -93,13 +97,21 @@ pub fn api_version(headers: &HeaderMap) -> String {
         .to_owned()
 }
 
-pub fn subject_from_headers(config: &AppConfig, headers: &HeaderMap) -> RateLimitSubject {
+pub async fn subject_from_headers(
+    pool: Option<&PgPool>,
+    config: &AppConfig,
+    headers: &HeaderMap,
+) -> RateLimitSubject {
     if let Some(token) = bearer_token(headers) {
-        return RateLimitSubject {
-            subject_type: "token".to_owned(),
-            subject_key: hash_personal_access_token(&token),
-            authenticated: true,
-        };
+        if let Some(pool) = pool {
+            if verify_personal_access_token(pool, &token).await.is_ok() {
+                return RateLimitSubject {
+                    subject_type: "token".to_owned(),
+                    subject_key: hash_personal_access_token(&token),
+                    authenticated: true,
+                };
+            }
+        }
     }
 
     if let Ok(Some(session_id)) = session::session_id_from_headers(config, headers) {
