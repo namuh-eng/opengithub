@@ -170,7 +170,7 @@ export function GlobalSearchModal({
   const [deletingSavedSearchId, setDeletingSavedSearchId] = useState<
     string | null
   >(null);
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const savedNameRef = useRef<HTMLInputElement | null>(null);
   const flatSuggestions = useMemo(
@@ -181,7 +181,8 @@ export function GlobalSearchModal({
     () => groupedFlatSuggestions(flatSuggestions),
     [flatSuggestions],
   );
-  const selectedSuggestion = flatSuggestions[selectedIndex];
+  const selectedSuggestion =
+    selectedIndex === null ? undefined : flatSuggestions[selectedIndex];
   const modalRef = useRef<HTMLDivElement | null>(null);
   const queryBuilderChips = [
     { label: "language:rust", value: "language:rust" },
@@ -221,7 +222,7 @@ export function GlobalSearchModal({
           throw new Error(body?.error?.message ?? "Search suggestions failed.");
         }
         setDashboard(body as SearchSuggestionDashboard);
-        setSelectedIndex(0);
+        setSelectedIndex(null);
       } catch (fetchError) {
         if (!controller.signal.aborted) {
           setDashboard(null);
@@ -245,8 +246,8 @@ export function GlobalSearchModal({
   }, [query, refreshKey]);
 
   useEffect(() => {
-    if (selectedIndex >= flatSuggestions.length) {
-      setSelectedIndex(0);
+    if (selectedIndex !== null && selectedIndex >= flatSuggestions.length) {
+      setSelectedIndex(null);
     }
   }, [flatSuggestions.length, selectedIndex]);
 
@@ -414,14 +415,17 @@ export function GlobalSearchModal({
     }
     if (event.key === "ArrowDown" && flatSuggestions.length > 0) {
       event.preventDefault();
-      setSelectedIndex((current) => (current + 1) % flatSuggestions.length);
+      setSelectedIndex((current) =>
+        current === null ? 0 : (current + 1) % flatSuggestions.length,
+      );
       return;
     }
     if (event.key === "ArrowUp" && flatSuggestions.length > 0) {
       event.preventDefault();
-      setSelectedIndex(
-        (current) =>
-          (current - 1 + flatSuggestions.length) % flatSuggestions.length,
+      setSelectedIndex((current) =>
+        current === null
+          ? flatSuggestions.length - 1
+          : (current - 1 + flatSuggestions.length) % flatSuggestions.length,
       );
       return;
     }

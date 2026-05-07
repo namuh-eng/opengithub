@@ -262,6 +262,9 @@ describe("AppShell desktop header", () => {
     );
     expect(await screen.findByRole("listbox")).toHaveClass("palette-list");
     expect(
+      await screen.findByRole("option", { name: /Repositories/ }),
+    ).toHaveAttribute("aria-selected", "false");
+    expect(
       await screen.findByRole("option", { name: /mona\/editorial/ }),
     ).toHaveAttribute("href", "/mona/editorial");
     expect(screen.getByRole("link", { name: /Rust files/ })).toHaveAttribute(
@@ -293,6 +296,14 @@ describe("AppShell desktop header", () => {
       "href",
       "/search?q=router+guards&type=repositories",
     );
+    expect(
+      fireEvent.keyDown(
+        screen.getByRole("combobox", { name: "Search opengithub" }),
+        {
+          key: "Enter",
+        },
+      ),
+    ).toBe(true);
 
     fireEvent.click(
       screen.getAllByRole("option", { name: /language:rust/ })[0],
