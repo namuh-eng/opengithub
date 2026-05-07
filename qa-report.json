@@ -1749,5 +1749,80 @@
       }
     ],
     "fix_description": "no product fix attempted; QA is blocked on missing DB/session/receiver infrastructure, so qa_pass remains false for retry"
+  },
+  {
+    "feature_id": "api-002",
+    "attempt": 2,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "DB-backed webhook contracts passed after fixing ambiguous enqueue SQL. Signed Playwright owner flow passed for repository webhook create, edit/inactivate, ping, redeliver, delete, forbidden non-owner view, and mobile overflow using an isolated migrated Postgres. Full make test-e2e was attempted with the QA DB but timed out at 180s before summary; focused feature E2E passed."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/settings/hooks",
+          "POST /api/repos/{owner}/{repo}/settings/hooks",
+          "GET /api/repos/{owner}/{repo}/settings/hooks/{hook_id}",
+          "PATCH /api/repos/{owner}/{repo}/settings/hooks/{hook_id}",
+          "DELETE /api/repos/{owner}/{repo}/settings/hooks/{hook_id}",
+          "POST /api/repos/{owner}/{repo}/settings/hooks/{hook_id}/ping",
+          "GET /api/repos/{owner}/{repo}/settings/hooks/{hook_id}/deliveries/{delivery_id}",
+          "POST /api/repos/{owner}/{repo}/settings/hooks/{hook_id}/deliveries/{delivery_id}/redeliver",
+          "GET /api/orgs/{org}/settings/hooks",
+          "POST /api/orgs/{org}/settings/hooks",
+          "GET /api/orgs/{org}/settings/hooks/{hook_id}",
+          "PATCH /api/orgs/{org}/settings/hooks/{hook_id}",
+          "DELETE /api/orgs/{org}/settings/hooks/{hook_id}",
+          "POST /api/orgs/{org}/settings/hooks/{hook_id}/ping",
+          "GET /api/orgs/{org}/settings/hooks/{hook_id}/deliveries/{delivery_id}",
+          "POST /api/orgs/{org}/settings/hooks/{hook_id}/deliveries/{delivery_id}/redeliver"
+        ],
+        "notes": "repository_webhook_settings_contract passed against a real migrated Postgres, proving repo/org list/create/detail/update/delete/ping/delivery/redelivery shapes, owner-only org access, secret redaction, initial ping, audit rows, and repository-to-organization event fanout. Live anonymous GET probes returned JSON 401 envelopes."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_sanitization",
+          "cors",
+          "data_exposure",
+          "hmac_signature",
+          "inactive_hook_filtering",
+          "retry_and_oversized_body_storage"
+        ],
+        "notes": "Unauthenticated repo/org hook reads returned 401 JSON without stack/env leakage. Hostile-origin OPTIONS returned 405 with no Access-Control-Allow-Origin. DB-backed worker contract passed for inactive hook filtering, HMAC signature header, retry behavior, timeout/failure recording, event validation, and oversized body storage keys. Mandatory Editorial banned-value scan returned zero hits."
+      },
+      "accessibility": {
+        "status": "skip",
+        "violations": [],
+        "notes": "not applicable for this feature category; QA_MODULES included base, api, security, footer only"
+      }
+    },
+    "tested_steps": [
+      "Read qa-report.json attempt 1 and qa-hints.json for api-002; focused on DB-backed org hooks, signed owner browser flow, event coverage, receiver behavior, and security probes.",
+      "Created isolated local Postgres database on localhost:5432 and ran repository_webhook_settings_contract with TEST_DATABASE_URL/DATABASE_URL; first run failed on ambiguous created_at in enqueue_repository_webhook_event.",
+      "Fixed enqueue_repository_webhook_event SQL to qualify webhooks.active, webhooks.events, and webhooks.created_at.",
+      "Reran repository_webhook_settings_contract against the QA DB: 2 passed, covering repository and organization webhook settings plus org event fanout.",
+      "Reran webhook_delivery_worker against the QA DB: 1 passed, covering HMAC signing, delivery recording, inactive hook filtering, retries/failures, invalid events, and oversized body storage behavior.",
+      "Ran focused signed Playwright repository-settings-hooks.spec.ts after stopping stale dev ports so the server used the QA DB: 2 passed, including create/edit/ping/redeliver/delete and forbidden non-owner state.",
+      "Saved QA screenshots to ralph/screenshots/qa/api-002-hooks-list-admin.jpg, api-002-hooks-detail-admin.jpg, and api-002-hooks-mobile.jpg.",
+      "Ran mandatory Editorial banned-value scan against web/src excluding og CSS: zero hits.",
+      "Started Rust API against the QA DB and verified anonymous repo/org webhook GET endpoints returned JSON 401 not_authenticated.",
+      "Verified hostile-origin OPTIONS against repo/org webhook endpoints returned 405 and did not emit Access-Control-Allow-Origin.",
+      "Attempted full make test-e2e with TEST_DATABASE_URL/DATABASE_URL and a 180s bound; it timed out before producing a Playwright summary, so focused feature E2E is the browser evidence for this attempt."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "functional",
+        "description": "Repository webhook event enqueue failed on a migrated Postgres database whenever webhooks were joined with repositories because ORDER BY created_at was ambiguous.",
+        "expected": "Repository events enqueue matching active repository and organization hooks in creation order.",
+        "actual": "DB-backed org fanout and worker tests failed with SQLSTATE 42702: column reference \"created_at\" is ambiguous.",
+        "reproduction": "With TEST_DATABASE_URL pointing at a migrated Postgres, run cargo test -p opengithub-api --test repository_webhook_settings_contract -- --nocapture or cargo test -p opengithub-api --test webhook_delivery_worker -- --nocapture before the fix."
+      }
+    ],
+    "fix_description": "Qualified webhook enqueue SQL columns with the webhooks table so repository/organization fanout and worker delivery queries execute correctly."
   }
 ]

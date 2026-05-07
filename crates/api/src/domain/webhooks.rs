@@ -337,9 +337,9 @@ pub async fn enqueue_repository_webhook_event(
              AND webhooks.organization_id = repositories.owner_organization_id
            )
           )
-          AND active = true
-          AND (events @> ARRAY[$2]::text[] OR events @> ARRAY['*']::text[])
-        ORDER BY created_at ASC
+          AND webhooks.active = true
+          AND (webhooks.events @> ARRAY[$2]::text[] OR webhooks.events @> ARRAY['*']::text[])
+        ORDER BY webhooks.created_at ASC
         "#,
     )
     .bind(repository_id)
