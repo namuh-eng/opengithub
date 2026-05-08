@@ -6,15 +6,17 @@
   "worktree": "/Users/jaeyunha/wt/opengithub/qa-prs-005-fresh",
   "doctor": "pass: Docker daemon running, postgres-test container up, Postgres reachable on :55433, .env.test present, .env present",
   "positive_evidence": [
-    "Focused API diff review contract passed: ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_diff_review_contract -- --nocapture (2 passed)",
-    "Focused web PR detail/files component suite passed: cd web && npx --no-install vitest run tests/repository-pull-request-detail.test.tsx (17 passed)",
-    "Unrelated full-suite web commit-detail failure was not reproducible: cd web && npx --no-install vitest run tests/repository-commit-detail-page.test.tsx (9 passed)",
-    "Editorial banned-value scan over web/src outside og CSS returned zero matches"
+    "Focused API diff review contract passed: ./hack/cargo_locked.sh test --test api_pull_request_diff_review_contract (2 passed)",
+    "Focused web PR detail/files component suite passed: cd web && npx vitest run tests/repository-pull-request-detail.test.tsx (17 passed)",
+    "Broad make all passed: Cargo check, web typecheck, Clippy, Biome, Cargo tests, and web tests (655 passed)",
+    "Focused PR files browser flow passed after clearing stale :3015/:3016 dev servers and sourcing .env.test: cd web && npx playwright test tests/e2e/repository-pull-request-detail.spec.ts --project=chromium --grep 'signed-in user opens' (2 passed including setup)",
+    "Editorial banned-value scan over web/src outside og CSS returned zero matches",
+    "Worktree remained source-clean except this QA evidence file; no runtime junk or source edits were committed"
   ],
   "blocking_evidence": [
-    "make all failed in full web Vitest: 654/655 passed, 1 failed in tests/repository-commit-detail-page.test.tsx expecting 'Full SHA copied'; isolated rerun passed, so this is likely flaky/broad-suite interaction but make all is not green",
-    "make test-e2e did not produce an official pass before being stopped after roughly 15 minutes; Playwright artifacts showed multiple non-prs-005 failures/auth-wall contexts during the broad suite",
-    "Focused repository-pull-request-detail Playwright was also not accepted as pass; process stayed running over a minute and was killed during cleanup"
+    "Official make test-e2e wrapper did not complete cleanly in this retry: it timed out after 600s and printed db-wait/test-e2e termination output even though make doctor and pg_isready were green immediately afterward",
+    "A first direct focused Playwright attempt without sourced .env.test skipped the signed-in checks; a second sourced run initially hit stale :3015/:3016 dev servers from the timed-out wrapper before cleanup",
+    "Because prs-005 is runtime-heavy PR Files changed/review behavior, this branch records a blocker rather than flipping prd.json until the official wrapper or accepted full E2E path is green in a clean run"
   ],
-  "decision": "Do not flip prd.json prs-005.qa_pass. Runtime-heavy PR Files changed QA remains blocked until official broad validation is green or a fresh accepted focused E2E/browser pass is produced. No source files were changed."
+  "decision": "Do not flip prd.json prs-005.qa_pass. PRS-005 has strong focused API/web/browser evidence and make all is green, but official make test-e2e is still not a clean pass in this lane. Branch is parked as QA-blocked evidence for Hermes integration decision."
 }
