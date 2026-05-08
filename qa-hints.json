@@ -8331,5 +8331,20 @@
       "No axe-core scan was recorded because @axe-core/playwright is not installed in this worktree; manual/focused no-dead-control, keyboard focus, and overflow checks passed.",
       "Search indexing still uses search_documents fixtures; production-scale repository_file_index/code_symbol_index parity remains a future search hardening area."
     ]
+  },
+  {
+    "feature_id": "settings-002",
+    "tests_written": [
+      "QA fresh-pass evidence on 2026-05-08: repository_access_settings_contract ran against committed TEST_DATABASE_URL on localhost:55433 and passed 1/1 without self-skip.",
+      "Focused RepositoryAccessSettingsPage Vitest passed 7/7 and settings-002 Playwright passed setup plus Chromium scenario against the restored local test DB/dev server.",
+      "make check passed; make test passed with Cargo tests plus 655 web tests; mandatory Editorial banned-value scan over web/src excluding og*.css returned zero matches.",
+      "settings-002.qa_pass set true from current focused runtime evidence."
+    ],
+    "needs_deeper_qa": [
+      "Broad make test-e2e was attempted but not counted because db-wait-test warned Postgres was not ready under concurrent suite contention and the wrapper was terminated by signal 15 after silence.",
+      "Local SES remains degraded-only; verify real AWS SES invitation delivery, bounce/failure states, and inbox receipt in a deployed/staged environment.",
+      "Invite acceptance lifecycle is outside this local feature proof; retest pending/accepted/expired/canceled states when acceptance ships.",
+      "Stress concurrent admin edits, last-admin races, organization base permissions, inherited team membership changes, and private/internal repository leakage with production-like org data."
+    ]
   }
 ]

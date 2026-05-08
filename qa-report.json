@@ -3260,5 +3260,60 @@
       "A separate axe-core scan was not run; accessibility evidence is from component and Playwright assertions for labels, disabled controls, no dead controls, and mobile no-overflow."
     ],
     "verified_at": "2026-05-08T05:45:00Z"
+  },
+  {
+    "feature_id": "settings-002",
+    "attempt": "fresh-2026-05-08-clawhip",
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified repository Access settings end-to-end with the committed .env.test database after restoring Docker/test Postgres: focused Playwright passed setup plus Chromium, covering admin load, filter/clear, Add people dialog focus trap, real invite mutation with degraded local delivery status, direct role change, invitation cancellation, direct access removal confirmation, no dead controls, mobile no-overflow, and non-admin forbidden state."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/settings/access",
+          "POST /api/repos/{owner}/{repo}/settings/access",
+          "POST /api/repos/{owner}/{repo}/settings/access/teams",
+          "PATCH /api/repos/{owner}/{repo}/settings/access/collaborators/{user_id}",
+          "DELETE /api/repos/{owner}/{repo}/settings/access/collaborators/{user_id}",
+          "DELETE /api/repos/{owner}/{repo}/settings/access/invitations/{invitation_id}"
+        ],
+        "notes": "Focused DB-backed Rust repository_access_settings_contract passed 1/1 without self-skip against TEST_DATABASE_URL on localhost:55433, covering anonymous 401, non-admin 403 privacy, admin/owner read shape, role definitions, invitations, duplicate conflicts, team grants, missing team redaction, personal repository team rejection, role updates, last-admin protection, removals, invitation cancellation, JSON content type, and repository.access audit events."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "anonymous_get_401",
+          "non_admin_private_redaction",
+          "duplicate_conflict_envelopes",
+          "last_admin_protection",
+          "team_grant_scope_validation",
+          "audit_event_creation",
+          "editorial_banned_value_scan"
+        ],
+        "notes": "No auth bypass or private repository metadata leak found in focused Rust contract. Error envelopes avoided token_hash/private description leakage in tested conflict/not-found paths. Mandatory banned GitHub color/Primer/Octicon scan over web/src excluding og*.css returned zero matches."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Vitest and Playwright cover named visible buttons, no inert anchors, disabled inherited/source-managed controls, labeled role/filter/team controls, keyboard-contained dialogs with Escape close, forbidden status copy, and 390px mobile no-horizontal-overflow. Separate axe scan was not run."
+      }
+    },
+    "tested_steps": [
+      "Ran required git status --short --branch and make doctor first; initial Make guard lacked the gitignored .ralph-setup-done marker, created it locally, and reran make doctor green against committed .env.test with Postgres on localhost:55433.",
+      "Installed declared web dependencies with npm ci because this fresh worktree had no web/node_modules; node_modules stayed ignored and uncommitted.",
+      "Ran .env.test-loaded ./hack/cargo_locked.sh test -p opengithub-api --test repository_access_settings_contract -- --nocapture: 1 passed, 0 failed, no self-skip.",
+      "Ran mandatory banned-value scan: rg for banned GitHub hex values, @primer/, and Octicon under web/src excluding og*.css returned no matches (exit 1/no hits).",
+      "Ran cd web && npx vitest run tests/repository-access-settings-page.test.tsx: 1 file passed, 7 tests passed.",
+      "Initial focused Playwright reproduced a runtime blocker when Docker/test Postgres became unavailable mid-run; did not count that as pass evidence. Restarted Docker Desktop, reran make doctor green, and reran focused Playwright successfully.",
+      "Ran .env.test-loaded cd web && npx playwright test tests/e2e/repository-settings-access.spec.ts: 2 passed (setup plus Chromium settings-002 scenario).",
+      "Ran make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran make test: Cargo tests passed and web tests passed (655 passed).",
+      "Attempted broad make test-e2e after focused evidence; db-wait-test reported Postgres not ready within 60s under concurrent suite contention, then the wrapper was terminated by signal 15 after staying silent. Not counted as pass evidence; focused settings-002 E2E and make test passed after a green doctor."
+    ],
+    "bugs_found": [],
+    "fix_description": "No product code fix was required. QA bookkeeping updated to mark settings-002 passed from fresh focused Rust, Vitest, Playwright, design-scan, make check, and make test evidence."
   }
 ]
