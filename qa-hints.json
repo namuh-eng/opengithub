@@ -8317,5 +8317,17 @@
       "CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 make check",
       "rg -n -e '#(0969da|1f883d|1a7f37|cf222e|82071e|f6f8fa|1f2328|d0d7de|59636e|f1aeb5|fff1f3)\\b|@primer/|Octicon' web/src/ --glob '!**/og*.css'"
     ]
+  },
+  {
+    "feature_id": "settings-001",
+    "tests_written": [
+      "Fresh QA pass on 2026-05-08 verified settings-001 with focused Vitest (repository-general-settings-page 8/8), DB-backed Rust repository_settings_contract (2/2 via hack/cargo_locked.sh and .env.test), focused Playwright repository-settings-general (setup plus Chromium 2/2), make check, and make test (Cargo tests plus 655 web tests).",
+      "Live unauthenticated API probes against local Rust API on :3016 returned JSON 401 for GET/PATCH /api/repos/namuh-eng/opengithub/settings and 405 for OPTIONS without hostile Origin reflection.",
+      "Focused Editorial banned-value scan over settings-001 source returned zero banned GitHub color/Primer/Octicon matches."
+    ],
+    "needs_deeper_qa": [
+      "Broad make test-e2e was attempted but blocked/hung under local DB/cross-lane contention after db-wait-test reported :55433 unavailable; do not treat that broad run as a pass. Focused settings-001 E2E and DB contracts are current and non-self-skipped.",
+      "Future deeper QA can add axe-core coverage, concurrent settings-write conflict stress, private/internal visibility transitions, and audit-event integrity under multiple rapid mutations."
+    ]
   }
 ]
