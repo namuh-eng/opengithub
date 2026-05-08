@@ -406,6 +406,8 @@ pub struct ActionsDependencyCache {
     pub key: String,
     pub version: String,
     pub scope: String,
+    #[serde(skip_serializing)]
+    pub storage_key: String,
     pub size_bytes: i64,
     pub last_used_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
@@ -2990,7 +2992,9 @@ async fn require_repository_read_for_viewer(
 
     match actor_user_id {
         Some(user_id) => {
-            if repository.visibility == RepositoryVisibility::Public {
+            if repository.owner_user_id == Some(user_id)
+                || repository.visibility == RepositoryVisibility::Public
+            {
                 Ok(repository)
             } else {
                 require_repository_role(pool, repository_id, user_id, RepositoryRole::Read).await?;
@@ -4777,14 +4781,14 @@ pub async fn actions_dependency_caches_for_viewer(
     .fetch_one(pool)
     .await?;
     let total_size_bytes = sqlx::query_scalar::<_, i64>(
-        "SELECT COALESCE(sum(size_bytes), 0) FROM workflow_dependency_caches WHERE repository_id = $1 AND deleted_at IS NULL",
+        "SELECT COALESCE(sum(size_bytes), 0)::bigint FROM workflow_dependency_caches WHERE repository_id = $1 AND deleted_at IS NULL",
     )
     .bind(repository_id)
     .fetch_one(pool)
     .await?;
     let rows = sqlx::query(
         r#"
-        SELECT id, repository_id, cache_key, version, scope, size_bytes, last_used_at, created_at, updated_at
+        SELECT id, repository_id, cache_key, version, scope, storage_key, size_bytes, last_used_at, created_at, updated_at
         FROM workflow_dependency_caches
         WHERE repository_id = $1 AND deleted_at IS NULL
         ORDER BY last_used_at DESC, cache_key ASC
@@ -4797,6 +4801,7 @@ pub async fn actions_dependency_caches_for_viewer(
     .fetch_all(pool)
     .await?;
     let can_delete = match actor_user_id {
+        Some(user_id) if repository.owner_user_id == Some(user_id) => true,
         Some(user_id) => repository_permission_for_user(pool, repository_id, user_id)
             .await
             .map_err(map_repository_error)?
@@ -4823,6 +4828,7 @@ pub async fn actions_dependency_caches_for_viewer(
                     key: row.get("cache_key"),
                     version: row.get("version"),
                     scope: row.get("scope"),
+                    storage_key: row.get("storage_key"),
                     size_bytes: row.get("size_bytes"),
                     last_used_at: row.get("last_used_at"),
                     created_at: row.get("created_at"),
@@ -4877,7 +4883,7 @@ pub async fn reserve_actions_cache_for_actor(
                       storage_key = EXCLUDED.storage_key,
                       size_bytes = EXCLUDED.size_bytes,
                       last_used_at = now()
-        RETURNING id, repository_id, cache_key, version, scope, size_bytes, last_used_at, created_at, updated_at
+        RETURNING id, repository_id, cache_key, version, scope, storage_key, size_bytes, last_used_at, created_at, updated_at
         "#,
     )
     .bind(repository_id)
@@ -4897,6 +4903,7 @@ pub async fn reserve_actions_cache_for_actor(
         key: row.get("cache_key"),
         version: row.get("version"),
         scope: row.get("scope"),
+        storage_key: row.get("storage_key"),
         size_bytes: row.get("size_bytes"),
         last_used_at: row.get("last_used_at"),
         created_at: row.get("created_at"),
@@ -4916,7 +4923,7 @@ pub async fn delete_actions_cache_for_actor(
         UPDATE workflow_dependency_caches
         SET deleted_at = now()
         WHERE repository_id = $1 AND id = $2 AND deleted_at IS NULL
-        RETURNING id, repository_id, cache_key, version, scope, size_bytes, last_used_at, created_at, updated_at
+        RETURNING id, repository_id, cache_key, version, scope, storage_key, size_bytes, last_used_at, created_at, updated_at
         "#,
     )
     .bind(repository_id)
@@ -4930,6 +4937,7 @@ pub async fn delete_actions_cache_for_actor(
         key: row.get("cache_key"),
         version: row.get("version"),
         scope: row.get("scope"),
+        storage_key: row.get("storage_key"),
         size_bytes: row.get("size_bytes"),
         last_used_at: row.get("last_used_at"),
         created_at: row.get("created_at"),

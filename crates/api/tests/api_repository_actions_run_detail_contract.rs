@@ -37,7 +37,23 @@ async fn database_pool() -> Option<PgPool> {
         .await
         .ok()?;
     MIGRATOR.run(&pool).await.ok()?;
+    reset_rate_limit_subject(&pool, "ip", "unknown").await;
     Some(pool)
+}
+
+async fn reset_rate_limit_subject(pool: &PgPool, subject_type: &str, subject_key: &str) {
+    sqlx::query(
+        r#"
+        DELETE FROM rate_limit_buckets
+        WHERE subject_type = $1
+          AND subject_key = $2
+        "#,
+    )
+    .bind(subject_type)
+    .bind(subject_key)
+    .execute(pool)
+    .await
+    .expect("test rate limit bucket should reset");
 }
 
 fn app_config() -> AppConfig {
@@ -366,7 +382,7 @@ async fn run_detail_returns_attempts_jobs_annotations_artifacts_and_action_state
         owner.email, repo_name, run.id
     );
     let (public_status, public_body) = get_json(app.clone(), &uri, None).await;
-    assert_eq!(public_status, StatusCode::OK);
+    assert_eq!(public_status, StatusCode::OK, "{public_body:?}");
     assert_eq!(public_body["repository"]["name"], repo_name);
     assert_eq!(public_body["viewerPermission"], "read");
     assert_eq!(public_body["workflow"]["name"], "CI");
@@ -374,7 +390,8 @@ async fn run_detail_returns_attempts_jobs_annotations_artifacts_and_action_state
         public_body["workflow"]["sourceHref"],
         format!(
             "/{}/{}/blob/main/.github/workflows/ci.yml",
-            owner.email, repo_name
+            owner.username.as_deref().expect("owner username"),
+            repo_name
         )
     );
     assert_eq!(public_body["run"]["displayTitle"], "Validate run detail");
@@ -489,10 +506,14 @@ async fn run_detail_returns_attempts_jobs_annotations_artifacts_and_action_state
     assert_eq!(cache_status, StatusCode::OK);
     assert_eq!(cache_body["key"], "node-linux-lock");
     assert_eq!(cache_body["sizeBytes"], 2_097_152);
+    assert!(
+        cache_body.get("storageKey").is_none(),
+        "cache reserve response must not expose internal storage keys: {cache_body:?}"
+    );
 
     let list_cache_uri = format!("/api/repos/{}/{}/actions/caches", owner.email, repo_name);
     let (list_cache_status, list_cache_body) = get_json(app.clone(), &list_cache_uri, None).await;
-    assert_eq!(list_cache_status, StatusCode::OK);
+    assert_eq!(list_cache_status, StatusCode::OK, "{list_cache_body:?}");
     assert_eq!(list_cache_body["caches"]["total"], 1);
     assert_eq!(list_cache_body["totalSizeBytes"], 2_097_152);
     assert_eq!(list_cache_body["limitBytes"], 10_737_418_240_i64);
