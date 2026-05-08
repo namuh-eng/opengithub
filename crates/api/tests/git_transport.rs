@@ -51,7 +51,24 @@ async fn database_pool() -> Option<PgPool> {
             return None;
         }
     }
+
+    reset_rate_limit_subject(&pool, "ip", "unknown").await;
     Some(pool)
+}
+
+async fn reset_rate_limit_subject(pool: &PgPool, subject_type: &str, subject_key: &str) {
+    sqlx::query(
+        r#"
+        DELETE FROM rate_limit_buckets
+        WHERE subject_type = $1
+          AND subject_key = $2
+        "#,
+    )
+    .bind(subject_type)
+    .bind(subject_key)
+    .execute(pool)
+    .await
+    .expect("test rate limit bucket should reset");
 }
 
 async fn create_user(pool: &PgPool, label: &str) -> User {

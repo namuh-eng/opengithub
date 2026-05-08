@@ -34,7 +34,24 @@ async fn database_pool() -> Option<PgPool> {
         .await
         .ok()?;
     MIGRATOR.run(&pool).await.ok()?;
+
+    reset_rate_limit_subject(&pool, "ip", "unknown").await;
     Some(pool)
+}
+
+async fn reset_rate_limit_subject(pool: &PgPool, subject_type: &str, subject_key: &str) {
+    sqlx::query(
+        r#"
+        DELETE FROM rate_limit_buckets
+        WHERE subject_type = $1
+          AND subject_key = $2
+        "#,
+    )
+    .bind(subject_type)
+    .bind(subject_key)
+    .execute(pool)
+    .await
+    .expect("test rate limit bucket should reset");
 }
 
 fn test_config() -> AppConfig {
@@ -105,8 +122,10 @@ async fn create_pat(pool: &PgPool, user_id: Uuid, scopes: &[&str]) -> String {
         .to_owned();
     sqlx::query(
         r#"
-        INSERT INTO personal_access_tokens (user_id, name, prefix, token_hash, scopes, expires_at)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO personal_access_tokens (
+            user_id, name, prefix, token_hash, scopes, expires_at, resource_owner_user_id
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $1)
         "#,
     )
     .bind(user_id)

@@ -5509,3 +5509,5 @@
 - Playwright reruns require `PW_TEST_REUSE_SERVER=0` in this environment; without it stale server reuse produced localhost:3015 address/empty-response failures.
 - Required Editorial banned-token scan over `web/src` outside og CSS returned zero matches.
 - Marked `dashboard-003.qa_pass` true and updated QA ledgers with redacted environment details.
+
+2026-05-08 git-001 QA fresh pass: make doctor green; git_transport 8/8 and git_transport_security 3/3 passed via hack/cargo_locked.sh/shared Cargo target; make check passed; api-docs timeout in broad make test reproduced as standalone pass; focused Chromium git-transport Playwright passed against explicit local API/Next servers. Set git-001 qa_pass=true.
