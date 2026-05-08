@@ -3091,5 +3091,54 @@
       "Anonymous pinned repository navigation from public profile fell back to the owner profile because repository overview refused to fetch public repository data without a signed session."
     ],
     "fix_description": "Repository overview now calls getRepository(owner, repo) for all viewers; public repository visibility remains enforced by the server/API layer instead of hiding all anonymous repository overview data."
+  },
+  {
+    "feature_id": "search-003",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified code search results page/API end-to-end with focused signed-session Playwright on the committed .env.test local DB: search-code.spec.ts passed setup + 3 Chromium tests. Covered grouped snippets, hidden-match expansion/collapse, line anchors, language/path facets, chip removal, advanced owner/symbol/archive qualifiers, saved-search create flow, invalid regex recovery, desktop/mobile guardrails, no dead controls, and no horizontal overflow. Component coverage passed for search-code-results/search-results/global-search-modal Vitest."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/search?q={marker}&type=code",
+          "GET /api/search?q={marker}+language:Rust+path:src&type=code",
+          "GET /api/search?q=/router.*/&type=code",
+          "POST /search/saved-searches (Next proxy in browser flow)"
+        ],
+        "notes": "Real DB Rust contract search_code_results_contract passed non-skipped against .env.test/:55433 after fixing stale username-vs-email test expectations. Contract verifies JSON content type, page/pageSize clamps, typeCounts, facets, active chips, snippets/match ranges/blob hrefs, default-branch filtering, repo/archive qualifiers, private repository redaction, and validation error envelopes."
+      },
+      "security": {
+        "status": "pass",
+        "notes": "Rust contract verifies authenticated visibility boundaries: owner sees private code, outsider sees only public code and no private fragment leakage; validation errors are structured 422 envelopes without DATABASE_URL, postgres URLs, stack backtraces, or secrets. Frontend /search remains protected by the existing session proxy in focused browser flow."
+      },
+      "accessibility": {
+        "status": "pass",
+        "notes": "Focused Playwright and Vitest guardrails verified accessible names for visible buttons, no href=#/missing href controls, keyboard focus visibility in the desktop guardrail path, mobile no-horizontal-overflow, and Editorial token/banned-value compliance. axe-core package was not installed in this worktree, so no axe scan was recorded."
+      }
+    },
+    "evidence": {
+      "timestamp": "2026-05-08T05:50:28Z",
+      "passed": [
+        "make doctor (Docker/test Postgres/.env.test healthy; .env live-dev warning only)",
+        "set -a; . ./.env.test; CARGO_BUILD_JOBS=1 ./hack/cargo_locked.sh test -p opengithub-api --test search_code_results_contract -- --nocapture (1 passed, non-skipped)",
+        "cd web && npx vitest run tests/search-code-results.test.tsx (7 passed)",
+        "cd web && npx vitest run tests/search-code-results.test.tsx tests/search-results.test.tsx tests/global-search-modal.test.tsx (19 passed)",
+        "cd web && npx vitest run (107 files / 655 tests passed)",
+        "cd web && npx playwright test tests/e2e/search-code.spec.ts --project=chromium (4 passed)",
+        "CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 make check (Cargo check, web typecheck, clippy, Biome passed)",
+        "Editorial banned-value scan over web/src excluding og*.css returned zero matches",
+        "focused Biome checks for touched search E2E/component files passed"
+      ],
+      "blocked_or_not_counted": [
+        "Initial Rust contract invocation without .env.test self-skipped; not counted as evidence.",
+        "Initial make check failed on corrupted generated web/.next/dev/types after interrupted dev server; cleared web/.next and reran make check successfully.",
+        "CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 make test is blocked by unrelated api_pull_request_create_contract public fork-head failure: expected 201 but got 403 forbidden.",
+        "Broad make test-e2e was attempted after focused E2E; wrapper first reported db-wait-test timeout and then stayed silent under run_silent for several minutes, so it was terminated and not counted. Focused search-code Playwright passed."
+      ]
+    }
   }
 ]

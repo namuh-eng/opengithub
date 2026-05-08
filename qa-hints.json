@@ -8317,5 +8317,19 @@
       "CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 make check",
       "rg -n -e '#(0969da|1f883d|1a7f37|cf222e|82071e|f6f8fa|1f2328|d0d7de|59636e|f1aeb5|fff1f3)\\b|@primer/|Octicon' web/src/ --glob '!**/og*.css'"
     ]
+  },
+  {
+    "feature_id": "search-003",
+    "tests_written": [
+      "QA fixed stale Rust code-search contract expectations to use canonical usernames in blob hrefs and repo qualifiers instead of email-derived paths.",
+      "QA hardened search-code Playwright fixture timeout for real cargo/API startup and kept the seed subprocess non-destructive with CARGO_BUILD_JOBS=1 plus shared CARGO_TARGET_DIR because make dev holds the cargo lock for the long-running API server.",
+      "Fresh evidence passed: real DB search_code_results_contract, focused/full search Vitest, full web Vitest, focused signed-session search-code Playwright, make check, and Editorial banned-value scan."
+    ],
+    "needs_deeper_qa": [
+      "Broad make test remains blocked by unrelated api_pull_request_create_contract fork-head 403 outside search-003.",
+      "Broad make test-e2e did not complete in this lane after db-wait-test timeout/silent full-suite run; rely on focused search-code Playwright for current browser evidence and rerun broad suite when local full-suite infra is quiet.",
+      "No axe-core scan was recorded because @axe-core/playwright is not installed in this worktree; manual/focused no-dead-control, keyboard focus, and overflow checks passed.",
+      "Search indexing still uses search_documents fixtures; production-scale repository_file_index/code_symbol_index parity remains a future search hardening area."
+    ]
   }
 ]
