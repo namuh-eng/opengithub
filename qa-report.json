@@ -3315,5 +3315,60 @@
     ],
     "bugs_found": [],
     "fix_description": "No product code fix was required. QA bookkeeping updated to mark settings-002 passed from fresh focused Rust, Vitest, Playwright, design-scan, make check, and make test evidence."
+  },
+  {
+    "feature_id": "settings-005",
+    "attempt": "fresh-2026-05-08-clawhip-ever-required",
+    "status": "blocked",
+    "sub_phases": {
+      "functional": {
+        "status": "blocked",
+        "notes": "Focused component and Playwright browser checks passed after fixing success status copy, but controller required additional Ever CLI browser QA. Local app booted on :3015 with committed .env.test, but DB seeding failed because the test database was unavailable, and Ever start did not establish a session, so the required snapshot\u2192act\u2192snapshot workflow could not be completed. qa_pass remains false."
+      },
+      "api_contract": {
+        "status": "pass",
+        "notes": "DB-backed Rust repository_actions_secrets_contract passed 2/2 without self-skip against TEST_DATABASE_URL after recreating the test DB earlier in the run; job-log masking contract job_log_detail_groups_steps_searches_lines_and_reads_options passed 1/1."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "anonymous settings API returns 401 in focused contract",
+          "non-admin secret metadata redaction in focused contract/UI smoke",
+          "secret plaintext not persisted/rendered in focused contract/UI smoke",
+          "Actions job-log masking contract",
+          "Editorial banned-value scan"
+        ],
+        "notes": "Focused settings-005 security contracts passed; mandatory banned-value scan over relevant UI/API docs files returned zero matches."
+      },
+      "accessibility": {
+        "status": "partial",
+        "notes": "Focused Playwright checked button accessible names/no dead controls and mobile no-overflow for settings-005. Ever manual accessibility/label traversal was not completed because Ever session could not be established and seeded admin UI was unavailable."
+      }
+    },
+    "commands": [
+      "git status --short --branch",
+      "python3 inspection of prd.json/qa-hints.json/qa-report.json for settings-005",
+      "make doctor -> green before initial focused validation",
+      "make db-down-test && make setup-local && make doctor -> recovered clean test DB after initial self-skip; doctor green",
+      "TEST_DATABASE_URL=<from .env.test> DATABASE_URL=<from .env.test> DB_SSL=false ./hack/cargo_locked.sh test -p opengithub-api --test repository_actions_secrets_contract -- --nocapture -> 2 passed, no self-skip after DB recovery",
+      "TEST_DATABASE_URL=<from .env.test> DATABASE_URL=<from .env.test> DB_SSL=false ./hack/cargo_locked.sh test -p opengithub-api --test api_repository_actions_job_log_contract job_log_detail_groups_steps_searches_lines_and_reads_options -- --nocapture -> 1 passed",
+      "cd web && npm ci -> installed committed lockfile dependencies; reported 2 moderate npm audit findings, not changed",
+      "cd web && npx vitest run tests/repository-actions-secrets-page.test.tsx -> 6 passed before and after fix",
+      "set -a; . ./.env.test; set +a; cd web && npx playwright test tests/e2e/repository-settings-secrets.spec.ts --project=chromium -> initially failed on success-copy mismatch, then passed 2/2 after UI fix",
+      "rg -n -e '#(0969da|1f883d|1a7f37|cf222e|82071e|f6f8fa|1f2328|d0d7de|59636e|f1aeb5|fff1f3)\\b|@primer/|Octicon' relevant settings-005 web/src files --glob '!**/og*.css' -> no matches",
+      "make check -> passed Cargo check, Web typecheck, Clippy, Biome after formatting touched component",
+      "make test -> passed Cargo tests and Web tests (655 passed)",
+      "make test-e2e -> broad wrapper failed outside settings-005 after 65 passes due No space left on device from raw worktree target write in profile-overview; rerun with shared CARGO_TARGET_DIR hung and was stopped before Ever QA",
+      "set -a; . ./.env.test; set +a; CARGO_TARGET_DIR=$HOME/.cache/opengithub/cargo-target make dev -> Next ready on http://localhost:3015 and Rust API launched",
+      "DASHBOARD_E2E_EMPTY=0 DASHBOARD_E2E_SKIP_MIGRATIONS=1 SESSION_COOKIE_NAME=og_session CARGO_TARGET_DIR=$HOME/.cache/opengithub/cargo-target cargo run --quiet -p opengithub-api --example dashboard_e2e_seed -> failed: pool timed out while waiting for an open connection",
+      "ever doctor -> everd/API OK; extension requires ever start",
+      "ever start --url http://localhost:3015 --title 'settings-005 QA' -> unsupported option --title in installed Ever CLI",
+      "ever start --url http://localhost:3015 && ever snapshot --mode full -> hung without creating an active session; killed; ever sessions -> No active sessions"
+    ],
+    "fixes_made": [
+      "Aligned RepositoryActionsSecretsPage success status copy with committed focused Playwright/browser expectations by removing redundant Secret/Variable prefixes from create/update/delete status messages."
+    ],
+    "qa_pass": false,
+    "blocked_reason": "Controller-required Ever CLI snapshot\u2192act\u2192snapshot QA could not be completed because the local DB became unavailable for seeding and Ever did not establish a browser session."
   }
 ]
