@@ -5511,3 +5511,12 @@
 - Marked `dashboard-003.qa_pass` true and updated QA ledgers with redacted environment details.
 
 2026-05-08 git-001 QA fresh pass: make doctor green; git_transport 8/8 and git_transport_security 3/3 passed via hack/cargo_locked.sh/shared Cargo target; make check passed; api-docs timeout in broad make test reproduced as standalone pass; focused Chromium git-transport Playwright passed against explicit local API/Next servers. Set git-001 qa_pass=true.
+
+
+2026-05-08 - profiles-002 QA fresh pass
+
+- Fresh QA ran in `/Users/jaeyunha/wt/opengithub/qa-profiles-002-fresh` from `origin/main` 8d20229b after `make doctor` was green for Docker, the test Postgres on :55433, `.env.test`, and `.env`.
+- Focused DB-backed Rust contracts passed via the Makefile shared Cargo target wrapper: `./hack/cargo_locked.sh test -p opengithub-api --test profile_repositories_contract --test profile_starred_repositories_contract` (4 tests passed).
+- Focused web component coverage passed: `npm run test -- user-profile-repositories.test.tsx` (4 tests passed).
+- Focused Playwright passed with `.env.test` loaded: `npm run test:e2e -- profile-repositories.spec.ts` (setup + 3 Chromium tests passed) covering repositories, stars, URL-backed filters, clear controls, mobile overflow, screenshots, and dead-link checks. The run logged an unrelated repository tree `RepositoryFileFinder` maximum-update-depth warning after clicking a repo row; profile assertions still passed.
+- `make check` passed and the mandatory Editorial banned-value scan over `web/src` outside `og*.css` returned zero matches. Marked `profiles-002.qa_pass=true`.
