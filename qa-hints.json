@@ -8273,5 +8273,22 @@
       "Merge commit synthesis persists metadata commit rows and ref targets rather than full Git object storage pack mutation; retest true Git object mutation and divergent-branch conflicts when that layer matures.",
       "Required status checks are still represented by aggregate pull_request_checks_summary rows rather than per-context workflow/check-run resolution in the mergeability contract."
     ]
+  },
+  {
+    "feature_id": "dashboard-003",
+    "tests_written": [
+      "Fresh retest passed `make check && make test`: Cargo check, web typecheck, clippy, biome, Cargo tests, and 655 web tests passed",
+      "DB-backed dashboard_feed_preferences passed 3/3 via the shared cargo_locked wrapper with `.env.test` loaded",
+      "DB-backed dashboard_summary passed 10/10 after username/login fixture expectations matched current route contracts",
+      "Dashboard onboarding/feed Vitest passed 17/17",
+      "Dashboard Playwright E2E `web/tests/e2e/dashboard-dashboard.spec.ts` passed 6/6 with `PW_TEST_REUSE_SERVER=0`, covering filters, empty states, no dead controls, mobile no-overflow, and desktop alignment",
+      "Editorial banned-token scan over web/src outside og CSS returned zero matches"
+    ],
+    "needs_deeper_qa": [
+      "Use `PW_TEST_REUSE_SERVER=0` for dashboard Playwright reruns in this local environment; stale server reuse caused earlier localhost:3015 empty-response failures",
+      "Retest visible saved-default controls if product later exposes feed preference persistence in the dashboard UI",
+      "Run screen-reader and real touch-device passes for the filter dropdown beyond the Playwright keyboard/viewport coverage",
+      "Retest mixed dense feeds with larger private/org/collaborator datasets to stress recommendation ordering and truncation"
+    ]
   }
 ]

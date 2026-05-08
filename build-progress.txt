@@ -5500,3 +5500,12 @@
 2026-05-08 - prs-006 independent Hermes QA
 - Independently QA-verified pull request merge methods, mergeability computation, checks integration, plaintext .diff/.patch views, raw-link/docs affordances, and PR detail merge controls for prs-006. Set prs-006.qa_pass=true.
 - Full E2E blocker: make test-e2e was attempted first but the isolated worktree lacked .ralph-setup-done; after creating it, docker compose hit an existing opengithub-postgres-test container from another worktree. A direct full chromium run later failed unrelated suites and exhausted local infra (rustc ENOSPC with 3.7GiB free / 99% disk used; localhost:55433 Postgres refused connections). Focused prs-006 Playwright passed before the infra failure.
+
+2026-05-08 - dashboard-003 fresh QA pass after infra recovery
+
+- Ran fresh QA in `/Users/jaeyunha/wt/opengithub/qa-dashboard-003-fresh` after `make doctor` was green; disk remained usable (~30Gi+ free) and no shared target cleanup was performed.
+- Broad validation passed: `make check && make test` reported Cargo check, web typecheck, clippy, biome, Cargo tests, and web tests (655 passed).
+- Focused dashboard validation passed: DB-backed `dashboard_summary` 10/10, DB-backed `dashboard_feed_preferences` 3/3, dashboard Vitest 17/17, and full dashboard Playwright E2E 6/6.
+- Playwright reruns require `PW_TEST_REUSE_SERVER=0` in this environment; without it stale server reuse produced localhost:3015 address/empty-response failures.
+- Required Editorial banned-token scan over `web/src` outside og CSS returned zero matches.
+- Marked `dashboard-003.qa_pass` true and updated QA ledgers with redacted environment details.
