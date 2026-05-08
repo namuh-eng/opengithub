@@ -8331,5 +8331,19 @@
       "No axe-core scan was recorded because @axe-core/playwright is not installed in this worktree; manual/focused no-dead-control, keyboard focus, and overflow checks passed.",
       "Search indexing still uses search_documents fixtures; production-scale repository_file_index/code_symbol_index parity remains a future search hardening area."
     ]
+  },
+  {
+    "feature_id": "settings-003",
+    "tests_written": [
+      "QA attempted fresh settings-003 verification in qa/opengithub-settings-003-clawhip and kept qa_pass=false because current browser/runtime evidence is blocked.",
+      "Focused non-skipped evidence passed before Docker instability: repository_branch_settings_contract 1/1, api_pull_request_detail_contract 2/2, git_transport 8/8, focused branch settings/API docs/PR detail Vitest 29/29, make check, make test with web 655 tests, and Editorial banned-value scan zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Restore stable Docker/test Postgres on localhost:55433 and rerun make doctor, focused repository-settings-branches Playwright, and broad make test-e2e without terminating or accepting self-skips.",
+      "After stable runtime is restored, perform live API/security probes for branch settings endpoints: anonymous 401/404 privacy, non-admin read-only visibility, invalid mutation validation envelopes, and hostile-Origin OPTIONS without origin reflection.",
+      "Run real Git force-push and branch deletion attempts through smart HTTP against protected branches and inspect both API errors and bare-repository side effects.",
+      "Stress overlapping wildcard policies, long rule/ruleset names, dense bypass actor lists, and concurrent admin edits while PR mergeability and pushes are evaluated.",
+      "Keep settings-003.qa_pass=false until browser/runtime branch policy create/edit/delete plus read-only state are verified against the committed .env.test DB."
+    ]
   }
 ]

@@ -10501,3 +10501,9 @@
 - Editorial source scan over settings-001 files found zero banned GitHub color, Primer, or Octicon matches.
 - Attempted broad `make test-e2e`; `db-wait-test` reported :55433 not ready and all-suite Playwright later hung in `dashboard_e2e_seed` under local contention, so it was terminated and not counted as a pass. Immediate `make doctor` rerun was green; focused settings-001 E2E remains the accepted browser evidence.
 - Set `settings-001.qa_pass=true` based on current non-self-skipped focused evidence; no product/test-fixture code changes were needed.
+
+2026-05-08T12:37:14Z - settings-003 QA blocked in clawhip lane
+- Started with `git status --short --branch` on `qa/opengithub-settings-003-clawhip`; initial `make doctor` was blocked by the missing ignored `.ralph-setup-done` sentinel, restored the local sentinel, and verified the shared test Postgres on `localhost:55433` before focused DB checks.
+- Passed focused non-skipped evidence: `repository_branch_settings_contract` 1/1, `api_pull_request_detail_contract` 2/2, `git_transport` 8/8, focused branch-settings/API-docs/PR-detail Vitest 29/29, `make check`, `make test` with web 655 tests, and the mandatory Editorial banned-value scan with zero matches.
+- Blocker: Docker/Postgres became unstable during browser verification. Focused `repository-settings-branches.spec.ts` did not complete against a healthy runtime (404/login fallback after API/session degradation), and `make test-e2e` reported `db-wait-test` timeout for `:55433` before hanging under the broad Playwright wrapper and being terminated.
+- No product bug was confirmed from the failed browser run; `settings-003.qa_pass` remains `false` pending stable DB/API/browser runtime evidence.

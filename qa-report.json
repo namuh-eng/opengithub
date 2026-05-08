@@ -3260,5 +3260,60 @@
       "A separate axe-core scan was not run; accessibility evidence is from component and Playwright assertions for labels, disabled controls, no dead controls, and mobile no-overflow."
     ],
     "verified_at": "2026-05-08T05:45:00Z"
+  },
+  {
+    "feature_id": "settings-003",
+    "attempt": 1,
+    "status": "partial",
+    "sub_phases": {
+      "functional": {
+        "status": "blocked",
+        "notes": "Focused non-browser checks passed, but required runtime browser QA could not be accepted because Docker/Postgres on :55433 became unavailable during Playwright. The focused repository-settings-branches Playwright smoke first reached the page with a 404/login fallback after API/seed degradation, then make test-e2e reported db-wait-test timeout and was terminated after hanging under the broad suite wrapper. settings-003.qa_pass remains false."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET/POST/PATCH/DELETE /api/repos/{owner}/{repo}/settings/branches/rules",
+          "GET/POST/PATCH/DELETE /api/repos/{owner}/{repo}/settings/branches/rulesets",
+          "PR mergeability branch-policy aggregation paths",
+          "Git receive-pack branch-policy enforcement paths"
+        ],
+        "notes": "Focused DB-backed Rust contracts passed while the required local DB was initially healthy: repository_branch_settings_contract 1/1, api_pull_request_detail_contract 2/2, and git_transport 8/8. These covered branch rule/ruleset CRUD/privacy/audit, PR mergeability policy aggregation, and Git transport enforcement-related contracts."
+      },
+      "security": {
+        "status": "partial",
+        "checks": [
+          "private policy visibility via focused contract",
+          "branch policy push/merge blocking contracts",
+          "Editorial banned-value scan"
+        ],
+        "notes": "No focused Rust contract failures or banned UI values were found. Full live unauthenticated/CORS/API curl probes were not completed after Docker daemon instability took the local API/database down, so security QA is not complete enough for qa_pass."
+      },
+      "accessibility": {
+        "status": "partial",
+        "violations": [],
+        "notes": "Focused Vitest passed branch settings component guardrails, and the banned Editorial value scan over web/src excluding og*.css returned zero matches. Browser no-dead-control/mobile screenshot evidence could not be accepted because focused Playwright did not complete against a healthy DB/API runtime."
+      }
+    },
+    "evidence": {
+      "timestamp": "2026-05-08T12:37:14Z",
+      "passed": [
+        "git status --short --branch started on qa/opengithub-settings-003-clawhip",
+        "make doctor initially blocked by missing ignored .ralph-setup-done; restored local sentinel, found Docker/test Postgres healthy on :55433 before focused DB checks",
+        "set -a; . ./.env.test; ./hack/cargo_locked.sh test -p opengithub-api --test repository_branch_settings_contract -- --nocapture (1 passed, non-skipped)",
+        "set -a; . ./.env.test; ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_detail_contract -- --nocapture (2 passed, non-skipped)",
+        "set -a; . ./.env.test; ./hack/cargo_locked.sh test -p opengithub-api --test git_transport -- --nocapture (8 passed)",
+        "cd web && npm ci from committed package-lock.json, then npx vitest run tests/repository-branch-settings-page.test.tsx tests/api-docs.test.tsx tests/repository-pull-request-detail.test.tsx (3 files / 29 tests passed)",
+        "make check passed: Cargo check, web typecheck, Clippy, and Biome",
+        "make test passed: Cargo tests and web tests (655 passed)",
+        "Mandatory Editorial banned-value scan over web/src excluding og*.css returned zero matches"
+      ],
+      "blocked_or_not_counted": [
+        "make setup-local hit an existing opengithub-postgres-test container name conflict; direct doctor was green while that shared container was up, then Docker daemon later became unreachable repeatedly.",
+        "Focused cd web && npx playwright test tests/e2e/repository-settings-branches.spec.ts did not pass: first run hit a Next 404 while the seed/API path degraded; rerun reached the login page instead of Branches because the API/session path was not healthy after Docker instability.",
+        "make test-e2e was attempted after Docker became unhealthy; db-wait-test reported test postgres did not become ready on :55433 within 60s, then the broad wrapper hung under Playwright and was terminated. Not counted as pass evidence.",
+        "No source bug was confirmed from the failed browser run; failure evidence points to local Docker/Postgres/API health. settings-003.qa_pass was intentionally left false."
+      ]
+    }
   }
 ]
