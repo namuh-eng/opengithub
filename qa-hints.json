@@ -8331,5 +8331,17 @@
       "No axe-core scan was recorded because @axe-core/playwright is not installed in this worktree; manual/focused no-dead-control, keyboard focus, and overflow checks passed.",
       "Search indexing still uses search_documents fixtures; production-scale repository_file_index/code_symbol_index parity remains a future search hardening area."
     ]
+  },
+  {
+    "feature_id": "settings-004",
+    "tests_written": [
+      "QA patched repository-settings-hooks Playwright to use the shared _fixtures/auth fixture instead of inline cargo seeding/cookie minting.",
+      "Current focused non-browser evidence passed: DB-backed repository_webhook_settings_contract 2/2, DB-backed webhook_delivery_worker 1/1, RepositoryWebhookSettingsPage Vitest 9/9, make check, and make test."
+    ],
+    "needs_deeper_qa": [
+      "settings-004.qa_pass remains false: rerun focused repository-settings-hooks Playwright after local Docker/Postgres is stable; do not count the current failed browser run as pass evidence.",
+      "If dashboard_e2e_seed reports `pool timed out while waiting for an open connection`, check for a stopped/conflicting opengithub-postgres-test container, recreate the committed .env.test DB on :55433, and ensure ports 3015/3016 are owned by this worktree before rerunning.",
+      "After focused Playwright passes, run make test-e2e if the shared local verification stack remains stable."
+    ]
   }
 ]

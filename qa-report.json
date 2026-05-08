@@ -3260,5 +3260,69 @@
       "A separate axe-core scan was not run; accessibility evidence is from component and Playwright assertions for labels, disabled controls, no dead controls, and mobile no-overflow."
     ],
     "verified_at": "2026-05-08T05:45:00Z"
+  },
+  {
+    "feature_id": "settings-004",
+    "attempt": "qa-2026-05-08-clawhip",
+    "status": "blocked",
+    "sub_phases": {
+      "functional": {
+        "status": "blocked",
+        "notes": "Real DB-backed Rust contracts, focused component tests, make check, and make test passed. Focused Playwright runtime smoke did not pass because the local Docker/Postgres daemon repeatedly dropped during the Playwright webServer run, causing dashboard_e2e_seed to fail with `pool timed out while waiting for an open connection`. settings-004.qa_pass remains false until current focused browser evidence passes."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET/POST /api/repos/{owner}/{repo}/settings/hooks",
+          "GET/PATCH/DELETE /api/repos/{owner}/{repo}/settings/hooks/{hook_id}",
+          "POST /api/repos/{owner}/{repo}/settings/hooks/{hook_id}/pings",
+          "GET /api/repos/{owner}/{repo}/settings/hooks/{hook_id}/deliveries/{delivery_id}",
+          "POST /api/repos/{owner}/{repo}/settings/hooks/{hook_id}/deliveries/{delivery_id}/redeliver"
+        ],
+        "notes": "Focused .env.test DB-backed Rust repository_webhook_settings_contract passed 2/2 and webhook_delivery_worker passed 1/1 without self-skips before Docker instability began."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "admin_gate",
+          "secret_redaction",
+          "delivery_redaction",
+          "audit_redaction",
+          "editorial_banned_value_scan"
+        ],
+        "notes": "Focused Rust contracts cover admin-only access, private repository redaction, write-only secret behavior, delivery detail redaction, and audit redaction. Mandatory banned-value scan over web/src outside og CSS returned zero matches."
+      },
+      "accessibility": {
+        "status": "blocked",
+        "violations": [],
+        "notes": "Focused component coverage and the patched Playwright spec assert no dead controls/no horizontal overflow, but the current browser run did not reach the settings UI because the seeder could not acquire a DB connection after Docker/Postgres dropped."
+      }
+    },
+    "evidence": {
+      "timestamp": "2026-05-08T12:30:22Z",
+      "passed": [
+        "Initial git status --short --branch: qa/opengithub-settings-004-clawhip...origin/main",
+        "make doctor initially blocked by missing ignored .ralph-setup-done; created local sentinel, reran doctor green with Docker/test Postgres/.env.test healthy",
+        "Mandatory Editorial banned-value scan over web/src excluding og*.css returned zero matches",
+        "set -a; . ./.env.test; ./hack/cargo_locked.sh test -p opengithub-api --test repository_webhook_settings_contract -- --nocapture: 2 passed, no self-skip",
+        "set -a; . ./.env.test; ./hack/cargo_locked.sh test -p opengithub-api --test webhook_delivery_worker -- --nocapture: 1 passed, no self-skip",
+        "cd web && npx vitest run tests/repository-webhook-settings-page.test.tsx: 9 passed",
+        "cd web && npx biome check tests/e2e/repository-settings-hooks.spec.ts: passed",
+        "make check: Cargo check, web typecheck, Clippy, and Biome passed",
+        "make test: Cargo tests passed and web tests passed (655 passed)"
+      ],
+      "blocked_or_not_counted": [
+        "Focused Playwright repository-settings-hooks runtime smoke failed after the webServer started because dashboard_e2e_seed hit `pool timed out while waiting for an open connection`; subsequent checks showed the Docker daemon/test Postgres became unavailable intermittently.",
+        "make setup-local initially timed out waiting for Docker Desktop, later hit a stopped opengithub-postgres-test container-name conflict; removing the stale stopped container and rerunning setup-local restored doctor green temporarily.",
+        "A direct dashboard_e2e_seed passed once after container recreation, but the focused Playwright run still reproduced the DB pool timeout under webServer load, so browser/runtime QA is not accepted as pass evidence."
+      ]
+    },
+    "bugs_found": [
+      {
+        "severity": "test-infra",
+        "description": "repository-settings-hooks.spec.ts still used the legacy inline seeder/cookie helper, violating web/tests/e2e/AGENTS.md and bypassing the shared auth fixture contract."
+      }
+    ],
+    "fix_description": "Patched repository-settings-hooks.spec.ts to use the shared _fixtures/auth seed/signIn helpers and expectNoHorizontalOverflow guardrail. Product code was not changed."
   }
 ]
