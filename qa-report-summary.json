@@ -8,31 +8,31 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 40,
-    "features_failed": 1,
+    "features_passed": 41,
+    "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 36,
+      "pass": 38,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 33,
+      "pass": 34,
       "fail": 0,
-      "skip": 3
+      "skip": 4
     },
     "security": {
-      "pass": 33,
+      "pass": 35,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 0,
+      "pass": 1,
       "fail": 0,
-      "skip": 38
+      "skip": 39
     }
   },
   "features": [
@@ -275,10 +275,40 @@
       "feature_id": "dashboard-003",
       "description": "Build the dashboard feed with Following/For you filters and event-type filtering",
       "category": "interaction",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Fresh retest passed for dashboard feed Following/For you tabs, event-type filters, empty states, keyboard filter use, mobile no-overflow, and desktop sidebar/feed alignment. Broad `make check && make test` passed; focused Vitest dashboard onboarding passed 17/17; focused Playwright dashboard E2E passed 5/5 against a live dev server after stale Playwright webServer reuse caused localhost:3015 failures."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/dashboard",
+            "PUT /api/dashboard/feed-preferences",
+            "DELETE /api/dashboard/feed-preferences"
+          ],
+          "notes": "Focused DB-backed dashboard feed preference tests passed 3/3, covering valid tabs/event types, persisted preferences, reset behavior, and query-parameter overrides of saved defaults. Focused dashboard_summary tests passed 10/10 after username/login-based fixture expectations were aligned with current dashboard route contracts."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_boundary",
+            "permission_filtering",
+            "data_exposure",
+            "editorial_regression_scan"
+          ],
+          "notes": "Existing dashboard_summary coverage includes private watched feed events not leaking without repository permission. Editorial banned-token scan found no GitHub Primer imports, Octicon imports, or banned GitHub color tokens in web/src outside og CSS. No secrets were written to QA records."
+        },
+        "accessibility": {
+          "status": "skip",
+          "violations": [],
+          "notes": "No axe/screen-reader pass was run in this retest; Playwright covered keyboard filter opening/apply behavior, no dead controls, mobile no-horizontal-overflow, and desktop alignment."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "repo-001",

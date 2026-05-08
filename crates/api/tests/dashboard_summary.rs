@@ -54,14 +54,20 @@ fn app_config() -> AppConfig {
 }
 
 async fn create_user(pool: &PgPool, label: &str) -> User {
-    upsert_user_by_email(
+    let mut user = upsert_user_by_email(
         pool,
         &format!("{label}-{}@opengithub.local", Uuid::new_v4()),
         Some(label),
         None,
     )
     .await
-    .expect("user should upsert")
+    .expect("user should upsert");
+    user.username = sqlx::query_scalar("SELECT username FROM users WHERE id = $1")
+        .bind(user.id)
+        .fetch_one(pool)
+        .await
+        .expect("user username should reload");
+    user
 }
 
 async fn cookie_header(pool: &PgPool, config: &AppConfig, user: &User) -> String {
@@ -367,13 +373,14 @@ async fn dashboard_summary_returns_ranked_sidebar_repository_contract() {
         .as_array()
         .expect("top repositories should be an array");
     assert_eq!(items.len(), 2);
-    assert_eq!(items[0]["ownerLogin"], user.email);
+    let owner_login = user.username.as_deref().expect("user has username");
+    assert_eq!(items[0]["ownerLogin"], owner_login);
     assert_eq!(items[0]["name"], beta_name);
     assert_eq!(items[0]["visibility"], "private");
     assert_eq!(items[0]["primaryLanguage"], "TypeScript");
     assert_eq!(items[0]["primaryLanguageColor"], "#3178c6");
     assert_eq!(items[0]["lastVisitedAt"], "2026-04-30T12:00:00Z");
-    assert_eq!(items[0]["href"], format!("/{}/{}", user.email, beta_name));
+    assert_eq!(items[0]["href"], format!("/{owner_login}/{beta_name}"));
     assert_eq!(items[1]["name"], alpha_name);
     assert_eq!(items[1]["primaryLanguage"], "Rust");
     assert_eq!(body["topRepositories"]["total"], 3);
@@ -581,9 +588,10 @@ async fn dashboard_summary_populates_activity_assignments_and_review_requests() 
     assert!(recent_activity
         .iter()
         .all(|item| item["kind"] == "issue" || item["kind"] == "pull_request"));
+    let owner_login = user.username.as_deref().expect("user has username");
     assert_eq!(
         recent_activity[0]["repositoryName"],
-        format!("{}/{}", user.email, repo_name)
+        format!("{owner_login}/{repo_name}")
     );
     assert!(recent_activity.iter().any(|item| {
         item["kind"] == "issue"
@@ -591,11 +599,8 @@ async fn dashboard_summary_populates_activity_assignments_and_review_requests() 
             && item["number"] == assigned_issue.number
             && item["state"] == "open"
             && item["href"]
-                == format!(
-                    "/{}/{}/issues/{}",
-                    user.email, repo_name, assigned_issue.number
-                )
-            && item["actorLogin"] == "dashboard-feed"
+                == format!("/{owner_login}/{repo_name}/issues/{}", assigned_issue.number)
+            && item["actorLogin"] == owner_login
     }));
     assert!(recent_activity.iter().any(|item| {
         item["kind"] == "pull_request"
@@ -604,10 +609,13 @@ async fn dashboard_summary_populates_activity_assignments_and_review_requests() 
             && item["state"] == "open"
             && item["href"]
                 == format!(
-                    "/{}/{}/pull/{}",
-                    user.email, repo_name, review_request.pull_request.number
+                    "/{owner_login}/{repo_name}/pull/{}",
+                    review_request.pull_request.number
                 )
-            && item["actorLogin"] == "dashboard-review-author"
+            && item["actorLogin"] == reviewer
+                .username
+                .as_deref()
+                .expect("review author has username")
     }));
     assert_eq!(
         body["assignedIssues"][0]["title"],
@@ -616,10 +624,7 @@ async fn dashboard_summary_populates_activity_assignments_and_review_requests() 
     assert_eq!(body["assignedIssues"][0]["number"], assigned_issue.number);
     assert_eq!(
         body["assignedIssues"][0]["href"],
-        format!(
-            "/{}/{}/issues/{}",
-            user.email, repo_name, assigned_issue.number
-        )
+        format!("/{owner_login}/{repo_name}/issues/{}", assigned_issue.number)
     );
     assert_eq!(
         body["reviewRequests"][0]["title"],
@@ -632,8 +637,8 @@ async fn dashboard_summary_populates_activity_assignments_and_review_requests() 
     assert_eq!(
         body["reviewRequests"][0]["href"],
         format!(
-            "/{}/{}/pull/{}",
-            user.email, repo_name, review_request.pull_request.number
+            "/{owner_login}/{repo_name}/pull/{}",
+            review_request.pull_request.number
         )
     );
     assert!(!body.to_string().contains(&hidden_repo_name));
@@ -766,16 +771,17 @@ async fn dashboard_feed_following_reads_followed_and_watched_activity_without_pr
     assert_eq!(feed_events.len(), 2);
     assert_eq!(feed_events[0]["eventType"], "push");
     assert_eq!(feed_events[0]["title"], "Pushed dashboard feed changes");
+    let followed_login = followed_actor
+        .username
+        .as_deref()
+        .expect("followed actor has username");
     assert_eq!(
         feed_events[0]["repositoryName"],
-        format!("{}/{}", followed_actor.email, followed_repo_name)
+        format!("{followed_login}/{followed_repo_name}")
     );
     assert_eq!(
         feed_events[0]["actionSummary"],
-        format!(
-            "feed-followed pushed to {}/{}",
-            followed_actor.email, followed_repo_name
-        )
+        format!("{followed_login} pushed to {followed_login}/{followed_repo_name}")
     );
     assert_eq!(feed_events[1]["eventType"], "release");
     assert_eq!(feed_events[1]["title"], "Published v1.0.0");
