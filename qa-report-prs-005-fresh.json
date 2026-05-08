@@ -1,0 +1,20 @@
+{
+  "feature_id": "prs-005",
+  "status": "blocked",
+  "branch": "qa/opengithub-prs-005-fresh",
+  "base": "origin/main@93f9f7fc79a8659a7f09b9c8c2328522d7203f34",
+  "worktree": "/Users/jaeyunha/wt/opengithub/qa-prs-005-fresh",
+  "doctor": "pass: Docker daemon running, postgres-test container up, Postgres reachable on :55433, .env.test present, .env present",
+  "positive_evidence": [
+    "Focused API diff review contract passed: ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_diff_review_contract -- --nocapture (2 passed)",
+    "Focused web PR detail/files component suite passed: cd web && npx --no-install vitest run tests/repository-pull-request-detail.test.tsx (17 passed)",
+    "Unrelated full-suite web commit-detail failure was not reproducible: cd web && npx --no-install vitest run tests/repository-commit-detail-page.test.tsx (9 passed)",
+    "Editorial banned-value scan over web/src outside og CSS returned zero matches"
+  ],
+  "blocking_evidence": [
+    "make all failed in full web Vitest: 654/655 passed, 1 failed in tests/repository-commit-detail-page.test.tsx expecting 'Full SHA copied'; isolated rerun passed, so this is likely flaky/broad-suite interaction but make all is not green",
+    "make test-e2e did not produce an official pass before being stopped after roughly 15 minutes; Playwright artifacts showed multiple non-prs-005 failures/auth-wall contexts during the broad suite",
+    "Focused repository-pull-request-detail Playwright was also not accepted as pass; process stayed running over a minute and was killed during cleanup"
+  ],
+  "decision": "Do not flip prd.json prs-005.qa_pass. Runtime-heavy PR Files changed QA remains blocked until official broad validation is green or a fresh accepted focused E2E/browser pass is produced. No source files were changed."
+}
