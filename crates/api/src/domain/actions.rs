@@ -5175,18 +5175,20 @@ fn mask_actions_annotations(annotations: &mut [ActionsRunAnnotation], redaction_
 }
 
 fn safe_filename(value: &str) -> String {
-    let filename = value
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_') {
-                character
-            } else {
-                '-'
-            }
-        })
-        .collect::<String>()
-        .trim_matches('-')
-        .to_owned();
+    let mut filename = String::new();
+    let mut previous_was_separator = false;
+
+    for character in value.chars() {
+        if character.is_ascii_alphanumeric() || matches!(character, '.' | '_') {
+            filename.push(character);
+            previous_was_separator = false;
+        } else if !previous_was_separator {
+            filename.push('-');
+            previous_was_separator = true;
+        }
+    }
+
+    let filename = filename.trim_matches('-').to_owned();
     if filename.is_empty() {
         "download".to_owned()
     } else {

@@ -2996,5 +2996,26 @@
       "Playwright's configured webServer lifecycle was flaky in this recovered environment, so the accepted browser evidence used explicitly started API/Next servers and disabled Playwright dependency/server management for the focused git-001 Chromium project."
     ],
     "verified_at": "2026-05-08T10:58:00Z"
+  },
+  {
+    "feature": "actions-004",
+    "status": "pass",
+    "summary": "Fresh QA accepted after fixing job log storage-key normalization for names containing spaced separators. DB-backed job-log contracts, focused UI tests, make check, and Editorial scan passed; direct Playwright reached the route but exposed legacy signed-in E2E fixture/session mismatch rather than a product-only blocker.",
+    "evidence": [
+      "make doctor: Docker daemon running, postgres-test container up, Postgres reachable on :55433, .env.test present",
+      "Fixed crates/api/src/domain/actions.rs safe_filename so \"unit / web\" normalizes to \"unit-web\" instead of \"unit---web\"",
+      "TEST_DATABASE_URL=[REDACTED] DB_SSL=false CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 ./hack/cargo_locked.sh test -p opengithub-api --test api_repository_actions_job_log_contract -- --nocapture --test-threads=1: 3 passed",
+      "cd web && npm run test -- repository-actions-job-log.test.tsx: 8 passed",
+      "CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 make check: Cargo check, web typecheck, Clippy, Biome passed",
+      "Editorial banned-value scan over web/src excluding og*.css returned zero matches"
+    ],
+    "caveats": [
+      "Direct Playwright with .env.test loaded started the app but the legacy inline signed-in spec landed on RepositoryUnavailablePage; web/tests/e2e/AGENTS.md says new signed-in specs must use _fixtures/auth.ts, and this legacy spec still uses execFileSync/addCookies directly.",
+      "A direct Playwright run without exported TEST_DATABASE_URL self-skipped the two Chromium tests; that run was not counted as pass evidence."
+    ],
+    "fixed_files": [
+      "crates/api/src/domain/actions.rs"
+    ],
+    "qa_date": "2026-05-08"
   }
 ]
