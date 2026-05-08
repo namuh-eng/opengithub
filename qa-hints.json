@@ -8317,5 +8317,22 @@
       "CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 make check",
       "rg -n -e '#(0969da|1f883d|1a7f37|cf222e|82071e|f6f8fa|1f2328|d0d7de|59636e|f1aeb5|fff1f3)\\b|@primer/|Octicon' web/src/ --glob '!**/og*.css'"
     ]
+  },
+  {
+    "feature_id": "orgs-002",
+    "tests_written": [
+      "QA fixed and verified the org repository creator-permission regression: ordinary org members no longer receive direct owner/admin permission on member-created organization repositories.",
+      "Focused organization_repositories_contract passed 3/3 against the local .env.test Postgres database.",
+      "Focused organization_people_contract passed 2/2 against the local .env.test Postgres database.",
+      "Focused organization repository/people Vitest passed 2 files / 8 tests.",
+      "Focused organization-profile + organization-people Playwright passed 4/4 tests and regenerated orgs-002 repository/people screenshot evidence.",
+      "make check passed and make test passed with Cargo tests plus 655 web tests.",
+      "Editorial banned-value scan returned zero hits."
+    ],
+    "needs_deeper_qa": [
+      "Full make test-e2e was attempted but not accepted as pass evidence: after a db-wait-test timeout warning, the broad suite ended 63 passed / 94 failed due local Rust API rate limiting/health degradation across unrelated features.",
+      "Current qa_pass is based on scoped, current, non-self-skipped orgs-002 evidence plus broad make check/test, not supervisor acceptance.",
+      "Future stress coverage should exercise large organizations, many pages of repos/members, direct repository collaborators who are not org members, private orgs, hidden public members, long names/topics, and rate-limit-safe full-suite E2E isolation."
+    ]
   }
 ]

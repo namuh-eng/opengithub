@@ -3091,5 +3091,63 @@
       "Anonymous pinned repository navigation from public profile fell back to the owner profile because repository overview refused to fetch public repository data without a signed session."
     ],
     "fix_description": "Repository overview now calls getRepository(owner, repo) for all viewers; public repository visibility remains enforced by the server/API layer instead of hiding all anonymous repository overview data."
+  },
+  {
+    "feature_id": "orgs-002",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Scoped orgs-002 QA passed with real Postgres-backed Rust contracts, focused React/Vitest coverage, and focused Playwright browser smoke for organization repository and people surfaces. Full make test-e2e was attempted but is not counted as pass evidence because the run hit broad local API rate limiting/health degradation after a db-wait warning."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/orgs/{org}/repositories",
+          "GET /api/orgs/{org}/people"
+        ],
+        "notes": "Focused Rust contracts exercised visibility/privacy, filters, pagination, invalid query envelopes, private organization 404 behavior, member/admin/direct-collaborator visibility, and no secret/stack leakage. A scoped permission regression was fixed so member-created org repositories no longer grant direct owner/admin permission."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "visibility_redaction",
+          "permission_regression",
+          "data_exposure",
+          "editorial_banned_value_scan"
+        ],
+        "notes": "Anonymous/member/admin visibility paths passed focused contracts. The fixed permission path prevents Admin access filter leakage for ordinary member-created org repositories. Editorial banned-value scan returned zero hits in web/src outside og CSS."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright org profile smoke asserts no inert anchors, repository desktop/mobile no horizontal overflow, and org people desktop/mobile screenshots. Component tests cover disabled pagination boundaries and no-dead-control guardrails."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first: Docker running, postgres-test up, Postgres reachable on :55433, .env.test present; .env missing was doctor-marked nonblocking for tests.",
+      "Read prd.json orgs-002 and .qrspi/orgs-002/structure.md; inspected org repository/people Rust routes/domain, Next routes/components, navigation, component tests, and Playwright specs.",
+      "Ran focused Rust organization_repositories_contract; initial run failed organization_repository_creation_policy_and_base_permissions_are_enforced because member-created org repositories received owner/admin permission.",
+      "Fixed crates/api/src/domain/repositories.rs to grant direct owner permission only for user-owned repos and org owner/admin creators; ordinary organization members rely on organization base repository permissions.",
+      "Re-ran focused organization_repositories_contract: 3 passed, 0 failed.",
+      "Ran focused organization_people_contract: 2 passed, 0 failed.",
+      "Installed declared web dependencies with npm ci because web/node_modules was missing and focused Vitest could not load local vitest/config.",
+      "Ran focused Vitest: web/tests/organization-repositories-page.test.tsx and web/tests/organization-people-page.test.tsx passed 2 files / 8 tests.",
+      "Ran focused Playwright: organization-profile.spec.ts plus organization-people.spec.ts passed 4 tests, including orgs-002 repository URL filters/density/pagination/no-overflow screenshots and people list/admin smoke.",
+      "Ran mandatory Editorial banned-value scan with ripgrep -e: zero banned GitHub hex/Primer/Octicon hits in web/src outside og CSS.",
+      "Ran make check with CARGO_BUILD_JOBS=1: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran make test with CARGO_BUILD_JOBS=1: Cargo tests passed and web tests passed (655 passed).",
+      "Ran full make test-e2e with CARGO_BUILD_JOBS=1: not counted as pass evidence; db-wait-test warned that test Postgres did not become ready within 60s, then the broad suite ended with 63 passed and 94 failed after local Rust API rate limiting/health degradation."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "description": "Organization member-created repositories were granted direct owner permission, making can_admin_repository true and potentially exposing member-created repos in org Admin access filters.",
+        "fix": "Changed create_repository_with_bootstrap to skip direct owner grants for ordinary organization members while preserving grants for user-owned repositories and org owner/admin creators.",
+        "evidence": "Focused organization_repositories_contract now passes 3/3."
+      }
+    ],
+    "fix_description": "Fixed organization repository creator permission semantics; no UI changes were required."
   }
 ]

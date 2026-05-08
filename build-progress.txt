@@ -5535,3 +5535,10 @@
 - Verification passed: focused profile_overview_contract 2/2, profile_social_actions 3/3, focused profile Vitest 10/10, focused profile-overview Playwright 4/4, make check, and mandatory Editorial banned-value scan with zero matches.
 - Broad make test is still blocked by unrelated api_pull_request_create_contract fork-head 403 outside profiles-001; broad make test-e2e wrapper hung/buffered after a transient db-wait message, but direct DB readiness and focused profile Playwright passed.
 - Marked profiles-001.qa_pass=true.
+
+2026-05-08 - orgs-002 QA clawhip evidence
+- Ran `make doctor` first: Docker running, postgres-test up, Postgres reachable on :55433, `.env.test` present; `.env` missing was doctor-marked nonblocking for tests.
+- Found and fixed a scoped permission regression in `crates/api/src/domain/repositories.rs`: ordinary organization members creating org repositories no longer receive direct owner/admin permission, while user-owned repos and org owner/admin creators still do.
+- Evidence passed: focused `organization_repositories_contract` (3/3), focused `organization_people_contract` (2/2), focused Vitest for organization repository/people pages (2 files / 8 tests), focused Playwright `organization-profile.spec.ts` + `organization-people.spec.ts` (4/4), Editorial banned-value scan (zero hits), `make check`, and `make test` (Cargo tests plus 655 web tests).
+- Attempted full `make test-e2e`; not counted as pass evidence because `db-wait-test` warned that test Postgres did not become ready within 60s and the broad suite later ended 63 passed / 94 failed under local Rust API rate limiting/health degradation across unrelated features.
+- Set `orgs-002.qa_pass=true` based only on the scoped, current, non-self-skipped evidence above; this is worker QA evidence, not supervisor acceptance.
