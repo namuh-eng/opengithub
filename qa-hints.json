@@ -8343,5 +8343,19 @@
       "If dashboard_e2e_seed reports `pool timed out while waiting for an open connection`, check for a stopped/conflicting opengithub-postgres-test container, recreate the committed .env.test DB on :55433, and ensure ports 3015/3016 are owned by this worktree before rerunning.",
       "After focused Playwright passes, run make test-e2e if the shared local verification stack remains stable."
     ]
+  },
+  {
+    "feature_id": "settings-004",
+    "tests_written": [
+      "Rerun QA converted the prior blocked browser evidence into a pass: focused repository-settings-hooks Playwright passed against the committed .env.test DB on localhost:55433.",
+      "DB-backed repository_webhook_settings_contract 2/2 and webhook_delivery_worker 1/1 passed without self-skips.",
+      "Focused RepositoryWebhookSettingsPage Vitest passed 9/9, make check passed, live unauthenticated API/security probes returned 401 JSON envelopes, hostile-Origin OPTIONS did not echo CORS, and Editorial banned-value scan was clean.",
+      "settings-004.qa_pass is now true based on focused Rust/API/UI/browser evidence rather than broad-suite-only evidence."
+    ],
+    "needs_deeper_qa": [
+      "Broad make test currently fails in unrelated date-drift assertions outside settings-004; fix those baseline tests separately before relying on a full green make test.",
+      "Broad make test-e2e remains unsafe under concurrent settings QA lanes because fixed ports :3015/:3016 and the singleton opengithub-postgres-test container can be owned by another worktree; rerun broad E2E only with exclusive local QA resources.",
+      "Still valuable future depth: real external HTTPS receivers, TLS verification edge cases, receiver-side HMAC validation after secret rotation, retry backoff timing under 4xx/5xx/timeout, large body S3 storage, and concurrent admin edits/delete while queued."
+    ]
   }
 ]

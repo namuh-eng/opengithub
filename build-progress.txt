@@ -10503,3 +10503,8 @@
 - Set `settings-001.qa_pass=true` based on current non-self-skipped focused evidence; no product/test-fixture code changes were needed.
 
 [2026-05-08T12:30:22Z] settings-004 QA blocked in clawhip lane: real DB Rust contracts passed (repository_webhook_settings_contract 2/2, webhook_delivery_worker 1/1), focused webhook Vitest passed 9/9, Editorial banned-value scan clean, make check passed, and make test passed (Cargo + 655 web tests). Patched repository-settings-hooks Playwright to use shared auth fixture. Focused Playwright runtime smoke remains blocked by local Docker/Postgres instability: dashboard_e2e_seed failed with pool timed out while waiting for an open connection during webServer runs. prd settings-004.qa_pass intentionally remains false.
+
+2026-05-08T23:30:45Z - settings-004 QA rerun pass
+- Restored a manageable local test DB on the committed .env.test localhost:55433 path after the previous blocker was caused by a foreign/stale opengithub-postgres-test Compose owner.
+- Verification passed: make doctor green; repository_webhook_settings_contract 2/2; webhook_delivery_worker 1/1; focused webhook Vitest 9/9; focused Chromium repository-settings-hooks Playwright setup + 1/1 feature test; live unauthenticated webhook API probes and hostile-Origin CORS probe; mandatory Editorial banned-value scan; make check.
+- Broad make test was attempted: Cargo tests passed, but broad Vitest has unrelated date-drift failures outside settings-004. Broad make test-e2e was attempted but terminated as invalid because concurrent settings QA caused db-wait failure and Playwright reused another worktree server on :3015. Set settings-004.qa_pass=true based on durable focused evidence.
