@@ -150,6 +150,7 @@ async fn code_search_returns_facets_chips_counts_and_validation_errors() {
 
     let config = app_config();
     let owner = create_user(&pool, "code-search-owner").await;
+    let owner_login = owner.username.as_deref().unwrap_or(&owner.email);
     let outsider = create_user(&pool, "code-search-outsider").await;
     let owner_cookie = cookie_header(&pool, &config, &owner).await;
     let outsider_cookie = cookie_header(&pool, &config, &outsider).await;
@@ -347,7 +348,7 @@ async fn code_search_returns_facets_chips_counts_and_validation_errors() {
         grouped_rust_item["blob_href"],
         format!(
             "/{}/{}/blob/main/src/router.rs",
-            owner.email.replace('@', "%40"),
+            owner_login,
             public_repo.name
         )
     );
@@ -405,7 +406,7 @@ async fn code_search_returns_facets_chips_counts_and_validation_errors() {
         app.clone(),
         &format!(
             "/api/search?q={marker}+repo:{}/{}&type=code",
-            owner.email, public_repo.name
+            owner_login, public_repo.name
         ),
         Some(&owner_cookie),
     )

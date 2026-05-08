@@ -27,6 +27,10 @@ function seedSession(marker: string): SeededSession {
       cwd: "..",
       env: {
         ...process.env,
+        CARGO_BUILD_JOBS: process.env.CARGO_BUILD_JOBS ?? "1",
+        CARGO_TARGET_DIR:
+          process.env.CARGO_TARGET_DIR ??
+          `${process.env.HOME}/.cache/opengithub/cargo-target`,
         SEARCH_E2E_MARKER: marker,
         SESSION_COOKIE_NAME: "og_session",
       },
@@ -67,6 +71,7 @@ test.skip(
   !databaseUrl,
   "code search E2E needs TEST_DATABASE_URL or DATABASE_URL",
 );
+test.setTimeout(180_000);
 
 test("code search groups snippets, expands hidden matches, and opens line anchors", async ({
   page,

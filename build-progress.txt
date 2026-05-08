@@ -5535,3 +5535,10 @@
 - Verification passed: focused profile_overview_contract 2/2, profile_social_actions 3/3, focused profile Vitest 10/10, focused profile-overview Playwright 4/4, make check, and mandatory Editorial banned-value scan with zero matches.
 - Broad make test is still blocked by unrelated api_pull_request_create_contract fork-head 403 outside profiles-001; broad make test-e2e wrapper hung/buffered after a transient db-wait message, but direct DB readiness and focused profile Playwright passed.
 - Marked profiles-001.qa_pass=true.
+
+2026-05-08T05:50:28Z - search-003 independent QA pass
+- Ran make doctor first: local verification stack healthy on :55433; .env live-dev warning only.
+- Fixed scoped stale test-fixture expectations: code-search Rust contract now asserts canonical username blob href/repo qualifier rather than email-derived paths.
+- Hardened search-code Playwright timeout and preserved non-destructive seed execution with CARGO_BUILD_JOBS=1/shared target because make dev holds the cargo lock while the API server runs.
+- Evidence passed: search_code_results_contract real DB 1/1 non-skipped; focused search Vitest 19/19; full web Vitest 107 files/655 tests; focused signed-session search-code Playwright 4/4; make check; Editorial banned-value scan zero matches.
+- Broad make test blocked by unrelated api_pull_request_create_contract fork-head 403; broad make test-e2e attempted but db-wait/silent full-suite run was terminated. search-003.qa_pass=true is based on current focused non-self-skipped evidence, not supervisor acceptance.
