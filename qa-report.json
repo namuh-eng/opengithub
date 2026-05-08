@@ -2998,24 +2998,46 @@
     "verified_at": "2026-05-08T10:58:00Z"
   },
   {
-    "feature": "actions-004",
+    "feature_id": "orgs-001",
+    "attempt": 1,
     "status": "pass",
-    "summary": "Fresh QA accepted after fixing job log storage-key normalization for names containing spaced separators. DB-backed job-log contracts, focused UI tests, make check, and Editorial scan passed; direct Playwright reached the route but exposed legacy signed-in E2E fixture/session mismatch rather than a product-only blocker.",
-    "evidence": [
-      "make doctor: Docker daemon running, postgres-test container up, Postgres reachable on :55433, .env.test present",
-      "Fixed crates/api/src/domain/actions.rs safe_filename so \"unit / web\" normalizes to \"unit-web\" instead of \"unit---web\"",
-      "TEST_DATABASE_URL=[REDACTED] DB_SSL=false CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 ./hack/cargo_locked.sh test -p opengithub-api --test api_repository_actions_job_log_contract -- --nocapture --test-threads=1: 3 passed",
-      "cd web && npm run test -- repository-actions-job-log.test.tsx: 8 passed",
-      "CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 make check: Cargo check, web typecheck, Clippy, Biome passed",
-      "Editorial banned-value scan over web/src excluding og*.css returned zero matches"
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make doctor green after restoring the worktree setup sentinel from the canonical checkout; focused Rust organization_profile_contract passed 2/2; focused Vitest organization-profile-page passed 9/9; focused Playwright organization-profile.spec passed 3/3 with ORG_PROFILE_E2E=1 against the local test DB/dev server. Verified org header, verified domain/website, disabled Sponsor state, tab navigation, concrete repo links, people preview, language/topic panels, keyboard focus, no dead links, and no mobile horizontal overflow."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/orgs/{org}/profile"
+        ],
+        "notes": "Focused Rust contract covered public overview shape, JSON content-type, case-insensitive slug lookup, verified domains, follower state, pinned/repository previews, member-aware internal/private visibility, and private-org anonymous hiding."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "privacy_boundary",
+          "member_visibility",
+          "private_org_hiding",
+          "data_exposure"
+        ],
+        "notes": "organization_profile_contract verified anonymous users cannot see private organizations/private pinned repos, public users respect public_members_visible redaction, and members can see internal/private member-aware data. No stack traces or raw secret data were observed in the focused API/browser failures."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright covered organization navigation landmark, keyboard focusability, disabled Sponsor controls, no dead anchors, and no horizontal overflow at 390px mobile."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first; initial fresh worktree lacked .ralph-setup-done, then symlinked the canonical setup sentinel and reran make doctor green: Docker up, postgres-test up, Postgres reachable on :55433, .env.test present.",
+      "Ran ./hack/cargo_locked.sh test -p opengithub-api --test organization_profile_contract: 2 passed.",
+      "Ran cd web && npm ci because this fresh worktree had no node_modules, then npm test -- organization-profile-page.test.tsx: 9 passed.",
+      "Initial direct focused Playwright without ORG_PROFILE_E2E reproduced a skeleton fallback in the first spec, proving the scene env is required. Reran with ORG_PROFILE_E2E=1 against the local dev server and test DB: 3 passed.",
+      "Ran make check: Cargo check, web typecheck, Clippy, and Biome all passed.",
+      "Kept runtime/server artifacts out of git; no source product fix was required."
     ],
-    "caveats": [
-      "Direct Playwright with .env.test loaded started the app but the legacy inline signed-in spec landed on RepositoryUnavailablePage; web/tests/e2e/AGENTS.md says new signed-in specs must use _fixtures/auth.ts, and this legacy spec still uses execFileSync/addCookies directly.",
-      "A direct Playwright run without exported TEST_DATABASE_URL self-skipped the two Chromium tests; that run was not counted as pass evidence."
-    ],
-    "fixed_files": [
-      "crates/api/src/domain/actions.rs"
-    ],
-    "qa_date": "2026-05-08"
+    "bugs_found": [],
+    "fix_description": "No product code fix needed; accepted orgs-001 from fresh focused QA evidence and corrected QA bookkeeping only."
   }
 ]
