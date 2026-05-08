@@ -5520,3 +5520,11 @@
 - Focused web component coverage passed: `npm run test -- user-profile-repositories.test.tsx` (4 tests passed).
 - Focused Playwright passed with `.env.test` loaded: `npm run test:e2e -- profile-repositories.spec.ts` (setup + 3 Chromium tests passed) covering repositories, stars, URL-backed filters, clear controls, mobile overflow, screenshots, and dead-link checks. The run logged an unrelated repository tree `RepositoryFileFinder` maximum-update-depth warning after clicking a repo row; profile assertions still passed.
 - `make check` passed and the mandatory Editorial banned-value scan over `web/src` outside `og*.css` returned zero matches. Marked `profiles-002.qa_pass=true`.
+
+2026-05-08 - orgs-001 fresh QA acceptance
+
+- Fresh QA worktree: `/Users/jaeyunha/wt/opengithub/qa-orgs-001-fresh` on branch `qa/opengithub-orgs-001-fresh`.
+- `make doctor` is green after restoring the shared setup sentinel: Docker up, `opengithub-postgres-test` healthy on :55433, `.env.test` present.
+- Verification passed: `./hack/cargo_locked.sh test -p opengithub-api --test organization_profile_contract` (2/2), `cd web && npm test -- organization-profile-page.test.tsx` (9/9), `ORG_PROFILE_E2E=1 npx playwright test tests/e2e/organization-profile.spec.ts --project=chromium` (3/3), and `make check`.
+- Focused browser/API evidence covered verified org header, verified domain/website links, disabled Sponsor state, org tab navigation, concrete pinned/repository links, people preview, language/topic panels, keyboard focusability, no dead anchors, mobile no-overflow, public/member/private visibility boundaries, and JSON API contract.
+- Marked `orgs-001.qa_pass=true` in `prd.json` and added `orgs-001` pass evidence to `qa-report.json`.

@@ -2996,5 +2996,48 @@
       "Playwright's configured webServer lifecycle was flaky in this recovered environment, so the accepted browser evidence used explicitly started API/Next servers and disabled Playwright dependency/server management for the focused git-001 Chromium project."
     ],
     "verified_at": "2026-05-08T10:58:00Z"
+  },
+  {
+    "feature_id": "orgs-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make doctor green after restoring the worktree setup sentinel from the canonical checkout; focused Rust organization_profile_contract passed 2/2; focused Vitest organization-profile-page passed 9/9; focused Playwright organization-profile.spec passed 3/3 with ORG_PROFILE_E2E=1 against the local test DB/dev server. Verified org header, verified domain/website, disabled Sponsor state, tab navigation, concrete repo links, people preview, language/topic panels, keyboard focus, no dead links, and no mobile horizontal overflow."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/orgs/{org}/profile"
+        ],
+        "notes": "Focused Rust contract covered public overview shape, JSON content-type, case-insensitive slug lookup, verified domains, follower state, pinned/repository previews, member-aware internal/private visibility, and private-org anonymous hiding."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "privacy_boundary",
+          "member_visibility",
+          "private_org_hiding",
+          "data_exposure"
+        ],
+        "notes": "organization_profile_contract verified anonymous users cannot see private organizations/private pinned repos, public users respect public_members_visible redaction, and members can see internal/private member-aware data. No stack traces or raw secret data were observed in the focused API/browser failures."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright covered organization navigation landmark, keyboard focusability, disabled Sponsor controls, no dead anchors, and no horizontal overflow at 390px mobile."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first; initial fresh worktree lacked .ralph-setup-done, then symlinked the canonical setup sentinel and reran make doctor green: Docker up, postgres-test up, Postgres reachable on :55433, .env.test present.",
+      "Ran ./hack/cargo_locked.sh test -p opengithub-api --test organization_profile_contract: 2 passed.",
+      "Ran cd web && npm ci because this fresh worktree had no node_modules, then npm test -- organization-profile-page.test.tsx: 9 passed.",
+      "Initial direct focused Playwright without ORG_PROFILE_E2E reproduced a skeleton fallback in the first spec, proving the scene env is required. Reran with ORG_PROFILE_E2E=1 against the local dev server and test DB: 3 passed.",
+      "Ran make check: Cargo check, web typecheck, Clippy, and Biome all passed.",
+      "Kept runtime/server artifacts out of git; no source product fix was required."
+    ],
+    "bugs_found": [],
+    "fix_description": "No product code fix needed; accepted orgs-001 from fresh focused QA evidence and corrected QA bookkeeping only."
   }
 ]
