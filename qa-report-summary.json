@@ -1275,10 +1275,29 @@
       "feature_id": "profiles-001",
       "description": "Render public user profile overview with identity card, follow/block/report cont",
       "category": "crud",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Focused DB/browser profile QA passed; full make test-e2e .last-run status passed."
+        },
+        "api_contract": {
+          "status": "pass",
+          "notes": "profile_overview_contract and profile_social_actions passed DB-backed contracts."
+        },
+        "security": {
+          "status": "pass",
+          "notes": "Signed-out action login gate, private redaction, and data exposure guardrails covered."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Contribution labels, no dead anchors, mobile no-overflow, screenshots, and Editorial banned-value scan covered."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "profiles-002",
@@ -1947,7 +1966,7 @@
     },
     {
       "feature_id": "search-007",
-      "description": "File finder widget — keyboard-driven `t` shortcut on a repo to fuzzy-find a file",
+      "description": "File finder widget \u2014 keyboard-driven `t` shortcut on a repo to fuzzy-find a file",
       "category": "feature",
       "qa_pass": false,
       "attempts": 0,
@@ -1956,7 +1975,7 @@
     },
     {
       "feature_id": "security-002",
-      "description": "Active web sessions panel — list devices, locations, signed-in time; revoke indi",
+      "description": "Active web sessions panel \u2014 list devices, locations, signed-in time; revoke indi",
       "category": "feature",
       "qa_pass": true,
       "attempts": 1,
@@ -1996,7 +2015,7 @@
     },
     {
       "feature_id": "security-003",
-      "description": "Security log — append-only audit trail of security-relevant actions (sign-in, si",
+      "description": "Security log \u2014 append-only audit trail of security-relevant actions (sign-in, si",
       "category": "feature",
       "qa_pass": true,
       "attempts": 1,
@@ -2035,7 +2054,7 @@
     },
     {
       "feature_id": "globalpulls-001",
-      "description": "Global pull-request dashboard at /pulls — every PR the signed-in user opened, wa",
+      "description": "Global pull-request dashboard at /pulls \u2014 every PR the signed-in user opened, wa",
       "category": "feature",
       "qa_pass": true,
       "attempts": 1,
@@ -2072,7 +2091,7 @@
     },
     {
       "feature_id": "globalissues-001",
-      "description": "Global issue dashboard at /issues — every issue the signed-in user opened, was a",
+      "description": "Global issue dashboard at /issues \u2014 every issue the signed-in user opened, was a",
       "category": "feature",
       "qa_pass": true,
       "attempts": 1,
@@ -2294,7 +2313,7 @@
     },
     {
       "feature_id": "gist-001",
-      "description": "Gists — single-file or multi-file snippets at /gist/<id> with their own git hist",
+      "description": "Gists \u2014 single-file or multi-file snippets at /gist/<id> with their own git hist",
       "category": "feature",
       "qa_pass": false,
       "attempts": 0,
@@ -2303,7 +2322,7 @@
     },
     {
       "feature_id": "ai-001",
-      "description": "AI surface — repository auto-summary card, AI-generated PR summary + suggested r",
+      "description": "AI surface \u2014 repository auto-summary card, AI-generated PR summary + suggested r",
       "category": "feature",
       "qa_pass": false,
       "attempts": 2,

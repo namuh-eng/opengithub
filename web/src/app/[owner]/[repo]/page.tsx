@@ -23,10 +23,7 @@ export default async function RepositoryOverviewPage({
   ]);
   const ownerLogin = decodeURIComponent(owner);
   const repositoryName = decodeURIComponent(repo);
-  const repository =
-    session.authenticated && session.user
-      ? await getRepository(ownerLogin, repositoryName)
-      : null;
+  const repository = await getRepository(ownerLogin, repositoryName);
   const aiSummary = repository
     ? await getRepositoryAiSummary(ownerLogin, repositoryName)
     : null;

@@ -5513,6 +5513,7 @@
 2026-05-08 git-001 QA fresh pass: make doctor green; git_transport 8/8 and git_transport_security 3/3 passed via hack/cargo_locked.sh/shared Cargo target; make check passed; api-docs timeout in broad make test reproduced as standalone pass; focused Chromium git-transport Playwright passed against explicit local API/Next servers. Set git-001 qa_pass=true.
 
 
+
 2026-05-08 - profiles-002 QA fresh pass
 
 - Fresh QA ran in `/Users/jaeyunha/wt/opengithub/qa-profiles-002-fresh` from `origin/main` 8d20229b after `make doctor` was green for Docker, the test Postgres on :55433, `.env.test`, and `.env`.
@@ -5520,3 +5521,9 @@
 - Focused web component coverage passed: `npm run test -- user-profile-repositories.test.tsx` (4 tests passed).
 - Focused Playwright passed with `.env.test` loaded: `npm run test:e2e -- profile-repositories.spec.ts` (setup + 3 Chromium tests passed) covering repositories, stars, URL-backed filters, clear controls, mobile overflow, screenshots, and dead-link checks. The run logged an unrelated repository tree `RepositoryFileFinder` maximum-update-depth warning after clicking a repo row; profile assertions still passed.
 - `make check` passed and the mandatory Editorial banned-value scan over `web/src` outside `og*.css` returned zero matches. Marked `profiles-002.qa_pass=true`.
+2026-05-08T02:52:29Z - profiles-001 fresh QA pass
+- Fresh QA ran in isolated worktree qa/opengithub-profiles-001-fresh from origin/main 8d20229b after make doctor reported the local verification stack healthy on :55433.
+- Found and fixed a real public-profile regression: anonymous clicks on pinned repository cards landed on the owner profile because the repository overview page refused to fetch public repositories without a signed session.
+- Verification passed: focused profile_overview_contract 2/2, profile_social_actions 3/3, focused profile Vitest 10/10, focused profile-overview Playwright 4/4, make check, and mandatory Editorial banned-value scan with zero matches.
+- Broad make test is still blocked by unrelated api_pull_request_create_contract fork-head 403 outside profiles-001; broad make test-e2e wrapper hung/buffered after a transient db-wait message, but direct DB readiness and focused profile Playwright passed.
+- Marked profiles-001.qa_pass=true.

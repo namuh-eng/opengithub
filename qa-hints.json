@@ -8316,5 +8316,19 @@
       "Playwright emitted a console Maximum update depth warning after clicking through to a repository tree route in RepositoryFileFinder/RepositoryCodeToolbar; the profiles-002 assertions still passed, but repo tree UI should be tracked under the repo/tree slice rather than this profile tab QA.",
       "Broad make test was not rerun for the entire repository in this lane because the scoped PRD acceptance was covered by focused DB-backed Rust, focused component, focused E2E, and make check after prior disk-pressure incidents."
     ]
+  },
+  {
+    "feature_id": "profiles-001",
+    "tests_written": [
+      "Fresh QA ran in qa/opengithub-profiles-001-fresh from origin/main 8d20229b after make doctor reported Docker, test Postgres :55433, and .env.test healthy.",
+      "Found and fixed an anonymous public-profile navigation regression: pinned repository cards opened the owner profile fallback because the repository overview page refused to fetch public repositories without a signed session.",
+      "Focused DB-backed Rust contracts passed via the shared cargo_locked target: profile_overview_contract 2/2 and profile_social_actions 3/3.",
+      "Focused profile Vitest passed 35/35 across user/organization profile tests; make check passed; make test passed with Cargo tests and 655 web tests.",
+      "Focused Playwright passed with .env.test loaded: profile-overview.spec.ts setup + 3 Chromium tests passed, covering public overview, pinned navigation, tabs/year navigation, follow/login/report/block, private redaction, screenshots, no dead anchors, and mobile no-overflow.",
+      "Full make test-e2e wrapper completed with web/test-results/.last-run.json status=passed; mandatory Editorial banned-value scan over web/src outside og*.css returned zero matches."
+    ],
+    "needs_deeper_qa": [
+      "Future profile work should migrate legacy profile-overview.spec.ts off inline execFileSync seeding and onto the shared e2e auth fixture contract, but this QA lane did not weaken or rewrite tests."
+    ]
   }
 ]
