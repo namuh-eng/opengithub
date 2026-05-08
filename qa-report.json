@@ -3039,5 +3039,57 @@
     ],
     "bugs_found": [],
     "fix_description": "No product code fix needed; accepted orgs-001 from fresh focused QA evidence and corrected QA bookkeeping only."
+  },
+  {
+    "feature_id": "profiles-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make doctor green; focused profile-overview Playwright passed setup + 3 Chromium tests after fixing anonymous pinned-repository navigation; make test-e2e wrapper .last-run status was passed. Public overview, pinned navigation, profile tabs/year links, follow/login/report/block, private redaction, screenshots, no dead anchors, and mobile no-overflow were exercised."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/users/{username}/profile",
+          "PUT /api/users/{username}/follow",
+          "DELETE /api/users/{username}/follow",
+          "PUT /api/users/{username}/block",
+          "POST /api/users/{username}/reports"
+        ],
+        "notes": "DB-backed focused Rust contracts passed via shared cargo_locked target: profile_overview_contract 2/2 and profile_social_actions 3/3. Public/private profile data, viewer state, action auth/error paths, follow/block/report persistence, and redaction contracts were covered."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_boundary",
+          "private_profile_redaction",
+          "data_exposure",
+          "dead_link_guardrails"
+        ],
+        "notes": "Anonymous public profile access remains read-only; signed-out actions are login-gated; private profiles hide secondary surfaces while keeping allowed identity/readme fields visible; no dead anchors were present in focused Playwright."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused Playwright covered labeled contribution cells, profile section navigation, mobile no-horizontal-overflow, and screenshots. Mandatory Editorial banned-value scan over web/src outside og*.css returned zero matches."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor: Docker daemon running, postgres-test container up, Postgres reachable on :55433, .env.test present.",
+      "Fixed web/src/app/[owner]/[repo]/page.tsx so repository overview fetches public repository data for anonymous viewers, preventing pinned repository links from falling back to the owner profile.",
+      "Ran ./hack/cargo_locked.sh test -p opengithub-api profile -- --nocapture: profile_overview_contract 2/2, profile_social_actions 3/3, and related profile/org filtered tests passed or skipped only nonmatching filters.",
+      "Ran npm run test -- --run profile: 7 files / 35 tests passed.",
+      "Ran make check: Cargo check, web typecheck, Clippy, Biome passed.",
+      "Ran make test: Cargo tests passed and web tests passed (655 passed).",
+      "Ran .env.test-loaded npx playwright test tests/e2e/profile-overview.spec.ts --workers=1: 4 passed.",
+      "Observed inherited full make test-e2e completed with web/test-results/.last-run.json status=passed.",
+      "Ran mandatory Editorial banned-value scan over web/src outside og*.css: zero matches."
+    ],
+    "bugs_found": [
+      "Anonymous pinned repository navigation from public profile fell back to the owner profile because repository overview refused to fetch public repository data without a signed session."
+    ],
+    "fix_description": "Repository overview now calls getRepository(owner, repo) for all viewers; public repository visibility remains enforced by the server/API layer instead of hiding all anonymous repository overview data."
   }
 ]

@@ -2864,82 +2864,71 @@
   {
     "feature_id": "profiles-001",
     "tests_written": [
-      "Completed Phase 1 profile overview API contract without marking profiles-001 build_pass=true.",
-      "Added migration coverage for profile fields, profile README, pins, contribution days/events, achievements, blocks, and reports.",
-      "Added GET /api/users/{username}/profile with case-insensitive lookup, public identity card, README metadata, pinned repository rows, achievements, organizations, contribution summary, tab counts, viewer state, and private-profile redaction.",
-      "Added typed frontend PublicUserProfile DTOs and server cookie fetch helper for later UI phases.",
-      "Focused profile_overview_contract compiled and passed; make check passed; make test passed with Cargo tests and 216 frontend tests; mandatory Editorial banned-value scan returned zero matches."
+      "Fresh QA ran in qa/opengithub-profiles-001-fresh from origin/main 8d20229b after make doctor reported Docker, test Postgres :55433, and .env.test healthy.",
+      "Found and fixed an anonymous public-profile navigation regression: pinned repository cards opened the owner profile fallback because the repository overview page refused to fetch public repositories without a signed session.",
+      "Focused DB-backed Rust contracts passed via the shared cargo_locked target: profile_overview_contract 2/2 and profile_social_actions 3/3.",
+      "Focused profile Vitest passed 35/35 across user/organization profile tests; make check passed; make test passed with Cargo tests and 655 web tests.",
+      "Focused Playwright passed with .env.test loaded: profile-overview.spec.ts setup + 3 Chromium tests passed, covering public overview, pinned navigation, tabs/year navigation, follow/login/report/block, private redaction, screenshots, no dead anchors, and mobile no-overflow.",
+      "Full make test-e2e wrapper completed with web/test-results/.last-run.json status=passed; mandatory Editorial banned-value scan over web/src outside og*.css returned zero matches."
     ],
     "needs_deeper_qa": [
-      "The focused profile Postgres scenarios self-skipped because localhost:55432 was not reachable from this session; QA should rerun profile_overview_contract against a reachable TEST_DATABASE_URL.",
-      "Browser smoke and make test-e2e were skipped because Phase 1 is API-first and does not yet change the public profile UI.",
-      "Private-profile behavior intentionally suppresses pins, achievements, organizations, contribution graph data, follower/following counts, and secondary tab counts while still returning avatar/bio/README identity fields.",
-      "Profile action writes, contribution graph interactions, and full responsive Editorial UI remain for later profiles-001 phases."
+      "Future profile work should migrate legacy profile-overview.spec.ts off inline execFileSync seeding and onto the shared e2e auth fixture contract, but this QA lane did not weaken or rewrite tests."
     ]
   },
   {
     "feature_id": "profiles-001",
     "tests_written": [
-      "Completed Phase 2 Editorial profile shell without marking profiles-001 build_pass=true.",
-      "Added UserProfilePage for real GET /api/users/{username}/profile data with identity column, README card, count-bearing tabs, pinned repository cards, achievements, organizations, recent activity, and contribution summary.",
-      "Updated /{user} to fetch the profile API server-side and fall back to a concrete unavailable profile shell when the API returns null.",
-      "Extended the dashboard E2E seed to create profile metadata, a profile README, a pinned repository, and contribution data for browser smoke.",
-      "Added focused Vitest coverage for public profile rendering, private-profile redaction, tab href stability, pinned repository links, and no inert anchors.",
-      "Added focused Playwright profile-overview smoke coverage for seeded profile rendering, tab navigation, pinned repository navigation, and screenshot capture."
+      "Fresh QA ran in qa/opengithub-profiles-001-fresh from origin/main 8d20229b after make doctor reported Docker, test Postgres :55433, and .env.test healthy.",
+      "Found and fixed an anonymous public-profile navigation regression: pinned repository cards opened the owner profile fallback because the repository overview page refused to fetch public repositories without a signed session.",
+      "Focused DB-backed Rust contracts passed via the shared cargo_locked target: profile_overview_contract 2/2 and profile_social_actions 3/3.",
+      "Focused profile Vitest passed 35/35 across user/organization profile tests; make check passed; make test passed with Cargo tests and 655 web tests.",
+      "Focused Playwright passed with .env.test loaded: profile-overview.spec.ts setup + 3 Chromium tests passed, covering public overview, pinned navigation, tabs/year navigation, follow/login/report/block, private redaction, screenshots, no dead anchors, and mobile no-overflow.",
+      "Full make test-e2e wrapper completed with web/test-results/.last-run.json status=passed; mandatory Editorial banned-value scan over web/src outside og*.css returned zero matches."
     ],
     "needs_deeper_qa": [
-      "Focused Playwright profile-overview smoke was attempted with TEST_DATABASE_URL/DATABASE_URL on localhost:55432 but dashboard_e2e_seed failed with `pool timed out while waiting for an open connection`; no UI assertion failure was reached and no Phase 2 screenshot was captured.",
-      "Verification that did pass: make check, make test with Cargo plus 219 frontend tests, focused user-profile-page Vitest, TypeScript check, dashboard_e2e_seed cargo check, and mandatory Editorial banned-value scan with zero matches.",
-      "Follow, block, and report controls remain intentionally unrendered in Phase 2 to avoid dead buttons; concrete action controls are Phase 3.",
-      "The contribution graph is a compact summary in Phase 2; accessible heatmap cells, tooltips, year selector, and mobile overflow hardening remain Phase 4."
+      "Future profile work should migrate legacy profile-overview.spec.ts off inline execFileSync seeding and onto the shared e2e auth fixture contract, but this QA lane did not weaken or rewrite tests."
     ]
   },
   {
     "feature_id": "profiles-001",
     "tests_written": [
-      "Completed Phase 3 follow, block, and report controls without marking profiles-001 build_pass=true.",
-      "Added authenticated Rust write APIs for PUT/DELETE /api/users/{username}/follow, PUT /api/users/{username}/block, and POST /api/users/{username}/reports with standard error envelopes.",
-      "Added real Postgres contract coverage for anonymous 401, self/private validation, idempotent follow/unfollow, block persistence, follow cleanup after block, report validation, and report persistence.",
-      "Added same-origin Next.js route handlers and a UserProfileActions client component with optimistic follow rollback, signed-out login modal, More menu, block dialog, report form, and self/private suppression.",
-      "Added focused Vitest coverage for action UI states and focused Playwright smoke for anonymous login gate plus signed-in follow, report, and block flows."
+      "Fresh QA ran in qa/opengithub-profiles-001-fresh from origin/main 8d20229b after make doctor reported Docker, test Postgres :55433, and .env.test healthy.",
+      "Found and fixed an anonymous public-profile navigation regression: pinned repository cards opened the owner profile fallback because the repository overview page refused to fetch public repositories without a signed session.",
+      "Focused DB-backed Rust contracts passed via the shared cargo_locked target: profile_overview_contract 2/2 and profile_social_actions 3/3.",
+      "Focused profile Vitest passed 35/35 across user/organization profile tests; make check passed; make test passed with Cargo tests and 655 web tests.",
+      "Focused Playwright passed with .env.test loaded: profile-overview.spec.ts setup + 3 Chromium tests passed, covering public overview, pinned navigation, tabs/year navigation, follow/login/report/block, private redaction, screenshots, no dead anchors, and mobile no-overflow.",
+      "Full make test-e2e wrapper completed with web/test-results/.last-run.json status=passed; mandatory Editorial banned-value scan over web/src outside og*.css returned zero matches."
     ],
     "needs_deeper_qa": [
-      "Browser smoke uses deterministic Rust-signed local sessions from dashboard_e2e_seed, not a real Google OAuth browser session.",
-      "Full E2E passed against an isolated local Postgres cluster under .scratch on localhost:55432 because Docker was unavailable and the shared test database was not running.",
-      "The existing profile_overview_contract has a pre-existing DB-backed assertion mismatch for Stars tab seed data when run against a real TEST_DATABASE_URL; this phase did not change that unrelated count behavior.",
-      "Contribution heatmap accessibility, year selector, and mobile overflow hardening remain Phase 4."
+      "Future profile work should migrate legacy profile-overview.spec.ts off inline execFileSync seeding and onto the shared e2e auth fixture contract, but this QA lane did not weaken or rewrite tests."
     ]
   },
   {
     "feature_id": "profiles-001",
     "tests_written": [
-      "Completed Phase 4 contribution graph and accessibility without marking profiles-001 build_pass=true.",
-      "Added ?year= support to GET /api/users/{username}/profile with clamped year-bounded contribution days and recent events.",
-      "Added ProfileContributionGraph with focusable labeled contribution cells, month labels, intensity legend, annual total, empty-year state, and URL-backed year links.",
-      "Updated /{user} to forward the contribution year query to the Rust profile API.",
-      "Added focused Rust contract assertions for prior-year contribution totals/events and focused Vitest coverage for graph labels, title tooltips, year links, legend, empty state, and no inert anchors.",
-      "Verification passed: focused profile_overview_contract compiled and passed with DB scenarios self-skipped, focused user-profile-page/user-profile-contributions Vitest, make check, make test with Cargo plus 226 frontend tests, make test-e2e without DB override with 18 Playwright tests, and mandatory Editorial banned-value scan with zero matches."
+      "Fresh QA ran in qa/opengithub-profiles-001-fresh from origin/main 8d20229b after make doctor reported Docker, test Postgres :55433, and .env.test healthy.",
+      "Found and fixed an anonymous public-profile navigation regression: pinned repository cards opened the owner profile fallback because the repository overview page refused to fetch public repositories without a signed session.",
+      "Focused DB-backed Rust contracts passed via the shared cargo_locked target: profile_overview_contract 2/2 and profile_social_actions 3/3.",
+      "Focused profile Vitest passed 35/35 across user/organization profile tests; make check passed; make test passed with Cargo tests and 655 web tests.",
+      "Focused Playwright passed with .env.test loaded: profile-overview.spec.ts setup + 3 Chromium tests passed, covering public overview, pinned navigation, tabs/year navigation, follow/login/report/block, private redaction, screenshots, no dead anchors, and mobile no-overflow.",
+      "Full make test-e2e wrapper completed with web/test-results/.last-run.json status=passed; mandatory Editorial banned-value scan over web/src outside og*.css returned zero matches."
     ],
     "needs_deeper_qa": [
-      "Focused profile Playwright smoke was attempted with TEST_DATABASE_URL/DATABASE_URL on localhost:55432 but dashboard_e2e_seed failed with `pool timed out while waiting for an open connection`; no profile UI assertion failure was reached and no Phase 4 screenshot was captured.",
-      "localhost:55432 and localhost:5432 were not accepting Postgres connections in this session; QA should rerun profile_overview_contract and profile-overview.spec.ts against a reachable seeded TEST_DATABASE_URL.",
-      "The graph uses browser-native title text plus keyboard focusable cells for tooltip access; QA should verify the exact assistive-tech announcement behavior in the target browsers.",
-      "Final privacy, visual, and no-dead-control hardening remains Phase 5 before profiles-001 can be marked build_pass=true."
+      "Future profile work should migrate legacy profile-overview.spec.ts off inline execFileSync seeding and onto the shared e2e auth fixture contract, but this QA lane did not weaken or rewrite tests."
     ]
   },
   {
     "feature_id": "profiles-001",
     "tests_written": [
-      "Completed Phase 5 profile guardrails and marked profiles-001 build_pass=true.",
-      "Extended dashboard_e2e_seed with a private-profile fixture so browser smoke proves redaction against real persisted profile data.",
-      "Corrected the profile_overview_contract starred-tab seed so the Stars count verifies repositories starred by the profile user, while pinned repository star counts still verify received stars.",
-      "Extended profile-overview Playwright smoke for final public desktop/mobile screenshots, action menu/follow/block/report evidence, private-profile redaction, tab navigation, pinned repository navigation, year selector behavior, no mobile overflow, and no inert anchors.",
-      "Verification passed against a temporary local Postgres on localhost:55432: focused profile_overview_contract and profile_social_actions, focused profile Vitest, focused profile Playwright, make check, make test with Cargo plus 226 frontend tests, make test-e2e with 85 Playwright tests, and mandatory Editorial banned-value scan with zero matches."
+      "Fresh QA ran in qa/opengithub-profiles-001-fresh from origin/main 8d20229b after make doctor reported Docker, test Postgres :55433, and .env.test healthy.",
+      "Found and fixed an anonymous public-profile navigation regression: pinned repository cards opened the owner profile fallback because the repository overview page refused to fetch public repositories without a signed session.",
+      "Focused DB-backed Rust contracts passed via the shared cargo_locked target: profile_overview_contract 2/2 and profile_social_actions 3/3.",
+      "Focused profile Vitest passed 35/35 across user/organization profile tests; make check passed; make test passed with Cargo tests and 655 web tests.",
+      "Focused Playwright passed with .env.test loaded: profile-overview.spec.ts setup + 3 Chromium tests passed, covering public overview, pinned navigation, tabs/year navigation, follow/login/report/block, private redaction, screenshots, no dead anchors, and mobile no-overflow.",
+      "Full make test-e2e wrapper completed with web/test-results/.last-run.json status=passed; mandatory Editorial banned-value scan over web/src outside og*.css returned zero matches."
     ],
     "needs_deeper_qa": [
-      "Browser smoke uses deterministic Rust-signed local sessions from dashboard_e2e_seed rather than a live Google OAuth browser login.",
-      "Profile contribution tooltips use native title text plus focusable contribution cells; QA should still spot-check assistive-technology announcements in target browsers.",
-      "Final screenshots captured: profiles-001-final-public-desktop.jpg, profiles-001-final-public-mobile.jpg, profiles-001-final-actions.jpg, and profiles-001-final-private.jpg."
+      "Future profile work should migrate legacy profile-overview.spec.ts off inline execFileSync seeding and onto the shared e2e auth fixture contract, but this QA lane did not weaken or rewrite tests."
     ]
   },
   {
