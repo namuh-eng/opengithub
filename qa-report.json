@@ -3198,5 +3198,67 @@
       }
     ],
     "fix_description": "Fixed organization repository creator permission semantics; no UI changes were required."
+  },
+  {
+    "feature_id": "settings-001",
+    "attempt": "fresh-2026-05-08-clawhip",
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified repository General settings end-to-end for admin load, save profile, feature toggle persistence, merge-method validation, archive/unarchive confirmation, archived-write blocking, non-admin restricted view, mobile no-overflow, no dead controls, and screenshots via focused Playwright against the committed .env.test database."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/settings",
+          "PATCH /api/repos/{owner}/{repo}/settings",
+          "OPTIONS /api/repos/{owner}/{repo}/settings"
+        ],
+        "notes": "Focused DB-backed Rust repository_settings_contract passed 2/2, covering admin-only access, persistence, structured validation/conflict/forbidden behavior, archive guardrails, organization policy locks, and audit-event creation. Live anonymous curl probes returned JSON 401 for GET/PATCH and OPTIONS returned 405 without echoing the hostile Origin."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "admin_only_settings_access",
+          "anonymous_get_patch_401",
+          "structured_error_envelopes",
+          "audit_event_creation",
+          "cors_origin_not_echoed",
+          "editorial_banned_value_scan"
+        ],
+        "notes": "No auth bypass found in focused contract or live unauthenticated API probes. API responses did not leak stack traces or secrets; curl evidence recorded only non-secret status/header/body shape."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Focused component/E2E coverage asserted named visible buttons, no inert anchors, disabled unsupported destructive controls with accessible labels, keyboard-safe form controls, mobile no-horizontal-overflow, and visible forbidden/admin states. Separate axe scan was not run."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor first: Docker daemon running, postgres-test container up, Postgres reachable on :55433, .env.test present; .env only warned as live OAuth/AWS dev optional.",
+      "Inspected prd.json settings-001 definition plus the scoped Next page/component, same-origin update route, Rust repository settings routes/domain, Vitest, Playwright, and Rust contract tests.",
+      "Installed committed web dependencies with npm ci because this fresh worktree had no web/node_modules; node_modules stayed ignored and uncommitted.",
+      "Ran focused Vitest: cd web && npx vitest run tests/repository-general-settings-page.test.tsx: 1 file passed, 8 tests passed.",
+      "Ran DB-backed focused Rust contract with .env.test and shared Cargo wrapper: CARGO_BUILD_JOBS=1 ./hack/cargo_locked.sh test -p opengithub-api --test repository_settings_contract -- --nocapture: 2 passed, 0 failed, no self-skip.",
+      "Ran focused Playwright with .env.test: CARGO_BUILD_JOBS=1 CARGO_TARGET_DIR=$HOME/.cache/opengithub/cargo-target npx playwright test tests/e2e/repository-settings-general.spec.ts --reporter=line: setup plus Chromium passed 2/2 and generated settings-001 final desktop/mobile/forbidden screenshots.",
+      "Ran focused Editorial banned-value scan over web/src/app/[owner]/[repo]/settings, RepositoryGeneralSettingsPage, RepositorySettingsShell, and navigation: zero matches for banned GitHub colors, Primer imports, or Octicons.",
+      "Ran make check with CARGO_BUILD_JOBS=1: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran make test with CARGO_BUILD_JOBS=1: Cargo tests passed and web tests passed (655 passed).",
+      "Attempted broad make test-e2e with .env.test; db-wait-test reported test postgres did not become ready on :55433 within 60s, then the all-suite Playwright process hung in dashboard_e2e_seed for over nine minutes. Immediately reran make doctor and it was green, so this is recorded as broad E2E infra/contention rather than settings-001 failure. The hung broad run was terminated; focused settings-001 E2E had already passed with current DB-backed evidence.",
+      "Started the Rust API locally with .env.test on :3016 and live-probed anonymous GET/PATCH/OPTIONS for /api/repos/namuh-eng/opengithub/settings: GET/PATCH returned 401 not_authenticated JSON; OPTIONS returned 405 and did not echo Origin: https://evil.com."
+    ],
+    "bugs_found": [],
+    "fix_description": "No product or test-fixture code changes were required for settings-001. QA bookkeeping now records the current pass evidence and sets settings-001.qa_pass=true only from fresh, non-self-skipped focused UI/API/DB evidence.",
+    "evidence_files": [
+      "ralph/screenshots/build/settings-001-final-general-desktop.jpg",
+      "ralph/screenshots/build/settings-001-final-general-mobile.jpg",
+      "ralph/screenshots/build/settings-001-final-forbidden.jpg"
+    ],
+    "known_caveats": [
+      "Broad make test-e2e was attempted but not accepted as a pass because the prerequisite wait reported :55433 unavailable and the all-suite run hung under cross-lane contention. Focused settings-001 Playwright and DB-backed Rust contracts passed against .env.test.",
+      "A separate axe-core scan was not run; accessibility evidence is from component and Playwright assertions for labels, disabled controls, no dead controls, and mobile no-overflow."
+    ],
+    "verified_at": "2026-05-08T05:45:00Z"
   }
 ]
