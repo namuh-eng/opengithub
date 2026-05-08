@@ -8345,5 +8345,19 @@
       "Stress overlapping wildcard policies, long rule/ruleset names, dense bypass actor lists, and concurrent admin edits while PR mergeability and pushes are evaluated.",
       "Keep settings-003.qa_pass=false until browser/runtime branch policy create/edit/delete plus read-only state are verified against the committed .env.test DB."
     ]
+  },
+  {
+    "feature_id": "settings-003",
+    "tests_written": [
+      "Fresh QA rerun resolved the prior bf426621 runtime blocker by recreating the committed localhost:55433 Postgres test container and running non-skipped DB-backed branch settings contracts.",
+      "Added a regression contract proving overlapping active branch rules/rulesets use the most restrictive force-push and deletion setting.",
+      "Fixed branch policy aggregation so allowsForcePushes/allowsDeletions are true only when every active, non-bypassed matching source allows them.",
+      "Focused Playwright verified Branches settings admin create/edit/delete, reload persistence, mobile no-overflow, and non-admin read-only state against the real dev/API/database stack.",
+      "Live curl probes verified authenticated branch settings GET, unauthenticated 401 for GET/POST, and hostile-Origin OPTIONS without CORS echo."
+    ],
+    "needs_deeper_qa": [
+      "Broad make test currently has unrelated date-expectation failures in non-settings web tests; keep tracking separately from settings-003.",
+      "Continue stressing concurrent admin edits and permission changes while pushes/mergeability are evaluated, but settings-003 now has durable QA pass evidence for the PRD acceptance path."
+    ]
   }
 ]

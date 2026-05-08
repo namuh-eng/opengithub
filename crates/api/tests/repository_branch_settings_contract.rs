@@ -1,21 +1,22 @@
 use axum::{
-    body::{to_bytes, Body},
-    http::{header, HeaderMap, Method, Request, StatusCode},
+    body::{Body, to_bytes},
+    http::{HeaderMap, Method, Request, StatusCode, header},
 };
 use chrono::{Duration, Utc};
 use opengithub_api::{
     auth::session,
     config::{AppConfig, AuthConfig},
     domain::{
-        identity::{upsert_session, upsert_user_by_email, User},
+        branch_policies::{BranchPolicyOperation, evaluate_branch_policy},
+        identity::{User, upsert_session, upsert_user_by_email},
         permissions::RepositoryRole,
         repositories::{
-            create_repository, grant_repository_permission, CreateRepository, RepositoryOwner,
-            RepositoryVisibility,
+            CreateRepository, RepositoryOwner, RepositoryVisibility, create_repository,
+            grant_repository_permission,
         },
     },
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sqlx::PgPool;
 use tower::ServiceExt;
 use url::Url;
@@ -104,11 +105,13 @@ async fn repository_branch_settings_cover_rules_rulesets_privacy_and_audit_event
         create_body["rules"][0]["requirements"]["requiredApprovingReviewCount"],
         2
     );
-    assert!(create_body["statusCheckSuggestions"]
-        .as_array()
-        .expect("suggestions should be present")
-        .iter()
-        .any(|value| value == "ci/test"));
+    assert!(
+        create_body["statusCheckSuggestions"]
+            .as_array()
+            .expect("suggestions should be present")
+            .iter()
+            .any(|value| value == "ci/test")
+    );
     let rule_id = create_body["rules"][0]["id"]
         .as_str()
         .expect("rule id should be returned")
@@ -251,10 +254,12 @@ async fn repository_branch_settings_cover_rules_rulesets_privacy_and_audit_event
     )
     .await;
     assert_eq!(delete_ruleset_status, StatusCode::OK);
-    assert!(delete_ruleset_body["rulesets"]
-        .as_array()
-        .expect("rulesets should be present")
-        .is_empty());
+    assert!(
+        delete_ruleset_body["rulesets"]
+            .as_array()
+            .expect("rulesets should be present")
+            .is_empty()
+    );
 
     let (delete_rule_status, _, delete_rule_body) = send_json(
         app.clone(),
@@ -265,10 +270,12 @@ async fn repository_branch_settings_cover_rules_rulesets_privacy_and_audit_event
     )
     .await;
     assert_eq!(delete_rule_status, StatusCode::OK);
-    assert!(delete_rule_body["rules"]
-        .as_array()
-        .expect("rules should be present")
-        .is_empty());
+    assert!(
+        delete_rule_body["rules"]
+            .as_array()
+            .expect("rules should be present")
+            .is_empty()
+    );
 
     let audit_count = sqlx::query_scalar::<_, i64>(
         "SELECT count(*) FROM repository_settings_audit_events WHERE repository_id = $1 AND event_type LIKE 'repository.branch_rule.%' OR repository_id = $1 AND event_type LIKE 'repository.ruleset.%'",
@@ -278,6 +285,102 @@ async fn repository_branch_settings_cover_rules_rulesets_privacy_and_audit_event
     .await
     .expect("audit events should load");
     assert!(audit_count >= 4);
+}
+
+#[tokio::test]
+async fn branch_policy_push_enforcement_uses_most_restrictive_matching_source() {
+    let Some(pool) = database_pool().await else {
+        eprintln!("skipping branch policy enforcement scenario; set TEST_DATABASE_URL");
+        return;
+    };
+
+    let marker = format!("restrictive{}", Uuid::new_v4().simple());
+    let owner = create_user(&pool, &format!("{marker}-owner")).await;
+    let actor = create_user(&pool, &format!("{marker}-actor")).await;
+    let repo = create_repository(
+        &pool,
+        CreateRepository {
+            owner: RepositoryOwner::User { id: owner.id },
+            name: format!("{marker}-repo"),
+            description: Some("Most restrictive branch policy".to_owned()),
+            visibility: RepositoryVisibility::Public,
+            default_branch: Some("main".to_owned()),
+            created_by_user_id: owner.id,
+        },
+    )
+    .await
+    .expect("repository should create");
+    insert_branch(&pool, repo.id, owner.id, "main").await;
+
+    sqlx::query(
+        r#"
+        INSERT INTO repository_branch_protection_rules (
+            repository_id, pattern, allows_force_pushes, allows_deletions
+        )
+        VALUES ($1, 'main', true, true)
+        "#,
+    )
+    .bind(repo.id)
+    .execute(&pool)
+    .await
+    .expect("permissive branch rule should insert");
+    sqlx::query(
+        r#"
+        INSERT INTO repository_rulesets (
+            repository_id, name, enforcement, patterns, allows_force_pushes, allows_deletions
+        )
+        VALUES ($1, 'main safety', 'active', ARRAY['main'], false, false)
+        "#,
+    )
+    .bind(repo.id)
+    .execute(&pool)
+    .await
+    .expect("restrictive ruleset should insert");
+
+    let force_summary = evaluate_branch_policy(
+        &pool,
+        repo.id,
+        "main",
+        Some(actor.id),
+        BranchPolicyOperation::Push {
+            force: true,
+            deletion: false,
+            creation: false,
+        },
+    )
+    .await
+    .expect("force push policy should evaluate");
+    assert!(force_summary.protected);
+    assert_eq!(force_summary.active_rule_count, 1);
+    assert_eq!(force_summary.active_ruleset_count, 1);
+    assert!(!force_summary.allows_force_pushes);
+    assert!(
+        force_summary
+            .blocking_reasons
+            .iter()
+            .any(|reason| reason == "force pushes are blocked by branch protection")
+    );
+
+    let deletion_summary = evaluate_branch_policy(
+        &pool,
+        repo.id,
+        "main",
+        Some(actor.id),
+        BranchPolicyOperation::Push {
+            force: false,
+            deletion: true,
+            creation: false,
+        },
+    )
+    .await
+    .expect("deletion policy should evaluate");
+    assert!(!deletion_summary.allows_deletions);
+    assert!(
+        deletion_summary
+            .blocking_reasons
+            .iter()
+            .any(|reason| reason == "branch deletion is blocked by branch protection")
+    );
 }
 
 fn app_config() -> AppConfig {

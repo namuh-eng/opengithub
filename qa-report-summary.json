@@ -8,29 +8,29 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 42,
+    "features_passed": 43,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
   },
   "sub_phase_totals": {
     "functional": {
-      "pass": 38,
+      "pass": 39,
       "fail": 0,
       "skip": 0
     },
     "api_contract": {
-      "pass": 34,
+      "pass": 35,
       "fail": 0,
       "skip": 4
     },
     "security": {
-      "pass": 35,
+      "pass": 36,
       "fail": 0,
       "skip": 3
     },
     "accessibility": {
-      "pass": 1,
+      "pass": 2,
       "fail": 0,
       "skip": 39
     }
@@ -1371,10 +1371,41 @@
       "feature_id": "settings-003",
       "description": "Configure branch protection and repository rulesets that feed pull request merge",
       "category": "settings",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 2,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Focused Rust/API, Vitest, live curl, and Playwright verified branch protection/ruleset CRUD, persistence, read-only behavior, PR mergeability aggregation, and Git push enforcement after repairing the local test DB."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET/POST/PATCH/DELETE branch rules",
+            "GET/POST/PATCH/DELETE rulesets",
+            "PR mergeability policy aggregation",
+            "Git receive-pack policy enforcement"
+          ],
+          "notes": "Focused DB-backed contracts and live curl probes passed; most-restrictive push enforcement was fixed and covered."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_bypass",
+            "cors",
+            "privacy",
+            "push_enforcement"
+          ],
+          "notes": "Unauthenticated live probes returned 401 JSON, hostile OPTIONS did not echo origin, private privacy/no-secret paths are covered by contracts."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Branch settings tests and Playwright smoke verified no dead controls/unnamed buttons and mobile no-overflow."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "settings-004",
