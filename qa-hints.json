@@ -8273,5 +8273,17 @@
       "Merge commit synthesis persists metadata commit rows and ref targets rather than full Git object storage pack mutation; retest true Git object mutation and divergent-branch conflicts when that layer matures.",
       "Required status checks are still represented by aggregate pull_request_checks_summary rows rather than per-context workflow/check-run resolution in the mergeability contract."
     ]
+  },
+  {
+    "feature_id": "git-001",
+    "tests_written": [
+      "QA fresh pass reran DB-backed git_transport and git_transport_security Rust tests through hack/cargo_locked.sh/shared Cargo target.",
+      "QA added fixture-only resets for local rate_limit_buckets subject ip/unknown and populated PAT resource_owner_user_id in security fixtures; product runtime behavior unchanged.",
+      "Focused Chromium Playwright git-transport checks passed against explicit local API/Next servers."
+    ],
+    "needs_deeper_qa": [
+      "Wrapper-managed Playwright webServer restart behavior was flaky in this recovered environment; use explicit server bring-up if the wrapper drops :3015 between tests.",
+      "Full web Vitest all-suite had a transient unrelated api-docs timeout under load; api-docs passed standalone."
+    ]
   }
 ]

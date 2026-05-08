@@ -2884,5 +2884,68 @@
       }
     ],
     "fix_description": "Fixed the non-prs web search pagination regression in crates/api/src/routes/search.rs by adding a web-search-specific 50 item clamp while leaving REST search pagination on the shared 100 item limit. Marked prs-006 qa_pass true based on focused backend/API/UI/security evidence; recorded full-suite E2E disk/DB blocker separately."
+  },
+  {
+    "feature_id": "git-001",
+    "attempt": "fresh-2026-05-08",
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Verified HTTPS Git docs, repository Code menu clone/download controls, raw file streaming, ZIP archive download, and empty-repository quick setup via focused Playwright after starting explicit local API/web servers."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /{owner}/{repo}.git/info/refs?service=git-upload-pack",
+          "POST /{owner}/{repo}.git/git-upload-pack",
+          "GET /{owner}/{repo}/raw/{ref}/{path}",
+          "GET /{owner}/{repo}/archive/refs/heads/{branch}.zip",
+          "GET/POST receive-pack authorization paths"
+        ],
+        "notes": "Rust git_transport tests covered public and private upload-pack, PAT and session auth, real clone/push flows, raw and archive streaming, and repository snapshot/activity synchronization."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "anonymous_private_denial",
+          "invalid_expired_unscoped_token_denial",
+          "oversized_request_rejection",
+          "invalid_service_rejection",
+          "path_sanitization",
+          "secret_non_leakage"
+        ],
+        "notes": "Rust git_transport_security tests passed after fixing the PAT fixture to populate resource_owner_user_id. Rate-limit buckets for the shared unknown IP subject are reset in DB-backed git transport tests to avoid cross-test flake without weakening product limits."
+      },
+      "accessibility": {
+        "status": "pass",
+        "notes": "Focused Playwright exercised visible repository controls and asserted no dead anchors plus accessible visible buttons in the Git docs/code-menu/quick-setup paths. No UI source changed in this QA pass."
+      }
+    },
+    "tested_steps": [
+      "make doctor: Docker daemon, postgres-test, Postgres :55433, and .env.test healthy; .env only warned as live-OAuth-only.",
+      "./hack/cargo_locked.sh test -p opengithub-api --test git_transport -- --nocapture: 8 passed.",
+      "./hack/cargo_locked.sh test -p opengithub-api --test git_transport_security -- --nocapture: 3 passed.",
+      "make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "make test: Cargo tests passed and web suite reached 654 passed; one unrelated api-docs test timed out in the all-web run, then passed standalone with npx vitest run tests/api-docs.test.tsx.",
+      "Manual local server bring-up with .env.test, API on :3016 and Next on :3015, then PLAYWRIGHT_WEB_SERVER_COMMAND='echo external-server' npx playwright test tests/e2e/git-transport.spec.ts --project=chromium --no-deps --timeout=90000: 2 focused Chromium git-transport tests passed. Earlier wrapper-managed Playwright attempts failed because the dev server died/restarted between tests, not because git-001 assertions failed."
+    ],
+    "evidence_files": [
+      "/tmp/git-001-git-transport.log",
+      "/tmp/git-001-git-transport-security.log",
+      "/tmp/git-001-api-server.log",
+      "/tmp/git-001-web-server.log",
+      "web/test-results/git-transport-git-docs-and-f1c51--expose-working-HTTPS-flows-chromium/trace.zip",
+      "web/test-results/git-transport-empty-reposi-b4bbc--copyable-real-Git-commands-chromium/trace.zip"
+    ],
+    "fixes_applied": [
+      "Added test-only rate_limit_buckets reset for subject ip/unknown in git transport DB fixtures so repeated focused QA runs do not self-poison on the shared local host subject.",
+      "Updated git_transport_security PAT fixture to populate resource_owner_user_id, matching the current token schema and authorization path."
+    ],
+    "known_caveats": [
+      "Full make test initially hit an unrelated api-docs Vitest timeout under all-suite load; the same api-docs test file passed standalone immediately after.",
+      "Playwright's configured webServer lifecycle was flaky in this recovered environment, so the accepted browser evidence used explicitly started API/Next servers and disabled Playwright dependency/server management for the focused git-001 Chromium project."
+    ],
+    "verified_at": "2026-05-08T10:58:00Z"
   }
 ]

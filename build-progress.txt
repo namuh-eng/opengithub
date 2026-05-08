@@ -5500,3 +5500,5 @@
 2026-05-08 - prs-006 independent Hermes QA
 - Independently QA-verified pull request merge methods, mergeability computation, checks integration, plaintext .diff/.patch views, raw-link/docs affordances, and PR detail merge controls for prs-006. Set prs-006.qa_pass=true.
 - Full E2E blocker: make test-e2e was attempted first but the isolated worktree lacked .ralph-setup-done; after creating it, docker compose hit an existing opengithub-postgres-test container from another worktree. A direct full chromium run later failed unrelated suites and exhausted local infra (rustc ENOSPC with 3.7GiB free / 99% disk used; localhost:55433 Postgres refused connections). Focused prs-006 Playwright passed before the infra failure.
+
+2026-05-08 git-001 QA fresh pass: make doctor green; git_transport 8/8 and git_transport_security 3/3 passed via hack/cargo_locked.sh/shared Cargo target; make check passed; api-docs timeout in broad make test reproduced as standalone pass; focused Chromium git-transport Playwright passed against explicit local API/Next servers. Set git-001 qa_pass=true.
