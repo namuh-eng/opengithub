@@ -8361,5 +8361,19 @@
       "Broad make test-e2e was attempted; first run failed outside settings-005 after 65 passing tests due worktree target no-space in profile-overview, and the shared-target rerun hung after a db-wait warning before being stopped to pursue mandatory Ever QA.",
       "Continue deeper production hardening from prior hints: real KMS/Secrets Manager backing, inherited org/environment scopes, fork/reusable/environment workflow policies, masking bypasses, and concurrent admin edits."
     ]
+  },
+  {
+    "feature_id": "settings-005",
+    "tests_written": [
+      "QA rerun on 2026-05-08 passed settings-005 after fixing timezone-stable metadata rendering for Actions secrets/variables updated dates.",
+      "Fresh focused API evidence: repository_actions_secrets_contract passed 2/2 without self-skip, and the compiled contract binary rerun passed 2/2 in 7.07s against the reachable test DB.",
+      "Fresh job-log masking evidence: api_repository_actions_job_log_contract job_log_detail_groups_steps_searches_lines_and_reads_options passed 1/1.",
+      "Fresh UI evidence: repository-actions-secrets-page Vitest passed 6/6 after the UTC date fix; isolated-target make check passed Cargo check, Web typecheck, Clippy, and Biome."
+    ],
+    "needs_deeper_qa": [
+      "Run a fresh current-worktree Playwright/Ever browser smoke when :3015/:3016 are not occupied by another QA lane; prior same-branch browser smoke covered CRUD/no-leakage/no-dead-control/mobile behavior, but this rerun could not reuse the ports safely.",
+      "Repair the shared doctor false negative by either installing local pg_isready or making doctor detect the fixed-name Postgres container across compose project labels; do not remove the shared container while other QA lanes are using it.",
+      "Continue production hardening from prior hints: real KMS/Secrets Manager backing, inherited organization/environment producers, fork/reusable/environment policy producers, masking bypass probes, and concurrent admin edit races."
+    ]
   }
 ]
