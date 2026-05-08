@@ -167,6 +167,7 @@ test.skip(
 test("admin can mutate Pages settings and forbidden users do not see private metadata", async ({
   page,
 }) => {
+  test.setTimeout(120_000);
   const seeded = seedDashboard();
   const { repo: seededRepoName } = repositoryParts(seeded.firstRepositoryHref);
   const verifiedDomain = `verified-${seededRepoName}.example.com`;
@@ -233,7 +234,7 @@ test("admin can mutate Pages settings and forbidden users do not see private met
   await page.getByRole("button", { name: "Save source" }).click();
   await expect(
     page.getByText("Branch source saved and a Pages deployment was queued."),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 15_000 });
   await expect(
     page.getByText(`${branchOption} · /(root)`).first(),
   ).toBeVisible();

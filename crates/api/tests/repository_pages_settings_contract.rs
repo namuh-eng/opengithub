@@ -331,16 +331,18 @@ async fn repository_pages_settings_validate_privacy_mutations_and_audit() {
     assert_eq!(invalid_domain_status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(invalid_domain_body["error"]["code"], "validation_failed");
 
+    let custom_domain = format!("{marker}.pages.example.com");
+    let custom_domain_input = format!("{marker}.Pages.Example.COM.");
     let (domain_status, _, domain_body) = send_json(
         app.clone(),
         Method::POST,
         &format!("{uri}/domain"),
         Some(&owner_cookie),
-        Some(json!({ "domain": "Pages.Example.COM." })),
+        Some(json!({ "domain": custom_domain_input })),
     )
     .await;
     assert_eq!(domain_status, StatusCode::OK);
-    assert_eq!(domain_body["site"]["customDomain"], "pages.example.com");
+    assert_eq!(domain_body["site"]["customDomain"], custom_domain);
     assert_eq!(domain_body["site"]["domain"]["status"], "pending");
     assert!(domain_body["site"]["domain"]["challenge"]["value"]
         .as_str()
@@ -351,7 +353,7 @@ async fn repository_pages_settings_validate_privacy_mutations_and_audit() {
         send_json(app.clone(), Method::GET, &uri, Some(&reader_cookie), None).await;
     assert_eq!(reader_status, StatusCode::OK);
     assert_eq!(reader_body["canEdit"], false);
-    assert_eq!(reader_body["site"]["customDomain"], "pages.example.com");
+    assert_eq!(reader_body["site"]["customDomain"], custom_domain);
     assert!(reader_body["site"]["domain"]["challenge"].is_null());
     assert!(!reader_body.to_string().contains("og-pages-"));
 
@@ -413,7 +415,7 @@ async fn repository_pages_settings_validate_privacy_mutations_and_audit() {
         Method::POST,
         &format!("{second_uri}/domain"),
         Some(&owner_cookie),
-        Some(json!({ "domain": "pages.example.com" })),
+        Some(json!({ "domain": custom_domain })),
     )
     .await;
     assert_eq!(conflict_status, StatusCode::CONFLICT);

@@ -1399,9 +1399,22 @@
       "description": "Configure GitHub Pages-style static publishing from a branch or Actions workflow",
       "category": "settings",
       "qa_pass": false,
-      "attempts": 0,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "blocked"
+        },
+        "api_contract": {
+          "status": "passed"
+        },
+        "ui_browser": {
+          "status": "blocked"
+        },
+        "design_scan": {
+          "status": "passed"
+        }
+      }
     },
     {
       "feature_id": "releases-001",

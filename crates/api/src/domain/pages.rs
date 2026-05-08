@@ -614,6 +614,7 @@ pub async fn connect_repository_pages_actions_deployment_by_owner_name(
     require_pages_admin(pool, &repository, actor_user_id).await?;
     ensure_repository_mutable(&repository)?;
     let site = ensure_pages_site(pool, &repository, actor_user_id).await?;
+    let workflow_run_id = mutation.workflow_run_id;
     let source = actions_source_for_artifact(pool, repository.id, mutation).await?;
     let deployment = create_pages_deployment(
         pool,
@@ -621,7 +622,7 @@ pub async fn connect_repository_pages_actions_deployment_by_owner_name(
         site.id,
         actor_user_id,
         &source,
-        source.workflow_id,
+        Some(workflow_run_id),
         source.workflow_artifact_name.clone(),
     )
     .await?;

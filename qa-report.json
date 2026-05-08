@@ -3315,5 +3315,52 @@
     ],
     "bugs_found": [],
     "fix_description": "No product code fix was required. QA bookkeeping updated to mark settings-002 passed from fresh focused Rust, Vitest, Playwright, design-scan, make check, and make test evidence."
+  },
+  {
+    "feature_id": "settings-006",
+    "attempt": 1,
+    "status": "blocked",
+    "blocked_reason": "Ever CLI browser QA could not be run against settings-006 because expected local ports 3015/3016 were occupied by another worktree (qa-settings-005-clawhip); starting settings-006 with make dev failed with EADDRINUSE on :3015. Capturing Ever against the live port would have tested the wrong app.",
+    "sub_phases": {
+      "functional": {
+        "status": "blocked",
+        "evidence": "Focused Rust contract, Vitest/API docs, focused Playwright, make check, and make test passed after slice-local fixes; required Ever evidence is missing due port/app boot blocker."
+      },
+      "api_contract": {
+        "status": "passed",
+        "evidence": "TEST_DATABASE_URL from .env.test ./hack/cargo_locked.sh test -p opengithub-api --test repository_pages_settings_contract -- --nocapture => 2 passed after fixing Actions deployment FK and domain uniqueness isolation."
+      },
+      "ui_browser": {
+        "status": "blocked",
+        "evidence": "cd web && npx playwright test tests/e2e/repository-settings-pages.spec.ts => 2 passed; Ever blocked because make dev could not bind :3015 and :3015/:3016 belonged to qa-settings-005-clawhip."
+      },
+      "design_scan": {
+        "status": "passed",
+        "evidence": "Editorial banned-value scan passed for settings-006 source UI/API docs files excluding og.css/og-themes.css."
+      }
+    },
+    "tested_steps": [
+      "git status --short --branch inspected branch qa/opengithub-settings-006-clawhip; prd.json settings-006 build_pass=true qa_pass=false before QA.",
+      "make doctor => Docker daemon running, postgres-test up, Postgres reachable on :55433, .env.test/.env present.",
+      "make setup-local attempted after DB self-skip; failed due existing opengithub-postgres-test container conflict, then new container became healthy and make doctor passed.",
+      "TEST_DATABASE_URL from .env.test ./hack/cargo_locked.sh test -p opengithub-api --test repository_pages_settings_contract -- --nocapture => initially exposed 500 for actions-deployments, then passed 2/2 after fix.",
+      "cd web && npm ci => installed lockfile dependencies locally; generated node_modules not committed.",
+      "cd web && npx vitest run tests/repository-pages-settings-page.test.tsx tests/api-docs.test.tsx => 2 files, 11 tests passed.",
+      "TEST_DATABASE_URL from .env.test cd web && npx playwright test tests/e2e/repository-settings-pages.spec.ts => 2 passed after extending test timeout for full UI flow.",
+      "Editorial banned-value scan over settings-006 source UI/API docs files excluding og.css/og-themes.css => passed.",
+      "make check => Cargo check, Web typecheck, Clippy, Biome passed.",
+      "make test => Cargo tests passed; Web tests passed (655 passed).",
+      "make test-e2e broad wrapper was started but stopped as invalid evidence because it reused qa-settings-005-clawhip servers on :3015/:3016 and hung after db-wait-test timeout.",
+      "ever doctor => everd running on :4198 and API server on :8080; extension connectivity requires ever start.",
+      "timeout 20s make dev => failed with EADDRINUSE on :3015 because another worktree owned the expected port; Ever not started to avoid testing wrong app."
+    ],
+    "bugs_found": [
+      "POST /api/repos/{owner}/{repo}/settings/pages/actions-deployments returned 500 because workflow_id was inserted into pages_deployments.workflow_run_id instead of the workflow run id.",
+      "Focused DB contract reused a static custom domain and became order/database-state dependent under persistent local DB.",
+      "Focused Pages Playwright scenario could exceed the default 30s test timeout even when the branch-save status appeared, making UI evidence flaky.",
+      "Required Ever CLI evidence is blocked by expected-port contention from another worktree; no supervisor waiver provided."
+    ],
+    "fix_description": "Fixed Actions Pages deployment to persist the actual workflow_run_id, made the Rust contract custom domain unique per test marker, and raised the focused Pages E2E test timeout without weakening assertions. qa_pass remains false pending Ever CLI browser QA on the correct settings-006 app.",
+    "timestamp": "2026-05-08T13:40:13Z"
   }
 ]
