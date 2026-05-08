@@ -2600,14 +2600,16 @@ pub async fn create_repository_with_bootstrap(
     let repository = get_repository(pool, repository_id)
         .await?
         .ok_or(RepositoryError::NotFound)?;
-    grant_repository_permission(
-        pool,
-        repository.id,
-        input.created_by_user_id,
-        RepositoryRole::Owner,
-        "owner",
-    )
-    .await?;
+    if should_grant_creator_owner_permission(pool, &input.owner, input.created_by_user_id).await? {
+        grant_repository_permission(
+            pool,
+            repository.id,
+            input.created_by_user_id,
+            RepositoryRole::Owner,
+            "owner",
+        )
+        .await?;
+    }
     ensure_default_repository_labels(pool, repository.id).await?;
     bootstrap_repository(pool, &repository, input.created_by_user_id, &bootstrap).await?;
     Ok(repository)
@@ -13878,6 +13880,33 @@ async fn ensure_owner_can_create(
             }
         }
     }
+}
+
+async fn should_grant_creator_owner_permission(
+    pool: &PgPool,
+    owner: &RepositoryOwner,
+    actor_user_id: Uuid,
+) -> Result<bool, RepositoryError> {
+    let RepositoryOwner::Organization { id } = owner else {
+        return Ok(true);
+    };
+
+    let role = sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT role
+        FROM organization_memberships
+        WHERE organization_id = $1
+          AND user_id = $2
+        "#,
+    )
+    .bind(id)
+    .bind(actor_user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(role
+        .as_deref()
+        .is_some_and(|value| matches!(value, "owner" | "admin")))
 }
 
 async fn ensure_owner_visibility_can_create(
