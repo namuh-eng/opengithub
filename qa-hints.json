@@ -8346,5 +8346,22 @@
       "Invite acceptance lifecycle is outside this local feature proof; retest pending/accepted/expired/canceled states when acceptance ships.",
       "Stress concurrent admin edits, last-admin races, organization base permissions, inherited team membership changes, and private/internal repository leakage with production-like org data."
     ]
+  },
+  {
+    "feature_id": "prs-005",
+    "tests_written": [
+      "Focused Rust DB-backed contract api_pull_request_diff_review_contract — 2/2 passed against TEST_DATABASE_URL on localhost:55433. Covers anonymous public read, owner state, viewed PATCH including stale version_key 422, draft create/update/delete, self-approve denial, submit-review side effects (published comments, timeline event, notification, audit), and abandon.",
+      "Focused Vitest tests/repository-pull-request-detail.test.tsx — 18/18 passed including a new 'collapses a viewed file's diff body and lets the user reveal it again' regression.",
+      "Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts — 4/4 passed (auth setup + 3 chromium scenarios) including the signed-in Files changed flow that exercises pending review comments and the Submit review dialog and asserts no dead anchors plus 390px no-overflow.",
+      "make check passed (Cargo check, web tsc, Clippy, Biome). Mandatory Editorial banned-value scan over web/src had zero hits in PullRequestFilesChangedPage.tsx.",
+      "Fixed missing collapse-on-viewed behavior in web/src/components/PullRequestFilesChangedPage.tsx (DiffFile gained an aria-expanded toggle, automatic collapse on viewed, and a visible 'File hidden' caption). prs-005.qa_pass set true."
+    ],
+    "needs_deeper_qa": [
+      "Full make test surfaces two pre-existing failures unrelated to prs-005 — pull_request_create_contract_supports_public_fork_heads_with_base_metadata_guardrails (403 forbidden when a fork owner POSTs a PR back to a public base) and pull_request_creation_dispatches_matching_workflow_runs (workflow file path assertion). Both originate from prs-003/repos/actions code paths and need a separate triage.",
+      "Full make test-e2e was not run for prs-005; focused PR detail Playwright was the browser evidence. Broader regressions were not surveyed.",
+      "axe-core scan was not run on the Files changed page; manual checks (aria-expanded, aria-pressed, aria-current, no a[href=\"#\"], 390px no-overflow) covered the obvious surface but did not exhaust WCAG 2.1 AA.",
+      "Diff hunks today render only the rows the API returned; the PRD also mentions expand-up/down buttons to fetch surrounding context, which are not in the current component. This is a P3 enhancement that did not block prs-005's core review flow.",
+      "Submit review dialog has no attachment affordance; PRD ui_details mentions one but it is not exposed in the UI. This is a UI gap, not a blocker for the published-state behavior covered by the contract."
+    ]
   }
 ]

@@ -790,6 +790,45 @@ describe("RepositoryPullRequestDetailPage", () => {
     expect(screen.getAllByText("viewed").length).toBeGreaterThanOrEqual(2);
   });
 
+  it("collapses a viewed file's diff body and lets the user reveal it again", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/files/viewed")) {
+        return { ok: true, json: async () => ({}) };
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <PullRequestFilesChangedPage
+        diffReview={pullRequestDiffReview()}
+        repository={repositoryOverview()}
+        viewerAuthenticated={true}
+      />,
+    );
+
+    expect(screen.getByText("@@ -1,3 +1,4 @@")).toBeVisible();
+    expect(screen.getByText("use axum::routing::patch;")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Viewed?" }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText(/File hidden because it is marked viewed/).length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+    const showButtons = screen.getAllByRole("button", { name: "Show changes" });
+    fireEvent.click(showButtons[0]);
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("button", { name: "Hide changes" }).length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+  });
+
   it("renders empty filter recovery and auth-gated review actions without inert controls", () => {
     const filteredReview = {
       ...pullRequestDiffReview(),

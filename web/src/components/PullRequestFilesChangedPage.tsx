@@ -596,6 +596,10 @@ function DiffFile({
   viewerAuthenticated: boolean;
 }) {
   const [comments, setComments] = useState(file.comments);
+  const [expanded, setExpanded] = useState(!file.viewed);
+  useEffect(() => {
+    setExpanded(!file.viewed);
+  }, [file.viewed]);
   const anchor = file.href.split("#")[1] ?? file.id;
   const updateComment = (updated: PullRequestDiffReviewComment) => {
     setComments((current) =>
@@ -607,6 +611,9 @@ function DiffFile({
       current.filter((comment) => comment.id !== commentId),
     );
   };
+  const fileCommentCount = comments.filter(
+    (comment) => comment.position === null,
+  ).length;
   return (
     <article className="card mb-4 overflow-hidden" id={anchor}>
       <div
@@ -624,77 +631,104 @@ function DiffFile({
           <span style={{ color: "var(--ok)" }}>+{file.additions}</span>{" "}
           <span style={{ color: "var(--err)" }}>-{file.deletions}</span>
         </span>
+        <button
+          aria-expanded={expanded}
+          aria-controls={`${anchor}-body`}
+          className="btn ghost sm"
+          onClick={() => setExpanded((value) => !value)}
+          type="button"
+        >
+          {expanded ? "Hide changes" : "Show changes"}
+        </button>
         <ViewedToggle
           activePath={activePath}
           file={file}
-          onViewedChange={onViewedChange}
+          onViewedChange={(fileId, viewed) => {
+            onViewedChange(fileId, viewed);
+            setExpanded(!viewed);
+          }}
           viewerAuthenticated={viewerAuthenticated}
         />
         <Link className="btn ghost sm" href={file.href}>
           Copy link
         </Link>
       </div>
-      {file.hunks.length ? (
-        <div className="overflow-x-auto">
-          {file.hunks.map((hunk) => (
-            <div key={hunk.id}>
-              <div
-                className="t-mono-sm border-b px-4 py-2"
-                style={{
-                  background: "var(--surface-3)",
-                  borderColor: "var(--line-soft)",
-                  color: "var(--ink-3)",
-                }}
-              >
-                {hunk.header}
+      <div hidden={!expanded} id={`${anchor}-body`}>
+        {file.hunks.length ? (
+          <div className="overflow-x-auto">
+            {file.hunks.map((hunk) => (
+              <div key={hunk.id}>
+                <div
+                  className="t-mono-sm border-b px-4 py-2"
+                  style={{
+                    background: "var(--surface-3)",
+                    borderColor: "var(--line-soft)",
+                    color: "var(--ink-3)",
+                  }}
+                >
+                  {hunk.header}
+                </div>
+                {hunk.lines.map((line) => (
+                  <DiffLine
+                    activePath={activePath}
+                    comments={comments.filter((comment) =>
+                      commentMatchesLine(comment, line),
+                    )}
+                    file={file}
+                    key={`${hunk.id}-${line.position}`}
+                    line={line}
+                    onDeleteComment={deleteComment}
+                    onSaveComment={(comment) =>
+                      setComments((current) => [...current, comment])
+                    }
+                    onUpdateComment={updateComment}
+                    viewerAuthenticated={viewerAuthenticated}
+                  />
+                ))}
               </div>
-              {hunk.lines.map((line) => (
-                <DiffLine
-                  activePath={activePath}
-                  comments={comments.filter((comment) =>
-                    commentMatchesLine(comment, line),
-                  )}
-                  file={file}
-                  key={`${hunk.id}-${line.position}`}
-                  line={line}
-                  onDeleteComment={deleteComment}
-                  onSaveComment={(comment) =>
-                    setComments((current) => [...current, comment])
-                  }
-                  onUpdateComment={updateComment}
-                  viewerAuthenticated={viewerAuthenticated}
-                />
-              ))}
+            ))}
+          </div>
+        ) : (
+          <div className="px-4 py-5">
+            <p className="t-sm" style={{ color: "var(--ink-3)" }}>
+              This file has summary metadata, but no expanded hunk rows are
+              stored yet.
+            </p>
+          </div>
+        )}
+        {fileCommentCount ? (
+          <div
+            className="border-t p-4"
+            style={{ borderColor: "var(--line-soft)" }}
+          >
+            <p className="t-label mb-3">File comments</p>
+            <div className="space-y-3">
+              {comments
+                .filter((comment) => comment.position === null)
+                .map((comment) => (
+                  <ReviewCommentThread
+                    activePath={activePath}
+                    comment={comment}
+                    key={comment.id}
+                    onDelete={deleteComment}
+                    onUpdate={updateComment}
+                  />
+                ))}
             </div>
-          ))}
-        </div>
-      ) : (
-        <div className="px-4 py-5">
-          <p className="t-sm" style={{ color: "var(--ink-3)" }}>
-            This file has summary metadata, but no expanded hunk rows are stored
-            yet.
-          </p>
-        </div>
-      )}
-      {comments.filter((comment) => comment.position === null).length ? (
+          </div>
+        ) : null}
+      </div>
+      {!expanded ? (
         <div
-          className="border-t p-4"
+          className="border-t px-4 py-3"
           style={{ borderColor: "var(--line-soft)" }}
         >
-          <p className="t-label mb-3">File comments</p>
-          <div className="space-y-3">
-            {comments
-              .filter((comment) => comment.position === null)
-              .map((comment) => (
-                <ReviewCommentThread
-                  activePath={activePath}
-                  comment={comment}
-                  key={comment.id}
-                  onDelete={deleteComment}
-                  onUpdate={updateComment}
-                />
-              ))}
-          </div>
+          <p className="t-xs" style={{ color: "var(--ink-3)" }}>
+            File hidden because it is marked viewed.
+            {fileCommentCount
+              ? ` ${fileCommentCount} file comments hidden.`
+              : ""}
+          </p>
         </div>
       ) : null}
     </article>

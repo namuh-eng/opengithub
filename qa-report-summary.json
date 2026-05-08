@@ -8,7 +8,7 @@
   ],
   "totals": {
     "features_total": 119,
-    "features_passed": 42,
+    "features_passed": 44,
     "features_failed": 0,
     "features_exhausted": 0,
     "features_crashed": 0
@@ -1048,10 +1048,46 @@
       "feature_id": "prs-005",
       "description": "Implement pull request Files changed diff review with file tree, split/unified h",
       "category": "crud",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "make check green. Focused Rust contract api_pull_request_diff_review_contract \u2014 2/2 passed. Focused Vitest tests/repository-pull-request-detail.test.tsx \u2014 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts \u2014 4/4 passed including the signed-in Files changed flow that exercises pending review comments and Submit review."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/repos/:owner/:repo/pulls/:number/files",
+            "PATCH /api/repos/:owner/:repo/pulls/:number/files/viewed",
+            "POST /api/repos/:owner/:repo/pulls/:number/review-comments/drafts",
+            "PATCH /api/repos/:owner/:repo/pulls/:number/review-comments/drafts/:draftId",
+            "DELETE /api/repos/:owner/:repo/pulls/:number/review-comments/drafts/:draftId",
+            "POST /api/repos/:owner/:repo/pulls/:number/reviews",
+            "DELETE /api/repos/:owner/:repo/pulls/:number/reviews/draft"
+          ],
+          "notes": "Rust contract exercises status codes (200/201/401/422), error envelope shapes, viewed PATCH including stale version_key 422, draft create/update/delete, self-approve denial, submit-review side effects (published comments + timeline event + notification + audit row), and abandon. Live curl probes against make-dev confirmed anonymous mutation endpoints return JSON 401 not_authenticated."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_bypass",
+            "private_anonymous_denial",
+            "input_validation_envelope",
+            "draft_visibility",
+            "self_review_block",
+            "editorial_banned_value_scan"
+          ],
+          "notes": "Anonymous private PR diff returns 403 with private_repository envelope. Anonymous mutation endpoints return JSON 401 not_authenticated. Pending review drafts stay author-private. Self-approve attempts return 422. Stale version_key on viewed PATCH returns 422. Editorial banned-value scan over web/src returned zero hits in PullRequestFilesChangedPage.tsx and component callers."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Files changed page uses semantic primitives \u2014 t-h2 heading, nav aria-label with aria-current Files changed tab, aria-pressed Viewed toggle, aria-expanded Show/Hide changes button wired to the diff body id, aria-labelledby Submit review dialog, aria-label inline + buttons referencing diff position, and Markdown editors with aria-label. Playwright spec asserts no a[href=\"#\"] or unanchored anchors at desktop and at 390px mobile, and no horizontal overflow at 390px viewport."
+        }
+      },
+      "overall_status": "pass"
     },
     {
       "feature_id": "prs-006",
