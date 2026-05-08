@@ -8316,5 +8316,17 @@
       "Playwright emitted a console Maximum update depth warning after clicking through to a repository tree route in RepositoryFileFinder/RepositoryCodeToolbar; the profiles-002 assertions still passed, but repo tree UI should be tracked under the repo/tree slice rather than this profile tab QA.",
       "Broad make test was not rerun for the entire repository in this lane because the scoped PRD acceptance was covered by focused DB-backed Rust, focused component, focused E2E, and make check after prior disk-pressure incidents."
     ]
+  },
+  {
+    "feature": "actions-004",
+    "status": "qa_pass",
+    "note": "Fresh QA fixed and verified job log storage-key normalization. Remaining E2E maintenance: migrate legacy repository-actions-job-log.spec.ts to the standard _fixtures/auth.ts scene fixture; do not treat DB/self-skipped Playwright as runtime proof.",
+    "verified_commands": [
+      "make doctor",
+      "TEST_DATABASE_URL=[REDACTED] DB_SSL=false CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 ./hack/cargo_locked.sh test -p opengithub-api --test api_repository_actions_job_log_contract -- --nocapture --test-threads=1",
+      "cd web && npm run test -- repository-actions-job-log.test.tsx",
+      "CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 make check",
+      "rg -n -e '#(0969da|1f883d|1a7f37|cf222e|82071e|f6f8fa|1f2328|d0d7de|59636e|f1aeb5|fff1f3)\\b|@primer/|Octicon' web/src/ --glob '!**/og*.css'"
+    ]
   }
 ]

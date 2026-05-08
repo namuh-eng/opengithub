@@ -2998,70 +2998,24 @@
     "verified_at": "2026-05-08T10:58:00Z"
   },
   {
-    "feature_id": "actions-003",
-    "attempt": 1,
+    "feature": "actions-004",
     "status": "pass",
-    "sub_phases": {
-      "functional": {
-        "status": "pass",
-        "notes": "Verified workflow run detail summary/sidebar/annotations/artifacts/job log search and rerun/cancel/delete-log controls with DB-backed Rust contracts, focused Vitest, and focused signed-session Playwright. Root-caused the first browser failure to a stale actions-004 dev server occupying port 3015; after killing it and rerunning against this worktree, the actions-003 Playwright smoke passed."
-      },
-      "api_contract": {
-        "status": "pass",
-        "endpoints_tested": [
-          "GET /api/repos/{owner}/{repo}/actions/runs/{run_id}/detail",
-          "POST /api/repos/{owner}/{repo}/actions/runs/{run_id}/rerun",
-          "POST /api/repos/{owner}/{repo}/actions/runs/{run_id}/cancel",
-          "DELETE /api/repos/{owner}/{repo}/actions/runs/{run_id}/logs",
-          "POST /api/repos/{owner}/{repo}/actions/caches",
-          "GET /api/repos/{owner}/{repo}/actions/caches",
-          "DELETE /api/repos/{owner}/{repo}/actions/caches/{cache_id}"
-        ],
-        "notes": "Focused api_repository_actions_run_detail_contract passed 3/3 with TEST_DATABASE_URL, covering public/private read boundaries, canonical sourceHref behavior, attempts/jobs/annotations/artifacts/action state, stateful rerun/cancel/delete-log mutations, and dependency-cache storage-key non-disclosure."
-      },
-      "security": {
-        "status": "pass",
-        "checks": [
-          "auth_boundaries",
-          "private_repo_permission_boundary",
-          "internal_storage_key_redaction",
-          "stateful_mutation_authorization",
-          "dead_controls"
-        ],
-        "notes": "Rust contracts cover private repository denial and owner access. Cache reserve/list/delete responses do not expose internal storageKey. Browser smoke verifies no inert links and named visible buttons on the run detail page."
-      },
-      "accessibility": {
-        "status": "pass",
-        "violations": [],
-        "notes": "Focused Vitest and Playwright verify accessible headings/navigation/buttons, focusability for job/action controls, no dead controls, and desktop/mobile no horizontal overflow. No separate axe scan was run because @axe-core/playwright is not installed in this repo."
-      }
-    },
-    "tested_steps": [
-      "Ran make doctor: passed Docker/test Postgres/local tool checks.",
-      "Ran TEST_DATABASE_URL-backed focused Rust contract api_repository_actions_run_detail_contract: 3 tests passed.",
-      "Ran npm ci in web because fresh worktree lacked node_modules; package manifests were unchanged.",
-      "Ran TEST_DATABASE_URL-backed make check: Cargo check, web typecheck, Clippy, and Biome passed.",
-      "Ran mandatory Editorial banned-value scan across web/src excluding og CSS: zero matches for banned GitHub hex values, Primer, or Octicon.",
-      "Ran npm --prefix web test -- repository-actions-run.test.tsx: 7 tests passed with non-fatal React act(...) warnings.",
-      "Initial focused Playwright from web cwd failed because the page showed Repository metadata unavailable for an actions-004 fixture; process inspection showed an old qa-actions-004 dev server on port 3015.",
-      "Killed the stale qa-actions-004 make/dev/Playwright process tree and reran the focused actions-003 Playwright with .env.test loaded from repo root: setup plus signed-in run detail smoke passed 2/2.",
-      "Updated repository-actions-run.spec.ts to use the shared signed-in E2E fixture instead of inline execFileSync/cookie minting, matching web/tests/e2e/AGENTS.md and preventing future session/env drift."
+    "summary": "Fresh QA accepted after fixing job log storage-key normalization for names containing spaced separators. DB-backed job-log contracts, focused UI tests, make check, and Editorial scan passed; direct Playwright reached the route but exposed legacy signed-in E2E fixture/session mismatch rather than a product-only blocker.",
+    "evidence": [
+      "make doctor: Docker daemon running, postgres-test container up, Postgres reachable on :55433, .env.test present",
+      "Fixed crates/api/src/domain/actions.rs safe_filename so \"unit / web\" normalizes to \"unit-web\" instead of \"unit---web\"",
+      "TEST_DATABASE_URL=[REDACTED] DB_SSL=false CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 ./hack/cargo_locked.sh test -p opengithub-api --test api_repository_actions_job_log_contract -- --nocapture --test-threads=1: 3 passed",
+      "cd web && npm run test -- repository-actions-job-log.test.tsx: 8 passed",
+      "CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 make check: Cargo check, web typecheck, Clippy, Biome passed",
+      "Editorial banned-value scan over web/src excluding og*.css returned zero matches"
     ],
-    "bugs_found": [
-      {
-        "severity": "minor",
-        "phase": "test",
-        "description": "The actions run Playwright spec used an inline Rust seeder and manually minted cookies despite the E2E contract requiring the shared auth fixture.",
-        "expected": "Signed-in specs should import test/expect/signIn/seed helpers from web/tests/e2e/_fixtures/auth and request the actionsRunDetail scene.",
-        "actual": "The spec duplicated execFileSync and addCookies logic, making it easier to run with mismatched server/session state.",
-        "reproduction": "Read web/tests/e2e/repository-actions-run.spec.ts before this QA fix; it imported @playwright/test directly and called cargo run --example dashboard_e2e_seed inline."
-      }
-    ],
-    "fix_description": "Migrated the actions run Playwright spec to the shared auth fixture and recorded QA pass evidence. Production behavior needed no additional fix; the observed browser failure was stale server/process contamination, not an actions-003 product regression.",
-    "overall_status": "pass",
     "caveats": [
-      "Browser smoke uses deterministic Rust-signed sessions and local Postgres fixtures, not real Google OAuth.",
-      "Real Actions runner execution, real S3/object storage deletion/signing, runner cancellation propagation, and large-log streaming races remain later runner/log phases rather than actions-003 acceptance scope."
-    ]
+      "Direct Playwright with .env.test loaded started the app but the legacy inline signed-in spec landed on RepositoryUnavailablePage; web/tests/e2e/AGENTS.md says new signed-in specs must use _fixtures/auth.ts, and this legacy spec still uses execFileSync/addCookies directly.",
+      "A direct Playwright run without exported TEST_DATABASE_URL self-skipped the two Chromium tests; that run was not counted as pass evidence."
+    ],
+    "fixed_files": [
+      "crates/api/src/domain/actions.rs"
+    ],
+    "qa_date": "2026-05-08"
   }
 ]

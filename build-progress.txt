@@ -5520,3 +5520,10 @@
 - Focused web component coverage passed: `npm run test -- user-profile-repositories.test.tsx` (4 tests passed).
 - Focused Playwright passed with `.env.test` loaded: `npm run test:e2e -- profile-repositories.spec.ts` (setup + 3 Chromium tests passed) covering repositories, stars, URL-backed filters, clear controls, mobile overflow, screenshots, and dead-link checks. The run logged an unrelated repository tree `RepositoryFileFinder` maximum-update-depth warning after clicking a repo row; profile assertions still passed.
 - `make check` passed and the mandatory Editorial banned-value scan over `web/src` outside `og*.css` returned zero matches. Marked `profiles-002.qa_pass=true`.
+
+2026-05-08 - actions-004 fresh QA pass
+
+- Ran fresh QA in `/Users/jaeyunha/wt/opengithub/qa-actions-004-fresh` after `make doctor` was green for Docker, test Postgres on :55433, and `.env.test`.
+- Found and fixed a real job-log regression: runner-appended log storage keys normalized `unit / web` to `unit---web`; `safe_filename` now collapses separator runs so the key is `unit-web`.
+- Focused verification passed: DB-backed `api_repository_actions_job_log_contract` 3/3 via shared Cargo wrapper with `.env.test`/`:55433` and `--test-threads=1`, `repository-actions-job-log.test.tsx` 8/8, and `make check`.
+- Editorial banned-value scan over `web/src` outside `og*.css` returned zero matches. Direct Playwright exposed the legacy inline signed-in fixture/session mismatch documented by `web/tests/e2e/AGENTS.md`; runtime API/UI coverage came from DB contracts plus focused Vitest. Marked actions-004.qa_pass=true.
