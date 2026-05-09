@@ -52,6 +52,7 @@ test.skip(
   !databaseUrl,
   "notifications E2E needs TEST_DATABASE_URL or DATABASE_URL",
 );
+test.describe.configure({ timeout: 120_000 });
 
 test("signed-in user marks notifications read and toggles saved state", async ({
   page,

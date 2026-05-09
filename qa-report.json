@@ -3323,7 +3323,7 @@
     "sub_phases": {
       "functional": {
         "status": "pass",
-        "notes": "make check green (Cargo check, web tsc, Clippy, Biome). Focused Rust contract api_pull_request_diff_review_contract \u2014 2/2 passed (covers anonymous public read, owner state, viewed PATCH, draft create/update/delete, self-approve denial, submit publishes pending comments + emits timeline/notification/audit, abandon resets count, and stale version_key 422). Focused Vitest tests/repository-pull-request-detail.test.tsx \u2014 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts \u2014 4/4 passed including the signed-in Files changed flow that exercises pending review comments, the Review changes dialog, Submit review with Comment state, and mobile no-overflow."
+        "notes": "make check green (Cargo check, web tsc, Clippy, Biome). Focused Rust contract api_pull_request_diff_review_contract — 2/2 passed (covers anonymous public read, owner state, viewed PATCH, draft create/update/delete, self-approve denial, submit publishes pending comments + emits timeline/notification/audit, abandon resets count, and stale version_key 422). Focused Vitest tests/repository-pull-request-detail.test.tsx — 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts — 4/4 passed including the signed-in Files changed flow that exercises pending review comments, the Review changes dialog, Submit review with Comment state, and mobile no-overflow."
       },
       "api_contract": {
         "status": "pass",
@@ -3348,7 +3348,7 @@
           "self_review_block",
           "editorial_banned_value_scan"
         ],
-        "notes": "Anonymous access to private PR diff returns 403 with private_repository envelope (covered by pull_request_diff_review_contract_denies_private_anonymous_reads). Anonymous mutation endpoints all return 401 not_authenticated envelopes. Pending review drafts are author-private \u2014 anonymous reads see only published comments. Self-approve attempts return 422 validation_failed. Stale version_key on viewed PATCH is rejected with 422. Editorial banned-value scan: rg over web/src for `#0969da|#1f883d|#cf222e|@primer/|Octicon` found zero matches in PullRequestFilesChangedPage.tsx (and the rest of web/src \u2014 see below)."
+        "notes": "Anonymous access to private PR diff returns 403 with private_repository envelope (covered by pull_request_diff_review_contract_denies_private_anonymous_reads). Anonymous mutation endpoints all return 401 not_authenticated envelopes. Pending review drafts are author-private — anonymous reads see only published comments. Self-approve attempts return 422 validation_failed. Stale version_key on viewed PATCH is rejected with 422. Editorial banned-value scan: rg over web/src for `#0969da|#1f883d|#cf222e|@primer/|Octicon` found zero matches in PullRequestFilesChangedPage.tsx (and the rest of web/src — see below)."
       },
       "accessibility": {
         "status": "pass",
@@ -3361,7 +3361,7 @@
       "Ran make doctor (red on test DB), then make setup-local to bring docker-compose-test Postgres up on :55433 and re-ran make doctor green.",
       "Installed Rust 1.92.0 with clippy via rustup (no system rustc was present); installed web dependencies via npm install; downloaded Playwright chromium with PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 because the worktree runs on Ubuntu 26.04 which Playwright 1.59.1 does not advertise.",
       "Ran TEST_DATABASE_URL-loaded ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_diff_review_contract -- --nocapture: 2/2 passed.",
-      "Found a behavior gap: PRD says 'Viewed toggles collapse and persists per user/file version' but the existing component only changed the Viewed chip \u2014 the diff body remained visible. Fixed in web/src/components/PullRequestFilesChangedPage.tsx by adding a per-file expanded local state, an aria-expanded Show changes / Hide changes toggle wired to the same id as the diff body, automatic collapse when the file is marked viewed, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed.",
+      "Found a behavior gap: PRD says 'Viewed toggles collapse and persists per user/file version' but the existing component only changed the Viewed chip — the diff body remained visible. Fixed in web/src/components/PullRequestFilesChangedPage.tsx by adding a per-file expanded local state, an aria-expanded Show changes / Hide changes toggle wired to the same id as the diff body, automatic collapse when the file is marked viewed, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed.",
       "Added a focused Vitest 'collapses a viewed file's diff body and lets the user reveal it again' to web/tests/repository-pull-request-detail.test.tsx and confirmed the existing 17 tests still pass; total 18/18 passed.",
       "Started make dev locally, then ran cd web && PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 npx playwright test tests/e2e/repository-pull-request-detail.spec.ts --project=chromium --reporter=list against the running stack: 4/4 passed (auth setup + 3 chromium scenarios), including the signed-in Files changed flow that exercises pending review comments and the Submit review dialog.",
       "Ran live curl probes against http://localhost:3016 and http://localhost:3015 to confirm anonymous mutation endpoints return JSON 401 not_authenticated envelopes for /files/viewed, /review-comments/drafts, /reviews, and /reviews/draft and that the Next.js Files changed page renders 200 anonymously.",
@@ -3378,7 +3378,7 @@
         "reproduction": "Open /{owner}/{repo}/pull/{number}/files as a signed-in viewer with at least one diff hunk; click Viewed?. The chip flipped to Viewed but the diff body stayed visible and could not be collapsed."
       }
     ],
-    "fix_description": "web/src/components/PullRequestFilesChangedPage.tsx \u2014 DiffFile gained a per-file expanded local state seeded from !file.viewed, kept in sync via useEffect on file.viewed, an aria-expanded toggle button that says 'Show changes' / 'Hide changes' wired to the same id as the diff body, collapse on viewed via the wrapped onViewedChange handler, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed. Added Vitest 'collapses a viewed file's diff body and lets the user reveal it again' in web/tests/repository-pull-request-detail.test.tsx. No backend or schema changes were required."
+    "fix_description": "web/src/components/PullRequestFilesChangedPage.tsx — DiffFile gained a per-file expanded local state seeded from !file.viewed, kept in sync via useEffect on file.viewed, an aria-expanded toggle button that says 'Show changes' / 'Hide changes' wired to the same id as the diff body, collapse on viewed via the wrapped onViewedChange handler, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed. Added Vitest 'collapses a viewed file's diff body and lets the user reveal it again' in web/tests/repository-pull-request-detail.test.tsx. No backend or schema changes were required."
   },
   {
     "feature_id": "settings-003",
@@ -3696,5 +3696,70 @@
       }
     ],
     "fix_description": "Fixed generated-notes PR range inclusion, explicit upload audit metadata, and route-level authentication for release write/manage endpoints; verified release create/edit/upload/publish/delete with real DB, focused UI tests, make check, and Playwright smoke."
+  },
+  {
+    "feature_id": "notifications-001",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Signed-in /notifications inbox verified with real seeded browser data: folders, default filters, repository buckets, All/Unread tabs, query/sort/group controls, row open links, save/read/done/inbox/subscribe state changes, bulk toolbar, partial-failure rollback, and mobile no-overflow all passed focused Playwright and component coverage."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/notifications",
+          "PATCH /api/notifications/{id}/read",
+          "PATCH /api/notifications/{id}/unread",
+          "PATCH /api/notifications/{id}/save",
+          "PATCH /api/notifications/{id}/unsave",
+          "PATCH /api/notifications/{id}/done",
+          "PATCH /api/notifications/{id}/inbox",
+          "PATCH /api/notifications/{id}/subscribe",
+          "PATCH /api/notifications/{id}/unsubscribe",
+          "POST /api/notifications/bulk"
+        ],
+        "notes": "DB-backed Rust notification contract passed 4/4 serially against localhost:55433, covering authenticated list shape, reason/repo filters, repository grouping, unread tab, repository buckets, row subscribed state, single triage endpoints, bulk validation, partial failures, and cross-user not-found privacy."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "input_validation",
+          "cross_user_privacy",
+          "data_exposure"
+        ],
+        "notes": "Unauthenticated API access returns not_authenticated when not rate-limited; cross-user notification mutation returns notification_not_found; bulk empty/duplicate/stale IDs are rejected or isolated; responses did not expose stack traces or secrets. A parallel full-contract run can be polluted by the shared anonymous rate-limit bucket and return 403 rate_limited, so serial focused contract evidence is the counted source."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Axe-core WCAG 2.1 A/AA scan on signed-in /notifications passed with 0 violations after fixing the app-shell search aria-controls reference; keyboard Tab landed on named Global menu control and horizontal overflow was 0px."
+      }
+    },
+    "tested_steps": [
+      "Started with make doctor. Docker and opengithub-postgres-test were present, but doctor reported a false-negative because the fixed-name container is owned by another Compose project and host pg_isready is unavailable; docker exec pg_isready and DB-backed tests proved localhost:55433 connectivity.",
+      "Ran make setup-local as prescribed; it could not recreate opengithub-postgres-test because the shared fixed-name container already existed. Used committed .env.test and the fixed TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test only.",
+      "Installed web dependencies with npm ci from the committed package-lock.json.",
+      "Ran make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran TEST_DATABASE_URL=postgresql://opengithub:opengithub@localhost:55433/opengithub_test ./hack/cargo_locked.sh test -p opengithub-api --test api_notifications_inbox_contract -- --test-threads=1 --nocapture: 4/4 passed.",
+      "Ran cd web && npm test -- notifications-inbox.test.tsx: 7/7 passed.",
+      "Ran focused Playwright /notifications scenarios with TMPDIR redirected to .scratch: setup plus row-state, bulk triage, and failed-bulk rollback tests passed 4/4.",
+      "Ran .scratch/notifications-a11y.cjs against live signed-in /notifications: axe serious/critical violations 0, total violations 0, first focused control Global menu, horizontal overflow 0."
+    ],
+    "bugs_found": [
+      {
+        "severity": "critical",
+        "description": "The signed-in app shell search input rendered aria-controls=\"app-shell-search-suggestions\" even though that element is not present on /notifications, causing a critical axe aria-valid-attr-value violation.",
+        "fix": "Changed AppHeader to emit aria-controls only while the global search modal is open and to reference the existing global-search-suggestions element."
+      },
+      {
+        "severity": "minor",
+        "description": "The legacy notifications Playwright spec could time out during cold seeder startup before reaching the inbox assertions.",
+        "fix": "Configured the notifications E2E spec with a 120s timeout while keeping the same real DB/browser scenario."
+      }
+    ],
+    "fix_description": "Fixed the invalid app-shell search ARIA reference exposed on /notifications and made the legacy focused notifications browser spec tolerant of cold Rust seeder startup; no notification data-model behavior changes were needed."
   }
 ]

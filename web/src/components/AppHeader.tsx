@@ -493,7 +493,9 @@ export function AppHeader({ session, shellContext }: AppHeaderProps) {
               <Icon name="search" />
               <input
                 aria-label="Search or jump to"
-                aria-controls="app-shell-search-suggestions"
+                aria-controls={
+                  searchOpen ? "global-search-suggestions" : undefined
+                }
                 autoComplete="off"
                 className="min-w-0 flex-1 bg-transparent t-sm outline-none"
                 name="q"
