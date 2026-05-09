@@ -6901,8 +6901,20 @@ async fn require_repository_role(
 ) -> Result<(), AutomationError> {
     let permission = repository_permission_for_user(pool, repository_id, user_id)
         .await
-        .map_err(map_repository_error)?
-        .ok_or(AutomationError::RepositoryAccessDenied)?;
+        .map_err(map_repository_error)?;
+
+    let Some(permission) = permission else {
+        if required_role == RepositoryRole::Read {
+            let repository = get_repository(pool, repository_id)
+                .await
+                .map_err(map_repository_error)?
+                .ok_or(AutomationError::RepositoryNotFound)?;
+            if repository.visibility == RepositoryVisibility::Public {
+                return Ok(());
+            }
+        }
+        return Err(AutomationError::RepositoryAccessDenied);
+    };
 
     let allowed = match required_role {
         RepositoryRole::Read => permission.role.can_read(),

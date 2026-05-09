@@ -3315,5 +3315,69 @@
     ],
     "bugs_found": [],
     "fix_description": "No product code fix was required. QA bookkeeping updated to mark settings-002 passed from fresh focused Rust, Vitest, Playwright, design-scan, make check, and make test evidence."
+  },
+  {
+    "feature_id": "prs-005",
+    "attempt": 1,
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "make check green (Cargo check, web tsc, Clippy, Biome). Focused Rust contract api_pull_request_diff_review_contract — 2/2 passed (covers anonymous public read, owner state, viewed PATCH, draft create/update/delete, self-approve denial, submit publishes pending comments + emits timeline/notification/audit, abandon resets count, and stale version_key 422). Focused Vitest tests/repository-pull-request-detail.test.tsx — 18/18 passed including a new collapse-on-viewed test. Focused Playwright tests/e2e/repository-pull-request-detail.spec.ts — 4/4 passed including the signed-in Files changed flow that exercises pending review comments, the Review changes dialog, Submit review with Comment state, and mobile no-overflow."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/:owner/:repo/pulls/:number/files",
+          "PATCH /api/repos/:owner/:repo/pulls/:number/files/viewed",
+          "POST /api/repos/:owner/:repo/pulls/:number/review-comments/drafts",
+          "PATCH /api/repos/:owner/:repo/pulls/:number/review-comments/drafts/:draftId",
+          "DELETE /api/repos/:owner/:repo/pulls/:number/review-comments/drafts/:draftId",
+          "POST /api/repos/:owner/:repo/pulls/:number/reviews",
+          "DELETE /api/repos/:owner/:repo/pulls/:number/reviews/draft"
+        ],
+        "notes": "Rust contract verifies status codes (200/201/401/422) and JSON envelope shapes for diff review reads, viewed toggle, draft create/update/delete, submit-review side effects (published comments, timeline event, notification, audit row), and abandon. Live curl smoke against make-dev confirmed PATCH /files/viewed, POST /review-comments/drafts, POST /reviews, and DELETE /reviews/draft all return JSON {error:{code:not_authenticated,...},status:401} for anonymous callers."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "private_anonymous_denial",
+          "input_validation_envelope",
+          "draft_visibility",
+          "self_review_block",
+          "editorial_banned_value_scan"
+        ],
+        "notes": "Anonymous access to private PR diff returns 403 with private_repository envelope (covered by pull_request_diff_review_contract_denies_private_anonymous_reads). Anonymous mutation endpoints all return 401 not_authenticated envelopes. Pending review drafts are author-private — anonymous reads see only published comments. Self-approve attempts return 422 validation_failed. Stale version_key on viewed PATCH is rejected with 422. Editorial banned-value scan: rg over web/src for `#0969da|#1f883d|#cf222e|@primer/|Octicon` found zero matches in PullRequestFilesChangedPage.tsx (and the rest of web/src — see below)."
+      },
+      "accessibility": {
+        "status": "pass",
+        "violations": [],
+        "notes": "Files changed surface uses semantic primitives: <h1 class=\"t-h2\">, <nav aria-label=\"Pull request sections\"> with aria-current on Files changed tab, <article id=...> per file, aria-pressed Viewed toggle, aria-expanded Show/Hide changes button, aria-labelledby submit-review-title on the modal dialog, aria-label inline + buttons referencing diff position, and Markdown editor textareas with aria-label (Pending review comment, Review summary). Playwright spec verifies no `a[href=\"#\"]` or unanchored anchors at desktop and at 390px mobile, and asserts no horizontal overflow at 390px viewport."
+      }
+    },
+    "tested_steps": [
+      "Read AGENTS.md, web/AGENTS.md, BUILD_GUIDE.md, prd.json prs-005 entry, qa-report.json prior PRS attempts, and the page/component implementation (web/src/app/[owner]/[repo]/pull/[number]/files/page.tsx + web/src/components/PullRequestFilesChangedPage.tsx + web/src/lib/api.ts diff review helpers + Rust route + domain).",
+      "Ran make doctor (red on test DB), then make setup-local to bring docker-compose-test Postgres up on :55433 and re-ran make doctor green.",
+      "Installed Rust 1.92.0 with clippy via rustup (no system rustc was present); installed web dependencies via npm install; downloaded Playwright chromium with PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 because the worktree runs on Ubuntu 26.04 which Playwright 1.59.1 does not advertise.",
+      "Ran TEST_DATABASE_URL-loaded ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_diff_review_contract -- --nocapture: 2/2 passed.",
+      "Found a behavior gap: PRD says 'Viewed toggles collapse and persists per user/file version' but the existing component only changed the Viewed chip — the diff body remained visible. Fixed in web/src/components/PullRequestFilesChangedPage.tsx by adding a per-file expanded local state, an aria-expanded Show changes / Hide changes toggle wired to the same id as the diff body, automatic collapse when the file is marked viewed, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed.",
+      "Added a focused Vitest 'collapses a viewed file's diff body and lets the user reveal it again' to web/tests/repository-pull-request-detail.test.tsx and confirmed the existing 17 tests still pass; total 18/18 passed.",
+      "Started make dev locally, then ran cd web && PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 npx playwright test tests/e2e/repository-pull-request-detail.spec.ts --project=chromium --reporter=list against the running stack: 4/4 passed (auth setup + 3 chromium scenarios), including the signed-in Files changed flow that exercises pending review comments and the Submit review dialog.",
+      "Ran live curl probes against http://localhost:3016 and http://localhost:3015 to confirm anonymous mutation endpoints return JSON 401 not_authenticated envelopes for /files/viewed, /review-comments/drafts, /reviews, and /reviews/draft and that the Next.js Files changed page renders 200 anonymously.",
+      "Re-ran make check after the fix: Cargo check, web typecheck, Clippy, and Biome all passed.",
+      "Ran TEST_DATABASE_URL-loaded ./hack/cargo_locked.sh test -p opengithub-api --test api_pull_request_diff_review_contract a final time after the fix to confirm Rust diff-review contract still 2/2 passed."
+    ],
+    "bugs_found": [
+      {
+        "severity": "minor",
+        "phase": "functional",
+        "description": "Marking a file as viewed updated the chip and sidebar treatment but did not collapse the diff body, so PRD behavior 'Viewed toggles collapse and persists per user/file version' was only half-implemented.",
+        "expected": "When a file is marked viewed, its diff body and any inline + file-level review comments collapse under a 'File hidden because it is marked viewed.' caption with a Show changes affordance; unmarking or clicking Show changes reveals the diff again. Persistence and reset-on-version-change continue to come from the server.",
+        "actual": "Before the fix, the Viewed button toggled state but the file's hunks and per-file comments stayed visible.",
+        "reproduction": "Open /{owner}/{repo}/pull/{number}/files as a signed-in viewer with at least one diff hunk; click Viewed?. The chip flipped to Viewed but the diff body stayed visible and could not be collapsed."
+      }
+    ],
+    "fix_description": "web/src/components/PullRequestFilesChangedPage.tsx — DiffFile gained a per-file expanded local state seeded from !file.viewed, kept in sync via useEffect on file.viewed, an aria-expanded toggle button that says 'Show changes' / 'Hide changes' wired to the same id as the diff body, collapse on viewed via the wrapped onViewedChange handler, and a 'File hidden because it is marked viewed.' caption with a hidden-file-comment count when collapsed. Added Vitest 'collapses a viewed file's diff body and lets the user reveal it again' in web/tests/repository-pull-request-detail.test.tsx. No backend or schema changes were required."
   }
 ]
