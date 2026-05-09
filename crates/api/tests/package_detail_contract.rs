@@ -729,7 +729,7 @@ async fn package_settings_admin_mutations_soft_delete_and_audit_without_leaking_
         }),
     )
     .await;
-    assert_eq!(status, StatusCode::OK);
+    assert_eq!(status, StatusCode::OK, "{unlink_body}");
     assert!(!unlink_body["linkedRepositories"]
         .as_array()
         .expect("linked repos")
