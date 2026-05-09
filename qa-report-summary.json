@@ -1473,10 +1473,15 @@
       "feature_id": "settings-005",
       "description": "Manage repository Actions secrets and variables with write-only encrypted values",
       "category": "settings",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": "pass",
+        "api_contract": "pass",
+        "security": "pass",
+        "accessibility": "pass"
+      }
     },
     {
       "feature_id": "settings-006",

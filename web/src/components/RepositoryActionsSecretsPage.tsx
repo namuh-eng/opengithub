@@ -36,6 +36,7 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat("en", {
     day: "numeric",
     month: "short",
+    timeZone: "UTC",
     year: "numeric",
   }).format(new Date(value));
 }
@@ -866,7 +867,7 @@ export function RepositoryActionsSecretsPage({
             onSubmit={(payload) =>
               mutate(
                 { action: "create-secret", ...payload },
-                `Secret ${payload.name.toUpperCase()} created.`,
+                `${payload.name.toUpperCase()} created.`,
               )
             }
           />
@@ -879,10 +880,7 @@ export function RepositoryActionsSecretsPage({
               editingName={editingSecret}
               items={settings.secrets}
               onDelete={(name) =>
-                mutate(
-                  { action: "delete-secret", name },
-                  `Secret ${name} deleted.`,
-                )
+                mutate({ action: "delete-secret", name }, `${name} deleted.`)
               }
               onEdit={(name) => {
                 setDeletingSecret(null);
@@ -891,7 +889,7 @@ export function RepositoryActionsSecretsPage({
               onSave={(currentName, payload) =>
                 mutate(
                   { action: "update-secret", currentName, ...payload },
-                  `Secret ${payload.name.toUpperCase()} updated.`,
+                  `${payload.name.toUpperCase()} updated.`,
                 )
               }
               setDeletingName={(name) => {
@@ -913,7 +911,7 @@ export function RepositoryActionsSecretsPage({
             onSubmit={(payload) =>
               mutate(
                 { action: "create-variable", ...payload },
-                `Variable ${payload.name.toUpperCase()} created.`,
+                `${payload.name.toUpperCase()} created.`,
               )
             }
           />
@@ -926,10 +924,7 @@ export function RepositoryActionsSecretsPage({
               editingName={editingVariable}
               items={settings.variables}
               onDelete={(name) =>
-                mutate(
-                  { action: "delete-variable", name },
-                  `Variable ${name} deleted.`,
-                )
+                mutate({ action: "delete-variable", name }, `${name} deleted.`)
               }
               onEdit={(name) => {
                 setDeletingVariable(null);
@@ -938,7 +933,7 @@ export function RepositoryActionsSecretsPage({
               onSave={(currentName, payload) =>
                 mutate(
                   { action: "update-variable", currentName, ...payload },
-                  `Variable ${payload.name.toUpperCase()} updated.`,
+                  `${payload.name.toUpperCase()} updated.`,
                 )
               }
               setDeletingName={(name) => {

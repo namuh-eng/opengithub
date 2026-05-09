@@ -3499,5 +3499,54 @@
     ],
     "bugs_found": [],
     "fix_description": "No product code change needed in this rerun; resolved the prior blocker by restoring the committed local test DB on :55433 and rerunning real focused QA."
+  },
+  {
+    "feature_id": "settings-005",
+    "attempt": "fresh-2026-05-08-rerun-real-qa",
+    "status": "pass",
+    "sub_phases": {
+      "functional": {
+        "status": "pass",
+        "notes": "Focused UI component verification passed after fixing timezone-stable metadata rendering; prior same-branch focused Playwright smoke from a2fa6075 already covered create/update/delete secret and variable flows, no dead controls, no secret plaintext rendering, forbidden state, and mobile no-overflow. A current Playwright rerun was attempted but the shared :3015/:3016 dev ports were occupied by the settings-003 worktree, so it was not used as pass evidence."
+      },
+      "api_contract": {
+        "status": "pass",
+        "notes": "Fresh DB-backed repository_actions_secrets_contract binary passed 2/2 in 7.07s without self-skip; focused job-log masking contract passed 1/1. These cover admin-only API access, write-only secret responses, encrypted persistence, variable CRUD/read behavior, audit redaction, workflow runtime secret policy, and job-log masking."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "anonymous settings API returns 401 in focused Rust contract",
+          "writer/non-admin access is forbidden without leaking private secret or variable names",
+          "secret plaintext is not returned by API and is not stored as ciphertext/fingerprint plaintext",
+          "repository_settings_audit_events redact secret plaintext/envelope/fingerprint fields",
+          "workflow runtime policy blocks fork PR secrets and log responses mask configured values"
+        ],
+        "notes": "No new security regression found. The only product fix was date rendering; secret value write-only and masking assertions stayed green."
+      },
+      "accessibility": {
+        "status": "pass",
+        "notes": "Focused component and prior Playwright smoke cover accessible form labels, named buttons, no href=# dead controls, and mobile no-overflow. Current Ever/manual rerun was not possible because the shared dev ports were owned by the concurrent settings-003 worktree."
+      }
+    },
+    "commands": [
+      "make doctor -> red in this worktree: Docker daemon/container up, .env.test present, but 'Postgres container up but not accepting connections'; follow-up showed shared opengithub-postgres-test belongs to qa-opengithub-settings-003-rerun, docker exec pg_isready succeeds, and 55433 is published. No destructive Docker action taken after controller note.",
+      "docker exec opengithub-postgres-test pg_isready -U opengithub -d opengithub_test -> /var/run/postgresql:5432 - accepting connections",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test repository_actions_secrets_contract -- --nocapture -> 2 passed before duplicate lock-wait rerun was cancelled/ignored",
+      "set -a; . ./.env.test; set +a; $HOME/.cache/opengithub/cargo-target/debug/deps/repository_actions_secrets_contract-2c23979aa59e8f7b --nocapture -> 2 passed, finished in 7.07s",
+      "set -a; . ./.env.test; set +a; ./hack/cargo_locked.sh test -p opengithub-api --test api_repository_actions_job_log_contract job_log_detail_groups_steps_searches_lines_and_reads_options -- --nocapture -> 1 passed",
+      "cd web && npm ci -> installed committed dependencies; npm reported 2 moderate audit findings unchanged",
+      "cd web && npx vitest run tests/repository-actions-secrets-page.test.tsx -> initially failed on Pacific timezone off-by-one date; after UTC formatter fix, 6 passed",
+      "set -a; . ./.env.test; set +a; cd web && npx playwright test tests/e2e/repository-settings-secrets.spec.ts --project=chromium -> setup passed, scenario failed ERR_CONNECTION_REFUSED because the dev server was not available; later ports were occupied by concurrent settings-003 dev server, so not counted as pass evidence",
+      "OPENGITHUB_CACHE_ROOT=$PWD/.cache-settings005 CARGO_TARGET_DIR=$PWD/target-settings005 CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 make check -> Cargo check passed, Web typecheck passed, Clippy passed, Biome passed"
+    ],
+    "fixes_made": [
+      "Rendered repository Actions secret/variable metadata dates with timeZone: UTC so API midnight UTC timestamps do not display as the previous day for Pacific-time users/tests."
+    ],
+    "qa_pass": true,
+    "known_gaps": [
+      "This worktree's make doctor remains a false negative while the shared fixed-name opengithub-postgres-test container is owned by the settings-003 compose project and local pg_isready is unavailable; direct docker exec readiness and DB-backed Rust contracts prove the DB path used for settings-005 is working.",
+      "No fresh current-worktree Playwright/Ever pass was collected after the UTC date fix because concurrent settings-003 dev server owned :3015/:3016; prior same-branch Playwright smoke from a2fa6075 remains the browser CRUD/no-leakage evidence."
+    ]
   }
 ]
