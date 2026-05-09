@@ -10765,3 +10765,8 @@ Controller merge: preserved additional QA evidence from personal-settings-001 br
 - Rebased the prior blocked teams fixes onto origin/main f65720db, preserved adjacent QA ledger entries, and updated org-admin-004 from blocked to pass after fresh infra-backed verification.
 - Fixed/stabilized: visibility=member now filters by actual team membership, My teams label displays correctly, org teams E2E uses shared auth fixture, and the broad focused Playwright scenarios use a 90s per-test cap to avoid cold-run false timeouts.
 - Evidence: make doctor healthy; make check passed; DB-backed organization_teams_contract 3/3 non-skipped passed against localhost:55433; OrganizationTeamsPage Vitest 8/8 passed; focused Chromium organization-teams Playwright 3/3 passed.
+
+[QA insights-004 mainqa 2026-05-09T21:53:39Z]
+Status: QA BLOCKED with scoped fixes salvaged. make doctor and make check passed; DB-backed package_detail_contract 4/4, projects_list_contract 1/1, and repository_network_contract 1/1 passed against localhost:55433; focused Network/Forks/API docs Vitest passed 9/9.
+Fixes: package settings camelCase serde IDs, project copy FOR UPDATE OF projects + workflow_key clone + org membership/base-role guard, corrected projects default-open contract expectation, and isolated repository_network_contract rate-limit identity.
+Blockers: full make test Cargo passed but broad web Vitest still has unrelated user-profile-contributions Jan month expectation; focused Playwright repository-network.spec.ts is blocked because both bundled Chromium and /usr/bin/google-chrome exit SIGTRAP during auth.setup.ts before assertions, even with TMPDIR under .scratch/tmp after freeing workspace caches. insights-004 qa_pass remains false.

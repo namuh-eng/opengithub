@@ -257,13 +257,25 @@ pub struct PackageCapabilitySummary {
 pub enum PackageSettingsMutation {
     UpdateVisibility { visibility: String },
     GrantAccess { username: String, role: String },
-    RevokeAccess { user_id: Uuid },
+    RevokeAccess {
+        #[serde(rename = "userId")]
+        user_id: Uuid,
+    },
     LinkRepository { owner: String, repo: String },
-    UnlinkRepository { repository_id: Uuid },
+    UnlinkRepository {
+        #[serde(rename = "repositoryId")]
+        repository_id: Uuid,
+    },
     DeletePackage,
     RestorePackage,
-    DeleteVersion { version_id: Uuid },
-    RestoreVersion { version_id: Uuid },
+    DeleteVersion {
+        #[serde(rename = "versionId")]
+        version_id: Uuid,
+    },
+    RestoreVersion {
+        #[serde(rename = "versionId")]
+        version_id: Uuid,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]

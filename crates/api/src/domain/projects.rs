@@ -1423,7 +1423,7 @@ pub async fn copy_project_for_actor(
           ON project_permissions.project_id = projects.id
          AND project_permissions.user_id = $2
         WHERE projects.id = $1 AND projects.deleted_at IS NULL
-        FOR UPDATE
+        FOR UPDATE OF projects
         "#,
     )
     .bind(source_project_id)
@@ -1446,7 +1446,7 @@ pub async fn copy_project_for_actor(
         || org_role
             .as_deref()
             .is_some_and(|role| matches!(role, "owner" | "admin"))
-        || org_base_role.as_deref().is_some_and(can_write_project_role);
+        || (org_role.is_some() && org_base_role.as_deref().is_some_and(can_write_project_role));
     if !can_copy {
         return Err(ProjectsError::Forbidden);
     }
@@ -1535,8 +1535,8 @@ pub async fn copy_project_for_actor(
     let copied_workflows = sqlx::query_scalar::<_, i64>(
         r#"
         WITH inserted AS (
-          INSERT INTO project_workflows (project_id, name, enabled, trigger_event, configuration)
-          SELECT $2, name, enabled, trigger_event, configuration
+          INSERT INTO project_workflows (project_id, workflow_key, name, enabled, trigger_event, configuration)
+          SELECT $2, workflow_key, name, enabled, trigger_event, configuration
           FROM project_workflows
           WHERE project_id = $1
           RETURNING 1

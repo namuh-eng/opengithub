@@ -4597,5 +4597,112 @@
       }
     ],
     "fix_description": "Fixed Pulse UTC boundary date rendering and verified insights-001 with real DB contract, focused component tests, and focused browser E2E."
+  },
+  {
+    "feature_id": "insights-004",
+    "attempt": 1,
+    "status": "blocked",
+    "qa_pass": false,
+    "completed_at": "2026-05-09T21:53:39Z",
+    "sub_phases": {
+      "functional": {
+        "status": "blocked",
+        "notes": "Network/Forks component behavior and DB-backed API contracts pass; focused live Chromium Playwright for web/tests/e2e/repository-network.spec.ts is blocked by local browser launch SIGTRAP before auth setup assertions."
+      },
+      "api_contract": {
+        "status": "pass",
+        "endpoints_tested": [
+          "GET /api/repos/{owner}/{repo}/network",
+          "GET /api/repos/{owner}/{repo}/forks",
+          "PUT /api/repos/{owner}/{repo}/forks/defaults"
+        ],
+        "notes": "DB-backed repository_network_contract passed 1/1 against localhost:55433 with readable-only projection filters/defaults; collateral package/projects contracts passed after fixing serde and project-copy fallout exposed by broad make test."
+      },
+      "security": {
+        "status": "pass",
+        "checks": [
+          "auth_bypass",
+          "private_fork_omission",
+          "saved_default_validation",
+          "rate_limit_isolation",
+          "data_exposure"
+        ],
+        "notes": "Focused Rust contracts verify anonymous/privacy/error paths, unreadable private fork omission, saved defaults validation, and no secret leakage; repository_network_contract now sends unique x-forwarded-for values to avoid test-rate-limit cross-request false positives."
+      },
+      "accessibility": {
+        "status": "blocked",
+        "violations": [],
+        "notes": "RepositoryNetworkPage/RepositoryForksPage Vitest passed 6 focused component tests for named controls, concrete links, no dead anchors/inert handlers, and Editorial guardrails. Live browser no-overflow/a11y smoke could not run because Chromium exits with SIGTRAP during Playwright auth setup."
+      }
+    },
+    "tested_steps": [
+      "Ran make doctor: Podman runtime reachable, opengithub-postgres-test up, Postgres reachable, .env/.env.test present, per-worktree Cargo target writable.",
+      "Ran make check: Cargo check, web typecheck, Clippy, and Biome passed.",
+      "Ran TEST_DATABASE_URL=postgresql://opengithub:***@localhost:55433/opengithub_test ./hack/cargo_locked.sh test -p opengithub-api --test repository_network_contract --test package_detail_contract --test projects_list_contract -- --test-threads=1 --nocapture: package_detail 4/4, projects_list 1/1, repository_network 1/1 passed, no self-skips.",
+      "Ran cd web && npm test -- tests/repository-network-page.test.tsx tests/repository-forks-page.test.tsx tests/api-docs.test.tsx: 9/9 passed.",
+      "Ran make test: Cargo tests passed; broad web Vitest remains blocked by unrelated user-profile-contributions date/month expectation after fixing the /tmp quota masking error.",
+      "Freed workspace-local cache artifacts (.scratch/clean-insights-004-1778343305, web/.next, target) to recover /home from 100% full to ~8.3G free; did not delete source or committed artifacts.",
+      "Attempted focused Playwright repository-network.spec.ts with committed Chromium and with /usr/bin/google-chrome via a temporary config, using TMPDIR under .scratch/tmp; both failed before test assertions because the browser process exited with SIGTRAP during auth.setup.ts."
+    ],
+    "bugs_found": [
+      {
+        "severity": "major",
+        "phase": "api_contract",
+        "description": "Package settings mutation payloads used camelCase keys from the web/API contract, but selected Rust enum variants only deserialized snake_case IDs, causing unlink/delete/restore actions to return validation errors.",
+        "expected": "repositoryId, userId, and versionId JSON keys are accepted for package settings mutations.",
+        "actual": "Broad DB contract exposed package_settings_admin_mutations_soft_delete_and_audit_without_leaking_storage returning 400 instead of 200.",
+        "fix": "Added serde rename attributes for userId, repositoryId, and versionId on affected PackageSettingsMutation variants."
+      },
+      {
+        "severity": "major",
+        "phase": "api_contract",
+        "description": "Project copy queried a joined project row FOR UPDATE and copied workflows without required workflow_key, so project-copy DB contract paths could fail under PostgreSQL locking/NOT NULL rules.",
+        "expected": "Copying a readable project locks only the source projects row and preserves workflow_key for copied workflows.",
+        "actual": "Focused project copy contract needed FOR UPDATE OF projects and workflow_key copy to pass against current schema.",
+        "fix": "Scoped the row lock with FOR UPDATE OF projects and copied workflow_key during project_workflows clone."
+      },
+      {
+        "severity": "minor",
+        "phase": "api_contract",
+        "description": "Project copy authorization allowed organization base permissions without confirmed organization membership.",
+        "expected": "Organization base project permissions only apply when the actor is a member of that organization.",
+        "actual": "The old condition could treat a base-role value as sufficient even when org_role was absent.",
+        "fix": "Required org_role.is_some() before applying org_base_role write permission."
+      },
+      {
+        "severity": "minor",
+        "phase": "test",
+        "description": "The projects_list_contract expected a closed private project to appear in the default open-state sorted list after a copy created a third open project.",
+        "fix": "Updated the assertion to match the documented default state=open behavior while preserving explicit state=closed private visibility coverage."
+      },
+      {
+        "severity": "minor",
+        "phase": "test",
+        "description": "repository_network_contract requests reused the same client identity quickly enough to hit API rate limiting during focused repeated GETs.",
+        "fix": "Added per-URI x-forwarded-for values in the contract helper to keep the test about Network/Forks behavior rather than rate-limit state."
+      }
+    ],
+    "fix_description": "Salvaged scoped QA fixes for package settings camelCase IDs, project copy locking/workflow/permission semantics, and focused contract stability. insights-004 remains QA_BLOCKED only on local Chromium SIGTRAP before Playwright auth setup, not on DB/API/component evidence.",
+    "evidence": {
+      "base": "origin/main 675df7b4",
+      "branch": "qa-opengithub-insights-004-mainqa-20260509",
+      "tests_passed": [
+        "make doctor",
+        "make check",
+        "package_detail_contract 4/4",
+        "projects_list_contract 1/1",
+        "repository_network_contract 1/1",
+        "repository-network/forks/api-docs Vitest 9/9"
+      ],
+      "blocked": [
+        "make test broad web: unrelated user-profile-contributions Jan month expectation after /tmp quota workaround",
+        "focused Playwright repository-network.spec.ts: Chromium and /usr/bin/google-chrome both exit SIGTRAP during auth.setup.ts before assertions"
+      ],
+      "timestamp": "2026-05-09T21:53:39Z"
+    },
+    "known_gaps": [
+      "Live browser Network/Forks E2E, screenshots, keyboard-only/a11y traversal, and mobile no-overflow need rerun on a host where Chromium launches.",
+      "Real Google OAuth was not repeated; signed-cookie fixture path could not start because browser launch fails first."
+    ]
   }
 ]
