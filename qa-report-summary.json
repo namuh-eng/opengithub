@@ -1689,10 +1689,47 @@
       "feature_id": "notifications-002",
       "description": "Implement single and bulk notification triage actions: read, unread, done, move ",
       "category": "interaction",
-      "qa_pass": false,
-      "attempts": 0,
+      "qa_pass": true,
+      "attempts": 1,
       "exhausted": false,
-      "sub_phases": {}
+      "sub_phases": {
+        "functional": {
+          "status": "pass",
+          "notes": "Focused DB-backed Rust, Vitest, and signed-in Playwright notification triage flows passed for single and bulk actions, rollback, saved/done folders, and mobile overflow."
+        },
+        "api_contract": {
+          "status": "pass",
+          "endpoints_tested": [
+            "GET /api/notifications",
+            "PATCH /api/notifications/{id}/read",
+            "PATCH /api/notifications/{id}/unread",
+            "PATCH /api/notifications/{id}/save",
+            "PATCH /api/notifications/{id}/unsave",
+            "PATCH /api/notifications/{id}/done",
+            "PATCH /api/notifications/{id}/inbox",
+            "PATCH /api/notifications/{id}/subscribe",
+            "PATCH /api/notifications/{id}/unsubscribe",
+            "POST /api/notifications/bulk"
+          ],
+          "notes": "api_notifications_inbox_contract passed 4/4 serially against localhost:55433 opengithub_test."
+        },
+        "security": {
+          "status": "pass",
+          "checks": [
+            "auth_bypass",
+            "input_validation",
+            "cross_user_privacy",
+            "data_exposure",
+            "visual_banned_values"
+          ],
+          "notes": "Cross-user/stale notification IDs remain isolated as not_found, bulk validation is enforced, and the mandatory Editorial banned-value scan was clean."
+        },
+        "accessibility": {
+          "status": "pass",
+          "violations": [],
+          "notes": "Keyboard-addressable selection/action controls and dense mobile saved-folder overflow were verified in focused Playwright; no new a11y defects found."
+        }
+      }
     },
     {
       "feature_id": "notifications-003",
